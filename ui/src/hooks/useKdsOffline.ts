@@ -189,6 +189,28 @@ export function scopedActions(
   return queue.filter((a) => !a.storeId || a.storeId === storeId);
 }
 
+/**
+ * Re-arm dead-letter actions for retry: reset retryCount, drop deadLetterAt,
+ * and merge with the existing queue (dedup by action ID).
+ * Exported for testing.
+ */
+export function rearmDeadLetters(
+  dead: DeadLetterKdsAction[],
+  queue: PendingKdsAction[],
+): PendingKdsAction[] {
+  const requeued: PendingKdsAction[] = dead.map((a) => ({
+    id: a.id,
+    orderId: a.orderId,
+    targetStatus: a.targetStatus,
+    retryCount: 0,
+    createdAt: a.createdAt,
+    lastError: a.lastError,
+    ...(a.storeId ? { storeId: a.storeId } : {}),
+  }));
+  const seen = new Set(requeued.map((a) => a.id));
+  return [...queue.filter((a) => !seen.has(a.id)), ...requeued];
+}
+
 /** OFF-05: compute the next retry timestamp with exponential backoff + jitter. */
 export function nextAttemptAt(retryCount: number): string {
   const exp = Math.pow(2, retryCount - 1); // retry 1 → 1s, 2 → 2s, 3 → 4s…
