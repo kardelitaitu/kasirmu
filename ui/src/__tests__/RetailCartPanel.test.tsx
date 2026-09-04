@@ -370,3 +370,125 @@ describe('RetailCartPanel — modifier badge', () => {
     expect(document.querySelector('.retail-cart-modifier-badge')).toBeNull();
   });
 });
+
+// ── Grand total and the exclusive/inclusive tax rule ─────────────
+//
+// `grandTotal()` is the amount the customer actually pays, and it is the one
+// money computation in the cart that has no arithmetic test anywhere. The
+// PosScreen integration suite has `it.skip('includes tax in payment total when
+// tax is exclusive')`, and even that skipped body only asserted
+// `getByText(/total/i)` exists -- which passes whether or not tax was added, so
+// un-skipping it would not have tested anything.
+//
+// Expected values are extracted from the rendered rows and compared
+// numerically rather than against a literal string, because formatMoney is
+// locale- and separator-dependent (id-ID groups with '.', and the decimal
+// separator is a per-store receipt setting). Calling formatMoney here to build
+// the expectation would assert the helper against itself -- the same tautology
+// removed from AnalyticsScreen in f069cd2e.
+//
+// The exclusive/inclusive distinction is the whole point: inclusive tax is
+// already embedded in the line prices, so adding it again over-charges.
+
+const digitsOf = (el: Element | null): number =>
+  Number((el?.textContent ?? '').replace(/[^\d]/g, ''));
+
+function grandRow(): Element | null {
+  return document.querySelector('.retail-total-row--grand');
+}
+function subtotalRow(): Element | null {
+  return document.querySelectorAll('.retail-total-row')[0] ?? null;
+}
+
+describe('RetailCartPanel — grand total tax arithmetic', () => {
+  it('adds exclusive tax to the grand total', () => {
+    render(
+      <RetailCartPanel
+        {...makeProps({
+          totals: {
+            subtotal: money(50000),
+            total: money(50000),
+            discountPercent: 0,
+            discountAmount: null,
+            cartTax: 5000,
+            cartTaxExclusive: true,
+          },
+        })}
+      />,
+    );
+    expect(digitsOf(subtotalRow())).toBe(50000);
+    expect(digitsOf(grandRow())).toBe(55000);
+  });
+
+  it('does NOT add inclusive tax, which is already in the prices', () => {
+    render(
+      <RetailCartPanel
+        {...makeProps({
+          totals: {
+            subtotal: money(50000),
+            total: money(50000),
+            discountPercent: 0,
+            discountAmount: null,
+            cartTax: 5000,
+            cartTaxExclusive: false,
+          },
+        })}
+      />,
+    );
+    // Same tax amount, opposite outcome: the flag is what decides, so a
+    // regression that dropped the `cartTaxExclusive` test would fail here
+    // rather than at the previous one.
+    expect(digitsOf(grandRow())).toBe(50000);
+    expect(digitsOf(grandRow())).toBe(digitsOf(subtotalRow()));
+  });
+
+  it('shows the tax row only when there is tax to show', () => {
+    const { unmount } = render(
+      <RetailCartPanel
+        {...makeProps({
+          totals: {
+            subtotal: money(50000), total: money(50000), discountPercent: 0,
+            discountAmount: null, cartTax: 5000, cartTaxExclusive: true,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText('retail-total-tax')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <RetailCartPanel
+        {...makeProps({
+          totals: {
+            subtotal: money(50000), total: money(50000), discountPercent: 0,
+            discountAmount: null, cartTax: 0, cartTaxExclusive: false,
+          },
+        })}
+      />,
+    );
+    expect(screen.queryByText('retail-total-tax')).toBeNull();
+  });
+
+  // Pins CURRENT behaviour, which is a hazard rather than a goal: when the
+  // computeCartTax IPC fails the callers set cartTax 0 / exclusive false, and
+  // the panel then renders the pre-tax amount as the amount due with nothing on
+  // screen distinguishing "this cart has no tax" from "we could not work out the
+  // tax". See R36-19 -- the assertion exists so that changing the behaviour
+  // breaks a test loudly instead of silently fixing itself.
+  it('renders the pre-tax amount as the grand total when tax is unknown (R36-19)', () => {
+    render(
+      <RetailCartPanel
+        {...makeProps({
+          totals: {
+            subtotal: money(50000), total: money(50000), discountPercent: 0,
+            discountAmount: null, cartTax: 0, cartTaxExclusive: false,
+          },
+        })}
+      />,
+    );
+    expect(digitsOf(grandRow())).toBe(50000);
+    // Nothing in the panel says the lookup failed -- there is no such state.
+    expect(document.querySelector('.retail-total-row--grand')?.textContent)
+      .not.toMatch(/retail-total-tax|—/);
+  });
+});

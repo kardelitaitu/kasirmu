@@ -1716,6 +1716,15 @@ describe('PosScreen — Live tax preview (computeCartTax)', () => {
     expect(screen.getByText(/ppn/i)).toBeInTheDocument();
   });
 
+  // NOTE (0.0.37): this body never tested what its name promises. It asserts only
+  // that *some* element matching /total/i exists, which holds whether or not tax
+  // was added -- so un-skipping it would yield a green test that still verifies
+  // nothing. The real arithmetic is now pinned in RetailCartPanel.test.tsx
+  // ("grand total tax arithmetic"), which drives grandTotal() with
+  // exclusive/inclusive/zero tax and compares the rendered rows numerically;
+  // three sabotage mutations of grandTotal() were caught there. Left skipped
+  // rather than rewritten, because the payment-modal round trip is a separate
+  // concern from the total arithmetic.
   it.skip('includes tax in payment total when tax is exclusive', async () => {
     await setupCart();
 
