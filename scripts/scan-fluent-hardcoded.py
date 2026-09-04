@@ -61,7 +61,34 @@ RE_JSX_TEXT = re.compile(r">\s*([A-Za-z][^<>{}\n]{0,90}?)\s*<")
 USER_ATTRS = "aria-label|aria-labelledby|aria-description|placeholder|title|alt|label|tooltip|summary|caption"
 RE_ATTR_LITERAL = re.compile(rf"\b({USER_ATTRS})\s*=\s*\"([^\"]+)\"")
 RE_ATTR_EXPR_STR = re.compile(rf"\b({USER_ATTRS})\s*=\s*\{{\s*\"([^\"]+)\"\s*\}}")
-RE_OR_FALLBACK = re.compile(r"\.getString\([^)]*\)\s*(?:\|\||\?\?)")
+def find_getstring_fallbacks(src):
+    """Yield (start, snippet) for each `.getString(...)` followed by a `||` / `??` fallback.
+
+    Replaces RE_OR_FALLBACK's `\\.getString\\([^)]*\\)`, whose `[^)]*` stops at the FIRST
+    ')' even when that paren belongs to a nested call. The capture then ends early, `\\)`
+    matches an inner paren, and the text after it is not `||` -- so the site is invisible.
+    That was not hypothetical: MenuEngineeringScreen.tsx:298,
+
+        return l10n.getString(recKey(q)) || QUADRANT_META[q].label;
+
+    is a real hardcoded-fallback violation the gate never reported, and 74 of the 1549
+    `.getString(` calls in this repo contain a nested paren, so the blind spot was wide.
+    Counting parens fixes it at any depth.
+    """
+    for m in re.finditer(r"\.getString\s*\(", src):
+        depth, j = 1, m.end()
+        while j < len(src) and depth:
+            c = src[j]
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            j += 1
+        if depth:  # unbalanced; not our problem
+            continue
+        tail = re.match(r"\s*(?:\|\||\?\?)", src[j:])
+        if tail:
+            yield m.start(), src[m.start():j + tail.end()].strip()
 RE_INVOKE = re.compile(r"(?<![\w.])invoke\s*(?:<[^<>]*>)?\s*\(")
 # Imperative user-facing surfaces: toasts / alerts / direct error state.
 RE_TOAST = re.compile(
@@ -229,8 +256,8 @@ for path, rel in iter_source_files():
             val = " ".join(m.group("v").split())
             if looks_like_copy(val):
                 hits.append({"kind": kind, "line": line_of(scan_src, m.start()), "value": val})
-    for m in RE_OR_FALLBACK.finditer(src):
-        hits.append({"kind": "english-fallback", "line": line_of(src, m.start()), "value": m.group(0)[:60]})
+    for start, snippet in find_getstring_fallbacks(src):
+        hits.append({"kind": "english-fallback", "line": line_of(src, start), "value": snippet[:60]})
     if not rel.startswith(("api/", "utils/")):
         for m in RE_INVOKE.finditer(src):
             hits.append({"kind": "bare-invoke", "line": line_of(src, m.start()), "value": "invoke()"})
