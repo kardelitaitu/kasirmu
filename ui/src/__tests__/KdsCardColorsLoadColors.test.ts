@@ -22,6 +22,24 @@ describe('loadColors contract', () => {
     localStorage.clear();
   });
 
+  // Every test below writes through the imported STORAGE_KEY and reads back through
+  // loadColors(), which uses the same constant -- so both sides move together and a rename
+  // of the real key leaves all of them green. That is the blind spot documented in
+  // 3e0e156c, reproduced here by importing rather than copying. Pinning the literal is the
+  // only thing that turns a key change into a deliberate act: renaming it orphans every
+  // kitchen's customised card colours with nothing to restore them.
+  it('pins the localStorage key so a rename is a deliberate change', () => {
+    expect(STORAGE_KEY).toBe('kds-card-colors-v1');
+  });
+
+  it('reads what the real key holds, not just what the constant points at', () => {
+    const custom = { ...DEFAULT_DARK, dinein: '#ff0000' };
+    // Written as a literal on purpose: if STORAGE_KEY changes, this must fail even though
+    // the round-trip tests would keep passing, because they use the constant on both sides.
+    localStorage.setItem('kds-card-colors-v1', JSON.stringify({ dark: custom }));
+    expect(loadColors('dark')).toEqual(custom);
+  });
+
   it('returns dark defaults when no stored data', () => {
     const colors = loadColors('dark');
     expect(colors).toEqual(DEFAULT_DARK);
