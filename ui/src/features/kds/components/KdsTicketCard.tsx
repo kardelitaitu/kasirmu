@@ -53,10 +53,11 @@ const TAKEAWAY_ICON = (
 );
 
 /** Format duration in seconds as a human-readable string (e.g. "3m 12s", "1h 5m"). */
-function fmtDuration(seconds: number): string {
+export function fmtDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   const min = Math.floor(seconds / 60);
-  if (min < 60) return `${min}m ${seconds % 60 ? `${seconds % 60}s` : ''}`;
+  const sec = seconds % 60;
+  if (min < 60) return sec ? `${min}m ${sec}s` : `${min}m`;
   const h = Math.floor(min / 60);
   return `${h}h ${min % 60}m`;
 }
