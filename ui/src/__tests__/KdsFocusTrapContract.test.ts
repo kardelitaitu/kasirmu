@@ -3,7 +3,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 function createPanel(): HTMLElement {
