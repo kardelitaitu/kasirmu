@@ -349,7 +349,7 @@ jobs:
           no_output_timeout: 15m
       - run:
           name: Run Cargo Nextest
-          command: cargo nextest run --workspace --all-features --cargo-build-jobs 1 --test-threads 2
+          command: cargo nextest run --workspace --all-features -j 2
           no_output_timeout: 15m
       - save_cache:
           key: v2-cargo-cache-{{ checksum "Cargo.lock" }}
