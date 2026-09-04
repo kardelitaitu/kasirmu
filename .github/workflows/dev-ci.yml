@@ -543,6 +543,35 @@ jobs:
         run: python3 scripts/generate-pg-migration.py --check
       - name: Migration column types
         run: python3 scripts/verify-migration-column-types.py
+      # These ten ran ONLY in scripts/check.sh, which is opt-in and slow enough that most
+      # commits never invoke it, or in .githooks/pre-commit, which needs core.hooksPath set
+      # by setup-dev.ps1 and is not versioned -- so on a fresh clone that skips setup, or a
+      # contributor who simply never ran check.sh, none of this was enforced anywhere.
+      # Measured cost of all ten together: ~33s on a warm Linux runner, six of them under a
+      # second. Against a job that already runs gofmt, go vet and go test, that is noise.
+      #
+      # The reason to promote them rather than leave them local is the same one that put the
+      # PG drift check here (R36-12): a gate nobody runs is indistinguishable from no gate,
+      # and the record in gates.json claimed these were "required" while nothing outside one
+      # developer's machine could tell whether they still passed.
+      - name: UI typecheck gate self-test
+        run: bash scripts/test-typecheck-gate.sh
+      - name: EOL guard self-test
+        run: bash scripts/test-eol-guard.sh
+      - name: Test shadow copies
+        run: python3 scripts/verify-test-shadow-copies.py
+      - name: IPC command parity
+        run: python3 scripts/verify-ipc-parity.py
+      - name: Topology template parity
+        run: python3 scripts/verify-topology-parity.py
+      - name: Feature registry
+        run: python3 scripts/verify-feature-registry.py
+      - name: Plugin guide parity
+        run: python3 scripts/verify-plugin-guide-parity.py
+      - name: No raw query params
+        run: bash scripts/verify-no-raw-params.sh
+      - name: Scoped command coverage
+        run: bash scripts/verify-scoped-coverage.sh
 
   # ── 8. Release readiness ──────────────────────────────────────────────
   # R36-11's root cause was not only that release.yml was renamed to .bak with an

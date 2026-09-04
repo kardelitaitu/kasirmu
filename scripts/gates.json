@@ -102,6 +102,7 @@
       "id": "no-raw-params",
       "label": "No raw params (ADR #7 Phase 4)",
       "status": "required",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["no-raw-params"] }
     },
     {
@@ -109,6 +110,7 @@
       "label": "Scoped coverage (H-1)",
       "status": "required",
       "_note": "Added 0.0.37. scripts/verify-scoped-coverage.sh enforces H-1/H-2 -- every registered Tauri command has a _scoped variant or an allowlist entry -- and is the check.sh step IMMEDIATELY AFTER no-raw-params, which has been catalogued all along. One of three adjacent verification gates that were simply never recorded; the others are ipc-parity and topology-parity. Local-only: no ci key, and not in the pre-commit hook, so scripts/check.sh is its only runner.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["scoped coverage (H-1)"] }
     },
     {
@@ -116,6 +118,7 @@
       "label": "IPC parity",
       "status": "required",
       "_note": "Added 0.0.37. scripts/verify-ipc-parity.py fails when the UI invokes a command string absent from a shell's generate_handler![], and stale allowlist entries also fail so the list shrinks toward zero as F-006 removes the dead surface. Measured on the current tree: 399 UI command strings, 283 registered, 136 unregistered references, 0 unregistered command fns. Local-only -- check.sh is its only runner, which for a check that guards the UI/Rust boundary is itself worth questioning.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["ipc parity"] }
     },
     {
@@ -123,6 +126,7 @@
       "label": "Topology contract parity",
       "status": "required",
       "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored oz-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Local-only: check.sh is its only runner.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["topology contract parity"] }
     },
     {
@@ -138,6 +142,7 @@
       "label": "Test shadow copies",
       "status": "required",
       "_note": "Added 0.0.37. scripts/verify-test-shadow-copies.py fails when a test file redeclares a top-level production function it does not import AND the two bodies are similar (Jaccard >= 0.50 on non-keyword tokens). Five such suites were removed in 1c153ef7, 80216a2e, b270aba2, 314b7783, a695d3af and 314b7783's was the proof this is not cosmetic: its copied in-flight guard keyed on order.status where production keys on order.id, the author annotated the difference 'simplified', and the test named for that guard passed against a rule the app never had. Ships with --self-test (four cases, including an empty-corpus case that refuses to report clean) because a static gate with no liveness case is indistinguishable from one that passes. Local-only: pure python with no toolchain deps, so promoting it to dev-ci.yml#static-gates alongside no-hardcoded-money-format is a one-step change.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["test shadow copies"] }
     },
     {
@@ -178,12 +183,14 @@
       "id": "feature-registry",
       "label": "Feature registry parity",
       "status": "required",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["feature registry"] }
     },
     {
       "id": "plugin-guide-parity",
       "label": "Plugin-guide parity",
       "status": "required",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["plugin-guide parity"] }
     },
     {
@@ -408,6 +415,7 @@
       "label": "EOL guard",
       "status": "required",
       "_note": "Added in 0.0.36 (R36-15). The pre-commit line-ending step filtered on 'git check-attr text' alone, which is wrong twice: it ignored '.gitattributes *.bat text eol=crlf' and stripped CRLF from the working tree (producing a phantom-dirty git status with zero content diff), and because '* text=auto' reports 'auto' for every path including binaries, a staged PNG had the 0D 0A in its signature deleted and the mangled blob re-staged -- verified on apps/desktop-client/icons/32x32.png, 1515 to 1507 bytes. Both are silent corruption behind a green hook. The test extracts the live guard from .githooks/pre-commit rather than copying it, so it cannot drift from what it polices, and it fails loudly if either guard disappears.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["eol guard"] }
     },
     {
@@ -415,6 +423,7 @@
       "label": "typecheck gate",
       "status": "required",
       "_note": "Added in 0.0.37. Guards the UI typecheck step of .githooks/pre-commit, which was added after ten commits landed with HEAD failing tsc -- Vitest injects describe/it/expect/beforeEach/vi at runtime, so a missing import passes 'npm run test' and only fails 'tsc --noEmit', and nothing ran that before commit. The step fires only when a commit stages ui/src TypeScript, so on a Rust-only or docs-only stretch it goes unexercised and is indistinguishable from a step someone deleted; this test extracts the live step from the hook and drives it against a throwaway repo with a stubbed npm, asserting it triggers on nested .ts/.tsx, stays off for CSS/Rust/CI/docs-only and empty indexes, honours OZPOS_SKIP_TYPECHECK=1, aborts with rc=1 on a failing typecheck, and warns rather than silently passing when ui/node_modules is absent.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["typecheck gate"] }
     },
     {
