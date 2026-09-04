@@ -16,7 +16,7 @@
 
 import { type ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
-import { expect } from 'vitest';
+import { expect, vi } from 'vitest';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
@@ -24,6 +24,36 @@ import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
 import { ToastProvider } from '@/frontend/shared/Toast';
+
+// `renderWithProviders` mounts the REAL BrandProvider and CurrencyProvider, and both
+// hit IPC on mount: CurrencyContext.tsx:51/:70/:71 calls getDefaultCurrency (and the
+// Scoped variant when a token exists), and BrandContext.tsx:54 calls getBrandSettings.
+// Neither module is mocked by the helper, and 6 of the 7 a11y files that use it mock
+// neither -- so every one of them ran real IPC through the global Tauri stub, which is
+// why `[TAURI MOCK] invoke: get_default_currency undefined` appears throughout the a11y
+// output. The calls resolve to undefined, and the providers happen to fall back, so the
+// tests pass -- but they pass while depending on a stub's incidental behaviour rather
+// than on a stated arrangement.
+//
+// Mocking here fixes all seven files at once. vi.mock is hoisted within the file it
+// appears in, and a helper's hoisted calls register in the same per-test-file mock
+// registry before the importing test's own modules resolve, so this does apply to the
+// importers -- verified by the log line disappearing across the suite rather than
+// assumed.
+vi.mock('@/api/currency', () => ({
+  getDefaultCurrency: vi.fn(() => Promise.resolve({ code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp', decimal_places: 2 })),
+  getDefaultCurrencyScoped: vi.fn(() => Promise.resolve({ code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp', decimal_places: 2 })),
+  listCurrenciesScoped: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock('@/api/branding', () => ({
+  getBrandSettings: vi.fn(() => Promise.resolve({
+    primary_colour: '#147EFB', logo_path: null, store_name: 'OZ-POS',
+  })),
+  getBrandSettingsScoped: vi.fn(() => Promise.resolve({
+    primary_colour: '#147EFB', logo_path: null, store_name: 'OZ-POS',
+  })),
+}));
 
 // Extend vitest's expect with jest-axe matchers.
 expect.extend(toHaveNoViolations);

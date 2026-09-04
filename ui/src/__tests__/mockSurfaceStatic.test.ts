@@ -227,15 +227,16 @@ function twin(name: string, real: Set<string>): string | null {
 }
 
 /**
- * Frozen baseline. Both are names that never existed in either form -- not ADR #7
- * leftovers but functions renamed at some point, with the test never updated:
- *   * `searchProducts` -- @/api/products has no such export and no Scoped twin.
- *   * `pendingSyncCount` -- the module has `pendingOfflineCountScoped`, a different
- *     base name entirely.
- * Verified by reading each mock block, not just by the scan.
+ * Frozen baseline. Shrank from 2 to 1 when `searchProducts` was removed from
+ * ProductLookupScreen.a11y.test.tsx -- which is the point of asserting equality rather
+ * than membership: the deletion forced this edit, so the baseline cannot quietly rot
+ * after the cleanup that shrinks it.
+ *
+ * The survivor is not an ADR #7 leftover but a rename the test never followed:
+ * `pendingSyncCount` -- @/api/offline has `pendingOfflineCountScoped`, a different base
+ * name entirely, so neither the name nor a Scoped twin has ever existed.
  */
 const KNOWN_BROKEN: Record<string, string[]> = {
-  'a11y/ProductLookupScreen.a11y.test.tsx@/api/products': ['searchProducts'],
   'a11y/SettingsPage.a11y.test.tsx@/api/offline': ['pendingSyncCount'],
 };
 
