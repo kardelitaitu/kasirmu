@@ -14,7 +14,7 @@ const BUCKETS = [
 ] as const;
 
 /** Day offset from today for the order's completion time (served_at or received_at). */
-function dayOffset(ts: string): number {
+export function dayOffset(ts: string): number {
   const now = new Date();
   const d = new Date(ts);
   // Normalise to date-only (midnight) so "today" = same calendar day.
