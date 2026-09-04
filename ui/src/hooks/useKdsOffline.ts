@@ -176,7 +176,7 @@ function writeLS<T>(key: string, value: T): boolean {
 }
 
 /** OFF-05: compute the next retry timestamp with exponential backoff + jitter. */
-function nextAttemptAt(retryCount: number): string {
+export function nextAttemptAt(retryCount: number): string {
   const exp = Math.pow(2, retryCount - 1); // retry 1 → 1s, 2 → 2s, 3 → 4s…
   const jitter = 1 + (Math.random() * 2 - 1) * BACKOFF_JITTER; // ±30%
   const delayMs = Math.round(BACKOFF_BASE_MS * exp * jitter);
