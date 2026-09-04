@@ -50,9 +50,20 @@ vi.mock('@/contexts/SettingsContext', () => ({
 // outright (api/settings.ts:248-250). The sibling restaurant card DOES read the token
 // from this context, so this file had copied the wrong card's arrangement.
 //
-// Removed rather than kept-and-annotated: nothing in the rendered tree consumes
-// useWorkspace (checked the card and ToastProvider), so leaving it would preserve the
-// misleading appearance for the next reader.
+// Removed rather than kept-and-annotated, because leaving it preserves the misleading
+// appearance for the next reader.
+//
+// The reason it was inert is a chain, not an absence, and the distinction matters:
+// something in this tree DOES call useWorkspace -- SettingsContext.tsx:199 destructures
+// { sessionToken, terminalId } from it. But this file mocks @/contexts/SettingsContext
+// too, so that call never runs, and the card itself reads its token from a prop. Two
+// mocks cancelling into each other is why the inert mock was harmless-but-blind rather
+// than load-bearing.
+//
+// (Checked by walking the card's local imports two levels deep and separating real
+// `useWorkspace()` calls from prose: api/settings.ts mentions the hook three times, all
+// inside doc comments, and a scan that matched prose would report a phantom consumer
+// there.)
 
 const testL10n = {
   bundles: [], areBundlesEmpty: () => true,
