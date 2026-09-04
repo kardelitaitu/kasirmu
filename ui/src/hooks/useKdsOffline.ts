@@ -177,6 +177,18 @@ export function writeLS<T>(key: string, value: T): boolean {
   }
 }
 
+/**
+ * Filter pending actions to only those belonging to the given store scope.
+ * Actions without a storeId (legacy) are always included. Exported for testing.
+ */
+export function scopedActions(
+  queue: PendingKdsAction[],
+  storeId?: string,
+): PendingKdsAction[] {
+  if (!storeId) return queue;
+  return queue.filter((a) => !a.storeId || a.storeId === storeId);
+}
+
 /** OFF-05: compute the next retry timestamp with exponential backoff + jitter. */
 export function nextAttemptAt(retryCount: number): string {
   const exp = Math.pow(2, retryCount - 1); // retry 1 → 1s, 2 → 2s, 3 → 4s…
