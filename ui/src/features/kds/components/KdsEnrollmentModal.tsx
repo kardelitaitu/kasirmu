@@ -49,6 +49,14 @@ export function addStationToList(
   return [...stations, trimmed];
 }
 
+/**
+ * Compute seconds remaining until token expiry, clamped to 0.
+ * Exported for testing.
+ */
+export function secondsUntilExpiry(tokenExpiry: string, now: number = Date.now()): number {
+  return Math.max(0, Math.floor((new Date(tokenExpiry).getTime() - now) / 1000));
+}
+
 export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   sessionToken,
   restaurantPosId,
