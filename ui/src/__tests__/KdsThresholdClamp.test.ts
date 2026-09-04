@@ -9,6 +9,14 @@
  *   onChangeRedThreshold(v)   → red = clamp(v, 4, 60); yellow = min(yellow, red-1)
  */
 
+// Added in this commit: the file shipped in be6f8cce with NO imports at all, using
+// describe/it/expect as if they were globals. They are not -- vitest globals are not
+// enabled in this project's config -- so `tsc --noEmit` reported 36 errors (TS2582
+// "Cannot find name 'describe'" and friends) and the branch was red on arrival. Vitest
+// itself still ran the file, because its runner injects those names, which is why the
+// breakage was invisible to `npm run test` and only the type check caught it.
+import { describe, expect, it } from 'vitest';
+
 /** Simulate the clamping logic from KdsScreen.tsx. */
 function clampYellow(v: number, red: number) {
   return Math.max(3, Math.min(v, red - 1, 30));
