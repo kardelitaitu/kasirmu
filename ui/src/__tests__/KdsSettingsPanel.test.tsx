@@ -203,7 +203,7 @@ describe('KdsSettingsPanel', () => {
       renderWithFluentSync(<KdsSettingsPanel {...defaultProps} settings={{ ...DEFAULT_SETTINGS, autoAcknowledge: true }} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      const toggle = screen.getByRole('switch', { name: /auto-acknowledge/i });
+      const toggle = screen.getByRole('switch', { name: /auto-accept/i });
       expect(toggle).toBeChecked();
     });
 
@@ -212,7 +212,7 @@ describe('KdsSettingsPanel', () => {
       renderWithFluentSync(<KdsSettingsPanel {...defaultProps} settings={{ ...DEFAULT_SETTINGS, autoAcknowledge: false }} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      const toggle = screen.getByRole('switch', { name: /auto-acknowledge/i });
+      const toggle = screen.getByRole('switch', { name: /auto-accept/i });
       expect(toggle).not.toBeChecked();
     });
 
@@ -222,43 +222,44 @@ describe('KdsSettingsPanel', () => {
       renderWithFluentSync(<KdsSettingsPanel {...defaultProps} onChangeAutoAcknowledge={onChangeAutoAcknowledge} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      await user.click(screen.getByRole('switch', { name: /auto-acknowledge/i }));
+      await user.click(screen.getByRole('switch', { name: /auto-accept/i }));
 
       expect(onChangeAutoAcknowledge).toHaveBeenCalledWith(true);
     });
   });
 
   describe('Display density', () => {
-    it('renders both density options', async () => {
+    it('renders column count buttons 1–5', async () => {
       const user = userEvent.setup();
       renderWithFluentSync(<KdsSettingsPanel {...defaultProps} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      expect(screen.getByRole('button', { name: /comfortable/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /compact/i })).toBeInTheDocument();
+      for (const n of ['1', '2', '3', '4', '5']) {
+        expect(screen.getByRole('button', { name: new RegExp(`^${n}$`) })).toBeInTheDocument();
+      }
     });
 
-    it('marks the current density as pressed', async () => {
+    it('marks the current column count as pressed', async () => {
       const user = userEvent.setup();
-      renderWithFluentSync(<KdsSettingsPanel {...defaultProps} settings={{ ...DEFAULT_SETTINGS, density: 'compact' }} />, kdsFtl);
+      renderWithFluentSync(<KdsSettingsPanel {...defaultProps} settings={{ ...DEFAULT_SETTINGS, density: 3 }} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      const compactBtn = screen.getByRole('button', { name: /compact/i });
-      expect(compactBtn).toHaveAttribute('aria-pressed', 'true');
+      const col3 = screen.getByRole('button', { name: /^3$/ });
+      expect(col3).toHaveAttribute('aria-pressed', 'true');
 
-      const comfortableBtn = screen.getByRole('button', { name: /comfortable/i });
-      expect(comfortableBtn).toHaveAttribute('aria-pressed', 'false');
+      const col1 = screen.getByRole('button', { name: /^1$/ });
+      expect(col1).toHaveAttribute('aria-pressed', 'false');
     });
 
-    it('calls onChangeDensity when a density button is clicked', async () => {
+    it('calls onChangeDensity when a column button is clicked', async () => {
       const user = userEvent.setup();
       const onChangeDensity = vi.fn();
       renderWithFluentSync(<KdsSettingsPanel {...defaultProps} onChangeDensity={onChangeDensity} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      await user.click(screen.getByRole('button', { name: /compact/i }));
+      await user.click(screen.getByRole('button', { name: /^4$/ }));
 
-      expect(onChangeDensity).toHaveBeenCalledWith('compact');
+      expect(onChangeDensity).toHaveBeenCalledWith(4);
     });
   });
 
@@ -278,11 +279,11 @@ describe('KdsSettingsPanel', () => {
       const redSlider = screen.getByRole('slider', { name: /red escalation threshold/i });
       expect(redSlider).toHaveValue(String(DEFAULT_SETTINGS.redThresholdMin));
 
-      const autoAckToggle = screen.getByRole('switch', { name: /auto-acknowledge/i });
+      const autoAckToggle = screen.getByRole('switch', { name: /auto-accept/i });
       expect(autoAckToggle).not.toBeChecked();
 
-      const comfortableBtn = screen.getByRole('button', { name: /comfortable/i });
-      expect(comfortableBtn).toHaveAttribute('aria-pressed', 'true');
+      const col3 = screen.getByRole('button', { name: /^3$/ });
+      expect(col3).toHaveAttribute('aria-pressed', 'true');
     });
   });
 });

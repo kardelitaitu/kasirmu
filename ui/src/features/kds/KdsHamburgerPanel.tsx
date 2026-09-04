@@ -148,7 +148,7 @@ export function KdsHamburgerPanel({
           <div className="kds-panel-body">
             {/* ── Display ──────────────────────────────────── */}
             <div className="kds-panel-section">
-              <Localized id="kds-panel-section-display"><h3>Display</h3></Localized>
+              <Localized id="kds-panel-section-settings"><h3>Settings</h3></Localized>
               <div className="kds-setting-card">
                 {themeCtx && (
                   <div className="kds-setting-row">
@@ -192,19 +192,26 @@ export function KdsHamburgerPanel({
                   </div>
                 )}
                 <div className="kds-setting-row">
-                  <span className="kds-setting-label"><Localized id="kds-settings-density">Density</Localized></span>
+                  <span className="kds-setting-label"><Localized id="kds-settings-density">Column</Localized></span>
                   <div className="kds-zoom-row">
-                    {(['comfortable', 'compact'] as const).map((d) => (
-                      <button
-                        key={d}
-                        className={`kds-btn kds-btn--muted kds-zoom-btn${d === settings.density ? ' is-active' : ''}`}
-                        onClick={() => onChangeDensity(d)}
-                        aria-pressed={d === settings.density}
-                      >
-                        <Localized id={d === 'comfortable' ? 'kds-settings-density-comfortable' : 'kds-settings-density-compact'}>{d}</Localized>
-                      </button>
-                    ))}
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(Math.max(1, settings.density - 1))} disabled={settings.density <= 1} aria-label="Decrease columns" data-testid="kds-settings-density-out">−</button>
+                    <span className="kds-zoom-value" data-testid="kds-settings-density-value">{settings.density}</span>
+                    <button className="kds-btn kds-btn--muted kds-zoom-btn" onClick={() => onChangeDensity(Math.min(5, settings.density + 1))} disabled={settings.density >= 5} aria-label="Increase columns" data-testid="kds-settings-density-in">+</button>
                   </div>
+                </div>
+
+                <div className="kds-setting-row">
+                  <div className="kds-setting-text">
+                    <span className="kds-setting-label"><Localized id="kds-settings-auto-ack">Auto-accept</Localized></span>
+                    <span className="kds-setting-caption"><Localized id="kds-settings-auto-ack-caption">New orders appear without tapping Accept</Localized></span>
+                  </div>
+                  <button
+                    className={`kds-switch${settings.autoAcknowledge ? ' on' : ''}`}
+                    role="switch"
+                    aria-checked={settings.autoAcknowledge}
+                    onClick={() => onChangeAutoAcknowledge(!settings.autoAcknowledge)}
+                    aria-label={requiredLocalized(l10n, 'kds-settings-auto-ack')}
+                  />
                 </div>
 
                 <div className="kds-setting-row">
@@ -248,6 +255,23 @@ export function KdsHamburgerPanel({
                       onClick={() => hwAccel.setEnabled(!hwAccel.enabled)}
                       aria-label={requiredLocalized(l10n, 'kds-settings-hw-accel')}
                       data-testid="kds-settings-hw-accel-toggle"
+                    />
+                  </div>
+                )}
+
+                {onChangeCardAnimations && (
+                  <div className="kds-setting-row">
+                    <div className="kds-setting-text">
+                      <span className="kds-setting-label"><Localized id="kds-settings-card-animations">Card animations</Localized></span>
+                      <span className="kds-setting-caption"><Localized id="kds-settings-card-animations-caption">Spawn and reorder effects</Localized></span>
+                    </div>
+                    <button
+                      className={`kds-switch${cardAnimations ? ' on' : ''}`}
+                      role="switch"
+                      aria-checked={cardAnimations}
+                      onClick={() => onChangeCardAnimations(!cardAnimations)}
+                      aria-label={requiredLocalized(l10n, 'kds-settings-card-animations')}
+                      data-testid="kds-settings-anim-toggle"
                     />
                   </div>
                 )}
@@ -330,37 +354,6 @@ export function KdsHamburgerPanel({
                     aria-label={requiredLocalized(l10n, 'kds-settings-sound')}
                   />
                 </div>
-
-                <div className="kds-setting-row">
-                  <div className="kds-setting-text">
-                    <span className="kds-setting-label"><Localized id="kds-settings-auto-ack">Auto-accept</Localized></span>
-                    <span className="kds-setting-caption"><Localized id="kds-settings-auto-ack-caption">New orders appear without tapping Accept</Localized></span>
-                  </div>
-                  <button
-                    className={`kds-switch${settings.autoAcknowledge ? ' on' : ''}`}
-                    role="switch"
-                    aria-checked={settings.autoAcknowledge}
-                    onClick={() => onChangeAutoAcknowledge(!settings.autoAcknowledge)}
-                    aria-label={requiredLocalized(l10n, 'kds-settings-auto-ack')}
-                  />
-                </div>
-
-                {onChangeCardAnimations && (
-                  <div className="kds-setting-row">
-                    <div className="kds-setting-text">
-                      <span className="kds-setting-label"><Localized id="kds-settings-card-animations">Card animations</Localized></span>
-                      <span className="kds-setting-caption"><Localized id="kds-settings-card-animations-caption">Spawn and reorder effects</Localized></span>
-                    </div>
-                    <button
-                      className={`kds-switch${cardAnimations ? ' on' : ''}`}
-                      role="switch"
-                      aria-checked={cardAnimations}
-                      onClick={() => onChangeCardAnimations(!cardAnimations)}
-                      aria-label={requiredLocalized(l10n, 'kds-settings-card-animations')}
-                      data-testid="kds-settings-anim-toggle"
-                    />
-                  </div>
-                )}
 
                 {/* SLA thresholds */}
                 <div className="kds-setting-row">

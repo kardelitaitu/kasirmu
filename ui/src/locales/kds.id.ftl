@@ -50,9 +50,9 @@ kds-settings-red = Merah pada { $min } mnt
 kds-settings-red-aria = Ambang eskalasi merah dalam menit
 kds-slider-value-min = { $min } menit
 kds-settings-auto-ack = Konfirmasi otomatis
-kds-settings-density = Kepadatan
-kds-settings-density-comfortable = Nyaman
-kds-settings-density-compact = Padat
+kds-settings-density = Kolom
+kds-settings-density-comfortable = 1
+kds-settings-density-compact = 2
 
 # ── 3a: Zone switching ──
 kds-zone-filter-aria = Filter berdasarkan zona dapur
@@ -267,7 +267,7 @@ kds-settings-hw-accel = Akselerasi perangkat keras
 kds-settings-hw-accel-caption = Efek blur dan GPU
 
 # ── Hamburger panel (lihat kds.ftl) ──
-kds-panel-section-display = Tampilan
+kds-panel-section-settings = Pengaturan
 kds-panel-section-behaviour = Perilaku
 kds-theme-dark-aria = Tema gelap
 kds-theme-light-aria = Tema terang

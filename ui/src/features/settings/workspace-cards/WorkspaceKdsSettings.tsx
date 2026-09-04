@@ -13,7 +13,7 @@ import { hasChanges } from './helpers';
 
 // ── Local types ──────────────────────────────────────────────────────
 
-type DisplayDensity = 'comfortable' | 'compact';
+type DisplayDensity = number;
 
 interface KdsDraftState {
   soundEnabled: boolean;
@@ -28,7 +28,7 @@ const DEFAULT_KDS: KdsDraftState = {
   yellowThresholdMin: 5,
   redThresholdMin: 10,
   autoAcknowledge: false,
-  density: 'comfortable',
+  density: 3,
 };
 
 // ── Component ────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ export function WorkspaceKdsSettings({
         yellowThresholdMin: parseInt(yellow ?? '', 10) || DEFAULT_KDS.yellowThresholdMin,
         redThresholdMin: parseInt(red ?? '', 10) || DEFAULT_KDS.redThresholdMin,
         autoAcknowledge: ack === 'true',
-        density: (density === 'comfortable' || density === 'compact') ? density : DEFAULT_KDS.density,
+        density: Math.min(5, Math.max(1, parseInt(density ?? '', 10) || DEFAULT_KDS.density)),
       };
       // Seed the loaded values, but never overwrite fields the user has
       // already edited while the load was in flight — otherwise a fast
@@ -259,18 +259,21 @@ export function WorkspaceKdsSettings({
             </span>
           </div>
 
-          {/* Density */}
+          {/* Column count */}
           <div className="settings-field settings-field--horizontal">
             <label htmlFor="kds-density" className="settings-label">
-              <Localized id="workspace-kds-density">Density</Localized>
+              <Localized id="workspace-kds-density">Column</Localized>
             </label>
             <SettingsSelect
               id="kds-density"
-              value={draft.density}
-              onChange={(v) => update('density', v as DisplayDensity)}
+              value={String(draft.density)}
+              onChange={(v) => update('density', parseInt(v, 10) || DEFAULT_KDS.density)}
               options={[
-                { value: 'comfortable', label: 'Comfortable' },
-                { value: 'compact', label: 'Compact' },
+                { value: '1', label: '1' },
+                { value: '2', label: '2' },
+                { value: '3', label: '3' },
+                { value: '4', label: '4' },
+                { value: '5', label: '5' },
               ]}
             />
           </div>

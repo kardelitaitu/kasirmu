@@ -5,8 +5,8 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import './KdsSettingsPanel.css';
 
-/** Display density for KDS ticket cards. */
-export type DisplayDensity = 'comfortable' | 'compact';
+/** Number of order card columns on the KDS open tab (1–5). */
+export type DisplayDensity = number;
 
 export interface KdsSettings {
   /** Whether new-ticket sound is enabled. */
@@ -17,7 +17,7 @@ export interface KdsSettings {
   redThresholdMin: number;
   /** Whether to auto-advance tickets after a configurable delay. */
   autoAcknowledge: boolean;
-  /** Ticket card display density. */
+  /** Number of order card columns (1–5). */
   density: DisplayDensity;
 }
 
@@ -27,7 +27,7 @@ export const DEFAULT_SETTINGS: KdsSettings = {
   yellowThresholdMin: 5,
   redThresholdMin: 10,
   autoAcknowledge: false,
-  density: 'comfortable',
+  density: 3,
 };
 
 interface KdsSettingsPanelProps {
@@ -160,18 +160,18 @@ export function KdsSettingsPanel({
             <span className="kds-settings-toggle-label"><Localized id="kds-settings-auto-ack">Auto-accept</Localized></span>
           </label>
 
-          {/* Display density */}
+          {/* Column count */}
           <div className="kds-settings-density">
-            <span className="kds-settings-slider-label"><Localized id="kds-settings-density">Density</Localized></span>
+            <span className="kds-settings-slider-label"><Localized id="kds-settings-density">Column</Localized></span>
             <div className="kds-settings-density-options">
-              {(['comfortable', 'compact'] as const).map((d) => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <button
-                  key={d}
-                  className={`kds-settings-density-btn ${d === settings.density ? 'kds-settings-density-btn--active' : ''}`}
-                  onClick={() => onChangeDensity(d)}
-                  aria-pressed={d === settings.density}
+                  key={n}
+                  className={`kds-settings-density-btn ${n === settings.density ? 'kds-settings-density-btn--active' : ''}`}
+                  onClick={() => onChangeDensity(n)}
+                  aria-pressed={n === settings.density}
                 >
-                  <Localized id={d === 'comfortable' ? 'kds-settings-density-comfortable' : 'kds-settings-density-compact'}>{d}</Localized>
+                  {n}
                 </button>
               ))}
             </div>

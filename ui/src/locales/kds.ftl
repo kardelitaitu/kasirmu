@@ -59,10 +59,10 @@ kds-settings-yellow-aria = Yellow escalation threshold in minutes
 kds-settings-red = Red at { $min } min
 kds-settings-red-aria = Red escalation threshold in minutes
 kds-slider-value-min = { $min } minutes
-kds-settings-auto-ack = Auto-acknowledge
-kds-settings-density = Density
-kds-settings-density-comfortable = Comfortable
-kds-settings-density-compact = Compact
+kds-settings-auto-ack = Auto-accept
+kds-settings-density = Column
+kds-settings-density-comfortable = 1
+kds-settings-density-compact = 2
 
 # ── 3a: Zone switching ──
 kds-zone-filter-aria = Filter by kitchen zone
@@ -284,7 +284,7 @@ kds-settings-hw-accel-caption = Blur and GPU effects
 # Recovered by the Fluent page audit. These were hardcoded English strings in
 # KdsHamburgerPanel.tsx, which the rev-1 parity gate could not see because it
 # only walked <Localized id="..."> under ui/src/features/**.
-kds-panel-section-display = Display
+kds-panel-section-settings = Settings
 kds-panel-section-behaviour = Behaviour
 kds-theme-dark-aria = Dark theme
 kds-theme-light-aria = Light theme

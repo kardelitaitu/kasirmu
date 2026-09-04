@@ -671,7 +671,7 @@ export default function KdsScreen() {
             className="kds-main-pane kds-main-pane--open"
             aria-hidden={activeTab !== 'open'}
           >
-            <div className={`kds-content-wrap${settings.density === 'compact' ? ' kds--compact' : ''}`} {...pullRefreshProps}>
+            <div className={`kds-content-wrap${settings.density <= 2 ? ' kds--compact' : ''}`} {...pullRefreshProps}>
               <KdsLayoutMasonry
                 orders={filteredOrders}
                 filtered={boardFiltered}

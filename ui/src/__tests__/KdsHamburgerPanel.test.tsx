@@ -127,32 +127,28 @@ describe('KdsHamburgerPanel', () => {
   // ── Display section ───────────────────────────────────────────────
 
   describe('Display section', () => {
-    it('renders section heading "Display"', async () => {
+    it('renders section heading "Settings"', async () => {
       await openPanel();
-      expect(screen.getByText('Display')).toBeInTheDocument();
+      expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
-    it('density buttons reflect the current setting', async () => {
-      await openPanel({ ...makeProps(), settings: { ...DEFAULTS, density: 'compact' } });
-      const compact = screen.getByRole('button', { name: /compact/i });
-      expect(compact).toHaveAttribute('aria-pressed', 'true');
-
-      const comfortable = screen.getByRole('button', { name: /comfortable/i });
-      expect(comfortable).toHaveAttribute('aria-pressed', 'false');
+    it('column stepper shows current value', async () => {
+      await openPanel({ ...makeProps(), settings: { ...DEFAULTS, density: 3 } });
+      expect(screen.getByTestId('kds-settings-density-value')).toHaveTextContent('3');
     });
 
-    it('clicking "compact" calls onChangeDensity', async () => {
-      const props = makeProps();
+    it('clicking + increases column count', async () => {
+      const props = makeProps({ settings: { ...DEFAULTS, density: 2 } });
       const { user } = await openPanel(props);
-      await user.click(screen.getByRole('button', { name: /compact/i }));
-      expect(props.onChangeDensity).toHaveBeenCalledWith('compact');
+      await user.click(screen.getByTestId('kds-settings-density-in'));
+      expect(props.onChangeDensity).toHaveBeenCalledWith(3);
     });
 
-    it('clicking "comfortable" calls onChangeDensity', async () => {
-      const props = makeProps({ settings: { ...DEFAULTS, density: 'compact' } });
+    it('clicking − decreases column count', async () => {
+      const props = makeProps({ settings: { ...DEFAULTS, density: 3 } });
       const { user } = await openPanel(props);
-      await user.click(screen.getByRole('button', { name: /comfortable/i }));
-      expect(props.onChangeDensity).toHaveBeenCalledWith('comfortable');
+      await user.click(screen.getByTestId('kds-settings-density-out'));
+      expect(props.onChangeDensity).toHaveBeenCalledWith(2);
     });
 
     it('Order ID switch reflects showOrderId prop', async () => {
@@ -322,14 +318,14 @@ describe('KdsHamburgerPanel', () => {
 
     it('auto-acknowledge toggle reflects settings.autoAcknowledge', async () => {
       await openPanel({ ...makeProps(), settings: { ...DEFAULTS, autoAcknowledge: true } });
-      const toggle = screen.getByRole('switch', { name: /auto-acknowledge/i });
+      const toggle = screen.getByRole('switch', { name: /auto-accept/i });
       expect(toggle).toHaveAttribute('aria-checked', 'true');
     });
 
     it('clicking auto-acknowledge toggle calls onChangeAutoAcknowledge', async () => {
       const props = makeProps({ settings: { ...DEFAULTS, autoAcknowledge: false } });
       const { user } = await openPanel(props);
-      await user.click(screen.getByRole('switch', { name: /auto-acknowledge/i }));
+      await user.click(screen.getByRole('switch', { name: /auto-accept/i }));
       expect(props.onChangeAutoAcknowledge).toHaveBeenCalledWith(true);
     });
 
