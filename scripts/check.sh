@@ -336,6 +336,14 @@ step "doc uniqueness self-test" "python3 scripts/verify-doc-uniqueness.py --self
 # Gate: scripts/gates.json -> "eol-guard".
 step "eol guard" "bash scripts/test-eol-guard.sh" bash scripts/test-eol-guard.sh
 
+# The UI typecheck gate in .githooks/pre-commit only fires when a commit stages
+# ui/src TypeScript, so on a Rust-only or docs-only release branch it can go many commits
+# without ever being exercised -- and a gate that never runs is indistinguishable from one
+# that was deleted. This proves it still fires: it extracts the live step from the hook and
+# drives it against a throwaway git repo with a stubbed npm.
+# Gate: scripts/gates.json -> "typecheck-gate".
+step "typecheck gate" "bash scripts/test-typecheck-gate.sh" bash scripts/test-typecheck-gate.sh
+
 # ── AGENTS.md mirror truthfulness ──────────────────────────────────────────
 # Three copies of the agent rules exist and `bump-version.ps1` syncs only their
 # version lines. Twice in 0.0.36 a mirror stated something the repo contradicted:

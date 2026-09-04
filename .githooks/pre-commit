@@ -300,3 +300,36 @@ if [ -n "$STAGED_GO" ]; then
         exit 1
     fi
 fi
+
+# ── UI typecheck (staged ui/src TypeScript only) ───────────────────────────
+# `npm run test` does NOT type-check: Vitest injects describe/it/expect/beforeEach/vi
+# at runtime, so a test file that forgets to import one passes locally and fails
+# `tsc --noEmit`. Ten commits this week landed with HEAD red for exactly this and its
+# neighbours — an unused import (TS6133), a fixture whose `as T` cast was approving
+# wrong field types, a widened `status: string` against a union. All of them were
+# detectable in 21 seconds by the one command nothing ran before commit.
+#
+# Scope is deliberately narrow: only fires when the commit stages a .ts/.tsx under
+# ui/src, so Rust-only, CI-only and docs-only commits keep the previous ~6s cost.
+# tsc cannot meaningfully check a subset of a project (a file's errors depend on the
+# whole program), so when it does fire it checks everything.
+#
+# OZPOS_SKIP_TYPECHECK=1 skips this step alone. Prefer it to `git commit --no-verify`,
+# which skips all nine gates including the ones that are fast and never wrong.
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM -- 'ui/src/*.ts' 'ui/src/*.tsx' || true)
+if [ -n "$STAGED_TS" ] && [ "${OZPOS_SKIP_TYPECHECK:-0}" != "1" ]; then
+    if [ -d ui/node_modules ]; then
+        echo "ui typecheck ($(echo "$STAGED_TS" | wc -l | tr -d ' ') staged file(s), ~21s)..."
+        if ! (cd ui && npm run --silent typecheck); then
+            echo "" >&2
+            echo "error: TypeScript type-check failed — the commit stages ui/src TypeScript." >&2
+            echo "       Fix the errors above, or set OZPOS_SKIP_TYPECHECK=1 to skip this step." >&2
+            echo "       (Avoid 'git commit --no-verify': it skips every gate, not just this one.)" >&2
+            exit 1
+        fi
+    else
+        # Skipping silently here would mean the gate nobody noticed was missing was
+        # also the gate that never ran. Say so on every commit that could have used it.
+        echo "warning: ui/node_modules missing — UI typecheck skipped. Run 'cd ui && npm ci'." >&2
+    fi
+fi
