@@ -203,7 +203,12 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         // re-fetch only happens on the next explicit cart mutation.
         for (const sku of missing) pendingTrackFetchRef.current.delete(sku);
       });
-  }, [lines, trackSerialMap]);
+    // sessionToken is read at :189. Without it, a cart mutation after a cashier hot-swap re-ran
+    // this effect against the destroyed token, hit the catch above, and left trackSerialMap
+    // undefined for those SKUs -- which per the comment at :201 keeps the serial-capture UI
+    // hidden. Serial-tracked products would silently stop capturing serial numbers mid-shift,
+    // and the effect would not retry until another explicit cart mutation.
+  }, [lines, trackSerialMap, sessionToken]);
 
   const handleSerialChange = useCallback((lineId: string, serial: string) => {
     setSerialNumbers((prev) => ({ ...prev, [lineId]: serial }));
@@ -1067,7 +1072,12 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
       .catch(() => { if (cancelled) return; addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-customers-failed'), type: 'error' }); setCustomerSearchResults([]); })
       .finally(() => { if (cancelled) return; setLoadingCustomers(false); });
     return () => { cancelled = true; };
-  }, [showCustomerSearch, addToast]); // l10n via ref — fetch only when modal opens
+    // sessionToken is read at :1053. The trailing comment deliberately routes l10n through a ref
+    // so keystrokes do not refetch, which is correct -- but the token was left out entirely, so
+    // opening the customer modal after a hot-swap listed customers with a destroyed session and
+    // surfaced the "customers failed" toast. Adding it re-fetches only when the modal is open,
+    // since the early return at :1050 still short-circuits the closed case.
+  }, [showCustomerSearch, addToast, sessionToken]); // l10n via ref — fetch only when modal opens
 
   // Filter cached customers locally on keystroke — avoids redundant API calls
   useEffect(() => {
