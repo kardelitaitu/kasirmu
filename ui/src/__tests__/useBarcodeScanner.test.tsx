@@ -284,6 +284,38 @@ describe('useBarcodeScanner', () => {
       expect(mocks.stopScanner).not.toHaveBeenCalled();
     });
 
+    // handleScan is a useCallback whose body reads `sessionToken` (:83) but whose dependency
+    // array is empty, with the comment "stable -- reads latest callbacks via refs". That is
+    // true of the callbacks and false of the token: sessionToken is a plain prop, not a ref.
+    // Every test above passes a token at mount and never changes one, which is exactly the
+    // case a stale closure gets right. useWarehouseScanner had the identical defect and is
+    // fixed in 8693e081; this is the twin.
+    //
+    // Reachable because FastPINOverlay performs the cashier hot-swap ON TOP of the mounted
+    // screen, and WorkspaceContext.swapSessionToken calls destroySession on the old token
+    // (:273) before setting the new one -- so a stale handleScan looks up barcodes with a
+    // session that no longer exists.
+    it('uses the CURRENT session token after a hot-swap, not the one captured on mount', async () => {
+      const { rerender } = await renderHookInAct<ReturnType<typeof makeOpts>>(
+        (props) => useBarcodeScanner(props!),
+        { initialProps: makeOpts({ sessionToken: 'tok-1' }) },
+      );
+
+      await act(async () => {
+        rerender(makeOpts({ sessionToken: 'tok-2' }));
+      });
+
+      // The latest registered handler: a correct implementation re-subscribes when the token
+      // changes, so the stale one is calls[0] and the live one is calls.at(-1).
+      const scanHandler = mocks.onBarcodeScanned.mock.calls.at(-1)![0];
+      // Inline literal, matching :333 and :343 in this describe block. The `payload` const the
+      // handleScan tests use is declared per-test inside that block, not at module scope.
+      await scanHandler({ code: '4901234567890', scannerId: 'scanner-1' });
+
+      expect(mocks.lookupByBarcodeScoped).toHaveBeenCalledWith('tok-2', '4901234567890');
+      expect(mocks.lookupByBarcodeScoped.mock.calls.every((c) => c[0] !== 'tok-1')).toBe(true);
+    });
+
     it('falls back to the unscoped API when no token is given', async () => {
       await renderHookInAct(() => useBarcodeScanner(makeOpts()));
 

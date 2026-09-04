@@ -145,7 +145,9 @@ export default function OfflineQueueScreen() {
     } finally {
       setLoading(false);
     }
-  }, [l10n]);
+    // sessionToken is read five times in this body (:126-:141) and was not a dependency, so
+    // :157's `useEffect(() => { load(); }, [load])` never re-ran for a new session.
+  }, [l10n, sessionToken]);
 
   // P7-3: Pull-to-refresh gesture (defined after load so it's hoist-safe)
   const { containerProps: pullRefreshProps, state: pullState, pullDistance } = usePullToRefresh({
@@ -197,7 +199,13 @@ export default function OfflineQueueScreen() {
       pollGenRef.current += 1; // invalidate any in-flight poll
       if (timer) clearTimeout(timer);
     };
-  }, []);
+    // sessionToken is read at :170, :171 and :179. With [] this polled on a fixed 10s cadence
+    // with the mount-time token forever: after a cashier hot-swap (FastPINOverlay, and
+    // swapSessionToken destroys the old token at WorkspaceContext.tsx:273) every request failed
+    // with a dead session, pollFailuresRef reached 3, and the screen showed a permanent
+    // "stale queue" notice over a queue that was fine. Re-running is safe by construction --
+    // the cleanup bumps the generation and clears the timer, which is what :173/:189 guard on.
+  }, [sessionToken]);
 
   // ── Sync all ──────────────────────────────────────────────────
 
@@ -213,7 +221,7 @@ export default function OfflineQueueScreen() {
     } finally {
       setSyncing(false);
     }
-  }, [load, l10n]);
+  }, [load, l10n, sessionToken]);
 
   // ── Requeue dead-lettered remote item ─────────────────────────
 
@@ -225,7 +233,7 @@ export default function OfflineQueueScreen() {
     } catch {
       setRequeueError(l10n.getString('offline-queue-quarantine-requeue-error'));
     }
-  }, [load, l10n]);
+  }, [load, l10n, sessionToken]);
 
   // ── Delete item ────────────────────────────────────────────────
 
@@ -237,7 +245,7 @@ export default function OfflineQueueScreen() {
     } catch {
       setDeleteError(l10n.getString('offline-queue-delete-error'));
     }
-  }, [load, l10n]);
+  }, [load, l10n, sessionToken]);
 
   // ── Render ─────────────────────────────────────────────────────
 

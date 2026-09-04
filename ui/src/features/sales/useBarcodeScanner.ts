@@ -91,7 +91,15 @@ export function useBarcodeScanner({
         onProductNotFoundRef.current?.(payload.code);
       }
     },
-    [], // stable — reads latest callbacks via refs
+    // "stable -- reads latest callbacks via refs" was the original reasoning, and it is true
+    // of the callbacks: onProductFound/onProductNotFound/onError all go through refs. It is
+    // false of sessionToken, which is a plain prop read at :83 to choose the scoped lookup.
+    // With [] the closure kept the mount-time token. Reachable because FastPINOverlay performs
+    // the cashier hot-swap on top of the mounted screen and swapSessionToken destroys the old
+    // token (WorkspaceContext.tsx:273) before setting the new one, so a stale handleScan looks
+    // up barcodes against a session that no longer exists. The mount effect at :78 already
+    // lists sessionToken; this array just omitted it.
+    [sessionToken],
   );
 
   const handleError = useCallback(
