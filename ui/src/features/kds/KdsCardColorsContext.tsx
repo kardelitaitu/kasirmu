@@ -21,9 +21,18 @@ interface KdsCardColorsContextValue {
 
 const KdsCardColorsContext = createContext<KdsCardColorsContextValue | null>(null);
 
-const STORAGE_KEY = 'kds-card-colors-v1';
+/** Exported so tests assert against the real key rather than a second copy of the string. */
+export const STORAGE_KEY = 'kds-card-colors-v1';
 
-function loadColors(theme: string): KdsCardColors {
+/**
+ * Exported for testing. KdsCardColorsLoadColors.test.ts previously redeclared this
+ * function, STORAGE_KEY and both default palettes locally and imported nothing from this
+ * module, so it validated a private reimplementation. The palettes happen to still match
+ * kdsCardColors.ts key for key -- which is exactly the state in which drift is invisible:
+ * editing a colour in production would leave the suite green while testing values nothing
+ * uses.
+ */
+export function loadColors(theme: string): KdsCardColors {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {

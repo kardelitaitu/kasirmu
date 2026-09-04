@@ -1,46 +1,21 @@
-// Unit tests for loadColors — contract test for the KDS card color
-// persistence logic: reads per-theme colors from localStorage, falls
-// back to defaults when missing/malformed.
+// Unit tests for loadColors — contract test for the KDS card color persistence logic:
+// reads per-theme colors from localStorage, falls back to defaults when missing/malformed.
+//
+// This suite used to redeclare STORAGE_KEY, both default palettes and loadColors() itself
+// ("Same loadColors logic as KdsCardColorsContext.tsx") and import nothing from the module
+// under test. The palettes still match kdsCardColors.ts key for key, which is precisely the
+// condition under which drift is invisible: change a colour in production and the suite
+// keeps passing against values nothing uses. Everything now comes from the real modules.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-
-const STORAGE_KEY = 'kds-card-colors-v1';
-
-const DEFAULT_DARK = {
-  dinein: '#22c55e',
-  takeaway: '#147EFB',
-  rush: '#ef4444',
-  processing: '#f59e0b',
-  prepared: '#22c55e',
-  pause: '#f59e0b',
-  resume: '#147EFB',
-  complete: '#4ade80',
-};
-
-const DEFAULT_LIGHT = {
-  dinein: '#89a1c8',
-  takeaway: '#9484b8',
-  rush: '#f04242',
-  processing: '#89a1c8',
-  prepared: '#242424',
-  pause: '#dcdfe5',
-  resume: '#3b4972',
-  complete: '#a72525',
-};
-
-/** Same loadColors logic as KdsCardColorsContext.tsx. */
-function loadColors(theme: string) {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const all = JSON.parse(saved) as Record<string, typeof DEFAULT_DARK>;
-      return all[theme] ?? (theme === 'light' ? DEFAULT_LIGHT : DEFAULT_DARK);
-    }
-  } catch {
-    // Fall back
-  }
-  return theme === 'light' ? DEFAULT_LIGHT : DEFAULT_DARK;
-}
+import {
+  loadColors,
+  STORAGE_KEY,
+} from '@/features/kds/KdsCardColorsContext';
+import {
+  DEFAULT_COLORS_DARK as DEFAULT_DARK,
+  DEFAULT_COLORS_LIGHT as DEFAULT_LIGHT,
+} from '@/features/kds/kdsCardColors';
 
 describe('loadColors contract', () => {
   beforeEach(() => {
