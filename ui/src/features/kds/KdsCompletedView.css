@@ -5,9 +5,10 @@
 .kds-completed-error {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  margin: var(--space-3) auto;
+  margin: auto;
   width: fit-content;
   max-width: 90%;
   background: var(--kds-bg-surface, var(--kds-bg));
@@ -15,6 +16,12 @@
   border-radius: var(--kds-r-sm);
   color: var(--kds-text);
   font-size: var(--text-sm);
+}
+
+/* Center the error in the main area */
+.kds-main.completed-view > .kds-completed-error {
+  align-self: center;
+  margin: auto;
 }
 
 /* ── UI-15: static inline styles moved out of KdsCompletedView.tsx ── */
