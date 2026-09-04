@@ -1,5 +1,45 @@
 
 
+## 2026-09-04 — TDD round W: refund→KDS integration pinning (oz-core)
+
+**Problem:** Phase-3 of the KDS review wired full-refund ticket
+cancellation into `create_refund` (`refunds.rs`, S3), and the void
+sibling got its integration test (`void_sale_cancels_kds_tickets_for_
+the_sale`) — but no test drove the refund branch at all. Grep for
+"refund" in kds_tests.rs: zero hits. Three behaviors were unpinned:
+single-shot full refund cancels the active ticket, partial refund
+leaves the board alone, and the CUMULATIVE branch
+(`already_refunded + refund.total >= sale_total` with a non-zero prior
+balance) cancels on the refund that completes the total.
+
+**Solution:** Three gap-pinning tests at the end of `kds_tests.rs`,
+driving the real cart → sale → `complete_sale_to_kds_fanout` →
+`create_refund` path (not the `make_active_sale` stub, which has a
+zero total and no lines — wrong shape for refunds):
+- `full_refund_cancels_kds_tickets_for_the_sale` — also asserts the
+  ticket's line items follow to 'cancelled'
+- `partial_refund_keeps_kds_tickets_active` — two-line sale, one line
+  refunded, ticket stays 'preparing'
+- `cumulative_refunds_reaching_full_total_cancel_kds_tickets` — 500+300
+  on an 800 sale; the SECOND refund must cancel
+
+All three passed on first run — the refund branch was correct, these
+are regression pins (same honest note as WorkspaceHome round 2). No
+production change; the over-refund guard (`after > sale_total`) makes
+`>=` reachable only by equality, which is why the cumulative branch is
+exact-total and not over-refund.
+
+**Commits:** 4d9adfac (full/partial pair), then the cumulative test
+(this round's commit).
+**Test counts:** oz-core 2448→2451, all green (64s full lib run).
+**Unblock found mid-round:** `ui/node_modules` had been gutted to 29
+top-level entries by an interrupted reinstall (the running Vite dev
+server holds `rollup.win32-x64-msvc.node`, so `npm ci` EPERMs on
+unlink — the process was NOT killed, per the no-kill rule). The i18n
+pre-commit gate needs vitest, so EVERY commit was blocked. `npm
+install` (non-destructive, not `ci`) restored 493 packages around the
+locked file in 11s and the dev server kept running.
+
 ## 2026-09-03 — TDD round 1: staff store-scope leak in workspace resolution (oz-core)
 
 **Problem:** The home-screen role-gating change (37b7530c) removed
