@@ -1,48 +1,18 @@
-// Unit tests for readLocalPrefs — pure function that reads and validates
-// KDS preferences from localStorage, returning null for missing/invalid data.
+// Unit tests for readLocalPrefs — the pure function that reads and validates KDS
+// preferences from localStorage, returning null for missing/invalid data.
+//
+// This suite previously REIMPLEMENTED readLocalPrefs inside the test file (its own comment
+// said so: "Since it's not exported, we'll reimplement the same logic here"). Every one of
+// the ten tests therefore asserted against a local copy and would have kept passing if the
+// production function had been deleted. readLocalPrefs is now exported from the module and
+// imported here, so these tests exercise the code that actually ships.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-
-// We need to extract readLocalPrefs for testing. Since it's not exported,
-// we'll reimplement the same logic here to test the contract, then verify
-// the actual implementation matches by testing through the public API.
-
-// Instead, let's just test the validation logic directly by importing
-// the module and using the internal function via a re-export.
-
-// Actually, the simplest approach: extract the function, export it, test it.
-// But since we want minimal changes, let's test via localStorage mocking.
+import { describe, it, expect, beforeEach } from 'vitest';
+import { readLocalPrefs } from '@/features/kds/hooks/useKdsPreferences';
 
 const STORAGE_KEY_PREFIX = 'oz-kds-prefs-';
 
-/** Same logic as readLocalPrefs in useKdsPreferences.ts */
-function readLocalPrefs(userId: string): {
-  layout: string;
-  showOrderId: boolean;
-  showTableNumber: boolean;
-  kdsZone: string;
-  autoAcknowledge: boolean;
-  acknowledgeDelayMin: number;
-} | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_PREFIX + userId);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed.layout || !['kanban', 'focus', 'metro'].includes(parsed.layout)) return null;
-    return {
-      layout: parsed.layout ?? 'kanban',
-      showOrderId: parsed.showOrderId ?? true,
-      showTableNumber: parsed.showTableNumber ?? true,
-      kdsZone: parsed.kdsZone ?? '',
-      autoAcknowledge: parsed.autoAcknowledge ?? false,
-      acknowledgeDelayMin: parsed.acknowledgeDelayMin ?? 2,
-    };
-  } catch {
-    return null;
-  }
-}
-
-describe('readLocalPrefs (contract)', () => {
+describe('readLocalPrefs', () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -105,5 +75,29 @@ describe('readLocalPrefs (contract)', () => {
     localStorage.setItem(STORAGE_KEY_PREFIX + 'user-2', JSON.stringify({ layout: 'metro' }));
     expect(readLocalPrefs('user-1')!.layout).toBe('kanban');
     expect(readLocalPrefs('user-2')!.layout).toBe('metro');
+  });
+
+  // The behaviour the local copy could not express. It rebuilt six named fields, so an
+  // unknown key in storage vanished; the real function returns `{ ...DEFAULTS, ...parsed }`,
+  // so anything stored under this key survives into the returned object. That is a genuine
+  // property of the shipping code -- stale keys from an older schema, or a key written by a
+  // future version, are visible to callers -- and a test suite that reimplements the
+  // function can never discover it.
+  it('passes unknown stored keys through, because it spreads parsed over DEFAULTS', () => {
+    localStorage.setItem(
+      STORAGE_KEY_PREFIX + 'user-1',
+      JSON.stringify({ layout: 'kanban', legacyZoneLabel: 'Hot Station' }),
+    );
+    const result = readLocalPrefs('user-1');
+    expect(result).not.toBeNull();
+    expect(result).toHaveProperty('legacyZoneLabel', 'Hot Station');
+  });
+
+  it('lets a stored field override its default rather than only filling gaps', () => {
+    localStorage.setItem(
+      STORAGE_KEY_PREFIX + 'user-1',
+      JSON.stringify({ layout: 'focus', acknowledgeDelayMin: 9 }),
+    );
+    expect(readLocalPrefs('user-1')!.acknowledgeDelayMin).toBe(9);
   });
 });
