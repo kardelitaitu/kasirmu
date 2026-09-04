@@ -19,8 +19,18 @@ vi.mock('@/hooks/useFeatures', () => ({
 }));
 
 // Mock the hardware API.
+//
+// readScaleWeightScoped was MISSING here. 403030ad ("migrate remaining frontend
+// components to scoped APIs") added the branch at WeightScaleWidget.tsx:52
+//   const readWeight = sessionToken ? () => readScaleWeightScoped(sessionToken) : readScaleWeight;
+// and did not touch this file. So the mock kept only the unscoped half, which made the
+// scoped branch not merely untested but unrenderable: passing sessionToken would call
+// undefined and throw "readScaleWeightScoped is not a function". That is the ADR #7
+// pattern again -- the migration moved call sites and left the mock surface behind -- and
+// it is why every one of the ten render sites below passes no token.
 vi.mock('@/api/hardware', () => ({
   readScaleWeight: vi.fn(),
+  readScaleWeightScoped: vi.fn(),
 }));
 
 // Mock the toast hook.
@@ -29,9 +39,10 @@ vi.mock('@/frontend/shared/Toast', () => ({
 }));
 
 import { WeightScaleWidget } from '@/features/sales/WeightScaleWidget';
-import { readScaleWeight } from '@/api/hardware';
+import { readScaleWeight, readScaleWeightScoped } from '@/api/hardware';
 
 const mockReadScaleWeight = readScaleWeight as ReturnType<typeof vi.fn>;
+const mockReadScaleWeightScoped = readScaleWeightScoped as ReturnType<typeof vi.fn>;
 
 const scaleFtl = `
 weight-scale-aria = Weight Scale
@@ -64,6 +75,32 @@ describe('WeightScaleWidget', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /read weight/i }));
     expect(mockReadScaleWeight).toHaveBeenCalledTimes(1);
+  });
+
+  // ── The scoped branch (WeightScaleWidget.tsx:52) ───────────────
+  //
+  // Added by the ADR #7 migration in 403030ad and covered by nothing until now, because
+  // the mock did not export readScaleWeightScoped -- see the note at the vi.mock above.
+
+  it('reads through the scoped API when given a session token', async () => {
+    mockReadScaleWeightScoped.mockResolvedValueOnce({ weightGrams: 500, stable: true });
+    renderWithFluentSync(<WeightScaleWidget sessionToken="tok-1" />, scaleFtl);
+
+    await userEvent.click(screen.getByRole('button', { name: /read weight/i }));
+    // The token has to reach the command, or the backend cannot resolve a store.
+    expect(mockReadScaleWeightScoped).toHaveBeenCalledWith('tok-1');
+    // And the unscoped path must NOT be taken: it reads the ambient store, which is the
+    // exact thing the scoped migration exists to prevent.
+    expect(mockReadScaleWeight).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the unscoped read when no token is supplied', async () => {
+    mockReadScaleWeight.mockResolvedValueOnce({ weightGrams: 250, stable: true });
+    renderWithFluentSync(<WeightScaleWidget />, scaleFtl);
+
+    await userEvent.click(screen.getByRole('button', { name: /read weight/i }));
+    expect(mockReadScaleWeight).toHaveBeenCalledTimes(1);
+    expect(mockReadScaleWeightScoped).not.toHaveBeenCalled();
   });
 
   it('displays weight after successful read', async () => {
