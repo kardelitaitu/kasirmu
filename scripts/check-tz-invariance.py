@@ -95,13 +95,17 @@ def check_zone(tz: str) -> tuple[str, str, bool]:
         summary = f"NO JSON (exit {r.returncode}) :: " + (r.stderr or out)[-200:]
     return (tz, summary, zone_failed)
 
-print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, parallel) ===")
-with ThreadPoolExecutor(max_workers=len(ZONES)) as pool:
+is_ci = os.environ.get("CI") is not None
+max_concurrency = 1 if is_ci else 2
+
+print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, concurrency={max_concurrency}) ===")
+with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
     for tz, summary, zone_failed in pool.map(check_zone, ZONES):
         results[tz] = summary
         if zone_failed:
             failed = True
         print(f"  TZ={tz:22s} {summary}")
+
 
 
 print()
