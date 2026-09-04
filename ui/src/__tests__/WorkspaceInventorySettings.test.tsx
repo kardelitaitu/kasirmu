@@ -42,12 +42,17 @@ vi.mock('@/contexts/SettingsContext', () => ({
   }),
 }));
 
-vi.mock('@/contexts/WorkspaceContext', () => ({
-  useWorkspace: () => ({
-    sessionToken: 'test-session-token',
-    terminalId: 'test-terminal',
-  }),
-}));
+// This card takes sessionToken as a PROP (WorkspaceInventorySettings.tsx:21,
+// WorkspaceCardProps) and never calls useWorkspace. The mock below was therefore inert
+// as far as the token was concerned -- and its `sessionToken: 'test-session-token'` is
+// exactly what made the gap invisible: the file looked like it arranged a session while
+// every save went out as setSettingsScoped(null, ...), which the real function rejects
+// outright (api/settings.ts:248-250). The sibling restaurant card DOES read the token
+// from this context, so this file had copied the wrong card's arrangement.
+//
+// Removed rather than kept-and-annotated: nothing in the rendered tree consumes
+// useWorkspace (checked the card and ToastProvider), so leaving it would preserve the
+// misleading appearance for the next reader.
 
 const testL10n = {
   bundles: [], areBundlesEmpty: () => true,
@@ -72,6 +77,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 function renderCard(overrides: Record<string, unknown> = {}) {
   return render(<Wrapper><WorkspaceInventorySettings
+    sessionToken="test-session-token"
     variant="full-page" onSaved={vi.fn()} {...overrides} /></Wrapper>);
 }
 
@@ -146,13 +152,11 @@ describe('WorkspaceInventorySettings', () => {
   // failure mode is named.
 
   it('sends both inventory settings as strings in one batch', async () => {
-    // Rendered WITH a session token deliberately. This file's renderCard() passes none,
-    // so every existing test here drives the card with sessionToken undefined, and the
-    // card then calls setSettingsScoped(undefined ?? null, ...) -- a null token that the
-    // real function rejects outright (api/settings.ts:248-250, `No session token`). The
-    // mock resolves it, so nothing surfaces. That is a separate gap from the payload one;
-    // this test passes a token so it asserts the call production actually makes.
-    renderCard({ sessionToken: 'test-token' });
+    // No sessionToken override: renderCard() now supplies one, which is the fix this
+    // test exposed. Before it, every save in this file went out as
+    // setSettingsScoped(null, ...) -- a call the real function rejects outright -- and
+    // the mock resolved it, so the tests validated a path production refuses.
+    renderCard();
     fireEvent.change(document.getElementById('inv-low-stock')!, { target: { value: '5' } });
     await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
     vi.mocked(setSettingsScoped).mockClear();
@@ -160,7 +164,7 @@ describe('WorkspaceInventorySettings', () => {
     await waitFor(() => expect(setSettingsScoped).toHaveBeenCalled());
 
     const [token, entries] = vi.mocked(setSettingsScoped).mock.calls[0]!;
-    expect(token).toBe('test-token');
+    expect(token).toBe('test-session-token');
     expect(Object.keys(entries!).sort()).toEqual([
       'inventory.deduction_prefer_warehouse', 'inventory.low_stock_threshold',
     ]);
