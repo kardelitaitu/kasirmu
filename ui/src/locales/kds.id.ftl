@@ -44,9 +44,9 @@ kds-layout-metro = Metro
 # Settings panel
 kds-settings-aria = Pengaturan KDS
 kds-settings-sound = Suara
-kds-settings-yellow = Kuning pada { $min } mnt
+kds-settings-yellow = Kuning
 kds-settings-yellow-aria = Ambang eskalasi kuning dalam menit
-kds-settings-red = Merah pada { $min } mnt
+kds-settings-red = Merah
 kds-settings-red-aria = Ambang eskalasi merah dalam menit
 kds-slider-value-min = { $min } menit
 kds-settings-auto-ack = Konfirmasi otomatis

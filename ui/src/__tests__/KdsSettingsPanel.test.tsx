@@ -147,7 +147,8 @@ describe('KdsSettingsPanel', () => {
       renderWithFluentSync(<KdsSettingsPanel {...defaultProps} settings={{ ...DEFAULT_SETTINGS, yellowThresholdMin: 5 }} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      expect(screen.getByText(/yellow at 5 min/i)).toBeInTheDocument();
+      expect(screen.getByText(/yellow/i)).toBeInTheDocument();
+      expect(screen.getByText(/5 minutes/i)).toBeInTheDocument();
     });
   });
 
@@ -183,7 +184,8 @@ describe('KdsSettingsPanel', () => {
       renderWithFluentSync(<KdsSettingsPanel {...defaultProps} settings={{ ...DEFAULT_SETTINGS, redThresholdMin: 10 }} />, kdsFtl);
 
       await user.click(screen.getByRole('button', { name: /kds settings/i }));
-      expect(screen.getByText(/red at 10 min/i)).toBeInTheDocument();
+      expect(screen.getByText(/red/i)).toBeInTheDocument();
+      expect(screen.getByText(/10 minutes/i)).toBeInTheDocument();
     });
 
     it('enforces min value based on yellow threshold + 1', async () => {

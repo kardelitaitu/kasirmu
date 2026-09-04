@@ -8,6 +8,90 @@ import type { DisplayDensity, KdsSettings } from '@/features/kds/KdsSettingsPane
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { requiredLocalized } from '@/frontend/shared';
 
+/** Custom flex-based slider: track div + fill div + knob div. */
+function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel }: {
+  value: number; min: number; max: number;
+  onChange: (v: number) => void; onDragValue?: (v: number | null) => void;
+  color: string; ariaLabel: string;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const dragPctRef = useRef<number | null>(null);
+  const [, setDragTrigger] = useState(0);
+  // Live percentage: derived from drag ref during drag, otherwise from value.
+  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  const displayPct = dragPctRef.current ?? pct;
+
+  const pctToVal = useCallback((clientX: number) => {
+    const track = trackRef.current;
+    if (!track) return value;
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return min + ratio * (max - min);
+  }, [min, max, value]);
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      const raw = pctToVal(e.clientX);
+      dragPctRef.current = ((raw - min) / (max - min)) * 100;
+      // Force re-render by calling setState (trigger).
+      setDragTrigger((t) => t + 1);
+      onDragValue?.(Math.round(Math.max(min, Math.min(max, raw))));
+    };
+    const touchMove = (e: TouchEvent) => {
+      if (!dragging.current) return;
+      const raw = pctToVal(e.touches[0]!.clientX);
+      dragPctRef.current = ((raw - min) / (max - min)) * 100;
+      setDragTrigger((t) => t + 1);
+      onDragValue?.(Math.round(Math.max(min, Math.min(max, raw))));
+    };
+    const up = (e: MouseEvent | TouchEvent) => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      dragPctRef.current = null;
+      const clientX = 'changedTouches' in e ? e.changedTouches[0]!.clientX : e.clientX;
+      const snapped = Math.round(pctToVal(clientX));
+      onChange(Math.max(min, Math.min(max, snapped)));
+      onDragValue?.(null);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('touchmove', touchMove, { passive: true });
+    window.addEventListener('touchend', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('touchmove', touchMove);
+      window.removeEventListener('touchend', up);
+    };
+  }, [pctToVal, min, max, onChange]);
+
+  return (
+    <div
+      ref={trackRef}
+      className="kds-slider-track"
+      onMouseDown={(e) => { dragging.current = true; const raw = pctToVal(e.clientX); dragPctRef.current = ((raw - min) / (max - min)) * 100; setDragTrigger((t) => t + 1); }}
+      onTouchStart={(e) => { dragging.current = true; const raw = pctToVal(e.touches[0]!.clientX); dragPctRef.current = ((raw - min) / (max - min)) * 100; setDragTrigger((t) => t + 1); }}
+      role="slider"
+      aria-label={ariaLabel}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onChange(Math.min(max, value + 1)); }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onChange(Math.max(min, value - 1)); }
+      }}
+    >
+      <div className="kds-slider-rail">
+        <div className="kds-slider-fill" style={{ width: `${displayPct}%`, background: color }} />
+        <div className="kds-slider-knob" style={{ left: `${displayPct}%`, borderColor: color }} />
+      </div>
+    </div>
+  );
+}
+
 interface KdsHamburgerPanelProps {
   settings: KdsSettings;
   onChangeSound: (enabled: boolean) => void;
@@ -76,6 +160,9 @@ export function KdsHamburgerPanel({
   // makes deleting a character impossible. Keep the in-progress string in
   // local draft state; commit to the context only on a full `#rrggbb` match.
   const [hexDraft, setHexDraft] = useState<{ key: string; value: string } | null>(null);
+  // Live preview values while dragging sliders (null = not dragging)
+  const [dragYellow, setDragYellow] = useState<number | null>(null);
+  const [dragRed, setDragRed] = useState<number | null>(null);
   // Card colours from shared context.
   const { colors: cardColors, updateColor, resetColors } = useKdsCardColors();
 
@@ -356,35 +443,47 @@ export function KdsHamburgerPanel({
                 </div>
 
                 {/* SLA thresholds */}
-                <div className="kds-setting-row">
-                  <span className="kds-setting-label"><Localized id="kds-settings-yellow" vars={{ min: settings.yellowThresholdMin }}>{`Yellow at ${settings.yellowThresholdMin} min`}</Localized></span>
-                  <input
-                    type="range"
-                    className="kds-settings-slider"
-                    min={3}
-                    max={10}
-                    step={1}
-                    value={settings.yellowThresholdMin}
-                    onChange={(e) => onChangeYellowThreshold(Number(e.target.value))}
-                    aria-label={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
-                    aria-valuetext={l10n.getString('kds-slider-value-min', { min: settings.yellowThresholdMin })}
-                  />
-                </div>
+                {(() => {
+                  const yellowMin = 3;
+                  const yellowMax = 30;
+                  const redMin = 4;
+                  const redMax = 60;
+                  return (
+                    <>
+                      <div className="kds-setting-row kds-setting-row--slider">
+                        <div className="kds-slider-header">
+                          <span className="kds-setting-label"><Localized id="kds-settings-yellow">Yellow</Localized></span>
+                          <span className="kds-slider-value kds-slider-value--warning">{l10n.getString('kds-slider-value-min', { min: dragYellow ?? settings.yellowThresholdMin })}</span>
+                        </div>
+                        <KdsSlider
+                          min={yellowMin}
+                          max={yellowMax}
+                          value={settings.yellowThresholdMin}
+                          onChange={onChangeYellowThreshold}
+                          onDragValue={(v) => setDragYellow(v || null)}
+                          color="var(--kds-warning, #fd9426)"
+                          ariaLabel={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
+                        />
+                      </div>
 
-                <div className="kds-setting-row">
-                  <span className="kds-setting-label"><Localized id="kds-settings-red" vars={{ min: settings.redThresholdMin }}>{`Red at ${settings.redThresholdMin} min`}</Localized></span>
-                  <input
-                    type="range"
-                    className="kds-settings-slider"
-                    min={Math.max(settings.yellowThresholdMin + 1, 6)}
-                    max={15}
-                    step={1}
-                    value={settings.redThresholdMin}
-                    onChange={(e) => onChangeRedThreshold(Number(e.target.value))}
-                    aria-label={requiredLocalized(l10n, 'kds-settings-red-aria')}
-                    aria-valuetext={l10n.getString('kds-slider-value-min', { min: settings.redThresholdMin })}
-                  />
-                </div>
+                      <div className="kds-setting-row kds-setting-row--slider">
+                        <div className="kds-slider-header">
+                          <span className="kds-setting-label"><Localized id="kds-settings-red">Red</Localized></span>
+                          <span className="kds-slider-value kds-slider-value--danger">{l10n.getString('kds-slider-value-min', { min: dragRed ?? settings.redThresholdMin })}</span>
+                        </div>
+                        <KdsSlider
+                          min={redMin}
+                          max={redMax}
+                          value={settings.redThresholdMin}
+                          onChange={onChangeRedThreshold}
+                          onDragValue={(v) => setDragRed(v || null)}
+                          color="var(--kds-danger, #fc3d39)"
+                          ariaLabel={requiredLocalized(l10n, 'kds-settings-red-aria')}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>

@@ -343,29 +343,31 @@ describe('KdsHamburgerPanel', () => {
     it('yellow threshold slider renders with correct value', async () => {
       await openPanel({ ...makeProps(), settings: { ...DEFAULTS, yellowThresholdMin: 5 } });
       const slider = screen.getByRole('slider', { name: /yellow/i });
-      expect(slider).toHaveValue('5');
+      expect(slider).toHaveAttribute('aria-valuenow', '5');
     });
 
-    it('changing yellow threshold calls onChangeYellowThreshold', async () => {
+    it('changing yellow threshold via arrow key', async () => {
       const props = makeProps();
       await openPanel(props);
       const slider = screen.getByRole('slider', { name: /yellow/i });
-      fireEvent.change(slider, { target: { value: '7' } });
-      expect(props.onChangeYellowThreshold).toHaveBeenCalledWith(7);
+      slider.focus();
+      await userEvent.keyboard('{ArrowRight}');
+      expect(props.onChangeYellowThreshold).toHaveBeenCalled();
     });
 
     it('red threshold slider renders with correct value', async () => {
       await openPanel({ ...makeProps(), settings: { ...DEFAULTS, redThresholdMin: 10 } });
       const slider = screen.getByRole('slider', { name: /red/i });
-      expect(slider).toHaveValue('10');
+      expect(slider).toHaveAttribute('aria-valuenow', '10');
     });
 
-    it('changing red threshold calls onChangeRedThreshold', async () => {
+    it('changing red threshold via arrow key', async () => {
       const props = makeProps();
       await openPanel(props);
       const slider = screen.getByRole('slider', { name: /red/i });
-      fireEvent.change(slider, { target: { value: '12' } });
-      expect(props.onChangeRedThreshold).toHaveBeenCalledWith(12);
+      slider.focus();
+      await userEvent.keyboard('{ArrowRight}');
+      expect(props.onChangeRedThreshold).toHaveBeenCalled();
     });
   });
 

@@ -919,8 +919,17 @@ export default function KdsScreen() {
             <KdsHamburgerPanel
               settings={{ ...settings, autoAcknowledge: prefs.autoAcknowledge }}
               onChangeSound={(v) => setSettings((s) => ({ ...s, soundEnabled: v }))}
-              onChangeYellowThreshold={(v) => setSettings((s) => ({ ...s, yellowThresholdMin: v }))}
-              onChangeRedThreshold={(v) => setSettings((s) => ({ ...s, redThresholdMin: v }))}
+              onChangeYellowThreshold={(v) => setSettings((s) => ({
+                ...s,
+                // Fixed range 3–30, but also ensure yellow < red
+                yellowThresholdMin: Math.max(3, Math.min(v, s.redThresholdMin - 1, 30)),
+              }))}
+              onChangeRedThreshold={(v) => setSettings((s) => ({
+                ...s,
+                // Fixed range 4–60, then force yellow below new red
+                redThresholdMin: Math.max(4, Math.min(v, 60)),
+                yellowThresholdMin: Math.min(s.yellowThresholdMin, Math.max(4, Math.min(v, 60)) - 1),
+              }))}
               onChangeAutoAcknowledge={(v) => setAutoAcknowledge(v)}
               onChangeDensity={(v) => setSettings((s) => ({ ...s, density: v }))}
               showOrderId={prefs.showOrderId}

@@ -54,9 +54,9 @@ kds-layout-metro = Metro
 # Settings panel
 kds-settings-aria = KDS settings
 kds-settings-sound = Sound
-kds-settings-yellow = Yellow at { $min } min
+kds-settings-yellow = Yellow
 kds-settings-yellow-aria = Yellow escalation threshold in minutes
-kds-settings-red = Red at { $min } min
+kds-settings-red = Red
 kds-settings-red-aria = Red escalation threshold in minutes
 kds-slider-value-min = { $min } minutes
 kds-settings-auto-ack = Auto-accept

@@ -117,9 +117,10 @@ export function KdsSettingsPanel({
 
           {/* Yellow threshold slider */}
           <div className="kds-settings-slider-group">
-            <Localized id="kds-settings-yellow" vars={{ min: settings.yellowThresholdMin }}>
-              <span className="kds-settings-slider-label">{`Yellow at ${settings.yellowThresholdMin} min`}</span>
-            </Localized>
+            <div className="kds-slider-header">
+              <Localized id="kds-settings-yellow"><span className="kds-settings-slider-label">Yellow</span></Localized>
+              <span className="kds-settings-slider-label">{l10n.getString('kds-slider-value-min', { min: settings.yellowThresholdMin })}</span>
+            </div>
             <input
               type="range"
               className="kds-settings-slider"
@@ -134,9 +135,10 @@ export function KdsSettingsPanel({
 
           {/* Red threshold slider */}
           <div className="kds-settings-slider-group">
-            <Localized id="kds-settings-red" vars={{ min: settings.redThresholdMin }}>
-              <span className="kds-settings-slider-label">{`Red at ${settings.redThresholdMin} min`}</span>
-            </Localized>
+            <div className="kds-slider-header">
+              <Localized id="kds-settings-red"><span className="kds-settings-slider-label">Red</span></Localized>
+              <span className="kds-settings-slider-label">{l10n.getString('kds-slider-value-min', { min: settings.redThresholdMin })}</span>
+            </div>
             <input
               type="range"
               className="kds-settings-slider"

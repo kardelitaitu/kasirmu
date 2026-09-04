@@ -582,9 +582,9 @@
 /* Reusable switch — design-language settings-toggle-slider: 48×25, knob 20, bounce */
 .kds-switch {
   position: relative;
-  width: 48px;
-  height: 25px;
-  border-radius: var(--kds-radius-switch);
+  width: 44px;
+  height: 20px;
+  border-radius: 10px;
   border: none;
   background: var(--kds-switch-off);
   cursor: pointer;
@@ -595,16 +595,16 @@
 .kds-switch::after {
   content: '';
   position: absolute;
-  top: 2.5px;
-  left: 2.5px;
-  width: 20px;
-  height: 20px;
+  top: 1px;
+  left: 1px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--kds-fg-inverse);
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .kds-switch.on { background: var(--kds-accent); }
-.kds-switch.on::after { transform: translateX(23px); }
+.kds-switch.on::after { transform: translateX(24px); }
 [data-theme='light'] .kds-switch { background: rgba(0, 0, 0, 0.08); }
 [data-theme='light'] .kds-switch.on { background: var(--kds-accent); }
 
@@ -650,12 +650,12 @@
 .kds-theme-option.on { opacity: 1; color: var(--kds-fg-inverse); }
 
 /* Zoom / column steppers */
-.kds-zoom-row { display: flex; align-items: center; gap: 4px; }
-.kds-zoom-btn { width: 36px; height: 36px; padding: 0; font-size: var(--text-base); font-weight: 600; border-radius: var(--kds-r-sm); }
+.kds-zoom-row { display: flex; align-items: center; gap: 2px; }
+.kds-zoom-btn { width: 2rem; height: 2rem; padding: 0; font-size: var(--text-sm); font-weight: 600; border-radius: var(--kds-r-sm); }
 .kds-zoom-value {
-  width: 80px;
-  height: 36px;
-  padding: 0 var(--space-3_5);
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0;
   text-align: center;
   flex-shrink: 0;
   font-size: var(--kds-font-sm);
@@ -664,8 +664,9 @@
   opacity: 0.85;
   cursor: pointer;
   border-radius: var(--kds-r-sm);
+  line-height: 2rem;
 }
-.kds-zoom-value:hover { opacity: 1; background: var(--kds-border); text-decoration: underline; text-underline-offset: 3px; }
+.kds-zoom-value:hover { opacity: 1; background: var(--kds-border); }
 
 /* Card-colour accordion (in hamburger) */
 .kds-color-group {
@@ -738,38 +739,82 @@
 .kds-reset-btn svg { width: 14px; height: 14px; opacity: 0.8; }
 
 /* ── Range slider (threshold settings) ──────────────────────────── */
-.kds-settings-slider {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 90px;
-  height: 8px;
-  background: var(--kds-bg-tabs);
-  border-radius: var(--kds-r-xs);
-  outline: none;
+/* ── Custom flex slider (track + fill + knob in one div) ──────── */
+/* Hit-area wrapper: tall enough to tap, positions the 4px track vertically. */
+.kds-slider-track {
+  position: relative;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  box-sizing: border-box;
   cursor: pointer;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
 }
-.kds-settings-slider::-webkit-slider-thumb {
-  appearance: none;
-  -webkit-appearance: none;
+.kds-slider-track:focus-visible {
+  outline: none;
+}
+.kds-slider-track:focus-visible .kds-slider-knob {
+  box-shadow: 0 0 0 3px var(--kds-accent), 0 1px 3px rgba(0,0,0,.15);
+}
+/* The actual 4px rail — centered in the hit area via top:12px. */
+.kds-slider-rail {
+  position: absolute;
+  top: 12px;
+  left: 10px;
+  right: 10px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--kds-border);
+  pointer-events: none;
+}
+.kds-slider-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+}
+.kds-slider-knob {
+  position: absolute;
+  top: 50%;
   width: 20px;
   height: 20px;
-  background: var(--kds-accent);
   border-radius: 50%;
-  cursor: pointer;
-  transition: transform 0.1s;
-  box-shadow: var(--kds-shadow-chip);
+  background: var(--bg-surface, #fff);
+  border: 2px solid;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: box-shadow 0.1s;
 }
-.kds-settings-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
-.kds-settings-slider::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  background: var(--kds-accent);
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
+.kds-slider-track:hover .kds-slider-knob {
+  box-shadow: 0 2px 6px rgba(0,0,0,.2);
 }
-.kds-settings-slider:focus-visible { outline: 2px solid var(--kds-accent); outline-offset: 1px; }
+[data-theme='dark'] .kds-slider-knob {
+  background: #3a3f4c;
+  border-width: 2.5px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
+}
+
+/* Slider row: label + value on top, full-width slider below */
+.kds-setting-row--slider {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.kds-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.kds-slider-value {
+  font-size: var(--kds-font-xs);
+  font-weight: 600;
+}
+.kds-slider-value--warning { color: var(--kds-warning, #fd9426); }
+.kds-slider-value--danger  { color: var(--kds-danger, #fc3d39); }
 
 /* ── Error banner (dismissible + retry) ────────────────────────── */
 .kds-error-banner {
