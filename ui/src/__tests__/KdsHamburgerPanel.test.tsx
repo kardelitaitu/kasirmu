@@ -463,13 +463,18 @@ describe('KdsHamburgerPanel', () => {
 
   describe('slider aria-valuetext', () => {
     it('yellow slider has aria-valuetext with minutes', async () => {
-      await openPanel({ settings: { ...DEFAULTS, yellowThresholdMin: 7 } });
+      // `...makeProps()` supplies the required props; openPanel's parameter is the FULL
+      // KdsHamburgerPanelProps (inferred from its `= makeProps()` default), so a bare
+      // `{ settings }` object is a type error. 19 other call sites in this file already
+      // spread makeProps -- these two were the only ones that did not, and they were the
+      // only thing breaking `tsc --noEmit` on HEAD.
+      await openPanel({ ...makeProps(), settings: { ...DEFAULTS, yellowThresholdMin: 7 } });
       const slider = screen.getByRole('slider', { name: /yellow/i });
       expect(slider).toHaveAttribute('aria-valuetext', '7 minutes');
     });
 
     it('red slider has aria-valuetext with minutes', async () => {
-      await openPanel({ settings: { ...DEFAULTS, redThresholdMin: 15 } });
+      await openPanel({ ...makeProps(), settings: { ...DEFAULTS, redThresholdMin: 15 } });
       const slider = screen.getByRole('slider', { name: /red/i });
       expect(slider).toHaveAttribute('aria-valuetext', '15 minutes');
     });
