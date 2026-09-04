@@ -58,6 +58,32 @@ const COURSE_OPTIONS: { value: string | null; labelId: string }[] = [
  * closure-only block, so no unit test could exercise the category mapping
  * without rendering the full modal and adding products.
  */
+/**
+ * Add a product to the picked list. If the SKU already exists, increment qty.
+ * Otherwise append a new entry. Exported for testing.
+ */
+export function addOrUpdatePicked(
+  picked: PickedEntry[],
+  product: { sku: string; name: string; category?: string | null },
+): PickedEntry[] {
+  const existing = picked.find((e) => e.sku === product.sku);
+  if (existing) {
+    return picked.map((e) =>
+      e.sku === product.sku ? { ...e, qty: e.qty + 1 } : e,
+    );
+  }
+  return [
+    ...picked,
+    {
+      sku: product.sku,
+      display_name: product.name,
+      qty: 1,
+      course: resolveCourseFromCategory(product.category),
+    },
+  ];
+}
+
+/** Resolve a product category string to a KDS course ID. */
 export function resolveCourseFromCategory(category: string | null | undefined): string | null {
   const c = (category ?? '').toLowerCase();
   if (c.includes('appetizer') || c.includes('starter')) return 'appetizer';
@@ -134,21 +160,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   );
 
   const addProduct = useCallback((product: ProductDto) => {
-    setPicked((prev) => {
-      const existing = prev.find((e) => e.sku === product.sku);
-      if (existing) {
-        return prev.map((e) =>
-          e.sku === product.sku ? { ...e, qty: e.qty + 1 } : e,
-        );
-      }
-      // Resolve course from product category.
-      const course = resolveCourseFromCategory(product.category);
-
-      return [
-        ...prev,
-        { sku: product.sku, display_name: product.name, qty: 1, course },
-      ];
-    });
+    setPicked((prev) => addOrUpdatePicked(prev, product));
   }, []);
 
   const removeProduct = useCallback((sku: string) => {
