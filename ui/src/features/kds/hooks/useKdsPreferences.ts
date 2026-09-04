@@ -60,8 +60,8 @@ export function readLocalPrefs(userId: string): KdsPreferences | null {
   }
 }
 
-/** Write KDS preferences to localStorage. */
-function writeLocalPrefs(userId: string, prefs: KdsPreferences): void {
+/** Write KDS preferences to localStorage. Exported for testing. */
+export function writeLocalPrefs(userId: string, prefs: KdsPreferences): void {
   try {
     localStorage.setItem(STORAGE_KEY_PREFIX + userId, JSON.stringify(prefs));
   } catch {
