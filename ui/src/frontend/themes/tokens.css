@@ -574,7 +574,7 @@ html.is-theme-transitioning *::after {
   *,
   *::before,
   *::after {
-    transition-duration: var(--duration-0) !important;
-    animation-duration: var(--duration-0) !important;
+    transition: none;
+    animation: none;
   }
 }
