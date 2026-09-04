@@ -45,7 +45,7 @@ export function loadColors(theme: string): KdsCardColors {
   return theme === 'light' ? DEFAULT_COLORS_LIGHT : DEFAULT_COLORS_DARK;
 }
 
-function saveColors(theme: string, colors: KdsCardColors): void {
+export function saveColors(theme: string, colors: KdsCardColors): void {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     const all = saved ? JSON.parse(saved) as Record<string, KdsCardColors> : {};
