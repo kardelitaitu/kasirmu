@@ -25,6 +25,20 @@ export interface KdsDeviceStatusIndicatorProps {
   onEnrollDevice?: () => void;
 }
 
+/**
+ * Determine overall device status from connected/total counts.
+ * All connected → 'connected', some → 'stale', none → 'disconnected'.
+ * Exported for testing.
+ */
+export function overallDeviceStatus(
+  connectedCount: number,
+  totalCount: number,
+): KdsConnectionStatus {
+  if (connectedCount === totalCount) return 'connected';
+  if (connectedCount > 0) return 'stale';
+  return 'disconnected';
+}
+
 /** Map connection status to a display label and CSS modifier. */
 const STATUS_DISPLAY: Record<
   KdsConnectionStatus,
@@ -105,13 +119,7 @@ export const KdsDeviceStatusIndicator = memo(
     ).length;
     const totalCount = devices.length;
 
-    // Determine overall status: all connected > some connected > none.
-    const overallStatus: KdsConnectionStatus =
-      connectedCount === totalCount
-        ? 'connected'
-        : connectedCount > 0
-          ? 'stale'
-          : 'disconnected';
+    const overallStatus = overallDeviceStatus(connectedCount, totalCount);
 
     const statusDisplay = STATUS_DISPLAY[overallStatus];
 
