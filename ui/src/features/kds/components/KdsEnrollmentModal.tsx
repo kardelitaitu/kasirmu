@@ -35,6 +35,20 @@ type EnrollmentStep = 'form' | 'generating' | 'qr' | 'error';
  * 3. QR code is displayed for the KDS device to scan
  * 4. KDS device connects with the token, completing enrollment
  */
+/**
+ * Add a station name to the list. Trims whitespace, rejects empty strings and
+ * duplicates. Returns the updated list (or the original if unchanged).
+ * Exported for testing.
+ */
+export function addStationToList(
+  stations: string[],
+  input: string,
+): string[] {
+  const trimmed = input.trim();
+  if (!trimmed || stations.includes(trimmed)) return stations;
+  return [...stations, trimmed];
+}
+
 export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   sessionToken,
   restaurantPosId,
@@ -89,9 +103,9 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   }, [step, tokenExpiry]);
 
   const addStation = useCallback(() => {
-    const trimmed = stationInput.trim();
-    if (trimmed && !stations.includes(trimmed)) {
-      setStations((prev) => [...prev, trimmed]);
+    const next = addStationToList(stations, stationInput);
+    if (next !== stations) {
+      setStations(next);
       setStationInput('');
     }
   }, [stationInput, stations]);
