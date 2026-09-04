@@ -84,7 +84,13 @@ export function useWarehouseScanner({
     } catch {
       onProductNotFoundRef.current?.(payload.code);
     }
-  }, []);
+    // sessionToken is read in the body (:77) to choose the scoped lookup, so it has to be a
+    // dependency. The callbacks are all behind refs precisely so this array can stay small and
+    // stable -- but a plain prop is not a ref, and with [] here the closure kept the token from
+    // the first render forever. A screen mounted before login, or kept alive across a store
+    // switch, scanned against the previous session. Adding it re-runs the subscription effect
+    // at :93, which is what that effect's [handleScan, handleError] deps were already for.
+  }, [sessionToken]);
 
   const handleError = useCallback((error: string) => {
     onErrorRef.current?.(error);

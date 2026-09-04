@@ -455,7 +455,12 @@ export default function SalesHistoryScreen() {
     } finally {
       setRefundsLoading(false);
     }
-  }, []);
+    // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
+    // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
+    // change -- this array just omitted it. With [] the callback kept the mount-time token, and
+    // because :467 lists loadRefunds in its own deps, the refund list for an opened sale was
+    // fetched against whatever session was active when the screen mounted.
+  }, [sessionToken]);
 
   const handleRefunded = useCallback(() => {
     closeRefund();

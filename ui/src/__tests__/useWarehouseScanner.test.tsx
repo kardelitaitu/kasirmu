@@ -214,6 +214,32 @@ describe('useWarehouseScanner', () => {
       expect(mocks.lookupByBarcode).not.toHaveBeenCalled();
     });
 
+    // handleScan is a useCallback whose body reads `sessionToken` (useWarehouseScanner.ts:77)
+    // but whose dependency array was empty, so it captured the token from the FIRST render and
+    // never refreshed. Nothing above catches that: every scoped test passes its token at mount
+    // and never changes it, which is precisely the case a stale closure gets right. A warehouse
+    // screen that stays mounted across a login or a store switch would keep scanning against
+    // the previous session's token -- a permission failure, or worse, lookups answered from the
+    // wrong store.
+    it('uses the CURRENT session token after it changes, not the one captured on mount', async () => {
+      const { rerender } = await renderHookInAct<ReturnType<typeof makeOpts>>(
+        (props) => useWarehouseScanner(props!),
+        { initialProps: makeOpts({ sessionToken: 'tok-1' }) },
+      );
+
+      await act(async () => {
+        rerender(makeOpts({ sessionToken: 'tok-2' }));
+      });
+
+      // The latest handler, because a correct implementation re-subscribes when the token
+      // changes; the stale one is still registered first and would be [0].
+      const scanHandler = mocks.onBarcodeScanned.mock.calls.at(-1)![0];
+      await scanHandler(payload);
+
+      expect(mocks.lookupByBarcodeScoped).toHaveBeenCalledWith('tok-2', 'WH-001');
+      expect(mocks.lookupByBarcodeScoped.mock.calls.every((c) => c[0] !== 'tok-1')).toBe(true);
+    });
+
     it('falls back to the unscoped API when no token is given', async () => {
       await renderHookInAct(() => useWarehouseScanner(makeOpts()));
       const scanHandler = mocks.onBarcodeScanned.mock.calls.at(-1)![0];

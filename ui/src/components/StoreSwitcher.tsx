@@ -31,7 +31,11 @@ export default function StoreSwitcher() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // sessionToken is a free variable here (from useWorkspace() at :14), so it must be a
+    // dependency. With [] this callback never changed identity, which also meant the
+    // `useEffect(() => { load(); }, [load])` below ran exactly once at mount: after
+    // switchStore() replaced the token, the list still belonged to the previous store.
+  }, [sessionToken]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -55,7 +59,12 @@ export default function StoreSwitcher() {
       // silently fail
     }
     setOpen(false);
-  }, [primary, switchStore]);
+    // sessionToken is read at :44. It was previously masked by `primary` happening to be a
+    // dep -- setPrimary() changes primary on every selection, so the callback was rebuilt
+    // anyway. That is coincidence, not correctness: a token change that does not move
+    // `primary` (an expiry refresh, a re-login into the same store) would leave this calling
+    // setPrimaryStoreScoped with the dead token.
+  }, [primary, switchStore, sessionToken]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
