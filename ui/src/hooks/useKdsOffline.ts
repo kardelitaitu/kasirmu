@@ -154,7 +154,8 @@ export interface UseKdsOfflineReturn {
 
 // ── LocalStorage helpers ─────────────────────────────────────────────
 
-function readLS<T>(key: string, fallback: T): T {
+/** Read from localStorage with JSON parse + fallback. Exported for testing. */
+export function readLS<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
@@ -164,8 +165,8 @@ function readLS<T>(key: string, fallback: T): T {
   }
 }
 
-/** Write to localStorage. Returns false when persistence failed (OFF-08). */
-function writeLS<T>(key: string, value: T): boolean {
+/** Write to localStorage. Returns false when persistence failed (OFF-08). Exported for testing. */
+export function writeLS<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     return true;
