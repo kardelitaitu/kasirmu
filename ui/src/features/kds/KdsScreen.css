@@ -610,12 +610,13 @@
   height: 18px;
   border-radius: 50%;
   background: var(--kds-fg-inverse);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-sm);
   transition: transform 0.3s cubic-bezier(0.34, 1.35, 0.64, 1), box-shadow 0.2s ease !important;
 }
 .kds-switch.on::after {
   transform: translateX(24px);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  /* md, not sm: the on-state knob must stay visibly stronger than the rest state. */
+  box-shadow: var(--shadow-md);
 }
 [data-theme='light'] .kds-switch { background: rgba(0, 0, 0, 0.08); }
 [data-theme='light'] .kds-switch.on { background: var(--kds-accent); box-shadow: 0 0 8px color-mix(in srgb, var(--kds-accent) 30%, transparent); }
@@ -775,14 +776,17 @@
 .kds-slider-track:focus-visible .kds-slider-knob {
   box-shadow: 0 0 0 3px var(--kds-accent), 0 1px 3px rgba(0,0,0,.15);
 }
-/* The actual 4px rail — centered in the hit area via top:12px. */
+/* The actual 4px rail — centered in the hit area via top:12px.
+   top and height are tokenised TOGETHER: --space-3 is 0.75rem and --space-1 is 0.25rem, so
+   both scale with ZoomContext's root font-size and the rail stays centred at every zoom
+   level. Converting only `top` would have broken the centering above 100%. */
 .kds-slider-rail {
   position: absolute;
-  top: 12px;
+  top: var(--space-3);
   left: 10px;
   right: 10px;
-  height: 4px;
-  border-radius: 999px;
+  height: var(--space-1);
+  border-radius: var(--radius-full);
   background: var(--kds-border);
   pointer-events: none;
 }
@@ -791,7 +795,7 @@
   top: 0;
   left: 0;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 .kds-slider-knob {
   position: absolute;
@@ -801,13 +805,14 @@
   border-radius: 50%;
   background: var(--bg-surface, #fff);
   border: 2px solid;
-  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+  box-shadow: var(--shadow-sm);
   transform: translate(-50%, -50%);
   pointer-events: none;
   transition: box-shadow 0.1s;
 }
 .kds-slider-track:hover .kds-slider-knob {
-  box-shadow: 0 2px 6px rgba(0,0,0,.2);
+  /* md on hover, mirroring the switch knob: hover must read stronger than rest. */
+  box-shadow: var(--shadow-md);
 }
 [data-theme='dark'] .kds-slider-knob {
   background: #3a3f4c;

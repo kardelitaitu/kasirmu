@@ -186,6 +186,13 @@ const EXEMPT_SELECTOR_PREFIXES = [
   '.sr-only',           // Screen-reader-only utility
   '.theme-toggle',      // Theme toggle button
   '.payment-',          // Payment modal child elements
+  // KDS slider knob: a 20px circle with a 1-3px shadow. Same reasoning the list already
+  // gives for '.btn' ("thin shadows, no banding") and '.theme-toggle' -- banding needs a
+  // large, soft gradient to be visible, and a 20px disc has no such area. Reached this by
+  // tokenising the knob's previously hardcoded box-shadow to satisfy
+  // themeTokenCompliance.test.ts; the two gates are coupled, so a shadow token here is
+  // read as a new elevated surface.
+  '.kds-slider-knob',
 ];
 
 /* ── Helpers ─────────────────────────────────────────────────── */
