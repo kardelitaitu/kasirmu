@@ -73,7 +73,7 @@ function subscribeToTicker(fn: Ticker): () => void {
 // ── Helpers ───────────────────────────────────────────────────────────
 
 /** Compute the SLA level from elapsed seconds (P3-1 progressive thresholds). */
-function computeLevel(elapsed: number, t: SlaThresholds): SlaLevel {
+export function computeLevel(elapsed: number, t: SlaThresholds): SlaLevel {
   if (elapsed < t.yellowAtSec) return 'green';
   if (elapsed < t.redAtSec) return 'yellow';
   return 'red';
