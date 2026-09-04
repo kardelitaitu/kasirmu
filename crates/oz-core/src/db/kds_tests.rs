@@ -3381,3 +3381,75 @@ fn partial_refund_keeps_kds_tickets_active() {
         "a partial refund must NOT cancel the kitchen ticket"
     );
 }
+
+/// S3 boundary: the full-refund detection is CUMULATIVE — two partial
+/// refunds that together reach the sale total must cancel the kitchen
+/// tickets on the second refund, even though neither refund alone is
+/// full. Pins the `already_refunded + refund.total >= sale_total` branch
+/// with a non-zero prior balance.
+#[test]
+fn cumulative_refunds_reaching_full_total_cancel_kds_tickets() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("FRIES"), 1, price(300)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+
+    // First partial refund (500 of 800): ticket must stay.
+    let first = crate::Refund::new(
+        &sale.id,
+        price(500),
+        "partial one",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[0].id,
+            "BURGER",
+            1,
+            price(500),
+            price(500),
+        )],
+    );
+    s.create_refund(&first).unwrap();
+    assert_eq!(
+        s.get_kds_order(&ticket.id).unwrap().unwrap().status,
+        "preparing",
+        "first partial refund leaves the board alone"
+    );
+
+    // Second partial refund (300 of 800) reaches the full total:
+    // the kitchen is now returning EVERYTHING — ticket must cancel.
+    let second = crate::Refund::new(
+        &sale.id,
+        price(300),
+        "partial two completes the refund",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[1].id,
+            "FRIES",
+            1,
+            price(300),
+            price(300),
+        )],
+    );
+    s.create_refund(&second).unwrap();
+    assert_eq!(
+        s.get_kds_order(&ticket.id).unwrap().unwrap().status,
+        "cancelled",
+        "refunds summing to the sale total must cancel the kitchen ticket"
+    );
+}
