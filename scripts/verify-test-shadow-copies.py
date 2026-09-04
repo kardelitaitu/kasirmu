@@ -42,6 +42,25 @@ first idea and it is unusable: 7 hits, 5 false positives, because the phrase als
 in comments explaining that a shadow copy was REMOVED. A gate that fires on its own fix
 teaches people to ignore it.
 
+WHAT IT DELIBERATELY DOES NOT DO
+--------------------------------
+It does not grep for confession comments ("same logic as", "reimplement"). That was the
+first idea and it is unusable: 7 hits, 5 false positives, because the phrase also appears
+in comments explaining that a shadow copy was REMOVED. A gate that fires on its own fix
+teaches people to ignore it.
+
+KNOWN BLIND SPOTS
+-----------------
+  * A copy under a DIFFERENT name is invisible to both passes. KdsSlaEscalationPipeline
+    reproduced the exported DEFAULT_SLA_THRESHOLDS as `const DEFAULTS` with an identical
+    value; nothing matches on value across names, and doing so would fire on every
+    legitimately-renamed fixture. Fixed by hand in 88e945b2.
+  * An expression with no production name at all cannot be matched. Three of the copies
+    removed in 88e945b2 were inline expressions in a hook and in a component body --
+    clampSlaThresholds, isSlaUrgent, headerBg. Naming them was the only available fix, and
+    is the reason this gate's remediation hint says "import the real one": sometimes the
+    prerequisite is giving production a name.
+
 Exit 0 = clean, 1 = findings, 2 = usage or internal error.
 """
 
@@ -189,6 +208,64 @@ def collect_prod():
     return prod
 
 
+CONST_DEF = re.compile(r"^(?:export\s+)?const\s+(\w+)\s*(?::[^=]+)?=\s*", re.M)
+
+
+def literal_source(text, i):
+    """The source text of the value starting at index i, plus its kind."""
+    if i >= len(text):
+        return "", "none"
+    c = text[i]
+    if c in "{[":
+        closer = "}" if c == "{" else "]"
+        depth, j = 0, i
+        while j < len(text):
+            if text[j] == c:
+                depth += 1
+            elif text[j] == closer:
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        return text[i:j + 1], "structure"
+    m = re.match(r"[^;\n]+", text[i:])
+    return (m.group(0).strip() if m else ""), "scalar"
+
+
+def consts_in(text):
+    """name -> list of (value_source, kind, line). Function-valued consts are skipped:
+    those are the function detector's business, matched on body similarity."""
+    out = {}
+    for m in CONST_DEF.finditer(text):
+        val, kind = literal_source(text, m.end())
+        if not val:
+            continue
+        if re.match(r"(?:async\s+)?(?:\([^)]*\)|\w+)\s*=>", val):
+            continue
+        out.setdefault(m.group(1), []).append(
+            (val, kind, text[:m.start()].count("\n") + 1))
+    return out
+
+
+def collect_prod_consts():
+    """name -> list of (path, normalised value source)."""
+    prod = {}
+    for d in PROD_DIRS:
+        if not os.path.isdir(d):
+            continue
+        for root, _dirs, files in os.walk(d):
+            if "__tests__" in root:
+                continue
+            for fn in files:
+                if not fn.endswith((".ts", ".tsx")):
+                    continue
+                path = os.path.join(root, fn)
+                for name, entries in consts_in(read(path)).items():
+                    for val, kind, _ln in entries:
+                        prod.setdefault(name, []).append((path, re.sub(r"\s+", "", val)))
+    return prod
+
+
 def scan(threshold=THRESHOLD):
     prod = collect_prod()
     findings = []
@@ -232,6 +309,37 @@ def scan(threshold=THRESHOLD):
             all_candidates.append(row)
             if best >= threshold:
                 findings.append(row)
+
+    # ── const pass ───────────────────────────────────────────────────
+    # No threshold here on purpose. A copied constant is either the same value or it is a
+    # different thing that happens to share a name, and value equality decides that exactly.
+    # The function pass needs similarity because bodies vary; `STORAGE_KEY_PREFIX` does not.
+    prod_consts = collect_prod_consts()
+    for fn in sorted(os.listdir(TEST_DIR)):
+        if not fn.endswith((".ts", ".tsx")):
+            continue
+        path = os.path.join(TEST_DIR, fn)
+        text = read(path)
+        imported = imported_names(text)
+        for name, entries in consts_in(text).items():
+            if name not in prod_consts or name in imported:
+                continue
+            examined += 1
+            for val, kind, ln in entries:
+                norm = re.sub(r"\s+", "", val)
+                for ppath, pval in prod_consts[name]:
+                    if pval != norm:
+                        continue
+                    row = {
+                        "test": os.path.relpath(path, REPO).replace("\\", "/"),
+                        "line": ln,
+                        "function": f"{name} ({kind} const)",
+                        "similarity": 1.0,
+                        "production": os.path.relpath(ppath, REPO).replace("\\", "/"),
+                    }
+                    findings.append(row)
+                    break
+
     return findings, examined, candidates, len(prod), all_candidates
 
 
@@ -309,7 +417,52 @@ def self_test():
             print(f"  FAIL  collision reported: {res[0]}")
             ok = False
 
-        # 4. Liveness of the population itself: an empty production tree must be loud.
+        # 4. A copied const must be reported, and importing it must clear it. Value
+        #    equality is the whole test here, so both directions need proving.
+        with open(os.path.join(tmp, "prod", "tax.ts"), "a", encoding="utf-8") as f:
+            f.write("\nexport const TAX_KEY = 'tax-v1-';\n")
+        with open(os.path.join(tmp, "__tests__", "Shadow.test.ts"), "w", encoding="utf-8") as f:
+            f.write(
+                "import { describe, it, expect } from 'vitest';\n"
+                "const TAX_KEY = 'tax-v1-';\n"
+                "describe('x', () => { it('y', () => { expect(TAX_KEY).toBe('tax-v1-'); }); });\n"
+            )
+        res = run(tmp)
+        if any("TAX_KEY" in r["function"] for r in res[0]):
+            print("  ok    value-identical const copy is reported")
+        else:
+            print(f"  FAIL  const copy not reported: {res[0]}")
+            ok = False
+        with open(os.path.join(tmp, "__tests__", "Shadow.test.ts"), "w", encoding="utf-8") as f:
+            f.write(
+                "import { describe, it, expect } from 'vitest';\n"
+                "import { TAX_KEY } from '../prod/tax';\n"
+                "describe('x', () => { it('y', () => { expect(TAX_KEY).toBe('tax-v1-'); }); });\n"
+            )
+        res = run(tmp)
+        if not any("TAX_KEY" in r["function"] for r in res[0]):
+            print("  ok    importing the real const clears it")
+        else:
+            print(f"  FAIL  const still reported after import: {res[0]}")
+            ok = False
+
+        # 5. Same name, different value: a collision, not a copy. This is the case that
+        #    makes value equality the right rule -- STORAGE_KEY alone appears in four
+        #    production modules with four different values.
+        with open(os.path.join(tmp, "__tests__", "Shadow.test.ts"), "w", encoding="utf-8") as f:
+            f.write(
+                "import { describe, it, expect } from 'vitest';\n"
+                "const TAX_KEY = 'something-else-';\n"
+                "describe('x', () => { it('y', () => { expect(TAX_KEY).toBeTruthy(); }); });\n"
+            )
+        res = run(tmp)
+        if not any("TAX_KEY" in r["function"] for r in res[0]):
+            print("  ok    same-named const with a different value is not reported")
+        else:
+            print(f"  FAIL  differing const reported: {res[0]}")
+            ok = False
+
+        # 6. Liveness of the population itself: an empty production tree must be loud.
         empty = os.path.join(tmp, "empty")
         os.makedirs(os.path.join(empty, "__tests__"), exist_ok=True)
         os.makedirs(os.path.join(empty, "prod"), exist_ok=True)
@@ -371,13 +524,16 @@ def main():
           f"test-level functions examined={examined}  "
           f"name collisions={candidates}  shadows={len(findings)}")
     for f in findings:
-        print(f"  {f['test']}:{f['line']}  {f['function']}()  similarity={f['similarity']}"
+        is_const = f["function"].endswith("const)")
+        print(f"  {f['test']}:{f['line']}  {f['function']}"
+              f"{'' if is_const else '()'}  similarity={f['similarity']}"
               f"  shadows {f['production']}")
-        print(f"      -> import the real function instead of redeclaring it; if the name "
+        what = "constant" if is_const else "function"
+        print(f"      -> import the real {what} instead of redeclaring it; if the name "
               f"collides by accident, rename the test helper.")
     if findings:
-        plural = "y" if len(findings) == 1 else "ies"
-        print(f"\nverify-test-shadow-copies: {len(findings)} shadow copy{plural} "
+        plural = "copy" if len(findings) == 1 else "copies"
+        print(f"\nverify-test-shadow-copies: {len(findings)} shadow {plural} "
               f"-> tests may be validating code that never runs")
         return 1
     print("verify-test-shadow-copies: OK")
