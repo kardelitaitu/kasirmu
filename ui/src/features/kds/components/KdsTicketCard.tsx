@@ -104,7 +104,7 @@ export function itemDone(item: KdsLineItem): boolean {
 }
 
 /** Next-action label key for the footer advance button, or null when terminal. */
-function nextActionKey(status: string): string | null {
+export function nextActionKey(status: string): string | null {
   switch (status) {
     case 'pending': return 'kds-advance-start';
     case 'preparing': return 'kds-advance-ready';
