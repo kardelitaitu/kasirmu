@@ -1,24 +1,39 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { applyProjections, MAX_RETRY_ATTEMPTS, CACHE_TTL_MS } from '@/hooks/useKdsOffline';
 import type { PendingKdsAction } from '@/hooks/useKdsOffline';
-import type { KdsOrder } from '@/api/kds';
+import type { KdsOrder, KdsStatus } from '@/api/kds';
 
-/** Minimal order builder. */
-function ord(id: string, status: string): KdsOrder {
+/**
+ * Minimal order builder.
+ *
+ * No `as KdsOrder`. The previous version cast, and the cast was silencing three wrong
+ * fields, not just the missing ones: `items_summary` and `notes` were null where the
+ * interface declares string, and `priority` was the string 'normal' where it declares
+ * boolean. It also omitted sale_id, started_at, ready_at and prep_time_seconds entirely.
+ * A fixture built through a cast is a fixture whose shape nobody checks -- applyProjections
+ * reads these fields, so a mis-typed one is a test asserting against an object the backend
+ * could never return. Writing all sixteen required fields means TypeScript verifies the
+ * shape on every edit.
+ */
+function ord(id: string, status: KdsStatus): KdsOrder {
   return {
     id,
+    sale_id: `sale-${id}`,
+    store_id: null,
     status,
-    items_summary: null,
+    items_summary: '',
     item_count: 0,
     display_number: 1,
     received_at: '2026-09-05T12:00:00Z',
-    kitchen_zone: null,
-    table_number: null,
-    notes: null,
-    priority: 'normal',
+    started_at: null,
+    ready_at: null,
     served_at: null,
-    store_id: null,
-  } as KdsOrder;
+    prep_time_seconds: 0,
+    kitchen_zone: null,
+    notes: '',
+    table_number: null,
+    priority: false,
+  };
 }
 
 function action(
