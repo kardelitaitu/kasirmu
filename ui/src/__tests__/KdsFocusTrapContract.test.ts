@@ -57,7 +57,12 @@ describe('useFocusTrap', () => {
 
     const last = panel.querySelector('#btn2') as HTMLElement;
     last.focus();
-    document.activeElement; // ensure focus is set
+    // Was a bare `document.activeElement;` -- reading a property and discarding it does
+    // nothing, and eslint's no-unused-expressions flagged it as the one hard error in the
+    // repo, which fails `npm run lint` and therefore dev-ci.yml#ui-test. Asserted instead:
+    // if jsdom ever fails to move focus on .focus(), this says so here rather than letting
+    // the wrap assertion below fail with a confusing "expected btn1 to be btn1".
+    expect(document.activeElement).toBe(last);
 
     act(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
