@@ -24,7 +24,7 @@ export function dayOffset(ts: string): number {
 }
 
 /** Format duration between two timestamps as "Xm Ys" or "Xh Ym". */
-function fmtDuration(from: string, to: string): string {
+export function fmtDuration(from: string, to: string): string {
   const sec = Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 1000));
   if (sec < 60) return `${sec}s`;
   const min = Math.floor(sec / 60);
