@@ -328,6 +328,21 @@
       "_note": "nightly.yml is .bak."
     },
     {
+      "id": "release-version",
+      "label": "Release version gate",
+      "status": "required",
+      "_note": "Added 0.0.37: the gate existed in both runners and had no record here, which is the exact blind spot this manifest exists to close -- its own description says adding a gate here is the ONLY way to add a gate, yet check.sh:245 (`step \"release version gate\"`) and dev-ci.yml#release-readiness were both already invoking `node scripts/check-release-version.mjs --self-test`. Found while building a CI-side analogue of hook_step_orphans; the three other candidates it surfaced were false positives from matching runner labels by exact key instead of the substring containment has_needle() actually uses. Nothing in the existing checker could have reported this: hook_step_orphans scans the pre-commit hook, not check.sh, and the runners-vocabulary check only validates labels that are already declared. Ships with --self-test so a regression cannot silently turn it into a no-op.",
+      "runners": {
+        "check.sh": [
+          "release version gate"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "release-readiness"
+      }
+    },
+    {
       "id": "release-workflow",
       "label": "Release workflow validation",
       "status": "required",
