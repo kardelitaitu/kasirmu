@@ -1,37 +1,24 @@
-// Unit tests for time-bucket assignment — documents the BUCKETS
-// configuration and the bucket-assignment algorithm used by
-// KdsCompletedView to group completed orders into Today / Yesterday /
-// This Week / Older columns.
+// Unit tests for time-bucket assignment — the BUCKETS configuration and the
+// bucket-assignment rule KdsCompletedView uses to group completed orders into
+// Today / Yesterday / This Week / Older columns.
+//
+// This suite previously declared its own BUCKETS array, its own dayOffset() ("Same
+// dayOffset as KdsCompletedView.tsx") and its own assignBucket(). All three now come from
+// the module, so the tests describe the shipped component. That mattered: the local
+// assignBucket ended with `return 'older'; // fallback`, while the real loop drops an order
+// that matches no range. A negative or NaN offset would have been filed under "older" by
+// the test and vanish in production -- and the suite could not have noticed, because it was
+// testing the copy that had the fallback.
 
 // `beforeEach` was used but not imported. Vitest injects these names at runtime, so
 // `npm run test` stayed green while `tsc --noEmit` failed -- the exact shape of
 // KdsThresholdClamp.test.ts in 524be1e7, and the reason CI's ui-test typecheck matters.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-/** Same bucket config as KdsCompletedView.tsx. */
-const BUCKETS = [
-  { key: 'today',     start: 0, end: 1 },
-  { key: 'yesterday', start: 1, end: 2 },
-  { key: 'this-week', start: 2, end: 7 },
-  { key: 'older',     start: 7, end: Infinity },
-] as const;
-
-/** Same dayOffset as KdsCompletedView.tsx. */
-function dayOffset(ts: string): number {
-  const now = new Date();
-  const d = new Date(ts);
-  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const orderDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  return Math.max(0, Math.floor((nowDay - orderDay) / 86_400_000));
-}
-
-/** Assign a day offset to a bucket key. */
-function assignBucket(dayOff: number): string {
-  for (const b of BUCKETS) {
-    if (dayOff >= b.start && dayOff < b.end) return b.key;
-  }
-  return 'older'; // fallback
-}
+import {
+  BUCKETS,
+  dayOffset,
+  bucketForOffset as assignBucket,
+} from '@/features/kds/KdsCompletedView';
 
 beforeEach(() => {
   vi.useFakeTimers();
