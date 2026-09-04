@@ -3,7 +3,10 @@
 // KdsCompletedView to group completed orders into Today / Yesterday /
 // This Week / Older columns.
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+// `beforeEach` was used but not imported. Vitest injects these names at runtime, so
+// `npm run test` stayed green while `tsc --noEmit` failed -- the exact shape of
+// KdsThresholdClamp.test.ts in 524be1e7, and the reason CI's ui-test typecheck matters.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /** Same bucket config as KdsCompletedView.tsx. */
 const BUCKETS = [
