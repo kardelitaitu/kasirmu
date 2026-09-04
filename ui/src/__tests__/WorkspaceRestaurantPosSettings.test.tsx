@@ -12,6 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/frontend/shared/Toast';
 import { WorkspaceRestaurantPosSettings } from '@/features/settings/workspace-cards/WorkspaceRestaurantPosSettings';
+import { setSettingsScoped } from '@/api/settings';
 
 // ── Fluent test l10n ───────────────────────────────────────────────
 
@@ -199,6 +200,42 @@ describe('WorkspaceRestaurantPosSettings', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled(), { timeout: 3000 });
+  });
+
+  // ── The save payload ───────────────────────────────────────────
+  //
+  // Third of the three settings cards, and the same hole: setSettingsScoped was mocked
+  // and never asserted on, so nothing checked the batch this card sends. See
+  // WorkspaceKdsSettings.test.tsx for why that matters -- the Rust command deserializes
+  // HashMap<String, String>, so one non-string member rejects the whole call.
+  //
+  // This card is currently correct (String(courseFiring) at
+  // WorkspaceRestaurantPosSettings.tsx:104), so this is a guard rather than a pin.
+  //
+  // Unlike the inventory card, this one reads its token from the mocked WorkspaceContext
+  // (:76, 'test-session-token') rather than a prop, so no override is needed -- and
+  // passing one would be ignored, which is worth knowing before copying this test.
+
+  it('sends course firing as a string, and with the session token production would pass', async () => {
+    renderCard();
+
+    // Let the async getSettingScoped init settle before touching the toggle, matching
+    // the save test above.
+    await waitFor(() => {
+      expect(document.getElementById('resto-table-mgmt')).not.toBeNull();
+    });
+    fireEvent.click(document.getElementById('resto-table-mgmt') as HTMLInputElement);
+    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
+    vi.mocked(setSettingsScoped).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await waitFor(() => expect(setSettingsScoped).toHaveBeenCalled());
+
+    const [token, entries] = vi.mocked(setSettingsScoped).mock.calls[0]!;
+    expect(token).toBe('test-session-token');
+    expect(Object.keys(entries!)).toEqual(['restaurant.course_firing']);
+    for (const [k, v] of Object.entries(entries!)) {
+      expect(typeof v, `${k} must be serialised as a string`).toBe('string');
+    }
   });
 
   it('hides Save button in inspector-drawer variant', () => {

@@ -12,6 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/frontend/shared/Toast';
 import { WorkspaceInventorySettings } from '@/features/settings/workspace-cards/WorkspaceInventorySettings';
+import { setSettingsScoped } from '@/api/settings';
 
 // Resolve the settings IPC instantly (the dev-mock invoke adds a fixed
 // 50ms real-timer delay per call). The card's mount load calls setState
@@ -127,6 +128,48 @@ describe('WorkspaceInventorySettings', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  // ── The save payload ───────────────────────────────────────────
+  //
+  // The test above asserts the callback fired, never what was sent. setSettingsScoped
+  // was mocked and not asserted on in this file, in WorkspaceRestaurantPosSettings, or
+  // in WorkspaceKdsSettings -- so no settings card anywhere checked its batch payload.
+  // That is how 974388a0's density bug shipped: setSettingsScoped takes
+  // Record<string, string> and the Rust command deserializes HashMap<String, String>
+  // (commands/settings.rs:1054), so ONE non-string member rejects the whole call and
+  // every key in the batch fails with it.
+  //
+  // This card is currently correct -- both values are wrapped in String() at
+  // WorkspaceInventorySettings.tsx:84-85 -- so this is a guard, not a regression pin.
+  // Stated plainly because a test that passes on arrival is worth less than one whose
+  // failure mode is named.
+
+  it('sends both inventory settings as strings in one batch', async () => {
+    // Rendered WITH a session token deliberately. This file's renderCard() passes none,
+    // so every existing test here drives the card with sessionToken undefined, and the
+    // card then calls setSettingsScoped(undefined ?? null, ...) -- a null token that the
+    // real function rejects outright (api/settings.ts:248-250, `No session token`). The
+    // mock resolves it, so nothing surfaces. That is a separate gap from the payload one;
+    // this test passes a token so it asserts the call production actually makes.
+    renderCard({ sessionToken: 'test-token' });
+    fireEvent.change(document.getElementById('inv-low-stock')!, { target: { value: '5' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
+    vi.mocked(setSettingsScoped).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await waitFor(() => expect(setSettingsScoped).toHaveBeenCalled());
+
+    const [token, entries] = vi.mocked(setSettingsScoped).mock.calls[0]!;
+    expect(token).toBe('test-token');
+    expect(Object.keys(entries!).sort()).toEqual([
+      'inventory.deduction_prefer_warehouse', 'inventory.low_stock_threshold',
+    ]);
+    // The wire contract, asserted rather than left to the compiler.
+    for (const [k, v] of Object.entries(entries!)) {
+      expect(typeof v, `${k} must be serialised as a string`).toBe('string');
+    }
+    // A number here would be a silent whole-batch rejection at the Rust boundary.
+    expect(entries!['inventory.low_stock_threshold']).toBe('5');
   });
 
   it('hides Save button in inspector-drawer variant', () => {
