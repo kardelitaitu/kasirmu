@@ -729,6 +729,10 @@
   border-color: var(--kds-accent);
   opacity: 1;
 }
+.kds-hex-input--invalid {
+  border-color: var(--kds-danger, #fc3d39) !important;
+  outline-color: var(--kds-danger, #fc3d39) !important;
+}
 .kds-reset-card { margin-top: var(--space-3); }
 .kds-reset-btn {
   width: 100%;

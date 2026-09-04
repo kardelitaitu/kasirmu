@@ -9,51 +9,65 @@ import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { requiredLocalized } from '@/frontend/shared';
 
 /** Custom flex-based slider: track div + fill div + knob div. */
-function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel }: {
+function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel, ariaValueText }: {
   value: number; min: number; max: number;
   onChange: (v: number) => void; onDragValue?: (v: number | null) => void;
-  color: string; ariaLabel: string;
+  color: string; ariaLabel: string; ariaValueText?: string;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const dragPctRef = useRef<number | null>(null);
+  const minRef = useRef(min);
+  const maxRef = useRef(max);
+  const onChangeRef = useRef(onChange);
+  const onDragValueRef = useRef(onDragValue);
+  // Keep refs current so event listeners always read latest values
+  // without needing to re-attach them.
+  minRef.current = min;
+  maxRef.current = max;
+  onChangeRef.current = onChange;
+  onDragValueRef.current = onDragValue;
   const [, setDragTrigger] = useState(0);
-  // Live percentage: derived from drag ref during drag, otherwise from value.
-  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  const range = max - min || 1; // NaN guard: treat min===max as range=1
+  const pct = range > 0 ? ((value - min) / range) * 100 : 0;
   const displayPct = dragPctRef.current ?? pct;
 
   const pctToVal = useCallback((clientX: number) => {
     const track = trackRef.current;
-    if (!track) return value;
+    if (!track) return minRef.current;
     const rect = track.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return min + ratio * (max - min);
-  }, [min, max, value]);
+    return minRef.current + ratio * (maxRef.current - minRef.current);
+  }, []);
 
+  // Single listener attachment — never needs to re-run because
+  // all mutable values are read from refs.
   useEffect(() => {
     const move = (e: MouseEvent) => {
       if (!dragging.current) return;
-      const raw = pctToVal(e.clientX);
-      dragPctRef.current = ((raw - min) / (max - min)) * 100;
-      // Force re-render by calling setState (trigger).
+      const lo = minRef.current, hi = maxRef.current;
+      const r = pctToVal(e.clientX);
+      dragPctRef.current = ((r - lo) / (hi - lo || 1)) * 100;
       setDragTrigger((t) => t + 1);
-      onDragValue?.(Math.round(Math.max(min, Math.min(max, raw))));
+      onDragValueRef.current?.(Math.round(Math.max(lo, Math.min(hi, r))));
     };
     const touchMove = (e: TouchEvent) => {
       if (!dragging.current) return;
-      const raw = pctToVal(e.touches[0]!.clientX);
-      dragPctRef.current = ((raw - min) / (max - min)) * 100;
+      const lo = minRef.current, hi = maxRef.current;
+      const r = pctToVal(e.touches[0]!.clientX);
+      dragPctRef.current = ((r - lo) / (hi - lo || 1)) * 100;
       setDragTrigger((t) => t + 1);
-      onDragValue?.(Math.round(Math.max(min, Math.min(max, raw))));
+      onDragValueRef.current?.(Math.round(Math.max(lo, Math.min(hi, r))));
     };
     const up = (e: MouseEvent | TouchEvent) => {
       if (!dragging.current) return;
       dragging.current = false;
       dragPctRef.current = null;
       const clientX = 'changedTouches' in e ? e.changedTouches[0]!.clientX : e.clientX;
-      const snapped = Math.round(pctToVal(clientX));
-      onChange(Math.max(min, Math.min(max, snapped)));
-      onDragValue?.(null);
+      const lo = minRef.current, hi = maxRef.current;
+      const snapped = Math.round(Math.max(lo, Math.min(hi, pctToVal(clientX))));
+      onChangeRef.current(snapped);
+      onDragValueRef.current?.(null);
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -65,23 +79,25 @@ function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel }:
       window.removeEventListener('touchmove', touchMove);
       window.removeEventListener('touchend', up);
     };
-  }, [pctToVal, min, max, onChange]);
+  }, [pctToVal]); // stable — deps are all refs
 
   return (
     <div
       ref={trackRef}
       className="kds-slider-track"
-      onMouseDown={(e) => { dragging.current = true; const raw = pctToVal(e.clientX); dragPctRef.current = ((raw - min) / (max - min)) * 100; setDragTrigger((t) => t + 1); }}
-      onTouchStart={(e) => { dragging.current = true; const raw = pctToVal(e.touches[0]!.clientX); dragPctRef.current = ((raw - min) / (max - min)) * 100; setDragTrigger((t) => t + 1); }}
+      onMouseDown={(e) => { dragging.current = true; const lo = minRef.current, hi = maxRef.current; const r = pctToVal(e.clientX); dragPctRef.current = ((r - lo) / (hi - lo || 1)) * 100; setDragTrigger((t) => t + 1); }}
+      onTouchStart={(e) => { dragging.current = true; const lo = minRef.current, hi = maxRef.current; const r = pctToVal(e.touches[0]!.clientX); dragPctRef.current = ((r - lo) / (hi - lo || 1)) * 100; setDragTrigger((t) => t + 1); }}
       role="slider"
       aria-label={ariaLabel}
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={value}
+      aria-valuetext={ariaValueText}
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onChange(Math.min(max, value + 1)); }
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onChange(Math.max(min, value - 1)); }
+        const lo = minRef.current, hi = maxRef.current;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onChangeRef.current(Math.min(hi, value + 1)); }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onChangeRef.current(Math.max(lo, value - 1)); }
       }}
     >
       <div className="kds-slider-rail">
@@ -166,15 +182,22 @@ export function KdsHamburgerPanel({
   // Card colours from shared context.
   const { colors: cardColors, updateColor, resetColors } = useKdsCardColors();
 
+  // Close uses refs so the callback identity is stable — no
+  // unnecessary listener teardown/re-attach on every open/close.
+  const openRef = useRef(open);
+  const closingRef = useRef(closing);
+  openRef.current = open;
+  closingRef.current = closing;
+
   const close = useCallback(() => {
-    if (!open || closing) return;
+    if (!openRef.current || closingRef.current) return;
     setClosing(true);
     closeTimerRef.current = setTimeout(() => {
       setOpen(false);
       setClosing(false);
       closeTimerRef.current = null;
     }, 180); // match kds-drop-in duration
-  }, [open, closing]);
+  }, []); // stable — reads from refs
 
   // Swipe right to dismiss — natural gesture for a right-anchored panel.
   const swipe = useSwipe({ onSwipeRight: close });
@@ -224,13 +247,6 @@ export function KdsHamburgerPanel({
           aria-modal="true"
           aria-label={requiredLocalized(l10n, 'kds-settings-aria')}
           {...swipe}
-          onAnimationEnd={() => {
-            if (closing) {
-              setOpen(false);
-              setClosing(false);
-              closeTimerRef.current = null;
-            }
-          }}
         >
           <div className="kds-panel-body">
             {/* ── Display ──────────────────────────────────── */}
@@ -247,7 +263,7 @@ export function KdsHamburgerPanel({
                       aria-label={requiredLocalized(l10n, 'kds-settings-theme-toggle-aria')}
                       data-testid="kds-settings-theme-toggle"
                     >
-                      <span className="kds-theme-indicator" style={{ width: themeCtx.theme === 'dark' ? '33px' : '33px', left: themeCtx.theme === 'dark' ? '3px' : '36px' }} />
+                      <span className="kds-theme-indicator" style={{ left: themeCtx.theme === 'dark' ? '3px' : '36px' }} />
                       <span className={`kds-theme-option${themeCtx.theme === 'dark' ? ' on' : ''}`} aria-label={requiredLocalized(l10n, 'kds-theme-dark-aria')}>
                         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z" /></svg>
                       </span>
@@ -396,7 +412,7 @@ export function KdsHamburgerPanel({
                       />
                       <input
                         type="text"
-                        className="kds-hex-input"
+                        className={`kds-hex-input${hexDraft?.key === key && hexDraft.value && !/^#[0-9a-f]{6}$/i.test(hexDraft.value) ? ' kds-hex-input--invalid' : ''}`}
                         value={hexDraft?.key === key ? hexDraft.value : cardColors[key]}
                         onChange={(e) => {
                           const v = e.target.value;
@@ -410,6 +426,7 @@ export function KdsHamburgerPanel({
                           if (hexDraft?.key === key) setHexDraft(null);
                         }}
                         maxLength={7}
+                        aria-invalid={hexDraft?.key === key && hexDraft.value && !/^#[0-9a-f]{6}$/i.test(hexDraft.value) ? 'true' : undefined}
                         data-testid={`kds-settings-colors-hex-${key}`}
                       />
                     </div>
@@ -442,48 +459,40 @@ export function KdsHamburgerPanel({
                   />
                 </div>
 
-                {/* SLA thresholds */}
-                {(() => {
-                  const yellowMin = 3;
-                  const yellowMax = 30;
-                  const redMin = 4;
-                  const redMax = 60;
-                  return (
-                    <>
-                      <div className="kds-setting-row kds-setting-row--slider">
-                        <div className="kds-slider-header">
-                          <span className="kds-setting-label"><Localized id="kds-settings-yellow">Yellow</Localized></span>
-                          <span className="kds-slider-value kds-slider-value--warning">{l10n.getString('kds-slider-value-min', { min: dragYellow ?? settings.yellowThresholdMin })}</span>
-                        </div>
-                        <KdsSlider
-                          min={yellowMin}
-                          max={yellowMax}
-                          value={settings.yellowThresholdMin}
-                          onChange={onChangeYellowThreshold}
-                          onDragValue={(v) => setDragYellow(v || null)}
-                          color="var(--kds-warning, #fd9426)"
-                          ariaLabel={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
-                        />
-                      </div>
+                {/* SLA thresholds — fixed ranges */}
+                <div className="kds-setting-row kds-setting-row--slider">
+                  <div className="kds-slider-header">
+                    <span className="kds-setting-label"><Localized id="kds-settings-yellow">Yellow</Localized></span>
+                    <span className="kds-slider-value kds-slider-value--warning">{l10n.getString('kds-slider-value-min', { min: dragYellow ?? settings.yellowThresholdMin })}</span>
+                  </div>
+                  <KdsSlider
+                    min={3}
+                    max={30}
+                    value={settings.yellowThresholdMin}
+                    onChange={onChangeYellowThreshold}
+                    onDragValue={(v) => setDragYellow(v || null)}
+                    color="var(--kds-warning, #fd9426)"
+                    ariaLabel={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
+                    ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.yellowThresholdMin })}
+                  />
+                </div>
 
-                      <div className="kds-setting-row kds-setting-row--slider">
-                        <div className="kds-slider-header">
-                          <span className="kds-setting-label"><Localized id="kds-settings-red">Red</Localized></span>
-                          <span className="kds-slider-value kds-slider-value--danger">{l10n.getString('kds-slider-value-min', { min: dragRed ?? settings.redThresholdMin })}</span>
-                        </div>
-                        <KdsSlider
-                          min={redMin}
-                          max={redMax}
-                          value={settings.redThresholdMin}
-                          onChange={onChangeRedThreshold}
-                          onDragValue={(v) => setDragRed(v || null)}
-                          color="var(--kds-danger, #fc3d39)"
-                          ariaLabel={requiredLocalized(l10n, 'kds-settings-red-aria')}
-                        />
-                      </div>
-                    </>
-                  );
-                })()}
+                <div className="kds-setting-row kds-setting-row--slider">
+                  <div className="kds-slider-header">
+                    <span className="kds-setting-label"><Localized id="kds-settings-red">Red</Localized></span>
+                    <span className="kds-slider-value kds-slider-value--danger">{l10n.getString('kds-slider-value-min', { min: dragRed ?? settings.redThresholdMin })}</span>
+                  </div>
+                  <KdsSlider
+                    min={4}
+                    max={60}
+                    value={settings.redThresholdMin}
+                    onChange={onChangeRedThreshold}
+                    onDragValue={(v) => setDragRed(v || null)}
+                    color="var(--kds-danger, #fc3d39)"
+                    ariaLabel={requiredLocalized(l10n, 'kds-settings-red-aria')}
+                    ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.redThresholdMin })}
+                  />
+                </div>
               </div>
             </div>
           </div>

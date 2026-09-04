@@ -9,7 +9,7 @@
 // useFocusTrap (no-op), useSwipe (no-op), KdsCardColorsContext.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { KdsHamburgerPanel } from '@/features/kds/KdsHamburgerPanel';
 import type { KdsSettings } from '@/features/kds/KdsSettingsPanel';
@@ -40,9 +40,13 @@ vi.mock('@/hooks/useFocusTrap', () => ({
   useFocusTrap: () => {},
 }));
 
-// Swipe — return empty handlers.
+// Swipe — capture onSwipeRight so tests can trigger it.
+let mockSwipeRight: (() => void) | null = null;
 vi.mock('@/hooks/useSwipe', () => ({
-  useSwipe: () => ({ onTouchStart: vi.fn(), onTouchEnd: vi.fn() }),
+  useSwipe: (opts: { onSwipeRight?: () => void }) => {
+    mockSwipeRight = opts.onSwipeRight ?? null;
+    return { onTouchStart: vi.fn(), onTouchEnd: vi.fn() };
+  },
 }));
 
 // Card colours context — expose mutable colours + callbacks.
@@ -92,6 +96,7 @@ describe('KdsHamburgerPanel', () => {
     mockTheme = null;
     mockHwAccel = null;
     mockColors = { ...DEFAULT_COLORS_DARK };
+    mockSwipeRight = null;
   });
 
   // ── Open / close ──────────────────────────────────────────────────
@@ -420,6 +425,94 @@ describe('KdsHamburgerPanel', () => {
       mockTheme = 'light';
       await openPanel();
       expect(screen.getByTestId('kds-settings-colors-theme-tag')).toHaveTextContent('light');
+    });
+  });
+
+  // ── Hex input validation ────────────────────────────────────────
+
+  describe('hex input validation', () => {
+    it('shows invalid class and aria-invalid when hex is partial', async () => {
+      const { user } = await openPanel();
+      const hex = screen.getByTestId('kds-settings-colors-hex-dinein');
+      await user.clear(hex);
+      await user.type(hex, '#aabb');
+      expect(hex).toHaveClass('kds-hex-input--invalid');
+      expect(hex).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('removes invalid class when hex becomes valid', async () => {
+      const { user } = await openPanel();
+      const hex = screen.getByTestId('kds-settings-colors-hex-dinein');
+      await user.clear(hex);
+      await user.type(hex, '#aabb');
+      expect(hex).toHaveClass('kds-hex-input--invalid');
+      await user.type(hex, 'cc');
+      expect(hex).not.toHaveClass('kds-hex-input--invalid');
+      expect(hex).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('does not show invalid class for empty input', async () => {
+      const { user } = await openPanel();
+      const hex = screen.getByTestId('kds-settings-colors-hex-dinein');
+      await user.clear(hex);
+      expect(hex).not.toHaveClass('kds-hex-input--invalid');
+    });
+  });
+
+  // ── Slider aria-valuetext ───────────────────────────────────────
+
+  describe('slider aria-valuetext', () => {
+    it('yellow slider has aria-valuetext with minutes', async () => {
+      await openPanel({ settings: { ...DEFAULTS, yellowThresholdMin: 7 } });
+      const slider = screen.getByRole('slider', { name: /yellow/i });
+      expect(slider).toHaveAttribute('aria-valuetext', '7 minutes');
+    });
+
+    it('red slider has aria-valuetext with minutes', async () => {
+      await openPanel({ settings: { ...DEFAULTS, redThresholdMin: 15 } });
+      const slider = screen.getByRole('slider', { name: /red/i });
+      expect(slider).toHaveAttribute('aria-valuetext', '15 minutes');
+    });
+  });
+
+  // ── Click outside dismiss ───────────────────────────────────────
+
+  describe('click outside dismiss', () => {
+    it('closes panel when clicking outside', async () => {
+      const { user } = await openPanel();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      await user.click(document.body);
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  // ── Swipe dismiss ──────────────────────────────────────────────
+
+  describe('swipe dismiss', () => {
+    it('closes panel when swipe right fires', async () => {
+      await openPanel();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      mockSwipeRight?.();
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  // ── Close animation ─────────────────────────────────────────────
+
+  describe('close animation', () => {
+    it('applies kds-drop-out class during closing phase', async () => {
+      const { user } = await openPanel();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      // Trigger close via hamburger button
+      await user.click(screen.getByTestId('kds-topbar-settings'));
+      // Panel should unmount after animation timeout
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
     });
   });
 });
