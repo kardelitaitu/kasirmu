@@ -66,6 +66,15 @@ step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.p
 # toolchain deps, so it stays fast.
 step "no-hardcoded-money-format" "python3 scripts/verify-no-hardcoded-money-format.py" python3 scripts/verify-no-hardcoded-money-format.py
 
+# ── Test shadow-copy gate ──────────────────────────────────────────────
+# A test file that redeclares a production function and asserts against its
+# own copy cannot fail, no matter what the real code does. Five such suites
+# were found in one sweep; one of them (KdsAutoAcceptLogic) had copied the
+# in-flight guard onto the wrong field and annotated it "simplified", so its
+# test named "rejects when order is in-flight" validated a rule the app does
+# not implement. Pure python, no toolchain deps.
+step "test shadow copies" "python3 scripts/verify-test-shadow-copies.py" python3 scripts/verify-test-shadow-copies.py
+
 # Workspace-wide test via cargo-nextest — runs each test in its own process
 # for 4.5× faster re-runs after compilation. Also run doctests separately
 # because nextest does not execute them. Falls back to cargo test if nextest

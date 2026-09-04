@@ -134,6 +134,13 @@
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
+      "id": "test-shadow-copies",
+      "label": "Test shadow copies",
+      "status": "required",
+      "_note": "Added 0.0.37. scripts/verify-test-shadow-copies.py fails when a test file redeclares a top-level production function it does not import AND the two bodies are similar (Jaccard >= 0.50 on non-keyword tokens). Five such suites were removed in 1c153ef7, 80216a2e, b270aba2, 314b7783, a695d3af and 314b7783's was the proof this is not cosmetic: its copied in-flight guard keyed on order.status where production keys on order.id, the author annotated the difference 'simplified', and the test named for that guard passed against a rule the app never had. Ships with --self-test (four cases, including an empty-corpus case that refuses to report clean) because a static gate with no liveness case is indistinguishable from one that passes. Local-only: pure python with no toolchain deps, so promoting it to dev-ci.yml#static-gates alongside no-hardcoded-money-format is a one-step change.",
+      "runners": { "check.sh": ["test shadow copies"] }
+    },
+    {
       "id": "docker-dry-run",
       "label": "Docker build smoke (--docker-dry-run)",
       "status": "required",
