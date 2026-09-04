@@ -1,17 +1,22 @@
 // Unit tests for course group done-count and allDone — the pure logic
 // that determines whether all items in a course group are completed.
+//
+// itemDone was redeclared here with a DIFFERENT signature than the real one: the copy took
+// an `item_status: string`, while KdsTicketCard.tsx:101 exports `itemDone(item: KdsLineItem)`
+// and the component calls it as `group.items.filter(itemDone)` at :344. Importing the real
+// function costs nothing because the fixtures already carry `item_status`, so the wrappers
+// below now read exactly like the component.
 
 import { describe, it, expect } from 'vitest';
+import { itemDone } from '@/features/kds/components/KdsTicketCard';
 
-function itemDone(item_status: string): boolean {
-  return item_status === 'served' || item_status === 'cancelled';
+type Item = { item_status: string };
+
+function courseDoneCount(items: Item[]): number {
+  return items.filter(itemDone).length;
 }
 
-function courseDoneCount(items: { item_status: string }[]): number {
-  return items.filter((i) => itemDone(i.item_status)).length;
-}
-
-function courseAllDone(items: { item_status: string }[]): boolean {
+function courseAllDone(items: Item[]): boolean {
   return courseDoneCount(items) === items.length;
 }
 

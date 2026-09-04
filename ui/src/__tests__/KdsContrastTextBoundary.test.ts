@@ -1,17 +1,14 @@
 // Unit tests for contrastText — edge cases around the 0.55 luminance
 // boundary and unusual hex inputs.
+//
+// The copy below was byte-for-byte identical to kdsCardColors.ts:65, which is ALREADY
+// `export function contrastText` -- so the correct import was available and unused. A
+// faithful copy is the worst case for this pattern: it passes today and silently diverges
+// on the first edit to the real function, with nothing left to tell the two apart.
+// Detected by scripts/verify-test-shadow-copies.py at similarity 1.000.
 
 import { describe, it, expect } from 'vitest';
-
-/** Same contrastText logic as kdsCardColors.ts. */
-function contrastText(hex: string): string {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.substring(0, 2), 16) / 255;
-  const g = parseInt(h.substring(2, 4), 16) / 255;
-  const b = parseInt(h.substring(4, 6), 16) / 255;
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  return lum > 0.55 ? '#1a1a1a' : '#e6e6e6';
-}
+import { contrastText } from '@/features/kds/kdsCardColors';
 
 describe('contrastText boundaries', () => {
   // Luminance = 0.299*(r/255) + 0.587*(g/255) + 0.114*(b/255)

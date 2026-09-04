@@ -97,8 +97,15 @@ export function groupByCourse(items: KdsLineItem[]): { course: string | null; it
   return ordered;
 }
 
-/** An item is "done" when it has been served (or cancelled — off the board). */
-export function itemDone(item: KdsLineItem): boolean {
+/**
+ * An item is "done" when it has been served (or cancelled — off the board).
+ *
+ * Takes the structural minimum rather than a full KdsLineItem: the body reads exactly one
+ * field, and the wider `Pick<...>` accepts every KdsLineItem unchanged while letting callers
+ * (and tests) pass a fixture without inventing unrelated fields. This is a widening, not a
+ * behaviour change -- both production call sites pass real items.
+ */
+export function itemDone(item: Pick<KdsLineItem, 'item_status'>): boolean {
   return item.item_status === 'served' || item.item_status === 'cancelled';
 }
 
