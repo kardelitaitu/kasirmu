@@ -474,34 +474,55 @@ function SettingsPageContent() {
     // overwrites the user's currency selection with the initial value).
     const syncedStore = { ...store, currency: defaultCurrency };
 
-    const results = await Promise.allSettled([
-      setReceiptSettingsScoped(sessionToken ?? '', receipt),
-      setStoreSettingsScoped(sessionToken ?? '', syncedStore),
-      setCtxCurrency(defaultCurrency),
+    // Every save is named, and each later decision looks its result up BY NAME.
+    //
+    // This block previously read `results[0]` through `results[6]` -- seven positional
+    // indices into the array literal. Adding a setting is the natural edit to make here,
+    // and it shifts every index after it with nothing to notice: `changedKeys` would then
+    // tell SettingsContext that the WRONG keys were updated (so other components refetch
+    // the wrong data and the real change stays stale), and the sync DTO block below would
+    // gate on an unrelated call's success. Named lookup makes an insertion harmless.
+    //
+    // Promises are created in the same order as before, so concurrency and side-effect
+    // sequencing are unchanged.
+    const saveTasks: Array<readonly [string, Promise<unknown>]> = [
+      ['receipt', setReceiptSettingsScoped(sessionToken ?? '', receipt)],
+      ['store', setStoreSettingsScoped(sessionToken ?? '', syncedStore)],
+      ['currency', setCtxCurrency(defaultCurrency)],
       // Scoped write matches the scoped read in SettingsContext: the
       // unscoped variant writes the global DB while every consumer reads
       // the store-scoped user_preferences table, so unscoped writes would
       // silently vanish on the next reload.
-      sessionToken
-        ? setUserPreferencesScoped(sessionToken, [
-            { key: 'cardsize', value: String(displayCardSize) },
-            { key: 'fontsize', value: String(displayFontSize) },
-            { key: 'font-smoothing', value: displayFontSmoothing },
-          ])
-        : Promise.resolve(),
-      updateSyncSettingsScoped(sessionToken ?? '', {
-        serverUrl: syncServerUrl || null,
-        ...(syncApiKey ? { apiKey: syncApiKey } : {}),
-        enabled: sync.enabled,
-      }),
-      setBrandPrimaryColour(brandColour),
-      setBrandStoreNameApi(brandStoreName),
-    ]);
+      [
+        'prefs',
+        sessionToken
+          ? setUserPreferencesScoped(sessionToken, [
+              { key: 'cardsize', value: String(displayCardSize) },
+              { key: 'fontsize', value: String(displayFontSize) },
+              { key: 'font-smoothing', value: displayFontSmoothing },
+            ])
+          : Promise.resolve(),
+      ],
+      [
+        'sync',
+        updateSyncSettingsScoped(sessionToken ?? '', {
+          serverUrl: syncServerUrl || null,
+          ...(syncApiKey ? { apiKey: syncApiKey } : {}),
+          enabled: sync.enabled,
+        }),
+      ],
+      ['brandColour', setBrandPrimaryColour(brandColour)],
+      ['brandName', setBrandStoreNameApi(brandStoreName)],
+    ];
 
-    const failed = results.filter((r) => r.status === 'rejected').length;
+    const settled = await Promise.allSettled(saveTasks.map(([, task]) => task));
+    const saveResult = (name: string): boolean =>
+      settled[saveTasks.findIndex(([k]) => k === name)]?.status === 'fulfilled';
+
+    const failed = settled.filter((r) => r.status === 'rejected').length;
 
     // At least one save succeeded — show confirmation and refresh.
-    if (failed < results.length) {
+    if (failed < saveTasks.length) {
       setIsDirty(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -513,7 +534,7 @@ function SettingsPageContent() {
       // until the next page reload, causing placeholder regressions
       // like "Enter API key" after saving a new key or a blank server
       // URL field after saving a URL.
-      if (results[4]?.status === 'fulfilled') {
+      if (saveResult('sync')) {
         if (syncApiKey) {
           // Mirror the token to the shared IPC channel so the
           // Retail Options screen (useCloudSync) can load it.
@@ -546,21 +567,23 @@ function SettingsPageContent() {
       };
     }
 
-    if (failed === results.length) {
+    if (failed === saveTasks.length) {
       addToast({ message: l10n.getString('settings-save-error'), type: 'error' });
     } else if (failed > 0) {
       addToast({ message: l10n.getString('settings-save-partial'), type: 'error' });
     }
 
-    // Notify SettingsContext so other components reflect the changes
+    // Notify SettingsContext so other components reflect the changes. Keyed by name for
+    // the reason given at saveTasks: a positional list here would silently attribute the
+    // wrong keys to the wrong save the moment one is inserted.
     const changedKeys: string[] = [];
-    if (results[0]?.status === 'fulfilled') changedKeys.push('receipt.footer', 'receipt.showCurrency', 'receipt.showTax', 'receipt.paperWidth', 'receipt.showTableNumber', 'receipt.decimalSeparator');
-    if (results[1]?.status === 'fulfilled') changedKeys.push('store.name', 'store.address', 'store.taxId', 'store.branch', 'store.currency');
-    if (results[2]?.status === 'fulfilled') changedKeys.push('currency.default');
-    if (results[3]?.status === 'fulfilled') changedKeys.push('prefs.cardsize', 'prefs.fontsize', 'prefs.font-smoothing');
-    if (results[4]?.status === 'fulfilled') changedKeys.push('sync.serverUrl', 'sync.apiKey', 'sync.enabled');
-    if (results[5]?.status === 'fulfilled') changedKeys.push('brand.primary_colour');
-    if (results[6]?.status === 'fulfilled') changedKeys.push('brand.store_name');
+    if (saveResult('receipt')) changedKeys.push('receipt.footer', 'receipt.showCurrency', 'receipt.showTax', 'receipt.paperWidth', 'receipt.showTableNumber', 'receipt.decimalSeparator');
+    if (saveResult('store')) changedKeys.push('store.name', 'store.address', 'store.taxId', 'store.branch', 'store.currency');
+    if (saveResult('currency')) changedKeys.push('currency.default');
+    if (saveResult('prefs')) changedKeys.push('prefs.cardsize', 'prefs.fontsize', 'prefs.font-smoothing');
+    if (saveResult('sync')) changedKeys.push('sync.serverUrl', 'sync.apiKey', 'sync.enabled');
+    if (saveResult('brandColour')) changedKeys.push('brand.primary_colour');
+    if (saveResult('brandName')) changedKeys.push('brand.store_name');
     if (changedKeys.length > 0) {
       settingsCtx.markSettingsUpdated(changedKeys);
     }
