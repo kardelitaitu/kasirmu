@@ -10,6 +10,18 @@ const mocks = vi.hoisted(() => ({
   onBarcodeError: vi.fn(),
   listScanners: vi.fn(),
   lookupByBarcode: vi.fn(),
+  // The scoped twins. useBarcodeScanner picks its API per call with
+  //   sessionToken ? () => xScoped(sessionToken, ...) : x
+  // at :63, :71, :83 and :117 -- added by 403030ad ("migrate remaining frontend
+  // components to scoped APIs"), which did not touch this file. Without these keys the
+  // mocked module has no such export, so any test that passed a sessionToken would call
+  // undefined and throw "xScoped is not a function": all four scoped branches were
+  // unrenderable, not merely uncovered. Same defect as WeightScaleWidget.test.tsx, fixed
+  // in 65971d0f, found by scanning for subjects that call a name their test omits.
+  startScannerScoped: vi.fn(),
+  stopScannerScoped: vi.fn(),
+  listScannersScoped: vi.fn(),
+  lookupByBarcodeScoped: vi.fn(),
 }));
 
 vi.mock('@/api/hardware', () => ({
@@ -18,10 +30,14 @@ vi.mock('@/api/hardware', () => ({
   onBarcodeScanned: (...args: unknown[]) => mocks.onBarcodeScanned(...args),
   onBarcodeError: (...args: unknown[]) => mocks.onBarcodeError(...args),
   listScanners: (...args: unknown[]) => mocks.listScanners(...args),
+  startScannerScoped: (...args: unknown[]) => mocks.startScannerScoped(...args),
+  stopScannerScoped: (...args: unknown[]) => mocks.stopScannerScoped(...args),
+  listScannersScoped: (...args: unknown[]) => mocks.listScannersScoped(...args),
 }));
 
 vi.mock('@/api/products', () => ({
   lookupByBarcode: (...args: unknown[]) => mocks.lookupByBarcode(...args),
+  lookupByBarcodeScoped: (...args: unknown[]) => mocks.lookupByBarcodeScoped(...args),
 }));
 
 function makeOpts(overrides: Record<string, unknown> = {}) {
@@ -40,6 +56,12 @@ beforeEach(() => {
   mocks.onBarcodeScanned.mockResolvedValue(() => {});
   mocks.onBarcodeError.mockResolvedValue(() => {});
   mocks.lookupByBarcode.mockResolvedValue({ sku: 'LATTE', name: 'Latte' });
+  // Scoped twins default to the same shapes, so a scoped-path test differs from an
+  // unscoped one only in which mock records the call.
+  mocks.listScannersScoped.mockResolvedValue([{ id: 'scanner-1' }]);
+  mocks.startScannerScoped.mockResolvedValue(undefined);
+  mocks.stopScannerScoped.mockResolvedValue(undefined);
+  mocks.lookupByBarcodeScoped.mockResolvedValue({ sku: 'LATTE', name: 'Latte' });
 });
 
 afterEach(() => {
@@ -228,6 +250,70 @@ describe('useBarcodeScanner', () => {
 
       expect(mocks.startScanner).toHaveBeenCalledWith('scanner-2');
       await vi.waitFor(() => {});
+    });
+  });
+
+  // ── Scoped vs unscoped API selection ───────────────────────────
+  //
+  // Four branches, one per operation, each choosing by the presence of sessionToken:
+  //   :63  start   :71  stop   :83  lookup   :117  listScanners
+  // None of them could be exercised before this block: the mock module did not export the
+  // scoped names at all, so a test that passed a token threw "xScoped is not a function"
+  // rather than failing an assertion.
+
+  describe('scoped vs unscoped API selection', () => {
+    it('starts and lists through the scoped API when a session token is given', async () => {
+      await renderHookInAct(() => useBarcodeScanner(makeOpts({ sessionToken: 'tok-1' })));
+
+      // The token has to reach the command or the backend cannot resolve a store.
+      expect(mocks.listScannersScoped).toHaveBeenCalledWith('tok-1');
+      expect(mocks.startScannerScoped).toHaveBeenCalledWith('tok-1', 'scanner-1');
+      // And the unscoped pair must stay untouched: those read the ambient store, which is
+      // precisely what the scoped migration exists to prevent.
+      expect(mocks.listScanners).not.toHaveBeenCalled();
+      expect(mocks.startScanner).not.toHaveBeenCalled();
+    });
+
+    it('stops through the scoped API on unmount when a token was given', async () => {
+      const { unmount } = await renderHookInAct(
+        () => useBarcodeScanner(makeOpts({ sessionToken: 'tok-1' })));
+
+      unmount();
+
+      expect(mocks.stopScannerScoped).toHaveBeenCalledWith('tok-1');
+      expect(mocks.stopScanner).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the unscoped API when no token is given', async () => {
+      await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+
+      expect(mocks.listScanners).toHaveBeenCalled();
+      expect(mocks.startScanner).toHaveBeenCalledWith('scanner-1');
+      expect(mocks.listScannersScoped).not.toHaveBeenCalled();
+      expect(mocks.startScannerScoped).not.toHaveBeenCalled();
+    });
+
+    it('looks up a scanned barcode through the scoped API when a token is given', async () => {
+      // Added after per-branch sabotage: the first three tests here left :83 unguarded.
+      // Flipping that one ternary to the unscoped path changed nothing, which a single
+      // all-at-once sabotage would have hidden behind three passing assertions.
+      await renderHookInAct(() => useBarcodeScanner(makeOpts({ sessionToken: 'tok-1' })));
+
+      const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
+      await scanHandler({ code: '1234567890', scannerId: 'scanner-1' });
+
+      expect(mocks.lookupByBarcodeScoped).toHaveBeenCalledWith('tok-1', '1234567890');
+      expect(mocks.lookupByBarcode).not.toHaveBeenCalled();
+    });
+
+    it('looks up through the unscoped API when no token is given', async () => {
+      await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+
+      const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
+      await scanHandler({ code: '1234567890', scannerId: 'scanner-1' });
+
+      expect(mocks.lookupByBarcode).toHaveBeenCalledWith('1234567890');
+      expect(mocks.lookupByBarcodeScoped).not.toHaveBeenCalled();
     });
   });
 });
