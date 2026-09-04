@@ -8,7 +8,6 @@ import {
   type SaleListItem,
   type SaleDetail,
 } from '@/api/sales';
-import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { formatMoney } from '@/types/domain';
 import { Card } from '@/components/Card';
@@ -74,7 +73,6 @@ interface VoidOrdersScreenProps {
 /** Void orders screen — lists active, completed, and pending sales with reason selection and manager-authorised voiding. */
 export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProps) {
   const { l10n } = useLocalization();
-  const { session } = useAuth();
   const { sessionToken } = useWorkspace();
 
   // Data
@@ -199,7 +197,16 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
     } finally {
       setVoiding(false);
     }
-  }, [activeSaleId, detail, voidReason, customReason, session?.user_id, l10n]);
+    // sessionToken is read at :189 and was missing; session?.user_id was listed but is never
+    // read anywhere in this body, so it is dropped -- eslint only reported the missing token
+    // until the token was added, because the rule surfaces one problem per hook. Same shape as
+    // SalesHistoryScreen.handleConfirmVoid, and the same audit-trail consequence: a void
+    // presented under a stale session is recorded against the wrong cashier.
+    //
+    // Separate gap, deliberately not touched here: :195 calls the UNSCOPED getSale() from a
+    // screen that otherwise routes through the scoped API, so it reads the ambient store rather
+    // than the session's. That is an ADR #7 omission, not a stale closure.
+  }, [activeSaleId, detail, voidReason, customReason, l10n, sessionToken]);
 
 
   const openDetail = useCallback((id: string) => {

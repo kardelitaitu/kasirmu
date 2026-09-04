@@ -273,7 +273,14 @@ export default function SalesHistoryScreen() {
     } finally {
       setVoiding(false);
     }
-  }, [voidTarget, voidReason, session, load, l10n, invalidateCache]);
+    // sessionToken is read at :266 and was missing. `session` was in the array but is never
+    // read in this body -- eslint only reported the missing token until the token was added,
+    // because the rule surfaces one problem per hook, so the unnecessary dep was latent behind
+    // it. `session` comes from useAuth() at :163 (staff identity) and is a different value from
+    // useWorkspace()'s sessionToken at :164; listing one never covered the other. A void is an
+    // audit-trail event: a stale token either fails the permission check outright or, if the old
+    // session were still live, attributes the void to the previous cashier.
+  }, [voidTarget, voidReason, load, l10n, invalidateCache, sessionToken]);
 
   // ── Client-side filtering + sorting ────────────────────────────
   const filteredSales = useMemo(() => {
@@ -433,7 +440,12 @@ export default function SalesHistoryScreen() {
     } finally {
       setPrinting(false);
     }
-  }, [detail, l10n]);
+    // sessionToken is read at :406. Because the catch above deliberately swallows everything,
+    // this is the quietest failure in the set: after a hot-swap the reprint presents a dead
+    // token, the call rejects, and the UI shows nothing at all -- no toast, no error, just a
+    // button that stops doing anything. Listing the token at least makes the next attempt use
+    // a live one.
+  }, [detail, l10n, sessionToken]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {
