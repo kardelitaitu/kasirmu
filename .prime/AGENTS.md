@@ -1,6 +1,6 @@
 # Agents Configuration
 
-<!-- Audit stamp: 2026-09-04 · DSH · status: ACCURATE · version lock: 0.0.37 · 8 pre-commit gates · re-audited from the 2026-07-25 Hermes-Agent stamp (that audit resolved A1: version lock and manifests all read 0.0.21, and its "4 pre-commit gates" was accurate then — gates 6, 7 and 8 landed afterwards and this file never followed) -->
+<!-- Audit stamp: 2026-09-04 · DSH · status: ACCURATE · version lock: 0.0.37 · 9 pre-commit gates · re-audited from the 2026-07-25 Hermes-Agent stamp (that audit resolved A1: version lock and manifests all read 0.0.21, and its "4 pre-commit gates" was accurate then — gates 6, 7 and 8 landed afterwards and this file never followed) -->
 
 ## Global Rules
 
@@ -13,10 +13,10 @@
 ## Quick Setup
 
 ```bash
-git config core.hooksPath .githooks   # enable pre-commit hook (fmt + EOL + i18n + bundle-parity + FTL dedupe + column types + PG drift + Go)
+git config core.hooksPath .githooks   # enable pre-commit hook (fmt + EOL + i18n + bundle-parity + FTL dedupe + column types + PG drift + Go + ui typecheck)
 ```
 
-The `.githooks/pre-commit` hook runs **eight steps** before every commit (~5–7s typical):
+The `.githooks/pre-commit` hook runs **nine steps** before every commit (~5–7s typical):
 
 1. **`cargo fmt --all`** — auto-formats Rust and re-stages what it changed.
 2. **Line-ending normalization** — strips CR from staged text files in the working tree and index and re-stages them, so the committed blob is LF (backs `.gitattributes` `* text=auto eol=lf`). Skips files whose effective `eol` is `crlf` (`*.bat`/`*.cmd` — the working tree must stay CRLF for cmd.exe) and real binaries (`grep -qI`; `text=auto` reports "auto" for PNGs too, and stripping their CRs destroys the signature). Both exclusions were missing until 0.0.36; `scripts/test-eol-guard.sh` guards them.
@@ -26,6 +26,7 @@ The `.githooks/pre-commit` hook runs **eight steps** before every commit (~5–7
 6. **`Migration column-type lint`** — `scripts/verify-migration-column-types.py --staged-only`, when `crates/oz-core/migrations/*.sql` is staged.
 7. **`PG schema drift guard`** — `scripts/generate-pg-migration.py --check`; `20260813_init.pg.sql` is generated, never hand-edited.
 8. **`Go gate`** — `gofmt -w` + `go vet ./...` when `apps/license-server/*.go` is staged.
+9. **`UI typecheck`** — when the commit stages `ui/src/*.ts` or `ui/src/*.tsx`: `npm run typecheck` (~21s), hard fail. Added in 0.0.37 after ten commits landed with HEAD failing `tsc --noEmit`: Vitest injects describe/it/expect/beforeEach/vi at runtime, so a test file that forgets to import one passes `npm run test` and only fails `tsc`. `OZPOS_SKIP_TYPECHECK=1` skips this step alone; prefer it to `--no-verify`, which skips all nine. `scripts/test-typecheck-gate.sh` proves the live step still fires.
 
 Without `core.hooksPath` set, all eight are bypassed at commit time — but CI now covers **all eight**. The live `dev-ci.yml` `i18n` job runs **`lint-i18n.sh` as a hard failure** (not informational) and **`dedupe-ftl.py --dry-run`**. **Migration column types and PG schema drift are no longer in the uncovered list**: they lived in `ci.yml`, were retired to `.bak` by `23c96330`, and were restored into `dev-ci.yml#static-gates` in **0.0.37** — until then the opt-in hook was their only guard, and they had no `gates.json` record either, so the drift checker could not report a gate it never saw. CI runs the column-type check without `--staged-only`, so it scans all 28 migration files rather than only the ones a commit touched. **Go** has been CI-backed since 0.0.36 (`13f2a1dc`): `dev-ci.yml#static-gates` runs `gofmt -l`, `go vet ./...` and `go test -short` on `apps/license-server` — note CI uses report-only `gofmt -l` where the hook runs `gofmt -w` and re-stages, so an unformatted commit is rejected by CI rather than fixed. **Every one of the eight now has a CI backstop.** `verify-bundle-parity.py` (step 4) was the last holdout and is covered since 0.0.37 by `dev-ci.yml#static-gates`, running without `--staged-only` and with `--scan-dirs features,components,frontend,contexts,hooks,platform` — the flag is load-bearing, since the tool defaults to `features` alone and the six directories add 108 files (228 → 336).
 

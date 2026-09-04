@@ -252,7 +252,17 @@ def local_only_claims(text: str) -> list[str]:
     """
     out: list[str] = []
     for m in LOCAL_ONLY_RE.finditer(text):
-        window = text[max(0, m.start() - 140):m.start()]
+        # A fixed 140-character lookback crosses paragraph boundaries, and the subject is
+        # then recovered from the previous block's trailing prose. Observed after the hook
+        # gained a ninth step: in .agents/AGENTS.md the window began inside the preceding
+        # step-9 sentence, so the "subject" came out as
+        # "proves the live step still fires.\n\n> ✅ all nine steps now have a ci backstop…",
+        # which matches no known check and was silently dropped -- turning a real finding
+        # into zero findings. Clamp to the start of the current paragraph.
+        para_start = text.rfind("\n\n", 0, m.start())
+        floor = (para_start + 2) if para_start != -1 else 0
+        begin = max(floor, m.start() - 140)
+        window = text[begin:m.start()]
         sentence = window + m.group(0) + text[m.end():m.end() + 140]
         if LOCAL_ONLY_EXEMPT.search(sentence):
             continue
@@ -464,27 +474,49 @@ def report(root: Path) -> int:
 
 # ── Self-test: mutate a copy and prove each check fires ─────────────────────
 
+def _retarget_ci_claim(text, replacement):
+    """Rewrite the "All <N> steps now have a CI backstop" sentence, whatever N is.
+
+    Hardcoding "eight" here broke all three mutations below the day the hook gained a ninth
+    step: the anchor stopped matching, each replace() became a no-op, and the vacuous-mutation
+    guard correctly reported WRONG. That guard is what makes this table trustworthy, so the
+    fix is to stop anchoring on a value the mirrors are expected to change, not to re-pin it.
+    """
+    pat = re.compile(r"All ((?:eight|nine|ten|eleven|twelve|[a-z]+)) steps now have a CI backstop")
+    if not pat.search(text):
+        return text
+    return pat.sub(lambda m: replacement.replace("{N}", m.group(1)), text, count=1)
+
+
 MUTATIONS = [
     # Anchors here must be text that EXISTS in the current mirrors. The first
     # version of this entry pointed at "Steps 6 and 7 are local-only", which I
     # deleted when those steps got CI steps -- so the mutation changed nothing and
     # the vacuous-mutation guard reported WRONG rather than letting a no-op count
     # as a pass. That guard is the reason this table can be trusted at all.
+    # Everything below now matches on a pattern rather than a literal count word, for
+    # exactly that reason.
     ("false CI-coverage claim restored (negation phrasing)",
-     lambda t: t.replace(
-         "All eight steps now have a CI backstop",
+     lambda t: _retarget_ci_claim(
+         t,
          "Steps 6 and 7 are local-only; there is no CI job for migration column "
-         "types or PG schema drift. All eight steps now have a CI backstop", 1),
+         "types or PG schema drift. All {N} steps now have a CI backstop"),
      "no CI"),
     ("false local-only claim (participial phrasing)",
-     lambda t: t.replace(
-         "All eight steps now have a CI backstop",
-         "All eight steps now have a CI backstop. The remaining gap is "
+     lambda t: _retarget_ci_claim(
+         t,
+         "All {N} steps now have a CI backstop. The remaining gap is "
          "`verify-migration-column-types.py`, still guarded only by the opt-in "
-         "local hook", 1),
-     "only by the local hook"),
+         "local hook"),
+     # The harness matches this against the FINDING message
+     # (`AGENTS.md: says "verify-migration-column-types.py" is guarded only by ...`), not
+     # against the mutated document. It previously read "only by the local hook", which is
+     # not a substring of the inserted text either ("only by the opt-in local hook"), so a
+     # real catch was being reported as MISSED.
+     "verify-migration-column-types.py"),
     ("gate count off by one",
-     lambda t: t.replace("runs **eight steps**", "runs **six steps**", 1),
+     lambda t: re.sub(r"runs \*\*(?:eight|nine|ten|[a-z]+) steps\*\*",
+                      "runs **six steps**", t, count=1),
      "pre-commit steps"),
     ("version lock removed",
      lambda t: re.sub(r"locked at `[\d.]+`", "locked at `0.0.1`", t),
@@ -524,7 +556,8 @@ MUTATIONS_BY_MIRROR: dict[str, list] = {
              "opt-in local hook.", 1),
          "only by the local hook"),
         ("gate count off by one",
-         lambda t: t.replace("runs **eight steps**", "runs **five steps**", 1),
+         lambda t: re.sub(r"runs \*\*(?:eight|nine|ten|[a-z]+) steps\*\*",
+                          "runs **five steps**", t, count=1),
          "pre-commit steps"),
         ("version lock removed",
          lambda t: re.sub(r"locked at the current release \(`[\d.]+`\)",
