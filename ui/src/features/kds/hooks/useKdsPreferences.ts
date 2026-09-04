@@ -26,7 +26,14 @@ const DEFAULTS: KdsPreferences = {
   acknowledgeDelayMin: 2,
 };
 
-const STORAGE_KEY_PREFIX = 'oz-kds-prefs-';
+/**
+ * Exported for testing. KdsPreferencesReadLocalPrefs.test.ts declared its own copy -- and
+ * unlike a copied function, a copied storage key fails in the least visible way possible:
+ * the test writes and reads through its own constant, so it stays green forever while
+ * production reads a different key. It survives a rename of the real value with nothing to
+ * catch it, because both sides of the assertion come from the same copy.
+ */
+export const STORAGE_KEY_PREFIX = 'oz-kds-prefs-';
 
 /**
  * Read KDS preferences from localStorage, or null if missing/invalid.

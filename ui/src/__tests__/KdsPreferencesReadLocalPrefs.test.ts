@@ -8,11 +8,29 @@
 // imported here, so these tests exercise the code that actually ships.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readLocalPrefs } from '@/features/kds/hooks/useKdsPreferences';
-
-const STORAGE_KEY_PREFIX = 'oz-kds-prefs-';
+import {
+  readLocalPrefs,
+  STORAGE_KEY_PREFIX,
+} from '@/features/kds/hooks/useKdsPreferences';
 
 describe('readLocalPrefs', () => {
+  // The round-trip tests below cannot detect a change to STORAGE_KEY_PREFIX: they write
+  // through the imported constant and read through the same one, so both sides move
+  // together and everything stays green. That is a real blind spot -- renaming the key
+  // orphans every user's saved preferences in the wild, and no behavioural test can see
+  // it. Pinning the literal is what turns a rename into a conscious act.
+  it('pins the localStorage key so a rename is a deliberate change', () => {
+    expect(STORAGE_KEY_PREFIX).toBe('oz-kds-prefs-');
+  });
+
+  it('reads only the per-user key, never a sibling user\'s', () => {
+    localStorage.setItem(STORAGE_KEY_PREFIX + 'user-1', JSON.stringify({ layout: 'kanban' }));
+    localStorage.setItem('oz-kds-prefs-user-2', JSON.stringify({ layout: 'metro' }));
+    expect(readLocalPrefs('user-1')!.layout).toBe('kanban');
+    // A different prefix in production would make this read miss and return null.
+    expect(readLocalPrefs('user-2')!.layout).toBe('metro');
+  });
+
   beforeEach(() => {
     localStorage.clear();
   });

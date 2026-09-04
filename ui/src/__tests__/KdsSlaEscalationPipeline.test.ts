@@ -1,21 +1,24 @@
 // Unit tests for the full SLA escalation pipeline — combining
 // computeLevel with the urgent flag to verify the complete
 // green→yellow→red→red-urgent progression.
+//
+// computeLevel was already imported, but RED_URGENT, the urgent predicate and the default
+// thresholds were all redeclared here. DEFAULTS in particular is a byte-identical copy of
+// the already-exported DEFAULT_SLA_THRESHOLDS under a different name -- which is why a
+// name-matching detector cannot find every copy, and why the value comparison in
+// scripts/verify-test-shadow-copies.py's const pass is what surfaced this one.
 
 import { describe, it, expect } from 'vitest';
-import { computeLevel } from '@/features/kds/hooks/useTicketSla';
+import {
+  computeLevel,
+  isSlaUrgent,
+  DEFAULT_SLA_THRESHOLDS as DEFAULTS,
+} from '@/features/kds/hooks/useTicketSla';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
-
-const RED_URGENT = 900;
-const DEFAULTS: SlaThresholds = { yellowAtSec: 300, redAtSec: 600 };
-
-function isUrgent(elapsed: number): boolean {
-  return elapsed >= RED_URGENT;
-}
 
 function classify(elapsed: number, t: SlaThresholds = DEFAULTS) {
   const level = computeLevel(elapsed, t);
-  const urgent = isUrgent(elapsed);
+  const urgent = isSlaUrgent(elapsed);
   return { level, urgent };
 }
 

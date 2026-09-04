@@ -66,13 +66,46 @@ export function fmtDuration(seconds: number): string {
 /** Course display order — items without a course map to "other" at the end. */
 const COURSE_ORDER = ['appetizer', 'main', 'side', 'dessert', 'beverage'] as const;
 
-const COURSE_L10N_KEYS: Record<string, string> = {
+/**
+ * Exported for testing. KdsTicketCardCourseLabel.test.ts redeclared this map value for
+ * value, alongside its own courseLabel(); a copied lookup table passes forever, because
+ * both the input and the expectation come from the same file.
+ */
+export const COURSE_L10N_KEYS: Record<string, string> = {
   appetizer: 'kds-course-appetizer',
   main: 'kds-course-main',
   side: 'kds-course-side',
   dessert: 'kds-course-dessert',
   beverage: 'kds-course-beverage',
 };
+
+/**
+ * The fluent key for a course, or the "other" fallback.
+ *
+ * The pure half of the component's courseLabel callback, which wraps this in
+ * requiredLocalized(). Extracted so the mapping can be tested without a localization
+ * context -- the previous suite reproduced the mapping by hand and labelled the copy
+ * "(without l10n)", which is exactly the kind of near-equivalent copy that drifts.
+ */
+export function courseL10nKey(course: string | null): string {
+  if (!course) return 'kds-course-other';
+  return COURSE_L10N_KEYS[course] ?? 'kds-course-other';
+}
+
+/**
+ * Card header background: dine-in colour when the ticket has a table, takeaway otherwise.
+ *
+ * Extracted from the inline ternary in the component body, which
+ * KdsTicketCardCourseLabel.test.ts had copied as its own headerBg(). Like the SLA clamp,
+ * production had no name for this expression, so a name-matching detector cannot see the
+ * copy at all -- naming it is the only way it becomes testable rather than re-invented.
+ */
+export function headerBg(
+  tableNumber: string | null,
+  colors: { dinein: string; takeaway: string },
+): string {
+  return tableNumber ? colors.dinein : colors.takeaway;
+}
 
 /** Group line items by course, preserving course order. Returns entries in display order. */
 export function groupByCourse(items: KdsLineItem[]): { course: string | null; items: KdsLineItem[] }[] {
@@ -277,18 +310,14 @@ export const KdsTicketCard = memo(function KdsTicketCard({
   };
 
   // ── Course label resolver ────────────────────────────────────────
-  const courseLabel = useCallback((course: string | null): string => {
-    if (!course) return requiredLocalized(l10n, 'kds-course-other');
-    const key = COURSE_L10N_KEYS[course];
-    if (key) return requiredLocalized(l10n, key);
-    return requiredLocalized(l10n, 'kds-course-other');
-  }, [l10n]);
+  const courseLabel = useCallback((course: string | null): string =>
+    requiredLocalized(l10n, courseL10nKey(course)), [l10n]);
 
   const advanceLabel = nextKey ? requiredLocalized(l10n, nextKey) : '';
 
   // Card header colour — from context (shared with hamburger panel)
   const { colors } = useKdsCardColors();
-  const hdrBg = order.table_number ? colors.dinein : colors.takeaway;
+  const hdrBg = headerBg(order.table_number, colors);
   const hdrText = contrastText(hdrBg);
 
   return (
