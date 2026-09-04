@@ -56,7 +56,9 @@ describe('filterOrders', () => {
   });
 
   it('keeps non-cancelled statuses', () => {
-    const statuses = ['pending', 'preparing', 'ready', 'served'];
+    // `as const` so `s` is the KdsStatus union rather than widened `string`; order()
+    // takes Partial<KdsOrder>, whose status field is KdsStatus.
+    const statuses = ['pending', 'preparing', 'ready', 'served'] as const;
     const orders = statuses.map((s) => order({ status: s }));
     const result = filterOrders(orders, null);
     expect(result).toHaveLength(4);
