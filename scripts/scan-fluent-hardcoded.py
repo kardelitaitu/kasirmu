@@ -27,7 +27,33 @@ UI = ROOT / "ui" / "src"
 # Output defaults to the OS temp dir, NOT the working tree: an earlier
 # version defaulted to cwd and silently dropped fluent_scan.json and
 # hardcoded_hits.tsv into the repo root. Pass a directory to override.
-OUT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.gettempdir()) / "fluent-scan"
+#
+# "Pass a directory" was itself a trap, though: sys.argv[1] became the output
+# path with no validation, and OUT.mkdir(parents=True) never objects to a name
+# that starts with a dash. So any unknown flag silently became a directory in
+# the working tree. `scan-fluent-hardcoded.py --help` -- which this script does
+# not implement -- created ./--help/ and wrote both outputs into it, and so did
+# `--json`. Both landed as untracked entries in a repo where several agents
+# commit concurrently, which is exactly how the cwd default got committed once
+# already. Reject flag-shaped arguments rather than honouring them.
+_args = sys.argv[1:]
+_flags = [a for a in _args if a.startswith("-")]
+if _flags:
+    print(
+        f"scan-fluent-hardcoded: unknown argument(s): {', '.join(_flags)}\n"
+        "  this script takes at most one argument: an output DIRECTORY.\n"
+        "  there is no --help and no --json. It always writes fluent_scan.json and\n"
+        "  hardcoded_hits.tsv into the output dir and prints a summary to stdout.",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+if len(_args) > 1:
+    print(
+        f"scan-fluent-hardcoded: expected at most one output directory, got: {_args}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+OUT = Path(_args[0]).resolve() if _args else Path(tempfile.gettempdir()) / "fluent-scan"
 OUT.mkdir(parents=True, exist_ok=True)
 
 KEY_LINE = re.compile(r"^([-a-zA-Z][a-zA-Z0-9_-]*)\s*=")
