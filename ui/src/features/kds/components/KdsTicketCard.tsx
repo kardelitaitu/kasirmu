@@ -99,7 +99,7 @@ export function groupByCourse(items: KdsLineItem[]): { course: string | null; it
 const STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
 
 /** An item is "done" when it has been served (or cancelled — off the board). */
-function itemDone(item: KdsLineItem): boolean {
+export function itemDone(item: KdsLineItem): boolean {
   return item.item_status === 'served' || item.item_status === 'cancelled';
 }
 
