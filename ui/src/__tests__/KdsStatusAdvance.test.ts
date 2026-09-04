@@ -1,18 +1,16 @@
-// Unit tests for KDS status advance logic — documents the
-// STATUS_ORDER progression and boundary conditions used by
-// advanceStatus and advanceItemStatus in KdsScreen.tsx.
+// Unit tests for the KDS status advance ladder — STATUS_ORDER progression and the
+// boundary conditions behind advanceStatus / advanceItemStatus in KdsScreen.tsx.
+//
+// This suite used to declare its own STATUS_ORDER array and its own nextStatus()
+// ("same logic as advanceStatus in KdsScreen"), so it tested a copy: deleting the
+// production progression left all nine tests green, and the copy had already drifted in
+// spirit from KdsTicketCard.tsx, which expressed the same rule a third way. Both now
+// import from kdsStatus.ts, so these assertions are about the shipped code.
 
 import { describe, it, expect } from 'vitest';
+import { STATUS_ORDER, nextKdsStatus, canAdvanceKdsStatus } from '@/features/kds/kdsStatus';
 
-const STATUS_ORDER = ['pending', 'preparing', 'ready', 'served'] as const;
-type Status = (typeof STATUS_ORDER)[number];
-
-/** Pure next-status resolver — same logic as advanceStatus in KdsScreen. */
-function nextStatus(current: string): Status | null {
-  const idx = STATUS_ORDER.indexOf(current as Status);
-  if (idx < 0 || idx >= STATUS_ORDER.length - 1) return null;
-  return STATUS_ORDER[idx + 1]!;
-}
+const nextStatus = nextKdsStatus;
 
 describe('nextStatus', () => {
   it('pending → preparing', () => {
@@ -60,6 +58,29 @@ describe('nextStatus', () => {
         expect(nextStatus(s)).not.toBeNull();
         expect(STATUS_ORDER).toContain(nextStatus(s));
       }
+    }
+  });
+
+  // 'cancelled' is a valid KdsStatus but not a rung on the ladder. The old local copy and
+  // KdsTicketCard's inline `indexOf(...) < length - 1` disagreed about it: indexOf returns
+  // -1, so -1 < 3 made the card's canAdvance TRUE for a cancelled ticket while nextStatus
+  // said null. KdsScreen filters cancelled out before rendering, so nothing was visibly
+  // wrong -- but the two expressions of one rule could not both be right.
+  it('treats cancelled as terminal, the same way the card does', () => {
+    expect(nextStatus('cancelled')).toBeNull();
+    expect(canAdvanceKdsStatus('cancelled')).toBe(false);
+  });
+
+  it('canAdvanceKdsStatus agrees with nextKdsStatus on every rung', () => {
+    for (const s of [...STATUS_ORDER, 'cancelled', 'nonsense', '']) {
+      expect(canAdvanceKdsStatus(s)).toBe(nextStatus(s) !== null);
+    }
+  });
+
+  it('served is the only terminal rung of the ladder itself', () => {
+    expect(canAdvanceKdsStatus('served')).toBe(false);
+    for (const s of STATUS_ORDER.slice(0, -1)) {
+      expect(canAdvanceKdsStatus(s)).toBe(true);
     }
   });
 });

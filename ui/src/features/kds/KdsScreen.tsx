@@ -5,7 +5,7 @@ import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKdsOffline } from '@/hooks/useKdsOffline';
 import { useWorkspaceScope, useWorkspace } from '@/contexts/WorkspaceContext';
-import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, updateKdsLineItemStatusScoped, getKdsOrderLinesScoped, type KdsOrder, type KdsStatus, type KdsLineItem, type CreateKdsLineItemInput } from '@/api/kds';
+import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, updateKdsLineItemStatusScoped, getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem, type CreateKdsLineItemInput } from '@/api/kds';
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
@@ -25,9 +25,8 @@ import type { ProductPickerResult } from '@/features/kds/components/KdsProductPi
 import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceStatusIndicator';
 import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal';
 import { KdsScreenFooter } from '@/features/kds/KdsScreenFooter';
+import { nextKdsStatus } from '@/features/kds/kdsStatus';
 import './KdsScreen.css';
-
-const STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
 
 /**
  * PERF-KDS-01: shallow structural comparison of two ticket boards.
@@ -290,9 +289,8 @@ export default function KdsScreen() {
   const clearError = useCallback(() => setError(null), []);
 
   const advanceStatus = useCallback(async (order: KdsOrder) => {
-    const currentIdx = STATUS_ORDER.indexOf(order.status as KdsStatus);
-    if (currentIdx < 0 || currentIdx >= STATUS_ORDER.length - 1) return;
-    const nextStatus = STATUS_ORDER[currentIdx + 1]!;
+    const nextStatus = nextKdsStatus(order.status);
+    if (!nextStatus) return;
 
     // 3b: Offline-aware status update — queue on failure + optimistic local update.
     const ok = await wrapUpdate(order.id, nextStatus, () =>
@@ -317,10 +315,11 @@ export default function KdsScreen() {
 
   // ── Per-item status advance (TODO 3e) ──────────────────────────
   const advanceItemStatus = useCallback(async (item: KdsLineItem) => {
-    const ITEM_STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
-    const currentIdx = ITEM_STATUS_ORDER.indexOf(item.item_status as KdsStatus);
-    if (currentIdx < 0 || currentIdx >= ITEM_STATUS_ORDER.length - 1) return;
-    const nextStatus = ITEM_STATUS_ORDER[currentIdx + 1]!;
+    // ITEM_STATUS_ORDER used to be re-declared here as a fresh array literal on every
+    // call; the item ladder is the same progression as the ticket ladder, so it now
+    // shares nextKdsStatus instead of duplicating it.
+    const nextStatus = nextKdsStatus(item.item_status);
+    if (!nextStatus) return;
 
     try {
       await updateKdsLineItemStatusScoped(sessionToken, item.id, nextStatus);

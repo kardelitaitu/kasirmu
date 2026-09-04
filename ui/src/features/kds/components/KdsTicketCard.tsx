@@ -3,9 +3,10 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useTicketSla, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/frontend/shared/useSound';
 import { requiredLocalized } from '@/frontend/shared';
-import { getKdsOrderLinesScoped, type KdsOrder, type KdsStatus, type KdsLineItem } from '@/api/kds';
+import { getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem } from '@/api/kds';
 import { createCooldownWrapper } from '@/features/kds/hooks/useActionCooldown';
 import { contrastText } from '@/features/kds/kdsCardColors';
+import { canAdvanceKdsStatus } from '@/features/kds/kdsStatus';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 
 /** Props for the KdsTicketCard component. */
@@ -95,8 +96,6 @@ export function groupByCourse(items: KdsLineItem[]): { course: string | null; it
   }
   return ordered;
 }
-
-const STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
 
 /** An item is "done" when it has been served (or cancelled — off the board). */
 export function itemDone(item: KdsLineItem): boolean {
@@ -233,7 +232,13 @@ export const KdsTicketCard = memo(function KdsTicketCard({
   }, [handleSaveEdit, handleCancelEdit]);
 
   // ── Advance (footer button) — cooldown-guarded like the old card tap ──
-  const canAdvance = STATUS_ORDER.indexOf(order.status as KdsStatus) < STATUS_ORDER.length - 1;
+  // This used to read `STATUS_ORDER.indexOf(status) < STATUS_ORDER.length - 1`, which
+  // omits the `idx < 0` half of the progression test: for 'cancelled' indexOf returns -1,
+  // and -1 < 3 makes canAdvance TRUE. Unreachable today because KdsScreen.tsx:196 filters
+  // cancelled orders out before any card renders -- but it disagreed with both
+  // nextKdsStatus and nextActionKey below, which treat cancelled as terminal. Sharing the
+  // one helper removes the disagreement without changing behaviour on any reachable input.
+  const canAdvance = canAdvanceKdsStatus(order.status);
   const nextKey = nextActionKey(order.status);
   const handleAdvance = useMemo(
     () => createCooldownWrapper(() => {
