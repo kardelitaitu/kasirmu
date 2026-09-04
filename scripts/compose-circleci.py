@@ -24,12 +24,15 @@ executors:
   rust-executor:
     docker:
       - image: cimg/rust:1.85.0
-    resource_class: medium
+    # OOM: one rustc holding the Tauri/WebKit dependency stack exceeded 4 GB
+    # (medium). 8 GB leaves headroom for the test-metadata phase of the app
+    # crates; codegen-units=1 caps rustc at a single LLVM instance.
+    resource_class: large
     environment:
       CARGO_TERM_COLOR: always
-      RUSTFLAGS: "-D warnings -C debuginfo=0 -C codegen-units=16 -C link-arg=-fuse-ld=lld"
+      RUSTFLAGS: "-D warnings -C debuginfo=0 -C codegen-units=1 -C link-arg=-fuse-ld=lld"
       RUSTC_WRAPPER: ""
-      CARGO_BUILD_JOBS: "1"
+      CARGO_BUILD_JOBS: "2"
       CARGO_INCREMENTAL: "0"
 
   rust-test-executor:
@@ -40,13 +43,15 @@ executors:
           POSTGRES_USER: oz_test
           POSTGRES_PASSWORD: oz_test_password
           POSTGRES_DB: oz_test_db
-    resource_class: medium
+    # Same OOM rationale as rust-executor; the Postgres sidecar shares the
+    # container's memory, so the 8 GB class matters even more here.
+    resource_class: large
     environment:
       CARGO_TERM_COLOR: always
-      RUSTFLAGS: "-D warnings -C debuginfo=0 -C codegen-units=16 -C link-arg=-fuse-ld=lld"
+      RUSTFLAGS: "-D warnings -C debuginfo=0 -C codegen-units=1 -C link-arg=-fuse-ld=lld"
       OZ_TEST_PG_URL: postgres://oz_test:oz_test_password@localhost:5432/oz_test_db
       RUSTC_WRAPPER: ""
-      CARGO_BUILD_JOBS: "1"
+      CARGO_BUILD_JOBS: "2"
       CARGO_INCREMENTAL: "0"
 
   polyglot-executor:

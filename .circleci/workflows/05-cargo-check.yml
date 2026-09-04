@@ -21,11 +21,11 @@ jobs:
           no_output_timeout: 15m
       - run:
           name: Cargo Check Workspace
-          command: cargo check --workspace --all-targets --all-features -j 1
+          command: cargo check --workspace --all-targets --all-features -j 2
           no_output_timeout: 15m
       - run:
           name: Cargo Clippy
-          command: cargo clippy --all-targets --all-features -j 1 -- -D warnings
+          command: cargo clippy --all-targets --all-features -j 2 -- -D warnings
           no_output_timeout: 15m
       - save_cache:
           key: v2-cargo-cache-{{ checksum "Cargo.lock" }}
