@@ -1,9 +1,5 @@
 /* KDS Device Status Indicator */
 
-.kds-device-status-container {
-  position: relative;
-}
-
 .kds-device-status {
   display: flex;
   align-items: center;

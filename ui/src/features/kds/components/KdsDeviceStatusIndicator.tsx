@@ -101,16 +101,14 @@ export const KdsDeviceStatusIndicator = memo(
     // zero-device branch below renders the enroll button alone.
     if ((!devices || devices.length === 0) && !loading) {
       return onEnrollDevice ? (
-        <div className="kds-device-status-container">
-          <button
-            type="button"
-            className="kds-device-enroll-btn"
-            onClick={onEnrollDevice}
-            aria-label={requiredLocalized(l10n, 'kds-device-enroll-aria')}
-          >
-            <Localized id="kds-device-enroll">Enroll device</Localized>
-          </button>
-        </div>
+        <button
+          type="button"
+          className="kds-device-enroll-btn"
+          onClick={onEnrollDevice}
+          aria-label={requiredLocalized(l10n, 'kds-device-enroll-aria')}
+        >
+          <Localized id="kds-device-enroll">Enroll device</Localized>
+        </button>
       ) : null;
     }
 
@@ -138,7 +136,7 @@ export const KdsDeviceStatusIndicator = memo(
     ) : null;
 
     return (
-      <div className="kds-device-status-container">
+      <>
         <button
           className={`kds-device-status ${statusDisplay.className}`}
           onClick={() => setExpanded((p) => !p)}
@@ -185,7 +183,7 @@ export const KdsDeviceStatusIndicator = memo(
             {enrollButton}
           </div>
         )}
-      </div>
+      </>
     );
   },
 );
