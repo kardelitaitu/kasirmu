@@ -107,6 +107,36 @@ function isNonClassToken(token: string): boolean {
   return false;
 }
 
+/**
+ * Remove `${...}` interpolations from a template literal body, leaving the literal text.
+ *
+ * The obvious implementation -- `body.replace(/\$\{[^}]*\}/g, '')` -- is wrong whenever an
+ * interpolation contains a `}` that is not its own terminator, and this repo has that case
+ * in production: KdsHamburgerPanel.tsx:415 embeds the regex `/^#[0-9a-f]{6}$/i`, whose
+ * quantifier `}` ends the naive match early. The strip then leaves the regex tail glued to
+ * the class that preceded it -- `kds-hex-input$/i.test(hexDraft.value)` -- so the token no
+ * longer equals `kds-hex-input`, and the dead-class check reported a live class as unused.
+ * Counting braces instead of scanning to the first `}` fixes it for every nesting depth.
+ */
+function stripInterpolations(body: string): string {
+  let out = '';
+  for (let i = 0; i < body.length; i += 1) {
+    if (body[i] === '$' && body[i + 1] === '{') {
+      let depth = 1;
+      let j = i + 2;
+      while (j < body.length && depth > 0) {
+        if (body[j] === '{') depth += 1;
+        else if (body[j] === '}') depth -= 1;
+        j += 1;
+      }
+      i = j - 1; // skip past the matching close brace
+      continue;
+    }
+    out += body[i];
+  }
+  return out;
+}
+
 export function extractUsedClassNames(tsx: string): Set<string> {
   const names = new Set<string>();
 
@@ -126,7 +156,7 @@ export function extractUsedClassNames(tsx: string): Set<string> {
     const body = m[1]!;
 
     // Strip interpolation placeholders ${...} to reveal plain class tokens
-    const plainPart = body.replace(/\$\{[^}]*\}/g, '');
+    const plainPart = stripInterpolations(body);
     for (const token of plainPart.split(/\s+/)) {
       if (token && !isNonClassToken(token)) names.add(token);
     }

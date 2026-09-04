@@ -687,3 +687,43 @@ describe.each(SCREENS)(
     });
   },
 );
+
+// ── The extractor itself ─────────────────────────────────────────
+//
+// Everything above tests the SCREENS against the extractor, so a bug in the extractor
+// shows up as a false finding about a screen rather than as a failure here. That is how
+// the interpolation strip went unnoticed: `body.replace(/\$\{[^}]*\}/g, '')` stopped at
+// the first `}` even when that brace belonged to something nested, and KdsHamburgerPanel
+// :415 embeds `/^#[0-9a-f]{6}$/i` -- a quantifier brace -- inside `${...}`. The residue
+// glued itself to the preceding class name, so `kds-hex-input` was reported DEAD while
+// genuinely in use. These cases pin the behaviour directly, so a future regression fails
+// here with a message about the extractor instead of a misleading one about a screen.
+
+describe('extractUsedClassNames', () => {
+  it('reads a plain static className', () => {
+    expect(extractUsedClassNames('<div className="a b" />')).toEqual(new Set(['a', 'b']));
+  });
+
+  it('keeps the base class when an interpolation contains a regex quantifier', () => {
+    // The exact shape from KdsHamburgerPanel.tsx:415.
+    const src = 'className={`kds-hex-input${hexDraft?.key === key && !/^#[0-9a-f]{6}$/i.test(hexDraft.value) ? \' kds-hex-input--invalid\' : \'\'}`}';
+    const got = extractUsedClassNames(src);
+    expect(got.has('kds-hex-input')).toBe(true);
+    expect(got.has('kds-hex-input--invalid')).toBe(true);
+    // The failure mode was residue, so assert the absence explicitly rather than only
+    // that "something" was found.
+    expect([...got].some((c) => c.includes('0-9a-f'))).toBe(false);
+  });
+
+  it('keeps the base class through nested braces and template-in-interpolation', () => {
+    const src = 'className={`pos-cart-line-wrap${items.map((i) => ` col-${i.n}`)} x`}';
+    const got = extractUsedClassNames(src);
+    expect(got.has('pos-cart-line-wrap')).toBe(true);
+    expect(got.has('x')).toBe(true);
+  });
+
+  it('handles an interpolation that ends the template', () => {
+    const got = extractUsedClassNames('className={`a${cond}`}');
+    expect(got.has('a')).toBe(true);
+  });
+});
