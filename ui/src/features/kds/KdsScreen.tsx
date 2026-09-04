@@ -26,6 +26,7 @@ import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceSta
 import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal';
 import { KdsScreenFooter } from '@/features/kds/KdsScreenFooter';
 import { nextKdsStatus } from '@/features/kds/kdsStatus';
+import { isAutoAckEligible } from '@/features/kds/kdsAutoAccept';
 import './KdsScreen.css';
 
 /**
@@ -358,24 +359,15 @@ export default function KdsScreen() {
   useEffect(() => {
     if (!prefs.autoAcknowledge || prefs.acknowledgeDelayMin <= 0) return;
 
-    const delayMs = prefs.acknowledgeDelayMin * 60 * 1000;
     const now = Date.now();
 
     for (const order of orders) {
-      if (order.status !== 'pending') continue;
-      if (!order.received_at) continue;
-      if (autoAckInFlightRef.current.has(order.id)) continue;
-
-      const receivedAt = new Date(order.received_at).getTime();
-      if (isNaN(receivedAt)) continue;
-
-      if (now - receivedAt >= delayMs) {
-        autoAckInFlightRef.current.add(order.id);
-        // Fire-and-forget — advance silently without awaiting.
-        void advanceStatus(order).finally(() => {
-          autoAckInFlightRef.current.delete(order.id);
-        });
-      }
+      if (!isAutoAckEligible(order, autoAckInFlightRef.current, prefs, now)) continue;
+      autoAckInFlightRef.current.add(order.id);
+      // Fire-and-forget — advance silently without awaiting.
+      void advanceStatus(order).finally(() => {
+        autoAckInFlightRef.current.delete(order.id);
+      });
     }
   }, [orders, prefs.autoAcknowledge, prefs.acknowledgeDelayMin, advanceStatus]);
 
