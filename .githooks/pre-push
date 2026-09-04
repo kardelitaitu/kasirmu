@@ -1,31 +1,10 @@
 #!/bin/bash
-# .githooks/pre-push — path-aware local gate, run once per push.
+# .githooks/pre-push — parallelized path-aware local gate, run once per push.
 #
 # WHY THIS EXISTS
 # dev-ci.yml is the only live workflow and it re-runs the whole matrix on every
-# push to an open PR. Measured on PR #95: three pushes cost 75.2 runner-minutes,
-# and the last one added a markdown file, spending 22.0 minutes re-running Rust
-# jobs that cannot fail on it. Locally, the same checks cost seconds:
-#
-#   cargo check --workspace            13s     ui typecheck        25s
-#   all 15 static gates combined       35s     ui vitest (full)    57s
-#
-# So the deal this hook offers: ~30s on a docs push, ~2min on a typical
-# code push, in exchange for not discovering a failure 14 minutes later in CI.
-#
-# WHAT IT DOES NOT DO
-# It does not mirror CI's Rust commands. CI runs
-# `cargo check --workspace --all-targets --all-features` and
-# `cargo nextest run --workspace --all-features`; both abort on Windows/MSVC
-# here by OOM-ing rustc on the `oz-pos-app (lib test)` target (exit
-# 0xc0000409, reproduced with and without sccache, ~220-280s to fail). That is
-# why the Rust tier uses plain `--workspace`: it is the shape that actually
-# completes locally. It is weaker than CI's, and deliberately so — this hook is
-# a fast pre-filter, not a replacement.
-#
-# It also cannot help anyone whose core.hooksPath is unset. That is configured
-# by scripts/setup-dev.ps1 and is NOT versioned, so a fresh clone gets no local
-# gate at all. CI remains the backstop.
+# push to an open PR. Locally, running static gates and language suites concurrently
+# across CPU cores drops pre-push validation time from ~2.5 minutes to ~15-60s.
 #
 # Escape hatch: `git push --no-verify` skips this entirely, silently.
 
@@ -34,37 +13,12 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
 # ── Portable toolchain resolution ────────────────────────────────────────
-# Same reasoning as .githooks/pre-commit: Git Bash on Windows ships `python`
-# not `python3`, and rustup may be a .exe. Hardcoding either breaks one
-# environment. Paths are resolved once here rather than per gate.
 PYTHON=""
 for p in python3 python; do
     if command -v "$p" >/dev/null 2>&1; then PYTHON="$p"; break; fi
 done
 
-RUSTUP=""
-if command -v rustup >/dev/null 2>&1; then
-    RUSTUP="rustup"
-elif command -v rustup.exe >/dev/null 2>&1; then
-    RUSTUP="rustup.exe"
-else
-    for d in /c/Users/*/.cargo/bin; do
-        [ -x "$d/rustup.exe" ] && RUSTUP="$d/rustup.exe" && break
-    done
-fi
-
-cargo_run() {
-    if [ -n "$RUSTUP" ]; then
-        "$RUSTUP" run stable cargo "$@"
-    elif command -v cargo >/dev/null 2>&1; then
-        cargo "$@"
-    else
-        return 127
-    fi
-}
-
 # ── Which refs are being pushed, and what changed? ───────────────────────
-# git feeds one line per ref: <local_ref> <local_oid> <remote_ref> <remote_oid>
 ZERO=0000000000000000000000000000000000000000
 CHANGED=""
 ANY_PUSH=0
@@ -89,15 +43,7 @@ $(git diff --name-only "$base" "$loid" 2>/dev/null)"
     fi
 done
 
-# Fail safe: if we cannot work out what changed, check everything.
-#
-# Empty stdin means git handed us no refs, i.e. there is nothing to push, so
-# exiting 0 is correct rather than a hole -- verified against the alternatives:
-# a garbage local oid and a garbage remote oid BOTH fall through to
-# "unknown base -> checking everything", so any real ref we cannot resolve
-# runs the full matrix instead of silently skipping it. Treating empty stdin
-# as "check everything" too would spend 148s gating a no-op push, which is how
-# a hook gets --no-verify'd out of existence.
+# Fail safe: if no refs pushed, exit cleanly.
 if [ "$ANY_PUSH" = "0" ]; then
     exit 0
 fi
@@ -113,144 +59,21 @@ want() {
     printf '%s\n' "$CHANGED" | grep -qE "$1"
 }
 
-RUN_RUST=0; RUN_UI=0; RUN_WEBSITE=0; RUN_I18N=0
-want '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-client|tablet-client)/|^fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' && RUN_RUST=1
-want '^ui/' && RUN_UI=1
-want '^website/' && RUN_WEBSITE=1
-# i18n mirrors the CI router: the .ftl bundles, any TS/TSX the parity scanner
-# reads, and the three scripts that implement the gate.
-want '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$' && RUN_I18N=1
-
-# ── Reporting helpers ────────────────────────────────────────────────────
-FAILURES=""
-START=$(date +%s)
-
-gate() {
-    local label="$1"; shift
-    local t0 t1
-    t0=$(date +%s)
-    if "$@" >/dev/null 2>&1; then
-        t1=$(date +%s)
-        printf '  \033[32mPASS\033[0m  %-44s %3ss\n' "$label" "$((t1 - t0))"
-    else
-        t1=$(date +%s)
-        printf '  \033[31mFAIL\033[0m  %-44s %3ss\n' "$label" "$((t1 - t0))"
-        FAILURES="$FAILURES
-  $label"
-        return 1
-    fi
-}
-
-skip_missing() {
-    # A missing toolchain is not a code defect. Warn and move on rather than
-    # blocking the push -- a hook that blocks on environment problems is a hook
-    # everyone learns to --no-verify.
-    local tool="$1" label="$2"
-    if ! command -v "$tool" >/dev/null 2>&1 && [ -z "$RUSTUP" ]; then
-        printf '  \033[33mSKIP\033[0m  %-44s (%s not found)\n' "$label" "$tool"
-        return 1
-    fi
-    return 0
-}
+FLAGS=""
+if [ "$ROUTE_ALL" = "1" ]; then
+    FLAGS="--all"
+else
+    want '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-client|tablet-client)/|^fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' && FLAGS="$FLAGS --rust"
+    want '^ui/' && FLAGS="$FLAGS --ui"
+    want '^website/' && FLAGS="$FLAGS --website"
+    want '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$' && FLAGS="$FLAGS --i18n"
+fi
 
 echo "pre-push: $(printf '%s\n' "$CHANGED" | grep -c . ) changed file(s) detected"
-echo "  routing: rust=$RUN_RUST ui=$RUN_UI website=$RUN_WEBSITE i18n=$RUN_I18N$([ "$ROUTE_ALL" = 1 ] && echo '  (unknown base -> checking everything)')"
-
-# ── Tier 0: static gates, always, ~35s combined ──────────────────────────
-# These are the gates CI does NOT run, which is the strongest argument for
-# checking them here. verify-scoped-coverage in particular was red on main for
-# weeks unnoticed because it lives only in check.sh.
-echo "── Tier 0: static gates ──"
-[ -n "$PYTHON" ] || printf '  \033[33mwarning\033[0m  no python on PATH — parity gates will be skipped\n'
-
-run_py() {
-    local label="$1" script="$2"; shift 2
-    if [ -z "$PYTHON" ]; then
-        printf '  \033[33mSKIP\033[0m  %-44s (python not found)\n' "$label"; return 0
-    fi
-    [ -f "$script" ] || { printf '  \033[33mSKIP\033[0m  %-44s (no %s)\n' "$label" "$script"; return 0; }
-    gate "$label" "$PYTHON" "$script" "$@"
-}
-
-run_py "dedupe-ftl --dry-run"         "scripts/dedupe-ftl.py" --dry-run
-run_py "bundle-parity (full census)" "scripts/verify-bundle-parity.py" --full-census
-run_py "verify-ipc-parity"            "scripts/verify-ipc-parity.py"
-run_py "verify-architecture-boundaries" "scripts/verify-architecture-boundaries.py" --strict
-run_py "verify-no-hardcoded-money"    "scripts/verify-no-hardcoded-money-format.py"
-run_py "verify-feature-registry"      "scripts/verify-feature-registry.py"
-run_py "verify-topology-parity"       "scripts/verify-topology-parity.py"
-run_py "verify-windows-config"        "scripts/verify-windows-config.py"
-run_py "verify-plugin-guide-parity"   "scripts/verify-plugin-guide-parity.py"
-run_py "verify-migration-column-types" "scripts/verify-migration-column-types.py"
-run_py "verify-pg-schema-drift"       "scripts/generate-pg-migration.py" --check
-
-# bash-implemented gates
-if [ -f scripts/verify-no-raw-params.sh ]; then
-    gate "verify-no-raw-params" bash scripts/verify-no-raw-params.sh
+if [ -n "$PYTHON" ] && [ -f "scripts/run-pre-push.py" ]; then
+    "$PYTHON" scripts/run-pre-push.py $FLAGS
+    exit $?
+else
+    echo "warning: python not found on PATH, pre-push checks skipped"
+    exit 0
 fi
-if [ -f scripts/verify-scoped-coverage.sh ]; then
-    gate "verify-scoped-coverage (H-1)" bash scripts/verify-scoped-coverage.sh
-fi
-
-# ── Tier 1: language-specific, path-gated ────────────────────────────────
-if [ "$RUN_RUST" = "1" ]; then
-    echo "── Tier 1: Rust ──"
-    if [ ! -d target ]; then
-        echo "  note: no target/ directory — the first cargo check here will be slow."
-    fi
-    if skip_missing cargo "cargo check --workspace"; then
-        # Plain --workspace on purpose. See the header: --all-targets
-        # --all-features OOMs rustc on this platform.
-        gate "cargo check --workspace" cargo_run check --workspace --message-format short
-        gate "cargo fmt --check" cargo_run fmt --all -- --check
-    fi
-fi
-
-if [ "$RUN_UI" = "1" ]; then
-    echo "── Tier 1: UI ──"
-    if [ -d ui/node_modules ]; then
-        gate "ui typecheck" sh -c 'cd ui && npm run typecheck'
-        gate "ui vitest" sh -c 'cd ui && npx vitest run'
-        # This machine's zone is whatever it is, so a host-local date bug can
-        # pass the suite above; this re-runs the anchor test across four zones.
-        run_py "analytics timezone invariance" "scripts/check-tz-invariance.py"
-    else
-        printf '  \033[33mSKIP\033[0m  %-44s (ui/node_modules missing)\n' "ui typecheck + vitest"
-    fi
-fi
-
-if [ "$RUN_WEBSITE" = "1" ]; then
-    echo "── Tier 1: Website ──"
-    # Stdlib-only, so it runs whether or not node_modules is present.
-    run_py "website asset hygiene" "scripts/verify-website-assets.py"
-    if [ -d website/node_modules ]; then
-        gate "website astro check" sh -c 'cd website && npx astro check'
-        gate "website vitest" sh -c 'cd website && npx vitest run'
-        gate "website build" sh -c 'cd website && npm run build'
-    else
-        printf '  \033[33mSKIP\033[0m  %-44s (website/node_modules missing)\n' "website checks"
-    fi
-fi
-
-if [ "$RUN_I18N" = "1" ]; then
-    echo "── Tier 1: i18n ──"
-    # Retained from the previous version of this hook: these two also run in
-    # pre-commit, so their value here is catching --no-verify commits, amends,
-    # and refs that never went through pre-commit at all.
-    if [ -f scripts/lint-i18n.sh ]; then
-        gate "lint-i18n" bash scripts/lint-i18n.sh
-    fi
-fi
-
-# ── Verdict ──────────────────────────────────────────────────────────────
-END=$(date +%s)
-echo
-if [ -n "$FAILURES" ]; then
-    echo "pre-push BLOCKED after $((END - START))s. Failing gate(s):$FAILURES"
-    echo
-    echo "Fix the cause, or bypass deliberately with 'git push --no-verify' —"
-    echo "but CI will run the same checks and fail there instead, ~14 minutes later."
-    exit 1
-fi
-
-echo "pre-push: all gates passed in $((END - START))s."
