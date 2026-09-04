@@ -478,8 +478,7 @@
   right: 0;
   /* Default: single-column width; on wide screens the container query
      expands the panel via min-width to fit two columns. */
-  width: max(375px, min(720px, calc(100vw - 24px)));
-  max-width: calc(100vw - 24px);
+  width: min(720px, calc(100vw - 24px));
   overflow: hidden;
   background: var(--kds-bg);
   --bg-surface: #1c1c1e;
@@ -2079,6 +2078,15 @@
 @keyframes kds-drop-in {
   from { opacity: 0; transform: translateY(-6px) scaleY(0.95); }
   to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
+@keyframes kds-drop-out {
+  from { opacity: 1; transform: translateY(0) scaleY(1); }
+  to { opacity: 0; transform: translateY(-6px) scaleY(0.95); }
+}
+
+.kds-drop-out {
+  animation: kds-drop-out 0.18s ease-in forwards;
 }
 
 /* ── Card lifecycle (prototype FLIP spawn) ────────────────────────── */

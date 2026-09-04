@@ -58,6 +58,7 @@ kds-settings-yellow = Yellow at { $min } min
 kds-settings-yellow-aria = Yellow escalation threshold in minutes
 kds-settings-red = Red at { $min } min
 kds-settings-red-aria = Red escalation threshold in minutes
+kds-slider-value-min = { $min } minutes
 kds-settings-auto-ack = Auto-acknowledge
 kds-settings-density = Density
 kds-settings-density-comfortable = Comfortable

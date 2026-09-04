@@ -66,8 +66,10 @@ export function KdsHamburgerPanel({
   const themeCtx = useOptionalTheme();
   const hwAccel = useOptionalHardwareAccel();
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Hex-input draft (HEX-FIX): the text input is the sole place a user can
   // type a PARTIAL colour value, so it must not be controlled straight from
   // the context value — that snaps the field back to the last valid hex and
@@ -77,12 +79,23 @@ export function KdsHamburgerPanel({
   // Card colours from shared context.
   const { colors: cardColors, updateColor, resetColors } = useKdsCardColors();
 
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => {
+    if (!open || closing) return;
+    setClosing(true);
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+      closeTimerRef.current = null;
+    }, 180); // match kds-drop-in duration
+  }, [open, closing]);
 
   // Swipe right to dismiss — natural gesture for a right-anchored panel.
   const swipe = useSwipe({ onSwipeRight: close });
 
-  useFocusTrap(panelRef, open, close);
+  // Clean up close-animation timer on unmount.
+  useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
+
+  useFocusTrap(panelRef, open && !closing, close);
 
   useEffect(() => {
     if (!open) return;
@@ -108,7 +121,7 @@ export function KdsHamburgerPanel({
         onClick={() => setOpen((p) => !p)}
         aria-label={requiredLocalized(l10n, 'kds-settings-aria')}
         aria-haspopup="true"
-        aria-expanded={open}
+        aria-expanded={open || closing}
         data-testid="kds-topbar-settings"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -116,14 +129,21 @@ export function KdsHamburgerPanel({
         </svg>
       </button>
 
-      {open && (
+      {(open || closing) && (
         <div
           ref={panelRef}
-          className="kds-hamburger-panel"
+          className={`kds-hamburger-panel${closing ? ' kds-drop-out' : ''}`}
           role="dialog"
           aria-modal="true"
           aria-label={requiredLocalized(l10n, 'kds-settings-aria')}
           {...swipe}
+          onAnimationEnd={() => {
+            if (closing) {
+              setOpen(false);
+              setClosing(false);
+              closeTimerRef.current = null;
+            }
+          }}
         >
           <div className="kds-panel-body">
             {/* ── Display ──────────────────────────────────── */}
@@ -354,6 +374,7 @@ export function KdsHamburgerPanel({
                     value={settings.yellowThresholdMin}
                     onChange={(e) => onChangeYellowThreshold(Number(e.target.value))}
                     aria-label={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
+                    aria-valuetext={l10n.getString('kds-slider-value-min', { min: settings.yellowThresholdMin })}
                   />
                 </div>
 
@@ -368,6 +389,7 @@ export function KdsHamburgerPanel({
                     value={settings.redThresholdMin}
                     onChange={(e) => onChangeRedThreshold(Number(e.target.value))}
                     aria-label={requiredLocalized(l10n, 'kds-settings-red-aria')}
+                    aria-valuetext={l10n.getString('kds-slider-value-min', { min: settings.redThresholdMin })}
                   />
                 </div>
               </div>
