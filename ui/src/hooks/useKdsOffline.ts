@@ -48,7 +48,8 @@ const BACKOFF_JITTER = 0.3;
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 /** Build the store-scoped localStorage key. */
-function scopedKey(prefix: string, scope: string | undefined): string {
+/** Build the store-scoped localStorage key. Exported for testing. */
+export function scopedKey(prefix: string, scope: string | undefined): string {
   return scope ? `${prefix}:${scope}` : prefix;
 }
 

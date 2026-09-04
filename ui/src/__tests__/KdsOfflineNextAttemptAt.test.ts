@@ -28,60 +28,67 @@ describe('nextAttemptAt', () => {
 
   it('retry 1 → ~1s delay (center jitter)', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const before = Date.now();
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const result = nextAttemptAt(1);
-    const delay = new Date(result).getTime() - before;
+    const delay = new Date(result).getTime() - now;
     expect(delay).toBe(1000);
   });
 
   it('retry 2 → ~2s delay', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const before = Date.now();
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const result = nextAttemptAt(2);
-    const delay = new Date(result).getTime() - before;
+    const delay = new Date(result).getTime() - now;
     expect(delay).toBe(2000);
   });
 
   it('retry 3 → ~4s delay', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const before = Date.now();
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const result = nextAttemptAt(3);
-    const delay = new Date(result).getTime() - before;
+    const delay = new Date(result).getTime() - now;
     expect(delay).toBe(4000);
   });
 
   it('retry 4 → ~8s delay', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const before = Date.now();
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const result = nextAttemptAt(4);
-    const delay = new Date(result).getTime() - before;
+    const delay = new Date(result).getTime() - now;
     expect(delay).toBe(8000);
   });
 
   it('minimum jitter (random=0) reduces delay by 30%', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
-    const before = Date.now();
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const result = nextAttemptAt(1);
-    const delay = new Date(result).getTime() - before;
+    const delay = new Date(result).getTime() - now;
     // jitter = 1 + (0 * 2 - 1) * 0.3 = 0.7
     expect(delay).toBe(700);
   });
 
   it('maximum jitter (random=1) increases delay by 30%', () => {
     vi.spyOn(Math, 'random').mockReturnValue(1);
-    const before = Date.now();
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const result = nextAttemptAt(1);
-    const delay = new Date(result).getTime() - before;
+    const delay = new Date(result).getTime() - now;
     // jitter = 1 + (1 * 2 - 1) * 0.3 = 1.3
     expect(delay).toBe(1300);
   });
 
   it('delay increases monotonically with retry count', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const delays: number[] = [];
     for (let r = 1; r <= 4; r++) {
-      const before = Date.now();
-      delays.push(new Date(nextAttemptAt(r)).getTime() - before);
+      delays.push(new Date(nextAttemptAt(r)).getTime() - now);
     }
     for (let i = 1; i < delays.length; i++) {
       expect(delays[i]!).toBeGreaterThan(delays[i - 1]!);
@@ -90,9 +97,10 @@ describe('nextAttemptAt', () => {
 
   it('high retry count produces large but finite delay', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const before = Date.now();
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
     const result = nextAttemptAt(10); // 2^9 = 512s
-    const delay = new Date(result).getTime() - before;
+    const delay = new Date(result).getTime() - now;
     expect(delay).toBe(512_000); // 512 seconds
   });
 });
