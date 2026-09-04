@@ -53,6 +53,22 @@ const COURSE_OPTIONS: { value: string | null; labelId: string }[] = [
 ];
 
 /**
+ * Resolve a product category string to a KDS course ID.
+ * Exported for testing — the inline logic in `addProduct` used to be a
+ * closure-only block, so no unit test could exercise the category mapping
+ * without rendering the full modal and adding products.
+ */
+export function resolveCourseFromCategory(category: string | null | undefined): string | null {
+  const c = (category ?? '').toLowerCase();
+  if (c.includes('appetizer') || c.includes('starter')) return 'appetizer';
+  if (c.includes('main') || c.includes('entree')) return 'main';
+  if (c.includes('side')) return 'side';
+  if (c.includes('dessert')) return 'dessert';
+  if (c.includes('drink') || c.includes('beverage')) return 'beverage';
+  return null;
+}
+
+/**
  * KdsProductPickerModal — searchable product selector for adding items
  * to a KDS order mid-preparation (TODO 3f).
  *
@@ -126,13 +142,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
         );
       }
       // Resolve course from product category.
-      const category = product.category?.toLowerCase() ?? '';
-      let course: string | null = null;
-      if (category.includes('appetizer') || category.includes('starter')) course = 'appetizer';
-      else if (category.includes('main') || category.includes('entree')) course = 'main';
-      else if (category.includes('side')) course = 'side';
-      else if (category.includes('dessert')) course = 'dessert';
-      else if (category.includes('drink') || category.includes('beverage')) course = 'beverage';
+      const course = resolveCourseFromCategory(product.category);
 
       return [
         ...prev,
