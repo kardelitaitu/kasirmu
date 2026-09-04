@@ -39,7 +39,7 @@ const STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
  * on WebView2 saturated the PostMessage queue. Only the fields the board
  * actually renders are compared.
  */
-function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
+export function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
