@@ -85,10 +85,31 @@ export function createRetailProductsApiMock() {
 
 // ── kds ───────────────────────────────────────────────────────────
 
-/** Minimal `@/api/kds` mock (RetailPosScreen only calls createKdsOrderFromSale). */
-export function createRetailKdsApiMock() {
+/**
+ * `@/api/kds` mock for the retail POS screens.
+ *
+ * `actual` is the real module, passed from each site's `vi.mock` factory via
+ * `importOriginal`. Spreading it means the mock always exposes the module's
+ * full surface, so a new export can never be missing from a hand-written list
+ * -- the shape this file previously had.
+ *
+ * The old version returned exactly one key and justified it with "RetailPosScreen
+ * only calls createKdsOrderFromSale". That claim was inverted: RetailPosScreen
+ * renders PaymentModal, which calls `createKdsOrderFromSaleScoped` (twice, at
+ * PaymentModal.tsx:756 and :1030) and never calls the unscoped
+ * `createKdsOrderFromSale` at all. So the mock supplied the one function nothing
+ * uses and omitted the one that runs, and every retail checkout threw a
+ * missing-export error that the caller's `.catch` turned into a log line -- the
+ * KDS ticket was silently never created across five test files.
+ */
+export function createRetailKdsApiMock(
+  actual: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
+    ...actual,
     createKdsOrderFromSale: vi.fn((_userId: string, _saleId: string) => Promise.resolve()),
+    createKdsOrderFromSaleScoped: vi.fn((_sessionToken: string, _saleId: string) =>
+      Promise.resolve()),
   };
 }
 
