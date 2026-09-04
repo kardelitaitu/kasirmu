@@ -184,7 +184,7 @@ function nextAttemptAt(retryCount: number): string {
 }
 
 /** OFF-03: apply queued actions to a fetched snapshot deterministically. */
-function applyProjections(
+export function applyProjections(
   orders: KdsOrder[],
   queue: PendingKdsAction[],
 ): KdsOrder[] {
