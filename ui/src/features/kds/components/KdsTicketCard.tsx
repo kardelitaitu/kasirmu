@@ -73,7 +73,7 @@ const COURSE_L10N_KEYS: Record<string, string> = {
 };
 
 /** Group line items by course, preserving course order. Returns entries in display order. */
-function groupByCourse(items: KdsLineItem[]): { course: string | null; items: KdsLineItem[] }[] {
+export function groupByCourse(items: KdsLineItem[]): { course: string | null; items: KdsLineItem[] }[] {
   const groups = new Map<string | null, KdsLineItem[]>();
   for (const item of items) {
     const course = item.course ?? null;
