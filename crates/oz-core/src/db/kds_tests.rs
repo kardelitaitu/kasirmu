@@ -3272,3 +3272,112 @@ fn void_sale_cancels_kds_tickets_for_the_sale() {
         "voided sale's active ticket must be cancelled"
     );
 }
+
+/// S3 integration: a FULL refund must pull the sale's active kitchen
+/// tickets off the board, inside the refund's own transaction. Drives the
+/// real cart → sale → fanout → refund path end to end (the void sibling
+/// test covers `void_sale`; until now no test drove the refund branch).
+#[test]
+fn full_refund_cancels_kds_tickets_for_the_sale() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // Kitchen tickets exist and one is mid-prep when the refund lands.
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+    s.create_kds_line_items(
+        &ticket.id,
+        &[CreateKdsLineItemInput {
+            sku: "BURGER".into(),
+            display_name: "Burger".into(),
+            qty: 1,
+            course: Some("main".into()),
+            modifiers: vec![],
+        }],
+    )
+    .unwrap();
+
+    let refund = crate::Refund::new(
+        &sale.id,
+        price(500),
+        "full refund",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[0].id,
+            "BURGER",
+            1,
+            price(500),
+            price(500),
+        )],
+    );
+    s.create_refund(&refund).unwrap();
+
+    let after = s.get_kds_order(&ticket.id).unwrap().unwrap();
+    assert_eq!(
+        after.status, "cancelled",
+        "a full refund must cancel the sale's active kitchen ticket"
+    );
+    let lines = s.get_kds_order_lines(&ticket.id).unwrap();
+    assert!(
+        lines.iter().all(|l| l.item_status == "cancelled"),
+        "the cancelled ticket's line items follow to 'cancelled'"
+    );
+}
+
+/// S3 integration: a PARTIAL refund must leave the kitchen board alone —
+/// the kitchen is still cooking the remainder of the sale.
+#[test]
+fn partial_refund_keeps_kds_tickets_active() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+
+    // Two line items: refunding one line is partial against the total.
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("FRIES"), 1, price(300)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+
+    let refund = crate::Refund::new(
+        &sale.id,
+        price(500),
+        "partial refund",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[0].id,
+            "BURGER",
+            1,
+            price(500),
+            price(500),
+        )],
+    );
+    s.create_refund(&refund).unwrap();
+
+    let after = s.get_kds_order(&ticket.id).unwrap().unwrap();
+    assert_eq!(
+        after.status, "preparing",
+        "a partial refund must NOT cancel the kitchen ticket"
+    );
+}
