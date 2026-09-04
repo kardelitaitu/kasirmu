@@ -80,7 +80,7 @@ export function computeLevel(elapsed: number, t: SlaThresholds): SlaLevel {
 }
 
 /** Format elapsed seconds into a short display string like "5m 30s". */
-function formatElapsed(seconds: number): string {
+export function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   if (m === 0) return `${s}s`;
