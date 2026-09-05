@@ -5,6 +5,8 @@ import { openUpgradePricing as openUpgradePricingPage } from '@/utils/upgrade';
 import {
   listSales,
   getSale,
+  getSaleScoped,
+  listSalesScoped,
   printSalesReceipt,
   listRefundsScoped,
   voidSaleScoped,
@@ -209,7 +211,10 @@ export default function SalesHistoryScreen() {
     setLoadError(null);
     try {
       const [response, staffList] = await Promise.all([
-        listSales(),
+        // ADR #7, matching the listStaffScoped call immediately below -- which already had the
+        // conditional. Reading the ambient list here meant the cashier's own sales history could
+        // come from a different store than the staff list rendered beside it.
+        sessionToken ? listSalesScoped(sessionToken) : listSales(),
         sessionToken
           ? listStaffScoped(sessionToken).catch(() => [] as StaffMemberDto[])
           : Promise.resolve([] as StaffMemberDto[]),
@@ -373,7 +378,10 @@ export default function SalesHistoryScreen() {
     setLineMargins([]);
     try {
       const [sale, refundData, margins] = await Promise.all([
-        getSale(id),
+        // Three calls, three different scoping treatments in one expression: this one was
+        // ambient, the next asserts a token with `!`, the third uses the ADR #7 conditional.
+        // Now all three resolve from the session when one exists.
+        sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
         listRefundsScoped(sessionToken!, id).catch(() => [] as RefundDto[]),
         sessionToken
           ? getSaleLineMarginsScoped(sessionToken, id).catch(() => [] as SaleLineMarginDto[])
