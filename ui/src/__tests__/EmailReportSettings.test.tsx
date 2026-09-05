@@ -3,6 +3,7 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
 import EmailReportSettings from '@/features/settings/EmailReportSettings';
+import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 import salesFtl from '@/locales/sales.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -16,6 +17,7 @@ const mockGetSetting = vi.fn();
 const mockSetSetting = vi.fn();
 const mockGetReportSchedule = vi.fn();
 const mockSaveReportSchedule = vi.fn();
+const mockGetReportScheduleScoped = vi.fn();
 const mockSendTestReport = vi.fn();
 const mockAddToast = vi.fn();
 
@@ -26,6 +28,9 @@ vi.mock('@/api/settings', () => ({
 
 vi.mock('@/api/email', () => ({
   getReportSchedule: () => mockGetReportSchedule(),
+  // Separate spy, not a delegate: a mirror registers a call on the unscoped spy, which makes
+  // `expect(unscoped).not.toHaveBeenCalled()` unprovable. See DataManagementBackup.test.tsx.
+  getReportScheduleScoped: (token: string) => mockGetReportScheduleScoped(token),
   saveReportSchedule: (...args: unknown[]) => mockSaveReportSchedule(...args),
   sendTestReport: () => mockSendTestReport(),
 }));
@@ -103,6 +108,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetSetting.mockResolvedValue(null);
   mockGetReportSchedule.mockResolvedValue(null);
+  // Configured in parallel rather than by delegating, for the reason above.
+  mockGetReportScheduleScoped.mockResolvedValue(null);
 });
 
 // ── Tests ────────────────────────────────────────────────────────
@@ -113,6 +120,21 @@ describe('EmailReportSettings — EN', () => {
       mockGetSetting.mockReturnValue(new Promise(() => {})); // Never resolves
       await renderWithFluent(<EmailReportSettings />);
       expect(screen.getByText(/loading email settings/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Schedule loading', () => {
+    it('reads the schedule through the scoped command, passing the session token', async () => {
+      // get_report_schedule_scoped (email.rs:148) enforces permissions::REPORTS_SCHEDULE; the
+      // unscoped command checks nothing. The write half of this pair already requires a token --
+      // saveReportSchedule(sessionToken, config) at api/email.ts:29 -- so the read was the odd one
+      // out, and the component already holds sessionToken (:45) and uses it for getSettingScoped
+      // (:70).
+      await renderWithFluent(<EmailReportSettings />);
+      await waitFor(() => {
+        expect(mockGetReportScheduleScoped).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN);
+      });
+      expect(mockGetReportSchedule).not.toHaveBeenCalled();
     });
   });
 

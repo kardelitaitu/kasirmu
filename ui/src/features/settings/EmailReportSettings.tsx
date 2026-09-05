@@ -13,7 +13,7 @@ import { Button } from '@/components/Button';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import Tooltip from '@/frontend/shell/Tooltip';
-import { getReportSchedule, saveReportSchedule, type ReportScheduleConfig } from '@/api/email';
+import { getReportSchedule, getReportScheduleScoped, saveReportSchedule, type ReportScheduleConfig } from '@/api/email';
 import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -87,7 +87,12 @@ export default function EmailReportSettings() {
   // ── Load schedule config ───────────────────────────────────────────
   const loadSchedule = useCallback(async () => {
     try {
-      const sched = await getReportSchedule();
+      // ADR #7 conditional scoping. get_report_schedule_scoped enforces REPORTS_SCHEDULE; the
+      // unscoped command checks nothing, while the save path in this same screen already
+      // requires a token (api/email.ts:29).
+      const sched = sessionToken
+        ? await getReportScheduleScoped(sessionToken)
+        : await getReportSchedule();
       // getReportSchedule returns null when no schedule exists yet
       // (Tauri IPC resolves with null for unset data). Guard against
       // overwriting the initial default values with null.
@@ -97,7 +102,7 @@ export default function EmailReportSettings() {
     } finally {
       setScheduleLoading(false);
     }
-  }, []);
+  }, [sessionToken]);
 
   useEffect(() => { loadSchedule(); }, [loadSchedule]);
 

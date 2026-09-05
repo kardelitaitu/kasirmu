@@ -1,5 +1,5 @@
 {
-  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant. pause_subscription_scoped / resume_subscription_scoped joined the same way: LicenseSettings now prefers the SETTINGS_EDIT-checked twins, and the tablet shell registers neither variant of either command.",
+  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant. pause_subscription_scoped / resume_subscription_scoped joined the same way: LicenseSettings now prefers the SETTINGS_EDIT-checked twins, and the tablet shell registers neither variant of either command. get_report_schedule_scoped joined the same way: EmailReportSettings now prefers the REPORTS_SCHEDULE-checked twin, and the tablet shell registers neither variant.",
   "desktop": [
     "adjust_stock",
     "create_product",
@@ -86,6 +86,7 @@
     "get_product_track_serial",
     "get_product_track_serial_batch",
     "get_report_schedule",
+    "get_report_schedule_scoped",
     "get_shift_report_scoped",
     "get_shift_scoped",
     "get_stock_thresholds",
