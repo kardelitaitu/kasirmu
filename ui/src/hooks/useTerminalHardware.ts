@@ -3,6 +3,7 @@ import {
   getHardwareSettings,
   getHardwareSettingsScoped,
   setHardwareSettings,
+  setHardwareSettingsScoped,
   type HardwareSettingsDto,
 } from '@/api/settings';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -326,14 +327,22 @@ export function useTerminalHardware(
     setError(null);
 
     try {
-      await setHardwareSettings(toHardwareSettingsDto(profile), userId ?? '');
+      // ADR #7 conditional scoping. On desktop this is not merely the permission-checked path:
+      // set_hardware_settings is not registered there at all (only set_hardware_settings_scoped,
+      // settings.rs:650 / lib.rs:704), so the unscoped call rejected on every save. The scoped
+      // setter derives the user from the session, so `userId` is only meaningful on the fallback.
+      if (sessionToken) {
+        await setHardwareSettingsScoped(sessionToken, toHardwareSettingsDto(profile));
+      } else {
+        await setHardwareSettings(toHardwareSettingsDto(profile), userId ?? '');
+      }
       setIsLoading(false);
     } catch (err) {
       const msg = plainErrorMessage(err, 'Failed to save hardware profile');
       setError(msg);
       setIsLoading(false);
     }
-  }, [profile, terminalId]);
+  }, [profile, terminalId, sessionToken]);
 
   // ── Reload ──────────────────────────────────────────────────
 

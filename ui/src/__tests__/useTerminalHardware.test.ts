@@ -10,6 +10,7 @@ import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 const mockGetHardwareSettings = vi.fn();
 const mockGetHardwareSettingsScoped = vi.fn();
 const mockSetHardwareSettings = vi.fn();
+const mockSetHardwareSettingsScoped = vi.fn();
 
 vi.mock('@/api/settings', () => ({
   getHardwareSettings: () => mockGetHardwareSettings(),
@@ -17,6 +18,8 @@ vi.mock('@/api/settings', () => ({
   // the other spy and makes `not.toHaveBeenCalled()` unprovable.
   getHardwareSettingsScoped: (token: string) => mockGetHardwareSettingsScoped(token),
   setHardwareSettings: (...args: unknown[]) => mockSetHardwareSettings(...args),
+  setHardwareSettingsScoped: (token: string, args: unknown) =>
+    mockSetHardwareSettingsScoped(token, args),
 }));
 
 const defaultDto = {
@@ -36,6 +39,7 @@ describe('useTerminalHardware', () => {
     // Configured in parallel with the unscoped one, not by delegating to it.
     mockGetHardwareSettingsScoped.mockResolvedValue(defaultDto);
     mockSetHardwareSettings.mockResolvedValue(undefined);
+    mockSetHardwareSettingsScoped.mockResolvedValue(undefined);
   });
 
   // ── Session scoping (F-017) ─────────────────────────────────────
@@ -53,6 +57,30 @@ describe('useTerminalHardware', () => {
     });
     expect(mockGetHardwareSettings).not.toHaveBeenCalled();
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it('saves through the scoped command, passing the session token', async () => {
+    // set_hardware_settings does not exist in apps/desktop-client at all -- only
+    // set_hardware_settings_scoped (settings.rs:650, registered lib.rs:704) does, and it is the
+    // one that writes hardware_profiles and the JSON profile. So the unscoped call the hook made
+    // rejected on every desktop save. The scoped setter takes no userId: it derives the user from
+    // the session, which is the point.
+    const { result } = renderHook(() => useTerminalHardware('term-s'));
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.save('user-1');
+    });
+
+    await waitFor(() => {
+      expect(mockSetHardwareSettingsScoped).toHaveBeenCalledWith(
+        HARNESS_SESSION_TOKEN,
+        expect.objectContaining({ printerConnection: 'auto' }),
+      );
+    });
+    expect(mockSetHardwareSettings).not.toHaveBeenCalled();
   });
 
   // ── Initial load ──────────────────────────────────────────────
@@ -201,18 +229,20 @@ describe('useTerminalHardware', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(mockSetHardwareSettings).toHaveBeenCalledTimes(1);
-    const call = mockSetHardwareSettings.mock.calls[0] as [Record<string, unknown>, string];
-    const dto = call[0];
-    const userId = call[1];
+    expect(mockSetHardwareSettingsScoped).toHaveBeenCalledTimes(1);
+    const call = mockSetHardwareSettingsScoped.mock.calls[0] as [string, Record<string, unknown>];
+    const token = call[0];
+    const dto = call[1];
     expect(dto['printerDevicePath']).toBe('192.168.1.99');
     expect(dto['printerConnection']).toBe('auto');
-    expect(userId).toBe('user-1');
+    expect(token).toBe(HARNESS_SESSION_TOKEN);
+    // The scoped setter derives the user from the session, so the caller's userId is not sent.
+    expect(mockSetHardwareSettings).not.toHaveBeenCalled();
     expect(result.current.error).toBeNull();
   });
 
   it('save reports error on IPC failure', async () => {
-    mockSetHardwareSettings.mockRejectedValue(new Error('Disk full'));
+    mockSetHardwareSettingsScoped.mockRejectedValue(new Error('Disk full'));
 
     const { result } = renderHook(() => useTerminalHardware('term-k'));
 
