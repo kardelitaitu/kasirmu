@@ -95,6 +95,40 @@ export function resolveCourseFromCategory(category: string | null | undefined): 
 }
 
 /**
+ * Clamp a line-item quantity to the allowed positive range.
+ * Quantities below 1 are rejected (no change); quantities at/above 1
+ * are passed through unchanged — the picker never allows 0 or negative
+ * quantities, and never auto-boosts beyond what the user set.
+ * Non-finite values (NaN, Infinity) are rejected.
+ * Exported for testing.
+ */
+export function clampQty(qty: number): number | null {
+  if (!isFinite(qty) || qty < 1) return null;
+  return qty;
+}
+
+/**
+ * Update one PickedEntry's quantity, returning a new array.
+ * If the clamped quantity is null (i.e. < 1, NaN, or non-finite), the
+ * entry list is unchanged (returned as-is, no allocation).
+ * If the SKU is not found, the list is also returned unchanged.
+ * Exported for testing — the inline clamp in `updateQty` used to be a
+ * closure-only guard, so no unit test could exercise the rejection path
+ * without rendering the full modal and clicking the stepper.
+ */
+export function updateQtyEntry(
+  picked: PickedEntry[],
+  sku: string,
+  qty: number,
+): PickedEntry[] {
+  const clamped = clampQty(qty);
+  if (clamped === null) return picked;
+  const found = picked.some((e) => e.sku === sku);
+  if (!found) return picked;
+  return picked.map((e) => (e.sku === sku ? { ...e, qty: clamped } : e));
+}
+
+/**
  * KdsProductPickerModal — searchable product selector for adding items
  * to a KDS order mid-preparation (TODO 3f).
  *
@@ -168,10 +202,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   }, []);
 
   const updateQty = useCallback((sku: string, qty: number) => {
-    if (qty < 1) return;
-    setPicked((prev) =>
-      prev.map((e) => (e.sku === sku ? { ...e, qty } : e)),
-    );
+    setPicked((prev) => updateQtyEntry(prev, sku, qty));
   }, []);
 
   const updateCourse = useCallback((sku: string, course: string | null) => {
