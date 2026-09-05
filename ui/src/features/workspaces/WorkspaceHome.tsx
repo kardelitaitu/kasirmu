@@ -107,7 +107,7 @@ const TOOLS: ToolItem[] = [
     route: 'settings',
     labelKey: 'workspace-home-settings-title',
     descKey: 'workspace-home-settings-desc',
-    minRole: 'manager',
+    minRole: 'admin',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
         <circle cx="12" cy="12" r="3" />
@@ -116,11 +116,25 @@ const TOOLS: ToolItem[] = [
     ),
   },
   {
+    id: 'cloud-sync',
+    route: 'settings/sync',
+    labelKey: 'workspace-home-cloud-sync-title',
+    descKey: 'workspace-home-cloud-sync-desc',
+    minRole: 'admin',
+    cap: 'supportsCloudSync',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    ),
+  },
+  {
     id: 'analytics',
     route: 'analytics',
     labelKey: 'workspace-home-analytics-title',
     descKey: 'workspace-home-analytics-desc',
-    minRole: 'admin',
+    minRole: 'manager',
+    cap: 'supportsAnalytics',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
         <path d="M18 20V10" />
@@ -135,6 +149,7 @@ const TOOLS: ToolItem[] = [
     labelKey: 'workspace-home-reports-title',
     descKey: 'workspace-home-reports-desc',
     minRole: 'manager',
+    cap: 'supportsDailyDashboard',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
         <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
