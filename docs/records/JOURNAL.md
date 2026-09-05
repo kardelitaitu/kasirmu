@@ -1,5 +1,41 @@
 
 
+## 2026-09-04 — TDD round AF: tablet KDS command surface pins (tablet-client)
+
+**Gap:** apps/tablet-client/src/commands/kds.rs was the ONLY command
+file of 37 without a test module — and it is the kitchen display's
+actual runtime surface: 5 session-scoped commands (list, queue,
+status update, create-from-sale, get-one) wired through resolve_scope →
+require_permission_for_session → *_for_instance visibility. Round AE's
+parity gate made tablet a first-class shell; its command layer had the
+largest hole.
+
+**Pins (6 tests, 57362ec5):** invalid token → InvalidSession; list
+returns tickets tagged with the session store; status update stamps
+started_at; create-from-sale via complete_sale_to_kds (the untargeted
+legacy route the file's own doc comment pins) tags store-a AND the new
+ticket is immediately visible on this display's queue; a ticket routed
+to another instance (create_kds_order_routed → Some("kds-other")) is
+invisible to get_kds_order_scoped — the no-existence-oracle; a
+zero-permission role gets PermissionDenied on update even though the
+ticket exists and is visible (denial must come from the gate, not data
+absence).
+
+**Harness lessons (same two as the desktop round, re-learned):**
+1. Permission checks resolve the user's role in the GLOBAL identity DB
+   (require_permission_for_session locks state.db), NOT the store DB —
+   seeding a permission-less role into the store DB silently passes the
+   gate. First failure mode; fixed by building the whole global conn
+   before AppState::for_test_with_conn.
+2. create_kds_order FKs sale_id — the denial test needs the store-A
+   sale seeded too. Extracted seed_restaurant_sale(state) from the
+   kds_state() closure so both harnesses share it (same helper shape as
+   the desktop round's kds_tests.rs).
+
+**Test counts:** oz-pos-tablet lib 495 green (489 + 6); suite time
+17.5s. No production-behaviour changes — kds.rs only grew the
+conventional #[cfg(test)] mod wiring.
+
 ## 2026-09-04 — TDD round AE: invoke-token-parity gate (ci/scripts)
 
 **Problem (class-level fix for the AC/AD findings):** The round-AC bug
