@@ -3,7 +3,7 @@ import type { ReactLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import SettingsSelect from '../SettingsSelect';
 import { AppearanceSettings } from '../AppearanceSettings';
-import { deriveAccentPalette, applyAccentPalette } from '@/utils/color';
+import { deriveAccentPalette, applyAccentPalette, clearAccentPalette, applyThemeContrasts } from '@/utils/color';
 
 export interface AppearanceSectionProps {
   displayCardSize: number;
@@ -138,8 +138,15 @@ export default function AppearanceSection({
         storeName={brandStoreName}
         onColourChange={(c) => {
           setBrandColour(c);
-          const palette = deriveAccentPalette(c);
-          applyAccentPalette(palette);
+          // Empty string = follow the active theme: drop the inline
+          // override instead of deriving a palette from "" (black).
+          if (c) {
+            const palette = deriveAccentPalette(c);
+            applyAccentPalette(palette);
+          } else {
+            clearAccentPalette();
+          }
+          applyThemeContrasts();
           markDirty();
         }}
         onStoreNameChange={(name) => { setBrandStoreName(name); markDirty(); }}

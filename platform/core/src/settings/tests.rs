@@ -1594,3 +1594,33 @@ fn write_delta_concurrent_same_pair_never_loses_delta() {
         "delta ledger must be gapless 1..=3"
     );
 }
+
+// ── Brand primary colour: empty string = follow the active theme ──
+
+#[test]
+fn brand_primary_colour_unset_returns_empty_string() {
+    let conn = fresh();
+    // A fresh store must NOT report a colour: the UI treats "" as "no
+    // override", letting themes/tokens.css pick the per-theme primary
+    // (light #147EFB, dark #1155CC). The old "#147EFB" fallback pinned
+    // both themes to the light blue on every fresh install.
+    assert_eq!(
+        Settings::get_brand_primary_colour(&conn).unwrap(),
+        "",
+        "unset brand colour must read as the empty follow-theme sentinel"
+    );
+}
+
+#[test]
+fn brand_primary_colour_roundtrip_and_clear() {
+    let conn = fresh();
+    Settings::set_brand_primary_colour(&conn, "#FF5500").unwrap();
+    assert_eq!(
+        Settings::get_brand_primary_colour(&conn).unwrap(),
+        "#FF5500"
+    );
+
+    // Reset-to-theme-default persists the empty sentinel.
+    Settings::set_brand_primary_colour(&conn, "").unwrap();
+    assert_eq!(Settings::get_brand_primary_colour(&conn).unwrap(), "");
+}

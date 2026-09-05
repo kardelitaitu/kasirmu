@@ -60,6 +60,7 @@ vi.mock('@fluent/react', () => ({
           'primary-colour-picker-aria': 'Primary colour picker',
           'colour-hex-aria': 'Colour hex value',
           'reset-colour-aria': 'Reset colour to default',
+          'appearance-follow-theme-aria': 'Following theme colour — pick a colour to override',
           'pick-logo-aria': 'Pick logo file',
           'reset-appearance-aria': 'Reset all appearance settings',
           'save-appearance-aria': 'Save appearance',
@@ -73,10 +74,13 @@ vi.mock('@fluent/react', () => ({
 
 const mockDeriveAccentPalette = vi.fn();
 const mockApplyAccentPalette = vi.fn();
+const mockClearAccentPalette = vi.fn();
 
 vi.mock('@/utils/color', () => ({
   deriveAccentPalette: (base: string) => mockDeriveAccentPalette(base),
   applyAccentPalette: (palette: unknown) => mockApplyAccentPalette(palette),
+  clearAccentPalette: (...args: unknown[]) => mockClearAccentPalette(...args),
+  applyThemeContrasts: vi.fn(),
 }));
 
 vi.mock('@/frontend/shared/Toast', () => ({
@@ -507,3 +511,48 @@ describe('AppearanceSettings', () => {
     expect(mockGetBrandSettings).not.toHaveBeenCalled();
   });
 });
+
+  // ── Follow-theme sentinel (round AH) ─────────────────────────────
+
+  it('treats empty loaded colour as follow-theme: shows theme primary, not a stale hex', async () => {
+    // jsdom resolves tokens.css custom props to '' — falls back to
+    // DEFAULT_COLOUR, never to the old hardcoded initial state.
+    mockGetBrandSettings.mockResolvedValue({ ...defaultBrandResponse, primary_colour: '' });
+    render(<AppearanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Colour hex value')).toBeInTheDocument();
+    });
+    const hexInput = screen.getByLabelText('Colour hex value') as HTMLInputElement;
+    expect(hexInput.value).toBe('#147EFB');
+    // Reset control becomes the follow-theme (sun) indicator.
+    expect(screen.getByLabelText('Following theme colour — pick a colour to override')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Reset colour to default')).not.toBeInTheDocument();
+  });
+
+  it('clear button restores follow-theme: clears palette and saves empty colour', async () => {
+    mockGetBrandSettings.mockResolvedValue({ ...defaultBrandResponse, primary_colour: '#ff0000' });
+    render(<AppearanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Reset colour to default')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('Reset colour to default'));
+
+    expect(mockClearAccentPalette).toHaveBeenCalled();
+    // Instant local state → null (hex shows theme primary via mock).
+    expect(screen.getByLabelText('Following theme colour — pick a colour to override')).toBeInTheDocument();
+  });
+
+  it('save with follow-theme persists the empty sentinel', async () => {
+    mockGetBrandSettings.mockResolvedValue({ ...defaultBrandResponse, primary_colour: '' });
+    render(<AppearanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Save appearance')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('Save appearance'));
+
+    await waitFor(() => {
+      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('tok-appearance', '');
+    });
+  });

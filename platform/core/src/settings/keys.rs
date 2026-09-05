@@ -111,7 +111,7 @@ pub const REDIS_URL: &str = "redis.url";
 pub const REDIS_CACHE_TTL: &str = "redis.cache_ttl";
 
 // ── Brand / White-label settings ────────────────────────────
-/// Primary brand colour (hex). Default `"#147EFB"`.
+/// Primary brand colour (hex). Default `""` = follow the active theme (light #147EFB, dark #1155CC).
 pub const BRAND_PRIMARY_COLOUR: &str = "brand.primary_colour";
 /// Filesystem path to the store logo image.
 pub const BRAND_LOGO_PATH: &str = "brand.logo_path";

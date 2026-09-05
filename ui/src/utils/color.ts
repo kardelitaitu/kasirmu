@@ -122,21 +122,70 @@ export function deriveAccentPalette(base: string = DEFAULT_ACCENT): AccentPalett
 }
 
 /**
+ * Every inline CSS custom property the brand palette owns.
+ *
+ * `applyAccentPalette` sets exactly these; `clearAccentPalette` removes
+ * exactly these. One shared list keeps the two in lockstep — a property
+ * added to one but not the other would leak an override that survives
+ * "reset to theme default".
+ */
+const BRAND_PALETTE_PROPS = [
+  '--color-accent',
+  '--color-accent-hover',
+  '--color-accent-active',
+  '--color-accent-subtle',
+  '--color-accent-fg',
+  '--color-accent-dim',
+  '--color-accent-alpha',
+  '--color-accent-secondary',
+  '--color-accent-subtle-fg',
+  '--color-accent-hover-fg',
+  '--color-accent-active-fg',
+  '--color-primary',
+  '--color-primary-soft',
+] as const;
+
+/**
  * Apply the accent palette as CSS custom properties on the document element.
+ *
+ * Also drives `--color-primary` / `--color-primary-soft` from the base so
+ * the brand colour reaches every primary-token consumer (statusbar tones,
+ * analytics, loyalty, reports…), not just `--color-accent` consumers.
  */
 export function applyAccentPalette(palette: AccentPalette): void {
   const root = document.documentElement;
-  root.style.setProperty('--color-accent', palette.base);
-  root.style.setProperty('--color-accent-hover', palette.hover);
-  root.style.setProperty('--color-accent-active', palette.active);
-  root.style.setProperty('--color-accent-subtle', palette.subtle);
-  root.style.setProperty('--color-accent-fg', palette.fg);
-  root.style.setProperty('--color-accent-dim', palette.dim);
-  root.style.setProperty('--color-accent-alpha', palette.alpha);
-  root.style.setProperty('--color-accent-secondary', palette.secondary);
-  root.style.setProperty('--color-accent-subtle-fg', palette.subtleFg);
-  root.style.setProperty('--color-accent-hover-fg', palette.hoverFg);
-  root.style.setProperty('--color-accent-active-fg', palette.activeFg);
+  const values: Record<(typeof BRAND_PALETTE_PROPS)[number], string> = {
+    '--color-accent': palette.base,
+    '--color-accent-hover': palette.hover,
+    '--color-accent-active': palette.active,
+    '--color-accent-subtle': palette.subtle,
+    '--color-accent-fg': palette.fg,
+    '--color-accent-dim': palette.dim,
+    '--color-accent-alpha': palette.alpha,
+    '--color-accent-secondary': palette.secondary,
+    '--color-accent-subtle-fg': palette.subtleFg,
+    '--color-accent-hover-fg': palette.hoverFg,
+    '--color-accent-active-fg': palette.activeFg,
+    '--color-primary': palette.base,
+    '--color-primary-soft': rgba(palette.base, 0.15),
+  };
+  for (const prop of BRAND_PALETTE_PROPS) {
+    root.style.setProperty(prop, values[prop]);
+  }
+}
+
+/**
+ * Remove every inline brand-palette override from the document element.
+ *
+ * Used by "reset to theme default": with no inline override, the static
+ * per-theme tokens in themes/tokens.css show through (light #147EFB,
+ * dark #1155CC).
+ */
+export function clearAccentPalette(): void {
+  const root = document.documentElement;
+  for (const prop of BRAND_PALETTE_PROPS) {
+    root.style.removeProperty(prop);
+  }
 }
 
 /**
