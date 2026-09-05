@@ -121,9 +121,17 @@ def staged_diff() -> str:
         cwd=ROOT).stdout
 
 
-def changes_from_diff(diff: str) -> tuple[set[str], set[str]]:
-    """(keys added to a bundle, key names removed from code) as seen in one diff."""
-    added_keys: set[str] = set()
+def changes_from_diff(diff: str) -> tuple[set[str], set[str], set[str]]:
+    """(keys added to an English bundle, keys added to an Indonesian bundle, key names
+    removed from code) as seen in one diff.
+
+    English and Indonesian additions are tracked separately because they fail differently: an
+    English-only key is an orphan candidate if nothing reads it, while an Indonesian-only key is
+    a one-sided translation that renders raw to English users. Collapsing them into one set, as
+    the first version did, cannot express the second check at all.
+    """
+    added_en: set[str] = set()
+    added_id: set[str] = set()
     removed_refs: set[str] = set()
     cur = ""
     for line in diff.splitlines():
@@ -133,21 +141,57 @@ def changes_from_diff(diff: str) -> tuple[set[str], set[str]]:
         if not cur:
             continue
         is_bundle = cur.endswith(".ftl") and "/locales/" in cur
+        is_id_bundle = is_bundle and cur.endswith(".id.ftl")
         is_code = cur.startswith("ui/src") and not is_bundle
         if line.startswith("+") and not line.startswith("+++") and is_bundle:
             for m in KEY_DECL.finditer(line[1:]):
-                added_keys.add(m.group(1))
+                (added_id if is_id_bundle else added_en).add(m.group(1))
         if line.startswith("-") and not line.startswith("---") and is_code:
             # A removed code line may have been the only reference to a key.
             for m in re.finditer(r"['\"`]([A-Za-z0-9][A-Za-z0-9._-]{3,})['\"`]", line[1:]):
                 removed_refs.add(m.group(1))
-    return added_keys, removed_refs
+    return added_en, added_id, removed_refs
 
 
 def load_allowlist() -> dict:
     if not ALLOWLIST_PATH.exists():
         return {}
     return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
+
+
+def bundle_keys(suffix: str) -> set[str]:
+    """Every key declared across one locale's whole set of domain files.
+
+    Global rather than per-file on purpose: all 25 domain files are concatenated into one
+    bundle per locale at load time (see scan-locale-crossings.py), so a key declared in
+    sales.id.ftl is satisfied by a definition in ANY English domain file. Pairing files
+    strictly would report crossings as one-sided when the runtime resolves them fine.
+    """
+    names: set[str] = set()
+    for f in sorted(LOCALES.glob("*.ftl")):
+        is_id = f.name.endswith(".id.ftl")
+        if (suffix == "id") != is_id:
+            continue
+        for m in KEY_DECL.finditer(_read(f)):
+            names.add(m.group(1))
+    return names
+
+
+def id_only_keys() -> set[str]:
+    """Keys in the Indonesian bundle with no English definition anywhere.
+
+    Reported as cleanup debt, NOT gated. An earlier version of this file claimed a reference
+    resolving in Indonesian but not English was invisible to every gate, on the reasoning that
+    i18nBundle.test.tsx:450 checks only EN->ID and --full-census is described as failing on
+    keys resolving in NEITHER locale. That claim was tested and is false: verify-bundle-parity.py
+    reports "missing in en .ftl only" and does so at getString, <Localized id> and i18nKey sites
+    alike. Its summary wording is what misled -- the behaviour checks each locale separately.
+
+    Checking at the reference is also strictly better than the key-set symmetry check proposed
+    there: it flags only one-sided keys that would actually render a raw identifier to a user,
+    and stays quiet about the 75 unreferenced dead translations that are untidy but harmless.
+    """
+    return bundle_keys("id") - bundle_keys("en")
 
 
 def census() -> int:
@@ -158,10 +202,17 @@ def census() -> int:
     dead = names - live
     allow = set(load_allowlist().get("census", []))
     unaccounted = sorted(dead - allow)
+    id_only = id_only_keys()
     print(
         f"info[census]: {len(names)} declared en keys, {len(live)} referenced, "
         f"{len(dead)} candidates ({len(dead & allow)} allowlisted, "
         f"{len(unaccounted)} unaccounted)"
+    )
+    print(
+        f"info[reverse-parity]: {len(id_only)} key(s) exist only in the Indonesian bundle. "
+        f"Not a defect while nothing references them -- verify-bundle-parity.py already fails "
+        f"on a reference resolving in English but not Indonesian, across getString, "
+        f"<Localized id> and i18nKey sites. Reported as cleanup debt only."
     )
     for k in unaccounted[:25]:
         print(f"  candidate: {k}  ({owner[k]})")
@@ -176,7 +227,8 @@ def check_staged() -> int:
     if not diff.strip():
         print("staged-only: nothing staged under ui/src; nothing to verify.")
         return 0
-    added_keys, removed_refs = changes_from_diff(diff)
+    added_en, added_id, removed_refs = changes_from_diff(diff)
+    added_keys = added_en | added_id
     names = set(declared_keys())
     allow = set(load_allowlist().get("staged", []))
     problems: list[str] = []
@@ -203,11 +255,26 @@ def check_staged() -> int:
             f"unreferenced -- delete the message too, or allowlist it with a reason"
         )
 
+    # 3. Report, but do NOT block, keys added to the Indonesian bundle with no English twin.
+    # This started as a blocker on the theory that a reference resolving in Indonesian but not
+    # English is invisible to every gate. That theory is false, and testing it is what killed it:
+    # verify-bundle-parity.py reports "missing in en .ftl only" and does so across getString,
+    # <Localized id> and i18nKey sites alike. Checking at the REFERENCE is strictly better than
+    # the key-set symmetry check I proposed, because it flags only the one-sided keys that would
+    # actually render a raw identifier to a user, and stays quiet about the 75 unreferenced dead
+    # translations that are untidy but harmless. Blocking here would also reject a legitimate
+    # sequence -- adding the Indonesian message in one commit and the English in the next.
+    # So the count is surfaced as a signal and nothing more.
+    one_sided = added_id & id_only_keys()
+
     print(
-        f"staged-only: {len(added_keys)} key(s) added, "
+        f"staged-only: {len(added_keys)} key(s) added ({len(added_en)} en / {len(added_id)} id), "
         f"{len(removed_refs & names)} removed reference(s) resolved to declared keys, "
-        f"{len(stranded)} stranded."
+        f"{len(stranded)} stranded, {len(one_sided)} one-sided (informational)."
     )
+    for k in sorted(one_sided):
+        print(f"  info: '{k}' has no English definition; harmless while nothing references it, "
+              f"and verify-bundle-parity.py fails if that changes.")
     if problems:
         print(f"\nFAIL: {len(problems)} orphan problem(s):", file=sys.stderr)
         for line in problems:
@@ -230,12 +297,30 @@ def self_test() -> int:
         "+++ b/ui/src/locales/shared.ftl",
         "+selftest-orphan-key-zz = Never referenced anywhere",
     ])
-    added, removed = changes_from_diff(synthetic)
+    added_en, added_id, removed = changes_from_diff(synthetic)
+    added = added_en | added_id
     if added != {"selftest-orphan-key-zz"}:
         print(f"FAIL self-test: added-key extraction returned {added}", file=sys.stderr)
         failures += 1
+    if added_id:
+        print("FAIL self-test: an English-bundle addition was classified as Indonesian",
+              file=sys.stderr)
+        failures += 1
     if "selftest-orphan-key-zz" in referenced(added):
         print("FAIL self-test: a key nothing references was judged live", file=sys.stderr)
+        failures += 1
+
+    # Direction 1b: the same key added to an .id.ftl must land in the Indonesian set, not the
+    # English one. Without this split the reverse-parity check has no input at all, and a
+    # parser that lumps both locales together would still pass direction 1.
+    synthetic_id = "\n".join([
+        "+++ b/ui/src/locales/shared.id.ftl",
+        "+selftest-onesided-key-zz = Kunci tanpa padanan Inggris",
+    ])
+    a_en2, a_id2, _ = changes_from_diff(synthetic_id)
+    if a_id2 != {"selftest-onesided-key-zz"} or a_en2:
+        print(f"FAIL self-test: id-bundle addition classified as en={a_en2} id={a_id2}",
+              file=sys.stderr)
         failures += 1
 
     # Direction 2: a removed code line naming a real key must surface as a candidate.
@@ -244,7 +329,7 @@ def self_test() -> int:
         "+++ b/ui/src/features/x/Y.tsx",
         f"-  getString('{real[0]}')",
     ])
-    added2, removed2 = changes_from_diff(synthetic2)
+    _, _, removed2 = changes_from_diff(synthetic2)
     if real[0] not in removed2:
         print("FAIL self-test: removed reference extraction missed a key name", file=sys.stderr)
         failures += 1
@@ -272,10 +357,36 @@ def self_test() -> int:
               file=sys.stderr)
         failures += 1
 
+    # Direction 5: reverse-parity detection must find real data, not just run. Asserting only
+    # that the function returns without raising is the "0 id-map(s) inspected" failure -- a
+    # clean result from an extractor that matched nothing. So: the known population must be
+    # non-empty, a specific known member must be present, and a key defined in both locales
+    # must be absent. That last clause is the one that catches a comparison inverted to
+    # bundle_keys("en") - bundle_keys("id"), which would also report a confident number.
+    one_sided = id_only_keys()
+    if not one_sided:
+        print("FAIL self-test: id_only_keys() found nothing, but the Indonesian bundle is "
+              "known to carry keys with no English twin -- the check is hollow", file=sys.stderr)
+        failures += 1
+    probe = sorted(one_sided)[:1]
+    if probe and probe[0] not in bundle_keys("id"):
+        print("FAIL self-test: a reported id-only key is absent from the Indonesian bundle",
+              file=sys.stderr)
+        failures += 1
+    both = bundle_keys("en") & bundle_keys("id")
+    if not both:
+        print("FAIL self-test: no key is defined in both locales, so the sets cannot be "
+              "distinguished -- the derivation is broken", file=sys.stderr)
+        failures += 1
+    if one_sided & both:
+        print("FAIL self-test: a key present in both locales was reported as one-sided",
+              file=sys.stderr)
+        failures += 1
+
     if failures:
         print(f"self-test: {failures} FAILURE(S)", file=sys.stderr)
         return 1
-    print("self-test: OK (4 directions exercised)")
+    print(f"self-test: OK (6 directions exercised, {len(one_sided)} one-sided keys detected)")
     return 0
 
 

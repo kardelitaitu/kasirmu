@@ -745,12 +745,27 @@ key reference. Re-running restricted to actual resolution sites — `getString`,
 `i18nKey`, `labelKey`/`descKey` and the rest of the conventions `verify-bundle-parity.py` already
 encodes — returned **zero**. The 75 are dead translations, not a bug.
 
-**What the false alarm did establish, though, is a real latent gap.** `i18nBundle.test.tsx:450`
-asserts only that every English key exists in Indonesian; nothing asserts the reverse at message
-level. `verify-bundle-parity.py --full-census` fails on a reference resolving in *neither* locale.
-So a reference resolving in Indonesian but not English is invisible to every gate in the repository,
-and would render a raw key name to an English user. Currently unpopulated — which is why it is
-recorded rather than gated here.
+**What the false alarm nearly established, but did not.** It pointed at a possible gap: 75 keys
+exist only in `.id.ftl` and in no English bundle, `i18nBundle.test.tsx:450` asserts only EN→ID,
+and `--full-census` is *described* as failing on references resolving in **neither** locale. From
+those three facts I concluded that a reference resolving in Indonesian but not English would pass
+every gate and render a raw key name to an English user — and wrote it into the backlog, this file,
+and the journal, in `98e5e1a5`.
+
+**Then I tested it, and it was false.** Staging a production `l10n.getString()` call on an
+Indonesian-only key makes `verify-bundle-parity.py` print `missing in en .ftl only (1 unique)` and
+exit 1; same at `<Localized id>` and `i18nKey` sites. The tool checks each locale separately — its
+summary wording is what misled, and I reasoned from the description instead of the behaviour. The
+claim is retracted in item 61, kept there rather than deleted because the wrong inference is easy
+to make.
+
+**Two things survive the error.** The repo's design is better than the check I proposed: a key-set
+symmetry rule would flag all 75 unreferenced dead translations as failures, while checking at the
+*reference* flags only the ones that would actually break for a user. And the control mattered more
+than the subject — `totally-absent-key-zzz` had to exit 1 before an exit 0 on the real case could
+mean anything. Two probes before that were invalid, and both times the tool reported its own
+emptiness honestly (`--staged-only received 0 path(s)`, "Returning 0 informational"); it was the
+reading of the result, not the result, that was wrong.
 
 **Proven to fire through the real hook, not just standalone.** Running `verify-ftl-orphans.py`
 directly is not evidence that pre-commit step 10 executes — the wiring is the part that can be

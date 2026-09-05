@@ -10215,6 +10215,25 @@ problem(s)` and exit 1. Running the script standalone is not evidence the wiring
    standing lesson in `fluent-page-audit.md` describes this exactly: a tool that saw
    too much, fixed by going and reading the source it pointed at.**
 
+4. **And then I published a real one.** The same measurement suggested a gap: 75 keys
+   exist only in Indonesian, `i18nBundle.test.tsx:450` checks only EN→ID, and
+   `--full-census` is *described* as failing on references resolving in **neither**
+   locale. So a reference resolving in Indonesian but not English must be invisible to
+   every gate — I wrote that into three docs in `98e5e1a5`. **It was false, and I only
+   found out by building the gate to close it.** Staging a `getString()` on an
+   Indonesian-only key makes `verify-bundle-parity.py` print `missing in en .ftl only`
+   and exit 1, at `getString`, `<Localized id>` and `i18nKey` sites alike. The tool
+   checks each locale separately; its summary wording is what I reasoned from instead
+   of its behaviour. Retracted in item 61, demoted the half-built check from blocker to
+   informational, and kept the wrong claim on record rather than deleting it — the
+   inference is easy to make. **The lesson is not "verify before claiming", which is
+   rule 4 already; it is that a claim about what a tool MISSES needs the same control as
+   a claim about what it catches: `totally-absent-key-zzz` had to exit 1 before an exit
+   0 on the subject would have meant anything.** Two earlier probes were invalid in the
+   opposite direction — the tool said `received 0 path(s)` and `Returning 0
+   informational` and I nearly read that as a verdict. It was reporting its own emptiness
+   honestly; the reading was the error.
+
 **Root-caused a flake that had resisted nine rounds (`db94998f`)** — and my first
 diagnosis was wrong. `KdsEnrollmentModalPure` failing in-suite but passing alone reads
 as test ordering, so I blamed the mock-leak debt. Real cause: `Date.now()` read twice
@@ -10234,8 +10253,8 @@ their whole budget confirming it.**
   latent gap with 75 legitimate cleanup items and ship a red gate.
 - Amend, `--no-verify`, `git stash`, or `git push`.
 
-**Remaining risks, each a future slice:** reverse locale parity is unasserted
-(currently unpopulated, so latent — item 61 records the exact five-minute fix); the
-orphan gate's blocking form runs only in the hook, since CI has no index to diff;
-CI still never runs on this branch at all, because `dev-ci.yml` has no push trigger;
-and the ~50 keys of real orphan debt need an owner's decision.
+**Remaining risks, each a future slice:** the orphan gate's blocking form runs only in
+the hook, since CI has no index to diff; CI still never runs on this branch at all,
+because `dev-ci.yml` has no push trigger; and the ~50 keys of real orphan debt plus the
+75 dead Indonesian translations need an owner's decision. **The reverse-parity gap that
+this entry originally listed as remaining does not exist** — see correction 4 above.
