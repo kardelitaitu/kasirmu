@@ -1,5 +1,51 @@
 
 
+## 2026-09-05 — TDD round AG: kds_routing command-layer gap pins (desktop-client)
+
+**Gap-correction first:** my sweep flagged kds_device.rs /
+kds_routing.rs as "untested files" — wrong by the three-greps rule:
+ALL their commands are exercised from the sibling kds_tests.rs module
+(register/list/isolation/stale-deactivation). The REAL residue was in
+resolve_kds_targets_scoped coverage: of its behaviours only invalid
+token, broadcast-mode, and inactive-exclusion were pinned. Unpinned:
+the PRIMARY station-claim path (line items → product kitchen_zone →
+device station_ids), the terminal-id fallback for Restaurant POS
+sessions (kds_routing.rs:52-55 — a silent "fix" there kills routing
+for every legacy POS session), the phase-3 catch-all, and the
+unknown-order error.
+
+**Pins (4 tests, 1c2f985c):** station-claim routes each line to its
+zone device (BURGER→grill device, FRIES→fry device — exact 2 targets);
+unclaimed 'grill' station triggers the phase-3 catch-all broadcast;
+a session WITHOUT restaurant_pos_id falls back to terminal_id and
+both lists and routes to devices registered under the terminal
+(list + resolve both asserted); unknown order → AppError::Invalid.
+New helper seed_zoned_ticket: cart→sale, order, two structured
+create_kds_line_items — routing reads LINE SKUs via
+product_kitchen_zone_by_sku, not the order's own kitchen_zone.
+
+**Two Red-phase findings, both mine, both educational:**
+1. Missing FRIES product: the round-W core helper's doc says "seed
+   BURGER/FRIES first"; I only seeded BURGER, so FRIES had no zone →
+   no station → 1 target ≠ 2. Product must EXIST before its zone can
+   be SQL-set (create_product first, then UPDATE).
+2. Self-deadlock: the fallback test held the store-db std Mutex while
+   calling create_sale_in_store, which opens the same store and locks
+   the same non-reentrant mutex. This produced a test binary hung for
+   7 HOURS (found as a zombie oz_pos_app_lib process holding the
+   linker's output file — kill my own orphan, never the other agent's
+   dev app). Lesson: seed helpers that internally open_store must be
+   called OUTSIDE any held store guard.
+
+**Infra note:** concurrent `cargo tauri dev` (other agent) holds the
+target-dir lock and rebuilds on every file edit — my test runs queue
+behind it and 600s tool timeouts kill the wrapper, not cargo. Isolated
+single-test runs + checking process command lines (Get-CimInstance)
+before touching anything beat guessing.
+
+**Test counts:** oz-pos-app lib 1221 green (1214 + 4 new −… net +4;
+suite 114.6s); routing filter 7/7.
+
 ## 2026-09-04 — TDD round AF: tablet KDS command surface pins (tablet-client)
 
 **Gap:** apps/tablet-client/src/commands/kds.rs was the ONLY command
