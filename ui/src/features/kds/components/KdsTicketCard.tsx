@@ -478,6 +478,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                   onChange={(e) => setEditSummary(e.target.value)}
                   onKeyDown={handleKeyDown}
                   aria-label={requiredLocalized(l10n, 'kds-edit-items-aria')}
+                  data-testid={`kds-order-card-${order.display_number ?? order.id}-edit-input`}
                 />
                 <div className="kds-ticket-edit-row">
                   <label className="kds-ticket-edit-label">
@@ -493,6 +494,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                       }}
                       onKeyDown={handleKeyDown}
                       aria-label={requiredLocalized(l10n, 'kds-edit-count-aria')}
+                      data-testid={`kds-order-card-${order.display_number ?? order.id}-edit-count`}
                     />
                   </label>
                   <div className="kds-ticket-edit-actions">
@@ -538,6 +540,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                   className="kds-ticket-edit-btn"
                   onClick={startEditing}
                   aria-label={requiredLocalized(l10n, 'kds-edit-items-btn-aria')}
+                  data-testid={`kds-order-card-${order.display_number ?? order.id}-edit-items`}
                 >
                   <Localized id="kds-edit-items-btn">Edit Items</Localized>
                 </button>
@@ -550,6 +553,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                     onAddItems(order.id);
                   }}
                   aria-label={requiredLocalized(l10n, 'kds-add-items-btn-aria')}
+                  data-testid={`kds-order-card-${order.display_number ?? order.id}-add-items`}
                 >
                   <Localized id="kds-add-items-btn">Add Items</Localized>
                 </button>
