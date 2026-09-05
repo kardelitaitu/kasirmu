@@ -1356,3 +1356,253 @@ async fn integration_device_isolation_between_restaurants() {
     assert_eq!(devices[0].id, device_a.id);
     assert_eq!(devices[0].restaurant_pos_id, "resto-1");
 }
+
+// ── Gap pins: line-item + items-edit + ticket-creation commands ────
+//
+// The scoped commands below route through session → store → instance
+// scoping and KDS permissions, yet had zero command-layer coverage
+// (grep evidence: no test referenced them). The oz-core layer beneath
+// is pinned in crates/oz-core; these pin the wiring.
+
+/// Seeds a restaurant product (BURGER) into the store DB so the fanout
+/// creates a ticket.
+fn seed_restaurant_product(state: &AppState) {
+    let store_db = state.db_manager.open_store("s1").unwrap();
+    let db = store_db.lock().unwrap();
+    let s = Store::new(&db);
+    s.create_product(
+        "BURGER",
+        "Burger",
+        Money {
+            minor_units: 500,
+            currency: "USD".parse().unwrap(),
+        },
+        None,
+        None,
+        10,
+        Some("restaurant"),
+    )
+    .unwrap();
+}
+
+/// Seeds a pending sale with one BURGER line into the store DB. The
+/// existing `create_sale_in_store` helper creates a zero-line sale, which
+/// the fanout correctly ignores (nothing to cook).
+fn create_restaurant_sale_in_store(state: &AppState, sale_id: &str) {
+    let store_db = state.db_manager.open_store("s1").unwrap();
+    let db = store_db.lock().unwrap();
+    let s = Store::new(&db);
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let usd: Currency = "USD".parse().unwrap();
+    let unit = Money {
+        minor_units: 500,
+        currency: usd.clone(),
+    };
+    let line_id = uuid::Uuid::now_v7().to_string();
+    let sale = Sale {
+        id: sale_id.into(),
+        status: SaleStatus::Pending,
+        total: unit.clone(),
+        line_count: 1,
+        currency: usd.clone(),
+        payment_method: None,
+        tendered_minor: None,
+        user_id: Some("user-owner".into()),
+        created_at: now.clone(),
+        updated_at: now.clone(),
+        lines: vec![oz_core::SaleLine {
+            id: line_id.clone(),
+            sale_id: sale_id.into(),
+            sku: "BURGER".into(),
+            qty: 1,
+            unit_price: unit.clone(),
+            line_total: unit.clone(),
+            line_position: 1,
+            tax_amount: Money {
+                minor_units: 0,
+                currency: usd.clone(),
+            },
+            tax_rate_id: None,
+            tax_breakdown_json: None,
+            serial_number: None,
+            course: None,
+            modifiers_json: None,
+        }],
+        discount_percent: 0,
+        discount_label: None,
+        subtotal: unit.clone(),
+        tax_total: Money {
+            minor_units: 0,
+            currency: usd,
+        },
+        customer_id: None,
+        base_currency: None,
+        base_total_minor: None,
+        tender_rate_millionths: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
+        version: 1,
+    };
+    s.create_sale(&sale).unwrap();
+}
+
+fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn scoped_line_item_status_update_and_read_end_to_end() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_owner(&conn);
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    seed_restaurant_product(&state);
+    create_restaurant_sale_in_store(&state, "sale-lines-1");
+    let app = mock_app(state);
+
+    let orders =
+        create_kds_order_from_sale_scoped("tok".into(), "sale-lines-1".into(), app.state())
+            .await
+            .unwrap();
+    assert_eq!(
+        orders.len(),
+        1,
+        "restaurant product must fan out one unzoned ticket"
+    );
+    assert_eq!(orders[0].store_id.as_deref(), Some("s1"));
+
+    let lines = get_kds_order_lines_scoped("tok".into(), orders[0].id.clone(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].item_status, "pending");
+
+    let updated = update_kds_line_item_status_scoped(
+        "tok".into(),
+        lines[0].id.clone(),
+        "preparing".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.item_status, "preparing");
+    assert!(updated.started_at.is_some(), "started_at stamped");
+}
+
+#[tokio::test]
+async fn scoped_update_kds_order_items_edits_ticket() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_owner(&conn);
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    seed_restaurant_product(&state);
+    create_restaurant_sale_in_store(&state, "sale-items-1");
+    let app = mock_app(state);
+
+    let orders =
+        create_kds_order_from_sale_scoped("tok".into(), "sale-items-1".into(), app.state())
+            .await
+            .unwrap();
+
+    let edited = update_kds_order_items_scoped(
+        "tok".into(),
+        oz_core::UpdateKdsOrderItemsInput {
+            id: orders[0].id.clone(),
+            items_summary: "Burger, Fries".into(),
+            item_count: 2,
+            line_items: Some(vec![
+                oz_core::CreateKdsLineItemInput {
+                    sku: "BURGER".into(),
+                    display_name: "Burger".into(),
+                    qty: 1,
+                    course: Some("main".into()),
+                    modifiers: vec![],
+                },
+                oz_core::CreateKdsLineItemInput {
+                    sku: "FRIES".into(),
+                    display_name: "Fries".into(),
+                    qty: 1,
+                    course: Some("side".into()),
+                    modifiers: vec![],
+                },
+            ]),
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(edited.items_summary, "Burger, Fries");
+    assert_eq!(edited.item_count, 2);
+
+    let lines = get_kds_order_lines_scoped("tok".into(), orders[0].id.clone(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        lines.len(),
+        2,
+        "replacement items replace the original single line"
+    );
+    assert!(
+        lines.iter().all(|l| l.item_status == "pending"),
+        "fresh items start pending"
+    );
+}
+
+#[tokio::test]
+async fn scoped_line_item_update_rejects_invalid_token() {
+    let conn = oz_core::migrations::fresh_db();
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = mock_app(state);
+
+    let result = update_kds_line_item_status_scoped(
+        "bad-token".into(),
+        "item-1".into(),
+        "preparing".into(),
+        app.state(),
+    )
+    .await;
+    assert!(matches!(result, Err(AppError::InvalidSession)));
+}
+
+#[tokio::test]
+async fn scoped_get_order_lines_rejects_invalid_token() {
+    let conn = oz_core::migrations::fresh_db();
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = mock_app(state);
+
+    let result =
+        get_kds_order_lines_scoped("bad-token".into(), "order-1".into(), app.state()).await;
+    assert!(matches!(result, Err(AppError::InvalidSession)));
+}
+
+#[tokio::test]
+async fn scoped_update_order_items_rejects_invalid_token() {
+    let conn = oz_core::migrations::fresh_db();
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = mock_app(state);
+
+    let result = update_kds_order_items_scoped(
+        "bad-token".into(),
+        oz_core::UpdateKdsOrderItemsInput {
+            id: "order-1".into(),
+            items_summary: String::new(),
+            item_count: 0,
+            line_items: None,
+        },
+        app.state(),
+    )
+    .await;
+    assert!(matches!(result, Err(AppError::InvalidSession)));
+}
+
+#[tokio::test]
+async fn scoped_create_tickets_rejects_invalid_token() {
+    let conn = oz_core::migrations::fresh_db();
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = mock_app(state);
+
+    let result =
+        create_kds_order_from_sale_scoped("bad-token".into(), "sale-1".into(), app.state()).await;
+    assert!(matches!(result, Err(AppError::InvalidSession)));
+}
