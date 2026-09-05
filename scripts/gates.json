@@ -146,6 +146,33 @@
       "runners": { "check.sh": ["invoke token parity"] }
     },
     {
+      "id": "scoped-ambient-reads-self-test",
+      "label": "Scoped ambient reads self-test",
+      "status": "required",
+      "runners": {
+        "check.sh": ["scoped ambient reads"]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "_note": "Self-test for verify-scoped-reads.py. Blocking, like verify-ftl-orphans --self-test: a gate whose parsers silently break checks nothing, and this one's classifier had two bugs found by its own fixtures on the day it was written."
+    },
+    {
+      "id": "unguarded-ambient-ipc-calls",
+      "label": "Unguarded ambient IPC call sites",
+      "status": "required",
+      "runners": {
+        "check.sh": ["unguarded ambient ipc calls"]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      },
+      "_note": "Reads ipc-parity-allowlist.json and fails when a command a shell does NOT register is called from production code outside an ADR #7 token check. Added after round 66 found get_cart_deduction_location sitting in that allowlist as accepted debt while PosScreen called it unconditionally, so every desktop sale with a stock-target item threw; round 67 found two more the same way (PaymentModal's shortfall-retry receipt read, and EodReportScreen)."
+    },
+
+    {
       "id": "no-hardcoded-money-format",
       "label": "No hardcoded exp-2 money formatting",
       "status": "required",

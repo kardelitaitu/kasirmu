@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   exportEodReport,
+  exportEodReportScoped,
   type EodReport,
 } from '@/api/sales';
 import { listShiftsScoped, type ShiftDto } from '@/api/shifts';
@@ -395,7 +396,10 @@ export default function EodReportScreen() {
     setError(null);
     try {
       const [data, shiftData] = await Promise.all([
-        exportEodReport(),
+        // ADR #7, matching the listShiftsScoped call beside it. desktop-client registers no
+        // export_eod_report command, so the ambient call rejected and the screen fell into its
+        // error state on every desktop visit.
+        sessionToken ? exportEodReportScoped(sessionToken) : exportEodReport(),
         listShiftsScoped(sessionToken),
       ]);
       setReport(data);

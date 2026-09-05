@@ -61,6 +61,16 @@ step "ipc parity" "python3 scripts/verify-ipc-parity.py" python3 scripts/verify-
 # class). Union semantics across desktop + tablet shells.
 step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
 
+# ipc-parity-allowlist.json records "UI command strings not yet registered in this shell", which
+# covers two very different things: an ambient call sitting in an ADR #7 else-branch (dead surface,
+# harmless) and an ambient call made unconditionally (a runtime `command not found` on that shell).
+# The list cannot tell them apart, and one entry that looked like the first was the second --
+# get_cart_deduction_location, which made every desktop sale with a stock-target item throw. This
+# reads the allowlist, finds each command's wrapper and its production call sites, and fails on any
+# call not sitting behind a token test.
+step "scoped ambient reads" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
+step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" python3 scripts/verify-scoped-reads.py
+
 # ── Architecture boundary checker (P1 pilot) ────────────────────────────
 # Existing transitional debt is reported but only new, expired, or stale
 # baseline entries fail. This is static-only and has no runtime impact.

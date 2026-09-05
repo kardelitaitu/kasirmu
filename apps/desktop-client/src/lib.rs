@@ -627,6 +627,14 @@ pub fn run() {
             commands::stock_transfers::cancel_stock_transfer_scoped,
             commands::health::ping,
             commands::health::ping_scoped,
+            // `version` was the only health command registered without its ambient twin: every
+            // pair above and below is `x` + `x_scoped`. The UI calls `version` from four sites
+            // (useVersionStatus, UpdateBanner, LicenseActivationScreen, SessionLockScreen), so on
+            // desktop it threw "command not found" -- useVersionStatus caught that and displayed
+            // the app version as 0.0.0, while UpdateBanner's throw aborted the same try block that
+            // decides whether to show the rollback-recovery banner, so that feature never fired.
+            // tablet-client has registered `version` all along (lib.rs:409).
+            commands::health::version,
             commands::health::version_scoped,
             commands::health::get_device_id,
             commands::health::get_device_id_scoped,

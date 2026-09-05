@@ -30,8 +30,7 @@
     "set_terminal_override",
     "start_scanner",
     "stop_scanner",
-    "update_product",
-    "version"
+    "update_product"
   ],
   "tablet": [
     "ack_kds_order_scoped",

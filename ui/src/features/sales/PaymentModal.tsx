@@ -1212,7 +1212,15 @@ export default function PaymentModal({
             // reduced quantities or substituted SKUs, the local cart no
             // longer describes what sold.
             try {
-              const completedSale = await getSale(result.saleId);
+              // ADR #7, and the third site of this exact defect: the two receipt reads above were
+              // converted by searching for the literal `getSale(saleResult.saleId)`, which missed
+              // this one because the shortfall dialog's callback names its parameter `result`.
+              // get_sale is registered by tablet only, so on desktop this threw, the catch below
+              // swallowed it as "non-blocking", and the customer who had just paid saw no receipt
+              // preview at all.
+              const completedSale = sessionToken
+                ? await getSaleScoped(sessionToken, result.saleId)
+                : await getSale(result.saleId);
               const shortfallTotalMinor = result.total?.minor_units ?? completedSale?.total.minor_units ?? effectiveTotalInCartCurrency;
               const shortfallCurrency = result.total?.currency ?? completedSale?.total.currency ?? cartCurrency;
               const receiptData: PrintSalesReceiptArgs = {
