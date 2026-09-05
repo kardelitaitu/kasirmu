@@ -76,7 +76,11 @@ export default function EmailReportSettings() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // sessionToken is read at :70 and derived from useWorkspace() at :44. This array was empty,
+    // and :81 is `useEffect(() => { loadConfig(); }, [loadConfig])` with no latch, so loadConfig's
+    // identity is the only thing that re-triggers the fetch -- it never changed, so the SMTP
+    // config shown after a store switch was still the previous store's.
+  }, [sessionToken]);
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
 
@@ -122,7 +126,11 @@ export default function EmailReportSettings() {
     } finally {
       setSaving(false);
     }
-  }, [config, l10n, addToast, userId]);
+    // sessionToken is read at :116 by setSettingScoped. `userId` was listed and is a different
+    // value, so it never covered the token: saving after a store switch wrote SMTP credentials
+    // to the previous store -- or failed on the destroyed session, after the success toast had
+    // already been scheduled on the happy path.
+  }, [config, l10n, addToast, userId, sessionToken]);
 
   // ── Schedule event handlers ────────────────────────────────────────
 

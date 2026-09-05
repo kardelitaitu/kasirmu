@@ -48,6 +48,9 @@ export function WorkspaceRestaurantPosSettings({
   // the load must never silently revert them (draft-overwrite race).
   const touchedRef = useRef<Set<'courseFiring'>>(new Set());
   const [originalsLoaded, setOriginalsLoaded] = useState(false);
+  // The session the originals above were seeded for; replaces originalsLoaded as the fetch guard
+  // so a store switch re-seeds. originalsLoaded stays for the dirty memo at :52.
+  const originalsLoadedForRef = useRef<string | null | undefined>(undefined);
 
   const dirty = useMemo(() => hasChanges(
     { tableManagement, courseFiring } as Record<string, unknown>,
@@ -59,7 +62,12 @@ export function WorkspaceRestaurantPosSettings({
   useEffect(() => {
     // Only seed initial values once; subsequent re-runs must not
     // overwrite user edits (e.g. when settings.receipt changes).
-    if (originalsLoaded) return;
+    // "Once" is scoped to the session: originalsLoaded is a one-way latch (set at :73/:76, never
+    // reset), so listing sessionToken in the deps alone would have changed nothing -- the guard
+    // short-circuits every later run. Latching on the token makes a store switch re-seed, which
+    // is what the touchedRef guard at :71 is already built for.
+    if (originalsLoadedForRef.current === sessionToken) return;
+    originalsLoadedForRef.current = sessionToken;
 
     setTableManagement(settings.receipt.showTableNumber);
 
@@ -76,7 +84,9 @@ export function WorkspaceRestaurantPosSettings({
       setOriginalsLoaded(true);
     });
     return () => { cancelled = true; };
-  }, [settings.receipt, originalsLoaded]);
+    // sessionToken is read at :68 from useWorkspace() at :32. The save path at :125 already lists
+    // it, so the omission here is an inconsistency rather than a design decision.
+  }, [settings.receipt, originalsLoaded, sessionToken]);
 
   // ── Save ─────────────────────────────────────────────────────
 

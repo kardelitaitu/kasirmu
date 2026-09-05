@@ -61,6 +61,9 @@ export function WorkspaceKdsSettings({
   // the load must never silently revert these (draft-overwrite race).
   const touchedRef = useRef<Set<keyof KdsDraftState>>(new Set());
   const [originalsLoaded, setOriginalsLoaded] = useState(false);
+  // The session originals were seeded for; replaces originalsLoaded as the fetch guard so a
+  // store switch re-seeds. originalsLoaded stays for the dirty memo below.
+  const originalsLoadedForRef = useRef<string | null | undefined>(undefined);
   const dirty = useMemo(() => hasChanges(
     draft as unknown as Record<string, unknown>,
     originalsRef.current as unknown as Record<string, unknown>,
@@ -69,9 +72,10 @@ export function WorkspaceKdsSettings({
   // ── Initialise from backend ─────────────────────────────────
 
   useEffect(() => {
-    // Only seed initial values once; subsequent re-runs must not
-    // overwrite user edits.
-    if (originalsLoaded) return;
+    // Only seed initial values once per session; subsequent re-runs must not
+    // overwrite user edits. "Once" is scoped to the token, not to the mount.
+    if (originalsLoadedForRef.current === sessionToken) return;
+    originalsLoadedForRef.current = sessionToken;
 
     // Load all 5 KDS settings from the backend, then set originals
     // to the loaded values so dirty tracking doesn't fire on mount.
@@ -107,8 +111,13 @@ export function WorkspaceKdsSettings({
     }).finally(() => {
       setOriginalsLoaded(true);
     });
+    // The suppression on the previous line was hiding this: the effect reads sessionToken five
+    // times (:79-:83) and its deps listed only the one-way latch originalsLoaded. eslint could
+    // not report it, which is why the sweep's count understated the class -- the real total was
+    // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
+    // the dirty memo at :67, and the touchedRef guard in the .then() is already built for re-entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [originalsLoaded]);
+  }, [originalsLoaded, sessionToken]);
 
   // ── Update helpers ───────────────────────────────────────────
 
@@ -154,7 +163,10 @@ export function WorkspaceKdsSettings({
     } finally {
       setSaving(false);
     }
-  }, [userId, draft, onSaved, addToast, l10n, markSettingsUpdated]);
+  // sessionToken is read at :125 by setSettingsScoped. `userId` was already listed and is a
+  // different value, so it never covered the token -- saving after a store switch wrote to the
+  // previous store (or failed on the destroyed session) while the UI reported success.
+  }, [userId, draft, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
 
   const isCompact = variant === 'inspector-drawer';
 

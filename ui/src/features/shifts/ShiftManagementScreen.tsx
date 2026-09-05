@@ -189,7 +189,13 @@ export default function ShiftManagementScreen() {
     } finally {
       setSaving(false);
     }
-  }, [activeShift, payoutAmount, payoutReason, load, l10n]);
+    // sessionToken is read at :182 by createCashPayoutScoped -- this moves cash out of a shift,
+    // so it is the most consequential of the remaining sites. With the token missing, a payout
+    // submitted after a cashier hot-swap presented the destroyed session: the write failed and
+    // surfaced as a generic retryable error, so the operator would press Save again on a form
+    // that could not succeed until the screen remounted. :186 also awaits load(), which now
+    // refreshes against the same session as the write.
+  }, [activeShift, payoutAmount, payoutReason, load, l10n, sessionToken]);
 
   // ── Format time/date helpers ───────────────────────────────────────
 

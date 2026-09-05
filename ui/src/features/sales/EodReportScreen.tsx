@@ -346,7 +346,12 @@ export default function EodReportScreen() {
     } finally {
       setPrinting(false);
     }
-  }, [lastRefresh]);
+    // sessionToken is read at :343 and derived from useWorkspace() at :247. Because the catch
+    // above deliberately swallows everything, this is another silent failure: after a hot-swap
+    // the end-of-day report print presents a destroyed session, rejects, and the button simply
+    // does nothing -- on the one screen an operator expects to produce a signed record. deps
+    // listed only lastRefresh, which the refresh button changes and a session switch does not.
+  }, [lastRefresh, sessionToken]);
 
   const exportCsv = useCallback(() => {
     const r = reportRef.current;

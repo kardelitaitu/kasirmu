@@ -35,6 +35,9 @@ export function WorkspaceInventorySettings({
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [dirtyVersion, setDirtyVersion] = useState(0);
+  // The session the originals below were fetched for. Replaces `loaded` as the fetch guard so a
+  // store switch re-reads; `loaded` stays for the dirty-tracking memo.
+  const loadedForRef = useRef<string | undefined>(undefined);
 
   const originalsRef = useRef<Record<string, unknown>>({
     lowStockThreshold, deductionPreferWarehouse,
@@ -51,7 +54,12 @@ export function WorkspaceInventorySettings({
   // ── Load from backend ───────────────────────────────────────
 
   useEffect(() => {
-    if (loaded) return;
+    // `loaded` is a one-way latch (set true at :74, never reset), so adding sessionToken to the
+    // deps below would NOT have re-fetched -- the guard at :54 short-circuits every later run.
+    // Latching on the token instead: the body already refuses to overwrite fields the operator
+    // has touched (:61, :64), which is the signature of a function written to be re-entered.
+    if (loadedForRef.current === sessionToken) return;
+    loadedForRef.current = sessionToken;
 
     Promise.all([
       getSettingScoped(sessionToken ?? null, 'inventory.low_stock_threshold'),
@@ -73,7 +81,10 @@ export function WorkspaceInventorySettings({
     }).finally(() => {
       setLoaded(true);
     });
-  }, [loaded]);
+    // sessionToken is a prop (:21) read at :57 and :58. Without it here, a card mounted before a
+    // store switch kept showing the previous store's thresholds. `loaded` still drives the
+    // dirty-tracking memo at :49, so it is kept rather than replaced.
+  }, [loaded, sessionToken]);
 
   // ── Save ─────────────────────────────────────────────────────
 
@@ -96,7 +107,10 @@ export function WorkspaceInventorySettings({
     } finally {
       setSaving(false);
     }
-  }, [userId, lowStockThreshold, deductionPreferWarehouse, onSaved, addToast, l10n, markSettingsUpdated]);
+    // sessionToken is read at :83 by setSettingsScoped. `userId` was listed and is a different
+    // value, so it never covered the token: saving after a store switch wrote the previous
+    // store's thresholds (or failed on the destroyed session) while the toast said it saved.
+  }, [userId, lowStockThreshold, deductionPreferWarehouse, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
 
   const isCompact = variant === 'inspector-drawer';
 
