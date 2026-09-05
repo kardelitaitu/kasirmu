@@ -109,6 +109,15 @@ describe('shouldFireOnEnrolledOnDone', () => {
   });
 
   it('does not fire on an unknown step', () => {
-    expect(shouldFireOnEnrolledOnDone('unknown' as any, device)).toBe(false);
+    // Was `'unknown' as any`, which is the repo's only remaining eslint ERROR and therefore
+    // fails `npm run lint` -- a step dev-ci.yml#ui-test runs, so the next PR opened from this
+    // branch would go red on it. `any` also defeats the point of the assertion: it silences the
+    // checker everywhere the value flows, not just here.
+    //
+    // EnrollmentStep is not exported (KdsEnrollmentModal.tsx:28), so the parameter type is
+    // derived from the function rather than imported -- which keeps this honest if the union
+    // grows: a new member still has to be a real step, and 'unknown' still is not one.
+    const bogusStep = 'unknown' as unknown as Parameters<typeof shouldFireOnEnrolledOnDone>[0];
+    expect(shouldFireOnEnrolledOnDone(bogusStep, device)).toBe(false);
   });
 });
