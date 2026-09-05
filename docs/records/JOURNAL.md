@@ -10153,3 +10153,89 @@ Process notes:
     — `AppearanceSettings.test.tsx` overrides `useWorkspace` at L31 with
     `'tok-appearance'`, which its sibling assertions already use. Matching
     the block's own convention is what makes an assertion meaningful.
+
+---
+
+## 2026-09-05 — rounds 55-57: a block that would not clear, and three self-corrections
+
+**Problem:** every commit in the repository was blocked for six rounds. Pre-commit
+step 3 runs `lint-i18n.sh`, which calls `verify-bundle-parity.py --full-census` —
+whole-tree, unconditional, no skip path — and it reported 2 missing keys. Those keys
+belonged to a Cloud Sync card another agent had added to `WorkspaceHome.tsx` and
+never finished, so the file sat dirty and the gate stayed red for work nobody was
+doing. `OZPOS_SKIP_TYPECHECK` is the only skip variable the hook honours, so the
+alternative was `--no-verify`, which skips all nine gates.
+
+**The premise I had been acting on was five rounds old and untested.** I had
+declined to intervene because "they are mid-edit and will finish." Checked directly:
+the blocking file had been idle 168 minutes, the other dirty files were 6-22 hours
+old, and the same agent had committed eight test suites in fifteen minutes *while this
+gate was failing* — meaning they bypassed it eight times. The block was not
+self-clearing. Recording the assumption as fact for five rounds was the actual error.
+
+**Escalated rather than choosing unilaterally.** Adding another agent's missing copy
+is a product decision; touching their dirty file is worse; bypassing nine gates is
+worst. Asked, and the user chose to add the keys.
+
+**Solution:** added `workspace-home-cloud-sync-title`/`-desc` to `shared.ftl` and
+`shared.id.ftl` (`3dca96c2`). **The wording is not mine** — the app already ships
+approved copy for this exact capability in the same file: `setup-feature-cloud-sync`
+= "Cloud Sync" and its `-desc`, with Indonesian counterparts. Reusing established
+terminology for an already-named feature is plumbing; writing new copy would have
+been the product decision I was trying to avoid. Inserted positionally beside the
+other `workspace-home` tool-card pairs, not sorted, to keep the file's grouping by
+feature. Then landed the rest of the pending work as five focused commits rather than
+one, so each is reviewable and bisectable.
+
+**Built the gate the risk needed (`a410ea9f`).** The user's chosen option included
+building an orphan-key check so the residual risk stays visible. `verify-ftl-orphans.py`
+now gates the direction nothing checked, and found real debt immediately:
+`topology-shortcuts-*` (18 keys whose feature was removed, per a comment in
+`popoverSurfaceCompliance.test.tsx:54`) and ~23 `warehouse-*` keys with zero
+references anywhere. Wired as pre-commit step 10 plus `gates.json`, `check.sh`, and
+`dev-ci.yml#i18n`, and **proven to fire through the real hook** — staging a key in
+both locale files produced `i18n lint: no issues detected` then `FAIL: 1 orphan
+problem(s)` and exit 1. Running the script standalone is not evidence the wiring works.
+
+**Three times I was wrong, and what caught each:**
+
+1. **My parity gate was hollow.** Disabling the TypeScript aliasing rule left it green
+   with zero violations, because the Python re-implemented the rule instead of
+   observing it. A check that re-derives the thing it verifies agrees by construction.
+2. **A self-test that passed while the mechanism did nothing.** The prefix rescue was
+   dead — the capture class includes `-`, so `` `analytics-month-${m}` `` yielded
+   `'analytics-month-'` and `startswith(p + "-")` searched for `'analytics-month--'`.
+   The self-test asserted detection *found* a prefix, not that it *rescued* a key.
+   A looser earlier prototype had got it right by accident; tightening made it wrong.
+3. **I nearly published six fake defects.** Measuring Indonesian-only keys, I matched
+   any quoted string equal to a key name and "found" `done`, `export`, `download`,
+   `pos-cart-title` referenced from production — a live English-locale bug, since
+   Fluent has no cross-locale fallback. All six were a status prop, a CSS class, and
+   a state-machine enum. Restricting to real resolution sites returned zero. **The
+   standing lesson in `fluent-page-audit.md` describes this exactly: a tool that saw
+   too much, fixed by going and reading the source it pointed at.**
+
+**Root-caused a flake that had resisted nine rounds (`db94998f`)** — and my first
+diagnosis was wrong. `KdsEnrollmentModalPure` failing in-suite but passing alone reads
+as test ordering, so I blamed the mock-leak debt. Real cause: `Date.now()` read twice
+plus `Math.floor`, so the assertion held only while both reads landed in the same
+millisecond — near-certain isolated, merely likely under load. **Item 59 was rewritten
+rather than appended to: a stale wrong root cause in the docs costs the next agent
+their whole budget confirming it.**
+
+**Deliberately did NOT:**
+- Delete the 93 orphan candidates or 75 dead Indonesian translations. Dead copy is
+  cheap, someone may revive a feature, and both are product decisions. Recorded with
+  counts and file attribution instead.
+- Build the static check I proposed for double-`Date.now()` reads. Measured first:
+  12 such blocks, 9 provably safe (`<=` monotonic, clamped, hour-scale offsets) —
+  75% false positives. Recorded as *rejected*, not deferred.
+- Extend `--full-census` to fail on Indonesian-only keys; that would conflate a
+  latent gap with 75 legitimate cleanup items and ship a red gate.
+- Amend, `--no-verify`, `git stash`, or `git push`.
+
+**Remaining risks, each a future slice:** reverse locale parity is unasserted
+(currently unpopulated, so latent — item 61 records the exact five-minute fix); the
+orphan gate's blocking form runs only in the hook, since CI has no index to diff;
+CI still never runs on this branch at all, because `dev-ci.yml` has no push trigger;
+and the ~50 keys of real orphan debt need an owner's decision.

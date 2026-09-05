@@ -149,7 +149,7 @@ Small, focused, well-described — while context is fresh.
 - Branch naming: `feat/<name>`, `fix/<name>`, `test/<name>`, `refactor/<name>`, `docs/<name>`, `chore/<name>`.
 - Conventional Commits: `fix(sync): quarantine poison remote items after retry budget` — summary ≤ 72 chars, imperative mood, body explains *why*.
 - One behavior per commit. The commit is the unit of review and bisect.
-- The `.githooks/pre-commit` hook (cargo fmt re-stage, LF normalization, i18n lint, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard — plus a Go gate when license-server files are staged) runs automatically if `core.hooksPath` is set — don't bypass with `--no-verify`; fix the issue instead.
+- The `.githooks/pre-commit` hook runs automatically if `core.hooksPath` is set — don't bypass with `--no-verify`; fix the issue instead. **Source of truth is the hook itself: `grep -n '^# ──' .githooks/pre-commit`, and `AGENTS.md` enumerates every step with its rationale.** As of 0.0.37 there are ten: cargo fmt, LF normalization, i18n lint, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, UI typecheck (step 9, `OZPOS_SKIP_TYPECHECK=1` skips it alone), and FTL orphan lint (step 10, fires only when a `.ftl` is staged). This list was previously eight and silently went stale twice — `scripts/verify-agents-mirrors.py` polices `AGENTS.md` and its mirrors against the hook, but it does not read skill files, and `skill-drift-guard/scripts/detect.sh` contains no reference to gates or the hook at all, so a skill can enumerate a wrong set and both guards stay green.
 - **Never run `git push` without an explicit, direct user order.** The default end state is a local commit plus a report; the human pushes.
 
 ---

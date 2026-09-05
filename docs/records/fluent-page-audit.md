@@ -707,6 +707,61 @@ sort mode cannot be added without the test failing. Cost: 2 more
 `react-refresh/only-export-components` warnings (65 → 67, eslint still exits 0),
 matching the pre-existing `AnalyticsScreen` precedent set for the same reason.
 
+### F4 — The orphan direction, and a scanner that saw too much (`a410ea9f`)
+
+F3 closed the *missing* direction for dynamic families. The unused direction — a key sitting in a
+bundle with nothing reading it — still had no gate, and it turned out to be populated:
+`topology-shortcuts-*` is 18 keys whose only appearances are test fixtures enumerating expected
+bundle contents, plus a comment in `popoverSurfaceCompliance.test.tsx:54` recording that the
+shortcuts feature was *removed*. The copy outlived the feature by an unknown number of commits.
+`warehouse-*` is ~23 keys with zero matches anywhere in the repository.
+
+**Sized before designing, which is the only reason the gate is usable.** A naive name-grep reports
+296 candidates. Resolving intra-bundle references — all 25 domain files concatenate per locale, so
+a key may be consumed from a different file than the one declaring it — and template composition
+brings it to 93, of which an unknown fraction are detection gaps rather than debt. A blocker
+needing a 93-entry allowlist nobody has read is a backlog wearing a gate's clothes. So
+`verify-ftl-orphans.py --staged-only` asks only what a commit can answer: a key you *add* must be
+referenced, and a reference you *delete* must not strand a key. `--census` reports the tree
+informationally.
+
+**Two bugs, found by measuring rather than trusting.** The prefix rescue was silently dead: the
+capture class includes `-`, so `` `analytics-month-${m}` `` yielded `'analytics-month-'` and the
+test `startswith(p + "-")` looked for `'analytics-month--'` and matched nothing — inflating the
+census from ~50 to 295. An earlier, *looser* prototype had got this right by accident; tightening
+the comparison made it wrong. And the self-test passed anyway, because it asserted only that prefix
+detection *found something*, not that a prefix actually *rescues a key*. **A self-test that checks
+a detector runs, rather than that it concludes correctly, is worth nothing** — same family as the
+"0 id-map(s) inspected" result above.
+
+**Then the standing lesson happened to me directly.** Chasing a related question I measured 75 keys
+present only in `.id.ftl` and absent from every English bundle, of which 6 appeared to be referenced
+from production — `done`, `export`, `download`, `pos-cart-title`, `inventory-report-title`,
+`inventory-report-sku`. That is a live English-locale defect, since Fluent has no cross-locale
+fallback and a missing message renders the key name. **All six were false positives from a scanner
+that saw too much:** `kind="download"` is a status prop, `className="pos-cart-title"` is a CSS
+class, `step: 'done'` is a state-machine enum. A string that happens to equal a key name is not a
+key reference. Re-running restricted to actual resolution sites — `getString`, `<Localized id>`,
+`i18nKey`, `labelKey`/`descKey` and the rest of the conventions `verify-bundle-parity.py` already
+encodes — returned **zero**. The 75 are dead translations, not a bug.
+
+**What the false alarm did establish, though, is a real latent gap.** `i18nBundle.test.tsx:450`
+asserts only that every English key exists in Indonesian; nothing asserts the reverse at message
+level. `verify-bundle-parity.py --full-census` fails on a reference resolving in *neither* locale.
+So a reference resolving in Indonesian but not English is invisible to every gate in the repository,
+and would render a raw key name to an English user. Currently unpopulated — which is why it is
+recorded rather than gated here.
+
+**Proven to fire through the real hook, not just standalone.** Running `verify-ftl-orphans.py`
+directly is not evidence that pre-commit step 10 executes — the wiring is the part that can be
+silently wrong, and the hook's own typecheck step already carries a comment about "the gate nobody
+noticed was missing was also the gate that never ran". Staging a key in both locale files and
+attempting a real commit produced `i18n lint: no issues detected.` followed by
+`FAIL: 1 orphan problem(s)` naming the key, and exit 1. The first attempt, adding it only to
+English, was rejected by step 3 instead — which usefully revealed that `i18nBundle.test.tsx`
+enforces two-way parity, so step 10 is reachable only once parity passes. Both probes left the tree
+byte-exact and HEAD unmoved.
+
 ### Standing lesson
 
 Every defect in this thread was found by a tool that could not see it, and every
