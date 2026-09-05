@@ -78,6 +78,10 @@
   --color-danger-border:   #FF6B68;
 
   /* ── Semantic: Brand / Accent ─────────────────────────────── */
+  /* ACCENT stays the contrast-managed ladder (WCAG: accent-as-text on
+     bg must hit 4.5:1 — the compliance gate enforces it). The USER's
+     per-theme primary lives in --color-primary below: light #147EFB,
+     dark #1155CC. */
   --color-accent:          #147EFB;
   --color-accent-hover:    #1A8FFF;
   --color-accent-active:   #1168D4;
@@ -89,8 +93,8 @@
   --color-accent-active-fg:#151E2D;
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
-  --color-primary:         #147EFB;
-  --color-primary-soft:    rgba(20, 126, 251, 0.15);
+  --color-primary:         #1155CC;
+  --color-primary-soft:    rgba(17, 85, 204, 0.10);
 
   /* ── Semantic: Links ──────────────────────────────────────── */
   --color-link:            #60a5fa;
@@ -365,6 +369,8 @@
   --color-danger-border:   #FC3D39;
 
   /* ── Brand / Accent ───────────────────────────────────────── */
+  /* ACCENT = contrast-managed ladder (see :root note). PRIMARY = the
+     user's per-theme brand blue: bright #147EFB on light. */
   --color-accent:          #1155CC;
   --color-accent-hover:    #0E47A8;
   --color-accent-active:   #0C3D94;
@@ -376,8 +382,8 @@
   --color-accent-active-fg:#ffffff;
   --color-accent-subtle-fg:#1a1d23;
   --color-accent-secondary:#2874A6;
-  --color-primary:         #1155CC;
-  --color-primary-soft:    rgba(17, 85, 204, 0.10);
+  --color-primary:         #147EFB;
+  --color-primary-soft:    rgba(20, 126, 251, 0.15);
 
   /* ── Links ────────────────────────────────────────────────── */
   --color-link:            #1155CC;
@@ -506,6 +512,8 @@
   --color-border-subtle:   rgba(255, 255, 255, 0.06);
 
   /* ── Brand / Accent ───────────────────────────────────────── */
+  /* Explicit dark block mirrors :root (contrast-managed accent ladder;
+     user's primary blue in --color-primary). */
   --color-accent:          #147EFB;
   --color-accent-hover:    #1A8FFF;
   --color-accent-active:   #1168D4;
@@ -517,7 +525,7 @@
   --color-accent-active-fg:#151E2D;
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
-  --color-primary:         #147EFB;
+  --color-primary:         #1155CC;
 
   /* ── Links ────────────────────────────────────────────────── */
   --color-link:            #1A8FFF;
