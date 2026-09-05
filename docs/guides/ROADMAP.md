@@ -544,7 +544,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 
 **Theming & White-Label**
 - [x] Merchant logo upload (shown in header, on receipts, on kiosk attract screen — AppearanceSettings)
-- [x] Brand primary colour picker → applies to buttons, accents, active states across the whole UI (deriveAccentPalette)
+- [x] Brand primary colour picker → applies to buttons, accents, active states AND the per-theme primary tokens across the whole UI (deriveAccentPalette); per-theme primaries: light `#147EFB`, dark `#1155CC`; reset returns to "follow theme" (empty sentinel)
 - [x] Theme preview in Settings before applying (live preview in AppearanceSettings, real-time reconciliation)
 - [x] Dark / light / system-default theme saved per device (ThemeProvider, persisted preference)
 
