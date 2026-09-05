@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
-  getBrandSettings,
+  getBrandSettingsScoped,
   setBrandPrimaryColour,
   setBrandLogoPath,
   setBrandStoreName,
   pickLogoFile,
 } from '@/api/branding';
 import { useBrand } from '@/contexts/BrandContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { deriveAccentPalette, applyAccentPalette } from '@/utils/color';
 import { Button } from '@/components/Button';
 import { useAppZoom } from '@/contexts/ZoomContext';
@@ -64,6 +65,10 @@ export function AppearanceSettings({
   const { zoomLevel, setZoomLevel } = useAppZoom();
   const { enabled: hwAccelEnabled, setEnabled: setHwAccelEnabled } = useHardwareAccel();
   const { addToast } = useToast();
+  // Brand setters are session-scoped (SETTINGS_EDIT) — the unscoped
+  // commands are not registered, so every save needs the live token.
+  const { sessionToken: rawToken } = useWorkspace();
+  const sessionToken = rawToken ?? '';
   const cm = useContextMenu();
   const cmInput = useMemo(() => ({
     autoComplete: 'off' as const,
@@ -75,12 +80,12 @@ export function AppearanceSettings({
 
   useEffect(() => {
     if (embedded) return;
-    getBrandSettings().then((s) => {
+    getBrandSettingsScoped(sessionToken).then((s) => {
       setColour(s.primary_colour);
       setLogoPath(s.logo_path);
       setStoreName(s.store_name);
     });
-  }, [embedded]);
+  }, [embedded, sessionToken]);
 
   // In embedded mode, sync the logo path from BrandContext so the
   // preview shows the previously uploaded logo on re-visit.
@@ -126,13 +131,13 @@ export function AppearanceSettings({
       const path = await pickLogoFile();
       if (path) {
         setLogoPath(path);
-        await setBrandLogoPath(path);
+        await setBrandLogoPath(sessionToken, path);
         refreshBrandSettings();
       }
     } catch {
       // File picker dialog was dismissed or failed — no action needed.
     }
-  }, [refreshBrandSettings]);
+  }, [refreshBrandSettings, sessionToken]);
 
   const colourRef = useRef(activeColour);
   colourRef.current = activeColour;
@@ -142,8 +147,8 @@ export function AppearanceSettings({
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await setBrandPrimaryColour(colourRef.current);
-      await setBrandStoreName(nameRef.current);
+      await setBrandPrimaryColour(sessionToken, colourRef.current);
+      await setBrandStoreName(sessionToken, nameRef.current);
       refreshBrandSettings();
       addToast({ message: l10n.getString('appearance-save-success'), type: 'success' });
     } catch {
@@ -151,7 +156,7 @@ export function AppearanceSettings({
     } finally {
       setSaving(false);
     }
-  }, [refreshBrandSettings, addToast, l10n]);
+  }, [refreshBrandSettings, addToast, l10n, sessionToken]);
 
   const handleResetAll = useCallback(() => {
     setShowResetConfirm(true);
@@ -172,9 +177,9 @@ export function AppearanceSettings({
       setLogoPath(null);
 
       // Persist changes via backend.
-      await setBrandPrimaryColour(DEFAULT_COLOUR);
-      await setBrandStoreName('');
-      await setBrandLogoPath('');
+      await setBrandPrimaryColour(sessionToken, DEFAULT_COLOUR);
+      await setBrandStoreName(sessionToken, '');
+      await setBrandLogoPath(sessionToken, '');
 
       // Refresh brand context and apply palette.
       refreshBrandSettings();
@@ -187,7 +192,7 @@ export function AppearanceSettings({
     } finally {
       setResetting(false);
     }
-  }, [embedded, onColourChange, onStoreNameChange, refreshBrandSettings, addToast, l10n]);
+  }, [embedded, onColourChange, onStoreNameChange, refreshBrandSettings, addToast, l10n, sessionToken]);
 
   // ── Card body slices (shared between embedded and non-embedded) ──
   // Defined after all callbacks to avoid TDZ errors.

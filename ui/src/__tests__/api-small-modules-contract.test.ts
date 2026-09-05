@@ -122,26 +122,29 @@ describe('branding.ts API contract', () => {
     });
   });
 
-  it('setBrandPrimaryColour calls correct command', async () => {
+  it('setBrandPrimaryColour calls the registered scoped command with token', async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await setBrandPrimaryColour('#FF5733');
-    expect(mockInvoke).toHaveBeenCalledWith('set_brand_primary_colour', {
+    await setBrandPrimaryColour('tok_brand', '#FF5733');
+    expect(mockInvoke).toHaveBeenCalledWith('set_brand_primary_colour_scoped', {
+      sessionToken: 'tok_brand',
       colour: '#FF5733',
     });
   });
 
-  it('setBrandLogoPath calls correct command', async () => {
+  it('setBrandLogoPath calls the registered scoped command with token', async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await setBrandLogoPath('/path/to/logo.png');
-    expect(mockInvoke).toHaveBeenCalledWith('set_brand_logo_path', {
+    await setBrandLogoPath('tok_brand', '/path/to/logo.png');
+    expect(mockInvoke).toHaveBeenCalledWith('set_brand_logo_path_scoped', {
+      sessionToken: 'tok_brand',
       path: '/path/to/logo.png',
     });
   });
 
-  it('setBrandStoreName calls correct command', async () => {
+  it('setBrandStoreName calls the registered scoped command with token', async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await setBrandStoreName('My Store');
-    expect(mockInvoke).toHaveBeenCalledWith('set_brand_store_name', {
+    await setBrandStoreName('tok_brand', 'My Store');
+    expect(mockInvoke).toHaveBeenCalledWith('set_brand_store_name_scoped', {
+      sessionToken: 'tok_brand',
       name: 'My Store',
     });
   });

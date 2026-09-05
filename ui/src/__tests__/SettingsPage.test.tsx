@@ -105,8 +105,9 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       cmd === 'set_receipt_settings_scoped' || cmd === 'set_store_settings_scoped' ||
       cmd === 'set_default_currency' || cmd === 'set_user_preferences' ||
       cmd === 'set_user_preferences_scoped' ||
-      cmd === 'update_sync_settings_scoped' || cmd === 'set_brand_primary_colour' ||
-      cmd === 'set_brand_store_name'
+      cmd === 'update_sync_settings_scoped' ||
+      cmd === 'set_brand_primary_colour_scoped' ||
+      cmd === 'set_brand_store_name_scoped'
     ) {
       return Promise.resolve(undefined);
     }
@@ -357,8 +358,8 @@ describe('SettingsPage', () => {
     failCommands.add('set_default_currency');
     failCommands.add('set_user_preferences_scoped');
     failCommands.add('update_sync_settings_scoped');
-    failCommands.add('set_brand_primary_colour');
-    failCommands.add('set_brand_store_name');
+    failCommands.add('set_brand_primary_colour_scoped');
+    failCommands.add('set_brand_store_name_scoped');
     renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
@@ -888,8 +889,8 @@ describe('SettingsPage', () => {
     failCommands.add('set_store_settings_scoped');
     failCommands.add('set_default_currency');
     failCommands.add('set_user_preferences_scoped');
-    failCommands.add('set_brand_primary_colour');
-    failCommands.add('set_brand_store_name');
+    failCommands.add('set_brand_primary_colour_scoped');
+    failCommands.add('set_brand_store_name_scoped');
 
     const saveBtn = screen.getByRole('button', { name: /save settings/i });
     fireEvent.click(saveBtn);

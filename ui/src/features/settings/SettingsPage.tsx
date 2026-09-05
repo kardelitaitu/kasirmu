@@ -511,8 +511,8 @@ function SettingsPageContent() {
           enabled: sync.enabled,
         }),
       ],
-      ['brandColour', setBrandPrimaryColour(brandColour)],
-      ['brandName', setBrandStoreNameApi(brandStoreName)],
+      ['brandColour', setBrandPrimaryColour(sessionToken ?? '', brandColour)],
+      ['brandName', setBrandStoreNameApi(sessionToken ?? '', brandStoreName)],
     ];
 
     const settled = await Promise.allSettled(saveTasks.map(([, task]) => task));

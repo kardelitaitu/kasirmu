@@ -14,10 +14,15 @@ const mockRefreshBrandSettings = vi.fn();
 
 vi.mock('@/api/branding', () => ({
   getBrandSettings: () => mockGetBrandSettings(),
-  setBrandPrimaryColour: (c: string) => mockSetBrandPrimaryColour(c),
-  setBrandLogoPath: (p: string) => mockSetBrandLogoPath(p),
-  setBrandStoreName: (n: string) => mockSetBrandStoreName(n),
+  getBrandSettingsScoped: (t: string) => mockGetBrandSettings(t),
+  setBrandPrimaryColour: (t: string, c: string) => mockSetBrandPrimaryColour(t, c),
+  setBrandLogoPath: (t: string, p: string) => mockSetBrandLogoPath(t, p),
+  setBrandStoreName: (t: string, n: string) => mockSetBrandStoreName(t, n),
   pickLogoFile: () => mockPickLogoFile(),
+}));
+
+vi.mock('@/contexts/WorkspaceContext', () => ({
+  useWorkspace: () => ({ sessionToken: 'tok-appearance' }),
 }));
 
 vi.mock('@/contexts/ZoomContext', () => ({
@@ -287,7 +292,8 @@ describe('AppearanceSettings', () => {
     await user.click(screen.getByLabelText('Pick logo file'));
 
     await waitFor(() => {
-      expect(mockSetBrandLogoPath).toHaveBeenCalledWith('/new/logo.png');
+      // RED (round AD): logo-path persistence is also session-scoped.
+      expect(mockSetBrandLogoPath).toHaveBeenCalledWith('tok-appearance', '/new/logo.png');
       expect(mockRefreshBrandSettings).toHaveBeenCalled();
     });
   });
@@ -344,8 +350,10 @@ describe('AppearanceSettings', () => {
     await user.click(screen.getByLabelText('Save appearance'));
 
     await waitFor(() => {
-      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('#147EFB');
-      expect(mockSetBrandStoreName).toHaveBeenCalledWith('');
+      // RED (round AD): the Rust commands require a session token
+      // (SETTINGS_EDIT) — the token must lead every setter call.
+      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('tok-appearance', '#147EFB');
+      expect(mockSetBrandStoreName).toHaveBeenCalledWith('tok-appearance', '');
       expect(mockRefreshBrandSettings).toHaveBeenCalled();
     });
   });
@@ -395,7 +403,8 @@ describe('AppearanceSettings', () => {
     await user.click(screen.getByLabelText('Save appearance'));
 
     await waitFor(() => {
-      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('#aabbcc');
+      // RED (round AD): token must flow through the updated-values path too.
+      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('tok-appearance', '#aabbcc');
     });
   });
 
