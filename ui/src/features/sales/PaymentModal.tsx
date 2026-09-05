@@ -6,7 +6,7 @@ import { openUpgradePricing } from '@/utils/upgrade';
 import { requiredLocalized } from '@/frontend/shared';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
-import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
+import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
 import { createKdsOrderFromSaleScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money, type CartLine } from '@/types/domain';
@@ -708,7 +708,12 @@ export default function PaymentModal({
           } as CompleteSaleScopedArgs);
 
       try {
-        const completedSale = await getSale(saleResult.saleId);
+        // ADR #7: read the sale back from the same store completeSaleScoped just wrote it to.
+        // The value feeds the receipt preview, so an ambient read here showed a customer a
+        // total fetched from a different store than the one they had just paid into.
+        const completedSale = sessionToken
+          ? await getSaleScoped(sessionToken, saleResult.saleId)
+          : await getSale(saleResult.saleId);
 
         const qrisReceiptData: PrintSalesReceiptArgs = {
           date: new Date().toLocaleDateString('en-US', {
@@ -973,7 +978,12 @@ export default function PaymentModal({
       }
 
       try {
-        const completedSale = await getSale(saleResult.saleId);
+        // ADR #7: read the sale back from the same store completeSaleScoped just wrote it to.
+        // The value feeds the receipt preview, so an ambient read here showed a customer a
+        // total fetched from a different store than the one they had just paid into.
+        const completedSale = sessionToken
+          ? await getSaleScoped(sessionToken, saleResult.saleId)
+          : await getSale(saleResult.saleId);
 
         const receiptData: PrintSalesReceiptArgs = {
           date: new Date().toLocaleDateString('en-US', {

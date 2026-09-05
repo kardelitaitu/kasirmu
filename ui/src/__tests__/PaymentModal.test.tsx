@@ -47,6 +47,7 @@ const { invokeMock } = vi.hoisted(() => {
       case 'complete_sale_scoped':
         return Promise.resolve({ saleId: 'sale-1', total: null, lineCount: 1 });
       case 'get_sale':
+      case 'get_sale_scoped':
         return Promise.resolve(null);
       case 'print_sales_receipt':
         return Promise.resolve({ printed: true });
@@ -743,6 +744,17 @@ describe('PaymentModal — rendering & fast interaction', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Skip/i })).toBeInTheDocument();
     });
+
+    // ADR #7: the sale was just created in the session's store by complete_sale_scoped above, so
+    // reading it back for the receipt must use get_sale_scoped. It used to call the ambient
+    // get_sale, meaning the total shown to a customer about to hand over cash came from whatever
+    // store the singleton happened to point at rather than the one the sale was written to.
+    // Asserted at the invoke layer, which is what this file already mocks -- the real api/sales
+    // runs, so this checks the command name rather than a mock someone configured.
+    const commands = invokeMock.mock.calls.map((call) => call[0]);
+    expect(commands).toContain('get_sale_scoped');
+    expect(commands).not.toContain('get_sale');
+
     await userEvent.click(screen.getByRole('button', { name: /Skip/i }));
 
     await waitFor(() => {

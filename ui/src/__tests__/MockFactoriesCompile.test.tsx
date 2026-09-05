@@ -193,6 +193,65 @@ describe('createReportsApiMock', () => {
   });
 });
 
+// ── Scoped/ambient shape parity (createSalesApiMock) ──────────────
+
+// The sales factory is the only one of the nine whose DEFAULT VALUES were never
+// shape-checked: this file covers kds, giftCards, loyalty and reports by calling the real
+// function and asserting the resolved shape, but reaches createSalesApiMock only at the
+// `typeof === 'function'` line above. That gap is why `listSalesScoped` could resolve a bare
+// [] while `listSales` resolves { sales, salesHistoryCapped } -- the two are the same call
+// under ADR #7, so a screen converted from one to the other gets a different contract from
+// its own mock and reads `response.sales === undefined`. A conversion is exactly the moment
+// the bug becomes load-bearing, and it is the moment nothing was watching.
+//
+// So: pair every X with XScoped and require the resolved shapes to agree. Unpaired names are
+// skipped rather than failed -- some calls genuinely have no scoped twin (printSalesReceipt)
+// or exist only scoped (listOpenBillsScoped), and that is not a defect.
+function shapeOf(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (Array.isArray(value)) return `array[${shapeOf(value[0])}]`;
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    return `object{${Object.keys(o).sort().map((k) => `${k}:${shapeOf(o[k])}`).join(',')}}`;
+  }
+  return typeof value;
+}
+
+describe('createSalesApiMock scoped/ambient shape parity', () => {
+  it('every scoped call resolves the same shape as its ambient twin', async () => {
+    const mod = await import('@/__tests__/test-utils/mocks/api');
+    const mock = mod.createSalesApiMock() as Record<string, unknown>;
+    // Typed as a plain callable rather than ReturnType<typeof vi.fn>: vi.fn()'s generic
+    // Mock<Procedure> has no call signature that accepts a spread of unknown args, so
+    // `fn(...args)` fails tsc even though it is correct at runtime.
+    const call = (fn: unknown): Promise<unknown> =>
+      (fn as (...a: unknown[]) => Promise<unknown>)('tok-1', 'sale-1', 'reason', {});
+    const mismatches: string[] = [];
+    let paired = 0;
+
+    for (const [name, fn] of Object.entries(mock)) {
+      if (!name.endsWith('Scoped') || typeof fn !== 'function') continue;
+      const ambient = name.slice(0, -'Scoped'.length);
+      const twin = mock[ambient];
+      if (typeof twin !== 'function') continue;
+      paired++;
+      // Distinct argument lists per call would be a behaviour difference, not a shape one;
+      // both are invoked with the same generous args so only the resolved value is compared.
+      const scopedShape = shapeOf(await call(fn));
+      const ambientShape = shapeOf(await call(twin));
+      if (scopedShape !== ambientShape) {
+        mismatches.push(`  ${ambient}      -> ${ambientShape}\n  ${name} -> ${scopedShape}`);
+      }
+    }
+
+    // Without this the loop could pair nothing and "pass" -- the vacuous-green failure this
+    // repo keeps rediscovering, in a test written to prevent vacuous-green.
+    expect(paired).toBeGreaterThanOrEqual(15);
+    expect(mismatches, `scoped/ambient shape drift:\n${mismatches.join('\n')}`).toEqual([]);
+  });
+});
+
 // ── Existing factories import check (compile guard) ─────────────
 
 describe('existing factory imports compile', () => {

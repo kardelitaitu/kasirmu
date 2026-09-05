@@ -77,7 +77,12 @@ export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
     addLineScoped: vi.fn((_token: string) => Promise.resolve({ lineId: 'line-added-1', lineTotal: null })),
     setCartDiscountScoped: vi.fn((_token: string) => Promise.resolve()),
     completeSaleScoped: vi.fn((_token: string) => Promise.resolve({ saleId: 'sale-1', total: { minor_units: 3500, currency: 'IDR' }, lineCount: 1 })),
-    listSalesScoped: vi.fn((_token: string) => Promise.resolve([])),
+    // Must return the SAME shape as the ambient listSales above, not a bare array. It used to
+    // resolve([]) while listSales resolves({ sales, salesHistoryCapped }), so any screen converted
+    // from the ambient call to this scoped one got `response.sales === undefined` -- a mock that
+    // silently changes the contract at the moment a test starts depending on it. Every other
+    // *Scoped entry in this block mirrors its ambient twin; this was the lone divergence.
+    listSalesScoped: vi.fn((_token: string) => Promise.resolve({ sales: [], salesHistoryCapped: false })),
     getSaleScoped: vi.fn((_token: string, _id: string) => Promise.resolve(null)),
     finalizeSaleScoped: vi.fn((_token: string, _saleId: string) => Promise.resolve()),
     voidPendingSaleScoped: vi.fn((_token: string, _saleId: string) => Promise.resolve()),

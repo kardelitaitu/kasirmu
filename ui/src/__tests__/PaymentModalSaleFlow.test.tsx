@@ -42,6 +42,10 @@ const { invokeMock } = vi.hoisted(() => ({
       case 'complete_sale':
         return Promise.resolve({ saleId: 'sale-1', total: null, lineCount: 1 });
       case 'get_sale':
+      // The screen reads the sale back through get_sale_scoped when a session token exists, and
+      // this file's WorkspaceContext mock always provides one, so the scoped command needs the
+      // same case as its ambient twin.
+      case 'get_sale_scoped':
         return Promise.resolve(null);
       case 'print_sales_receipt_scoped':
         return Promise.resolve({ printed: true });
@@ -181,6 +185,7 @@ const defaultInvokeImpl = (cmd: string) => {
     case 'complete_sale':
       return Promise.resolve({ saleId: 'sale-1', total: null, lineCount: 1 });
     case 'get_sale':
+    case 'get_sale_scoped':
       return Promise.resolve(null);
     case 'print_sales_receipt_scoped':
       return Promise.resolve({ printed: true });
