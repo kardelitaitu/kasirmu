@@ -123,9 +123,16 @@
 html,
 body {
   /* Hero-carousel slides park beyond the viewport edges between
-     transitions (translateX(±100vw)); html+body need the clip so the
-     parked windows never create a horizontal scrollbar. */
+     transitions (translateX(±100vw)); the root needs the clip so the
+     parked windows never create a horizontal scrollbar.
+     `clip` (not `hidden`) is load-bearing for scroll performance:
+     `overflow-x: hidden` on body makes it a scroll container, which
+     demotes Chrome's root-scroller fast path and makes wheel scrolling
+     janky (and degrades position: sticky). `clip` clips identically
+     without creating a scroll container. Browsers that predate clip
+     (Safari <16) fall back to the hidden line above. */
   overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
