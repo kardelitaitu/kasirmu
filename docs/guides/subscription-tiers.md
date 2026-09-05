@@ -137,6 +137,7 @@ history preview with an upgrade CTA, not a hard error.
 | Custom tax (PPN / PB1 / service) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Daily Sales Dashboard** (Laporan Harian) — Plus hero; show blurred teaser to Free | ✗ | ✓ | ✓ | ✓ | ✓ |
 | Reports & analytics (`analytics:view`) | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Memo (staff announcements on login/lock screen + recurring notification, `memo:write`) | ✗ | ✗ | ✓ | ✓ | ✓ |
 | Scheduled report emails | ✗ | ✗ | ✗ | ✓ | ✓ |
 | Full audit logging & review (`audit:view`) | ✗ | ✗ | ✗ | ✓ | ✓ |
 | Product bundles | ✗ | ✓ | ✓ | ✓ | ✓ |

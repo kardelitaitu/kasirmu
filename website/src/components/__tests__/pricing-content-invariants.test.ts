@@ -131,6 +131,37 @@ describe('tier shape invariants', () => {
       expect(cloudRow.values.free, `${locale} free table cloud sync`).toBe(false);
     }
   });
+
+  it('Memo is Pro+ (card and comparison table agree, both locales)', () => {
+    // todo-global-saas.md §14: Memo authoring is Pro+. Free/Plus must not
+    // advertise it on any surface, the Pro card must list it, and the table
+    // row must open exactly at Pro. Same card-vs-table agreement rule as the
+    // QRIS invariant above.
+    for (const locale of LOCALES) {
+      const pricing = locale === 'en' ? enPricing : idPricing;
+      const rows = featureRowsFor(locale);
+      const label = 'Memo'; // same word in both locales
+      const row = rows.find((r) => r.label === label);
+      expect(row, `${locale} table has a Memo row`).toBeDefined();
+      expect(row!.values.free, `${locale} table Memo free`).toBe(false);
+      expect(row!.values.plus, `${locale} table Memo plus`).toBe(false);
+      expect(row!.values.pro, `${locale} table Memo pro`).toBe(true);
+      expect(row!.values.premium, `${locale} table Memo premium`).toBe(true);
+      expect(row!.values.enterprise, `${locale} table Memo enterprise`).toBe(true);
+      const pro = pricing.find((t) => t.tierKey === 'pro')!;
+      const proMemo = pro.features.find((f) => f.label === label);
+      expect(proMemo, `${locale} pro card lists Memo`).toBeDefined();
+      expect(proMemo!.included, `${locale} pro card Memo included`).toBe(true);
+      for (const key of ['free', 'plus'] as const) {
+        const tier = pricing.find((t) => t.tierKey === key)!;
+        const memo = tier.features.find((f) => f.label === label);
+        expect(
+          memo === undefined || memo.included === false,
+          `${locale} ${key} card must not include Memo`,
+        ).toBe(true);
+      }
+    }
+  });
 });
 
 describe('locale parity invariants', () => {
