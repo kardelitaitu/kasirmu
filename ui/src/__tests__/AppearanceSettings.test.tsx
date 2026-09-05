@@ -10,6 +10,10 @@ const mockSetBrandPrimaryColour = vi.fn();
 const mockSetBrandLogoPath = vi.fn();
 const mockSetBrandStoreName = vi.fn();
 const mockPickLogoFile = vi.fn();
+// Distinct from mockPickLogoFile rather than delegating to it: a mirror registers a call on the
+// unscoped spy, which makes `expect(mockPickLogoFile).not.toHaveBeenCalled()` unprovable and the
+// test would pass whether or not the permission check ran. See DataManagementBackup.test.tsx.
+const mockPickLogoFileScoped = vi.fn();
 const mockRefreshBrandSettings = vi.fn();
 
 vi.mock('@/api/branding', () => ({
@@ -19,6 +23,7 @@ vi.mock('@/api/branding', () => ({
   setBrandLogoPath: (t: string, p: string) => mockSetBrandLogoPath(t, p),
   setBrandStoreName: (t: string, n: string) => mockSetBrandStoreName(t, n),
   pickLogoFile: () => mockPickLogoFile(),
+  pickLogoFileScoped: (t: string) => mockPickLogoFileScoped(t),
 }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -278,12 +283,24 @@ describe('AppearanceSettings', () => {
 
     await user.click(screen.getByLabelText('Pick logo file'));
 
-    expect(mockPickLogoFile).toHaveBeenCalled();
+    // pick_logo_file opens a native file dialog and, unscoped, checks no permission at all;
+    // pick_logo_file_scoped (branding.rs:271) enforces permissions::SETTINGS_EDIT. The very next
+    // statement in the handler already passes sessionToken to setBrandLogoPath
+    // (AppearanceSettings.tsx:134), so the token is in hand at this exact point -- the unscoped
+    // call was the lone outlier, not a deliberate choice.
+    // 'tok-appearance', not HARNESS_SESSION_TOKEN: this file overrides useWorkspace at L31 with
+    // its own token, and the sibling assertions at L308/367/368 already assert against it.
+    // Matching the block's own convention is what makes the assertion meaningful here.
+    expect(mockPickLogoFileScoped).toHaveBeenCalledWith('tok-appearance');
+    expect(mockPickLogoFile).not.toHaveBeenCalled();
   });
 
   it('sets logo path and refreshes brand when pickLogoFile returns a path', async () => {
     const user = userEvent.setup();
     mockPickLogoFile.mockResolvedValue('/new/logo.png');
+    // The component takes the scoped branch under this file's session token, so the scenario has
+    // to be configured there too.
+    mockPickLogoFileScoped.mockResolvedValue('/new/logo.png');
     render(<AppearanceSettings />);
     await waitFor(() => {
       expect(screen.getByLabelText('Pick logo file')).toBeInTheDocument();
