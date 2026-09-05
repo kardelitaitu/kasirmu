@@ -1,5 +1,29 @@
 
 
+## 2026-09-04 — TDD round Y: fanout table-number stamping (oz-core)
+
+**Problem:** `complete_sale_to_kds_fanout` stamps each kitchen ticket
+with the dining table bound to the sale (kds_lines.rs:110-120, the
+TODO-1b lookup: `SELECT name FROM tables WHERE active_sale_id = ?1`).
+Grep evidence of zero coverage: no `active_sale_id` occurrence anywhere
+in kds_tests.rs, and every `table_number` hit is a struct-literal
+`None` in `CreateKdsOrderInput` — no assertion ever pinned either half.
+A regression that broke the lookup would strip "Table 4" from every
+dine-in ticket on the kitchen board and CI would stay green.
+
+**Solution:** Two pins in kds_tests.rs, using the real binding API
+(`create_table` + `assign_table_order`, tables.rs:292 — not a raw SQL
+seeding):
+- `kds_fanout_stamps_table_number_from_assigned_table` — assigned
+  table's NAME lands on the ticket (Some("Table 4"))
+- `kds_fanout_leaves_table_number_none_without_table` — takeaway sale
+  stays None (pins the QueryReturnedNoRows branch too)
+
+Both passed on first run — pin, not fix.
+
+**Commits:** e36c41cc (test).
+**Test counts:** oz-core 2452→2454, all green (58s full lib run).
+
 ## 2026-09-04 — TDD round X: void_pending_sale ghost-window ticket cancellation (oz-core)
 
 **Problem:** `void_pending_sale` (sales_lifecycle.rs:583) calls
