@@ -107,6 +107,7 @@ nul
 # skill-drift-report.md was tracked at the repo root as a baseline until
 # f3d9cca6 deleted it; detect.sh --report still writes it there, so it now
 # reappears as an untracked file after any local report run.
+/skill-drift-report.md
 
 # Legacy TypeDoc HTML drop. TypeDoc now emits into docs/src/api/ts/ (covered by
 # /docs/src/api/ below), so nothing writes here anymore — the rule is kept as a
