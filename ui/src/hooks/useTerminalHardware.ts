@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getHardwareSettings, setHardwareSettings, type HardwareSettingsDto } from '@/api/settings';
+import {
+  getHardwareSettings,
+  getHardwareSettingsScoped,
+  setHardwareSettings,
+  type HardwareSettingsDto,
+} from '@/api/settings';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { plainErrorMessage } from '@/utils/app-error';
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -209,6 +215,8 @@ export function useTerminalHardware(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initializedRef = useRef(false);
+  const { sessionToken: rawSessionToken } = useWorkspace();
+  const sessionToken = rawSessionToken ?? '';
 
   // ── Load profile from IPC on mount ──────────────────────────
 
@@ -223,7 +231,11 @@ export function useTerminalHardware(
     setError(null);
 
     try {
-      const dto = await getHardwareSettings();
+      // ADR #7 conditional scoping. On desktop this is not merely the permission-checked path:
+      // get_hardware_settings is unregistered, so the unscoped call is the one that fails.
+      const dto = sessionToken
+        ? await getHardwareSettingsScoped(sessionToken)
+        : await getHardwareSettings();
       const resolved = fromHardwareSettingsDto(terminalId, storeId, dto);
       setProfile(resolved);
       setIsLoading(false);
@@ -232,7 +244,7 @@ export function useTerminalHardware(
       setProfile(createDefaultProfile(terminalId, storeId));
       setIsLoading(false);
     }
-  }, [terminalId, storeId]);
+  }, [terminalId, storeId, sessionToken]);
 
   useEffect(() => {
     if (!initializedRef.current || terminalId !== profile?.terminalId) {

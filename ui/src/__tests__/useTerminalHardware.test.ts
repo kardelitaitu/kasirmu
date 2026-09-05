@@ -3,14 +3,19 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import {
   useTerminalHardware,
 } from '@/hooks/useTerminalHardware';
+import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 
 // ── Mock @/api/settings with configurable IPC responses ─────────────
 
 const mockGetHardwareSettings = vi.fn();
+const mockGetHardwareSettingsScoped = vi.fn();
 const mockSetHardwareSettings = vi.fn();
 
 vi.mock('@/api/settings', () => ({
   getHardwareSettings: () => mockGetHardwareSettings(),
+  // Its own spy, not a delegate onto the unscoped one: a mirror registers a call on
+  // the other spy and makes `not.toHaveBeenCalled()` unprovable.
+  getHardwareSettingsScoped: (token: string) => mockGetHardwareSettingsScoped(token),
   setHardwareSettings: (...args: unknown[]) => mockSetHardwareSettings(...args),
 }));
 
@@ -28,13 +33,32 @@ describe('useTerminalHardware', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetHardwareSettings.mockResolvedValue(defaultDto);
+    // Configured in parallel with the unscoped one, not by delegating to it.
+    mockGetHardwareSettingsScoped.mockResolvedValue(defaultDto);
     mockSetHardwareSettings.mockResolvedValue(undefined);
+  });
+
+  // ── Session scoping (F-017) ─────────────────────────────────────
+
+  it('loads through the scoped command, passing the session token', async () => {
+    // get_hardware_settings is NOT registered in apps/desktop-client/src/lib.rs --
+    // it sits in the desktop section of scripts/ipc-parity-allowlist.json as a known
+    // F-008/F-050 gap -- so on desktop the unscoped call rejects and the hook's catch
+    // silently falls back to defaults. get_hardware_settings_scoped IS registered
+    // (lib.rs:933) and is the only path that actually reaches the DTO.
+    const { result } = renderHook(() => useTerminalHardware('term-001'));
+
+    await waitFor(() => {
+      expect(mockGetHardwareSettingsScoped).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN);
+    });
+    expect(mockGetHardwareSettings).not.toHaveBeenCalled();
+    expect(result.current.isLoading).toBe(false);
   });
 
   // ── Initial load ──────────────────────────────────────────────
 
   it('loads profile from IPC on mount', async () => {
-    mockGetHardwareSettings.mockResolvedValue({
+    mockGetHardwareSettingsScoped.mockResolvedValue({
       ...defaultDto,
       printerConnection: 'network',
       printerDevicePath: '192.168.1.50',
@@ -56,7 +80,7 @@ describe('useTerminalHardware', () => {
   });
 
   it('loads default profile when IPC fails', async () => {
-    mockGetHardwareSettings.mockRejectedValue(new Error('IPC unavailable'));
+    mockGetHardwareSettingsScoped.mockRejectedValue(new Error('IPC unavailable'));
 
     const { result } = renderHook(() => useTerminalHardware('term-002'));
 
@@ -216,7 +240,7 @@ describe('useTerminalHardware', () => {
   // ── Reload ──────────────────────────────────────────────────────
 
   it('reload re-reads from IPC', async () => {
-    mockGetHardwareSettings.mockResolvedValue({
+    mockGetHardwareSettingsScoped.mockResolvedValue({
       ...defaultDto,
       printerDevicePath: 'v1',
     });
@@ -229,7 +253,7 @@ describe('useTerminalHardware', () => {
     expect(result.current.profile!.hardware.printer.devicePath).toBe('v1');
 
     // Change IPC response
-    mockGetHardwareSettings.mockResolvedValue({
+    mockGetHardwareSettingsScoped.mockResolvedValue({
       ...defaultDto,
       printerDevicePath: 'v2',
     });

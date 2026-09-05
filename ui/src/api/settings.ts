@@ -109,6 +109,18 @@ export interface HardwareSettingsDto {
 export const getHardwareSettings = (): Promise<HardwareSettingsDto> =>
   loggedInvoke<HardwareSettingsDto>('get_hardware_settings');
 
+/**
+ * Get the hardware settings resolved from a session token. ADR #7.
+ *
+ * This is the only variant that works on desktop: get_hardware_settings is not registered in
+ * apps/desktop-client/src/lib.rs (it sits in the desktop section of
+ * scripts/ipc-parity-allowlist.json as a known F-008/F-050 gap), so the unscoped call rejects there
+ * and callers fall back to defaults. get_hardware_settings_scoped is registered (lib.rs:933) on
+ * both shells and enforces permissions::SETTINGS_READ (settings.rs:1166).
+ */
+export const getHardwareSettingsScoped = (sessionToken: string): Promise<HardwareSettingsDto> =>
+  loggedInvoke<HardwareSettingsDto>('get_hardware_settings_scoped', { sessionToken });
+
 /** Update the hardware settings. */
 export const setHardwareSettings = (args: HardwareSettingsDto, userId: string): Promise<void> =>
   loggedInvoke<void>('set_hardware_settings', { args, userId });
