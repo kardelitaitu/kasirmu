@@ -1,5 +1,47 @@
 
 
+## 2026-09-04 — TDD round AD: branding save/reset called unregistered commands — every save failed (ui)
+
+**Problem (third real bug, found by a systematic sweep):** Generalizing
+round AC's find into a full sweep — extract all 294 session-token-
+requiring Rust commands, all 398 UI `loggedInvoke` names, diff both
+against lib.rs's `generate_handler!` list (400 registered). Zero
+token-missing mismatches remained (AC was the only one), but **31 UI
+invoke names target commands absent from generate_handler!** — the
+in-progress unscoped→scoped migration left legacy client wrappers
+pointing at commands that no longer exist. Most of the 31 are either
+being migrated by the concurrent agent right now (their dirty files:
+hardware.ts, settings.ts, sales.ts, terminals.ts) or have legacy fns
+still registered; but `branding.ts` was quiet, fully migrated server-
+side, and LIVE: `AppearanceSettings.tsx` calls the three setters and
+`SettingsPage.tsx` calls two of them — every branding save/logo/reset
+failed with "command not found" while the screen's load path (still
+legacy-registered `get_brand_settings`) worked, masking the breakage.
+This is exactly the class the audit header on edc.rs warns about —
+the EDC "fake approval" precedent: a settings save that reports its
+own failure is one thing, but the pattern (client half drifting from
+server half) is the same one that let fake approvals ship.
+
+**Solution:** RED: updated AppearanceSettings.test.tsx to mock
+WorkspaceContext (the screen now reads useWorkspace like its sibling
+EmailReportSettings) and demand the token lead every setter call —
+exactly the 3 token-flow assertions failed. GREEN: rewrote the three
+wrappers in branding.ts onto the registered `_scoped` commands with
+`sessionToken` first params; AppearanceSettings now loads via
+`getBrandSettingsScoped(sessionToken)` and passes the token through
+pick-logo/save/reset; SettingsPage's two callsites pass its existing
+`sessionToken ?? ''`. Fixed my own new exhaustive-deps warning and
+updated the two other suites' mocks (api-small-modules-contract 3
+pins, SettingsPage fail-set names) to the registered names.
+
+**Commits:** 5e7ee83e (fix + test updates).
+**Test counts:** AppearanceSettings 30/30, SettingsPage 49/49,
+api-small-modules 24/24, tsc exit 0, eslint 0 problems on touched
+files. Remaining sweep findings (the other 28 legacy-name invokes)
+belong to the concurrent agent's in-flight migration — left untouched
+per the dirty-file rule; re-running the sweep script after their
+migration lands is the natural next round.
+
 ## 2026-09-04 — TDD round AC: EDC card-present wrappers never sent the session token (ui)
 
 **Problem (second real bug of the loop):** Contract-coverage grep —
