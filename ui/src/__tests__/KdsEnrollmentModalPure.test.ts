@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   addStationToList,
   secondsUntilExpiry,
@@ -41,13 +41,31 @@ describe('addStationToList', () => {
 
 describe('secondsUntilExpiry', () => {
   it('returns remaining seconds for a future expiry', () => {
-    const future = new Date(Date.now() + 90_000).toISOString(); // 90s from now
-    expect(secondsUntilExpiry(future, Date.now())).toBe(90);
+    // `now` is read ONCE. The previous form called Date.now() twice — once to build the
+    // token, once as the argument — and the implementation is Math.floor((expiresAt - now)
+    // / 1000), so any gap at all makes it floor(89.999) = 89. The assertion therefore held
+    // only while both calls landed in the same millisecond, which is why this test failed
+    // intermittently under full-suite load and passed in isolation. Pinned by the gap cases
+    // below.
+    const now = Date.now();
+    const future = new Date(now + 90_000).toISOString(); // 90s from now
+    expect(secondsUntilExpiry(future, now)).toBe(90);
+  });
+
+  it('is 90 only at a zero gap, and 89 one millisecond later', () => {
+    // Guards the fix above: if someone reintroduces the double Date.now(), the flake comes
+    // back silently. These inputs are absolute, so they cannot themselves drift.
+    const t = 1_700_000_000_000;
+    const future = new Date(t + 90_000).toISOString();
+    expect(secondsUntilExpiry(future, t)).toBe(90);
+    expect(secondsUntilExpiry(future, t + 1)).toBe(89);
+    expect(secondsUntilExpiry(future, t + 999)).toBe(89);
   });
 
   it('returns 0 when expired', () => {
-    const past = new Date(Date.now() - 60_000).toISOString(); // 60s ago
-    expect(secondsUntilExpiry(past, Date.now())).toBe(0);
+    const now = Date.now();
+    const past = new Date(now - 60_000).toISOString(); // 60s ago
+    expect(secondsUntilExpiry(past, now)).toBe(0);
   });
 
   it('clamps to 0 when now is in the far future', () => {
@@ -57,17 +75,30 @@ describe('secondsUntilExpiry', () => {
   });
 
   it('uses the current time when now is omitted (Date.now path)', () => {
-    const now = Date.now();
-    const future = new Date(now + 30_000).toISOString();
-    // Default-now path — Date.now drives the result; we pin by constructing the ISO string from a known instant captured above.
-    expect(secondsUntilExpiry(future)).toBe(30);
+    // Default-now path: the function reads Date.now() ITSELF, so capturing `now` above
+    // pins nothing -- the comment here used to claim it did. The internal read lands at
+    // least a millisecond after the captured one, which turns floor(29.999) into 29 and
+    // this assertion into a coin flip. Fake timers are the only way to pin a clock the
+    // callee reads.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(1_700_000_000_000));
+      const future = new Date(Date.now() + 30_000).toISOString();
+      expect(secondsUntilExpiry(future)).toBe(30);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('handles sub-second remainders via floor', () => {
-    const future = new Date(Date.now() + 1500).toISOString();
-    // now sits 1499ms after the start of the second
-    const now = Date.now() + 1;
-    expect(secondsUntilExpiry(future, now)).toBe(1);
+    // Absolute instants, not two Date.now() reads: the previous form computed
+    // future = now + 1500 and now = Date.now() + 1 from separate calls, so the real
+    // remainder was 1500 - δ and only stayed in the floor-to-1 band while δ < 500ms.
+    const t = 1_700_000_000_000;
+    const future = new Date(t + 1500).toISOString();
+    expect(secondsUntilExpiry(future, t + 1)).toBe(1);
+    expect(secondsUntilExpiry(future, t)).toBe(1);
+    expect(secondsUntilExpiry(future, t + 501)).toBe(0);
   });
 });
 
