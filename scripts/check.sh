@@ -209,6 +209,11 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # AUDIT-27 CI-06: FTL dedupe — detect duplicate Fluent keys so local
     # validation matches check-ui.mjs and the pre-commit gate.
     step "ftl dedupe" "python3 scripts/dedupe-ftl.py" python3 scripts/dedupe-ftl.py
+    # Orphan gate: its own liveness cases must pass, and the whole-tree candidate count
+    # should be visible locally too, not just in CI. The blocking form of this check is
+    # staged-scoped in the pre-commit hook; here it runs the self-test and census.
+    step "ftl orphans" "python3 scripts/verify-ftl-orphans.py --self-test" \
+        python3 scripts/verify-ftl-orphans.py --self-test
     step "feature registry parity" "python3 scripts/verify-feature-registry.py" python3 scripts/verify-feature-registry.py
     # Topology contract parity — the vendored oz-core copy and the UI copy
     # must stay byte-identical (both sides of the IPC boundary read it).

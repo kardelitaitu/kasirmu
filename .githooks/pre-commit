@@ -315,7 +315,7 @@ fi
 # whole program), so when it does fire it checks everything.
 #
 # OZPOS_SKIP_TYPECHECK=1 skips this step alone. Prefer it to `git commit --no-verify`,
-# which skips all nine gates including the ones that are fast and never wrong.
+# which skips all ten gates including the ones that are fast and never wrong.
 STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM -- 'ui/src/*.ts' 'ui/src/*.tsx' || true)
 if [ -n "$STAGED_TS" ] && [ "${OZPOS_SKIP_TYPECHECK:-0}" != "1" ]; then
     if [ -d ui/node_modules ]; then
@@ -331,5 +331,31 @@ if [ -n "$STAGED_TS" ] && [ "${OZPOS_SKIP_TYPECHECK:-0}" != "1" ]; then
         # Skipping silently here would mean the gate nobody noticed was missing was
         # also the gate that never ran. Say so on every commit that could have used it.
         echo "warning: ui/node_modules missing — UI typecheck skipped. Run 'cd ui && npm ci'." >&2
+    fi
+fi
+
+# ── FTL orphan lint ───────────────────────────────────────────────────────
+# The mirror of bundle parity. Step 4 fails when code names a key that no bundle defines;
+# nothing checked the opposite direction, so a key left behind by a removed feature stayed
+# invisible. It has happened: topology-shortcuts-* (18 keys, the feature removed per
+# popoverSurfaceCompliance.test.tsx:54) and ~23 warehouse-* keys with zero references
+# anywhere in the repository.
+#
+# Staged-scoped on purpose. A whole-tree blocker is unusable because dynamic key
+# composition defeats static analysis -- `analytics-month-${m}` makes a whole family live
+# from one template hit -- and the honest census is 93 candidates of which an unknown
+# fraction are detection gaps rather than debt. So this holds a commit to the two things a
+# commit can actually be asked: a key you ADD must be referenced, and a reference you
+# DELETE must not strand a key. `--census` reports the whole-tree picture informationally
+# and `--self-test` proves both directions can still fail.
+#
+# Runs last and only when the commit stages a .ftl file, so nothing else pays for it.
+if [ -f scripts/verify-ftl-orphans.py ]; then
+    STAGED_FTL=$(git diff --cached --name-only --diff-filter=ACMR -- 'ui/src/locales/*.ftl' || true)
+    if [ -n "$STAGED_FTL" ]; then
+        if ! "$PYTHON" scripts/verify-ftl-orphans.py --staged-only; then
+            echo "error: FTL orphan lint failed — a key was added with no reference, or the last reference to a key was removed. See message above." >&2
+            exit 1
+        fi
     fi
 fi

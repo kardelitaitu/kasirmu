@@ -97,9 +97,9 @@ jobs:
             && echo "ui=true" >> "$GITHUB_OUTPUT" || echo "ui=false" >> "$GITHUB_OUTPUT"
 
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
-          # three scripts that implement the gate.
+          # four scripts that implement the gates.
           printf '%s\n' "$files" | grep -qE \
-            '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$' \
+            '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
             && echo "i18n=true" >> "$GITHUB_OUTPUT" || echo "i18n=false" >> "$GITHUB_OUTPUT"
 
           printf '%s\n' "$files" | grep -qE '^website/' \
@@ -317,6 +317,18 @@ jobs:
         run: bash scripts/lint-i18n.sh
       - name: FTL duplicate-key dry-run
         run: python3 scripts/dedupe-ftl.py --dry-run
+      # The orphan gate's own liveness cases. Blocking: if the diff parsers or the
+      # dynamic-composition rescue break, the pre-commit step silently stops checking
+      # anything, and a gate that cannot fail is worse than no gate.
+      - name: FTL orphan gate self-test
+        run: python3 scripts/verify-ftl-orphans.py --self-test
+      # Whole-tree orphan candidates, reported and never blocking. A static scan cannot
+      # resolve every dynamic key family, so the tree carries ~93 honest candidates of
+      # which an unknown fraction are detection gaps rather than debt. Printing the number
+      # makes the trend visible; the pre-commit hook is what blocks, and only on what a
+      # commit actually adds or strands.
+      - name: FTL orphan census (informational)
+        run: python3 scripts/verify-ftl-orphans.py --census
 
   # ── 6. CI docs / manifest truthfulness ─────────────────────────────────
   # gates.json calls itself "the single source of truth for CI/local-runner gate

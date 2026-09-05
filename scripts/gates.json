@@ -46,6 +46,14 @@
       "ci": { "workflow": "dev-ci.yml", "job": "i18n" }
     },
     {
+      "id": "ftl-orphans",
+      "label": "FTL orphan lint",
+      "status": "required",
+      "runners": { "check.sh": ["ftl orphans"] },
+      "_note": "Mirror of bundle-parity: keys with no reference. Staged-scoped in the hook, because a whole-tree blocker is unusable -- dynamic composition (`analytics-month-${m}`) leaves 93 honest candidates of which an unknown fraction are detection gaps rather than debt. --census reports the tree informationally. Existing debt is real: topology-shortcuts-* (18 keys, feature removed) and ~23 warehouse-* keys with zero references anywhere.",
+      "ci": { "workflow": "dev-ci.yml", "job": "i18n" }
+    },
+    {
       "id": "rust-fmt",
       "label": "Rust fmt",
       "status": "required",

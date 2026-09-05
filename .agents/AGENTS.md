@@ -1,6 +1,6 @@
 # Agents Configuration & Rules
 
-<!-- Audit stamp: 2026-09-04 · DSH · status: ACCURATE · version lock: 0.0.37 · 9 pre-commit gates · conventional commits enforced -->
+<!-- Audit stamp: 2026-09-04 · DSH · status: ACCURATE · version lock: 0.0.37 · 10 pre-commit gates · conventional commits enforced -->
 
 ## 🚨 Critical Agent Directives (MUST FOLLOW)
 
@@ -21,10 +21,10 @@
 ## 🛠️ Quick Setup & Pre-Commit Gates
 
 ```bash
-git config core.hooksPath .githooks   # enable pre-commit hook (fmt + EOL + i18n + bundle-parity + FTL dedupe + column types + PG drift + Go + ui typecheck)
+git config core.hooksPath .githooks   # enable pre-commit hook (fmt + EOL + i18n + bundle-parity + FTL dedupe + column types + PG drift + Go + ui typecheck + ftl orphans)
 ```
 
-The `.githooks/pre-commit` hook runs **nine steps** before every commit, in this order (~5–7s typical; the i18n gate alone is ~4s):
+The `.githooks/pre-commit` hook runs **ten steps** before every commit, in this order (~5–7s typical; the i18n gate alone is ~4s):
 1. **`cargo fmt --all`** — auto-formats Rust and re-stages what it changed.
 2. **Line-ending normalization** — strips CR from staged text files in the working tree and index, re-staging them so the committed blob is LF (backs `.gitattributes` `* text=auto eol=lf`). Skips files whose effective `eol` is `crlf` (`*.bat`/`*.cmd` — the working tree must stay CRLF for cmd.exe) and real binaries (`grep -qI`; `text=auto` reports "auto" for PNGs too, and stripping their CRs destroys the signature). Both exclusions were missing until 0.0.36; `scripts/test-eol-guard.sh` guards them.
 3. **`i18n lint`** — `scripts/lint-i18n.sh`; fail-closed on byte-identical `.id.ftl` siblings, duplicate Fluent keys dropped at bundle join, and literal keys resolving in neither locale.
@@ -33,9 +33,10 @@ The `.githooks/pre-commit` hook runs **nine steps** before every commit, in this
 6. **`Migration column-type lint`** — `scripts/verify-migration-column-types.py --staged-only`, when `crates/oz-core/migrations/*.sql` is staged.
 7. **`PG schema drift guard`** — `scripts/generate-pg-migration.py --check`; `20260813_init.pg.sql` is generated, **never hand-edited**.
 8. **`Go gate`** — when `apps/license-server/*.go` is staged: `gofmt -w` + `go vet ./...`. Aborts if `go`/`gofmt` are missing.
-9. **`UI typecheck`** — when the commit stages `ui/src/*.ts` or `ui/src/*.tsx`: `npm run typecheck` (~21s), hard fail. Added in 0.0.37 after ten commits landed with HEAD failing `tsc --noEmit`: Vitest injects describe/it/expect/beforeEach/vi at runtime, so a test file that forgets to import one passes `npm run test` and only fails `tsc`. `OZPOS_SKIP_TYPECHECK=1` skips this step alone; prefer it to `--no-verify`, which skips all nine. `scripts/test-typecheck-gate.sh` proves the live step still fires.
+9. **`UI typecheck`** — when the commit stages `ui/src/*.ts` or `ui/src/*.tsx`: `npm run typecheck` (~21s), hard fail. Added in 0.0.37 after ten commits landed with HEAD failing `tsc --noEmit`: Vitest injects describe/it/expect/beforeEach/vi at runtime, so a test file that forgets to import one passes `npm run test` and only fails `tsc`. `OZPOS_SKIP_TYPECHECK=1` skips this step alone; prefer it to `--no-verify`, which skips all ten. `scripts/test-typecheck-gate.sh` proves the live step still fires.
+10. **`FTL orphan lint`** — `scripts/verify-ftl-orphans.py --staged-only` when the commit stages a `.ftl` file. Mirror of step 4: that asks whether code names a key no bundle defines, this asks whether a key has any code reading it. Nothing checked the second direction, and the debt is real (`topology-shortcuts-*`, 18 keys whose feature was removed; ~23 `warehouse-*` keys with zero references anywhere). Staged-scoped because dynamic composition leaves 93 honest whole-tree candidates; `--census` reports them, `--self-test` proves the check can fail.
 
-> ✅ **All nine steps now have a CI backstop.** Steps 6 and 7 (`verify-migration-column-types.py`, `generate-pg-migration.py --check`) lived in `ci.yml`, were retired to `.bak` (`23c96330`), and were restored into `dev-ci.yml#static-gates` in **0.0.37** — until then the opt-in hook was their only guard, and they had no `gates.json` record either, so the drift checker could not report a gate it never saw. CI runs the column-type check without `--staged-only`, so it scans all 28 migration files, not just the ones a commit touched. Both are pure text comparison (~1.1s together): no Docker, no psycopg, no sqlite handle. Step 8 (Go) has been CI-backed since 0.0.36 (`13f2a1dc`): `dev-ci.yml#static-gates` runs `gofmt -l`, `go vet ./...` and `go test -short` on `apps/license-server`. Note the CI gate is `gofmt -l` (report-only, fails on any unformatted file) while the hook runs `gofmt -w` and re-stages, so a commit made without `core.hooksPath` can be unformatted and CI will reject it rather than fix it. On a clone without `core.hooksPath` set, none of the eight run at commit time — but CI now catches all of them.
+> ✅ **All ten steps now have a CI backstop.** Steps 6 and 7 (`verify-migration-column-types.py`, `generate-pg-migration.py --check`) lived in `ci.yml`, were retired to `.bak` (`23c96330`), and were restored into `dev-ci.yml#static-gates` in **0.0.37** — until then the opt-in hook was their only guard, and they had no `gates.json` record either, so the drift checker could not report a gate it never saw. CI runs the column-type check without `--staged-only`, so it scans all 28 migration files, not just the ones a commit touched. Both are pure text comparison (~1.1s together): no Docker, no psycopg, no sqlite handle. Step 8 (Go) has been CI-backed since 0.0.36 (`13f2a1dc`): `dev-ci.yml#static-gates` runs `gofmt -l`, `go vet ./...` and `go test -short` on `apps/license-server`. Note the CI gate is `gofmt -l` (report-only, fails on any unformatted file) while the hook runs `gofmt -w` and re-stages, so a commit made without `core.hooksPath` can be unformatted and CI will reject it rather than fix it. On a clone without `core.hooksPath` set, none of the ten run at commit time — but CI now catches all of them.
 >
 > **What CI actually runs.** Two workflows are live: `dev-ci.yml` (PR to `main` + `workflow_dispatch`) and `release.yml` (`v*` tags, restored desktop-only in 0.0.36). `dev-ci.yml` jobs: `changes`, `website`, `cargo-check` (fmt → check → clippy), `cargo-nextest`, `ui-test` (typecheck → lint → vitest → tz-invariance), `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. CI's `cargo nextest run --workspace --all-features` carries **no `--exclude`**, so it tests app crates that `check.sh` skips. E2E, a11y, security and nightly are **not** enforced — a green Dev CI run is not proof those passed.
 
