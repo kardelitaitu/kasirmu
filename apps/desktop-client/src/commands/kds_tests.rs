@@ -1606,3 +1606,267 @@ async fn scoped_create_tickets_rejects_invalid_token() {
         create_kds_order_from_sale_scoped("bad-token".into(), "sale-1".into(), app.state()).await;
     assert!(matches!(result, Err(AppError::InvalidSession)));
 }
+
+use crate::commands::kds_device::list_kds_devices_scoped;
+use crate::commands::kds_routing::resolve_kds_targets_scoped;
+
+// ── Gap pins: resolve_kds_targets_scoped command-level routing ──────
+//
+// The integration tests above cover broadcast-mode and inactive-device
+// exclusion; the station-claim path (line items → product kitchen_zone →
+// device station_ids), the terminal-id fallback for Restaurant POS
+// sessions, the phase-3 catch-all, and the unknown-order error were
+// unpinned at the command layer.
+
+/// Seed BURGER + FRIES products, set their kitchen zones via SQL (not
+/// exposed on create_product), and return the order with two structured
+/// line items (round-W helper shape).
+fn seed_zoned_ticket(state: &AppState) -> KdsOrder {
+    seed_restaurant_product(state);
+    let store_db = state.db_manager.open_store("s1").unwrap();
+    let db = store_db.lock().unwrap();
+    // The core helper seeds only BURGER; FRIES must exist before its
+    // kitchen_zone can be set (create_product, then SQL for the zone —
+    // not exposed on the create_product API).
+    Store::new(&db)
+        .create_product(
+            "FRIES",
+            "Fries",
+            Money {
+                minor_units: 300,
+                currency: "USD".parse().unwrap(),
+            },
+            None,
+            None,
+            10,
+            Some("restaurant"),
+        )
+        .unwrap();
+    db.execute(
+        "UPDATE products SET kitchen_zone = 'grill' WHERE sku = 'BURGER'",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "UPDATE products SET kitchen_zone = 'fry' WHERE sku = 'FRIES'",
+        [],
+    )
+    .unwrap();
+
+    let s = Store::new(&db);
+    let mut cart = oz_core::Cart::new(usd());
+    cart.add_line(oz_core::CartLine::new(
+        oz_core::Sku::new("BURGER"),
+        1,
+        usd_price(500),
+    ))
+    .unwrap();
+    cart.add_line(oz_core::CartLine::new(
+        oz_core::Sku::new("FRIES"),
+        1,
+        usd_price(300),
+    ))
+    .unwrap();
+    let sale = oz_core::Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let order = s
+        .create_kds_order(CreateKdsOrderInput {
+            sale_id: sale.id.clone(),
+            store_id: Some("s1".into()),
+            items_summary: "Burger, Fries".into(),
+            item_count: 2,
+            kitchen_zone: Some("grill".into()),
+            notes: String::new(),
+            table_number: None,
+            priority: false,
+        })
+        .unwrap();
+    s.create_kds_line_items(
+        &order.id,
+        &[
+            oz_core::CreateKdsLineItemInput {
+                sku: "BURGER".into(),
+                display_name: "Burger".into(),
+                qty: 1,
+                course: Some("main".into()),
+                modifiers: vec![],
+            },
+            oz_core::CreateKdsLineItemInput {
+                sku: "FRIES".into(),
+                display_name: "Fries".into(),
+                qty: 1,
+                course: Some("side".into()),
+                modifiers: vec![],
+            },
+        ],
+    )
+    .unwrap();
+    order
+}
+
+fn usd() -> oz_core::Currency {
+    "USD".parse().unwrap()
+}
+
+fn usd_price(minor: i64) -> Money {
+    Money {
+        minor_units: minor,
+        currency: usd(),
+    }
+}
+
+#[tokio::test]
+async fn routing_station_claim_sends_each_line_to_its_zone_device() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_owner(&conn);
+    let state = scoped_state_with_restaurant(
+        conn,
+        "tok",
+        "user-owner",
+        "role-owner",
+        "s1",
+        "resto-1",
+        Some("resto-1".into()),
+    );
+    let order = seed_zoned_ticket(&state);
+    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
+    {
+        let store_db = state.db_manager.open_store("s1").unwrap();
+        let db = store_db.lock().unwrap();
+        let s = Store::new(&db);
+        s.register_kds_device(RegisterKdsDeviceInput {
+            name: "Grill".into(),
+            restaurant_pos_id: "resto-1".into(),
+            station_ids: vec!["grill".into()],
+            pairing_token_hash: "h1".into(),
+            pairing_expires_at: "2099-01-01".into(),
+        })
+        .unwrap();
+        s.register_kds_device(RegisterKdsDeviceInput {
+            name: "Fry".into(),
+            restaurant_pos_id: "resto-1".into(),
+            station_ids: vec!["fry".into()],
+            pairing_token_hash: "h2".into(),
+            pairing_expires_at: "2099-01-01".into(),
+        })
+        .unwrap();
+    }
+    let app = mock_app(state);
+
+    let targets = resolve_kds_targets_scoped("tok".into(), order.id.clone(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        targets.len(),
+        2,
+        "grill line → grill device, fry line → fry device"
+    );
+}
+
+#[tokio::test]
+async fn routing_catch_all_when_no_device_claims_a_station() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_owner(&conn);
+    let state = scoped_state_with_restaurant(
+        conn,
+        "tok",
+        "user-owner",
+        "role-owner",
+        "s1",
+        "resto-1",
+        Some("resto-1".into()),
+    );
+    let order = seed_zoned_ticket(&state);
+    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
+    {
+        let store_db = state.db_manager.open_store("s1").unwrap();
+        let db = store_db.lock().unwrap();
+        let s = Store::new(&db);
+        // Only the fry station is claimed; 'grill' has no device →
+        // phase-3 catch-all broadcasts to every active device.
+        s.register_kds_device(RegisterKdsDeviceInput {
+            name: "Fry".into(),
+            restaurant_pos_id: "resto-1".into(),
+            station_ids: vec!["fry".into()],
+            pairing_token_hash: "h2".into(),
+            pairing_expires_at: "2099-01-01".into(),
+        })
+        .unwrap();
+    }
+    let app = mock_app(state);
+
+    let targets = resolve_kds_targets_scoped("tok".into(), order.id.clone(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        targets.len(),
+        1,
+        "unclaimed 'grill' station triggers catch-all broadcast"
+    );
+}
+
+#[tokio::test]
+async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_owner(&conn);
+    // NO restaurant_pos_id: the command must fall back to terminal_id and
+    // find devices registered to "terminal-1" (scoped_state's terminal).
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "terminal-1");
+    seed_terminal_in_store(&state, "s1", "terminal-1", "Restaurant POS", "dev-term");
+    {
+        let store_db = state.db_manager.open_store("s1").unwrap();
+        let db = store_db.lock().unwrap();
+        let s = Store::new(&db);
+        s.register_kds_device(RegisterKdsDeviceInput {
+            name: "Expo".into(),
+            restaurant_pos_id: "terminal-1".into(),
+            station_ids: vec![],
+            pairing_token_hash: "h3".into(),
+            pairing_expires_at: "2099-01-01".into(),
+        })
+        .unwrap();
+    }
+    // Sale seeded BEFORE the guard: create_sale_in_store opens the same
+    // store and locks the same non-reentrant std Mutex — calling it inside
+    // the guard below deadlocks (the 7-hour zombie run).
+    create_sale_in_store(&state, "sale-fb");
+    let order = {
+        let store_db = state.db_manager.open_store("s1").unwrap();
+        let db = store_db.lock().unwrap();
+        let s = Store::new(&db);
+        s.create_kds_order(CreateKdsOrderInput {
+            sale_id: "sale-fb".into(),
+            store_id: Some("s1".into()),
+            items_summary: "Burger".into(),
+            item_count: 1,
+            kitchen_zone: Some("grill".into()),
+            notes: String::new(),
+            table_number: None,
+            priority: false,
+        })
+        .unwrap()
+    };
+    let app = mock_app(state);
+
+    let devices = list_kds_devices_scoped("tok".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(devices.len(), 1, "fallback finds the device");
+    let targets = resolve_kds_targets_scoped("tok".into(), order.id.clone(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(targets.len(), 1, "broadcast device receives the order");
+}
+
+#[tokio::test]
+async fn routing_unknown_order_fails_with_invalid() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_owner(&conn);
+    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = mock_app(state);
+
+    let result =
+        resolve_kds_targets_scoped("tok".into(), "no-such-order".into(), app.state()).await;
+    assert!(matches!(result, Err(AppError::Invalid(_))));
+}
