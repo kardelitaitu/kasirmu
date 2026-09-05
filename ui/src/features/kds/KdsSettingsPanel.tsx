@@ -90,6 +90,7 @@ export function KdsSettingsPanel({
         onClick={() => setOpen((p) => !p)}
         aria-label={requiredLocalized(l10n, 'kds-settings-aria')}
         aria-expanded={open}
+        data-testid="kds-settings-panel-btn"
       >
         <svg className="kds-settings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
@@ -111,6 +112,7 @@ export function KdsSettingsPanel({
               role="switch"
               checked={settings.soundEnabled}
               onChange={(e) => onChangeSound(e.target.checked)}
+              data-testid="kds-settings-panel-sound-toggle"
             />
             <span className="kds-settings-toggle-label"><Localized id="kds-settings-sound">Sound</Localized></span>
           </label>
@@ -130,6 +132,7 @@ export function KdsSettingsPanel({
               value={settings.yellowThresholdMin}
               onChange={(e) => onChangeYellowThreshold(Number(e.target.value))}
               aria-label={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
+              data-testid="kds-settings-panel-yellow-slider"
             />
           </div>
 
@@ -148,6 +151,7 @@ export function KdsSettingsPanel({
               value={settings.redThresholdMin}
               onChange={(e) => onChangeRedThreshold(Number(e.target.value))}
               aria-label={requiredLocalized(l10n, 'kds-settings-red-aria')}
+              data-testid="kds-settings-panel-red-slider"
             />
           </div>
 
@@ -158,6 +162,7 @@ export function KdsSettingsPanel({
               role="switch"
               checked={settings.autoAcknowledge}
               onChange={(e) => onChangeAutoAcknowledge(e.target.checked)}
+              data-testid="kds-settings-panel-auto-ack-toggle"
             />
             <span className="kds-settings-toggle-label"><Localized id="kds-settings-auto-ack">Auto-accept</Localized></span>
           </label>
@@ -172,6 +177,7 @@ export function KdsSettingsPanel({
                   className={`kds-settings-density-btn ${n === settings.density ? 'kds-settings-density-btn--active' : ''}`}
                   onClick={() => onChangeDensity(n)}
                   aria-pressed={n === settings.density}
+                  data-testid={`kds-settings-panel-density-btn-${n}`}
                 >
                   {n}
                 </button>
