@@ -80,7 +80,6 @@ pub async fn get_receipt_settings_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let session = state.resolve_session(&session_token)?;
     let conn = state
         .db_manager
         .open_store(&session.store_id)
@@ -194,7 +193,6 @@ pub async fn get_store_settings_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let session = state.resolve_session(&session_token)?;
     let conn = state
         .db_manager
         .open_store(&session.store_id)

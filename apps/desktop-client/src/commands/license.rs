@@ -767,7 +767,6 @@ pub async fn renew_license_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    let _session = state.resolve_session(&session_token)?;
     renew_license(state, new_key).await
 }
 
@@ -811,7 +810,6 @@ pub async fn pause_subscription_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    let _session = state.resolve_session(&session_token)?;
     pause_subscription(state, pause_months).await
 }
 
@@ -824,7 +822,6 @@ pub async fn resume_subscription_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    let _session = state.resolve_session(&session_token)?;
     resume_subscription(state).await
 }
 

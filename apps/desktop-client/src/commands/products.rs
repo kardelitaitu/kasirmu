@@ -56,7 +56,6 @@ pub async fn adjust_stock_scoped(
         return Err(AppError::Invalid("delta must be non-zero".into()));
     }
 
-    let session = state.resolve_session(&session_token)?;
     let conn = state
         .db_manager
         .open_store(&session.store_id)

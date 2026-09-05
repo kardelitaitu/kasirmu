@@ -38,7 +38,6 @@ pub async fn get_brand_settings_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let session = state.resolve_session(&session_token)?;
     let conn = state
         .db_manager
         .open_store(&session.store_id)
@@ -276,7 +275,6 @@ pub async fn pick_logo_file_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    let _session = state.resolve_session(&session_token)?;
     pick_logo_file(app_handle).await
 }
 

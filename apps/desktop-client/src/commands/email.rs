@@ -152,7 +152,6 @@ pub async fn get_report_schedule_scoped(
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::REPORTS_SCHEDULE).await?;
-    let _session = state.resolve_session(&session_token)?;
     get_report_schedule(state).await
 }
 
