@@ -503,11 +503,16 @@ impl Store<'_> {
         })
     }
 
-    /// Void a pending sale and restore the reserved/deducted stock back to original locations.
+    /// Void a pending sale and restore the reserved/dedicated stock back to original locations.
     pub fn void_pending_sale(&self, sale_id: &str) -> Result<(), CoreError> {
         let tx = self.conn.unchecked_transaction()?;
 
-        let deduction_locations_json: String = tx
+        // NULL deduction_locations is a legal state: the import/CLI door
+        // (create_sale, MONEY-07) never writes the column, so imported
+        // pending sales have nothing deducted through the location system.
+        // Skip-credit (do NOT default-credit: that would invent stock).
+        // Malformed JSON stays fail-closed.
+        let deduction_locations_json: Option<String> = tx
             .query_row(
                 "SELECT deduction_locations FROM sales WHERE id = ?1 AND status = 'pending'",
                 rusqlite::params![sale_id],
@@ -521,43 +526,53 @@ impl Store<'_> {
                 other => CoreError::Db(other),
             })?;
 
-        let v: serde_json::Value =
-            serde_json::from_str(&deduction_locations_json).map_err(|e| CoreError::Validation {
-                field: "deduction_locations",
-                message: e.to_string(),
-            })?;
+        match deduction_locations_json.as_deref() {
+            None | Some("") | Some("null") => {
+                tracing::info!(
+                    sale_id,
+                    "voiding pending sale without deduction_locations — no location credits to restore"
+                );
+            }
+            Some(json) => {
+                let v: serde_json::Value =
+                    serde_json::from_str(json).map_err(|e| CoreError::Validation {
+                        field: "deduction_locations",
+                        message: e.to_string(),
+                    })?;
 
-        if let Some(lines) = v["lines"].as_array() {
-            for line in lines {
-                let sku = line["sku"].as_str().ok_or_else(|| CoreError::Validation {
-                    field: "sku",
-                    message: "missing sku in deduction_locations".into(),
-                })?;
-                if let Some(deductions) = line["deductions"].as_array() {
-                    for d in deductions {
-                        let loc_id =
-                            d["location_id"]
-                                .as_str()
-                                .ok_or_else(|| CoreError::Validation {
-                                    field: "location_id",
-                                    message: "missing location_id in deductions".into(),
-                                })?;
-                        let qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
-                            field: "qty",
-                            message: "missing qty in deductions".into(),
+                if let Some(lines) = v["lines"].as_array() {
+                    for line in lines {
+                        let sku = line["sku"].as_str().ok_or_else(|| CoreError::Validation {
+                            field: "sku",
+                            message: "missing sku in deduction_locations".into(),
                         })?;
+                        if let Some(deductions) = line["deductions"].as_array() {
+                            for d in deductions {
+                                let loc_id = d["location_id"].as_str().ok_or_else(|| {
+                                    CoreError::Validation {
+                                        field: "location_id",
+                                        message: "missing location_id in deductions".into(),
+                                    }
+                                })?;
+                                let qty =
+                                    d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                                        field: "qty",
+                                        message: "missing qty in deductions".into(),
+                                    })?;
 
-                        // Credit stock back (positive delta)
-                        self.adjust_stock_at_location_with_reason(
-                            &tx,
-                            sku,
-                            qty,
-                            &crate::inventory::LocationId::from(loc_id),
-                            Some("void_pending"),
-                            None,
-                            None,
-                            None,
-                        )?;
+                                // Credit stock back (positive delta)
+                                self.adjust_stock_at_location_with_reason(
+                                    &tx,
+                                    sku,
+                                    qty,
+                                    &crate::inventory::LocationId::from(loc_id),
+                                    Some("void_pending"),
+                                    None,
+                                    None,
+                                    None,
+                                )?;
+                            }
+                        }
                     }
                 }
             }

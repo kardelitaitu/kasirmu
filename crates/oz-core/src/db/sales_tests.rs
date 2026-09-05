@@ -3030,6 +3030,62 @@ fn void_pending_sale_malformed_deduction_locations_errors() {
     ));
 }
 
+/// RED (round AB): a sale created through the import/CLI door
+/// (`create_sale`) has NO deduction_locations — the column is nullable
+/// and the INSERT omits it — yet `void_pending_sale` read it as a
+/// non-null String, so voiding such a sale crashed with
+/// Db(InvalidColumnType) instead of voiding. Desired semantics: a NULL
+/// deduction history means there is nothing to credit back — the void
+/// succeeds WITHOUT inventing stock movements (skip-credit, not
+/// default-credit: crediting the canonical default location would
+/// fabricate stock for an import with no proven deduction).
+#[test]
+fn void_pending_sale_with_null_deduction_locations_succeeds_without_crediting() {
+    let conn = fresh();
+    let s = store(&conn);
+    let cart = make_cart();
+    let sale = Sale::from_cart(&cart).unwrap();
+
+    // Import-door shape: INSERT without the deduction_locations column,
+    // leaving it NULL.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                            tendered_minor, discount_percent, discount_label, user_id,
+                            created_at, updated_at, subtotal_minor, tax_total_minor, version)
+         VALUES (?1, 1150, 'USD', 3, 'pending', 'CASH', 1150, 0, NULL, 'user-1',
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1150, 0, 1)",
+        rusqlite::params![sale.id],
+    )
+    .unwrap();
+
+    s.void_pending_sale(&sale.id).unwrap();
+
+    // The sale is voided…
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "voided", "import-door sale must be voidable");
+
+    // …and NO stock movements were invented by the void.
+    let movements: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_movements sm
+             JOIN products p ON p.id = sm.item_id
+             WHERE sm.reason = 'void_pending' AND p.sku IN ('COFFEE', 'BAGEL')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        movements, 0,
+        "void of a sale with no deduction history must not credit stock"
+    );
+}
+
 #[test]
 fn void_pending_sale_twice_errors() {
     let conn = fresh();
