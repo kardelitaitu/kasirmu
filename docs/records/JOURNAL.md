@@ -1,5 +1,41 @@
 
 
+## 2026-09-04 — TDD round AB: void of imported pending sales blocked on NULL deduction_locations (oz-core)
+
+**Problem (first real Red→Green bug of the loop):** The round-X
+observation graduated to a genuine bug. `sales.deduction_locations` is
+nullable (20260813_init.sql:618) and the import/CLI door
+(`create_sale`, the MONEY-07 "deserializes a Sale straight from JSON"
+path that explicitly permits pending sales) omits the column from its
+INSERT — so an imported pending sale has NULL there.
+`void_pending_sale` read the column as a non-null `String`, so
+voiding such a sale failed with Db(InvalidColumnType(0,
+"deduction_locations", Null)) — the sale could never be voided.
+Verified reachable in production: the desktop command
+`commands::inventory::void_pending_sale` (inventory.rs:754) calls it
+directly.
+
+**Solution:** RED test first
+(`void_pending_sale_with_null_deduction_locations_succeeds_without_
+crediting`) — failed with exactly the predicted
+Db(InvalidColumnType). GREEN: read the column as `Option<String>` and
+branch:
+- `None | Some("") | Some("null")` → skip the credit loop entirely
+  and log (skip-credit, NOT refunds.rs-style default-credit: nothing
+  was deducted through the location system for an import, so crediting
+  the canonical default location would fabricate stock — the test
+  asserts zero `void_pending` movements for the sale's SKUs)
+- malformed JSON → still fail-closed Validation (the existing
+  `void_pending_sale_malformed_deduction_locations_errors` pin stays
+  green)
+
+All four existing void_pending_sale tests plus the round-X ghost-window
+test stayed green — the S3 KDS-cancel path runs identically after the
+branch.
+
+**Commits:** 0314ad64 (fix + test).
+**Test counts:** oz-core 2457→2458, all green (58s full lib run).
+
 ## 2026-09-04 — TDD round AA: scoped KDS command-layer pins (desktop-client)
 
 **Problem:** Four scoped commands in apps/desktop-client/src/commands/
