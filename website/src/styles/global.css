@@ -21,9 +21,16 @@
   --color-green: #53D769;
   --color-red: #FC3D39;
   --color-gray: #8E8E93;
-  /* Semantic — light theme (default) */
-  --color-primary: #0D5FD6;
-  --color-primary-hover: #0A4FB3;
+  /* Semantic — light theme (default).
+     --color-primary is the PRODUCT brand blue #147EFB (design-language.html,
+     branding.rs default). #147EFB on white is 3.88:1 — fine for large text and
+     non-text (borders, icons) but below the 4.5:1 WCAG AA floor for normal
+     text, so every surface painted primary/accent uses --color-on-primary
+     (#061229, 4.8:1 on #147EFB) instead of white. Small TEXT colored blue
+     (links) uses --color-link, a darkened blue that passes on white. */
+  --color-primary: #147EFB;
+  --color-primary-hover: #3B95FF; /* lighter, not darker — darkening breaks 4.5:1 against on-primary */
+  --color-on-primary: #061229;
   --color-success: #53D769;
   --color-danger: #FC3D39;
   --color-warning: #FD9426;
@@ -75,15 +82,16 @@
   --tooltip-bg: #1A1D23;
   /* Tailwind utility aliases — map old names to design language tokens
      so existing bg-accent, text-muted, border-ink/* classes keep working */
-  --color-accent: #0D5FD6; /* Alias: accent tokens map to primary for backwards compat */
+  --color-accent: #147EFB; /* Alias: accent tokens map to primary for backwards compat */
   --color-link: #0D5FD6;
 }
 
 /* ── Dark theme overrides ─────────────────────────────────────── */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-primary: #0D5FD6;
+  --color-primary: #147EFB;
   --color-primary-hover: #2088FF;
+  --color-on-primary: #061229;
   --color-success: #6FE884;
   --color-danger: #FF6B68;
   --color-warning: #FFA94D;
@@ -107,7 +115,7 @@
   --callout-tip: #6FE884;
   --callout-danger: #FF6B68;
   /* Tailwind utility aliases — dark mode overrides */
-  --color-accent: #1A8FFF;
+  --color-accent: #147EFB;
   --color-link: #2088FF;
 }
 

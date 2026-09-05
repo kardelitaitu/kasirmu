@@ -29,7 +29,7 @@ export default function RestaurantMockup() {
       <div className="col-span-7 space-y-4">
         {/* Category Tabs */}
         <div className="flex gap-2">
-          <span className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-white">Semua</span>
+          <span className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-on-primary">Semua</span>
           <span className="rounded-full border border-ink/10 bg-surface/80 px-4 py-2 text-xs text-muted">Kopi</span>
           <span className="rounded-full border border-ink/10 bg-surface/80 px-4 py-2 text-xs text-muted">Makanan</span>
           <span className="rounded-full border border-ink/10 bg-surface/80 px-4 py-2 text-xs text-muted">Minuman</span>
@@ -89,7 +89,7 @@ export default function RestaurantMockup() {
               <span>Total</span>
               <span className="text-accent">Rp 69.000</span>
             </div>
-            <div className="mockup-btn cursor-pointer rounded-lg bg-gradient-to-r from-primary to-primary-hover py-3 text-center text-sm font-bold text-white shadow-md transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:scale-[1.03] hover:shadow-lg active:scale-[0.97]">
+            <div className="mockup-btn cursor-pointer rounded-lg bg-gradient-to-r from-primary to-primary-hover py-3 text-center text-sm font-bold text-on-primary shadow-md transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:scale-[1.03] hover:shadow-lg active:scale-[0.97]">
               Bayar · QRIS
             </div>
           </div>

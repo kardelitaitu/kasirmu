@@ -190,7 +190,7 @@ export default function SignupForm({ locale }: Props) {
           <button
             type="submit"
             disabled={loading || code.length < 6}
-            className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-hover disabled:opacity-60"
+            className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
           >
             {loading ? '…' : t(locale, 'signup.verify')}
           </button>
@@ -338,7 +338,7 @@ export default function SignupForm({ locale }: Props) {
         <button
           type="submit"
           disabled={loading || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !isStrongPassword(password) || !passwordsMatch(password, confirm)}
-          className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-hover disabled:opacity-60"
+          className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
         >
           {loading ? '…' : t(locale, 'signup.createAccount')}
         </button>

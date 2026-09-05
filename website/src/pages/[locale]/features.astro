@@ -70,7 +70,7 @@ const featureIcons = [
 
             <div>
               <!-- Icon Container -->
-              <div class="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-all duration-300 group-hover:scale-110 group-hover:bg-primary group-hover:text-white group-hover:shadow-md group-hover:shadow-primary/20">
+              <div class="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-all duration-300 group-hover:scale-110 group-hover:bg-primary group-hover:text-on-primary group-hover:shadow-md group-hover:shadow-primary/20">
                 <Fragment set:html={featureIcons[i]} />
               </div>
 
@@ -135,7 +135,7 @@ const featureIcons = [
     <div data-reveal class="mt-16 text-center flex flex-col sm:flex-row items-center justify-center gap-4">
       <a
         href={download}
-        class="rounded-md bg-primary px-6 py-3 font-semibold text-white transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:opacity-90 hover:scale-[1.03] active:scale-[0.97]"
+        class="rounded-md bg-primary px-6 py-3 font-semibold text-on-primary transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:opacity-90 hover:scale-[1.03] active:scale-[0.97]"
       >
         {t(locale, 'hero.ctaPrimary')}
       </a>

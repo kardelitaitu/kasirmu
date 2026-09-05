@@ -378,7 +378,7 @@ export default function AccountView({ locale }: Props) {
         <p className="text-muted">{t(locale, 'account.notSignedIn')}</p>
         <a
           href={`/${locale}/login`}
-          className="mt-4 inline-block rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+          className="mt-4 inline-block rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90"
         >
           {t(locale, 'account.signIn')}
         </a>

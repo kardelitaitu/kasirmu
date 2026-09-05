@@ -86,7 +86,7 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
               aria-pressed={billing === btn.key}
               className={[
                 'relative z-10 flex-1 rounded-lg px-4 py-[5px] font-semibold transition-opacity duration-200 text-center whitespace-nowrap',
-                billing === btn.key ? 'text-white opacity-100' : 'text-muted opacity-50 hover:opacity-100',
+                billing === btn.key ? 'text-on-primary opacity-100' : 'text-muted opacity-50 hover:opacity-100',
               ].join(' ')}
             >
               {btn.label}
@@ -94,7 +94,7 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
                 <span
                   className={[
                     'ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap',
-                    billing === 'yearly' ? 'bg-white/20 text-white' : 'bg-accent/15 text-link',
+                    billing === 'yearly' ? 'bg-white/20 text-on-primary' : 'bg-accent/15 text-link',
                   ].join(' ')}
                 >
                   {btn.note}
@@ -137,7 +137,7 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
               ].join(' ')}
             >
               {tier.highlight && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center rounded-full bg-primary px-3 py-0.5 text-[11px] font-bold text-white shadow-sm uppercase tracking-wider">
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center rounded-full bg-primary px-3 py-0.5 text-[11px] font-bold text-on-primary shadow-sm uppercase tracking-wider">
                   {t(locale, 'pricingPage.mostPopular')}
                 </span>
               )}
@@ -175,14 +175,14 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
                 {isFree ? (
                   <a
                     href={downloadHref}
-                    className="block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-white whitespace-nowrap transition hover:opacity-90"
+                    className="block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary whitespace-nowrap transition hover:opacity-90"
                   >
                     {tier.cta}
                   </a>
                 ) : isEnterprise ? (
                   <a
                     href={contactHref}
-                    className="block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-white whitespace-nowrap transition hover:opacity-90"
+                    className="block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary whitespace-nowrap transition hover:opacity-90"
                   >
                     {tier.cta}
                   </a>
