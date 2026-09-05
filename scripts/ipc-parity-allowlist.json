@@ -204,5 +204,23 @@
     "suspend_surplus_workspace_instances_scoped",
     "test_auth_connection_scoped"
   ],
-  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale."
+  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale.",
+  "dev_mock": [
+    "delete_topology_template",
+    "gateway_status",
+    "list_topology_templates",
+    "load_topology_template",
+    "local_api_mint_token_scoped",
+    "local_api_rotate_secret_scoped",
+    "local_api_set_enabled_scoped",
+    "local_api_set_port_scoped",
+    "local_api_set_store_scoped",
+    "local_api_status_scoped",
+    "preview_promoted_total_from_lines_scoped",
+    "products_clear_image_scoped",
+    "products_list_images_scoped",
+    "products_set_image_scoped",
+    "refresh_picker_ticket",
+    "save_topology_template"
+  ]
 }

@@ -127,6 +127,48 @@ def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> li
     return sorted(set(unregistered))
 
 
+DEV_MOCK_REL = "ui/src/dev-mock/tauri-api.ts"
+
+
+def extract_dev_mock_answerable() -> tuple[set[str], set[str]]:
+    """Names the browser dev-mock can serve: (directly registered, aliasable).
+
+    The third parity direction. The other two compare the UI against the Rust
+    `generate_handler!` lists; neither asks whether the plain-browser preview can answer
+    the call at all, and that omission is what let 217 invokes across 4 commands receive
+    a silent `null` (backlog item 52). The component swallows the null, the test passes,
+    and the assertion is quietly about the failure path -- a green suite that verifies
+    nothing.
+
+    Mirrors the real rule in that file rather than a curated list: a `_scoped` name is
+    answerable if it is registered directly, or if its unscoped base is (the general
+    aliasing pass added in b013005f). Keys come from two syntaxes -- object-literal
+    entries and `handlers['x'] = ...` assignments -- because the file uses both, and
+    reading only one is how an earlier grep wrongly concluded `get_hardware_settings`
+    had no handler at all.
+
+    The aliasing is applied only if the pass that performs it is actually present in the
+    source. That guard is load-bearing: an earlier version modelled the rule in Python and
+    so reported "149 answerable via the alias rule" no matter what the TypeScript said --
+    deleting the loop entirely left the gate green, which mutation testing caught. A gate
+    that re-derives the thing it is supposed to be checking checks nothing; it just agrees
+    with itself.
+    """
+    text = (REPO_ROOT / DEV_MOCK_REL).read_text(encoding="utf-8", errors="replace")
+    registered = set(re.findall(r"^\s*'([a-z0-9_]+)':\s*(?:\(|async|=>)", text, re.M))
+    registered |= set(re.findall(r"handlers\[['\"]([a-z0-9_]+)['\"]\]\s*=", text))
+    rule_present = re.search(
+        r"for\s*\(\s*const\s+\w+\s+of\s+Object\.keys\(\s*handlers\s*\)\s*\)", text)
+    if rule_present is None:
+        # No aliasing pass means no scoped name is answerable unless registered outright.
+        return registered, set()
+    aliasable = {
+        f"{base}_scoped" for base in registered
+        if not base.endswith("_scoped") and f"{base}_scoped" not in registered
+    }
+    return registered, aliasable
+
+
 def load_allowlist() -> dict:
     if not ALLOWLIST_PATH.exists():
         return {"desktop": [], "tablet": []}
@@ -259,6 +301,12 @@ def main() -> int:
         help="add current registered-but-uncalled scoped commands to "
              "\"scoped_orphans\" in the allowlist, preserving other sections, and exit",
     )
+    parser.add_argument(
+        "--write-dev-mock-gaps",
+        action="store_true",
+        help="add current UI-invoked commands the dev-mock cannot answer to "
+             "\"dev_mock\" in the allowlist, preserving other sections, and exit",
+    )
     args = parser.parse_args()
 
     ui_commands = extract_ui_commands()
@@ -291,6 +339,17 @@ def main() -> int:
     all_orphans = sorted(set().union(*[set(v) for v in orphans.values()]))
     if args.write_scoped_orphans:
         write_scoped_orphans(set(all_orphans))
+        return 0
+
+    # Third direction: can the plain-browser dev-mock answer what the UI invokes?
+    mock_registered, mock_aliasable = extract_dev_mock_answerable()
+    mock_answerable = mock_registered | mock_aliasable
+    mock_gaps = sorted(c for c in ui_commands if c not in mock_answerable)
+    if args.write_dev_mock_gaps:
+        payload = dict(load_allowlist())
+        payload["dev_mock"] = sorted(set(payload.get("dev_mock", [])) | set(mock_gaps))
+        ALLOWLIST_PATH.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return 0
 
     for command in sorted(set(all_orphans) - orphan_allow):
@@ -327,6 +386,20 @@ def main() -> int:
                 f"remove it from {ALLOWLIST_PATH.name}"
             )
 
+    mock_allow = set(allowlist.get("dev_mock", []))
+    for command in sorted(set(mock_gaps) - mock_allow):
+        refs = ", ".join(sorted(set(ui_commands[command]))[:3])
+        failures.append(
+            f"dev-mock: UI invokes '{command}' but {DEV_MOCK_REL} cannot answer it "
+            f"(no handler, and no unscoped twin to alias) -- invoke() returns null and "
+            f"the caller silently renders its failure path (e.g. {refs})"
+        )
+    for command in sorted(mock_allow - set(mock_gaps)):
+        failures.append(
+            f"stale dev_mock entry '{command}' -- the mock can now answer it; "
+            f"remove it from {ALLOWLIST_PATH.name}"
+        )
+
     for shell in SHELLS:
         unregistered = extract_unregistered(
             shell, REPO_ROOT / SHELLS[shell], set(handlers[shell])
@@ -337,6 +410,13 @@ def main() -> int:
             f"{len(missing[shell])} unregistered references "
             f"({len(unregistered)} unregistered command fns - F-006 tracker)"
         )
+
+    print(
+        f"info[dev-mock]: {len(mock_registered)} handlers registered, "
+        f"{len(mock_aliasable)} more answerable via the scoped alias rule, "
+        f"{len(mock_gaps)} of {len(ui_commands)} UI commands unanswerable "
+        f"({len(mock_allow)} allowlisted)"
+    )
 
     # Triage summary for the allowlisted orphans. Printed even when green, because an
     # allowlist that reports nothing is an allowlist nobody re-reads: the gated ones are

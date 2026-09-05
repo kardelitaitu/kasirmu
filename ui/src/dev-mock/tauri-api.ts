@@ -3134,60 +3134,16 @@ const handlers: Record<string, (args: unknown) => unknown> = {
 };
 
 // ── Scoped aliases (ADR #7) ──────────────────────────────────────
-// The API layer calls the *_scoped variant for nearly every command, but
-// several were only ever registered unscoped. Without these, invoke()
-// returns `null` and report/inventory screens crash on `.length` reads
-// (e.g. revenueData.length in DashboardScreen / SalesReportScreen),
-// surfacing as error-boundary failures in browser-mode E2E. Alias the
-// missing scoped names to their unscoped twins so they resolve to the
-// same empty-shaped data instead of null.
-const SCOPED_ALIASES: Array<[string, string]> = [
-  // Reports (reporting-workflows / dashboard)
-  ['get_daily_revenue_scoped', 'get_daily_revenue'],
-  ['get_weekly_revenue_scoped', 'get_weekly_revenue'],
-  ['get_monthly_revenue_scoped', 'get_monthly_revenue'],
-  ['get_top_products_scoped', 'get_top_products'],
-  ['get_category_popularity_scoped', 'get_category_popularity'],
-  ['get_category_popularity_trend_scoped', 'get_category_popularity_trend'],
-  ['get_category_forecast_scoped', 'get_category_forecast'],
-  ['get_hourly_heatmap_scoped', 'get_hourly_heatmap'],
-  ['get_category_breakdown_scoped', 'get_category_breakdown'],
-  ['get_menu_engineering_scoped', 'get_menu_engineering'],
-  ['build_custom_report_scoped', 'build_custom_report'],
-  ['get_low_stock_alerts_scoped', 'get_low_stock_alerts'],
-  // Stock counts (inventory-workflows)
-  ['create_stock_count_scoped', 'create_stock_count'],
-  ['get_stock_count_scoped', 'get_stock_count'],
-  ['list_stock_counts_scoped', 'list_stock_counts'],
-  ['get_count_lines_scoped', 'get_count_lines'],
-  ['add_count_line_scoped', 'add_count_line'],
-  ['update_count_line_scoped', 'update_count_line'],
-  ['remove_count_line_scoped', 'remove_count_line'],
-  ['complete_stock_count_scoped', 'complete_stock_count'],
-  ['update_stock_count_status_scoped', 'update_stock_count_status'],
-  // Categories / customers (admin screens)
-  ['create_category_scoped', 'create_category'],
-  ['update_category_scoped', 'update_category'],
-  ['delete_category_scoped', 'delete_category'],
-  ['create_customer_scoped', 'create_customer'],
-  ['update_customer_scoped', 'update_customer'],
-  ['delete_customer_scoped', 'delete_customer'],
-  // Store profiles (topology editor / store switcher / dashboards) — the
-  // API layer migrated to *_scoped (ADR #7); without these aliases the
-  // browser preview would serve `null` stores and gate Apply off.
-  ['list_store_profiles_scoped', 'list_store_profiles'],
-  ['get_store_profile_scoped', 'get_store_profile'],
-  ['get_primary_store_scoped', 'get_primary_store'],
-  ['create_store_profile_scoped', 'create_store_profile'],
-  ['update_store_profile_scoped', 'update_store_profile'],
-  ['set_primary_store_scoped', 'set_primary_store'],
-  ['delete_store_profile_scoped', 'delete_store_profile'],
-];
-for (const [scoped, base] of SCOPED_ALIASES) {
-  if (handlers[scoped] === undefined && handlers[base] !== undefined) {
-    handlers[scoped] = handlers[base];
-  }
-}
+// The API layer calls the *_scoped variant for nearly every command, but most were only
+// ever registered unscoped. Without aliasing, invoke() returns `null` and report/inventory
+// screens crash on `.length` reads (e.g. revenueData.length in DashboardScreen /
+// SalesReportScreen), surfacing as error-boundary failures in browser-mode E2E.
+//
+// This used to be a hand-maintained SCOPED_ALIASES list of 34 pairs. It is now derived by
+// rule in the pass just above invoke(), which subsumes every one of those pairs: all 34
+// were of the form (X_scoped, X) with X registered, verified before deletion, and pinned
+// by name in __tests__/dev-mock-scoped-aliases.test.ts so a future change to the rule
+// fails on the specific command rather than crashing a screen at runtime.
 
 // Scoped commands without an unscoped twin get minimal direct stubs.
 handlers['search_customers_scoped'] = (args) => {
@@ -3381,7 +3337,7 @@ function hasTauriInternals(): boolean {
 
 // ── General scoped aliasing ───────────────────────────────────────
 //
-// SCOPED_ALIASES above is a hand-maintained list and it had fallen 115 entries behind:
+// This replaces SCOPED_ALIASES, a hand-maintained list that had fallen 115 entries behind:
 // the ADR #7 migration moved the api layer to the `_scoped` spelling of commands while
 // the mock kept registering the unscoped names, so every scoped name outside the curated
 // list fell through to `return null` in invoke() below. That fails silently, not loudly —

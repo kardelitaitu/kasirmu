@@ -2,8 +2,10 @@
 //
 // The ADR #7 migration moved the api layer to the `_scoped` spelling of commands
 // while the dev-mock kept registering the unscoped names. The mock had a curated
-// SCOPED_ALIASES list (7 store-profile pairs) rather than a rule, so every scoped
-// command outside that list fell through to `return null` with a console.warn.
+// SCOPED_ALIASES list — 34 pairs, not the 7 visible at the top of it, a count an
+// earlier draft of this comment got wrong by reading only the first block — rather
+// than a rule, so every scoped command outside that list fell through to
+// `return null` with a console.warn. The list is now deleted in favour of the rule.
 //
 // That is the exact defect invokeCoverage.ts documents for hand-written mock chains
 // (R36-02): the component swallows the null, the test still passes, and the
@@ -33,6 +35,29 @@ const OBSERVED = [
 // is registered directly -- both passed against the broken code and proved nothing.
 // 115 such gaps exist on the current tree; this asserts one.
 const UNLISTED_CONTROL = 'check_license_status_scoped';
+
+// Every pair the curated SCOPED_ALIASES list used to hold, transcribed before it was
+// deleted. These are the regression net for that deletion: they passed via the list
+// before, and must pass via the general rule after. All 34 are of the form
+// (X_scoped, X) with X registered -- verified, not assumed -- which is what lets the
+// rule subsume them. Two of them (set_settings_scoped, update_kds_order_items_scoped)
+// also carry a direct stub, so they additionally pin that the rule does not clobber an
+// explicit handler: the curated loop ran before the stubs and the stub overwrote it,
+// while the rule runs last and skips them. Same end state, different path.
+const FORMERLY_CURATED = [
+  'get_daily_revenue_scoped', 'get_weekly_revenue_scoped', 'get_monthly_revenue_scoped',
+  'get_top_products_scoped', 'get_category_popularity_scoped', 'get_category_popularity_trend_scoped',
+  'get_category_forecast_scoped', 'get_hourly_heatmap_scoped', 'get_category_breakdown_scoped',
+  'get_menu_engineering_scoped', 'build_custom_report_scoped', 'get_low_stock_alerts_scoped',
+  'create_stock_count_scoped', 'get_stock_count_scoped', 'list_stock_counts_scoped',
+  'get_count_lines_scoped', 'add_count_line_scoped', 'update_count_line_scoped',
+  'remove_count_line_scoped', 'complete_stock_count_scoped', 'update_stock_count_status_scoped',
+  'create_category_scoped', 'update_category_scoped', 'delete_category_scoped',
+  'create_customer_scoped', 'update_customer_scoped', 'delete_customer_scoped',
+  'list_store_profiles_scoped', 'get_store_profile_scoped', 'get_primary_store_scoped',
+  'create_store_profile_scoped', 'update_store_profile_scoped', 'set_primary_store_scoped',
+  'delete_store_profile_scoped',
+];
 
 async function resolvesToData(cmd: string) {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -71,4 +96,17 @@ describe('dev-mock scoped command aliasing', () => {
     const { unhandled } = await resolvesToData('this_command_does_not_exist_scoped');
     expect(unhandled).toBe(true);
   });
+
+  it.each(FORMERLY_CURATED)(
+    'general rule covers formerly-curated %s',
+    async (cmd) => {
+      // Only "a handler was found" is asserted. Several of these bases legitimately
+      // return null -- 'get_stock_count' and 'delete_category' are literally
+      // `() => null` in the mock -- so asserting data would conflate "aliased" with
+      // "returns something", and the rule guarantees only the first. That mistake made
+      // six of these thirty-four fail on the first run, against unmodified code.
+      const { unhandled } = await resolvesToData(cmd);
+      expect(unhandled).toBe(false);
+    },
+  );
 });
