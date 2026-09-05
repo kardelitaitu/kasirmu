@@ -165,13 +165,15 @@
       "id": "docker-dry-run",
       "label": "Docker build smoke (--docker-dry-run)",
       "status": "required",
-      "runners": { "check.sh": ["docker build"] }
+      "runners": { "check.sh": ["docker build"] },
+      "_note": "Local-only by necessity, not by oversight. check.sh:405 runs `docker build -f Dockerfile.server -t oz-pos-cloud:local`; every container workflow in .github/workflows is retired to .bak (docker-*.yml.bak), so no live job builds an image and there is nowhere to cite. Recorded here so the absence is a decision rather than a gap: on a clone without core.hooksPath nothing builds the server image before merge."
     },
     {
       "id": "migration",
       "label": "Migration smoke",
       "status": "required",
-      "runners": { "check.sh": ["migration"] }
+      "runners": { "check.sh": ["migration"] },
+      "_note": "Local-only. check.sh:98-99 run `cargo run -p oz-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
     },
     {
       "id": "skill-drift",
@@ -193,7 +195,8 @@
       "id": "a11y-advisory",
       "label": "A11y regression (advisory)",
       "status": "advisory",
-      "runners": { "check.sh": ["a11y"] }
+      "runners": { "check.sh": ["a11y"] },
+      "_note": "Local-only AND advisory by design: check.sh:196-200 runs `npm run test:a11y` and prints WARN on regressions without failing, because known product-level a11y bugs are tracked and a blocking gate would be disabled within a day. ⚠ The message at check.sh:200 says 'non-blocking, see CI', which misleads -- `git grep a11y .github/workflows/dev-ci.yml` returns nothing, and AGENTS.md states plainly that 'E2E, a11y, security and nightly suites are NOT enforced in CI'. A green Dev CI run is not evidence a11y was checked."
     },
     {
       "id": "feature-registry",
@@ -252,7 +255,8 @@
       "id": "bundle-budget",
       "label": "Bundle budget",
       "status": "required",
-      "runners": { "check:all": ["bundle budget"] }
+      "runners": { "check:all": ["bundle budget"] },
+      "_note": "Local-only. check-ui.mjs:139 runs `npm run bundle:check` (gzip budgets on the production build, PERF-02). No live CI job builds the UI for size -- dev-ci.yml#ui-test typechecks, lints and tests but never runs `npm run build`. Reachable only via `cd ui && npm run check:all`."
     },
     {
       "id": "e2e",
@@ -265,7 +269,8 @@
       "id": "perf-smoke",
       "label": "Perf smoke",
       "status": "required",
-      "runners": { "check:all": ["perf smoke"] }
+      "runners": { "check:all": ["perf smoke"] },
+      "_note": "Local-only, and conditional even there: check-ui.mjs:157 runs `npm run test:e2e:perf` (Playwright desktop + tablet budgets, PERF-10) but records status 'skip' when Playwright browsers are not installed, so on a fresh clone it silently does nothing. No CI job runs it. Two layers of opt-out on a gate marked required."
     },
     {
       "id": "rust-test-apps",

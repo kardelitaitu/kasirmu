@@ -94,7 +94,14 @@ else
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"
 fi
 
-# ── Migration (mirrors CI `migration` job) ────────────────────────────────
+# ── Migration (LOCAL ONLY — no CI job runs this) ──────────────────────────
+# This comment used to read "mirrors CI `migration` job". There is no such job:
+# dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test,
+# i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy. The
+# confusion is understandable because two neighbouring gates DO have CI backing since
+# 0.0.37 (pg-schema-drift and migration-column-types, both in static-gates), but this
+# one is the SQLite migrate-up path and nothing enforces it off a developer machine.
+# Recorded in scripts/gates.json -> "migration".
 step "migration smoke test" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
 step "migration idempotency" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
 rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm
@@ -190,14 +197,20 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # anchor can pass here and fail on a UTC CI runner. Re-runs the analytics
     # anchor test under four zones and requires identical results.
     step "analytics tz invariance" "python3 scripts/check-tz-invariance.py" python3 ../scripts/check-tz-invariance.py
-    # AUDIT-27 CI-06: A11y regression suite (advisory, mirrors CI's
-    # continue-on-error since known product-level a11y bugs are tracked
-    # but not yet fixed). Never fails the gate — reports status only.
+    # AUDIT-27 CI-06: A11y regression suite (advisory). Never fails the gate —
+    # reports status only, because known product-level a11y bugs are tracked but
+    # not yet fixed and a blocking gate here would be disabled within a day.
+    # This used to say it "mirrors CI's continue-on-error", and the WARN line used
+    # to tell the developer to "see CI". Both were false: `git grep a11y
+    # .github/workflows/dev-ci.yml` returns nothing, and AGENTS.md states plainly
+    # that E2E, a11y, security and nightly suites are NOT enforced in CI. So this
+    # run is the only place a11y is ever checked -- a green Dev CI is no evidence it
+    # passed. Recorded in scripts/gates.json -> "a11y-advisory".
     echo -n "ui a11y (advisory)... "
     if npm run test:a11y >/dev/null 2>&1; then
         echo -e "${GREEN}PASS${NC}"
     else
-        echo -e "${YELLOW}WARN (a11y regressions exist — non-blocking, see CI)${NC}"
+        echo -e "${YELLOW}WARN (a11y regressions exist — non-blocking, and NOT checked in CI)${NC}"
     fi
     # i18n lint: runs AFTER ui test (which proves vitest works) but
     # BEFORE ui build (which is ~30s). Fail-fast on a ~1s lint check
@@ -297,6 +310,17 @@ step "ci docs drift" "python3 scripts/verify-ci-docs-drift.py" python3 scripts/v
 # noticed, plus a control that must still pass, so "the drift gate is green" cannot
 # mean "the drift gate stopped looking".
 step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-test" python3 scripts/verify-ci-docs-drift.py --self-test
+# scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
+# `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
+# It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs
+# built a fixture writing docs/ci-pipeline.md after the doc moved to docs/operations/, and
+# asserted on a `## Job Matrix (ci.yml)` heading whose suffix had been dropped, so its
+# mutation became a no-op. Both are fixed and the three cases now pass.
+# Only that file is wired in, deliberately: pipefail.test.mjs still fails (it reads the
+# retired ci.yml and nightly.yml, and its bare `bash` hits the WSL hang documented at the
+# top of AGENTS.md). Wiring the whole glob would red the build for a known separate defect,
+# which is how a real failure gets trained into background noise. See backlog item 63.
+step "ci docs drift node test" "node --test scripts/__tests__/verify-ci-docs-drift.test.mjs" node --test scripts/__tests__/verify-ci-docs-drift.test.mjs
 # The drift gate checks that a runner label matches SOME step, using any-of -- so a
 # gate declaring three labels was satisfied by one, and deleting the other two left
 # gates.json asserting guards that no longer existed while the checker printed

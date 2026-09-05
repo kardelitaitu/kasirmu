@@ -237,6 +237,36 @@ def load_gates() -> list[dict] | None:
     return gates
 
 
+def unrecorded_active_gates(gates: list[dict]) -> list[str]:
+    """Active gates that name no CI job and give no reason why not.
+
+    load_gates() validates the SHAPE of a `ci` mapping and hard-errors when a
+    required-on-push gate omits one, but says nothing about a `required` gate that simply
+    has no `ci` key. That is the exact shape AGENTS.md records as the motivating bug:
+    migration column types and PG schema drift went unenforced for two releases and the
+    drift checker could not report them as unenforced, because an absent mapping is
+    indistinguishable from an intentional one.
+
+    Absence is not itself wrong -- several active gates here are legitimately local-only
+    (a11y has known open regressions and is advisory by design; the e2e gate needs a Docker
+    backend CI does not provision). So the invariant is that absence must be EXPLAINED:
+    either name the job, or carry a note saying why there is none. That keeps the check
+    green on honest local-only gates while failing on the forgotten kind, and it is why
+    this reports rather than hard-errors inside load_gates -- a missing rationale is a
+    finding to fix, not a malformed file.
+    """
+    out: list[str] = []
+    for g in gates:
+        if g.get("status") not in ("required", "advisory"):
+            continue
+        if g.get("ci"):
+            continue
+        if (g.get("_note") or g.get("note") or "").strip():
+            continue
+        out.append(g["id"])
+    return sorted(out)
+
+
 def doc_section(lines: list[str], title: str) -> list[str]:
     """Return the lines under a `## <title>` section (until the next `## `)."""
     out: list[str] = []
@@ -602,6 +632,42 @@ def self_test() -> int:
         check("an empty manifest orphans every scripted step",
               len(hook_step_orphans([])) > 0, True)
 
+        print("\n  unrecorded_active_gates")
+        # Control: the manifest as it stands answers every active gate with either a
+        # job or a reason.
+        check("current gates.json leaves no active gate unexplained",
+              unrecorded_active_gates(full), [])
+        # Positive: strip the rationale from a gate that has no CI job. This is the
+        # exact shape the check exists for -- `e2e` is legitimately local-only, and
+        # the only thing separating it from a forgotten gate is its _note.
+        target = next(g for g in full if g["id"] == "e2e")
+        assert "ci" not in target and target.get("_note"), \
+            "e2e no longer has the shape this case depends on"
+        stripped = [dict(g) for g in full]
+        for g in stripped:
+            if g["id"] == "e2e":
+                g.pop("_note")
+        check("removing a local-only gate's note makes it unexplained",
+              unrecorded_active_gates(stripped), ["e2e"])
+        # Negative control: the same gate with its note intact is NOT flagged, so the
+        # check is not simply firing on every entry that lacks a ci mapping.
+        check("  ... and restoring the note clears it",
+              unrecorded_active_gates([dict(target)]), [])
+        # A gate that names a CI job needs no note.
+        check("a gate with a ci mapping is never flagged",
+              unrecorded_active_gates(
+                  [{"id": "x", "status": "required",
+                    "ci": {"workflow": "dev-ci.yml", "job": "static-gates"}}]), [])
+        # Retired gates run nowhere by definition; excluding them is what keeps the
+        # check at 5 findings rather than 24. If that exclusion ever stopped working
+        # the gate would arrive red on sixteen honest entries and get silenced.
+        check("a retired gate with neither ci nor note is not flagged",
+              unrecorded_active_gates([{"id": "old", "status": "retired"}]), [])
+        # A note that is only whitespace is not an explanation.
+        check("a whitespace-only note does not excuse a missing ci",
+              unrecorded_active_gates(
+                  [{"id": "lazy", "status": "required", "_note": "   "}]), ["lazy"])
+
         print("\n  hook_workflow_pointers_from_text")
         # A citation of a workflow that is not live must surface...
         stale = hook_workflow_pointers_from_text(
@@ -858,6 +924,10 @@ def main() -> int:
     )
     # Hook steps with no manifest record at all -- the blind spot, not a lie.
     orphans = hook_step_orphans(gates)
+    # Active manifest entries that cite no CI job and give no reason. The mirror of
+    # `orphans`: an orphan is a step the manifest never saw, this is a gate the manifest
+    # claims to track while recording nothing about whether anything enforces it.
+    unrecorded = unrecorded_active_gates(gates)
     # Hook prose pointing at a workflow GitHub never runs.
     pointers = hook_workflow_pointers()
 
@@ -1137,6 +1207,22 @@ def main() -> int:
         for o in orphans:
             print(f"    {o}")
         print()
+    if unrecorded:
+        print(
+            f"  ACTIVE GATES WITH NO CI JOB AND NO REASON — {len(unrecorded)}:\n"
+            "    An absent `ci` mapping is not itself wrong: several gates here are\n"
+            "    legitimately local-only (a11y is advisory with known open\n"
+            "    regressions; e2e needs a Docker backend CI does not provision).\n"
+            "    What is wrong is silence -- an entry that says `required`, cites no\n"
+            "    job and explains nothing is indistinguishable from the two that went\n"
+            "    unenforced for two releases (migration column types, PG schema\n"
+            "    drift), which AGENTS.md records as the reason this manifest exists.\n"
+            "    Fix by naming the job, or by adding a `_note` saying why there is\n"
+            "    none. Either answer is acceptable; having no answer is not."
+        )
+        for u in unrecorded:
+            print(f"    {u}")
+        print()
     if pointers:
         print(
             f"  HOOK COMMENTS CITING A DEAD WORKFLOW — {len(pointers)}:\n"
@@ -1236,6 +1322,13 @@ def main() -> int:
         # comment, it is a claim about enforcement that is now false, and this file's
         # whole purpose is that such claims be checkable rather than remembered.
         + len(pointers)
+        # Blocking, on the same grounds as orphans and pointers. It arrives red on five
+        # entries, which is the honest state: each is a gate the manifest tracks while
+        # recording nothing about its enforcement. All five are then answered -- four by a
+        # `_note` saying the gate is local-only and why, one by the CI job it actually has
+        # -- so the check is green in the same commit that introduces it and cannot be
+        # dismissed as a gate written to be bypassed.
+        + len(unrecorded)
         # Escalated from informational to blocking. It was informational while it
         # compared against ci.yml's jobs, i.e. while it could never find anything;
         # pointed at the live workflows it immediately found four undocumented
