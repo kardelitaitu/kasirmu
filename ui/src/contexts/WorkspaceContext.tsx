@@ -100,12 +100,29 @@ const DEFAULT_STORE_ID = "default";
  * creates session tokens (ADR #4 / ADR #7), and supports hot-swap
  * session token switching (ADR #6).
  */
+/**
+ * Stable stand-in for `useAuth().updatePickerTicket` on shells that do not expose it.
+ *
+ * Declared at module scope so the identity never changes. Written inline as `?? (() => {})` it
+ * produced a fresh function on every render, which is why the two hooks that call it could not list
+ * it as a dependency without re-firing forever -- eslint reported the omission and the omission was
+ * load-bearing. A module constant removes the reason it had to be omitted.
+ */
+const PICKER_TICKET_NOOP = (_ticket: string) => {};
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { session, pickerTicket, updatePickerTicket } = useAuth();
   // Localized copy for the error state. WorkspaceProvider mounts inside
   // LocaleProvider (see contexts/AppProviders.tsx), so l10n is available.
   const { l10n } = useLocalization();
-  const updatePickerTicketFn = updatePickerTicket ?? (() => {});
+  const updatePickerTicketFn = updatePickerTicket ?? PICKER_TICKET_NOOP;
+  // swapSessionToken is deliberately dependency-free (see its `[], // stable — reads from refs`),
+  // so every value it reads has to arrive through a ref or the closure goes stale. `pickerTicket`
+  // did not, and with no prior session token swapSessionToken passed the captured ticket straight to
+  // createSession -- the previous cashier's ticket, which is the exact thing the comment above that
+  // call warns against. Mirroring sessionTokenRef above makes the "reads from refs" claim true.
+  const pickerTicketRef = useRef(pickerTicket);
+  pickerTicketRef.current = pickerTicket;
   // Standalone state — not derived from activeInstance, so it works
   // even before availableWorkspaces is loaded (no race condition).
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
@@ -259,7 +276,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // Refresh the picker ticket using the old session before
         // destroying it — the hot-swap user needs a fresh ticket
         // bound to THEIR identity (not the previous user's).
-        let ticket = pickerTicket ?? "";
+        let ticket = pickerTicketRef.current ?? "";
         const prev = sessionTokenRef.current;
         if (prev) {
           try {
@@ -290,7 +307,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         isHotSwappingRef.current = false;
       }
     },
-    [], // stable — reads from refs
+    // Stable in practice: `updatePickerTicketFn` is either AuthContext's own
+    // useCallback(..., []) or the module-scope noop, so listing it cannot re-fire this.
+    [updatePickerTicketFn],
   );
 
   // ADR #4 Phase 3: Resolve the boot store first, then load workspaces.
@@ -459,7 +478,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeInstance, session, availableWorkspaces, pickerTicket]);
+  }, [activeInstance, session, availableWorkspaces, pickerTicket, updatePickerTicketFn]);
 
 
   // Backward-compat: sets the type_key string directly.
