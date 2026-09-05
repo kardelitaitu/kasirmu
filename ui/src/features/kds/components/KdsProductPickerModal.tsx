@@ -247,6 +247,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
       role="dialog"
       aria-modal="true"
       aria-label={requiredLocalized(l10n, 'kds-picker-title')}
+      data-testid="kds-picker-backdrop"
     >
       <div className="kds-picker-modal" ref={panelRef}>
         {/* ── Header ────────────────────────────────────────────── */}
@@ -258,6 +259,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
             className="kds-picker-close"
             onClick={onClose}
             aria-label={requiredLocalized(l10n, 'kds-picker-close-aria')}
+            data-testid="kds-picker-close"
           >
             &times;
           </button>
@@ -273,6 +275,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
             onChange={(e) => setSearch(e.target.value)}
             placeholder={requiredLocalized(l10n, 'kds-picker-search-placeholder')}
             aria-label={requiredLocalized(l10n, 'kds-picker-search-aria')}
+            data-testid="kds-picker-search"
           />
         </div>
 
@@ -284,6 +287,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
               type="button"
               className="kds-picker-retry"
               onClick={() => loadProducts()}
+              data-testid="kds-picker-retry"
             >
               {requiredLocalized(l10n, 'retry')}
             </button>
@@ -308,6 +312,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                     type="button"
                     className="kds-picker-clear-search"
                     onClick={() => setSearch('')}
+                    data-testid="kds-picker-clear-search"
                   >
                     {requiredLocalized(l10n, 'kds-picker-clear-search')}
                   </button>
@@ -322,6 +327,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                     className={`kds-picker-product${isPicked ? ' kds-picker-product--picked' : ''}`}
                     onClick={() => addProduct(product)}
                     aria-label={`${product.name}${isPicked ? ` (${requiredLocalized(l10n, 'kds-picker-added-label')})` : ''}`}
+                    data-testid={`kds-picker-product-${product.sku}`}
                   >
                     <span className="kds-picker-product-name">{product.name}</span>
                     <span className="kds-picker-product-course">
@@ -357,6 +363,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                           updateCourse(entry.sku, e.target.value || null)
                         }
                         aria-label={requiredLocalized(l10n, 'kds-picker-course-aria')}
+                        data-testid={`kds-picker-course-${entry.sku}`}
                       >
                         {COURSE_OPTIONS.map((opt) => (
                           <option key={String(opt.value)} value={opt.value ?? ''}>
@@ -371,6 +378,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                           onClick={() => updateQty(entry.sku, entry.qty - 1)}
                           disabled={entry.qty <= 1}
                           aria-label={requiredLocalized(l10n, 'kds-picker-qty-decrease')}
+                          data-testid={`kds-picker-qty-dec-${entry.sku}`}
                         >
                           &minus;
                         </button>
@@ -381,6 +389,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                           className="kds-picker-qty-btn"
                           onClick={() => updateQty(entry.sku, entry.qty + 1)}
                           aria-label={requiredLocalized(l10n, 'kds-picker-qty-increase')}
+                          data-testid={`kds-picker-qty-inc-${entry.sku}`}
                         >
                           +
                         </button>
@@ -390,6 +399,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                         className="kds-picker-picked-remove"
                         onClick={() => removeProduct(entry.sku)}
                         aria-label={requiredLocalized(l10n, 'kds-picker-remove-aria', { name: entry.display_name })}
+                        data-testid={`kds-picker-remove-${entry.sku}`}
                       >
                         <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
                           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -408,6 +418,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
           <button
             className="kds-picker-cancel"
             onClick={onClose}
+            data-testid="kds-picker-footer-close"
           >
             {requiredLocalized(l10n, 'kds-picker-cancel')}
           </button>
@@ -415,6 +426,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
             className="kds-picker-confirm"
             onClick={handleConfirm}
             disabled={picked.length === 0 || pending}
+            data-testid="kds-picker-confirm"
           >
             {requiredLocalized(l10n, 'kds-picker-add-btn', { count: picked.length })}
           </button>
