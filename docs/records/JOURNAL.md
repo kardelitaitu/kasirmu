@@ -10027,3 +10027,60 @@ Process notes:
     this one found one within its first diff, and the bug's story
     (silent hand-fix hiding a live multi-tenant defect) justified the
     whole rework.
+## 2026-09-04 — round W: a scoped command nothing called, and a shell that hangs instead of failing
+
+Problem: a 2026 security-audit row (F-017, `62e30fd7`) recorded
+`get_backup_status_scoped` + `create_backup_scoped` as DONE. They are
+registered in `lib.rs:564/:566` and documented in `api-reference.md`.
+`ui/src` referenced them zero times. Every UI path still called the
+unscoped command — and unscoped `create_backup` takes no session token at
+all, so it checks no permission whatsoever while writing a full copy of the
+database to disk. Every layer between "the command exists" and "the command
+is reached" looked green.
+
+Solution: `5f0692e1` wired both through the ADR #7 conditional. The tell
+that this was an oversight, not a decision: the same file already routes
+`exportData`, `importPreview` and `importData` through `sessionToken` and
+lists it in their dep arrays. Backup was simply the two calls nobody
+migrated.
+
+Then measured the extent rather than guessing: 318 `*_scoped` commands are
+registered, 20 have their unscoped twin called from production UI while the
+scoped one is never used, 8 of those scoped twins enforce a permission the
+unscoped path does not. After reachability: **five live gaps, one dead, one
+where unscoped is the only correct choice.** `74ed1933` closed the first —
+`pick_logo_file`, where the handler already passed `sessionToken` to
+`setBrandLogoPath` on the very next line.
+
+Process notes:
+(1) `get_key_rotation_info` was the most tempting finding in the set — the
+    Rust comment reads "key age/state is crypto-compliance data, explicit
+    permission" and requires SECURITY_MANAGE. It is unreachable: its only
+    caller chain ends at `useKeyRotationReminder()`, which nothing outside
+    its own test imports. **One hop to a caller is not reachability; the
+    caller has to be reachable too.**
+(2) `get_license_status` is NOT a gap at `AppShell:150`, which runs it in
+    the boot effect to decide whether to show the license screen — before
+    any session exists. There is no token to pass there. A permission
+    "hole" can be the only correct design at its call site.
+(3) Two measurement errors, both mine, both pointing opposite ways. I
+    counted `ui/src/dev-mock/tauri-api.ts` as UI usage — it is a mock
+    registry that lists command names by design — inflating candidates to
+    23. And my wrapper regex matched only `export const NAME = ...`, so it
+    missed five `function NAME()` declarations in `api/license.ts` and
+    reported them dead; they are live. Neither error was a bug in the code.
+(4) The backup test's first version made the scoped mock delegate to the
+    unscoped spy. That registers a call on the unscoped spy, so
+    `expect(unscoped).not.toHaveBeenCalled()` was unprovable and the test
+    passed for the wrong reason. Configuring them in parallel turned the
+    OLD assertion red, proving it had been vacuous all along.
+(5) `bash <script>` on Windows resolves to `System32\bash.exe` — WSL, not
+    Git Bash — and it does not fail, it HANGS. `echo wsl-ok` never returned
+    in 12s. Two 10-minute timeouts went into suspecting `wtree-guard.sh`
+    and `verify-scoped-coverage.sh` before suspecting the shell. Documented
+    in AGENTS.md; a hang with no output is a resolution problem first.
+(6) Red failed twice for the wrong reason before failing for the right one:
+    first a missing `HARNESS_SESSION_TOKEN` import, then the wrong constant
+    — `AppearanceSettings.test.tsx` overrides `useWorkspace` at L31 with
+    `'tok-appearance'`, which its sibling assertions already use. Matching
+    the block's own convention is what makes an assertion meaningful.

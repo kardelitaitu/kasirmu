@@ -75,6 +75,34 @@ $env:OZPOS_OZ_LICENSE_PRIVATE_KEY      # RSA license signing key (PEM, multiline
 
 ## 💻 Running CLI Tools on Windows
 
+> 🛑 **`bash <script>` hangs on this platform — use Git's bash by full path.** Every
+> `bash scripts/foo.sh` in this file and in the `tdd` skill resolves to
+> `C:\Windows\System32\bash.exe`, which is **WSL**, not Git Bash. Where WSL is installed but its
+> distro is not running (or the sandbox blocks the VM's named pipes), the process never returns —
+> it does not fail, it **hangs until an external timeout kills it**. Measured directly:
+> `c:\windows\system32\bash.exe -c 'echo wsl-ok'` never returned in 12s, while
+> `C:\Program Files\Git\bin\bash.exe -c 'echo gitbash-ok'` returned instantly.
+>
+> ```powershell
+> & 'C:\Program Files\Git\bin\bash.exe' -c 'bash scripts/wtree-guard.sh check'
+> ```
+>
+> **The failure mode is the dangerous part.** A hang looks like a broken script, so the natural
+> conclusion is "this tool is faulty" — which is false; `wtree-guard.sh` and
+> `verify-scoped-coverage.sh` both run correctly under Git bash in under a second. Two 10-minute
+> timeouts were spent this way before the shell was suspected. If a `bash` invocation times out
+> with no output at all, suspect shell resolution before suspecting the script, and confirm by
+> running the same command through the explicit path.
+>
+> **This has now cost two agents in two different ways.** The earlier form is recorded in
+> [`docs/records/JOURNAL.md`](./docs/records/JOURNAL.md) under *2026-08-22 — i18n-lint "env issue"
+> resolved (was never a repo bug)*: under WSL, `npx vitest` runs the **Linux** node against the
+> Windows-built `ui/node_modules`, whose rollup binary is `rollup-win32-x64-*`, so vitest crashes
+> with `MODULE_NOT_FOUND` and the pre-commit i18n gate **appears** to fail. Git's own bash runs the
+> Windows node and passes cleanly. So WSL produces two opposite-looking symptoms — a silent hang,
+> or a red gate that is not the repo's fault. **That entry sat in a 10,000-line journal and did not
+> prevent the recurrence, which is why this one is here instead.**
+
 ### 1. UI & Front-End CLI (TypeScript / ESLint / Vite)
 
 > ⚠️ **MANDATORY RULE:** `tsc` and `eslint` are **project-local** in `ui/node_modules/.bin/` and are NOT on the system PATH.
