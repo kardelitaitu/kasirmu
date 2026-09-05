@@ -18,6 +18,7 @@
 /website/.astro/
 .wrangler/
 lighthouse*
+todo*
 
 # Cargo workspaces have a single Cargo.lock at the workspace root, not
 # one per crate. OZ-POS ships binaries (oz-cli, and the Tauri app in
