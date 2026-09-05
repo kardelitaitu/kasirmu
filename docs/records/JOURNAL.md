@@ -1,5 +1,38 @@
 
 
+## 2026-09-04 — TDD round X: void_pending_sale ghost-window ticket cancellation (oz-core)
+
+**Problem:** `void_pending_sale` (sales_lifecycle.rs:583) calls
+`cancel_kds_orders_for_sale_in_tx` behind an S3 comment describing a
+real production window — a KDS ticket can exist "between checkout
+completion and finalize" (checkout writes a pending sale; the tablet's
+`create_kds_order_from_sale_scoped` fans out tickets with no status
+gate; a void arriving before finalize must pull the ghost ticket).
+Grep for `void_pending_sale` in kds_tests.rs: zero hits. The void_sale
+sibling had its test; this path had none, so removing or breaking the
+S3 call would pass CI silently.
+
+**Solution:** One integration test driving the REAL window —
+`Sale::from_cart` (which sets Pending status, modules/sales/models.rs:
+202) → `complete_sale_deduction_with_locations` against the canonical
+default location (sale lands 'pending' with deduction_locations
+written) → `complete_sale_to_kds_fanout` (ghost ticket) →
+`void_pending_sale` → ticket + line items must be 'cancelled'. Note:
+`Sale::from_cart` status is Pending (not Active) — Active maps to the
+stored string 'active', which void_pending_sale's status='pending'
+SELECT would never match.
+
+Test passed on first run — pin, not a fix (same honest note as round
+W). Found along the way: `create_sale` (sales_crud.rs) never writes
+deduction_locations, so a from_cart sale voided via void_pending_sale
+would fail the `row.get::<String>` on the NULL column with Db
+(InvalidColumnType) — not exercised by any caller today (checkout
+always writes the JSON) and left as a documented observation, not
+changed.
+
+**Commits:** 7037d4e0 (test), this entry (docs).
+**Test counts:** oz-core 2451→2452, all green (64s full lib run).
+
 ## 2026-09-04 — TDD round W: refund→KDS integration pinning (oz-core)
 
 **Problem:** Phase-3 of the KDS review wired full-refund ticket
