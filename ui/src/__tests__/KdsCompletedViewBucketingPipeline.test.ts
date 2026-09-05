@@ -117,12 +117,42 @@ describe('bucketing pipeline', () => {
   });
 
   it('pipeline preserves order IDs within a bucket', () => {
+    // Dates must be relative to "now", as they are in the two dayOffset tests below.
+    // These were hardcoded to 2026-09-05 while the assertion names the 'today' bucket,
+    // so bucketOrders() -- which derives the offset from the current date -- moved all
+    // three orders out of 'today' the moment that date passed. The test passed on the
+    // day it was written (86867da2) and has failed on every day since, for everyone.
+    // The dinein/takeaway cases above are immune only because they flatten every bucket
+    // before asserting, so which bucket an order lands in never matters there.
+    const stamp = (minutesAgo: number) =>
+      new Date(Date.now() - minutesAgo * 60_000).toISOString();
     const orders = [
-      { id: 'aaa', received_at: '2026-09-05T12:00:00Z' },
-      { id: 'bbb', received_at: '2026-09-05T12:01:00Z' },
-      { id: 'ccc', received_at: '2026-09-05T12:02:00Z' },
+      { id: 'aaa', received_at: stamp(2) },
+      { id: 'bbb', received_at: stamp(1) },
+      { id: 'ccc', received_at: stamp(0) },
     ];
     const result = bucketOrders(orders);
     expect(result.get('today')).toEqual(['aaa', 'bbb', 'ccc']);
+  });
+
+  it('bucketing test data stays valid at an arbitrary future date', () => {
+    // The regression guard for the bug above: this suite must not depend on which day it
+    // runs. Fake the clock well past the date the original hardcoded data assumed and
+    // re-run the same assertion. If anyone reintroduces a literal timestamp, this fails
+    // while the test above may still pass, because "today" is only today relative to now.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2027-06-15T09:00:00Z'));
+      const stamp = (minutesAgo: number) =>
+        new Date(Date.now() - minutesAgo * 60_000).toISOString();
+      const result = bucketOrders([
+        { id: 'aaa', received_at: stamp(2) },
+        { id: 'bbb', received_at: stamp(1) },
+        { id: 'ccc', received_at: stamp(0) },
+      ]);
+      expect(result.get('today')).toEqual(['aaa', 'bbb', 'ccc']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
