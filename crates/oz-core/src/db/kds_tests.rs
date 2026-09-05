@@ -3589,3 +3589,139 @@ fn kds_fanout_leaves_table_number_none_without_table() {
         "no assigned table → no table name on the ticket"
     );
 }
+
+/// Seeds a ticket with two structured line items (burger + fries) and
+/// returns (order, lines) for line-item state-machine tests. Callers must
+/// seed the BURGER/FRIES products first.
+fn seed_ticket_with_lines(s: &Store<'_>) -> (crate::KdsOrder, Vec<crate::KdsLineItem>) {
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("FRIES"), 1, price(300)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let order = s
+        .create_kds_order(CreateKdsOrderInput {
+            sale_id: sale.id.clone(),
+            store_id: None,
+            items_summary: "Burger, Fries".into(),
+            item_count: 2,
+            kitchen_zone: Some("grill".into()),
+            notes: String::new(),
+            table_number: None,
+            priority: false,
+        })
+        .unwrap();
+    let lines = s
+        .create_kds_line_items(
+            &order.id,
+            &[
+                CreateKdsLineItemInput {
+                    sku: "BURGER".into(),
+                    display_name: "Burger".into(),
+                    qty: 1,
+                    course: Some("main".into()),
+                    modifiers: vec![],
+                },
+                CreateKdsLineItemInput {
+                    sku: "FRIES".into(),
+                    display_name: "Fries".into(),
+                    qty: 1,
+                    course: Some("side".into()),
+                    modifiers: vec![],
+                },
+            ],
+        )
+        .unwrap();
+    (order, lines)
+}
+
+/// RED: each line-item forward transition must stamp its workflow
+/// timestamp (preparing → started_at, ready → ready_at, served →
+/// served_at) — the KDS prep-time metrics are built on these columns.
+#[test]
+fn kds_line_item_transitions_stamp_workflow_timestamps() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+    let (order, lines) = seed_ticket_with_lines(&s);
+    let _ = order;
+
+    let burger = &lines[0];
+
+    let preparing = s
+        .update_kds_line_item_status(&burger.id, "preparing")
+        .unwrap();
+    assert_eq!(preparing.item_status, "preparing");
+    assert!(preparing.started_at.is_some(), "started_at stamped");
+
+    let ready = s.update_kds_line_item_status(&burger.id, "ready").unwrap();
+    assert_eq!(ready.item_status, "ready");
+    assert!(ready.ready_at.is_some(), "ready_at stamped");
+    assert_eq!(
+        ready.started_at, preparing.started_at,
+        "started_at must survive the ready transition"
+    );
+
+    let served = s.update_kds_line_item_status(&burger.id, "served").unwrap();
+    assert_eq!(served.item_status, "served");
+    assert!(served.served_at.is_some(), "served_at stamped");
+}
+
+/// RED: the line-item state machine is FORWARD-only, mirroring the
+/// order-level machine — a stale offline replay moving a line item back
+/// (ready → preparing) must be rejected, not silently applied.
+#[test]
+fn kds_line_item_transitions_reject_regression() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+    let (order, lines) = seed_ticket_with_lines(&s);
+    let _ = order;
+
+    let burger = &lines[0];
+    s.update_kds_line_item_status(&burger.id, "preparing")
+        .unwrap();
+    s.update_kds_line_item_status(&burger.id, "ready").unwrap();
+
+    let err = s
+        .update_kds_line_item_status(&burger.id, "preparing")
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { .. }),
+        "line-item regression must be a validation error, got: {err:?}"
+    );
+    let after = s
+        .get_kds_order_lines(&order.id)
+        .unwrap()
+        .into_iter()
+        .find(|l| l.sku == "BURGER")
+        .unwrap();
+    assert_eq!(after.item_status, "ready", "status must stay ready");
+}
+
+/// RED: unknown statuses and skips are not KDS line-item states — an
+/// offline payload replaying "servedx" or "skip" must be rejected, not
+/// written.
+#[test]
+fn kds_line_item_transitions_reject_unknown_status() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+    let (_order, lines) = seed_ticket_with_lines(&s);
+
+    for bad in ["skip", "servedx", ""] {
+        let err = s
+            .update_kds_line_item_status(&lines[0].id, bad)
+            .unwrap_err();
+        assert!(
+            matches!(err, CoreError::Validation { .. }),
+            "unknown status '{bad}' must be rejected, got: {err:?}"
+        );
+    }
+}
