@@ -293,10 +293,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  min-width: 44px;
-  min-height: 44px;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 40px;
+  min-height: 40px;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -311,10 +311,10 @@
 
 @media (pointer: coarse) {
   .staff-login-submit-btn {
-    width: 3rem;
-    height: 3rem;
-    min-width: 48px;
-    min-height: 48px;
+    width: 2.75rem;
+    height: 2.75rem;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
