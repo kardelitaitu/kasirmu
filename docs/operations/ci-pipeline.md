@@ -93,6 +93,7 @@
 | Migration smoke | — | Required | `check.sh` (migration) |
 | Skill drift guard | `static-gates` | Required | `check.sh` (skill-drift) |
 | Panic inventory | `static-gates` | Required | `check.sh` (panic-inventory) |
+| IPC invoke token parity | `static-gates` | Required | `check.sh` (ipc invoke token parity) |
 | A11y regression | `ui-test` | Advisory | `check.sh` (a11y) |
 | Feature registry parity | — | Required | `check.sh` (feature registry) |
 | Plugin-guide parity | — | Required | `check.sh` (plugin-guide parity) |
@@ -201,17 +202,19 @@ Comprehensive pre-push gate mirroring CI. Runs:
 7. Migration smoke
 8. Skill drift guard
 9. Panic inventory
-10. `npm ci` + UI lint/typecheck/test
-11. i18n lint
-12. FTL dedupe
-13. Feature registry parity
-14. Topology contract parity
-15. Plugin-guide parity
-16. Windows config drift
-17. Release toolchain self-tests
-17. Healthcheck script test
-18. CI docs drift
-19. Optional: Docker build (`--docker-dry-run`)
+10. IPC registration parity
+11. IPC invoke token parity
+12. `npm ci` + UI lint/typecheck/test
+13. i18n lint
+14. FTL dedupe
+15. Feature registry parity
+16. Topology contract parity
+17. Plugin-guide parity
+18. Windows config drift
+19. Release toolchain self-tests
+20. Healthcheck script test
+21. CI docs drift
+22. Optional: Docker build (`--docker-dry-run`)
 
 ### `scripts/check-ui.mjs` (Node, cross-platform)
 

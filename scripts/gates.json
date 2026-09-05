@@ -130,6 +130,14 @@
       "runners": { "check.sh": ["topology contract parity"] }
     },
     {
+      "id": "invoke-token-parity",
+      "label": "IPC invoke token parity",
+      "status": "required",
+      "_note": "Added 0.0.37 (TDD round AE). scripts/verify-invoke-parity.py fails when ui/src/api invokes a command whose Rust signature requires session_token without carrying a sessionToken payload -- the round-AC class (edc.ts card-present wrappers shipped with no token; caught by hand, invisible to tsc/vitest). Union semantics across BOTH shells (desktop + tablet share the ui front-end). The unregistered-command class is intentionally NOT here: verify-ipc-parity.py (F-008/F-050) owns it with its own allowlist.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "runners": { "check.sh": ["invoke token parity"] }
+    },
+    {
       "id": "no-hardcoded-money-format",
       "label": "No hardcoded exp-2 money formatting",
       "status": "required",

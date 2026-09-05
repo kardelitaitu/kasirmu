@@ -55,6 +55,12 @@ step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scrip
 # so the list shrinks to zero as F-006 removes the dead surface.
 step "ipc parity" "python3 scripts/verify-ipc-parity.py" python3 scripts/verify-ipc-parity.py
 
+# ── IPC session-token payload parity (round AE) ──────────────────────────
+# Fails when the UI invokes a command whose Rust signature requires
+# session_token without carrying a sessionToken payload (the round-AC edc
+# class). Union semantics across desktop + tablet shells.
+step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
+
 # ── Architecture boundary checker (P1 pilot) ────────────────────────────
 # Existing transitional debt is reported but only new, expired, or stale
 # baseline entries fail. This is static-only and has no runtime impact.
