@@ -143,3 +143,7 @@ pub async fn get_kds_order_scoped(
     let order = store.get_kds_order_for_instance(&id, &session.instance_id)?;
     Ok(order)
 }
+
+#[cfg(test)]
+#[path = "kds_tests.rs"]
+mod tests;
