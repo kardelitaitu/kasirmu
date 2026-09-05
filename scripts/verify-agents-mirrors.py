@@ -169,6 +169,52 @@ def claimed_step_count(text: str) -> int | None:
     return int(m.group(1)) if m.group(1) else WORD_NUM[m.group(2)]
 
 
+# Skill files state the gate count in prose rather than the mirrors' fixed sentence, so they
+# need their own pattern. Two things keep it from catching unrelated numbers: the match must
+# sit on a line that also mentions the hook or pre-commit, and the number must be followed by
+# a colon-list or a "gates"/"steps" noun. A skill that says nothing about the count is fine --
+# unlike a mirror, which is required to state it -- so this returns None rather than a problem
+# and the caller only compares when a claim exists.
+SKILL_COUNT_RES = (
+    re.compile(r"(?:there are|there is|now|currently|has)\s+\**(?:(\d+)|"
+               r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))\**\s*"
+               r"(?:pre-commit|steps?|gates?)", re.I),
+    re.compile(r"\**(?:(\d+)|(one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+               r"twelve))\**\s+(?:core\s+)?(?:pre-commit\s+)?(?:steps?|gates?)\b", re.I),
+)
+# Lines that are talking about the past are not claims about the present. This is not a
+# theoretical exclusion: the first version of this checker flagged two skills for sentences
+# that read "This list said 'six core gates' for a while and went stale twice" and an audit
+# stamp recording an earlier correction. A doc that documents its own history necessarily
+# contains stale numbers, so a checker that reads them as current claims cannot be adopted
+# at all -- it would have to be silenced, which is worse than not writing it. The exclusion
+# is sound in the other direction too: a genuinely stale claim is by definition presented as
+# current, so it will not carry one of these markers.
+HISTORICAL_MARKERS = (
+    "previously", "formerly", "used to", "once said", "went stale", "was stale",
+    "had been", "said \u201csix", "earlier revision", "rev 2", "corrected",
+    "this line claimed", "previously listed", "for a while",
+)
+
+
+def skill_claimed_step_count(text: str) -> int | None:
+    """The gate count a skill asserts about .githooks/pre-commit, if it asserts one."""
+    for line in text.splitlines():
+        low = line.lower()
+        if "pre-commit" not in low and "hook" not in low:
+            continue
+        if any(marker in low for marker in HISTORICAL_MARKERS):
+            continue
+        for rx in SKILL_COUNT_RES:
+            for m in rx.finditer(line):
+                if m.group(1):
+                    return int(m.group(1))
+                word = m.group(2).lower()
+                if word in WORD_NUM:
+                    return WORD_NUM[word]
+    return None
+
+
 NUM_STEP_RE = re.compile(
     r"Steps?\s+((?:\d+\s*(?:,|and)?\s*)+)\s+(?:are\s+local-only|have\s+no\s+CI\s+backstop)",
     re.I)
@@ -447,6 +493,20 @@ def scan(root: Path) -> list[str]:
             if job not in real_jobs:
                 problems.append(f"{rel}: cites workflow job #{job}, which no live workflow defines")
 
+    # (4) SKILL FILES. A mirror must state the count; a skill need not mention it at all.
+    # But when a skill DOES state one it is a claim agents follow, and two of them went
+    # stale silently as steps 9 and 10 landed -- skill-drift-guard cannot see this because
+    # detect.sh contains no reference to gates or the hook, and these files were outside
+    # this checker entirely. Only a disagreement is a problem; silence is not.
+    for skill in sorted((root / ".agents" / "skills").glob("*/SKILL.md")):
+        rel = skill.relative_to(root).as_posix()
+        text = skill.read_text(encoding="utf-8", errors="replace")
+        claimed = skill_claimed_step_count(text)
+        if claimed is not None and claimed != n_steps:
+            problems.append(
+                f"{rel}: claims {claimed} pre-commit steps; "
+                f".githooks/pre-commit has {n_steps} gate sections")
+
     return problems
 
 
@@ -542,18 +602,24 @@ MUTATIONS = [
 # applicable is recorded with a reason rather than silently skipped.
 MUTATIONS_BY_MIRROR: dict[str, list] = {
     ".prime/AGENTS.md": [
+        # Anchored on a sentence that does not contain a gate count. The previous anchors
+        # replaced "**Every one of the eight now has a CI backstop.**", and when that prose
+        # was corrected to "ten" in a410ea9f the anchor stopped matching, so both mutations
+        # became no-ops and the self-test reported them as vacuous -- a doc edit silently
+        # disarming a checker three commits and one file away. Anchoring on count-free text
+        # keeps these alive through the next correction.
         ("false CI-coverage claim restored (negation phrasing)",
          lambda t: t.replace(
-             "**Every one of the eight now has a CI backstop.**",
-             "**Every one of the eight now has a CI backstop.** There is **no** CI "
-             "job for migration column types or PG schema drift.", 1),
+             "For comprehensive local validation that mirrors the entire CI matrix",
+             "There is **no** CI job for migration column types or PG schema drift. "
+             "For comprehensive local validation that mirrors the entire CI matrix", 1),
          "no CI job"),
         ("false local-only claim (participial phrasing)",
          lambda t: t.replace(
-             "**Every one of the eight now has a CI backstop.**",
-             "**Every one of the eight now has a CI backstop.** The remaining "
-             "holdout is `generate-pg-migration.py`, still guarded only by the "
-             "opt-in local hook.", 1),
+             "For comprehensive local validation that mirrors the entire CI matrix",
+             "The remaining holdout is `generate-pg-migration.py`, still guarded only by "
+             "the opt-in local hook. For comprehensive local validation that mirrors the "
+             "entire CI matrix", 1),
          "only by the local hook"),
         ("gate count off by one",
          lambda t: re.sub(r"runs \*\*(?:eight|nine|ten|[a-z]+) steps\*\*",
@@ -593,6 +659,13 @@ def make_fixture(src: Path, dst: Path) -> None:
     if wfdir.is_dir():
         needed += [f".github/workflows/{p.name}" for p in sorted(wfdir.glob("*.yml"))]
     needed += MIRRORS
+    # Skills are scanned too, so they must be in the fixture. Omitting them would not fail
+    # loudly: scan() globs the fixture, finds no SKILL.md, checks nothing, and the self-test
+    # reports every mutation caught while the skill branch never ran at all.
+    skillroot = src / ".agents" / "skills"
+    if skillroot.is_dir():
+        needed += [f".agents/skills/{p.relative_to(skillroot).as_posix()}"
+                   for p in sorted(skillroot.glob("*/SKILL.md"))]
     for rel in needed:
         s = src / rel
         if not s.is_file():
@@ -643,6 +716,45 @@ def self_test() -> int:
                     print(f"  MISSED  {rel:20s} {desc} (looking for {needle!r}; "
                           f"{len(probs)} findings: {[p[:58] for p in probs[:3]]})")
                     bad += 1
+    # (5) Skill coverage. Three cases, because the two failure modes here are opposite.
+    skill_rel = ".agents/skills/hal-drivers/SKILL.md"
+    if not (src / skill_rel).is_file():
+        print(f"  WRONG skills: {skill_rel} absent, so the skill branch cannot be exercised")
+        bad += 1
+    else:
+        base = read(src, skill_rel)
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            make_fixture(src, tmp)
+            # Guard the guard: if the fixture has no skills, scan() checks nothing and every
+            # case below would "pass" while the branch never ran.
+            if not list((tmp / ".agents" / "skills").glob("*/SKILL.md")):
+                print("  WRONG skills: make_fixture copied no SKILL.md -- the skill "
+                      "branch is unexercised, so any 'caught' result below is vacuous")
+                bad += 1
+            else:
+                n = len(hook_steps(tmp))
+                stale = (f"\n## Probe\n\n- The .githooks/pre-commit hook runs "
+                         f"{'seven' if n != 7 else 'nine'} steps before every commit.\n")
+                hist = (f"\n## Probe\n\n- The .githooks/pre-commit hook previously ran "
+                        f"{'seven' if n != 7 else 'nine'} steps before every commit.\n")
+                for desc, payload, want_hit in (
+                    ("stale count claimed as current", stale, True),
+                    ("same count on a historical line", hist, False),
+                ):
+                    io.open(tmp / skill_rel, "w", encoding="utf-8", newline="\n").write(
+                        base + payload)
+                    probs = scan(tmp)
+                    hit = any(skill_rel in p and "pre-commit steps" in p for p in probs)
+                    if hit == want_hit:
+                        verdict = "CAUGHT" if hit else "CLEAN "
+                        print(f"  {verdict}  {skill_rel:38s} {desc}")
+                    else:
+                        print(f"  MISSED  {skill_rel:38s} {desc} "
+                              f"(expected {'a finding' if want_hit else 'silence'}, got "
+                              f"the opposite; {[p[:52] for p in probs[:2]]})")
+                        bad += 1
+
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0
 
