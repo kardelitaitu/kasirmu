@@ -206,7 +206,10 @@ export default function ProductLookupScreen({ onAddProduct }: ProductLookupScree
       // If bundle lookup fails, silently ignore.
     }
     setBarcodeInput('');
-  }, [barcodeInput, handleAddProduct, products, addToast, l10n, onAddProduct]);
+    // sessionToken is read at :176 (bundle) and :182 (product). Because the bundle path's catch
+    // above ignores failures, a stale token after a hot-swap makes bundled products scan as
+    // ordinary single products with no indication anything went wrong.
+  }, [barcodeInput, handleAddProduct, products, addToast, l10n, onAddProduct, sessionToken]);
 
   // Handle Enter key in barcode input
   const handleBarcodeKeyDown = useCallback(
