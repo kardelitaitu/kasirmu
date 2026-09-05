@@ -1,0 +1,130 @@
+// ── Settings deep-link section switching ──────────────────────────
+//
+// WorkspaceHome's tool cards navigate by writing window.location.hash and letting the
+// Settings page read the sub-section out of it. SettingsPage.tsx:314-328 does exactly
+// that: KEPT_SECTIONS lists the accepted names ('sync' and 'topology' among them) and a
+// useEffect maps `#/settings/<section>` onto activeSection.
+//
+// The effect's dependency array is `[]`, so it runs once, on mount. That is fine when the
+// card is clicked from ANOTHER workspace: AppShell.tsx:217 tries getPage('settings/sync'),
+// fails because only 'settings' is registered, falls to the else branch, and sets
+// currentRoute from the workspace default (L231 maps admin -> 'settings'), which mounts
+// SettingsPage, which then reads the hash. The deep-link works by accident of remounting.
+//
+// When SettingsPage is ALREADY mounted -- the user is on the admin workspace looking at
+// settings and clicks the topology or cloud-sync card -- nothing remounts. AppShell's
+// hashchange listener (L244-252) deliberately refuses unregistered routes ("prevents
+// garbage hashes"), so currentRoute never changes and the mount-only effect never re-runs.
+// The URL updates and the visible section does not. Both WorkspaceHome.tsx:865 (topology,
+// committed) and the in-flight cloud-sync card hit this.
+//
+// The marker is settings-section-content--full, applied at SettingsPage.tsx:1003 if and
+// only if activeSection === 'topology', so it is an unambiguous read of the live section.
+
+import { describe, expect, it, afterEach } from 'vitest';
+import { waitFor, cleanup } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
+import settingsFtl from '@/locales/settings.ftl?raw';
+import sharedFtl from '@/locales/shared.ftl?raw';
+import SettingsPage from '@/features/settings/SettingsPage';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { BrandProvider } from '@/contexts/BrandContext';
+import { CurrencyProvider } from '@/contexts/CurrencyContext';
+import { LocaleContext } from '@/i18n/LocaleContext';
+import { getAvailableLocales, getLocaleLabel } from '@/i18n';
+
+// SettingsPage reads useCurrency/useAuth/useBrand, so it needs the same wrapper the
+// existing SettingsPage suite builds. It does NOT need seeded IPC data here: these tests
+// only assert which section body is mounted, and the section switch happens in the shell
+// regardless of what the body fetches.
+function TestWrapper({ children }: { children: ReactNode }) {
+  return (
+    <LocaleContext.Provider
+      value={{
+        locale: 'en',
+        setLocale: () => {},
+        availableLocales: getAvailableLocales(),
+        getLocaleLabel,
+      }}
+    >
+      <BrandProvider>
+        <CurrencyProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </CurrencyProvider>
+      </BrandProvider>
+    </LocaleContext.Provider>
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  window.location.hash = '';
+});
+
+function isTopologySection() {
+  return !!document.querySelector('.settings-section-content--full');
+}
+
+async function renderAtSettingsRoot() {
+  window.location.hash = '#/settings';
+  renderWithProvidersSync(
+    <TestWrapper>
+      <SettingsPage />
+    </TestWrapper>,
+    settingsFtl,
+    sharedFtl,
+  );
+  // The section body is IPC-driven and Suspense-wrapped; wait for the shell.
+  await waitFor(() => {
+    expect(document.querySelector('.settings-section-content')).toBeTruthy();
+  });
+}
+
+describe('Settings deep-links while the page is already mounted', () => {
+  it('switches to the topology section when the hash changes after mount', async () => {
+    await renderAtSettingsRoot();
+
+    // Baseline: arriving at plain #/settings opens the default section, not topology.
+    expect(isTopologySection()).toBe(false);
+
+    // What a card click does: assign the hash, which fires hashchange in a real browser.
+    window.location.hash = '#/settings/topology';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+    // The defect: nothing re-reads the hash once the page is mounted, so the URL changes
+    // and the section does not.
+    await waitFor(() => {
+      expect(isTopologySection()).toBe(true);
+    });
+  });
+
+  it('still honours a deep-link already present at mount time', async () => {
+    // Guards the path that works today, so the fix cannot regress it: arriving from
+    // another workspace mounts the page with the hash already set.
+    window.location.hash = '#/settings/topology';
+    renderWithProvidersSync(
+      <TestWrapper>
+        <SettingsPage />
+      </TestWrapper>,
+      settingsFtl,
+      sharedFtl,
+    );
+
+    await waitFor(() => {
+      expect(isTopologySection()).toBe(true);
+    });
+  });
+
+  it('ignores a deep-link to a section that is not in KEPT_SECTIONS', async () => {
+    // The guard the mount path has must survive the fix: stale links to removed tabs
+    // ("staff", "audit") are ignored so the hub opens on its default instead of an empty
+    // body. Without this case, "handle hashchange" could be implemented as "accept any
+    // settings/* hash" and silently reintroduce the old bug.
+    await renderAtSettingsRoot();
+    window.location.hash = '#/settings/staff';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(isTopologySection()).toBe(false);
+  });
+});

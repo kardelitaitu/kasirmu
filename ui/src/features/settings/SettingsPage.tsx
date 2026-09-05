@@ -76,6 +76,18 @@ const WorkspaceInventorySettings = lazy(() =>
 import './SettingsPage.css';
 import './SettingsNavTree.css';
 
+/**
+ * Sections the settings hub actually still has. Deep-links (`#/settings/<section>`) from
+ * the workspace tool cards are matched against this, so a bookmark to a tab that was
+ * removed in the hub redesign is ignored and the page opens on its default instead of an
+ * empty body. Module scope on purpose: the hash effect in the component closes over this
+ * and must not see a new Set on every render.
+ */
+const KEPT_SECTIONS = new Set([
+  'general', 'appearance', 'receipt', 'sync', 'email',
+  'about', 'license', 'topology', 'store-pos', 'restaurant-pos', 'inventory',
+]);
+
 /** Snapshot of initial loaded values for the Revert-to-saved button. */
 interface SettingsSnapshot {
   receipt: ReceiptSettingsDto;
@@ -306,25 +318,38 @@ function SettingsPageContent() {
     setMobileSidebarOpen(false);
   }, []);
 
-  // ── Read section from URL hash on mount (e.g. #/settings/topology) ──
+  // ── Read section from the URL hash (e.g. #/settings/topology) ────────
   // Only sections that still exist in the kept hub are accepted; stale
   // deep-links to removed management tabs (staff, audit, etc.) are ignored
   // so the hub opens on its default (general) section instead of an empty
-  // body — the "old settings on <tab>" problem.
-  const KEPT_SECTIONS = new Set([
-    'general', 'appearance', 'receipt', 'sync', 'email',
-    'about', 'license', 'topology', 'store-pos', 'restaurant-pos', 'inventory',
-  ]);
+  // body — the "old settings on <tab>" problem. KEPT_SECTIONS is module-scope
+  // for that reason: as a render-scoped const it would be a new Set every render, so
+  // listing it in the dependency array below would re-run the effect on every render and
+  // tear down/re-add the listener each time. Hoisting fixes the real problem instead of
+  // just silencing the lint.
+  //
+  // This used to be a mount-only effect (`[]`), which worked when the link arrived from
+  // another workspace — AppShell remounts the page and the effect reads the hash on the
+  // way in. It silently did nothing when the page was ALREADY mounted, which is the case
+  // for every tool card clicked while the user is on the admin workspace: AppShell's own
+  // hashchange listener refuses `settings/topology` because only `settings` is a
+  // registered page, so no remount happens and nothing re-reads the hash. The URL changed
+  // and the section stayed put. Listening here closes that gap; the KEPT_SECTIONS guard
+  // is unchanged, so a hashchange to a removed tab is still ignored.
   useEffect(() => {
-    const hash = window.location.hash.replace(/^#\//, '');
-    if (hash.startsWith('settings/')) {
+    const applyHashSection = () => {
+      const hash = window.location.hash.replace(/^#\//, '');
+      if (!hash.startsWith('settings/')) return;
       const section = hash.slice('settings/'.length);
       if (section && KEPT_SECTIONS.has(section)) {
         setActiveSection(section);
         // Clear the hash after consuming it so stale sections don't persist
         window.history.replaceState(null, '', window.location.pathname);
       }
-    }
+    };
+    applyHashSection();
+    window.addEventListener('hashchange', applyHashSection);
+    return () => window.removeEventListener('hashchange', applyHashSection);
   }, []);
 
   // ── Unsaved changes tracking ────────────────────────────────
