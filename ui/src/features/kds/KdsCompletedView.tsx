@@ -157,6 +157,7 @@ export function KdsCompletedView({
             className="kds-btn kds-btn--muted"
             onClick={load}
             aria-label={requiredLocalized(l10n, 'kds-completed-retry-aria')}
+            data-testid="kds-completed-retry"
           >
             <Localized id="kds-offline-retry">Retry</Localized>
           </button>
