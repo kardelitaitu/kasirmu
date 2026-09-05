@@ -195,6 +195,57 @@ def orphan_scoped(handlers: list[str], ui_commands: dict[str, dict]) -> list[str
     return sorted(c for c in handlers if c.endswith("_scoped") and c not in called)
 
 
+def orphan_permission(command: str) -> str | None:
+    """The permission a scoped command enforces, or None if it enforces no check.
+
+    Why the gate bothers to read Rust bodies at all: an orphaned `_scoped` command is not
+    one kind of thing. One whose body is only `resolve_session` then a forward is a
+    redundant twin -- dead weight, but it guards nothing so it can also leak nothing, and
+    19 of the 25 seeded entries are that. One that DOES call `require_permission*` is
+    different in kind: it is a SECURITY_MANAGE / SETTINGS_EDIT / WORKSPACES_SWITCH gate
+    wired into `generate_handler!` with no reachable caller, which reads as enforced
+    posture while protecting nothing. That distinction is exactly what cost six rounds of
+    manual audit in item 46, and hand-triaging 25 commands every time the list changes is
+    not going to happen.
+
+    Brace-balanced, deliberately. The first pass at this in item 46 took a fixed 900-char
+    window from the signature, which for a short function runs past its closing brace and
+    reports the NEXT function's permission. That produced a false security finding
+    (`get_hardware_fingerprint_scoped`, which enforces nothing, was recorded as requiring
+    SETTINGS_EDIT) and simultaneously hid two real ones. A fixed window is wrong in both
+    directions; balance is the minimum.
+    """
+    for lib_rel in SHELLS.values():
+        # commands/ is a sibling of lib.rs in every shell; derived rather than
+        # hardcoded so a new shell needs no edit here.
+        cmd_dir = (REPO_ROOT / lib_rel).parent / "commands"
+        if not cmd_dir.is_dir():
+            continue
+        for rs in sorted(cmd_dir.glob("*.rs")):
+            text = rs.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"\bfn\s+" + re.escape(command) + r"\s*\(", text)
+            if not m:
+                continue
+            open_idx = text.find("{", m.end())
+            if open_idx < 0:
+                continue
+            depth, j = 0, open_idx
+            while j < len(text):
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            body = text[m.start():j + 1]
+            if "require_permission" not in body:
+                return None
+            p = re.search(r"permissions::([A-Z_]+)", body)
+            return p.group(1) if p else "UNKNOWN"
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -244,10 +295,15 @@ def main() -> int:
 
     for command in sorted(set(all_orphans) - orphan_allow):
         shells = ", ".join(s for s in SHELLS if command in orphans[s])
+        perm = orphan_permission(command)
+        guarded = (
+            f"enforces {perm}, so that check currently guards nothing"
+            if perm else "enforces no permission, so it is a redundant twin"
+        )
         failures.append(
-            f"{shells}: registers scoped command '{command}' that no client invokes -- "
-            f"its permission check guards nothing. Wire a caller, or add it to "
-            f"{ALLOWLIST_PATH.name} \"scoped_orphans\" with a reason if it is host-only."
+            f"{shells}: registers scoped command '{command}' that no client invokes -- it "
+            f"{guarded}. Wire a caller, or add it to {ALLOWLIST_PATH.name} "
+            f"\"scoped_orphans\" with a reason if it is host-only."
         )
     for command in sorted(orphan_allow - set(all_orphans)):
         if command.endswith("_scoped"):
@@ -280,6 +336,19 @@ def main() -> int:
             f"{len(handlers[shell])} registered, "
             f"{len(missing[shell])} unregistered references "
             f"({len(unregistered)} unregistered command fns - F-006 tracker)"
+        )
+
+    # Triage summary for the allowlisted orphans. Printed even when green, because an
+    # allowlist that reports nothing is an allowlist nobody re-reads: the gated ones are
+    # the entries that deserve attention, and without this line all 25 look identical.
+    gated = [c for c in all_orphans if orphan_permission(c)]
+    if all_orphans:
+        detail = ", ".join(
+            f"{c}={orphan_permission(c)}" for c in sorted(gated)) or "none"
+        print(
+            f"info[scoped-orphans]: {len(all_orphans)} allowlisted, "
+            f"{len(all_orphans) - len(gated)} redundant twins (no check), "
+            f"{len(gated)} GATED DEAD SURFACE -> {detail}"
         )
 
     if failures:
