@@ -17,7 +17,9 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/frontend/shared/Toast';
 import {
   getBackupStatus,
+  getBackupStatusScoped,
   createBackup,
+  createBackupScoped,
   exportData,
   importPreview,
   importData,
@@ -208,7 +210,13 @@ export default function DataManagementScreen() {
   // ── Load backup status on mount ─────────────────────────────────
 
   useEffect(() => {
-    getBackupStatus()
+    // ADR #7 conditional scoping, matching exportData/importPreview/importData in this same
+    // file (:305, :370, :426). get_backup_status_scoped enforces permissions::DATA_EXPORT;
+    // the unscoped command takes no token at all.
+    const fetchStatus = sessionToken
+      ? () => getBackupStatusScoped(sessionToken)
+      : () => getBackupStatus();
+    fetchStatus()
       .then((status) => {
         setBackup((prev) => ({
           ...prev,
@@ -220,16 +228,26 @@ export default function DataManagementScreen() {
         setBackup((prev) => ({ ...prev, lastBackup: null }));
         addToast({ message: l10n.getString('data-mgmt-toast-backup-status-fail'), type: 'error' });
       });
-    // Effect runs once on mount; addToast and l10n are stable references.
+    // addToast and l10n stay excluded, as the original comment said -- but the reason is now
+    // narrower than "they are stable": l10n is NOT reliably stable in this codebase
+    // (FastPINOverlay.tsx:334 documents an infinite re-render loop from it), so listing it here
+    // would refetch backup status on every locale change. sessionToken is the one that must be
+    // present, because it selects which command runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionToken]);
 
   // ── Backup handlers ─────────────────────────────────────────────
 
   const handleBackup = useCallback(async () => {
     setBackup((prev) => ({ ...prev, backingUp: true }));
     try {
-      const result = await createBackup();
+      // create_backup writes a full copy of the database to disk and, unscoped, checks no
+      // permission whatsoever. create_backup_scoped (added in 62e30fd7 for F-017) enforces
+      // permissions::DATA_EXPORT; until this line called it, that check existed only in code
+      // nothing reached.
+      const result = sessionToken
+        ? await createBackupScoped(sessionToken)
+        : await createBackup();
       setBackup({
         lastBackup: new Date().toLocaleString(),
         lastBackupSize: `${(result.sizeBytes / 1024 / 1024).toFixed(1)} MB`,
@@ -241,7 +259,7 @@ export default function DataManagementScreen() {
       setBackup((prev) => ({ ...prev, backingUp: false }));
       addToast({ message: l10n.getString('data-mgmt-toast-backup-fail'), type: 'error' });
     }
-  }, [addToast, l10n, triggerFlash]);
+  }, [addToast, l10n, triggerFlash, sessionToken]);
 
   // ── Toggle data type selection ──────────────────────────────────
 

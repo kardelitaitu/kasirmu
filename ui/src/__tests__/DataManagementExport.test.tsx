@@ -16,6 +16,11 @@ const mockPickImportFile = vi.fn();
 vi.mock('@/api/data', () => ({
   getBackupStatus: () => mockGetBackupStatus(),
   createBackup: () => mockCreateBackup(),
+  // See DataManagementBackup.test.tsx for why both twins must be exported: the screen calls
+  // them whenever a session token is present, and a missing mock export is a hard error that
+  // takes down every test in the file, not just the scoped ones.
+  getBackupStatusScoped: (token: string) => mockGetBackupStatus(token),
+  createBackupScoped: (token: string) => mockCreateBackup(token),
   exportData: (args: unknown) => mockExportData(args),
   importPreview: (filePath: string, password: string) => mockImportPreview(filePath, password),
   importData: (filePath: string, password: string) => mockImportData(filePath, password),
