@@ -264,16 +264,17 @@ export function KdsHamburgerPanel({
                       aria-label={requiredLocalized(l10n, 'kds-settings-theme-toggle-aria')}
                       data-testid="kds-settings-theme-toggle"
                     >
-                      <span className="kds-theme-indicator" style={{ left: themeCtx.theme === 'dark' ? '3px' : '36px' }} />
+                      {/* 37px = 34px option cell + 3px track padding — see .kds-theme-toggle. */}
+                      <span className="kds-theme-indicator" style={{ left: themeCtx.theme === 'dark' ? '3px' : '37px' }} />
                       <span className={`kds-theme-option${themeCtx.theme === 'dark' ? ' on' : ''}`} aria-label={requiredLocalized(l10n, 'kds-theme-dark-aria')}>
                         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z" /></svg>
                       </span>
                       <span className={`kds-theme-option${themeCtx.theme === 'light' ? ' on' : ''}`} aria-label={requiredLocalized(l10n, 'kds-theme-light-aria')}>
-                        {/* Sun. viewBox is 24 to match the moon above: the previous glyph used
-                            viewBox="0 0 50 50" with artwork spanning only 32 of those units
-                            (64% of the box) against the moon's 18 of 24 (75%), so one shared
-                            `.kds-theme-option svg { width: 22px }` rule rendered the sun at 14.1px
-                            next to the moon's 16.5px -- 15% smaller, which is what this fixes. */}
+                        {/* 18px square on a 24 viewBox, centred in the 34px cell. Glyphs are
+                            deliberately matched: both span 18/24 units (75%) of their box, so the
+                            moon and sun render the same optical size. (The previous sun used
+                            viewBox="0 0 50 50" with artwork in 32 of 50 units and came out 15%
+                            smaller than the moon at the shared width.) */}
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                           <circle cx="12" cy="12" r="5.09677" fill="currentColor" />
                           <path fillRule="evenodd" clipRule="evenodd" d="M12.9556 3.08065C12.9556 2.55286 12.5277 2.125 12 2.125C11.4722 2.125 11.0443 2.55286 11.0443 3.08065L11.0443 5.64078C11.3561 5.59432 11.6753 5.57024 12 5.57024C12.3247 5.57024 12.6438 5.59431 12.9556 5.64076L12.9556 3.08065ZM12.9556 18.3594C12.6438 18.4059 12.3247 18.4299 12 18.4299C11.6753 18.4299 11.3561 18.4058 11.0443 18.3594L11.0443 20.9194C11.0443 21.4471 11.4722 21.875 12 21.875C12.5277 21.875 12.9556 21.4471 12.9556 20.9194L12.9556 18.3594Z" fill="currentColor" />

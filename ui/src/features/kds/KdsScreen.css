@@ -622,11 +622,19 @@
 [data-theme='light'] .kds-switch.on { background: var(--kds-accent); box-shadow: 0 0 8px color-mix(in srgb, var(--kds-accent) 30%, transparent); }
 [data-theme='light'] .kds-switch::after { box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 
-/* Theme toggle — slider pill between Dark/Light, same as tabs */
+/* Theme toggle — slider pill between Dark/Light, same as tabs.
+   Fixed cell geometry: both options are equal-width cells and the
+   indicator mirrors the cell box, so the pill lands exactly on the
+   active icon (74px track = 2×34px cells + 2×3px padding). */
 .kds-theme-toggle {
   position: relative;
   display: flex;
-  gap: 4px;
+  /* reset.css gives every <button> justify-content:center + gap:var(--space-2);
+     both must be zeroed — the two 34px cells must fill the track exactly or
+     the sliding pill's fixed 37px offset lands off the active icon. */
+  justify-content: flex-start;
+  gap: 0;
+  width: 74px;
   background: var(--kds-bg-tabs);
   border-radius: var(--kds-r-sm);
   padding: 3px;
@@ -638,9 +646,11 @@
   position: absolute;
   top: 3px;
   left: 3px;
-  bottom: 3px;
-  width: 32px;
+  width: 34px;
+  height: 34px;
   background: var(--kds-accent);
+  /* 7px = track radius (10) − padding (3): concentric corners keep the
+     3px gap visually even around the pill. */
   border-radius: 7px;
   transition: left 0.28s cubic-bezier(0.33, 1, 0.68, 1);
   pointer-events: none;
@@ -652,7 +662,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 9px;
+  width: 34px;
+  height: 34px;
   border-radius: 7px;
   border: none;
   background: transparent;
@@ -660,7 +671,7 @@
   opacity: 0.5;
   transition: opacity 0.15s;
 }
-.kds-theme-option svg { width: 14px; height: 14px; }
+.kds-theme-option svg { width: 18px; height: 18px; }
 .kds-theme-option:hover { opacity: 0.8; }
 .kds-theme-option.on { opacity: 1; color: var(--kds-fg-inverse); }
 
