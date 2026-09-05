@@ -19,7 +19,10 @@ import { hasChanges } from './helpers';
  */
 export function WorkspaceInventorySettings({
   sessionToken,
-  userId,
+  // `userId` is deliberately not destructured. It stays on the props interface so the call sites in
+  // SettingsPage keep typechecking, but the component body never read it -- the only thing keeping
+  // it "used" was the useCallback dependency array further down, which eslint had already flagged
+  // as an unnecessary dependency. See docs/plans/0.0.36-backlog.md item 69.
   locationId,
   variant = 'full-page',
   onSaved,
@@ -110,7 +113,9 @@ export function WorkspaceInventorySettings({
     // sessionToken is read at :83 by setSettingsScoped. `userId` was listed and is a different
     // value, so it never covered the token: saving after a store switch wrote the previous
     // store's thresholds (or failed on the destroyed session) while the toast said it saved.
-  }, [userId, lowStockThreshold, deductionPreferWarehouse, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
+    // `userId` is now gone from this array -- nothing in the component read it, and this entry was
+    // its only use, which is why removing it surfaced the dead prop below.
+  }, [lowStockThreshold, deductionPreferWarehouse, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
 
   const isCompact = variant === 'inspector-drawer';
 

@@ -70,6 +70,12 @@ step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3
 # call not sitting behind a token test.
 step "scoped ambient reads" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
 step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" python3 scripts/verify-scoped-reads.py
+# Ratchet on react-hooks/exhaustive-deps. `npm run lint` is `eslint .` with no --max-warnings 0, so
+# it exits 0 while reporting 58 warnings -- and that rule is the ONLY automated check for a stale
+# closure. Item 69 found five callbacks listing `userId`, which no component body ever read, while
+# two of those same arrays omitted `promotionIds`, which is sent in the checkout payload. Neither was
+# gated. This freezes the count at 7 (down from 12): it may go down, never up.
+step "exhaustive-deps ratchet" "python3 scripts/verify-exhaustive-deps.py" python3 scripts/verify-exhaustive-deps.py
 
 # ── Architecture boundary checker (P1 pilot) ────────────────────────────
 # Existing transitional debt is reported but only new, expired, or stale

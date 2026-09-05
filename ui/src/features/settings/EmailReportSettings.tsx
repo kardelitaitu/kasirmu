@@ -15,7 +15,6 @@ import { requiredLocalized } from '@/frontend/shared';
 import Tooltip from '@/frontend/shell/Tooltip';
 import { getReportSchedule, getReportScheduleScoped, saveReportSchedule, type ReportScheduleConfig } from '@/api/email';
 import { getSettingScoped, setSettingScoped } from '@/api/settings';
-import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 interface SmtpConfigDto {
@@ -43,7 +42,9 @@ export default function EmailReportSettings() {
   const { addToast } = useToast();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken ?? '';
-  const userId = useAuth().session?.user_id ?? 'default';
+  // `const userId = useAuth().session?.user_id ?? 'default'` used to sit here. Nothing read it; it
+  // existed only to satisfy the useCallback dependency array that has just been dropped, and
+  // removing one link exposed the next (the binding, then the import).
 
   const [config, setConfig] = useState<SmtpConfigDto>(DEFAULT_SMTP);
   const [loading, setLoading] = useState(true);
@@ -131,11 +132,13 @@ export default function EmailReportSettings() {
     } finally {
       setSaving(false);
     }
-    // sessionToken is read at :116 by setSettingScoped. `userId` was listed and is a different
-    // value, so it never covered the token: saving after a store switch wrote SMTP credentials
-    // to the previous store -- or failed on the destroyed session, after the success toast had
-    // already been scheduled on the happy path.
-  }, [config, l10n, addToast, userId, sessionToken]);
+    // sessionToken is read at :116 by setSettingScoped. `userId` used to be listed here and is a
+    // different value, so it never covered the token: saving after a store switch wrote SMTP
+    // credentials to the previous store -- or failed on the destroyed session, after the success
+    // toast had already been scheduled on the happy path. `userId` has since been dropped: nothing
+    // in this component read it, and its presence in the array was the only thing keeping the
+    // binding from being reported as unused.
+  }, [config, l10n, addToast, sessionToken]);
 
   // ── Schedule event handlers ────────────────────────────────────────
 

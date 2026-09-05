@@ -82,7 +82,12 @@ export default function PaymentModal({
   total,
   discountPercent = 0,
   discountLabel,
-  userId,
+  // `userId` is deliberately not destructured. It is declared required on PaymentModalProps and
+  // passed by both callers, but the component body never reads it -- it appeared only inside two
+  // useCallback dependency arrays, which is what kept it "used" and hid the fact. The backend
+  // resolves the cashier from `sessionToken`, so the value is redundant on every ADR #7 path. The
+  // prop is left on the interface rather than removed because 62 test call sites pass it; dropping
+  // it is a real cleanup but a separate, wider change. Recorded in docs/plans/0.0.36-backlog.md.
   sessionToken,
   tableNumber,
   selectedCustomer: selectedCustomerProp,
@@ -808,7 +813,7 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [lineItems, discountPercent, discountLabel, userId, sessionToken, qrReference, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, classifyError, addToast, cartCurrency, lineItemsInCartCurrency, effectiveTotalInCartCurrency, tenderSnapshot]);
+  }, [lineItems, discountPercent, discountLabel, promotionIds, sessionToken, qrReference, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, classifyError, addToast, cartCurrency, lineItemsInCartCurrency, effectiveTotalInCartCurrency, tenderSnapshot]);
 
   const addSplit = useCallback(() => {
     setSplits((prev) => [
@@ -1079,7 +1084,7 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, splitMode, splits, otherLabel, change, userId, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot]);
 
   useEffect(() => {
     if (!done) return;

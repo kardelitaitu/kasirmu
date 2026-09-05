@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
@@ -760,5 +760,54 @@ describe('PaymentModal — rendering & fast interaction', () => {
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalled();
     });
+  });
+});
+
+// ── Stale closure on the checkout payload ─────────────────────────────
+//
+// PosScreen.tsx:1982 passes `promotionIds={appliedPromotions.map((p) => p.id)}` -- a fresh array on
+// every parent render. Both checkout callbacks read it (PaymentModal.tsx:706 for QR, :956 for cash)
+// and neither lists it in its useCallback deps; eslint reports exactly that at :811 and :1082, but
+// as a *warning*, and `eslint .` exits 0 with warnings, so nothing gates it. A stale capture commits
+// the sale with whatever promotions existed when the callback was last rebuilt rather than the ones
+// on screen when the cashier pressed Complete. That is a money bug with no automated check.
+describe('PaymentModal — promotionIds reach the checkout payload', () => {
+  beforeEach(() => {
+    invokeMock.mockClear();
+  });
+
+  async function renderModal(el: React.ReactElement) {
+    return renderInAct(withFluent(<ToastProvider>{el}</ToastProvider>, salesFtl));
+  }
+
+  const modal = (promotionIds: string[]) => (
+    <PaymentModal
+      open
+      lineItems={[lineItem()]}
+      total={usd(700)}
+      userId="test-user-id"
+      promotionIds={promotionIds}
+      onComplete={vi.fn()}
+      onClose={vi.fn()}
+    />
+  );
+
+  it('sends the promotions current at press time, not the ones first rendered', async () => {
+    const { rerender } = await renderModal(modal(['promo-a']));
+    // Swap the promotion set while the modal stays open, which is what PosScreen does whenever
+    // appliedPromotions changes -- a new array identity every render.
+    await act(async () => {
+      rerender(withFluent(<ToastProvider>{modal(['promo-b'])}</ToastProvider>, salesFtl));
+    });
+
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    await waitFor(() => {
+      expect(invokeMock.mock.calls.some((c) => String(c[0]).startsWith('complete_sale'))).toBe(true);
+    });
+    const call = invokeMock.mock.calls.find((c) => String(c[0]).startsWith('complete_sale'));
+    const args = (call?.[1] as { args?: { promotionIds?: string[] } })?.args;
+    expect(args?.promotionIds).toEqual(['promo-b']);
   });
 });

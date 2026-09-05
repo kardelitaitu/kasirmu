@@ -1,0 +1,4 @@
+{
+  "max_exhaustive_deps": 7,
+  "_note": "Ratchet cap for react-hooks/exhaustive-deps warnings. Lower it whenever a stale closure is fixed; never raise it to make the build pass -- each unit is a callback that can capture a stale sessionToken and read or write the wrong store (item 69). Set to 7 after item 69 removed five `userId` dependencies that no component body ever read, taking the count from 12 to 7."
+}

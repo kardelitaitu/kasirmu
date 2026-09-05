@@ -41,7 +41,9 @@ const DEFAULT_KDS: KdsDraftState = {
  */
 export function WorkspaceKdsSettings({
   sessionToken,
-  userId,
+  // `userId` is intentionally not destructured: it is a required prop that the body never reads,
+  // and the dependency array above was its only use. Left on the interface so SettingsPage's call
+  // sites are unaffected; removing the prop is a wider, separate cleanup.
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
@@ -165,8 +167,9 @@ export function WorkspaceKdsSettings({
     }
   // sessionToken is read at :125 by setSettingsScoped. `userId` was already listed and is a
   // different value, so it never covered the token -- saving after a store switch wrote to the
-  // previous store (or failed on the destroyed session) while the UI reported success.
-  }, [userId, draft, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
+  // previous store (or failed on the destroyed session) while the UI reported success. `userId` is
+  // now gone from this array: nothing in the component read it, and its only "use" was this entry.
+  }, [draft, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
 
   const isCompact = variant === 'inspector-drawer';
 
