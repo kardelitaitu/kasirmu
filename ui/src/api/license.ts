@@ -108,9 +108,35 @@ export async function pauseSubscription(pauseMonths: number): Promise<PauseResum
   return loggedInvoke('pause_subscription', { pauseMonths });
 }
 
+/**
+ * Pause a subscription resolved from a session token. ADR #7.
+ *
+ * pause_subscription_scoped (license.rs:806) enforces permissions::SETTINGS_EDIT before
+ * delegating. The unscoped command reads the stored API key and calls the billing server with no
+ * session and no permission check at all -- pausing a subscription is a billing action.
+ */
+export async function pauseSubscriptionScoped(
+  sessionToken: string,
+  pauseMonths: number,
+): Promise<PauseResumeResponse> {
+  return loggedInvoke('pause_subscription_scoped', { sessionToken, pauseMonths });
+}
+
 /** Resume a paused subscription. */
 export async function resumeSubscription(): Promise<PauseResumeResponse> {
   return loggedInvoke('resume_subscription');
+}
+
+/**
+ * Resume a subscription resolved from a session token. ADR #7.
+ *
+ * Same differential as pauseSubscriptionScoped: resume_subscription_scoped (license.rs:820)
+ * enforces SETTINGS_EDIT; the unscoped variant checks nothing.
+ */
+export async function resumeSubscriptionScoped(
+  sessionToken: string,
+): Promise<PauseResumeResponse> {
+  return loggedInvoke('resume_subscription_scoped', { sessionToken });
 }
 
 /** Auth-server reachability probe result (mirrors PingResult). */

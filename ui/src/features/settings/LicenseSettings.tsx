@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { getLicenseStatus, checkLicenseStatus, pauseSubscription, resumeSubscription, type ServerLicenseStatus } from '@/api/license';
+import { getLicenseStatus, checkLicenseStatus, pauseSubscription, pauseSubscriptionScoped, resumeSubscription, resumeSubscriptionScoped, type ServerLicenseStatus } from '@/api/license';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import ExitSurveyModal from '@/components/ExitSurveyModal';
 import { useToast } from '@/frontend/shared/Toast';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './LicenseSettings.css';
 
@@ -76,6 +77,11 @@ export default function LicenseSettings() {
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
   const { addToast } = useToast();
+  // This screen is rendered from SettingsPage (:824), inside WorkspaceProvider, so a session
+  // exists. The token was not previously in scope here at all -- which is why both subscription
+  // actions were reaching the unscoped, unchecked commands.
+  const { sessionToken: rawSessionToken } = useWorkspace();
+  const sessionToken = rawSessionToken ?? '';
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -235,7 +241,11 @@ export default function LicenseSettings() {
     setShowExitSurvey(false);
     setPausing(true);
     try {
-      await pauseSubscription(1);
+      // ADR #7 conditional scoping. pause_subscription_scoped enforces SETTINGS_EDIT; the
+      // unscoped command reads the stored API key and calls the billing server unchecked.
+      await (sessionToken
+        ? pauseSubscriptionScoped(sessionToken, 1)
+        : pauseSubscription(1));
       addToast({ type: 'info', message: l10n.getString('settings-license-pause-success') });
       const status = await checkLicenseStatus();
       setServerStatus(status);
@@ -245,7 +255,7 @@ export default function LicenseSettings() {
     } finally {
       setPausing(false);
     }
-  }, [addToast, l10n]);
+  }, [addToast, l10n, sessionToken]);
 
   /** Show exit survey before pausing. */
   const handlePause = useCallback(() => {
@@ -256,7 +266,9 @@ export default function LicenseSettings() {
   const handleResume = useCallback(async () => {
     setResuming(true);
     try {
-      await resumeSubscription();
+      // Same differential as handlePauseConfirm: resume_subscription_scoped enforces
+      // SETTINGS_EDIT, the unscoped variant checks nothing.
+      await (sessionToken ? resumeSubscriptionScoped(sessionToken) : resumeSubscription());
       addToast({ type: 'info', message: l10n.getString('settings-license-resume-success') });
       // Reload status to reflect active state
       const status = await checkLicenseStatus();
@@ -267,7 +279,7 @@ export default function LicenseSettings() {
     } finally {
       setResuming(false);
     }
-  }, [addToast, l10n]);
+  }, [addToast, l10n, sessionToken]);
 
   // ── Loading / Error states ──────────────────────────────────
   if (loading) {

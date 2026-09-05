@@ -1,5 +1,5 @@
 {
-  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant.",
+  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant. pause_subscription_scoped / resume_subscription_scoped joined the same way: LicenseSettings now prefers the SETTINGS_EDIT-checked twins, and the tablet shell registers neither variant of either command.",
   "desktop": [
     "adjust_stock",
     "create_product",
@@ -131,6 +131,7 @@
     "open_product_images_scoped",
     "open_shift_scoped",
     "pause_subscription",
+    "pause_subscription_scoped",
     "pg_sync_start_scoped",
     "pg_sync_status_scoped",
     "pg_sync_stop_scoped",
@@ -146,6 +147,7 @@
     "renew_license",
     "resolve_kds_targets_scoped",
     "resume_subscription",
+    "resume_subscription_scoped",
     "rotate_encryption_key",
     "save_report_schedule",
     "save_topology_template",
