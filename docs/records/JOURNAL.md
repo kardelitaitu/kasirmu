@@ -1,5 +1,43 @@
 
 
+## 2026-09-05 — Round AH: per-theme primary blue + follow-the-theme brand override (ui/platform-core)
+
+**User request:** "it was inverted — light should be #147EFB, dark
+#1155CC, overridable from settings→appearance, with a reset button."
+Two commits: 63a8d0a9 (tokens) + 13c7483e (feature).
+
+**The naive swap broke the WCAG gate — and that was the design
+lesson:** colourContrastCompliance.test.ts enforces accent-as-text on
+bg at 4.5:1 per theme. Swapping the whole accent families made dark
+#1155CC-as-text = 2.80:1 (6 failures). The correct model: **accent**
+is the contrast-managed ladder (stays per-theme as WCAG requires);
+**--color-primary** is the user-facing brand blue and gets the swap
+(light #147EFB, dark #1155CC). Two tokens, two jobs. The WCAG gate did
+exactly what it exists for: blocked a plausible-looking regression.
+
+**Follow-theme sentinel (empty string):** get_brand_primary_colour
+previously defaulted to "#147EFB" — every fresh install silently
+overrode BOTH themes, defeating per-theme primaries. Now: unset/"" =
+no override; ThemeProvider clears the inline palette so tokens.css
+shows through; AppearanceSettings holds null, shows the theme primary
+in picker/hex (getComputedStyle read), and swaps the reset button for
+a follow-theme (sun) indicator. applyAccentPalette now also drives
+--color-primary(+soft) — previously the brand picker never reached
+primary-token consumers (statusbar, analytics, loyalty, reports…).
+clearAccentPalette added; BRAND_PALETTE_PROPS single list keeps
+apply/clear in lockstep. Rust: getter returns "" default (2 new
+settings tests); reset-all + per-colour reset both persist "".
+
+**Gates that caught me (all three real):** WCAG (above); the round-169
+attribute-only getString scan (my new .aria-label-only Fluent message
+was read via getString — fixed by giving it a plain value); the
+screenExtraction CSS-integrity test (new class had no rule). Also:
+test-file color mocks needed the two new function names.
+
+**Verified:** 8626 passed / 481 files; tsc clean; eslint clean on all
+touched files; platform-core settings 121 passed. Statusbar good tone
+(--color-primary) now reads per-theme blue automatically.
+
 ## 2026-09-05 — TDD round AG: kds_routing command-layer gap pins (desktop-client)
 
 **Gap-correction first:** my sweep flagged kds_device.rs /
