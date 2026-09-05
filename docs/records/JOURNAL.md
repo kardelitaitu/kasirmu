@@ -1,5 +1,36 @@
 
 
+## 2026-09-05 — Round AI: KDS theme-toggle click lag (ui)
+
+**User report:** kds→hamburger→theme slider feels slow/laggy; the
+click should be instant, theme change may take its time.
+
+**Root cause — the click was being swallowed, not delayed.** On every
+toggle: React commits the pill's new `left` (slide starts), then the
+same effect adds `html.is-theme-transitioning` + flips `data-theme`.
+The global fade rule (`transition-property: … !important` on `*`)
+**replaces the pill's own transition shorthand mid-flight**, so `left`
+stops being a transitioned property and the pill snaps mid-glide. The
+200ms crossfade then animates box-shadow + backdrop-filter (full
+element repaint every frame) across the whole KDS board, with two
+forced full-tree style recalcs stacked on top — the pill's motion was
+buried under all of it.
+
+**Fix (7fe7aaf8, tokens.css only — the other agent's in-flight
+KdsHamburgerPanel/KdsScreen geometry work left untouched):**
+1. Dropped `box-shadow` and `backdrop-filter` from the global fade —
+   shadows/blurs snap with the theme, colors still crossfade. This
+   removes the per-frame repaint storm on card-heavy screens.
+2. Specificity-boosted exemption for `.kds-theme-indicator`
+   ((0,2,1) beats (0,1,1)) that re-declares its own `left` slide plus
+   the color fade, so the pill always glides from frame one.
+
+**Verification:** themeRegression/ThemeProvider/ThemeToggle/
+SettingsToggleButtons/colorContrast/NodeTopologyDevMock — 103 passed.
+The reduced-motion block (`transition: none`, non-important) already
+loses to the global !important rule during the 300ms window — a
+pre-existing quirk, unchanged by this fix, worth a future round.
+
 ## 2026-09-05 — Round AH: per-theme primary blue + follow-the-theme brand override (ui/platform-core)
 
 **User request:** "it was inverted — light should be #147EFB, dark
