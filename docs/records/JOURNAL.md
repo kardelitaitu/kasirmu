@@ -1,5 +1,30 @@
 
 
+## 2026-09-04 — TDD round Z: KDS line-item state machine pins (oz-core)
+
+**Problem:** `update_kds_line_item_status` (kds_lines.rs:315) runs a
+forward-only state machine with per-transition workflow timestamps —
+the same design as the order-level machine, but its coverage was 2
+tests total: one cross-instance denial, one pending→preparing leg
+buried inside a FOH-edit test. Unpinned: the full happy path with
+timestamp stamping (started_at/ready_at/served_at are what prep-time
+metrics are built on), regression rejection (ready→preparing),
+unknown-status rejection, and the same-state replay arm.
+
+**Solution:** Three pins in kds_tests.rs with a shared
+`seed_ticket_with_lines` helper (two-item ticket, burger + fries):
+- `kds_line_item_transitions_stamp_workflow_timestamps` — happy path
+  stamps each timestamp and started_at survives the ready transition
+- `kds_line_item_transitions_reject_regression` — ready→preparing is a
+  Validation error, status stays ready
+- `kds_line_item_transitions_reject_unknown_status` — "skip",
+  "servedx", "" all rejected before any write
+
+All passed on first run — pins, not fixes.
+
+**Commits:** 423f09dd (test).
+**Test counts:** oz-core 2454→2457, all green (58s full lib run).
+
 ## 2026-09-04 — TDD round Y: fanout table-number stamping (oz-core)
 
 **Problem:** `complete_sale_to_kds_fanout` stamps each kitchen ticket
