@@ -315,12 +315,12 @@ step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-t
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs
 # built a fixture writing docs/ci-pipeline.md after the doc moved to docs/operations/, and
 # asserted on a `## Job Matrix (ci.yml)` heading whose suffix had been dropped, so its
-# mutation became a no-op. Both are fixed and the three cases now pass.
-# Only that file is wired in, deliberately: pipefail.test.mjs still fails (it reads the
-# retired ci.yml and nightly.yml, and its bare `bash` hits the WSL hang documented at the
-# top of AGENTS.md). Wiring the whole glob would red the build for a known separate defect,
-# which is how a real failure gets trained into background noise. See backlog item 63.
-step "ci docs drift node test" "node --test scripts/__tests__/verify-ci-docs-drift.test.mjs" node --test scripts/__tests__/verify-ci-docs-drift.test.mjs
+# mutation became a no-op. pipefail.test.mjs read the retired ci.yml and nightly.yml (ENOENT)
+# and used bare `bash`, which on Windows is WSL and hangs instead of failing.
+# Both are fixed, so the whole glob is wired -- not one file at a time. A suite that has to be
+# cherry-picked into a gate is a suite whose failures are being negotiated file by file, and
+# the only reason either of these stayed red was that nothing ran them.
+step "script tests" "node --test scripts/__tests__/*.test.mjs" node --test scripts/__tests__/*.test.mjs
 # The drift gate checks that a runner label matches SOME step, using any-of -- so a
 # gate declaring three labels was satisfied by one, and deleting the other two left
 # gates.json asserting guards that no longer existed while the checker printed
