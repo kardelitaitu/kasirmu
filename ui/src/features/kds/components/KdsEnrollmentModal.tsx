@@ -225,6 +225,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
             className="kds-enrollment-close"
             onClick={onClose}
             aria-label={requiredLocalized(l10n, 'kds-enrollment-close-aria')}
+            data-testid="kds-enrollment-close"
           >
             &times;
           </button>
@@ -255,6 +256,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                   l10n,
                   'kds-enrollment-name-aria',
                 )}
+                data-testid="kds-enrollment-name-input"
               />
             </div>
 
@@ -278,6 +280,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                     l10n,
                     'kds-enrollment-stations-aria',
                   )}
+                  data-testid="kds-enrollment-station-input"
                 />
               </div>
               {stations.length > 0 && (
@@ -294,6 +297,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                           'kds-enrollment-station-remove-aria',
                           { station: s },
                         )}
+                        data-testid="kds-enrollment-station-remove"
                       >
                         &times;
                       </button>
@@ -317,6 +321,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                     setError(null);
                     setStep('form');
                   }}
+                  data-testid="kds-enrollment-error-retry"
                 >
                   {requiredLocalized(l10n, 'retry')}
                 </button>
@@ -380,6 +385,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
               <button
                 className="kds-enrollment-cancel"
                 onClick={onClose}
+                data-testid="kds-enrollment-cancel"
               >
                 {requiredLocalized(l10n, 'kds-enrollment-cancel')}
               </button>
@@ -387,6 +393,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                 className="kds-enrollment-confirm"
                 onClick={handleEnroll}
                 disabled={!name.trim()}
+                data-testid="kds-enrollment-create"
               >
                 {requiredLocalized(l10n, 'kds-enrollment-create-btn')}
               </button>
@@ -404,6 +411,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                 }
                 onClose();
               }}
+              data-testid="kds-enrollment-done"
             >
               {requiredLocalized(l10n, 'kds-enrollment-done')}
             </button>
