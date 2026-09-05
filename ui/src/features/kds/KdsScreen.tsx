@@ -976,6 +976,7 @@ export default function KdsScreen() {
               fetchOrders();
             }}
             aria-label={requiredLocalized(l10n, 'kds-error-retry-aria')}
+            data-testid="kds-error-retry"
           >
             <Localized id="kds-offline-retry">Retry</Localized>
           </button>
@@ -983,6 +984,7 @@ export default function KdsScreen() {
             className="kds-error-dismiss-btn"
             onClick={clearError}
             aria-label={requiredLocalized(l10n, 'kds-error-dismiss-aria')}
+            data-testid="kds-error-dismiss"
           >
             &times;
           </button>
@@ -1021,6 +1023,7 @@ export default function KdsScreen() {
               });
             }}
             aria-label={requiredLocalized(l10n, 'kds-offline-retry-aria')}
+            data-testid="kds-deadletter-retry"
           >
             <Localized id="kds-offline-retry">Retry</Localized>
           </button>
@@ -1028,6 +1031,7 @@ export default function KdsScreen() {
             className="kds-offline-dismiss-btn"
             onClick={clearDeadLetter}
             aria-label={requiredLocalized(l10n, 'kds-offline-dead-letter-clear-aria')}
+            data-testid="kds-deadletter-dismiss"
           >
             &times;
           </button>
@@ -1061,6 +1065,7 @@ export default function KdsScreen() {
                 // which triggers fetchOrders via the event listener.
               }}
               aria-label={requiredLocalized(l10n, 'kds-offline-retry-aria')}
+              data-testid="kds-offline-retry"
             >
               <Localized id="kds-offline-retry">Retry</Localized>
             </button>
@@ -1069,6 +1074,7 @@ export default function KdsScreen() {
             className="kds-offline-dismiss-btn"
             onClick={() => setOfflineDismissed(true)}
             aria-label={requiredLocalized(l10n, 'kds-offline-dismiss-aria')}
+            data-testid="kds-offline-dismiss"
           >
             &times;
           </button>
