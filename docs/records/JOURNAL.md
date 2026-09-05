@@ -1,5 +1,41 @@
 
 
+## 2026-09-04 — TDD round AE: invoke-token-parity gate (ci/scripts)
+
+**Problem (class-level fix for the AC/AD findings):** The round-AC bug
+(edc wrappers with no session token) was caught by hand-reading the
+Rust against the TS. Nothing would catch the NEXT wrapper that forgets
+its token — tsc can't see the wrapper→Rust boundary and vitest mocks
+accept anything. Per repo culture, a verified gap becomes a gate; and
+"adding a gate" has exactly one legal path: scripts/gates.json (which
+verify-ci-docs-drift.py enforces in 4 directions: gates.json ↔ check.sh
+labels ↔ dev-ci.yml steps ↔ docs/operations/ci-pipeline.md tables).
+
+**Solution:** `scripts/verify-invoke-parity.py` — a new static gate
+owning the SESSION-TOKEN class only (after discovering verify-ipc-
+parity.py already owns the unregistered class, with its own allowlist
+holding the same migration fossils I'd found in AD — 29 by my count vs
+their 28; kept the two scripts separate by class rather than merging,
+and did NOT add my then-obsolete baseline). Semantics: a command whose
+Rust signature declares `session_token` (parameter-order independent —
+scan the whole signature) must be invoked with a `sessionToken` in the
+payload (balanced-brace payload parse, string-aware). UNION semantics
+across desktop + tablet shells, since ui/src is shared: a token
+required in either shell must be sent by every caller. 7-case
+self-test (mutation style, synthetic two-shell fixture) drives both
+directions including the case that bit me first in AC. Real tree:
+433 invokes / 42 files / 2 shells / 0 violations.
+
+Wired 4 ways: gates.json entry `invoke-token-parity` (required,
+static-gates), check.sh step "ipc invoke token parity", dev-ci.yml
+static-gates step, ci-pipeline.md gate row + renumbered check.sh list
+(fixing a pre-existing duplicate "17." in that list while there).
+
+**Commits:** 4f46bd8b (gate + wiring).
+**Test counts:** self-test 7/7; drift checker 0 items; ipc-parity OK;
+gates.json JSON-valid. First round with zero oz-core/UI code changes —
+pure gate-infrastructure, the loop's capstone on the AC/AD class.
+
 ## 2026-09-04 — TDD round AD: branding save/reset called unregistered commands — every save failed (ui)
 
 **Problem (third real bug, found by a systematic sweep):** Generalizing
