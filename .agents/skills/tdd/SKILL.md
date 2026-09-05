@@ -88,6 +88,18 @@ The core cycle. Use the fast loop (below) so each iteration is seconds, not minu
 
 ### Phase 4 — Verify
 
+> 🛑 **On Windows, run these through Git's bash by full path.** Bare `bash scripts/...` resolves to
+> `C:\Windows\System32\bash.exe` — WSL, not Git Bash — and it **hangs** rather than failing:
+> `c:\windows\system32\bash.exe -c 'echo wsl-ok'` never returned in 12s, while
+> `C:\Program Files\Git\bin\bash.exe -c 'echo gitbash-ok'` returned instantly. A hang attributes to
+> the script, so the reasonable-looking conclusion is "wtree-guard is broken", which is false — and
+> skipping the drift check because it hangs loses exactly the protection it exists to give. Use
+> `& 'C:\Program Files\Git\bin\bash.exe' -c 'bash scripts/wtree-guard.sh check'`. See
+> [`AGENTS.md`](../../../AGENTS.md) § *Running CLI Tools on Windows*; the same root cause produced
+> an opposite-looking symptom on 2026-08-22 (WSL runs the Linux node against Windows-built
+> `ui/node_modules`, so vitest crashes on the missing `rollup-linux-x64` binary and the i18n gate
+> appears red when nothing in the repo is wrong).
+
 Confirm the fix and no regressions — **scoped to the area you changed**. Full `scripts/check.sh` is **not** part of routine TDD validation.
 
 Required during the loop:
