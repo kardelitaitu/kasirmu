@@ -9,10 +9,10 @@ import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { requiredLocalized } from '@/frontend/shared';
 
 /** Custom flex-based slider: track div + fill div + knob div. */
-function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel, ariaValueText }: {
+function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel, ariaValueText, dataTestId }: {
   value: number; min: number; max: number;
   onChange: (v: number) => void; onDragValue?: (v: number | null) => void;
-  color: string; ariaLabel: string; ariaValueText?: string;
+  color: string; ariaLabel: string; ariaValueText?: string; dataTestId?: string;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -94,6 +94,7 @@ function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel, a
       aria-valuenow={value}
       aria-valuetext={ariaValueText}
       tabIndex={0}
+      data-testid={dataTestId}
       onKeyDown={(e) => {
         const lo = minRef.current, hi = maxRef.current;
         if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onChangeRef.current(Math.min(hi, value + 1)); }
@@ -314,6 +315,7 @@ export function KdsHamburgerPanel({
                     aria-checked={settings.autoAcknowledge}
                     onClick={() => onChangeAutoAcknowledge(!settings.autoAcknowledge)}
                     aria-label={requiredLocalized(l10n, 'kds-settings-auto-ack')}
+                    data-testid="kds-settings-auto-ack-toggle"
                   />
                 </div>
 
@@ -328,6 +330,7 @@ export function KdsHamburgerPanel({
                     aria-checked={showOrderId}
                     onClick={() => onToggleOrderId(!showOrderId)}
                     aria-label={requiredLocalized(l10n, 'kds-layout-order-id')}
+                    data-testid="kds-settings-show-order-id-toggle"
                   />
                 </div>
 
@@ -342,6 +345,7 @@ export function KdsHamburgerPanel({
                     aria-checked={showTableNumber}
                     onClick={() => onToggleTableNumber(!showTableNumber)}
                     aria-label={requiredLocalized(l10n, 'kds-layout-table-number')}
+                    data-testid="kds-settings-show-table-number-toggle"
                   />
                 </div>
 
@@ -456,6 +460,7 @@ export function KdsHamburgerPanel({
                     aria-checked={settings.soundEnabled}
                     onClick={() => onChangeSound(!settings.soundEnabled)}
                     aria-label={requiredLocalized(l10n, 'kds-settings-sound')}
+                    data-testid="kds-settings-sound-toggle"
                   />
                 </div>
 
@@ -474,6 +479,7 @@ export function KdsHamburgerPanel({
                     color="var(--kds-warning, #fd9426)"
                     ariaLabel={requiredLocalized(l10n, 'kds-settings-yellow-aria')}
                     ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.yellowThresholdMin })}
+                    dataTestId="kds-settings-yellow-slider"
                   />
                 </div>
 
@@ -491,6 +497,7 @@ export function KdsHamburgerPanel({
                     color="var(--kds-danger, #fc3d39)"
                     ariaLabel={requiredLocalized(l10n, 'kds-settings-red-aria')}
                     ariaValueText={l10n.getString('kds-slider-value-min', { min: settings.redThresholdMin })}
+                    dataTestId="kds-settings-red-slider"
                   />
                 </div>
               </div>
