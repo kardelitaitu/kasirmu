@@ -1,5 +1,40 @@
 
 
+## 2026-09-04 — TDD round AA: scoped KDS command-layer pins (desktop-client)
+
+**Problem:** Four scoped commands in apps/desktop-client/src/commands/
+kds.rs had ZERO test references — count by grep: create_kds_order_from_
+sale_scoped 0, get_kds_order_lines_scoped 0, update_kds_line_item_
+status_scoped 0, update_kds_order_items_scoped 0. These are the
+session→store→instance wiring layer (ADR #7): session resolution,
+KDS_VIEW/KDS_UPDATE permission gates, per-store DB open. A wiring
+regression (wrong permission constant, dropped scoping argument) would
+compile clean and pass oz-core tests.
+
+**Solution:** Six tests + two helpers in kds_tests.rs:
+- `scoped_line_item_status_update_and_read_end_to_end` — the full
+  command chain: fanout creation from a real one-line restaurant sale →
+  read lines → update item status, asserting store_id propagation and
+  started_at stamping
+- `scoped_update_kds_order_items_edits_ticket` — items replacement
+  through the command layer
+- Four invalid-token denial tests (one per command) mirroring the
+  existing denial-test pattern
+
+Two honest Red→adjust loops on the TESTS, not the code:
+(1) the shared `create_sale_in_store` helper seeds a ZERO-LINE sale,
+which the fanout correctly ignores — needed a one-line restaurant-sale
+helper (the fanout's empty-carts-return-empty contract, working as
+designed); (2) `update_kds_order_items_scoped` RECOMPUTES items_summary
+from the replacement items (the Phase-3 status-preserving replacement
+behavior), so a summary saying 2 items with a 1-item payload is
+rewritten to "Burger" — the test input now matches reality and also
+asserts item_count=2 and all-fresh-pending lines.
+
+**Commits:** 2bfc196a (test).
+**Test counts:** oz-pos-app 1214→1217, all green (109s full lib run);
+oz-core untouched this round.
+
 ## 2026-09-04 — TDD round Z: KDS line-item state machine pins (oz-core)
 
 **Problem:** `update_kds_line_item_status` (kds_lines.rs:315) runs a
