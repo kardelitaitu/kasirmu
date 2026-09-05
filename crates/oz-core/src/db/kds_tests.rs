@@ -3453,3 +3453,64 @@ fn cumulative_refunds_reaching_full_total_cancel_kds_tickets() {
         "refunds summing to the sale total must cancel the kitchen ticket"
     );
 }
+
+/// S3 ghost-ticket window: `void_pending_sale` must cancel any kitchen
+/// tickets created for the sale before the void ran. In production a
+/// ticket exists between the checkout command's deduction pass and the
+/// separate `create_kds_order_from_sale_scoped` call — a void arriving in
+/// that window (app crash, sync replay, cashier abort) must not leave a
+/// ghost ticket cooking on the board. Drives the real checkout path so
+/// the sale is genuinely 'pending' in the DB with deduction_locations set.
+#[test]
+fn void_pending_sale_cancels_kds_tickets_in_ghost_window() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+
+    // Real checkout: sale lands 'pending', stock deducted from the
+    // canonical default location (create_product seeded it).
+    let default_loc = crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID;
+    let splits = vec![crate::PaymentSplitArg {
+        method: "cash".into(),
+        amount_minor: 500,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    }];
+    s.complete_sale_deduction_with_locations(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from(default_loc)],
+        &splits,
+        "cashier-1",
+        None,
+        &[],
+    )
+    .unwrap();
+
+    // Ghost-window ticket: created after checkout, before finalize.
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+
+    s.void_pending_sale(&sale.id).unwrap();
+
+    let after = s.get_kds_order(&ticket.id).unwrap().unwrap();
+    assert_eq!(
+        after.status, "cancelled",
+        "voiding a pending sale must cancel its ghost-window kitchen ticket"
+    );
+    let lines = s.get_kds_order_lines(&ticket.id).unwrap();
+    assert!(
+        lines.iter().all(|l| l.item_status == "cancelled"),
+        "the cancelled ghost ticket's line items follow to 'cancelled'"
+    );
+}
