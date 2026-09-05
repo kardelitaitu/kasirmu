@@ -57,6 +57,20 @@ export function secondsUntilExpiry(tokenExpiry: string, now: number = Date.now()
   return Math.max(0, Math.floor((new Date(tokenExpiry).getTime() - now) / 1000));
 }
 
+/**
+ * Whether the "Done" button in the QR/error step should fire onEnrolled.
+ * Fires only when we're still on the QR step and an enrolled device exists —
+ * i.e. the operator reached the QR screen and is leaving by choice, not
+ * abandoning after a generation failure (error step) or without a device.
+ * Exported for testing.
+ */
+export function shouldFireOnEnrolledOnDone(
+  step: EnrollmentStep,
+  enrolledDevice: KdsDevice | null,
+): boolean {
+  return step === 'qr' && enrolledDevice != null;
+}
+
 export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   sessionToken,
   restaurantPosId,
