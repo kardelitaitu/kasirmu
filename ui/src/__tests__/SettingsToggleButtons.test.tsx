@@ -47,6 +47,14 @@ const mockSetHwAccelEnabled = vi.fn();
 
 vi.mock('@/api/branding', () => ({
   getBrandSettings: () => mockGetBrandSettings(),
+  // 5e7ee83e switched AppearanceSettings.tsx:83 to the scoped command but left this mock
+  // without the export, so the suite failed with "No getBrandSettingsScoped export is defined
+  // on the @/api/branding mock" -- a hard error rather than an assertion failure, which means
+  // the scoped branch cannot be exercised at all. Same defect as WeightScaleWidget (65971d0f),
+  // useBarcodeScanner (0b7f9e18), ScaleIndicator (29bb5586) and useWarehouseScanner (0b7f9e18's
+  // twin): a scoped twin added to a component without being added to the mocks that render it.
+  // Delegates to the same fn so a test asserting either path sees one value.
+  getBrandSettingsScoped: (token: string) => mockGetBrandSettings(token),
   setBrandPrimaryColour: vi.fn().mockResolvedValue(undefined),
   setBrandLogoPath: vi.fn().mockResolvedValue(undefined),
   setBrandStoreName: vi.fn().mockResolvedValue(undefined),
