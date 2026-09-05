@@ -3514,3 +3514,78 @@ fn void_pending_sale_cancels_kds_tickets_in_ghost_window() {
         "the cancelled ghost ticket's line items follow to 'cancelled'"
     );
 }
+
+/// TODO 1b: the fanout stamps each kitchen ticket with the dining table
+/// currently bound to the sale (`tables.active_sale_id`), so the KDS
+/// board can show "Table 4" instead of a bare ticket id. No test pinned
+/// this: a regression that drops the lookup would silently strip the
+/// table name from every zoned ticket. Pins both halves — the stamp
+/// lands when a table is assigned, and stays None when none is.
+#[test]
+fn kds_fanout_stamps_table_number_from_assigned_table() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let table = s
+        .create_table(&crate::Table {
+            id: "tbl-ghost-1".into(),
+            name: "Table 4".into(),
+            capacity: 4,
+            pos_x: 10.0,
+            pos_y: 20.0,
+            shape: "circle".into(),
+            width: 10.0,
+            height: 10.0,
+            status: "available".into(),
+            active_sale_id: None,
+            section: "Main".into(),
+            active: true,
+            sort_order: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+        })
+        .unwrap();
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    s.assign_table_order(&table.id, &sale.id).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        ticket.table_number.as_deref(),
+        Some("Table 4"),
+        "ticket must carry the assigned table's name"
+    );
+}
+
+/// The None half: a takeaway sale with no table assignment must produce
+/// tickets with no table_number (NOT an empty string or a stale name).
+#[test]
+fn kds_fanout_leaves_table_number_none_without_table() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        ticket.table_number, None,
+        "no assigned table → no table name on the ticket"
+    );
+}
