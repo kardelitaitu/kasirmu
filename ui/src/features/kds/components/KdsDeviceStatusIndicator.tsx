@@ -106,6 +106,7 @@ export const KdsDeviceStatusIndicator = memo(
           className="kds-device-enroll-btn"
           onClick={onEnrollDevice}
           aria-label={requiredLocalized(l10n, 'kds-device-enroll-aria')}
+          data-testid="kds-device-status-enroll"
         >
           <Localized id="kds-device-enroll">Enroll device</Localized>
         </button>
@@ -130,6 +131,7 @@ export const KdsDeviceStatusIndicator = memo(
           onEnrollDevice();
         }}
         aria-label={requiredLocalized(l10n, 'kds-device-enroll-aria')}
+        data-testid="kds-device-status-enroll"
       >
         <Localized id="kds-device-enroll">Enroll device</Localized>
       </button>
@@ -145,6 +147,7 @@ export const KdsDeviceStatusIndicator = memo(
             connected: String(connectedCount),
             total: String(totalCount),
           })}
+          data-testid="kds-device-status-toggle"
         >
           <span className="kds-device-status-dot" aria-hidden="true" />
           <span className="kds-device-status-count">
