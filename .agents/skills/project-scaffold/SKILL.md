@@ -30,7 +30,7 @@ OZ-POS is a multi-crate Cargo workspace with a Tauri front-end, a strict style p
 |---|------|-----|
 | 1 | **Work on the currently active branch. Never create or switch branches** unless the user explicitly orders it. | Repo policy (AGENTS.md). When a branch name is genuinely requested, use `feat/<name>`, `fix/<name>`, `docs/<name>`, `chore/<name>`, `test/<name>`, `refactor/<name>`. |
 | 2 | **Commit messages follow Conventional Commits.** | Auto-generated changelogs, semantic versioning. |
-| 3 | **PRs pass CI before merge.** | The `dev-ci.yml` gates: website check, cargo check, cargo nextest, UI tests. |
+| 3 | **PRs pass CI before merge.** | `dev-ci.yml`'s **ten** jobs: `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. Derive rather than restate: `awk '/^jobs:/{f=1;next} /^[^[:space:]]/{f=0} f && /^  [a-z][a-z0-9_-]*:$/{gsub(/[: ]/,"");print}' .github/workflows/dev-ci.yml`. **Do not use a bare two-space key grep** — it also returns `pull_request`, `workflow_dispatch` and `run` as if they were jobs, because the `on:` block is indented the same way. This cell listed four and went stale as the rest were restored; `ci-docs-drift` is advisory and `northflank-deploy` does **not** depend on it. |
 | 4 | **Never commit `.env`, secrets, or SQLite database files.** | PCI-DSS, basic hygiene. |
 | 5 | **One crate per `oz-*` responsibility.** | Compile-time boundaries, fast incremental builds. |
 
@@ -259,7 +259,7 @@ Jobs (all on `ubuntu-latest`, Node pinned to **24**):
 | `cargo-check` | Installs Tauri's Linux system libs, creates the frontend build-output stubs (the `ui` dist folders) for the Tauri macro, then `cargo check --workspace --all-targets --all-features` with sccache + Swatinem/rust-cache. |
 | `cargo-nextest` | Same environment plus a `postgres:17-alpine` service (`OZ_TEST_PG_URL`), then `cargo nextest run --workspace --all-features`. |
 | `ui-test` | `ui/` npm ci → `npm test` (Vitest suite). |
-| `northflank-deploy` | Needs all four jobs; on `main` or `0.0.*` pushes / dispatch, triggers the Northflank cloud build via its API (skips gracefully without `NORTHFLANK_API_TOKEN`). |
+| `northflank-deploy` | Needs **seven** jobs — `changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates` — so it excludes `ci-docs-drift` (advisory by design) and `release-readiness` (unexplained; see `docs/plans/0.0.36-backlog.md`). Triggers on **`workflow_dispatch` only in practice**: the `if:` at `dev-ci.yml:653` still carries a `github.event_name == 'push'` branch, but the workflow has no push trigger, so that half is dead code the file's own comment at L647 admits to. Calls the Northflank API; skips gracefully without `NORTHFLANK_API_TOKEN`. |
 
 **Rules:**
 - `RUSTFLAGS: -D warnings` means warnings fail the workflow even where no explicit clippy job runs.
