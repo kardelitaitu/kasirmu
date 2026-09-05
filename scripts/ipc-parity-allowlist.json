@@ -183,7 +183,6 @@
     "edc_terminal_status_scoped",
     "enqueue_offline_scoped",
     "get_active_cart_scoped",
-    "get_cart_deduction_location_scoped",
     "get_device_id_scoped",
     "get_hardware_fingerprint_scoped",
     "get_key_rotation_info_scoped",

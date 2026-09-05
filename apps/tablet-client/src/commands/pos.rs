@@ -560,9 +560,26 @@ pub async fn get_cart_deduction_location(
     state: State<'_, AppState>,
 ) -> Result<Option<DeductionLocationInfo>, AppError> {
     let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.get_active_cart_deduction_location_info(&cart_id)?;
-    drop(db);
+    run_get_cart_deduction_location(&db, &cart_id)
+}
+
+/// Shared body for the ambient and session-scoped variants above.
+///
+/// Extracted to match this file's existing `run_*` convention (see
+/// `run_override_cart_deduction_location`), so the two variants cannot drift apart. Note that the
+/// store getter takes only a `cart_id` -- there is no ownership parameter to pass -- so the scoped
+/// variant's added value is authenticating the session, exactly as every other ADR #7 pair here
+/// does, and as `desktop-client`'s `get_cart_deduction_location_scoped` already does.
+fn run_get_cart_deduction_location(
+    db: &rusqlite::Connection,
+    cart_id: &CartId,
+) -> Result<Option<DeductionLocationInfo>, AppError> {
+    let store = Store::new(db);
+    let result = store.get_active_cart_deduction_location_info(cart_id)?;
+    // No `drop(db)` here, unlike the inline original: `db` is a borrow of the caller's MutexGuard,
+    // so dropping it is a no-op that rustc warns about. The lock is released when the caller's
+    // guard goes out of scope, and the mapping below touches no DB state, so holding it a few
+    // instructions longer is immaterial.
     Ok(
         result.map(|(loc_id, loc_name, overridden_at)| DeductionLocationInfo {
             location_id: loc_id,
@@ -570,6 +587,22 @@ pub async fn get_cart_deduction_location(
             overridden_at,
         }),
     )
+}
+
+/// Scoped variant of `get_cart_deduction_location` (ADR #7).
+///
+/// `desktop-client` has registered this command since the ADR #7 sweep; tablet never did, and the
+/// UI invokes the ambient name, which desktop never registered -- so the two shells exposed
+/// opposite halves of the same pair and the call threw on desktop. This closes that half.
+#[command]
+pub async fn get_cart_deduction_location_scoped(
+    session_token: String,
+    cart_id: CartId,
+    state: State<'_, AppState>,
+) -> Result<Option<DeductionLocationInfo>, AppError> {
+    let _session = state.resolve_session(&session_token)?;
+    let db = state.db.lock().await;
+    run_get_cart_deduction_location(&db, &cart_id)
 }
 
 // ── Override Deduction Location ───────────────────────────────────────

@@ -34,6 +34,7 @@ import {
   deleteHeldCartScoped,
   startSaleScoped,
   getCartDeductionLocation,
+  getCartDeductionLocationScoped,
   type HeldCartRow,
 } from '@/api/sales';
 import { getReceiptSettingsScoped } from '@/api/settings';
@@ -596,10 +597,23 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       setCartId(newCartId);
       deductionLocationIdRef.current = locId ?? null;
       if (locId) {
-        // Fetch the real location name from the backend
-        const info = await getCartDeductionLocation(newCartId);
-        setDeductionLocationName(info?.locationName ?? locId);
-        if (info?.overriddenAt) setDeductionOverridden(true);
+        // Fetch the real location name from the backend. Scoped per ADR #7: the ambient
+        // get_cart_deduction_location is registered by tablet only, so on desktop this call threw
+        // "command not found" -- and the outer catch then reported it as a cart-creation failure
+        // even though startSaleScoped had already succeeded and setCartId had already run.
+        //
+        // So the lookup now has its own guard. It resolves display metadata only; the fallback at
+        // `?? locId` below is the degradation this code always intended, and it can only happen if
+        // the name was never fetched. A cart that exists must be returned as existing.
+        try {
+          const info = sessionToken
+            ? await getCartDeductionLocationScoped(sessionToken, newCartId)
+            : await getCartDeductionLocation(newCartId);
+          setDeductionLocationName(info?.locationName ?? locId);
+          if (info?.overriddenAt) setDeductionOverridden(true);
+        } catch {
+          setDeductionLocationName(locId);
+        }
       } else {
         setDeductionLocationName(null);
       }

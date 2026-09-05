@@ -394,3 +394,37 @@ fn add_line_scoped_rejects_cross_currency_line() {
         "error must mention the currency mismatch, got: {err}"
     );
 }
+
+/// ADR #7: the scoped deduction-location lookup must authenticate, not merely accept a token
+/// argument. `add_line_scoped` once resolved its session into an unused `_session` and shipped a
+/// silent authorization gap -- the regression documented by
+/// `add_line_scoped_rejects_user_without_sales_process` above -- so at the call site a scoped
+/// command that ignores its token is indistinguishable from one that checks it.
+///
+/// `resolve_session` already has its own tests, so this does not re-prove the resolver; it proves
+/// the command actually calls it before touching the store. That is the property a reader cannot
+/// infer from `let _session = ...`, and the reason this test reaches through
+/// `tauri::test::mock_builder` (the pattern `analytics_tests.rs` establishes) instead of testing a
+/// `run_*` helper like the cases above: the authentication lives in the wrapper, not the helper.
+#[tokio::test]
+async fn get_cart_deduction_location_scoped_rejects_invalid_token() {
+    // Imported here rather than at the top of the file: `.state()` on the built app comes from the
+    // Manager trait, and the other 20-odd cases here are synchronous `run_*` tests that never need
+    // it. analytics_tests.rs brings it in file-wide because every case there builds an app.
+    use tauri::Manager as _;
+
+    let conn = fresh_conn();
+    let cart_id = seed_active_cart(&conn);
+    let state = AppState::for_test_with_conn(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result =
+        get_cart_deduction_location_scoped("never-minted-token".into(), cart_id, app.state()).await;
+    assert!(
+        matches!(result, Err(AppError::InvalidSession)),
+        "an unauthenticated call must not reach the store, got: {result:?}",
+    );
+}

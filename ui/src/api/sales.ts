@@ -117,6 +117,20 @@ export interface DeductionLocationInfo {
 export const getCartDeductionLocation = (cartId: string): Promise<DeductionLocationInfo | null> =>
   loggedInvoke<DeductionLocationInfo | null>('get_cart_deduction_location', { cartId });
 
+/**
+ * ADR #7: Get the deduction location info for a cart in the store resolved from a session token.
+ *
+ * Registered by BOTH shells as of this writing -- `desktop-client` has had it since the ADR #7
+ * sweep and `tablet-client` gained it alongside this wrapper. The ambient `get_cart_deduction_location`
+ * above is registered by tablet only, so calling it from the desktop shell throws "command not
+ * found"; that asymmetry is what this wrapper exists to route around.
+ */
+export const getCartDeductionLocationScoped = (
+  sessionToken: string,
+  cartId: string,
+): Promise<DeductionLocationInfo | null> =>
+  loggedInvoke<DeductionLocationInfo | null>('get_cart_deduction_location_scoped', { sessionToken, cartId });
+
 /** ADR #7: Add a line to a cart in the store resolved from a session token. */
 export const addLineScoped = (sessionToken: string, args: AddLineArgs): Promise<AddLineResult> =>
   loggedInvoke<AddLineResult>('add_line_scoped', { sessionToken, args });

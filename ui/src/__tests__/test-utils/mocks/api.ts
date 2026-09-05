@@ -30,6 +30,7 @@ export interface SalesApiOverrides {
   setCartDiscountScoped?: ReturnType<typeof vi.fn>;
   completeSaleScoped?: ReturnType<typeof vi.fn>;
   listSalesScoped?: ReturnType<typeof vi.fn>;
+  getCartDeductionLocationScoped?: ReturnType<typeof vi.fn>;
   getSaleScoped?: ReturnType<typeof vi.fn>;
   finalizeSaleScoped?: ReturnType<typeof vi.fn>;
   voidPendingSaleScoped?: ReturnType<typeof vi.fn>;
@@ -83,6 +84,10 @@ export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
     // silently changes the contract at the moment a test starts depending on it. Every other
     // *Scoped entry in this block mirrors its ambient twin; this was the lone divergence.
     listSalesScoped: vi.fn((_token: string) => Promise.resolve({ sales: [], salesHistoryCapped: false })),
+    // Twin of the ambient getCartDeductionLocation. PosScreen reads deduction-location metadata
+    // through this once it holds a session token; without an entry here the call resolves the
+    // factory's proxy-less undefined and the screen's fallback masks the omission.
+    getCartDeductionLocationScoped: vi.fn((_token: string, _cartId: string) => Promise.resolve(null)),
     getSaleScoped: vi.fn((_token: string, _id: string) => Promise.resolve(null)),
     finalizeSaleScoped: vi.fn((_token: string, _saleId: string) => Promise.resolve()),
     voidPendingSaleScoped: vi.fn((_token: string, _saleId: string) => Promise.resolve()),

@@ -419,6 +419,7 @@ pub fn run() {
                 commands::pos::override_line_price_scoped,
                 commands::pos::override_cart_deduction_location_scoped,
                 commands::pos::get_cart_deduction_location,
+                commands::pos::get_cart_deduction_location_scoped,
                 commands::pos::list_active_carts_scoped,
                 commands::pos::get_active_cart_scoped,
                 commands::pos::hold_cart_scoped,
