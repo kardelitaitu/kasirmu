@@ -134,18 +134,65 @@ def load_allowlist() -> dict:
 
 
 def write_allowlist(missing: dict[str, set[str]]) -> None:
-    payload = {
-        "_comment": (
-            "Known IPC registration gaps at gate introduction (F-008/F-050). "
-            "Entries are UI command strings not yet registered in that shell; "
-            "they shrink to zero as F-006 removes the dead surface. Stale "
-            "entries (command now registered) fail the gate."
-        ),
-    }
+    # Preserve any section this function does not own. It used to rebuild the whole
+    # payload, which meant running --write-allowlist silently deleted "scoped_orphans"
+    # and un-masked 22 commands as failures on an unrelated reseed.
+    payload = dict(load_allowlist())
+    payload.setdefault(
+        "_comment",
+        "Known IPC registration gaps at gate introduction (F-008/F-050). "
+        "Entries are UI command strings not yet registered in that shell; "
+        "they shrink to zero as F-006 removes the dead surface. Stale "
+        "entries (command now registered) fail the gate.",
+    )
     for shell in SHELLS:
         payload[shell] = sorted(missing.get(shell, set()))
     ALLOWLIST_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"allowlist written: {ALLOWLIST_PATH}")
+
+
+def write_scoped_orphans(orphans: set[str]) -> None:
+    """Seed/extend the scoped_orphans section, preserving everything else."""
+    payload = dict(load_allowlist())
+    existing = set(payload.get("scoped_orphans", []))
+    payload["scoped_orphans"] = sorted(existing | orphans)
+    payload.setdefault(
+        "_scoped_orphans_comment",
+        "Scoped commands registered in a shell's generate_handler! that no client "
+        "invokes, accepted as host-only. Each entry is a permission check that "
+        "currently guards nothing, so this list is a work queue, not a clean bill of "
+        "health. An entry that gains a caller fails the gate as stale.",
+    )
+    ALLOWLIST_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"scoped_orphans seeded: {len(payload['scoped_orphans'])} entries")
+
+
+def orphan_scoped(handlers: list[str], ui_commands: dict[str, dict]) -> list[str]:
+    """Scoped commands a shell registers but no client ever invokes.
+
+    This is the mirror image of the gap this gate enforces, and it is the one that
+    cost six rounds of manual audit in 0.0.36 (backlog item 46). The sweep kept
+    finding UI call sites that used an unscoped command while a `_scoped` twin with
+    a real permission check sat unused. The structural cause is that nothing asks
+    whether a registered scoped command is reachable at all: a command that no client
+    invokes is a permission check that guards nothing, and it reads as coverage while
+    contributing none. `renew_license_scoped`, `get_key_rotation_info_scoped` and
+    `rotate_encryption_key_scoped` were exactly that -- SECURITY_MANAGE and
+    SETTINGS_EDIT gates wired into `generate_handler!` with no caller anywhere, which
+    is how they were mistaken for live security posture for several rounds.
+
+    Scoped commands only, deliberately. The unscoped surface is legitimately reachable
+    from outside the UI (setup paths, host-side callers), and policing it would bury the
+    signal; `_scoped` names exist precisely because they are the session-authenticated
+    front-end entry point, so a UI-less one is an anomaly worth a decision.
+
+    A hit is not automatically a defect -- some are host-only by design -- which is why
+    this reports through the same dated-allowlist mechanism as the forward direction,
+    with the same stale-entry self-clean. The gate's job is to force the decision, not
+    to make it.
+    """
+    called = set(ui_commands)
+    return sorted(c for c in handlers if c.endswith("_scoped") and c not in called)
 
 
 def main() -> int:
@@ -154,6 +201,12 @@ def main() -> int:
         "--write-allowlist",
         action="store_true",
         help="seed/refresh the allowlist from the current gaps and exit",
+    )
+    parser.add_argument(
+        "--write-scoped-orphans",
+        action="store_true",
+        help="add current registered-but-uncalled scoped commands to "
+             "\"scoped_orphans\" in the allowlist, preserving other sections, and exit",
     )
     args = parser.parse_args()
 
@@ -178,6 +231,30 @@ def main() -> int:
 
     allowlist = load_allowlist()
     failures: list[str] = []
+
+    # Reverse direction: registered scoped commands with no caller.
+    orphan_allow = set(allowlist.get("scoped_orphans", []))
+    orphans: dict[str, list[str]] = {}
+    for shell in SHELLS:
+        orphans[shell] = orphan_scoped(handlers[shell], ui_commands)
+    all_orphans = sorted(set().union(*[set(v) for v in orphans.values()]))
+    if args.write_scoped_orphans:
+        write_scoped_orphans(set(all_orphans))
+        return 0
+
+    for command in sorted(set(all_orphans) - orphan_allow):
+        shells = ", ".join(s for s in SHELLS if command in orphans[s])
+        failures.append(
+            f"{shells}: registers scoped command '{command}' that no client invokes -- "
+            f"its permission check guards nothing. Wire a caller, or add it to "
+            f"{ALLOWLIST_PATH.name} \"scoped_orphans\" with a reason if it is host-only."
+        )
+    for command in sorted(orphan_allow - set(all_orphans)):
+        if command.endswith("_scoped"):
+            failures.append(
+                f"stale scoped_orphans entry '{command}' -- it now has a caller; "
+                f"remove it from {ALLOWLIST_PATH.name}"
+            )
 
     for shell in SHELLS:
         allowed = set(allowlist.get(shell, []))
