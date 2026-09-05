@@ -147,8 +147,8 @@ if [ -n "$STAGED_NORM" ]; then
 fi
 
 # ── i18n lint ──────────────────────────────────────────────────────────────
-# Runs the local i18n quality gate (mirrors `.github/workflows/ci.yml#ui
-# i18n quality gate`) on every commit so translation gaps and Fluent
+# Runs the local i18n quality gate (mirrors `.github/workflows/dev-ci.yml#i18n`)
+# on every commit so translation gaps and Fluent
 # key duplicates surface BEFORE reaching CI. ~1 second cost because
 # it targets `i18nBundle.test.tsx` only.
 if [ -f scripts/lint-i18n.sh ]; then
@@ -228,7 +228,7 @@ fi
 # New float columns require a justified whitelist entry in the script.
 # Runs only when the commit stages files under crates/oz-core/migrations/
 # (the script re-derives the staged set itself, ~50ms). CI runs the full
-# scan in complement (.github/workflows/ci.yml # migration-column-types).
+# scan in complement (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/verify-migration-column-types.py ]; then
     STAGED_MIG=$(git diff --cached --name-only --diff-filter=ACM -- 'crates/oz-core/migrations/*.sql' || true)
     if [ -n "$STAGED_MIG" ]; then
@@ -246,7 +246,7 @@ fi
 # registry, the generator, or the PG file itself re-derives the expected
 # output (~2s: two independent renders prove determinism); drift aborts
 # the commit. CI runs the same --check unconditionally
-# (.github/workflows/ci.yml # pg-schema-drift).
+# (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/generate-pg-migration.py ]; then
     STAGED_PG_TRIGGER=$(git diff --cached --name-only --diff-filter=ACM -- \
         'crates/oz-core/migrations/*.sql' 'crates/oz-core/src/migrations.rs' \
@@ -267,7 +267,7 @@ fi
 # everywhere), so gofmt -l is reliable here; auto-fixing with
 # `gofmt -w` still re-stages real formatting changes. CI runs the
 # strict `gofmt -l` check on its LF checkout
-# (`.github/workflows/ci.yml` # go job).
+# (`.github/workflows/dev-ci.yml` # static-gates).
 STAGED_GO=$(git diff --cached --name-only -- 'apps/license-server/*.go')
 if [ -n "$STAGED_GO" ]; then
     if ! command -v go >/dev/null 2>&1 || ! command -v gofmt >/dev/null 2>&1; then

@@ -317,6 +317,51 @@ def hook_step_orphans(gates: list[dict]) -> list[str]:
     return orphans
 
 
+def hook_workflow_pointers_from_text(text: str, live: set[str]) -> list[str]:
+    """Hook comments that cite a workflow GitHub does not actually run.
+
+    The pre-commit hook says things like "mirrors
+    `.github/workflows/ci.yml#ui i18n quality gate`" to tell an agent that a local
+    step has a CI backstop. When a workflow is retired -- and on this branch nine of
+    them were, renamed to `.bak` by `23c96330` with no replacement for several -- the
+    citation outlives the file and starts asserting the opposite of the truth.
+
+    That is not a cosmetic problem, because the hook is precisely where an agent
+    looks to answer "is this gate enforced anywhere?". A pointer at a file that only
+    exists as `.bak` reads as "enforced nowhere", which is how several rounds of
+    0.0.36-backlog were spent re-verifying coverage that was in fact present in
+    `dev-ci.yml` the whole time. The inverse failure is worse: an agent who greps for
+    the cited name, finds only `.bak`, and stops looking may conclude the *hook step*
+    itself is unbacked and skip reasoning about it.
+
+    So the rule is narrow and mechanical: every `.github/workflows/<name>.yml` the
+    hook mentions must be a live workflow file. `live` is deliberately built from a
+    `*.yml` glob by the caller rather than from a directory listing, because
+    `<name>.yml.bak` exists on disk and GitHub never executes it -- treating the
+    directory as the truth would let every retired workflow pass this check, which is
+    the exact bug being caught.
+    """
+    findings: set[str] = set()
+    for m in re.finditer(r"\.github/workflows/([A-Za-z0-9_.-]+)\.yml", text):
+        name = f"{m.group(1)}.yml"
+        if name in live:
+            continue
+        line = text[:m.start()].count("\n") + 1
+        findings.add(
+            f"hook L{line}: cites .github/workflows/{name} "
+            f"(not a live workflow -- only {', '.join(sorted(live)) or 'nothing'} is)")
+    return sorted(findings)
+
+
+def hook_workflow_pointers() -> list[str]:
+    """Real-path wrapper over hook_workflow_pointers_from_text()."""
+    if not PRE_COMMIT_HOOK.is_file():
+        return []
+    live = {p.name for p in (ROOT / ".github" / "workflows").glob("*.yml")}
+    return hook_workflow_pointers_from_text(
+        PRE_COMMIT_HOOK.read_text(encoding="utf-8", errors="replace"), live)
+
+
 def looks_like_actions_workflow(path: Path) -> tuple[bool, str]:
     """Can GitHub actually run this file?
 
@@ -557,6 +602,26 @@ def self_test() -> int:
         check("an empty manifest orphans every scripted step",
               len(hook_step_orphans([])) > 0, True)
 
+        print("\n  hook_workflow_pointers_from_text")
+        # A citation of a workflow that is not live must surface...
+        stale = hook_workflow_pointers_from_text(
+            "# mirrors `.github/workflows/ci.yml#ui i18n gate`\n", {"dev-ci.yml"})
+        check("a citation of a retired workflow is reported",
+              len(stale), 1)
+        check("  ... and names the file it points at",
+              any("ci.yml" in s for s in stale), True)
+        # ...but the detector must not simply be always-on: the same prose about a
+        # live workflow is correct and has to stay silent.
+        check("a citation of a live workflow is not reported",
+              hook_workflow_pointers_from_text(
+                  "# see `.github/workflows/dev-ci.yml#static-gates`\n",
+                  {"dev-ci.yml"}), [])
+        # A `.bak` sitting beside the name is the exact trap: the file exists on disk
+        # but GitHub never runs it, so glob("*.yml") must be the live set.
+        check("a workflow only present as .bak counts as not live",
+              len(hook_workflow_pointers_from_text(
+                  "x .github/workflows/nightly.yml y", {"dev-ci.yml"})), 1)
+
     print()
     if failed:
         print(f"  {len(failed)} self-test case(s) FAILED:")
@@ -793,6 +858,8 @@ def main() -> int:
     )
     # Hook steps with no manifest record at all -- the blind spot, not a lie.
     orphans = hook_step_orphans(gates)
+    # Hook prose pointing at a workflow GitHub never runs.
+    pointers = hook_workflow_pointers()
 
     # ── 3. Gate vocabulary: manifest → runners ──────────────────────
     sh_gates = check_sh_gates(CHECK_SH) if CHECK_SH.is_file() else set()
@@ -1070,6 +1137,21 @@ def main() -> int:
         for o in orphans:
             print(f"    {o}")
         print()
+    if pointers:
+        print(
+            f"  HOOK COMMENTS CITING A DEAD WORKFLOW — {len(pointers)}:\n"
+            "    These comments exist to tell an agent that a local step has a CI\n"
+            "    backstop. When the cited workflow is retired the claim inverts: the\n"
+            "    gate looks enforced nowhere even when dev-ci.yml runs it today, and\n"
+            "    the reverse reading is worse -- an agent that greps the cited name,\n"
+            "    finds only a .bak, and stops looking may conclude the hook step is\n"
+            "    unbacked and skip reasoning about it entirely. Several rounds of the\n"
+            "    0.0.36 backlog went to re-verifying coverage that was present all\n"
+            "    along, because of exactly this kind of stale pointer."
+        )
+        for p in pointers:
+            print(f"    {p}")
+        print()
     if misplaced:
         print(
             f"  NON-ACTIONS CONFIGS IN .github/workflows/ — {len(misplaced)}:\n"
@@ -1150,6 +1232,10 @@ def main() -> int:
         # previously express at all, so leaving it informational would restore the
         # blind spot under a heading that says "informational".
         + len(orphans)
+        # Blocking for the same reason as orphans: a wrong pointer is not a stale
+        # comment, it is a claim about enforcement that is now false, and this file's
+        # whole purpose is that such claims be checkable rather than remembered.
+        + len(pointers)
         # Escalated from informational to blocking. It was informational while it
         # compared against ci.yml's jobs, i.e. while it could never find anything;
         # pointed at the live workflows it immediately found four undocumented
