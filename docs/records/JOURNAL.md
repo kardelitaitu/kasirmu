@@ -1,5 +1,35 @@
 
 
+## 2026-09-04 — TDD round AC: EDC card-present wrappers never sent the session token (ui)
+
+**Problem (second real bug of the loop):** Contract-coverage grep —
+every `ui/src/api/*.ts` had a `api-<domain>-contract.test.ts` except
+nine; eight are stubs or niche, but `edc.ts` is the card-present
+PAYMENT surface and had zero coverage. Reading it against its Rust
+side (apps/desktop-client/src/commands/edc.rs) exposed a latent
+contract mismatch: `edc_sale`/`edc_refund`/`edc_void` REQUIRE a
+`session_token` and enforce SALES_PROCESS / SALES_REFUND / SALES_VOID,
+but the three UI wrappers sent no token — every card tender would have
+died at Tauri arg deserialization (missing required arg), not at the
+terminal or permission layer. Latent, not live: verified zero importers
+of edcSale/edcRefund/edcVoid in ui/src (grep; the EDC audit header
+itself noted "Nothing in ui/ imports edcSale yet"). The pre-audit
+history matters: this surface once returned fake approvals from a
+mock field — fail-closed culture demands the client half match the
+server half exactly.
+
+**Solution:** RED first: `api-edc-contract.test.ts` (4 pins) — three
+failed for the real reason (no sessionToken in the invoke args), one
+taught me the mock-shape convention (a wrapper omitting `args` passes
+1 arg, not 2 — fixed the over-specified status expectation). GREEN:
+added `sessionToken` as the first parameter of edcSale/edcRefund/
+edcVoid with JSDoc naming the enforced permission per command. tsc
+clean project-wide, eslint clean on both files.
+
+**Commits:** bb1221cd (fix + contract pins).
+**Test counts:** UI contract tests +1 file / +4 pins (4 green);
+typecheck + lint clean. oz-core untouched this round.
+
 ## 2026-09-04 — TDD round AB: void of imported pending sales blocked on NULL deduction_locations (oz-core)
 
 **Problem (first real Red→Green bug of the loop):** The round-X
