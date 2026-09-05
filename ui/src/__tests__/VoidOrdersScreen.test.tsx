@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
@@ -8,6 +8,12 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 vi.mock('@/api/sales', () => ({
   listSales: vi.fn(),
   getSale: vi.fn(),
+  // Present so a test can assert they are chosen. The screen never called these, which is the
+  // defect: the mock originally listed only the ambient pair plus voidSaleScoped, so the file
+  // itself encoded "writes are scoped, reads are not" and any scoped read would have crashed
+  // the suite with "not a function" rather than revealing the omission.
+  listSalesScoped: vi.fn(),
+  getSaleScoped: vi.fn(),
   voidSaleScoped: vi.fn(),
 }));
 
@@ -22,10 +28,12 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 }));
 
 import VoidOrdersScreen from '@/features/sales/VoidOrdersScreen';
-import { listSales, getSale, voidSaleScoped } from '@/api/sales';
+import { listSales, getSale, listSalesScoped, getSaleScoped, voidSaleScoped } from '@/api/sales';
 
 const mockListSales = listSales as ReturnType<typeof vi.fn>;
 const mockGetSale = getSale as ReturnType<typeof vi.fn>;
+const mockListSalesScoped = listSalesScoped as ReturnType<typeof vi.fn>;
+const mockGetSaleScoped = getSaleScoped as ReturnType<typeof vi.fn>;
 const mockVoidSale = voidSaleScoped as ReturnType<typeof vi.fn>;
 
 
@@ -64,13 +72,13 @@ const sampleDetail = {
 
 describe('VoidOrdersScreen', () => {
   it('renders the list view with title', async () => {
-    mockListSales.mockResolvedValue({ sales: [], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     expect(screen.getByText('Orders')).toBeInTheDocument();
   });
 
   it('renders loading skeleton initially', async () => {
-    mockListSales.mockReturnValue(new Promise(() => {}));
+    mockListSalesScoped.mockReturnValue(new Promise(() => {}));
     const { container } = await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     const skeleton = container.querySelector('.void-orders-loading-skeleton');
     expect(skeleton).toBeInTheDocument();
@@ -78,7 +86,7 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('renders empty state when no orders', async () => {
-    mockListSales.mockResolvedValue({ sales: [], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/No orders recorded yet/i)).toBeInTheDocument();
@@ -86,7 +94,7 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('renders orders in the list', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
@@ -96,7 +104,7 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('renders the status filter chips', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText('All')).toBeInTheDocument();
@@ -108,7 +116,7 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('filters orders by status', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
@@ -122,8 +130,8 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('opens detail view when View is clicked', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
@@ -139,8 +147,8 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('shows void section for Active orders in detail view', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
@@ -155,8 +163,8 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('renders the void reason select', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
@@ -171,8 +179,8 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('disables Confirm Void button until a reason is selected', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
@@ -188,8 +196,8 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('calls voidSale when Confirm Void is clicked with a reason', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockVoidSale.mockResolvedValue({});
     const user = userEvent.setup();
 
@@ -222,8 +230,8 @@ describe('VoidOrdersScreen', () => {
   });
 
   it('shows error when void fails', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockVoidSale.mockRejectedValue(new Error('Network error'));
     const user = userEvent.setup();
 
@@ -247,6 +255,75 @@ describe('VoidOrdersScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Failed to void order')).toBeInTheDocument();
+    });
+  });
+
+  // ADR #7 says a screen holding a session token must read through the scoped command, so the
+  // store is resolved from the session rather than from whatever the ambient singleton happens
+  // to point at. VoidOrdersScreen wrote through voidSaleScoped but read through listSales and
+  // getSale, so in a multi-workspace session the cashier could act as one store and see another.
+  // These three cases pin the read side to the same rule the write side already follows.
+  describe('ADR #7: reads are session-scoped when a workspace token exists', () => {
+    beforeEach(() => {
+      // The file has no global mock reset, and mockResolvedValue accumulates across cases, so
+      // call history must be cleared here or "was not called" assertions inherit the prior test.
+      mockListSales.mockClear();
+      mockGetSale.mockClear();
+      mockListSalesScoped.mockClear();
+      mockGetSaleScoped.mockClear();
+    });
+
+    it('lists orders through list_sales_scoped, not the ambient list_sales', async () => {
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1');
+      });
+      expect(mockListSales).not.toHaveBeenCalled();
+    });
+
+    it('loads sale detail through get_sale_scoped when opened with an initial id', async () => {
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockGetSaleScoped.mockResolvedValue(sampleDetail);
+      await renderWithFluent(<VoidOrdersScreen initialSaleId="ORD-001" />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(mockGetSaleScoped).toHaveBeenCalledWith('session-1', 'ORD-001');
+      });
+      expect(mockGetSale).not.toHaveBeenCalled();
+    });
+
+    it('refreshes detail through the scoped command after a void', async () => {
+      const user = userEvent.setup();
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      // Must be an ACTIVE order: the void form only renders for one, so seeding the post-void
+      // 'Voided' status here left no Cancel button to find. The status change is the void's
+      // consequence, not its precondition.
+      mockGetSaleScoped.mockResolvedValue(sampleDetail);
+      mockVoidSale.mockResolvedValue({});
+
+      // Same route the existing void test uses: list -> View -> reason -> Confirm Void. The
+      // first attempt rendered with initialSaleId and looked for a "void order" button, which
+      // is not in that view; the guard there caught that before it could pass vacuously.
+      await renderWithFluent(<VoidOrdersScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByText(/ORD-001/)).toBeInTheDocument();
+      });
+      const viewBtns = screen.getAllByRole('button', { name: /^view/i });
+      await user.click(viewBtns[0]!);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
+      });
+
+      mockGetSaleScoped.mockClear();
+      mockGetSale.mockClear();
+
+      await user.selectOptions(screen.getByDisplayValue(/Select a reason/i), 'cancelled-by-customer');
+      await user.click(screen.getByRole('button', { name: /confirm void/i }));
+
+      await waitFor(() => {
+        expect(mockGetSaleScoped).toHaveBeenCalledWith('session-1', 'ORD-001');
+      });
+      expect(mockGetSale).not.toHaveBeenCalled();
     });
   });
 });

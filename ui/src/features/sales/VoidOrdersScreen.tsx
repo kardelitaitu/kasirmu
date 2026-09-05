@@ -4,6 +4,8 @@ import { Localized } from '@/frontend/shared/Localized';
 import {
   listSales,
   getSale,
+  listSalesScoped,
+  getSaleScoped,
   voidSaleScoped,
   type SaleListItem,
   type SaleDetail,
@@ -103,14 +105,19 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
     setLoading(true);
     setError(null);
     try {
-      const { sales: items } = await listSales();
+      // ADR #7: with a workspace session, read through the session's store. This screen already
+      // voided through voidSaleScoped, so before this the write and the read could resolve to
+      // different stores -- the cashier acted as one workspace and saw another's order list.
+      const { sales: items } = sessionToken
+        ? await listSalesScoped(sessionToken)
+        : await listSales();
       setSales(items);
     } catch (err) {
       setError(l10nErrorMessage(err, l10n, 'void-orders-error-load'));
     } finally {
       setLoading(false);
     }
-  }, [l10n]);
+  }, [l10n, sessionToken]);
 
   useEffect(() => { loadSales(); }, [loadSales]);
 
@@ -124,7 +131,12 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
     setDetailLoading(true);
     (async () => {
       try {
-        const sale = await getSale(activeSaleId);
+        // ADR #7, same reason as loadSales. sessionToken joins the deps so a workspace switch
+        // re-reads the detail from the newly-resolved store instead of leaving the old one on
+        // screen -- without it the effect would keep showing a sale from the previous workspace.
+        const sale = sessionToken
+          ? await getSaleScoped(sessionToken, activeSaleId)
+          : await getSale(activeSaleId);
         if (!cancelled) setDetail(sale);
       } catch {
         if (!cancelled) setDetail(null);
@@ -133,7 +145,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       }
     })();
     return () => { cancelled = true; };
-  }, [activeSaleId]);
+  }, [activeSaleId, sessionToken]);
 
   // ── Open initial sale if provided ────────────────────────────────
 
@@ -189,23 +201,30 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
       setVoidError(null);
       setVoidReason('');
       setCustomReason('');
-      // Refresh just the detail without a full list reload to avoid flicker.
-      const updated = await getSale(activeSaleId);
+      // Refresh just the detail without a full list reload to avoid flicker. Scoped, so the
+      // row the cashier just voided is re-read from the same store the void was written to.
+      const updated = sessionToken
+        ? await getSaleScoped(sessionToken, activeSaleId)
+        : await getSale(activeSaleId);
       if (updated) setDetail(updated);
     } catch (err) {
       setVoidError(l10nErrorMessage(err, l10n, 'void-orders-error-void'));
     } finally {
       setVoiding(false);
     }
-    // sessionToken is read at :189 and was missing; session?.user_id was listed but is never
-    // read anywhere in this body, so it is dropped -- eslint only reported the missing token
-    // until the token was added, because the rule surfaces one problem per hook. Same shape as
-    // SalesHistoryScreen.handleConfirmVoid, and the same audit-trail consequence: a void
-    // presented under a stale session is recorded against the wrong cashier.
+    // sessionToken is read by the voidSaleScoped call above and was missing from these deps;
+    // session?.user_id was listed but is never read anywhere in this body, so it is dropped --
+    // eslint only reported the missing token until the token was added, because the rule
+    // surfaces one problem per hook. Same shape as SalesHistoryScreen.handleConfirmVoid, and
+    // the same audit-trail consequence: a void presented under a stale session is recorded
+    // against the wrong cashier.
     //
-    // Separate gap, deliberately not touched here: :195 calls the UNSCOPED getSale() from a
-    // screen that otherwise routes through the scoped API, so it reads the ambient store rather
-    // than the session's. That is an ADR #7 omission, not a stale closure.
+    // The gap this comment used to leave open -- the post-void refresh calling the UNSCOPED
+    // getSale() while the write beside it was scoped -- is closed: reads now follow ADR #7 in
+    // loadSales, the detail effect, and here. It understated the problem too, describing one
+    // unscoped call when the screen had three (list, initial detail, refresh), so the write
+    // was scoped while everything the cashier could see came from the ambient store.
+    // Line numbers are deliberately not cited: they had already drifted by six.
   }, [activeSaleId, detail, voidReason, customReason, l10n, sessionToken]);
 
 
