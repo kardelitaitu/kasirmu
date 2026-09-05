@@ -3379,6 +3379,37 @@ function hasTauriInternals(): boolean {
   }
 }
 
+// ── General scoped aliasing ───────────────────────────────────────
+//
+// SCOPED_ALIASES above is a hand-maintained list and it had fallen 115 entries behind:
+// the ADR #7 migration moved the api layer to the `_scoped` spelling of commands while
+// the mock kept registering the unscoped names, so every scoped name outside the curated
+// list fell through to `return null` in invoke() below. That fails silently, not loudly —
+// the component swallows the null and the test still passes while asserting against the
+// failure path, which is the exact defect invokeCoverage.ts documents for hand-written
+// mock chains (R36-02). Measured on the tree: 217 calls across 4 commands were landing
+// there, including get_hardware_settings_scoped since 1fbcc8a0, so ~78 terminal-hardware
+// test invocations were exercising the catch-and-default branch while reading as if the
+// DTO had loaded.
+//
+// So alias by rule instead of by list: any registered command whose name does not already
+// end in `_scoped` gets a `_scoped` alias unless one is genuinely registered. This runs
+// here, after every registration in the file, so it sees the complete registry — the
+// curated loop above ran before the direct stubs and could not have.
+//
+// It deliberately does NOT invent handlers for names with no base: an unknown command
+// must still warn, because keeping the truly-unknown case loud is the whole point.
+for (const base of Object.keys(handlers)) {
+  if (base.endsWith('_scoped')) continue;
+  const scoped = `${base}_scoped`;
+  // Bound to a local: `handlers[base]` is `T | undefined` under noUncheckedIndexedAccess,
+  // and the guard below narrows `handlers[scoped]`, not this.
+  const twin = handlers[base];
+  if (twin !== undefined && handlers[scoped] === undefined) {
+    handlers[scoped] = twin;
+  }
+}
+
 /** Mock Tauri invoke — delegates to real IPC in a webview, else mock data. */
 export async function invoke<T>(
   cmd: string,
