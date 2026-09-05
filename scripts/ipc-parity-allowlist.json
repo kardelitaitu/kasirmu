@@ -189,7 +189,6 @@
     "get_local_ip_scoped",
     "get_machine_id_scoped",
     "list_active_carts_scoped",
-    "list_all_features_scoped",
     "list_pending_offline_scoped",
     "list_scale_devices_scoped",
     "list_warehouse_products_scoped",

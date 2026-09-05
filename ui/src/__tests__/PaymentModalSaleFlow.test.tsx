@@ -41,10 +41,12 @@ const { invokeMock } = vi.hoisted(() => ({
         return Promise.resolve({ lineId: 'test-line', lineTotal: null });
       case 'complete_sale':
         return Promise.resolve({ saleId: 'sale-1', total: null, lineCount: 1 });
-      case 'get_sale':
       // The screen reads the sale back through get_sale_scoped when a session token exists, and
-      // this file's WorkspaceContext mock always provides one, so the scoped command needs the
-      // same case as its ambient twin.
+      // this file's WorkspaceContext mock always provides one, so the scoped command needs the same
+      // case as its ambient twin. The comment sits ABOVE both labels: between them it makes the
+      // first case non-empty, which `no-fallthrough` reports as an error -- and it shipped that way,
+      // because the pre-commit hook runs ten steps and eslint is not one of them.
+      case 'get_sale':
       case 'get_sale_scoped':
         return Promise.resolve(null);
       case 'print_sales_receipt_scoped':

@@ -160,7 +160,7 @@ describe('FeatureToggleScreen', () => {
       expect(screen.getByText('POS Core')).toBeInTheDocument();
     });
     const loadCalls = mockInvoke.mock.calls.filter(
-      (c) => c[0] === 'list_all_features',
+      (c) => c[0] === 'list_all_features' || c[0] === 'list_all_features_scoped',
     );
     expect(loadCalls).toHaveLength(1);
   });
@@ -234,7 +234,11 @@ describe('FeatureToggleScreen', () => {
   function makeToggleMock() {
     const features = createFeatures();
     mockInvoke.mockImplementation((cmd: string, payload: { args: Record<string, unknown> }) => {
-      if (cmd === 'list_all_features') {
+      // Both names: the screen reads through list_all_features_scoped when a session token is
+      // present, and this mock models the backend, which now answers under two names for the same
+      // read. Matching only the ambient name left the scoped call unhandled and every test here
+      // rendered an empty list.
+      if (cmd === 'list_all_features' || cmd === 'list_all_features_scoped') {
         return Promise.resolve({ features: features.map((f) => ({ ...f })) });
       }
       if (cmd === 'set_feature') {

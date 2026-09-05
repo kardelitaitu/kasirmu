@@ -25,6 +25,16 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 // ── Mock useAuth ─────────────────────────────────────────────────
 
+// A session token has to be supplied for the ADR #7 case to be reachable: the screen reads
+// `const sessionToken = rawToken ?? ''` and an empty string is falsy, so without a provider the
+// conditional takes the ambient branch and the scoped path is never exercised. Mocking the context
+// rather than the api module keeps the real api/features.ts running, so the assertion below checks
+// the command name actually sent rather than a mock someone configured.
+vi.mock('@/contexts/WorkspaceContext', () => ({
+  useWorkspace: () => ({ sessionToken: 'session-1' }),
+  WorkspaceProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     session: { user_id: 'user-1', display_name: 'Admin', role_name: 'admin' },
@@ -420,5 +430,26 @@ describe('FeatureToggleScreen', () => {
 
     // Toggle should be disabled while in progress
     expect(disabledToggle!).toBeDisabled();
+  });
+
+  // ADR #7: this screen writes through set_feature / set_features_bulk, both of which take a
+  // sessionToken, while its read called the ambient list_all_features with none. So the flags a
+  // cashier saw came from the ambient store while the ones they toggled went to the session's --
+  // the same asymmetry item 65 tracks, and the reason list_all_features_scoped existed with zero
+  // production callers. Asserted at the invoke layer, so the real api/features.ts runs.
+  it('loads the feature list through list_all_features_scoped when a token exists', async () => {
+    mockInvoke.mockResolvedValue(sampleFeaturesResult);
+
+    await renderWithFluent(<ToastProvider><FeatureToggleScreen /></ToastProvider>, settingsFtl, sharedFtl);
+
+    await waitFor(() => {
+      const commands = mockInvoke.mock.calls.map((call) => call[0]);
+      expect(commands).toContain('list_all_features_scoped');
+    }, FAST_WAIT);
+    const commands = mockInvoke.mock.calls.map((call) => call[0]);
+    expect(commands).not.toContain('list_all_features');
+    // The token must actually travel, not just the command name.
+    const call = mockInvoke.mock.calls.find((c) => c[0] === 'list_all_features_scoped');
+    expect((call?.[1] as { sessionToken?: string })?.sessionToken).toBe('session-1');
   });
 });

@@ -393,6 +393,7 @@ pub fn run() {
                 commands::exchange_rates::delete_exchange_rate_scoped,
                 commands::exchange_rates::get_latest_exchange_rate_scoped,
                 commands::features::list_all_features,
+                commands::features::list_all_features_scoped,
                 commands::features::set_features_bulk,
                 commands::features::set_feature,
                 commands::inventory_counts::create_stock_count_scoped,

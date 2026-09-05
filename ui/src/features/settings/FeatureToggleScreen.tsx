@@ -17,6 +17,7 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
   listAllFeatures,
+  listAllFeaturesScoped,
   setFeature,
   setFeaturesBulk,
   type FeatureInfo,
@@ -162,7 +163,13 @@ export default function FeatureToggleScreen() {
     setLoading(true);
     setError(null);
     try {
-      const result = await listAllFeatures();
+      // ADR #7: the writes below already carry the token (setFeature / setFeaturesBulk), so reading
+      // through the ambient command showed the cashier flags from one store while they toggled
+      // another's. sessionToken is `rawToken ?? ''` here, so an empty string -- no workspace --
+      // still falls back to the ambient read rather than sending a blank token.
+      const result = sessionToken
+        ? await listAllFeaturesScoped(sessionToken)
+        : await listAllFeatures();
       setFeatures(result.features);
     } catch (err) {
       setError(l10nErrorMessage(err, l10nRef.current, 'feature-toggle-error-load'));
@@ -170,7 +177,7 @@ export default function FeatureToggleScreen() {
       setLoading(false);
     }
      
-  }, []);
+  }, [sessionToken]);
 
   useEffect(() => { load(); }, [load]);
 
