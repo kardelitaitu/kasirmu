@@ -460,6 +460,10 @@ workspace-home-staff-title = Staff Management
 workspace-home-staff-desc = Manage staff, roles, and permissions
 workspace-home-settings-title = Settings
 workspace-home-settings-desc = System configuration and preferences
+# Reuses the wording already approved for this feature at setup-feature-cloud-sync
+# and -desc above, rather than inventing new copy for the same capability.
+workspace-home-cloud-sync-title = Cloud Sync
+workspace-home-cloud-sync-desc = Sync data to cloud PostgreSQL with backup
 workspace-home-audit-title = Audit Log
 workspace-home-audit-desc = View system activity and change history
 workspace-home-terminals-title = Terminals

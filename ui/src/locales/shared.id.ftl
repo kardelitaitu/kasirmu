@@ -454,6 +454,9 @@ workspace-home-staff-title = Manajemen Staf
 workspace-home-staff-desc = Kelola staf, peran, dan izin
 workspace-home-settings-title = Pengaturan
 workspace-home-settings-desc = Konfigurasi sistem dan preferensi
+# Mirrors setup-feature-cloud-sync / -desc above, the established Indonesian wording.
+workspace-home-cloud-sync-title = Sinkronisasi Cloud
+workspace-home-cloud-sync-desc = Sinkronkan data ke PostgreSQL cloud dengan cadangan
 workspace-home-audit-title = Log Audit
 workspace-home-audit-desc = Lihat aktivitas sistem dan riwayat perubahan
 workspace-home-terminals-title = Terminal
