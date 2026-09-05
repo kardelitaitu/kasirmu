@@ -9,6 +9,14 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   margin: auto;
+  /* c9d5957a added these two declarations in a second rule qualified as
+     `.kds-main.completed-view > .kds-completed-error`, which broke the class-integrity test:
+     `kds-main` and `completed-view` are owned by KdsScreen.css (:1875, :1910) and no class may
+     be styled from two stylesheets. The qualifier was also inert -- .kds-completed-error has
+     exactly one render site (KdsCompletedView.tsx:151) and it is always a direct child of
+     <div className="kds-main completed-view"> (:150), so the descendant never discriminated,
+     and `margin: auto` was already here. `align-self` applies to the flex item on its own. */
+  align-self: center;
   width: fit-content;
   max-width: 90%;
   background: var(--kds-bg-surface, var(--kds-bg));
@@ -16,12 +24,6 @@
   border-radius: var(--kds-r-sm);
   color: var(--kds-text);
   font-size: var(--text-sm);
-}
-
-/* Center the error in the main area */
-.kds-main.completed-view > .kds-completed-error {
-  align-self: center;
-  margin: auto;
 }
 
 /* ── UI-15: static inline styles moved out of KdsCompletedView.tsx ── */
