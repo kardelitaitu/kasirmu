@@ -823,12 +823,13 @@ Scope findings from the pre-implementation investigation, in execution order:
       cached subscription data cannot cross tenant boundaries.
       - **Current-state inventory (2026-09-06 assist pass, corrected at
         `5f263d11`; updated 2026-09-06 by the terminals-tenant slice,
-        `56653839`)** — this item had no measurable state, so it read as either
+        `56653839`; updated 2026-09-07 by the sale_lines RLS slice,
+        `47d43c55`)** — this item had no measurable state, so it read as either
         "nothing done" or "everything done" depending on who was asked.
         Counted from the generator's own emitted artifacts, not a grep:
-        **32 tables carry `tenant_id`; 23 are under RLS; 9 are not** —
+        **32 tables carry `tenant_id`; 24 are under RLS; 8 are not** —
         `image_refs`, `legal_entities`, `memo_recipients`, `memo_revisions`,
-        `memos`, `sale_lines`, `snapshot_versions`, `terminals`,
+        `memos`, `snapshot_versions`, `terminals`,
         `webhook_endpoints`.
         (An earlier revision of this note said 28/22/6 and then 30/22/8. Both
         were wrong in the covered count: a hand-rolled SQL parser missed
@@ -837,13 +838,37 @@ Scope findings from the pre-implementation investigation, in execution order:
         `20260831_per_tenant_unique_rebuild.sql`. The numbers above come from
         `RLS_TABLES` and the generator's emitted to-do block, which agree with
         each other.)
-      - **Existing exposure is small and already known.** Only **2** queries in
-        PG-facing code touch an uncovered table with no tenant predicate: both
-        on `sale_lines`, at `crates/oz-api/src/pg.rs:1207` (INSERT) and `:1404`
-        (SELECT). That is not a new finding — `generate-pg-migration.py:265`
-        already names it as the cautionary case ("it has the column but pg.rs
-        inserts without it"). So the honest read is: the posture is **good**,
-        and the gap is tracked.
+      - **Existing exposure: now zero.** RESOLVED 2026-09-07 by `47d43c55`.
+        Until then only **2** queries in PG-facing code touched an uncovered
+        table with no tenant predicate: both on `sale_lines`, at
+        `crates/oz-api/src/pg.rs:1207` (INSERT — omitted `tenant_id`, so the
+        column default stamped `'default'` on every line row even though the
+        header and transaction GUC were correct) and `:1404` (SELECT —
+        `WHERE sale_id = $1` only). That had been a known finding since
+        `generate-pg-migration.py` named sale_lines the cautionary case in its
+        docstring ("it has the column but pg.rs inserts without it"). The fix
+        stamps `tenant_id` explicitly on the INSERT, adds
+        `AND tenant_id = $2` to the SELECT, and adds `sale_lines` to
+        `RLS_TABLES` — the policy precondition (write path populates the
+        column) is finally met, so the cautionary note is now past tense.
+        Note the ordering was load-bearing: under the restricted-role RLS
+        posture, the old default-`'default'` INSERT would be rejected by
+        `WITH CHECK` — write-path fix and RLS coverage had to land in the
+        same commit, and did. So the honest read is: the posture is **good**,
+        and this tracked gap is closed.
+      - **[x] sale_lines tenant slice (2026-09-07, `47d43c55`).** The two real
+        exposure queries fixed at the root, RLS coverage granted, PG init
+        regenerated (110 tables, 136 indexes; uncovered to-do block 9→8), and
+        the stale "non-RLS `sale_lines`" comment in `pg_tests.rs` corrected.
+        Verification: `cargo check -p oz-api` clean; `cargo test -p oz-api`
+        **276 passed, 0 failed**. **Live PG round-trip NOT verified:** Docker
+        Desktop was unable to start on this machine, so the restricted-role
+        probe (`pg_integration_rest_rls_non_owner`) self-skipped — and its
+        `create_sale` path is exactly the one that would catch a regression
+        here (probe INSERT now flows through the explicit `tenant_id` +
+        `WITH CHECK`). Re-run that test against `oz-pg-test-15432` when the
+        daemon is up; until then the RLS behavior of this slice is verified
+        statically (generator validation + compilation) only.
       - **Do not trust a raw grep for this.** A naive scan of SQL literals here
         flags 549 of 613 references to tenant-scoped tables as "missing
         `tenant_id`". That number is noise, for two structural reasons:
@@ -931,10 +956,14 @@ Scope findings from the pre-implementation investigation, in execution order:
         cloud write path exists), Memo fan-out narrowing to `tenant_id`
         (Phase 2 Memo work, now unblocked), and explicit tenant propagation
         through `create_terminal` when multi-tenant writes arrive.
-      - **Trend worth arresting:** the uncovered list was 4 entries before this
-        workstream. `legal_entities` (`d0e7c823`), `memos` (`7fed26cc`) and then
-        both Memo child tables (`5f263d11`) grew it to **8** — **every new
-        tenant-scoped table in Phase 1 and 2 has landed uncovered.** That is the
+      - **Trend worth arresting — and its first reversal:** the uncovered list
+        was 4 entries before this workstream. `legal_entities` (`d0e7c823`),
+        `memos` (`7fed26cc`), both Memo child tables (`5f263d11`) and then
+        `terminals` (`56653839`) grew it to **9** — **every new tenant-scoped
+        table in Phase 1 and 2 had landed uncovered.** `47d43c55` is the
+        first exit: `sale_lines` (tenant column since `20260814`) finally got
+        its PG write path and moved back under RLS; **8 remain**. That is
+        still the
         mechanism working as designed (RLS is a policy decision, not a schema
         fact, and the write path must populate the column first), but it means
         "add it to `RLS_TABLES` once
