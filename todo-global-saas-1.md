@@ -519,6 +519,18 @@ Scope findings from the pre-implementation investigation, in execution order:
     "Next slice" box and item 1d above). What keeps 1e checked-no is exactly
     row three: the `features/stores/` directory name, the `multi-store.ftl`
     filename, and the remaining `store`-worded FTL keys and copy.
+    **Dir-slice update 2026-09-07:** the directory part of row three is done —
+    `ui/src/features/stores/` is now `ui/src/features/locations/` (`git mv`,
+    40 files) with all 55 referencing sites rewritten (54 test files plus
+    `SettingsPage.tsx`'s `TopologyScreen` import) and both path-dependent
+    scripts updated. `verify-topology-parity.py` re-run: OK (byte-identical
+    semantics, 567-verdict corpus). `storageKeyPins.test.ts` and
+    `popoverSurfaceCompliance.test.ts` file pins updated to the new paths so
+    they keep auditing the real files. Commits: `a965f481` (rename + import
+    rewrites), `f809ccde` (SettingsPage import), `b83785b6` (stale index
+    entries dropped). Validation: `tsc --noEmit` clean, eslint clean, ~1,730
+    tests across the topology/dashboard/pin suites green. Still open in row
+    three: the `multi-store.ftl` filename and the `store`-worded FTL keys.
 
     The journal's earlier "cheapest high-value move" advice — migrate the five
     report/analytics screens' `getPrimaryStoreScoped` imports first since the
