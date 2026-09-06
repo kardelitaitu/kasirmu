@@ -1300,18 +1300,74 @@ describe('NodeTopologyEditor Component', () => {
   // ── Connection cancellation (edge cases) ─────────────────────────
   // The direct wire-creation tests (above) verify that the stacked per-
   // semantic row model arms and completes connections correctly. These
-  // two edge cases verify that external cancellation (canvas click, re-
-  // arm from another output) also clears the in-flight state.
+  // two edge cases pin the surrounding cancellation contract: a plain
+  // canvas click does NOT cancel an armed connection (the user may be
+  // panning to a distant target — connection reducer's dismiss-picker
+  // case), Escape does, and re-arming from another output replaces the
+  // previous attempt without ever committing a wire.
 
-  // These two edge cases test connection cancellation (canvas click, re-arm
-  // from another output). They trigger a TypeError in the test environment
-  // (not in the product) after arming from a port row — likely a pre-existing
-  // mock gap in the SettingsContext/telemetry render path that only surfaces
-  // when the connection preview line tries to render. The wire-creation tests
-  // above already verify that arming and completing connections works, so
-  // these edge-case tests are skipped here.
-  it.skip('clicking the canvas cancels an in-flight connection without creating a wire', () => {});
-  it.skip('re-arming from another output cancels the previous in-flight connection', () => {});
+  it('clicking the canvas does not cancel an armed connection (Escape does)', async () => {
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [
+        { id: 'store-1', type: 'store', name: 'Branch', x: 80, y: 140 },
+        { id: 'ws-a', type: 'workspace', name: 'POS A', x: 380, y: 140, metadata: { typeKey: 'store-pos' } },
+        { id: 'wh-1', type: 'warehouse', name: 'WH', x: 680, y: 140 },
+      ],
+      wires: [],
+    } as never);
+    renderEditor();
+    await waitFor(() => expect(getNodeCount()).toBe(3));
+
+    // Arm a connection from the workspace's stock-out row.
+    fireEvent.click(portRowOf(nodeAt(1), 'right', 0));
+    expect(previewLine()).not.toBeNull();
+
+    // A plain canvas click (down+up on the background, no port) must NOT
+    // cancel a plain armed connection: the user may be panning toward a
+    // distant target. The in-flight preview stays live and no wire is
+    // created. (Only Escape, a compatible drop, or dismissing an OPEN
+    // picker cancels — see the connection reducer's dismiss-picker case.)
+    // The upstroke matters: it finalizes the marquee the downstroke armed,
+    // so a later Escape reaches the connection-cancel branch instead of
+    // being swallowed by the mid-marquee guard.
+    fireEvent.mouseDown(document.querySelector('.node-canvas-container')!);
+    fireEvent.mouseUp(document.querySelector('.node-canvas-container')!);
+    await act(async () => {});
+    expect(previewLine()).not.toBeNull();
+    expect(getWireCount()).toBe(0);
+
+    // Escape is the explicit cancel gesture.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(previewLine()).toBeNull();
+    expect(getWireCount()).toBe(0);
+  });
+
+  it('clicking a second output row while armed cancels the in-flight connection with an incompatible toast', async () => {
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [
+        { id: 'store-1', type: 'store', name: 'Branch', x: 80, y: 140 },
+        { id: 'ws-a', type: 'workspace', name: 'POS A', x: 380, y: 140, metadata: { typeKey: 'store-pos' } },
+        { id: 'wh-1', type: 'warehouse', name: 'WH', x: 680, y: 140 },
+      ],
+      wires: [],
+    } as never);
+    renderEditor();
+    await waitFor(() => expect(getNodeCount()).toBe(3));
+
+    // Arm from the workspace's stock-out row...
+    fireEvent.click(portRowOf(nodeAt(1), 'right', 0));
+    expect(previewLine()).not.toBeNull();
+
+    // ...then click another OUTPUT row while a connection is in flight.
+    // An output is never a legal target, so the incompatible guard fires:
+    // the in-flight attempt is canceled (no wire committed) and a toast
+    // explains why. A fresh attempt must be begun from a port on the
+    // SOURCE node (same-node clicks also cancel).
+    fireEvent.click(portRowOf(nodeAt(0), 'right', 0));
+    expect(getWireCount()).toBe(0);
+    expect(previewLine()).toBeNull();
+    expect(screen.getByText('These connectors cannot be connected.')).toBeInTheDocument();
+  });
 
 
   it('Escape cancels an in-flight connection without creating a wire', async () => {
