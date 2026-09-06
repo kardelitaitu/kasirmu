@@ -20,7 +20,8 @@ Supersedes the single-file `todo-global-saas.md` (split into phases
 
 Two Memo types, adopted 2026-09-05 — Organization Memo (owner/admin, every
 registered terminal) and Location Memo (owner/admin/manager, every terminal of
-one selected location). Proposed rules:
+one selected location; v1 rule — multi-location targeting has since landed,
+2026-09-07, `4df091d3` + `b40593a0`, see todo-global-saas-3.md). Proposed rules:
 
 - managers may create and edit Location Memo drafts within their assignment
   scope; only owner/admin create Organization Memos;
@@ -227,7 +228,8 @@ actual relationship mutation.
       and compliance views.
 - [ ] **Implement the Memo lifecycle.** Ship both Memo types — Organization
       Memo (owner/admin, all registered terminals) and Location Memo
-      (owner/admin/manager, one selected location) — with author-chosen
+      (owner/admin/manager, one selected location — since widened to multiple
+      locations, `4df091d3`) — with author-chosen
       duration (12h/24h/3d/7d/30d, default 24h), early stop by author or
       higher role, immutable published revisions, delivery and acknowledgement
       states, offline delivery, and retention. Display: staff login screen,
@@ -416,6 +418,12 @@ re-checks tree state first and uses an explicit pathspec.
   not a reformat.
 
 ## Memo technical design (2026-09-06, DSH) — ready-to-execute, migration pending
+
+> Superseded 2026-09-07: the window opened and this design landed **as
+> amended** — `memos.location_id` became the `memo_locations` join table
+> (multi-location, `4df091d3`) and the wire shape carries
+> `locationIds: string[]` (`b40593a0`). The single-location `location_id`
+> column below is the pre-landing pin, kept for the record.
 
 The migration window is ambiguous (rename agent past schema into dev-mock, but
 the LE migration comment says `legal_entity_id` is "intentionally nullable in
@@ -1410,3 +1418,88 @@ on touched files; UI suite 500 files / 8815 passed (including the new
 `cargo test -p oz-pos-app memo` 7/7; `scripts/lint-i18n.sh` clean;
 `verify-ipc-parity.py` OK. All ten pre-commit gates ran green on `3fb745cf`
 (bundle parity: 35 new keys, 0 missing; FTL orphans: OK).
+
+## PROPOSAL — `stop_memo` early-stop authorization (2026-09-07) — needs owner approval
+
+> **Nothing below is implemented.** This section exists so the owner can pick
+> an option in one reading instead of re-deriving the grounding. Until a
+> choice is recorded here, `stop_memo` stays unwired exactly as documented in
+> the implementation journal ("Early stop (`stop_memo`)") and the
+> `commands/memo.rs` module doc.
+
+**The spec requirement** (§"Memo lifecycle"): "early stop by author or higher
+role". Both halves below it already exist, tested, with authorization
+deliberately left at the seam:
+
+- `Store::stop_memo` (`crates/oz-core/src/db/memos.rs:335`) rejects
+  non-published memos and stamps `stopped_by`/`stopped_at`; its doc comment
+  puts the gate in the caller: "Authorization (author-or-higher) is the
+  caller's gate."
+- `may_stop(actor_is_author, actor_rank, author_rank)`
+  (`crates/oz-core/src/memo.rs:280`) — author short-circuit OR strict `>` —
+  with semantics pinned in `memo_tests.rs:176-193`: a demoted author can still
+  stop their own memo; a peer manager cannot stop another manager's.
+
+**The blocker is a missing vocabulary, not shyness.** `may_stop` consumes
+*ranks*, and no rank mapping exists anywhere: `platform/core/src/rbac.rs`
+defines permission sets only (`role-owner/manager/admin/auditor/staff/custom`).
+There is no owner>admin>manager ordering to consult, and Phase 3's
+custom-roles item requires unknown roles to default to deny — inventing a
+numeric hierarchy now would be a second authorization vocabulary outside the
+registry, the exact thing ADR #35's single deny-by-default registry
+(`crates/oz-core/src/db/staff.rs:306`) exists to prevent. Meanwhile the
+registry already names the verb: `memo:write` is described as "Author,
+publish, **stop**, or archive a Memo (Organization or Location.)"
+(`platform/core/src/permission_registry.rs:585`), granted to Owner (`*`),
+Manager, and Admin presets, and every memo command already passes through
+`require_permission_for_session` (`commands/authz.rs:91`). `may_stop` has no
+non-test caller today, so nothing is half-wired and nothing breaks by
+choosing.
+
+### Option A (recommended) — author-or-permission
+
+`stop_memo_scoped(memo_id, session_token)` on desktop: tenant-scoped read,
+then allow iff `author_user_id == session.user_id` OR the session authorizes
+the chosen key, then `store.stop_memo`. The author short-circuit preserves
+`may_stop`'s first half; "higher role" becomes a grant-list question instead
+of arithmetic.
+
+Sub-decision the owner must make — which key:
+
+- **A1: reuse `memo:write`.** Zero registry churn and the description already
+  names stop. But Manager and Admin presets both hold it, so a Manager could
+  stop an Owner's memo — weaker than the spec's "higher role" intent.
+- **A2: new `memo:stop` key**, granted to Owner and Admin presets only
+  (Staff/Auditor/Custom deny by default). Preserves the intent in registry
+  vocabulary; costs one registry entry, two preset grants, amending
+  `memo:write`'s description to drop "stop" (or scope it to archive), and the
+  usual gate re-runs (feature-registry, ipc-parity, bundle docs).
+
+Either way the UI slice is the same: a stop control on published rows the
+viewer authored in `MemosScreen`, and `stop_memo_scoped` on the tablet
+allowlist with a recorded reason, following the authoring precedent (the UI
+api layer is shared, so the parity gate requires it there even though the
+surface is desktop-only).
+
+### Option B — build the rank map (rejected leaning)
+
+owner > admin > manager > staff, custom roles deny. Makes `may_stop` live as
+written, but the ordering is invented (nothing else in the codebase says admin
+outranks manager), it forks authorization into permission-set + rank
+arithmetic, and it collides with the Phase 3 custom-roles item. Only worth
+revisiting if the owner explicitly wants semantics permissions cannot express.
+
+### Option C — defer entirely
+
+Status quo: Memos stay un-stoppable until the retention sweep expires them.
+Costs nothing now, but leaves a spec'd behaviour permanently unimplemented,
+and the live expiry sweep is the only path by which a wrong memo ever ends.
+
+### If A lands — cleanups that come with it
+
+- Give `may_stop` a caller again (reworked to take an author-or-permission
+  verdict) or delete it with its tests; leaving a tested pure rule with zero
+  callers is the "capability and wiring tracked as one thing" failure this
+  file keeps catching.
+- Update the `commands/memo.rs` module doc, which records the deferral.
+- Flip open item (b) in the P1 Memo checkbox above.
