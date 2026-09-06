@@ -6517,7 +6517,7 @@ describe('NodeTopologyEditor — wire arrow markers', () => {
 
 // ── Wire crossing under cards ───────────────────────────────────
 
-describe.skip('NodeTopologyEditor — wire crossing under cards', () => {
+describe('NodeTopologyEditor — wire crossing under cards', () => {
   it('draws the under-card segment ON TOP so a crossing wire reads as continuous', async () => {
     // The restaurant template's store→warehouse wire passes under the
     // middle POS card; mirror that geometry: a store→warehouse wire whose
@@ -6556,7 +6556,22 @@ describe.skip('NodeTopologyEditor — wire crossing under cards', () => {
     expect(document.querySelectorAll('.node-wires-crossing path')).toHaveLength(0);
   });
 
-  it('rides the simulation pulse over the card it passes under', async () => {
+  // SKIPPED — unfixable, not flaky. This test drives a "Test Order
+  // Simulation" button that no longer exists: 4653d966 (2026-08-26, "PIN
+  // remember checkbox, presets popover, validation UX improvements") deleted
+  // the `.simulation-btn` control along with its `isSimulating` state. The
+  // `topology-sim-start` / `topology-sim-stop` Fluent keys and the
+  // `.wire-simulation-pulse` CSS rule survived that commit and are now
+  // referenced by nothing outside this file and the a11y mock dictionary, so
+  // `getByText` can never resolve. Left in place rather than deleted because
+  // the geometry it asserts is real and still supported: `polylinePoint` and
+  // `wireUnderCardSegments` (topologyWireGeometry.ts:134) exist precisely so
+  // "a simulation pulse crosses each segment at constant speed". If the
+  // control is ever restored, this test should pass unchanged — restore it
+  // then. Until then it must NOT be re-widened into a describe.skip: the
+  // other five tests in this block cover the live round-146 under-card
+  // overlay and were silently skipped alongside it for 11 days.
+  it.skip('rides the simulation pulse over the card it passes under', async () => {
     // Round 147: the wire reads continuous (round 146) but the simulation
     // pulse still travelled along the BASE path — under a card it blinked
     // out and re-emerged, breaking the continuity the overlay just fixed.
