@@ -442,16 +442,14 @@ describe('PosScreen — Shift display', () => {
     expect(screen.getByText((content) => stripIsolates(content) === 'No active shift')).toBeInTheDocument();
   });
 
-  // Shift timer test - skipped due to FTL variable interpolation complexity
-  it.skip('shows elapsed time when shift is active', async () => {
+  it('shows elapsed time when shift is active', async () => {
     const openedAt = new Date(Date.now() - 90 * 60_000); // 1h 30m ago
     await renderPosScreenWithShift(openedAt);
 
     await screen.findByText((content) => stripIsolates(content) === '1h 30m');
   });
 
-  // Fake timer test - skipped
-  it.skip('ticks the elapsed duration up every minute while shift is open', async () => {
+  it('ticks the elapsed duration up every minute while shift is open', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const openedAt = new Date(Date.now() - 80 * 60_000);
@@ -571,7 +569,7 @@ describe('PosScreen — Sub-screens navigation', () => {
     mockedBarcode.reset();
   });
 
-  it.skip('navigates to Tables sub-screen via header button', async () => {
+  it('navigates to Tables sub-screen via header button', async () => {
     await renderPosScreenWithShift();
 
     // The Tables button uses tables-title FTL key which is "Table Management"
@@ -590,6 +588,13 @@ describe('PosScreen — Sub-screens navigation', () => {
     });
   });
 
+  // SKIPPED — genuinely broken, not flaky. Confirmed by re-running with the
+  // skip removed on 2026-09-06: "Unable to find an accessible element with
+  // the role button and name /sales history/i". The POS header exposes no
+  // control resolving to that name, so this test asserts an entry point that
+  // is not currently in the UI. Needs a product decision on where Sales
+  // History is reached from — do NOT loosen the query to make it green, that
+  // would only prove the test can find something.
   it.skip('navigates to Sales History sub-screen via header button', async () => {
     await renderPosScreenWithShift();
 
@@ -620,6 +625,14 @@ describe('PosScreen — Payment button (Charge)', () => {
     expect(chargeBtn).toBeInTheDocument();
   });
 
+  // SKIPPED — genuinely broken, not flaky. Confirmed by re-running with the
+  // skip removed on 2026-09-06: clicking Charge leaves no element matching
+  // role="dialog" name=/payment/i. The preceding test in this block already
+  // asserts the Charge button itself IS present and clickable, so the gap is
+  // in what opens after the click — either the modal's accessible name or
+  // the flow behind it. Same root cause as
+  // `includes tax in payment total when tax is exclusive` further down; fix
+  // one and re-run the other.
   it.skip('opens payment modal when Charge button clicked', async () => {
     await renderPosScreenWithShift();
 
@@ -1202,22 +1215,33 @@ describe('PosScreen — Open bills (hold/resume)', () => {
     expect(openBillsBtn).toBeInTheDocument();
   });
 
+  // Repaired 2026-09-06. This test was PASSING VACUOUSLY before: it clicked
+  // /open bills/i, which resolves to the "View open bills" badge
+  // (pos-cart-open-bills-aria) and opens the LIST modal, then asserted a
+  // dialog matching /open bill/i — an unanchored regex that also matches
+  // "Open bills list" (pos-open-bills-overlay-aria). So it proved nothing
+  // about the input modal while reporting green, and the two tests below it
+  // failed for the honest reason that the input modal had never opened.
+  // The input modal is opened by "Save as open bill"
+  // (pos-cart-open-bill-aria → setShowOpenBillInput), so that is what the
+  // test now clicks, and the dialog name is anchored to /^open bill$/ so it
+  // cannot silently match the list modal again.
   it('opens open bill input modal when hold button clicked', async () => {
     await setupCart();
 
-    const holdBtn = screen.getByRole('button', { name: /open bills/i });
+    const holdBtn = screen.getByRole('button', { name: /save as open bill/i });
     await userEvent.click(holdBtn);
 
     // Open bill input modal should appear
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /open bill/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /^open bill$/i })).toBeInTheDocument();
     });
   });
 
-  it.skip('shows open bill input form with customer name field', async () => {
+  it('shows open bill input form with customer name field', async () => {
     await setupCart();
 
-    const holdBtn = screen.getByRole('button', { name: /open bills/i });
+    const holdBtn = screen.getByRole('button', { name: /save as open bill/i });
     await userEvent.click(holdBtn);
 
     await waitFor(() => {
@@ -1232,14 +1256,14 @@ describe('PosScreen — Open bills (hold/resume)', () => {
     expect(cancelBtn).toBeInTheDocument();
   });
 
-  it.skip('closes open bill input modal when Cancel clicked', async () => {
+  it('closes open bill input modal when Cancel clicked', async () => {
     await setupCart();
 
-    const holdBtn = screen.getByRole('button', { name: /open bills/i });
+    const holdBtn = screen.getByRole('button', { name: /save as open bill/i });
     await userEvent.click(holdBtn);
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /open bill/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /^open bill$/i })).toBeInTheDocument();
     });
 
     const cancelBtn = screen.getByRole('button', { name: /^cancel$/i });
@@ -1391,7 +1415,7 @@ describe('PosScreen — Shift open/close flows', () => {
   });
 
   // ── Open shift modal interactions ──
-  it.skip('opens shift when confirm clicked in open shift modal', async () => {
+  it('opens shift when confirm clicked in open shift modal', async () => {
     const openShiftMock = vi.fn(() => Promise.resolve({ ...shiftFixture(), openingBalanceMinor: 100000 }));
     vi.mocked(shiftsApi.openShiftScoped).mockImplementation(openShiftMock);
 
@@ -1725,6 +1749,10 @@ describe('PosScreen — Live tax preview (computeCartTax)', () => {
   // three sabotage mutations of grandTotal() were caught there. Left skipped
   // rather than rewritten, because the payment-modal round trip is a separate
   // concern from the total arithmetic.
+  // Re-verified 2026-09-06: still fails, and on that same round trip — no
+  // role="dialog" name=/payment/i after Charge. Identical root cause to
+  // `opens payment modal when Charge button clicked` earlier in this file, so
+  // the two should un-skip together or not at all.
   it.skip('includes tax in payment total when tax is exclusive', async () => {
     await setupCart();
 
