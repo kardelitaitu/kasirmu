@@ -41,6 +41,8 @@ pub mod history;
 pub mod inventory_counts;
 /// KDS commands.
 pub mod kds;
+/// Organization/Tenant Legal Entity commands.
+pub mod legal_entities;
 /// Loyalty / rewards commands.
 pub mod loyalty;
 /// Memo read/consumer commands (list/acknowledge).
