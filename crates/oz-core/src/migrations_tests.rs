@@ -215,6 +215,7 @@ fn migrations_create_expected_tables() {
         "role_workspace_types",
         "login_attempts",
         "user_location_access",
+        "legal_entities",
         // ── ADR #18 Phase 1+2 (migrations 078-090) ──
         "inventory_locations",
         "workspace_inventory_locations",
@@ -360,7 +361,7 @@ fn seed_data_bootstraps_essential_rows() {
     );
 }
 
-/// Pin the consolidated schema surface: 105 tables, 143 indexes (123 in
+/// Pin the consolidated schema surface: 106 tables, 147 indexes (123 in
 /// init plus the two per-tenant unique indexes from
 /// `20260815_tenant_unique_indexes.sql` plus 4 multi-KDS indexes from
 /// `20260820_kds_devices.sql` plus 4 media/EDC indexes from
@@ -370,7 +371,8 @@ fn seed_data_bootstraps_essential_rows() {
 /// `20260901_image_refs.sql` plus 1 gift-card redeem idempotency
 /// index from `20260901_gift_card_redeem_idempotency.sql` plus 1
 /// outbox index from `20260902_outbox.sql` plus 1 webhook-tenant index
-/// from `20260903_webhook_endpoints.sql` — the per-migration breakdown
+/// from `20260903_webhook_endpoints.sql`, plus the legal-entity table and
+/// location index from `20260908_legal_entities.sql` — the per-migration breakdown
 /// predates the fixed-point rebuild's expression indexes and no longer
 /// sums exactly; the total is the contract), 4
 /// triggers. (The generated
@@ -383,14 +385,14 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 105 tables,
+    // All migrations applied (init + incremental) yield 106 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        105,
+        106,
         "table surface drifted"
     );
     assert_eq!(
@@ -398,7 +400,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
         ),
-        145,
+        147,
         "index surface drifted"
     );
     assert_eq!(
@@ -523,6 +525,9 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260902_snapshot_versions.sql".to_string(),
             "20260903_webhook_endpoints.sql".to_string(),
             "20260904_kds_indexes.sql".to_string(),
+            "20260906_rename_store_to_location.sql".to_string(),
+            "20260907_add_location_tenant_id.sql".to_string(),
+            "20260908_legal_entities.sql".to_string(),
         ]
     );
 
@@ -551,14 +556,17 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        105,
+        106,
         "table surface must be unchanged after upgrade"
     );
 }
 
 #[test]
 fn store_to_location_rename_preserves_rows_and_foreign_keys() {
-    let split = ALL.len() - 1;
+    let split = ALL
+        .iter()
+        .position(|migration| migration.id == "20260906_rename_store_to_location.sql")
+        .unwrap();
     let mut conn = fresh();
     platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
 
@@ -697,6 +705,75 @@ fn location_tables_carry_tenant_id_after_migration() {
         )
         .unwrap();
     assert_eq!(got2, "tenant-9", "explicit tenant_id must be preserved");
+}
+
+#[test]
+fn legal_entity_migration_creates_defaults_and_moves_locations() {
+    let split = ALL.len() - 1;
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('tenant-2-location', 'Tenant 2 Location', 'tenant-2')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    let entities: Vec<(String, String, String)> = conn
+        .prepare("SELECT id, tenant_id, name FROM legal_entities ORDER BY tenant_id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+
+    assert_eq!(
+        entities,
+        vec![
+            (
+                "default:default-legal-entity".to_string(),
+                "default".to_string(),
+                "Default Legal Entity".to_string(),
+            ),
+            (
+                "tenant-2:default-legal-entity".to_string(),
+                "tenant-2".to_string(),
+                "Default Legal Entity".to_string(),
+            ),
+        ]
+    );
+
+    let location_entities: Vec<(String, String)> = conn
+        .prepare(
+            "SELECT id, legal_entity_id FROM locations
+             WHERE id IN ('default', 'tenant-2-location') ORDER BY id",
+        )
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+    assert_eq!(
+        location_entities,
+        vec![
+            (
+                "default".to_string(),
+                "default:default-legal-entity".to_string(),
+            ),
+            (
+                "tenant-2-location".to_string(),
+                "tenant-2:default-legal-entity".to_string(),
+            ),
+        ]
+    );
+
+    assert_eq!(
+        row_count(&conn, "SELECT COUNT(*) FROM pragma_foreign_key_check"),
+        0,
+        "legal entity migration must preserve foreign-key integrity",
+    );
 }
 
 // ── Store-scoped isolation (DB-04 end-state) ───────────────────

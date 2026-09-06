@@ -190,21 +190,6 @@ CREATE TABLE IF NOT EXISTS "stock_counts" (
     completed_at TEXT,
     updated_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')));
 
-CREATE TABLE IF NOT EXISTS "locations" (
-    id          TEXT PRIMARY KEY,                                   -- "default" or UUID for additional stores
-    name        TEXT NOT NULL,
-    address     TEXT DEFAULT '',
-    tax_id      TEXT DEFAULT '',
-    currency    TEXT NOT NULL DEFAULT 'USD',
-    timezone    TEXT NOT NULL DEFAULT 'UTC',
-    is_primary  BIGINT NOT NULL DEFAULT 0,                        -- exactly one store is the primary
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, tenant_id TEXT NOT NULL DEFAULT 'default');
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
-    ON locations(is_primary) WHERE is_primary = 1;
-
 CREATE TABLE IF NOT EXISTS stripe_customers (
     stripe_customer_id TEXT PRIMARY KEY,
     tenant_id          TEXT NOT NULL,
@@ -439,6 +424,20 @@ CREATE TABLE IF NOT EXISTS webhook_endpoints (
     updated_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS legal_entities (
+    id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    legal_name          TEXT NOT NULL DEFAULT '',
+    registration_number TEXT NOT NULL DEFAULT '',
+    tax_id              TEXT NOT NULL DEFAULT '',
+    status              TEXT NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active', 'inactive')),
+    created_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    UNIQUE (tenant_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -540,63 +539,6 @@ CREATE TABLE IF NOT EXISTS "stock_count_lines" (
     notes        TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS "customers" (
-    id              TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    email           TEXT,
-    phone           TEXT,
-    loyalty_points  BIGINT NOT NULL DEFAULT 0,
-    total_spent_minor BIGINT NOT NULL DEFAULT 0,
-    currency        TEXT NOT NULL DEFAULT 'USD',
-    notes           TEXT NOT NULL DEFAULT '',
-    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    store_id        TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS terminals (
-    id              TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    device_id       TEXT NOT NULL UNIQUE,
-    terminal_secret TEXT,                   -- optional shared secret for sync auth
-    is_active       BIGINT NOT NULL DEFAULT 1,
-    last_seen_at    TEXT,
-    metadata        TEXT,                   -- JSON blob for extra info
-    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT);
-
-CREATE TABLE IF NOT EXISTS "products" (
-    id          TEXT PRIMARY KEY,
-    sku         TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    price_minor BIGINT NOT NULL CHECK (price_minor >= 0),
-    currency    TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    category_id TEXT REFERENCES categories(id),
-    barcode     TEXT,
-    price_updated_at TEXT DEFAULT '',
-    track_serial BIGINT NOT NULL DEFAULT 0,
-    product_type TEXT NOT NULL DEFAULT 'retail',
-    cost_minor  BIGINT NOT NULL DEFAULT 0,
-    version     BIGINT NOT NULL DEFAULT 1,
-    store_id    TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    tenant_id   TEXT NOT NULL DEFAULT 'default',
-    kitchen_zone TEXT,
-    brand TEXT,
-    rack_location TEXT,
-    notes TEXT,
-    unit TEXT,
-    is_active BIGINT NOT NULL DEFAULT 1,
-    default_supplier_id TEXT REFERENCES suppliers(id),
-    popularity_score DOUBLE PRECISION NOT NULL DEFAULT 0
-, image_hash TEXT);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id, sku);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
-
 CREATE TABLE IF NOT EXISTS category_taxes (
     category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     tax_rate_id TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
@@ -610,22 +552,6 @@ CREATE TABLE IF NOT EXISTS role_workspace_types (
     type_key  TEXT NOT NULL REFERENCES workspace_types(key),
     UNIQUE(role_id, type_key)
 );
-
-CREATE TABLE IF NOT EXISTS "workspace_instances" (
-    id          TEXT PRIMARY KEY,
-    type_key    TEXT NOT NULL REFERENCES workspace_types(key),
-    location_id    TEXT NOT NULL REFERENCES "locations"(id)
-                              ON DELETE RESTRICT
-                              ON UPDATE CASCADE,
-    name        TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    colour      TEXT,
-    status      TEXT NOT NULL DEFAULT 'active',
-    last_accessed_at TEXT,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, bound_location_id TEXT
-    REFERENCES inventory_locations(id) ON DELETE RESTRICT, purpose_key TEXT NOT NULL DEFAULT 'general');
 
 CREATE TABLE IF NOT EXISTS workspace_type_screens (
     id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -663,6 +589,22 @@ CREATE TABLE IF NOT EXISTS media_thumbnails (
     created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     FOREIGN KEY (asset_id) REFERENCES media_assets(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS "locations" (
+    id          TEXT PRIMARY KEY,                                   -- "default" or UUID for additional stores
+    name        TEXT NOT NULL,
+    address     TEXT DEFAULT '',
+    tax_id      TEXT DEFAULT '',
+    currency    TEXT NOT NULL DEFAULT 'USD',
+    timezone    TEXT NOT NULL DEFAULT 'UTC',
+    is_primary  BIGINT NOT NULL DEFAULT 0,                        -- exactly one store is the primary
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+, tenant_id TEXT NOT NULL DEFAULT 'default', legal_entity_id TEXT
+    REFERENCES legal_entities(id) ON DELETE RESTRICT);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
+    ON locations(is_primary) WHERE is_primary = 1;
 
 CREATE TABLE IF NOT EXISTS assignments (
     user_id         TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -711,6 +653,40 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_orders_po_number ON purchase_orders(po_number);
 
+CREATE TABLE IF NOT EXISTS user_workspaces (
+    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ws_key     TEXT NOT NULL REFERENCES workspaces(key) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    UNIQUE(user_id, ws_key)
+);
+
+CREATE TABLE IF NOT EXISTS "customers" (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    email           TEXT,
+    phone           TEXT,
+    loyalty_points  BIGINT NOT NULL DEFAULT 0,
+    total_spent_minor BIGINT NOT NULL DEFAULT 0,
+    currency        TEXT NOT NULL DEFAULT 'USD',
+    notes           TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    store_id        TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS terminals (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    device_id       TEXT NOT NULL UNIQUE,
+    terminal_secret TEXT,                   -- optional shared secret for sync auth
+    is_active       BIGINT NOT NULL DEFAULT 1,
+    last_seen_at    TEXT,
+    metadata        TEXT,                   -- JSON blob for extra info
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT);
+
 CREATE TABLE IF NOT EXISTS "user_location_access" (
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     location_id     TEXT NOT NULL REFERENCES "locations"(id)
@@ -721,13 +697,74 @@ CREATE TABLE IF NOT EXISTS "user_location_access" (
     UNIQUE(user_id, location_id)
 );
 
-CREATE TABLE IF NOT EXISTS user_workspaces (
-    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    ws_key     TEXT NOT NULL REFERENCES workspaces(key) ON DELETE CASCADE,
-    created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    UNIQUE(user_id, ws_key)
+CREATE TABLE IF NOT EXISTS "workspace_instances" (
+    id          TEXT PRIMARY KEY,
+    type_key    TEXT NOT NULL REFERENCES workspace_types(key),
+    location_id    TEXT NOT NULL REFERENCES "locations"(id)
+                              ON DELETE RESTRICT
+                              ON UPDATE CASCADE,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    colour      TEXT,
+    status      TEXT NOT NULL DEFAULT 'active',
+    last_accessed_at TEXT,
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+, bound_location_id TEXT
+    REFERENCES inventory_locations(id) ON DELETE RESTRICT, purpose_key TEXT NOT NULL DEFAULT 'general');
+
+CREATE TABLE IF NOT EXISTS "products" (
+    id          TEXT PRIMARY KEY,
+    sku         TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    price_minor BIGINT NOT NULL CHECK (price_minor >= 0),
+    currency    TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    category_id TEXT REFERENCES categories(id),
+    barcode     TEXT,
+    price_updated_at TEXT DEFAULT '',
+    track_serial BIGINT NOT NULL DEFAULT 0,
+    product_type TEXT NOT NULL DEFAULT 'retail',
+    cost_minor  BIGINT NOT NULL DEFAULT 0,
+    version     BIGINT NOT NULL DEFAULT 1,
+    store_id    TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    kitchen_zone TEXT,
+    brand TEXT,
+    rack_location TEXT,
+    notes TEXT,
+    unit TEXT,
+    is_active BIGINT NOT NULL DEFAULT 1,
+    default_supplier_id TEXT REFERENCES suppliers(id),
+    popularity_score DOUBLE PRECISION NOT NULL DEFAULT 0
+, image_hash TEXT);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id, sku);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
+
+CREATE TABLE IF NOT EXISTS assignment_branches (
+    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
+    branch_id          TEXT NOT NULL,
+    PRIMARY KEY (assignment_user_id, branch_id)
 );
+
+CREATE TABLE IF NOT EXISTS assignment_workspaces (
+    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
+    workspace_key      TEXT NOT NULL REFERENCES workspaces(key) ON DELETE CASCADE,
+    PRIMARY KEY (assignment_user_id, workspace_key)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_lines (
+    id                TEXT PRIMARY KEY NOT NULL,
+    po_id             TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    sku               TEXT NOT NULL DEFAULT '',
+    product_name      TEXT NOT NULL DEFAULT '',
+    qty               BIGINT NOT NULL DEFAULT 0,
+    unit_cost_minor   BIGINT NOT NULL DEFAULT 0,
+    line_total_minor  BIGINT NOT NULL DEFAULT 0
+, received_qty BIGINT NOT NULL DEFAULT 0, damaged_qty  BIGINT NOT NULL DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS loyalty_accounts (
     id          TEXT PRIMARY KEY,
@@ -865,6 +902,29 @@ CREATE TABLE IF NOT EXISTS kds_devices (
     FOREIGN KEY (restaurant_pos_id) REFERENCES terminals(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "user_workspace_instances" (
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    instance_id  TEXT NOT NULL REFERENCES "workspace_instances"(id) ON DELETE CASCADE,
+    is_default   BIGINT NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    UNIQUE(user_id, instance_id)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_inventory_locations (
+    id                   TEXT PRIMARY KEY,
+    instance_id          TEXT NOT NULL REFERENCES workspace_instances(id) ON DELETE CASCADE,
+    location_id          TEXT NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT,
+    is_primary           BIGINT NOT NULL DEFAULT 0
+                         CHECK (is_primary IN (0, 1)),
+    allow_negative_stock BIGINT NOT NULL DEFAULT 0
+                         CHECK (allow_negative_stock IN (0, 1)),
+    sort_order           BIGINT NOT NULL DEFAULT 0,
+    UNIQUE(instance_id, location_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_inv_locations_one_primary_per_instance
+    ON workspace_inventory_locations(instance_id) WHERE is_primary = 1;
+
 CREATE TABLE IF NOT EXISTS inventory (
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     qty        BIGINT NOT NULL DEFAULT 0 CHECK (qty >= 0),
@@ -963,51 +1023,6 @@ CREATE TABLE IF NOT EXISTS product_images (
     updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     PRIMARY KEY (product_id, slot)
 );
-
-CREATE TABLE IF NOT EXISTS "user_workspace_instances" (
-    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    instance_id  TEXT NOT NULL REFERENCES "workspace_instances"(id) ON DELETE CASCADE,
-    is_default   BIGINT NOT NULL DEFAULT 0,
-    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    UNIQUE(user_id, instance_id)
-);
-
-CREATE TABLE IF NOT EXISTS workspace_inventory_locations (
-    id                   TEXT PRIMARY KEY,
-    instance_id          TEXT NOT NULL REFERENCES workspace_instances(id) ON DELETE CASCADE,
-    location_id          TEXT NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT,
-    is_primary           BIGINT NOT NULL DEFAULT 0
-                         CHECK (is_primary IN (0, 1)),
-    allow_negative_stock BIGINT NOT NULL DEFAULT 0
-                         CHECK (allow_negative_stock IN (0, 1)),
-    sort_order           BIGINT NOT NULL DEFAULT 0,
-    UNIQUE(instance_id, location_id)
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_inv_locations_one_primary_per_instance
-    ON workspace_inventory_locations(instance_id) WHERE is_primary = 1;
-
-CREATE TABLE IF NOT EXISTS assignment_branches (
-    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
-    branch_id          TEXT NOT NULL,
-    PRIMARY KEY (assignment_user_id, branch_id)
-);
-
-CREATE TABLE IF NOT EXISTS assignment_workspaces (
-    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
-    workspace_key      TEXT NOT NULL REFERENCES workspaces(key) ON DELETE CASCADE,
-    PRIMARY KEY (assignment_user_id, workspace_key)
-);
-
-CREATE TABLE IF NOT EXISTS purchase_order_lines (
-    id                TEXT PRIMARY KEY NOT NULL,
-    po_id             TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
-    sku               TEXT NOT NULL DEFAULT '',
-    product_name      TEXT NOT NULL DEFAULT '',
-    qty               BIGINT NOT NULL DEFAULT 0,
-    unit_cost_minor   BIGINT NOT NULL DEFAULT 0,
-    line_total_minor  BIGINT NOT NULL DEFAULT 0
-, received_qty BIGINT NOT NULL DEFAULT 0, damaged_qty  BIGINT NOT NULL DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS gift_card_transactions (
     id                  TEXT PRIMARY KEY,
@@ -1445,6 +1460,12 @@ CREATE INDEX IF NOT EXISTS idx_kds_orders_status_received
 CREATE INDEX IF NOT EXISTS idx_kds_orders_target_instance
     ON kds_orders(target_instance_id);
 
+CREATE INDEX IF NOT EXISTS idx_legal_entities_tenant
+    ON legal_entities(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_locations_legal_entity
+    ON locations(legal_entity_id);
+
 CREATE INDEX IF NOT EXISTS idx_login_attempts_attempted_at ON login_attempts(attempted_at);
 
 CREATE INDEX IF NOT EXISTS idx_login_attempts_device ON login_attempts(device_id);
@@ -1650,10 +1671,6 @@ INSERT INTO loyalty_tiers (id, name, min_points, points_per_unit, colour, sort_o
     ('tier-platinum', 'Platinum', 2000, 10, '#e5e4e2', 4, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 2000000)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default')
-ON CONFLICT DO NOTHING;
-
 INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
     ('default', 'free', 'active', NULL, 1, 1, '["store-pos", "restaurant-pos", "admin"]', 'BOOTSTRAP_FREE', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '')
 ON CONFLICT DO NOTHING;
@@ -1676,12 +1693,8 @@ INSERT INTO workspaces (id, key, name, description, icon) VALUES
     ('ws-retail-pos', 'retail-pos', 'Retail POS', 'Cashier terminal for retail checkout', 'store')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
-    ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general')
+INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at) VALUES
+    ('default:default-legal-entity', 'default', 'Default Legal Entity', 'Default Legal Entity', '', '', 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_type_screens (id, type_key, screen_key, sort_order) VALUES
@@ -1756,9 +1769,22 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (30, 'admin', 'design', '', 15)
 ON CONFLICT DO NOTHING;
 
+INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id) VALUES
+    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
+    ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general')
+ON CONFLICT DO NOTHING;
+
 -- tenant_id tables NOT yet under RLS (write path must populate
 -- tenant_id before each can be added to RLS_TABLES):
 --   image_refs
+--   legal_entities
 --   sale_lines
 --   snapshot_versions
 --   webhook_endpoints
