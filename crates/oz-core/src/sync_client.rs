@@ -52,6 +52,27 @@ struct PushResponse {
     results: Vec<PushOutcome>,
 }
 
+/// Prefix the cloud server puts on the `Rejected` reason when a pushed item's
+/// id already exists (`apps/cloud-server/src/sync_store.rs` `push_batch`,
+/// `format!("duplicate id: {}", item.id)`).
+///
+/// A duplicate id is NOT a rejection: item ids are client-generated UUIDs
+/// assigned once at enqueue, so the only way the server already holds an id is
+/// that THIS item was pushed before — the canonical case being a crash between
+/// the server insert and the local `mark_offline_synced`, then a re-push on
+/// recovery. The data is safely on the server; the correct local state is
+/// `synced`, not a terminal `failed`. The server itself agrees: it labels
+/// duplicate-id outcomes `"conflict"` (not `"rejected"`) in its push metrics
+/// (`sync_api.rs`). Both the immediate [`apply_sync_outcomes`] and the daemon's
+/// `apply_push_results` route these to synced via this predicate.
+pub const DUPLICATE_ID_REJECTION_PREFIX: &str = "duplicate id:";
+
+/// Whether a `Rejected` reason is an idempotent-replay duplicate (already on
+/// the server) rather than a genuine rejection.
+pub fn is_duplicate_id_rejection(reason: &str) -> bool {
+    reason.starts_with(DUPLICATE_ID_REJECTION_PREFIX)
+}
+
 /// Result of a single sync attempt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncAttemptResult {
@@ -281,6 +302,20 @@ pub fn apply_sync_outcomes(
     for (item, outcome) in pending.iter().zip(outcomes.iter()) {
         match outcome {
             PushOutcome::Accepted => {
+                store.mark_offline_synced(&item.id)?;
+                synced += 1;
+            }
+            PushOutcome::Rejected { reason } if is_duplicate_id_rejection(reason) => {
+                // Idempotent replay: the server already holds this exact item
+                // (same client-generated id), so the mutation is safely
+                // persisted. Treat as synced rather than a terminal failure —
+                // push-side `failed` items have no requeue path, so marking a
+                // successful replay `failed` would strand it permanently and
+                // pollute `failed_count`. See DUPLICATE_ID_REJECTION_PREFIX.
+                tracing::info!(
+                    item_id = %item.id,
+                    "sync push duplicate-id replay: item already on server, marking synced"
+                );
                 store.mark_offline_synced(&item.id)?;
                 synced += 1;
             }

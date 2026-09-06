@@ -1064,6 +1064,96 @@ async fn daemon_resolves_push_conflict_via_shared_service() {
     );
 }
 
+/// Mock sync server whose push endpoint ALWAYS returns a `duplicate id:`
+/// Rejected — the shape the real server produces when an item id already
+/// exists (`sync_store.rs` `push_batch`). This is the crash-then-repush
+/// recovery signal, not a genuine rejection.
+async fn spawn_duplicate_id_mock_sync_server() -> String {
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    async fn handle_push(Json(items): Json<Vec<serde_json::Value>>) -> Json<PushResponse> {
+        let results = items
+            .iter()
+            .map(|it| PushOutcome::Rejected {
+                reason: format!(
+                    "duplicate id: {}",
+                    it.get("id").and_then(|v| v.as_str()).unwrap_or("")
+                ),
+            })
+            .collect();
+        Json(PushResponse { results })
+    }
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull));
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    format!("http://localhost:{port}")
+}
+
+/// Crash-recovery regression: when the server reports a pushed item as a
+/// `duplicate id:` Rejected (it already holds the item), the daemon must mark
+/// it SYNCED, not terminal-failed. Push-side failed items have no requeue
+/// path, so a mislabeled replay would strand a successfully-synced item
+/// forever and pollute `failed_count`.
+#[tokio::test]
+async fn daemon_marks_duplicate_id_replay_synced_not_failed() {
+    let server_url = spawn_duplicate_id_mock_sync_server().await;
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+        store
+            .enqueue_offline("complete_sale", r#"{"id":1}"#)
+            .unwrap();
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let db_check = db.clone();
+    let (all, pending, summary) = tokio::task::spawn_blocking(move || {
+        let conn = db_check.blocking_lock();
+        let store = Store::new(&conn);
+        (
+            store.list_all_offline().unwrap(),
+            store.list_pending_offline().unwrap(),
+            store.offline_queue_status_summary().unwrap(),
+        )
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(all.len(), 1);
+    assert!(pending.is_empty(), "duplicate-id replay must leave pending");
+    assert_eq!(
+        all[0].status,
+        oz_core::offline::OfflineQueueStatus::Synced,
+        "a duplicate-id replay is an idempotent success, not a failure"
+    );
+    assert_eq!(summary.failed_count, 0, "failed_count must not be polluted");
+    assert_eq!(summary.synced_count, 1);
+}
+
 /// SYNC-05 daemon end-to-end: a stock conflict must be resolved via the
 /// shared ADR #21 service into a CRDT merge, the merged winner must be
 /// re-enqueued, AND a later pull of that same merged item must be

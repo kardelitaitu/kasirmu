@@ -192,6 +192,28 @@ async fn apply_push_results(
                         );
                     }
                 }
+                PushOutcome::Rejected { reason }
+                    if oz_core::sync_client::is_duplicate_id_rejection(reason) =>
+                {
+                    // Idempotent replay — the server already holds this exact
+                    // item (same client-generated id), so the mutation landed.
+                    // Mark synced, not failed: push-side failed items are
+                    // terminal (no requeue), so a crash-then-repush would
+                    // otherwise strand a successfully-synced item forever.
+                    // Shares the DUPLICATE_ID_REJECTION_PREFIX predicate with
+                    // the immediate apply_sync_outcomes path.
+                    tracing::info!(
+                        item_id = %local.id,
+                        "sync push duplicate-id replay: item already on server, marking synced"
+                    );
+                    if let Err(e) = store.mark_offline_synced(&local.id) {
+                        tracing::error!(
+                            item_id = %local.id,
+                            error = %e,
+                            "sync daemon: failed to mark duplicate-replay item synced"
+                        );
+                    }
+                }
                 PushOutcome::Rejected { reason } => {
                     if let Err(e) = store.mark_offline_failed(&local.id, reason) {
                         tracing::error!(

@@ -297,6 +297,52 @@ fn apply_sync_outcomes_rejected_marks_failed() {
 }
 
 #[test]
+fn apply_sync_outcomes_duplicate_id_rejection_marks_synced() {
+    // A `duplicate id:` Rejected means the server already holds this exact
+    // item (crash between server-insert and local mark-synced, then re-push).
+    // The mutation is safe on the server, so the item must become `synced`,
+    // NOT a terminal `failed` (push-side failed items have no requeue path).
+    let store = setup();
+    let items = [store
+        .enqueue_offline("complete_sale", r#"{"id":1}"#)
+        .unwrap()];
+
+    let outcomes = vec![PushOutcome::Rejected {
+        reason: "duplicate id: some-uuid".into(),
+    }];
+    let result = apply_sync_outcomes(&store, &items, &outcomes).unwrap();
+    assert_eq!(result.synced, 1, "duplicate-id replay counts as synced");
+    assert_eq!(result.failed, 0);
+    assert_eq!(result.error, None, "a replay is not an error");
+
+    let all = store.list_all_offline().unwrap();
+    assert_eq!(all[0].status, crate::offline::OfflineQueueStatus::Synced);
+    // failed_count must stay 0 — the whole point is not polluting it.
+    let summary = store.offline_queue_status_summary().unwrap();
+    assert_eq!(summary.failed_count, 0);
+    assert_eq!(summary.synced_count, 1);
+}
+
+#[test]
+fn apply_sync_outcomes_genuine_rejection_still_marks_failed() {
+    // Guard the boundary: a Rejected that merely CONTAINS "duplicate id" but
+    // does not start with the exact prefix is still a genuine failure.
+    let store = setup();
+    let items = [store
+        .enqueue_offline("complete_sale", r#"{"id":1}"#)
+        .unwrap()];
+
+    let outcomes = vec![PushOutcome::Rejected {
+        reason: "server error: duplicate id collision detected downstream".into(),
+    }];
+    let result = apply_sync_outcomes(&store, &items, &outcomes).unwrap();
+    assert_eq!(result.failed, 1);
+    assert_eq!(result.synced, 0);
+    let all = store.list_all_offline().unwrap();
+    assert_eq!(all[0].status, crate::offline::OfflineQueueStatus::Failed);
+}
+
+#[test]
 fn apply_sync_outcomes_conflict_resolves_with_server_copy_wins() {
     let store = setup();
     let local = store
