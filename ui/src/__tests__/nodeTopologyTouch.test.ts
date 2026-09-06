@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pinchTransform, MIN_ZOOM, MAX_ZOOM } from '../features/stores/nodeTopologyTouch';
+import { pinchTransform, MIN_ZOOM, MAX_ZOOM } from '../features/locations/nodeTopologyTouch';
 
 describe('pinchTransform (two-finger pinch + pan math)', () => {
   it('zooms toward the fingers, keeping the pinch midpoint fixed', () => {

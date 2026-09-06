@@ -13,7 +13,7 @@ import {
   findOverlappingNodeIds,
   nodeBoxesOverlap,
   resolveDropOverlaps,
-} from '../features/stores/nodeTopologyClamp';
+} from '../features/locations/nodeTopologyClamp';
 
 /* ── clampNodeToViewport ─────────────────────────────────────────── */
 

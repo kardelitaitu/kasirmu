@@ -1,10 +1,10 @@
 import { type ComponentProps } from 'react';
-import type { TopologyNodeCard as NodeCardComponent } from '../features/stores/topologyNodeCard';
-import type { TopologyWireGroup as WireGroupComponent } from '../features/stores/topologyWireGroup';
+import type { TopologyNodeCard as NodeCardComponent } from '../features/locations/topologyNodeCard';
+import type { TopologyWireGroup as WireGroupComponent } from '../features/locations/topologyWireGroup';
 import { fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
-import NodeTopologyEditor from '../features/stores/NodeTopologyEditor';
+import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
 import { loadTopology } from '@/api/topology';
 import multiStoreFtl from '@/locales/multi-store.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -35,7 +35,7 @@ const { nodeCounts, wireCounts, stableL10n, stableSettings } = vi.hoisted(() => 
   },
 }));
 
-vi.mock('../features/stores/topologyNodeCard', async (importOriginal) => {
+vi.mock('../features/locations/topologyNodeCard', async (importOriginal) => {
   // The mocked module's type shape (only the component export is read).
   const actual = await importOriginal<{ TopologyNodeCard: typeof NodeCardComponent }>();
   const { memo: memoize } = await import('react');
@@ -49,7 +49,7 @@ vi.mock('../features/stores/topologyNodeCard', async (importOriginal) => {
   };
 });
 
-vi.mock('../features/stores/topologyWireGroup', async (importOriginal) => {
+vi.mock('../features/locations/topologyWireGroup', async (importOriginal) => {
   const actual = await importOriginal<{ TopologyWireGroup: typeof WireGroupComponent }>();
   const { memo: memoize } = await import('react');
   const RealWire = actual.TopologyWireGroup;

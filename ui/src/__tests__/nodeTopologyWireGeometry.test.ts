@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { NODE_HEIGHT, NODE_WIDTH } from '../features/stores/nodeTopologyClamp';
+import { NODE_HEIGHT, NODE_WIDTH } from '../features/locations/nodeTopologyClamp';
 import {
   cubicBezier,
   pointUnderCards,
   polylinePoint,
   wireUnderCardSegments,
-} from '../features/stores/topologyWireGeometry';
+} from '../features/locations/topologyWireGeometry';
 
 /** A horizontal store→warehouse wire at port height (NODE_PORT_Y = 224). */
 function horizontalWire(y = 140) {

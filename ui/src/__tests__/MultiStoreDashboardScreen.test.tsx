@@ -6,7 +6,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import MultiStoreDashboardScreen from '@/features/stores/MultiStoreDashboardScreen';
+import MultiStoreDashboardScreen from '@/features/locations/MultiStoreDashboardScreen';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 

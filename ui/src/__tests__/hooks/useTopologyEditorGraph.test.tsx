@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useTopologyEditorGraph, type TopologyHistoryEntry } from '@/features/stores/nodeTopologyEditorState';
+import { useTopologyEditorGraph, type TopologyHistoryEntry } from '@/features/locations/nodeTopologyEditorState';
 
 interface TestNode { id: string; name: string; x: number; y: number; }
 interface TestWire { id: string; fromNodeId: string; toNodeId: string; }

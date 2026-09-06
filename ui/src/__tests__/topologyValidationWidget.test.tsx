@@ -2,9 +2,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
-import { TopologyValidationWidget } from '@/features/stores/topologyValidationWidget';
-import type { TopologyValidationNodeIssue } from '@/features/stores/topologyValidationWidget';
-import type { TopologyValidationError } from '@/features/stores/topologyContract';
+import { TopologyValidationWidget } from '@/features/locations/topologyValidationWidget';
+import type { TopologyValidationNodeIssue } from '@/features/locations/topologyValidationWidget';
+import type { TopologyValidationError } from '@/features/locations/topologyContract';
 import multiStoreFtl from '@/locales/multi-store.ftl?raw';
 import multiStoreIdFtl from '@/locales/multi-store.id.ftl?raw';
 

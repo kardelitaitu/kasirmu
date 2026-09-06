@@ -2,7 +2,7 @@ import { useState, type ComponentProps } from 'react';
 import { screen, fireEvent, waitFor, act, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
-import NodeTopologyEditor, { type WorkspaceInstanceSeed, type BranchLocationSeed } from '../features/stores/NodeTopologyEditor';
+import NodeTopologyEditor, { type WorkspaceInstanceSeed, type BranchLocationSeed } from '../features/locations/NodeTopologyEditor';
 import {
   clampNodeToViewport,
   edgeAutoPanDelta,
@@ -12,10 +12,10 @@ import {
   NODE_PORT_MARKER,
   NODE_WIDTH,
   resolveDropOverlaps,
-} from '../features/stores/nodeTopologyClamp';
+} from '../features/locations/nodeTopologyClamp';
 import { clearDevLog, getDevLog } from '@/utils/devLog';
 import { loadTopology, type TopologyData } from '@/api/topology';
-import type * as nodeTopologyEditorState from '../features/stores/nodeTopologyEditorState';
+import type * as nodeTopologyEditorState from '../features/locations/nodeTopologyEditorState';
 import multiStoreFtl from '@/locales/multi-store.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
@@ -307,9 +307,9 @@ const RETAIL_SEED = {
   ],
 };
 
-vi.mock('../features/stores/nodeTopologyEditorState', async () => {
+vi.mock('../features/locations/nodeTopologyEditorState', async () => {
   const actual = await vi.importActual<typeof nodeTopologyEditorState>(
-    '../features/stores/nodeTopologyEditorState',
+    '../features/locations/nodeTopologyEditorState',
   );
   return {
     ...actual,

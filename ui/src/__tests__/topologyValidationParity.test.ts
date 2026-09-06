@@ -59,7 +59,7 @@ const ENFORCED_ELSEWHERE: Readonly<Record<string, { file: string; why: string }>
 };
 
 describe('topology validation code parity (TS ↔ Rust)', () => {
-  const tsSource = read('ui/src/features/stores/topologyContract.ts');
+  const tsSource = read('ui/src/features/locations/topologyContract.ts');
   const coreSource = read('crates/oz-core/src/topology.rs');
 
   const tsCodes = [...new Set(

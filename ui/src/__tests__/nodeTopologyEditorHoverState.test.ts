@@ -5,7 +5,7 @@ import {
   useTopologyEditorHover,
   initialTopologyHoverState,
   type TopologyHoverState,
-} from '@/features/stores/nodeTopologyEditorHoverState';
+} from '@/features/locations/nodeTopologyEditorHoverState';
 
 describe('topologyHoverReducer', () => {
   it('starts with no node or wire hover', () => {

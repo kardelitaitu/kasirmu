@@ -5,7 +5,7 @@ import {
   topologySelectionReducer,
   initialTopologySelectionState,
   type TopologySelectionState,
-} from '@/features/stores/nodeTopologyEditorSelectionState';
+} from '@/features/locations/nodeTopologyEditorSelectionState';
 
 describe('useTopologyEditorSelection', () => {
   let hook: { result: { current: ReturnType<typeof useTopologyEditorSelection> } };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TopologyNodeData } from '@/features/stores/NodeTopologyEditor';
+import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
 import {
   isKdsNode,
   leftPortVariants,
@@ -21,7 +21,7 @@ import {
   topologyUiString,
   workspaceTypeLabel,
   sanitizeCopiedNode,
-} from '@/features/stores/topologyCard';
+} from '@/features/locations/topologyCard';
 
 const node = (overrides: Partial<TopologyNodeData>): TopologyNodeData => ({
   id: 'n-1',

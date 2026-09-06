@@ -6,7 +6,7 @@ import {
   initialTopologyConnectionState,
   type TopologyConnectionState,
   type TopologyPickerState,
-} from '@/features/stores/nodeTopologyEditorConnectionState';
+} from '@/features/locations/nodeTopologyEditorConnectionState';
 
 const picker = (): TopologyPickerState => ({
   fromNodeId: 'ws-1',

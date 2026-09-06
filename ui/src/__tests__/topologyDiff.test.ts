@@ -10,8 +10,8 @@
 // fails here first instead of only at the screen boundary.
 
 import { describe, expect, it } from 'vitest';
-import { computeTopologyDiff, planTopologyDiff, summarizeTopologyPlan } from '@/features/stores/topologyDiff';
-import type { TopologyNodeData, TopologyWireData } from '@/features/stores/NodeTopologyEditor';
+import { computeTopologyDiff, planTopologyDiff, summarizeTopologyPlan } from '@/features/locations/topologyDiff';
+import type { TopologyNodeData, TopologyWireData } from '@/features/locations/NodeTopologyEditor';
 import type { WorkspaceDto } from '@/api/workspaces';
 
 // ── Fixtures ──────────────────────────────────────────────────────

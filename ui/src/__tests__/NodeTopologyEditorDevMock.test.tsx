@@ -14,7 +14,7 @@
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
-import NodeTopologyEditor from '../features/stores/NodeTopologyEditor';
+import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
 import { loadTopology, applyTopologyDiff } from '@/api/topology';
 import type { TopologyNodePayload, TopologyWirePayload } from '@/api/topology';
 import multiStoreFtl from '@/locales/multi-store.ftl?raw';

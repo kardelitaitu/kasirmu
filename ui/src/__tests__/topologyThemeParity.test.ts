@@ -29,7 +29,7 @@ import { resolve } from 'path';
 // These are cheap, static, and mechanical. That is the point — §5's claim is
 // that parity is a verification task, so it needs a verifier, not a review.
 
-const CSS_PATH = resolve(__dirname, '../features/stores/NodeTopologyEditor.css');
+const CSS_PATH = resolve(__dirname, '../features/locations/NodeTopologyEditor.css');
 const TOKENS_PATH = resolve(__dirname, '../frontend/themes/tokens.css');
 
 const css = readFileSync(CSS_PATH, 'utf-8');

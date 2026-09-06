@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 2,
+  "warehouse": {
+    "primaryInputs": ["location-in", "operation-in"],
+    "operationalInputs": ["stock-in", "transfer-in"],
+    "primaryRelationships": ["location", "generic"],
+    "operationalRelationships": ["stock-routing", "inventory-transfer"]
+  },
+  "endpointWorkspaceTypeKeys": ["store-pos", "restaurant-pos", "kds"],
+  "nodeKinds": ["branch-location", "workspace", "warehouse", "hardware"],
+  "semanticPairings": [
+    {
+      "source": "location-out", "target": "location-in",
+      "relationshipType": "location", "labelId": "topology-relationship-location",
+      "endpoints": [
+        { "from": "@branch-root", "to": "workspace" },
+        { "from": "@branch-root", "to": "warehouse" }
+      ]
+    },
+    {
+      "source": "operation-out", "target": "operation-in",
+      "relationshipType": "generic", "labelId": "topology-relationship-operation",
+      "endpoints": [
+        { "from": "workspace:restaurant-pos", "to": "workspace:kds" },
+        { "from": "workspace:store-pos", "to": "warehouse" }
+      ]
+    },
+    {
+      "source": "stock-out", "target": "stock-in",
+      "relationshipType": "stock-routing", "labelId": "topology-relationship-stock-routing",
+      "endpoints": [
+        { "from": "workspace:store-pos", "to": "warehouse" },
+        { "from": "workspace:restaurant-pos", "to": "warehouse" },
+        { "from": "warehouse", "to": "warehouse" }
+      ]
+    },
+    {
+      "source": "transfer-out", "target": "transfer-in",
+      "relationshipType": "inventory-transfer", "labelId": "topology-relationship-inventory-transfer",
+      "endpoints": [
+        { "from": "workspace:store-pos", "to": "warehouse" },
+        { "from": "workspace:restaurant-pos", "to": "warehouse" },
+        { "from": "warehouse", "to": "warehouse" }
+      ]
+    },
+    {
+      "source": "ticket-out", "target": "ticket-in",
+      "relationshipType": "ticket-routing", "labelId": "topology-relationship-ticket-routing",
+      "endpoints": [
+        { "from": "workspace:kds", "to": "hardware" }
+      ]
+    },
+    {
+      "source": "device-out", "target": "generic-in",
+      "relationshipType": "hardware-connection", "labelId": "topology-relationship-hardware-connection",
+      "endpoints": [
+        { "from": "hardware", "to": "hardware" }
+      ]
+    },
+    {
+      "source": "generic-out", "target": "generic-in",
+      "relationshipType": "generic", "labelId": "topology-relationship-generic",
+      "endpoints": [
+        { "from": "*", "to": "*" }
+      ]
+    }
+  ]
+}

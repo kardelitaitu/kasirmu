@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import type { TopologyNodeData } from '@/features/stores/NodeTopologyEditor';
+import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
 import {
   gatingSemanticId,
   iconForNode,
@@ -18,7 +18,7 @@ import {
   settingsCardForTypeKey,
   socketSemanticIds,
   visiblePortsForNode,
-} from '@/features/stores/topologyCard';
+} from '@/features/locations/topologyCard';
 
 // ADR #45 §3 — the behavior freeze.
 //

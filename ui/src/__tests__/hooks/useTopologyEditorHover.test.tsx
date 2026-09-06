@@ -5,7 +5,7 @@ import {
   topologyHoverReducer,
   initialTopologyHoverState,
   type TopologyHoverState,
-} from '@/features/stores/nodeTopologyEditorHoverState';
+} from '@/features/locations/nodeTopologyEditorHoverState';
 
 describe('useTopologyEditorHover', () => {
   let hook: { result: { current: ReturnType<typeof useTopologyEditorHover> } };

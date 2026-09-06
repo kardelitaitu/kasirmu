@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import TerminalStatusPanel from '@/features/stores/TerminalStatusPanel';
+import TerminalStatusPanel from '@/features/locations/TerminalStatusPanel';
 import type { TerminalDto } from '@/api/terminals';
 
 const { mockListTerminals } = vi.hoisted(() => ({

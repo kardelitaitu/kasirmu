@@ -9,7 +9,7 @@ import {
   NODE_WIDTH,
   NODE_HEIGHT,
   EDGE_MARGIN,
-} from '@/features/stores/nodeTopologyClamp';
+} from '@/features/locations/nodeTopologyClamp';
 
 describe('nodeTopologyClamp', () => {
   describe('clampNodeToViewport', () => {

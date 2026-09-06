@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders, checkA11y } from './axe-helper';
-import NodeTopologyEditor from '@/features/stores/NodeTopologyEditor';
+import NodeTopologyEditor from '@/features/locations/NodeTopologyEditor';
 import { loadTopology } from '@/api/topology';
 
 vi.mock('@/api/topology', () => ({

@@ -13,8 +13,8 @@ BOTH sides of the IPC boundary:
      (`crates/oz-core/src/topologySemantics.json`) via `include_str!` so
      compiling the cloud/desktop server never touches the UI tree
      (`.dockerignore` excludes `ui` entirely).
-  2. TypeScript — `ui/src/features/stores/topologyContract.ts` and
-     `topologyCard.ts` import the ORIGINAL `ui/src/features/stores/
+  2. TypeScript — `ui/src/features/locations/topologyContract.ts` and
+     `topologyCard.ts` import the ORIGINAL `ui/src/features/locations/
      topologySemantics.json`.
 
 If a developer edits the contract on one side and forgets the other, the
@@ -82,7 +82,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 VENDORED = Path("crates/oz-core/src/topologySemantics.json")
-UI = Path("ui/src/features/stores/topologySemantics.json")
+UI = Path("ui/src/features/locations/topologySemantics.json")
 MATRIX = Path("crates/oz-core/src/topologySemantics.matrix.json")
 
 
@@ -123,7 +123,7 @@ def check_contract_copies() -> int:
         f"(first divergence around line {first_diff}).\n"
         "  Copy the edited copy across so the Rust include_str! and the TS "
         "import describe the same contract:\n"
-        "    cp ui/src/features/stores/topologySemantics.json "
+        "    cp ui/src/features/locations/topologySemantics.json "
         "crates/oz-core/src/topologySemantics.json\n"
         "  (or the reverse, depending on which side owns the change)."
     )

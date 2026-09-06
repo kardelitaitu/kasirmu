@@ -87,7 +87,7 @@ describe('sourceAudit.collectSourceFiles', () => {
     // Windows returns backslash paths — normalize before asserting suffixes.
     const normalized = files.map((f) => f.replace(/\\/g, '/'));
     expect(normalized.length).toBeGreaterThan(100);
-    expect(normalized.some((f) => f.endsWith('features/stores/NodeTopologyEditor.tsx'))).toBe(true);
+    expect(normalized.some((f) => f.endsWith('features/locations/NodeTopologyEditor.tsx'))).toBe(true);
     expect(normalized.some((f) => f.includes('__tests__'))).toBe(false);
     expect(normalized.some((f) => f.includes('node_modules'))).toBe(false);
     expect(normalized.some((f) => f.endsWith('.d.ts'))).toBe(false);

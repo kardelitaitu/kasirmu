@@ -2,8 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
-import { WarehouseSettingsCard } from '@/features/stores/topologyWarehouseCard';
-import type { TopologyNodeData } from '@/features/stores/NodeTopologyEditor';
+import { WarehouseSettingsCard } from '@/features/locations/topologyWarehouseCard';
+import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
 import multiStoreFtl from '@/locales/multi-store.ftl?raw';
 import multiStoreIdFtl from '@/locales/multi-store.id.ftl?raw';
 

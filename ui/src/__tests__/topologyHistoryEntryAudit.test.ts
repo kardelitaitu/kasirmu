@@ -28,7 +28,7 @@ import { collectSourceFiles, lineNumberAt, scanUpdaters } from '@/__tests__/test
 /* ── Paths ───────────────────────────────────────────────────── */
 
 const UI_SRC = resolve(__dirname, '..');
-const EDITOR_SRC = resolve(UI_SRC, 'features/stores/NodeTopologyEditor.tsx');
+const EDITOR_SRC = resolve(UI_SRC, 'features/locations/NodeTopologyEditor.tsx');
 
 /* ── Drift-guard baseline ─────────────────────────────────────── */
 // Every undo/redo entry-creation site must route through historyEntry().
@@ -142,7 +142,7 @@ describe('history-entry producer audit — whole ui/src', () => {
         `non-exempt creators, found ${nonExempt.length}:\n  ${listing}`,
     ).toBe(EXPECTED_ENTRY_CREATORS);
     for (const site of nonExempt) {
-      expect(site.file).toBe('features/stores/NodeTopologyEditor.tsx');
+      expect(site.file).toBe('features/locations/NodeTopologyEditor.tsx');
       expect(site.body).toContain('historyEntry');
     }
   });

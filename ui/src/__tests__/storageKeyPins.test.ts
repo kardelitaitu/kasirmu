@@ -74,10 +74,10 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-analytics-zoom': 'features/analytics/AnalyticsScreen.tsx',
 
   // Topology editor
-  'oz-topology-template:': 'features/stores/topologyExport.ts',
-  'oz-topology-view-routing': 'features/stores/NodeTopologyEditor.tsx',
-  'oz-topology-view-snap': 'features/stores/NodeTopologyEditor.tsx',
-  'oz-topology-view-wire-labels': 'features/stores/NodeTopologyEditor.tsx',
+  'oz-topology-template:': 'features/locations/topologyExport.ts',
+  'oz-topology-view-routing': 'features/locations/NodeTopologyEditor.tsx',
+  'oz-topology-view-snap': 'features/locations/NodeTopologyEditor.tsx',
+  'oz-topology-view-wire-labels': 'features/locations/NodeTopologyEditor.tsx',
 
   // Workspaces
   'workspace-last-used': 'features/workspaces/WorkspaceHome.tsx',

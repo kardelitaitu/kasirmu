@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TopologyNodeData, TopologyWireData } from '@/features/stores/NodeTopologyEditor';
+import type { TopologyNodeData, TopologyWireData } from '@/features/locations/NodeTopologyEditor';
 import {
   TOPOLOGY_SCHEMA_VERSION,
   WAREHOUSE_PRIMARY_INPUT_PORTS,
@@ -14,7 +14,7 @@ import {
   firstTopologyValidationError,
   orderTopologyValidationErrors,
   type TopologyValidationError,
-} from '@/features/stores/topologyContract';
+} from '@/features/locations/topologyContract';
 
 const branch = (id = 'branch-1'): TopologyNodeData => ({
   id,
@@ -1382,7 +1382,7 @@ describe('firstTopologyValidationError', () => {
 // type is not enumerable at runtime.
 
 describe('validation error priority table', () => {
-  const source = readFileSync(join(process.cwd(), 'src/features/stores/topologyContract.ts'), 'utf8');
+  const source = readFileSync(join(process.cwd(), 'src/features/locations/topologyContract.ts'), 'utf8');
 
   const unionBlock = /export type TopologyValidationCode\s*=\s*([\s\S]*?);/.exec(source)?.[1]
     ?? /code:\s*([\s\S]*?)\n\s*\}/.exec(source)?.[1]

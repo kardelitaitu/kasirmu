@@ -6,7 +6,7 @@ import {
   initialTopologyConnectionState,
   type TopologyConnectionState,
   type TopologyPickerState,
-} from '@/features/stores/nodeTopologyEditorConnectionState';
+} from '@/features/locations/nodeTopologyEditorConnectionState';
 
 describe('useTopologyEditorConnection', () => {
   let hook: { result: { current: ReturnType<typeof useTopologyEditorConnection> } };

@@ -6,7 +6,7 @@ import { registerGiftCardsFeature } from './gift-cards/register';
 import { registerLoyaltyFeature } from './loyalty/register';
 import { registerStaffFeature } from './staff/register';
 import { registerTerminalsFeature } from './terminals/register';
-import { registerStoresFeature } from './stores/register';
+import { registerStoresFeature } from './locations/register';
 import { registerSettingsFeature } from './settings/register';
 import { registerTaxFeature } from './tax/register';
 import { registerCurrencyFeature } from './currency/register';

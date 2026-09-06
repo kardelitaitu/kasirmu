@@ -31,7 +31,7 @@ import re
 import sys
 from pathlib import Path
 
-CSS = Path("ui/src/features/stores/NodeTopologyEditor.css")
+CSS = Path("ui/src/features/locations/NodeTopologyEditor.css")
 
 # var(--token, <literal>) where the fallback is a plain value, not a nested
 # var(). The fallback body excludes ')' so nested calls are left alone here and

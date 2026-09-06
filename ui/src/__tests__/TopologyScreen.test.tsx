@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, waitFor, act, screen, fireEvent, within } from '@testing-library/react';
-import TopologyScreen from '@/features/stores/TopologyScreen';
+import TopologyScreen from '@/features/locations/TopologyScreen';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 import type { SubscriptionCapabilities } from '@/api/subscription';
 
@@ -150,7 +150,7 @@ let capturedEditorProps: {
   /** The tier the header badge renders from — asserted by the badge tests. */
   currentTier?: string;
 } = {};
-vi.mock('@/features/stores/NodeTopologyEditor', () => ({
+vi.mock('@/features/locations/NodeTopologyEditor', () => ({
   default: (props: {
     onSave?: (n: unknown[], w: unknown[]) => Promise<Record<string, string> | void>;
     workspaceInstances?: unknown[];

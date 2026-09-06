@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { pairingAdmitsKinds } from '@/features/stores/topologyCard';
-import topologySemantics from '@/features/stores/topologySemantics.json';
+import { pairingAdmitsKinds } from '@/features/locations/topologyCard';
+import topologySemantics from '@/features/locations/topologySemantics.json';
 
 // ADR #45 §2 — the cross-language corpus.
 //
