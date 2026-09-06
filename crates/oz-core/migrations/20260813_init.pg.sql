@@ -1869,7 +1869,6 @@ ON CONFLICT DO NOTHING;
 --   memo_recipients
 --   memo_revisions
 --   memos
---   sale_lines
 --   snapshot_versions
 --   terminals
 --   webhook_endpoints
@@ -1883,8 +1882,8 @@ DECLARE
 BEGIN
     FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'locations', 'media_assets', 'media_thumbnails', 'offline_queue',
                             'payment_gateways', 'payment_settlements', 'product_activity', 'product_bundles', 'product_taxes', 'product_variants',
-                            'products', 'refunds', 'sales', 'sent_reports', 'stripe_customers', 'sync_terminals',
-                            'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
+                            'products', 'refunds', 'sale_lines', 'sales', 'sent_reports', 'stripe_customers',
+                            'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (

@@ -499,7 +499,8 @@ async fn pg_integration_rest_rls_non_owner() {
     let currency: Currency = "USD".parse().unwrap();
 
     // Restricted role (idempotent): DML on the tenant tables + the
-    // non-RLS `sale_lines` and `roles` tables the REST layer touches.
+    // non-tenant `roles` table the REST layer touches (sale_lines is
+    // RLS-covered too — the functions stamp tenant_id explicitly).
     let owner = pool.get().await.expect("owner connection");
     owner
         .batch_execute(

@@ -1204,14 +1204,19 @@ pub async fn create_sale(pool: &Pool, tenant_id: &str, sale: &Sale) -> Result<()
             })
             .unwrap_or_default();
         tx.execute(
-            "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position,
+            // tenant_id is written explicitly (not via column default) so
+            // every line row lands in the caller's tenant — the header's
+            // set_config scopes RLS, but the column default would still
+            // stamp 'default' into the row itself.
+            "INSERT INTO sale_lines (id, sale_id, tenant_id, sku, qty, unit_minor, line_minor, currency, line_position,
                                      tax_minor, tax_rate_id, tax_breakdown_json,
                                      serial_number, course, modifiers_json, cost_minor,
                                      product_id, product_name, category_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)",
             &[
                 &line.id,
                 &line.sale_id,
+                &tenant_id,
                 &line.sku,
                 &line.qty,
                 &line.unit_price.minor_units,
@@ -1403,8 +1408,8 @@ pub async fn get_sale(pool: &Pool, tenant_id: &str, id: &str) -> Result<Option<S
         .query(
             "SELECT id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position,
                     tax_minor, tax_rate_id, tax_breakdown_json, serial_number, course, modifiers_json
-             FROM sale_lines WHERE sale_id = $1 ORDER BY line_position",
-            &[&id],
+             FROM sale_lines WHERE sale_id = $1 AND tenant_id = $2 ORDER BY line_position",
+            &[&id, &tenant_id],
         )
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;

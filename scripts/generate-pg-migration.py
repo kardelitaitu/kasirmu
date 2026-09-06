@@ -262,8 +262,9 @@ def dump_rls(db: sqlite3.Connection) -> str:
 
     Enabling RLS on a table is a policy decision, not a schema fact: the
     write path must set `tenant_id` on every INSERT or the policy's
-    WITH CHECK rejects it (sale_lines is the cautionary example — it has
-    the column but pg.rs inserts without it). So the list is curated,
+    WITH CHECK rejects it (sale_lines was the cautionary example — it
+    sat uncovered until its pg.rs write path started stamping the
+    column). So the list is curated,
     and the generator fails closed on staleness: every entry must exist
     in the final schema AND carry a tenant_id column. Tables that have
     tenant_id but are not yet covered are emitted as a visible comment
@@ -324,6 +325,7 @@ RLS_TABLES = [
     "product_variants",
     "products",
     "refunds",
+    "sale_lines",
     "sales",
     "sent_reports",
     "stripe_customers",
