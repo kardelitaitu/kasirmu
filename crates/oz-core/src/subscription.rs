@@ -131,10 +131,10 @@ impl SubscriptionTier {
         }
     }
 
-    /// Maximum number of stores allowed for this tier.
-    /// C4.2: Premium allows up to 5 stores self-serve; more requires
+    /// Maximum number of locations allowed for this tier.
+    /// C4.2: Premium allows up to 5 locations self-serve; more requires
     /// Enterprise contract. Enterprise is unlimited.
-    pub fn max_stores(&self) -> Option<i64> {
+    pub fn max_locations(&self) -> Option<i64> {
         match self {
             Self::Free | Self::OneTime | Self::Plus => Some(1),
             Self::Pro => Some(2),
@@ -143,7 +143,13 @@ impl SubscriptionTier {
         }
     }
 
-    /// Maximum POS register instances per store for this tier.
+    /// Deprecated compatibility alias for [`max_locations`](Self::max_locations).
+    #[deprecated(note = "use max_locations")]
+    pub fn max_stores(&self) -> Option<i64> {
+        self.max_locations()
+    }
+
+    /// Maximum POS register instances per location for this tier.
     /// Returns `None` for unlimited (Premium / Enterprise).
     pub fn max_pos_instances(&self) -> Option<i64> {
         match self {
@@ -154,7 +160,7 @@ impl SubscriptionTier {
         }
     }
 
-    /// Maximum inventory warehouse storage locations allowed for this tier.
+    /// Maximum inventory warehouse storage points allowed for this tier.
     /// Returns `None` for unlimited (Premium / Enterprise).
     pub fn max_warehouses(&self) -> Option<i64> {
         match self {

@@ -1,4 +1,4 @@
-//! Store-profile CRUD — list, get, create, update, set-primary.
+//! Location-profile CRUD — list, get, create, update, set-primary.
 /*
 last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
 crate: oz-core | status: SAFE | lint: CLEAN
@@ -6,24 +6,24 @@ findings: primary-invariant swap in tx with rollback on 0-rows; primary undeleta
 next: none | perf: N/A
 */
 //!
-//! Every deployment has exactly one primary store, created on first
-//! startup by the `platform-startup` crate. Additional stores can be
+//! Every deployment has exactly one primary location, created on first
+//! startup by the `platform-startup` crate. Additional locations can be
 //! added / removed via these methods.
 
 use rusqlite::params;
 
 use super::Store;
 use crate::subscription::{QuotaError, SubscriptionTier};
-use crate::{CoreError, StoreProfile};
+use crate::{CoreError, LocationProfile};
 
 impl Store<'_> {
-    /// List all store profiles ordered by `created_at`.
-    pub fn list_store_profiles(&self) -> Result<Vec<StoreProfile>, CoreError> {
+    /// List all location profiles ordered by `created_at`.
+    pub fn list_locations(&self) -> Result<Vec<LocationProfile>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at
              FROM locations ORDER BY is_primary DESC, created_at ASC",
         )?;
-        let rows = stmt.query_map([], Self::row_to_store_profile)?;
+        let rows = stmt.query_map([], Self::row_to_location_profile)?;
         let mut profiles = Vec::new();
         for row in rows {
             profiles.push(row?);
@@ -31,13 +31,13 @@ impl Store<'_> {
         Ok(profiles)
     }
 
-    /// Get a single store profile by id.
-    pub fn get_store_profile(&self, id: &str) -> Result<Option<StoreProfile>, CoreError> {
+    /// Get a single location profile by id.
+    pub fn get_location_profile(&self, id: &str) -> Result<Option<LocationProfile>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at
              FROM locations WHERE id = ?1",
         )?;
-        let mut rows = stmt.query_map(params![id], Self::row_to_store_profile)?;
+        let mut rows = stmt.query_map(params![id], Self::row_to_location_profile)?;
         match rows.next() {
             Some(Ok(profile)) => Ok(Some(profile)),
             Some(Err(e)) => Err(e.into()),
@@ -45,13 +45,13 @@ impl Store<'_> {
         }
     }
 
-    /// Get the primary store profile.
-    pub fn get_primary_store(&self) -> Result<Option<StoreProfile>, CoreError> {
+    /// Get the primary location profile.
+    pub fn get_primary_location(&self) -> Result<Option<LocationProfile>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at
              FROM locations WHERE is_primary = 1 LIMIT 1",
         )?;
-        let mut rows = stmt.query_map([], Self::row_to_store_profile)?;
+        let mut rows = stmt.query_map([], Self::row_to_location_profile)?;
         match rows.next() {
             Some(Ok(profile)) => Ok(Some(profile)),
             Some(Err(e)) => Err(e.into()),
@@ -59,23 +59,23 @@ impl Store<'_> {
         }
     }
 
-    /// Count active (non-deleted) store profiles.
-    pub fn count_store_profiles(&self) -> Result<i64, CoreError> {
+    /// Count active (non-deleted) location profiles.
+    pub fn count_locations(&self) -> Result<i64, CoreError> {
         let count: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM locations", [], |row| row.get(0))?;
         Ok(count)
     }
 
-    /// Enforce the subscription tier's store-count limit before creating
-    /// a new store profile (C1.2 — §9 pre-launch: prevents revenue
-    /// leakage from unlimited multi-store usage on lower tiers).
+    /// Enforce the subscription tier's location-count limit before creating
+    /// a new location profile (C1.2 — §9 pre-launch: prevents revenue
+    /// leakage from unlimited multi-location usage on lower tiers).
     ///
-    /// When the tier's `max_stores()` cap is reached, returns
+    /// When the tier's `max_locations()` cap is reached, returns
     /// [`QuotaError::StoreLimit`]. Unlimited tiers (`None`) pass.
-    pub fn enforce_store_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = tier.max_stores() {
-            let current = self.count_store_profiles()?;
+    pub fn enforce_location_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
+        if let Some(limit) = tier.max_locations() {
+            let current = self.count_locations()?;
             if current >= limit {
                 return Err(QuotaError::StoreLimit {
                     tier: tier.name().into(),
@@ -88,12 +88,15 @@ impl Store<'_> {
         Ok(())
     }
 
-    /// Create a new store profile.
+    /// Create a new location profile.
     ///
     /// The new store will be **non-primary** by default. Use
-    /// [`set_primary_store`](Self::set_primary_store) to promote it after
+    /// [`set_primary_location`](Self::set_primary_location) to promote it after
     /// creation.
-    pub fn create_store_profile(&self, profile: &StoreProfile) -> Result<StoreProfile, CoreError> {
+    pub fn create_location_profile(
+        &self,
+        profile: &LocationProfile,
+    ) -> Result<LocationProfile, CoreError> {
         self.conn.execute(
             "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -115,7 +118,7 @@ impl Store<'_> {
     /// Update a store profile's mutable fields (name, address, tax_id, currency, timezone).
     ///
     /// Returns `NotFound` if the id does not exist.
-    pub fn update_store_profile(
+    pub fn update_location_profile(
         &self,
         id: &str,
         name: &str,
@@ -123,7 +126,7 @@ impl Store<'_> {
         tax_id: &str,
         currency: &str,
         timezone: &str,
-    ) -> Result<StoreProfile, CoreError> {
+    ) -> Result<LocationProfile, CoreError> {
         let affected = self.conn.execute(
             "UPDATE locations SET name = ?1, address = ?2, tax_id = ?3,
              currency = ?4, timezone = ?5, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -132,13 +135,13 @@ impl Store<'_> {
         )?;
         if affected == 0 {
             return Err(CoreError::NotFound {
-                entity: "store_profile",
+                entity: "location_profile",
                 id: id.to_owned(),
             });
         }
-        self.get_store_profile(id)?
+        self.get_location_profile(id)?
             .ok_or_else(|| CoreError::NotFound {
-                entity: "store_profile",
+                entity: "location_profile",
                 id: id.to_owned(),
             })
     }
@@ -147,7 +150,7 @@ impl Store<'_> {
     ///
     /// Uses an explicit transaction so the `is_primary` invariant
     /// (exactly one row with `is_primary = 1`) is never violated.
-    pub fn set_primary_store(&self, id: &str) -> Result<StoreProfile, CoreError> {
+    pub fn set_primary_location(&self, id: &str) -> Result<LocationProfile, CoreError> {
         let tx = self.conn.unchecked_transaction()?;
         // Demote the current primary.
         tx.execute(
@@ -163,31 +166,31 @@ impl Store<'_> {
         if affected == 0 {
             tx.rollback()?;
             return Err(CoreError::NotFound {
-                entity: "store_profile",
+                entity: "location_profile",
                 id: id.to_owned(),
             });
         }
         tx.commit()?;
-        self.get_store_profile(id)?
+        self.get_location_profile(id)?
             .ok_or_else(|| CoreError::NotFound {
-                entity: "store_profile",
+                entity: "location_profile",
                 id: id.to_owned(),
             })
     }
 
-    /// Delete a store profile. The primary store cannot be deleted.
-    pub fn delete_store_profile(&self, id: &str) -> Result<(), CoreError> {
-        // Prevent deleting the primary store.
-        if let Some(profile) = self.get_store_profile(id)? {
+    /// Delete a location profile. The primary location cannot be deleted.
+    pub fn delete_location_profile(&self, id: &str) -> Result<(), CoreError> {
+        // Prevent deleting the primary location.
+        if let Some(profile) = self.get_location_profile(id)? {
             if profile.is_primary {
                 return Err(CoreError::Validation {
                     field: "id",
-                    message: "cannot delete the primary store".into(),
+                    message: "cannot delete the primary location".into(),
                 });
             }
         } else {
             return Err(CoreError::NotFound {
-                entity: "store_profile",
+                entity: "location_profile",
                 id: id.to_owned(),
             });
         }
@@ -196,11 +199,76 @@ impl Store<'_> {
         Ok(())
     }
 
+    /// Deprecated compatibility alias for list_locations.
+    #[deprecated(note = "use list_locations")]
+    pub fn list_store_profiles(&self) -> Result<Vec<LocationProfile>, CoreError> {
+        self.list_locations()
+    }
+
+    /// Deprecated compatibility alias for get_location_profile.
+    #[deprecated(note = "use get_location_profile")]
+    pub fn get_store_profile(&self, id: &str) -> Result<Option<LocationProfile>, CoreError> {
+        self.get_location_profile(id)
+    }
+
+    /// Deprecated compatibility alias for get_primary_location.
+    #[deprecated(note = "use get_primary_location")]
+    pub fn get_primary_store(&self) -> Result<Option<LocationProfile>, CoreError> {
+        self.get_primary_location()
+    }
+
+    /// Deprecated compatibility alias for count_locations.
+    #[deprecated(note = "use count_locations")]
+    pub fn count_store_profiles(&self) -> Result<i64, CoreError> {
+        self.count_locations()
+    }
+
+    /// Deprecated compatibility alias for enforce_location_quota.
+    #[deprecated(note = "use enforce_location_quota")]
+    pub fn enforce_store_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
+        self.enforce_location_quota(tier)
+    }
+
+    /// Deprecated compatibility alias for create_location_profile.
+    #[deprecated(note = "use create_location_profile")]
+    pub fn create_store_profile(
+        &self,
+        profile: &LocationProfile,
+    ) -> Result<LocationProfile, CoreError> {
+        self.create_location_profile(profile)
+    }
+
+    /// Deprecated compatibility alias for update_location_profile.
+    #[deprecated(note = "use update_location_profile")]
+    pub fn update_store_profile(
+        &self,
+        id: &str,
+        name: &str,
+        address: &str,
+        tax_id: &str,
+        currency: &str,
+        timezone: &str,
+    ) -> Result<LocationProfile, CoreError> {
+        self.update_location_profile(id, name, address, tax_id, currency, timezone)
+    }
+
+    /// Deprecated compatibility alias for set_primary_location.
+    #[deprecated(note = "use set_primary_location")]
+    pub fn set_primary_store(&self, id: &str) -> Result<LocationProfile, CoreError> {
+        self.set_primary_location(id)
+    }
+
+    /// Deprecated compatibility alias for delete_location_profile.
+    #[deprecated(note = "use delete_location_profile")]
+    pub fn delete_store_profile(&self, id: &str) -> Result<(), CoreError> {
+        self.delete_location_profile(id)
+    }
+
     // ── Row mapper ───────────────────────────────────────────────
 
-    fn row_to_store_profile(row: &rusqlite::Row) -> rusqlite::Result<StoreProfile> {
+    fn row_to_location_profile(row: &rusqlite::Row) -> rusqlite::Result<LocationProfile> {
         let is_primary_int: i32 = row.get("is_primary")?;
-        Ok(StoreProfile {
+        Ok(LocationProfile {
             id: row.get("id")?,
             name: row.get("name")?,
             address: row.get("address")?,
@@ -215,5 +283,5 @@ impl Store<'_> {
 }
 
 #[cfg(test)]
-#[path = "store_profiles_tests.rs"]
+#[path = "locations_tests.rs"]
 mod tests;

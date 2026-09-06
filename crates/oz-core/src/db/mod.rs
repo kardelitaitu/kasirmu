@@ -81,6 +81,8 @@ pub use offline::RemoteSyncFailure;
 pub mod edc_terminals;
 /// Cloud image content spine — refcount + push queue (spec 0046b §3.7).
 pub mod image_refs;
+/// Location profile CRUD.
+pub mod locations;
 /// Media asset (image) CRUD — PLANNED (stubs).
 pub mod media;
 /// Payment gateway configuration CRUD — PLANNED (stubs).
@@ -118,8 +120,6 @@ pub mod staff;
 pub mod stock_counts;
 /// CRUD for stock transfers between terminals/stores.
 pub mod stock_transfers;
-/// Store profile CRUD.
-pub mod store_profiles;
 /// CRUD for suppliers.
 pub mod suppliers;
 /// CRUD for restaurant tables (floor plan, status management).

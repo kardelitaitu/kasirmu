@@ -22,7 +22,7 @@
 //! instance belongs to exactly one store, and a scoped listing can only
 //! ever return that store's rows.
 
-use oz_core::{Store, StoreProfile, migrations};
+use oz_core::{LocationProfile, Store, migrations};
 use rusqlite::Connection;
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -36,8 +36,8 @@ fn store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
 }
 
-fn make_profile(id: &str, name: &str) -> StoreProfile {
-    StoreProfile {
+fn make_profile(id: &str, name: &str) -> LocationProfile {
+    LocationProfile {
         id: id.to_owned(),
         name: name.to_owned(),
         address: String::new(),
@@ -57,9 +57,9 @@ fn make_profile(id: &str, name: &str) -> StoreProfile {
 /// exactly one store.
 fn seed_two_stores(conn: &Connection) {
     let s = store(conn);
-    s.create_store_profile(&make_profile("store-a", "Store A"))
+    s.create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
-    s.create_store_profile(&make_profile("store-b", "Store B"))
+    s.create_location_profile(&make_profile("store-b", "Store B"))
         .unwrap();
     s.create_workspace_instance("ws-a-1", "store-pos", "store-a", "A POS", "", None)
         .unwrap();
@@ -127,7 +127,7 @@ fn list_all_instances_empty_for_store_without_instances() {
     seed_two_stores(&conn);
     let s = store(&conn);
 
-    s.create_store_profile(&make_profile("store-c", "Store C"))
+    s.create_location_profile(&make_profile("store-c", "Store C"))
         .unwrap();
     let c = s.list_all_instances("store-c").unwrap();
     assert!(
@@ -154,7 +154,7 @@ fn create_workspace_instance_for_missing_store_rejected() {
     let msg = err.unwrap_err().to_string();
     assert!(
         msg.contains("FOREIGN KEY"),
-        "creating an instance for a missing store_profile must fail the FK, got: {msg}"
+        "creating an instance for a missing location_profile must fail the FK, got: {msg}"
     );
 }
 
@@ -171,9 +171,9 @@ fn create_workspace_instance_for_missing_store_rejected() {
 /// store-b, and NULL (global) across products, customers, and sales.
 fn seed_domain_rows(conn: &Connection) {
     let s = store(conn);
-    s.create_store_profile(&make_profile("store-a", "Store A"))
+    s.create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
-    s.create_store_profile(&make_profile("store-b", "Store B"))
+    s.create_location_profile(&make_profile("store-b", "Store B"))
         .unwrap();
 
     conn.execute(
@@ -333,9 +333,9 @@ fn list_sales_for_store_returns_global_and_own_never_other_store() {
 /// the store for assertion.
 fn apply_wire_snapshot<'a>(conn: &'a Connection, json: &'a str) -> oz_core::Store<'a> {
     let s = store(conn);
-    s.create_store_profile(&make_profile("store-a", "Store A"))
+    s.create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
-    s.create_store_profile(&make_profile("store-b", "Store B"))
+    s.create_location_profile(&make_profile("store-b", "Store B"))
         .unwrap();
     let snap: oz_core::sync_client::Snapshot = serde_json::from_str(json).unwrap();
     oz_core::sync_client::apply_snapshot(&s, &snap).unwrap();
@@ -395,7 +395,7 @@ fn snapshot_with_unknown_store_id_is_rejected_fail_closed() {
         ]
     }"#;
     let s = store(&conn);
-    s.create_store_profile(&make_profile("store-a", "Store A"))
+    s.create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
     let snap: oz_core::sync_client::Snapshot = serde_json::from_str(json).unwrap();
 

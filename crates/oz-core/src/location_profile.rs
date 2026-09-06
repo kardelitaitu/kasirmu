@@ -1,18 +1,19 @@
-//! Store-profile domain type — each location has its own identity,
+//! Location-profile domain type — each location has its own identity,
 //! settings, and feature flags.
 //!
-//! Maps to the `locations` table (migration `025_store_profiles.sql`).
+//! Maps to the `locations` table (introduced by the historical
+//! `025_store_profiles.sql` migration).
 
 use serde::{Deserialize, Serialize};
 
-/// A store location / outlet in a multi-store deployment.
+/// A physical location / outlet in a multi-store deployment.
 ///
-// Every deployment has exactly one **primary** store, created on first
-// startup (`id = "default"`). Additional stores can be added for
+/// Every deployment has exactly one **primary** location, created on first
+// startup (`id = "default"`). Additional locations can be added for
 // multi-location operators.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StoreProfile {
-    /// Row id (`"default"` for the primary store, UUID for others).
+pub struct LocationProfile {
+    /// Row id (`"default"` for the primary location, UUID for others).
     pub id: String,
 
     /// Display name (e.g. "Downtown Flagship").
@@ -30,7 +31,7 @@ pub struct StoreProfile {
     /// IANA timezone (e.g. "America/New_York", "Asia/Jakarta").
     pub timezone: String,
 
-    /// Whether this is the primary store (exactly one per deployment).
+    /// Whether this is the primary location (exactly one per deployment).
     pub is_primary: bool,
 
     /// ISO-8601 creation timestamp.
@@ -40,5 +41,5 @@ pub struct StoreProfile {
     pub updated_at: String,
 }
 #[cfg(test)]
-#[path = "store_profile_tests.rs"]
+#[path = "location_profile_tests.rs"]
 mod tests;

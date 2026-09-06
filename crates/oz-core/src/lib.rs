@@ -65,6 +65,8 @@ pub mod inventory_transaction;
 pub mod kds;
 /// License server client — verify, activate, renew subscriptions (ADR #9).
 pub mod license_verification;
+/// Location profile settings.
+pub mod location_profile;
 /// Workspace-to-location resolution — which inventory location should a POS deduct from? (ADR-19 §4).
 pub mod location_resolver;
 /// Loyalty program — points, tiers, and redemption.
@@ -115,8 +117,6 @@ pub mod sku;
 pub mod stock_count;
 /// Inter-store stock transfers.
 pub mod stock_transfer;
-/// Store/branch profile settings.
-pub mod store_profile;
 /// Tenant subscription and license state.
 pub mod subscription;
 /// Supplier directory.
@@ -203,6 +203,11 @@ pub use kds::{
     CreateKdsLineItemInput, CreateKdsOrderInput, KdsLineItem, KdsModifier, KdsOrder, KdsStatus,
     RegisterKdsDeviceInput, UpdateKdsOrderItemsInput,
 };
+pub use location_profile::LocationProfile;
+
+/// Deprecated compatibility alias for the pre-Phase 1 site-unit name.
+#[deprecated(note = "use LocationProfile; Store is now Location")]
+pub type StoreProfile = LocationProfile;
 pub use location_resolver::{
     get_default_location_id, resolve_all_locations, resolve_location_chain_for_sku,
     resolve_primary_location,
@@ -232,7 +237,6 @@ pub use shift::Shift;
 pub use sku::{LineId, Sku};
 pub use stock_count::{CountType, StockAdjustment, StockCount, StockCountLine, StockCountStatus};
 pub use stock_transfer::{StockTransfer, StockTransferLine};
-pub use store_profile::StoreProfile;
 pub use subscription::{InstanceStatus, SubscriptionTier, TenantSubscription};
 pub use supplier::Supplier;
 pub use sync_client::{

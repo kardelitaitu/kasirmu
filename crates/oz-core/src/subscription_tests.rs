@@ -57,13 +57,13 @@ fn tier_from_db() {
 }
 
 #[test]
-fn tier_max_stores() {
-    assert_eq!(SubscriptionTier::Free.max_stores(), Some(1));
-    assert_eq!(SubscriptionTier::OneTime.max_stores(), Some(1));
-    assert_eq!(SubscriptionTier::Plus.max_stores(), Some(1));
-    assert_eq!(SubscriptionTier::Pro.max_stores(), Some(2));
-    assert_eq!(SubscriptionTier::Premium.max_stores(), Some(5));
-    assert_eq!(SubscriptionTier::Enterprise.max_stores(), None);
+fn tier_max_locations() {
+    assert_eq!(SubscriptionTier::Free.max_locations(), Some(1));
+    assert_eq!(SubscriptionTier::OneTime.max_locations(), Some(1));
+    assert_eq!(SubscriptionTier::Plus.max_locations(), Some(1));
+    assert_eq!(SubscriptionTier::Pro.max_locations(), Some(2));
+    assert_eq!(SubscriptionTier::Premium.max_locations(), Some(5));
+    assert_eq!(SubscriptionTier::Enterprise.max_locations(), None);
 }
 
 #[test]
@@ -571,13 +571,13 @@ fn supports_regional_zones_only_enterprise() {
 }
 
 #[test]
-fn max_stores_per_tier() {
-    assert_eq!(SubscriptionTier::Free.max_stores(), Some(1));
-    assert_eq!(SubscriptionTier::OneTime.max_stores(), Some(1));
-    assert_eq!(SubscriptionTier::Plus.max_stores(), Some(1));
-    assert_eq!(SubscriptionTier::Pro.max_stores(), Some(2));
-    assert_eq!(SubscriptionTier::Premium.max_stores(), Some(5));
-    assert_eq!(SubscriptionTier::Enterprise.max_stores(), None);
+fn max_locations_per_tier() {
+    assert_eq!(SubscriptionTier::Free.max_locations(), Some(1));
+    assert_eq!(SubscriptionTier::OneTime.max_locations(), Some(1));
+    assert_eq!(SubscriptionTier::Plus.max_locations(), Some(1));
+    assert_eq!(SubscriptionTier::Pro.max_locations(), Some(2));
+    assert_eq!(SubscriptionTier::Premium.max_locations(), Some(5));
+    assert_eq!(SubscriptionTier::Enterprise.max_locations(), None);
 }
 
 #[test]
@@ -692,7 +692,7 @@ fn tier_names() {
 
 #[test]
 fn test_plus_quota_limits() {
-    assert_eq!(SubscriptionTier::Plus.max_stores(), Some(1));
+    assert_eq!(SubscriptionTier::Plus.max_locations(), Some(1));
     assert_eq!(SubscriptionTier::Plus.max_pos_instances(), Some(2));
     assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(2));
     assert_eq!(SubscriptionTier::Plus.max_staff_users(), Some(5));
@@ -701,7 +701,7 @@ fn test_plus_quota_limits() {
 
 #[test]
 fn test_pro_quota_limits() {
-    assert_eq!(SubscriptionTier::Pro.max_stores(), Some(2));
+    assert_eq!(SubscriptionTier::Pro.max_locations(), Some(2));
     assert_eq!(SubscriptionTier::Pro.max_pos_instances(), Some(5));
     assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(3));
     assert_eq!(SubscriptionTier::Pro.max_staff_users(), Some(20));
