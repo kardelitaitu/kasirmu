@@ -332,6 +332,22 @@ impl Store<'_> {
         Ok(swept)
     }
 
+    /// Sweep every tenant's past-due published memos to `expired`. This is the
+    /// background maintenance variant the expiry daemon calls on the whole
+    /// database; unlike a user-facing read it legitimately spans tenants (the
+    /// system tidying its own rows), so it carries no `tenant_id` filter.
+    /// Returns the number swept; idempotent.
+    pub fn sweep_all_expired(&self, now: &str) -> Result<usize, CoreError> {
+        let swept = self.conn.execute(
+            "UPDATE memos
+             SET status = 'expired', updated_at = ?1
+             WHERE status = 'published'
+               AND expires_at IS NOT NULL AND expires_at <= ?1",
+            params![now],
+        )?;
+        Ok(swept)
+    }
+
     /// Error if no such recipient exists for this tenant/memo/terminal; Ok if
     /// it exists (used to distinguish a no-op idempotent update from a genuine
     /// missing row).

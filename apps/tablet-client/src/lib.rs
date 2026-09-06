@@ -192,6 +192,37 @@ pub fn run() {
                     });
                 }
 
+                // ── Memo expiry sweep daemon ───────────────────────────────
+                // Mirrors the desktop sweep: every 5 minutes, transition
+                // published Memos past their `expires_at` to `expired` on the
+                // global identity DB. Needed here too so a tablet-only
+                // deployment still keeps the Memo status column truthful.
+                {
+                    let sweep_handle = app_handle.clone();
+                    platform_startup::spawn_daemon("tablet memo expiry sweep", async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(300));
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let Some(state) = sweep_handle.try_state::<AppState>() else {
+                                continue;
+                            };
+                            let now = chrono::Utc::now()
+                                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                            let conn = state.db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            match store.sweep_all_expired(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("tablet memo sweep: expired {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(error = %e, "tablet memo sweep failed"),
+                            }
+                        }
+                    });
+                }
+
                 // ── Background sync daemon ────────────────────────────────
                 // Uses the same 3-phase split as the Tauri commands:
                 // read DB → async HTTP → write DB, so the DB lock is never

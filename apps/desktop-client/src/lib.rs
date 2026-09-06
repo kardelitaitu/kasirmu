@@ -399,6 +399,40 @@ pub fn run() {
                 });
             }
 
+            // ── Memo expiry sweep daemon ───────────────────────────────
+            // Runs every 5 minutes to transition published Memos past their
+            // `expires_at` to `expired` — the domain's Published → Expired
+            // edge. The display read path already filters by `expires_at`, so
+            // this is record hygiene: it makes `expired` a live status rather
+            // than a value that only exists in the enum, and keeps the
+            // partial `idx_memos_expiry` (status='published') from accumulating
+            // stale rows. Mirrors the session-cleanup and KDS-retention
+            // daemons; operates on the global identity DB where Memos live.
+            {
+                let db = app.state::<AppState>().db.clone();
+                platform_startup::spawn_daemon("memo expiry sweep", async move {
+                    let mut interval = tokio::time::interval(
+                        std::time::Duration::from_secs(300),
+                    );
+                    // Skip the first tick so startup isn't delayed.
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        let now = chrono::Utc::now()
+                            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                        let conn = db.lock().await;
+                        let store = oz_core::db::Store::new(&conn);
+                        match store.sweep_all_expired(&now) {
+                            Ok(n) if n > 0 => {
+                                tracing::info!("memo expiry sweep: expired {n} memo(s)")
+                            }
+                            Ok(_) => {}
+                            Err(e) => tracing::warn!(error = %e, "memo expiry sweep failed"),
+                        }
+                    }
+                });
+            }
+
             // ── LAN event forwarder ────────────────────────────────────
             // Read LAN server config from the settings table (C-4).
             // Default: loopback-only, no PSK. External bind requires

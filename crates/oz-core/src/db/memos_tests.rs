@@ -472,6 +472,42 @@ fn sweep_expired_transitions_past_due_memos() {
     assert_eq!(store.sweep_expired("default", &now()).unwrap(), 0);
 }
 
+#[test]
+fn sweep_all_expired_spans_tenants() {
+    // The daemon's global maintenance sweep tidies every tenant's past-due
+    // memos in one pass (it is the system reclaiming its own rows, not a
+    // user-facing read, so it carries no tenant filter).
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let a = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &a.id).unwrap();
+    let b = store
+        .create_memo_draft(&new_memo("other-tenant", None))
+        .unwrap();
+    store.publish_memo("other-tenant", &b.id).unwrap();
+    // Force both past their deadline.
+    store
+        .conn()
+        .execute("UPDATE memos SET expires_at = ?1", params![long_ago()])
+        .unwrap();
+
+    let swept = store.sweep_all_expired(&now()).unwrap();
+    assert_eq!(swept, 2, "sweeps across both tenants in one pass");
+    assert_eq!(
+        store.get_memo("default", &a.id).unwrap().unwrap().status,
+        MemoStatus::Expired
+    );
+    assert_eq!(
+        store
+            .get_memo("other-tenant", &b.id)
+            .unwrap()
+            .unwrap()
+            .status,
+        MemoStatus::Expired
+    );
+    assert_eq!(store.sweep_all_expired(&now()).unwrap(), 0);
+}
+
 // ── FK RESTRICT: a parent delete must not silently destroy Memo history ──
 //
 // Regression guard for the 20260911 fix. Before it, memos.location_id and
