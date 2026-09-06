@@ -415,11 +415,30 @@ Scope findings from the pre-implementation investigation, in execution order:
   - Preserved explicitly: `retail-pos`, `resto-pos`, `kds`, and `warehouse`
         workspace identifiers; `inventory_locations`; the `Store<'a>` DB
         facade; and the `TenantSubscription.max_stores` compatibility field.
-- [ ] **Next slice — desktop/tablet IPC rename.** Migrate command modules,
+- [x] **Next slice — desktop/tablet IPC rename.** Migrate command modules,
       DTOs, registrations, parity allowlists, and scoped aliases from the
       site-unit `store` terminology to `location`, while retaining the four
       terminal workspace types and deferring the license-server wire rename
       until its versioned payload migration.
+  - ✅ **COMPLETED 2026-09-06 (three slices):** the UI live-caller migration
+    (`a18a6134`, journaled below), then the alias retirement (`07c7b0f0`) —
+    the seven legacy `*_store_*_scoped` IPC commands deleted from the desktop
+    shell (`generate_handler` + command fns + `commands::store_profiles`
+    module alias), the 7 tablet allowlist entries removed, the dev-mock's
+    legacy scoped AND unscoped handler families removed, the shim
+    `ui/src/api/stores.ts` and its contract test deleted, and
+    `dev-mock-stores.test.ts`'s four round-trip tests rewritten onto the
+    canonical family. `verify-ipc-parity.py` exits 0 (dev-mock still answers
+    100% of UI-invoked commands; no UI invocation of any legacy name remains).
+    The 1c "activation mapping" is annotated, not renamed: `store_subscription`
+    parses the Go wire field `max_stores` and persists it into the local
+    `max_locations` column (`16908995` documents the mapping on both structs;
+    the wire rename itself stays item 1g, versioned + dual-read).
+    **Still open under 1e:** `features/stores/` directory rename,
+    `multi-store.ftl` filename and remaining `store`-worded FTL keys.
+    Retained deliberately: the four workspace types, `inventory_locations`
+    stock points, the `Store<'a>` DB facade, `store-pos`/`restaurant-pos`
+    legacy runtime aliases, and topology's `storeProfileId` metadata key.
   - Checkpoint: desktop registration now resolves the canonical
         `commands::locations` module through a compatibility path to the
         existing command implementation; the old `commands::store_profiles`
@@ -713,12 +732,18 @@ Scope findings from the pre-implementation investigation, in execution order:
             (`StoreProfile` → `LocationProfile`, `enforce_store_quota` →
             `enforce_location_quota`, `max_stores()` → `max_locations()`),
             `db/mod.rs` region, all in-crate callers.
-      - [ ] 1c. Desktop + tablet Rust: command file rename, IPC command names
+      - [x] 1c. Desktop + tablet Rust: command file rename, IPC command names
             (`list_locations_scoped` etc.), DTOs (`store_count` →
             `location_count`), `lib.rs` registrations, tests, activation
             mapping (wire `max_stores` → local `max_locations`).
-      - [ ] 1d. IPC surface: parity allowlist, dev-mock handlers, dev-mock
-            scoped-alias tests.
+            **Completed 2026-09-06** — see the "Next slice" box above:
+            canonical commands registered, legacy command fns + module alias
+            deleted (`07c7b0f0`), and the wire→local mapping annotated at the
+            `store_subscription` boundary (`16908995`).
+      - [x] 1d. IPC surface: parity allowlist, dev-mock handlers, dev-mock
+            scoped-alias tests. **Completed 2026-09-06** (`07c7b0f0`) — 7
+            tablet allowlist entries removed, dev-mock legacy handler families
+            removed, scoped-alias regression list trimmed; gate exits 0.
       - [ ] 1e. UI: `api/stores.ts` → `api/locations.ts`, `features/stores/` →
             `features/locations/`, `stores` route → `locations`, tool card,
             FTL keys (enumerate; `multi-store.ftl` → `multi-location.ftl`),
