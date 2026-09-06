@@ -246,18 +246,18 @@ actual relationship mutation.
       lock screen, and a dismissible top-left notification every 15 minutes
       (30s per cycle; KDS doubles the interval to 30 min, coded as 2× the
       base interval); Location stacks above Organization.
-      — **core + desktop surface complete; all six open decisions ruled
-      2026-09-07, so what remains is build work, not decisions** (schema, state
-      machine, store, desktop authoring IPC + screen, banner mounts, and the
-      server-issued cadence landed `cf69ec3c` → `3fb745cf`): (a) staff-login
-      surface = "once the PIN pad is up", no pre-auth read (§"The staff-login
-      surface"); (b) early stop = new `memo:stop` key, Owner/Admin presets,
-      fallback reuse `memo:write` (ruling section at the end of this file);
-      (c) tablet/KDS data path = cloud read via shared cloud-server Postgres
-      (§"The tablet's Memo surface"); (d) retention = fixed 30-day window,
-      the `archived` sweep is unblocked; (e) stale-draft expiry = rule
-      dropped; (f) `revise_memo` = corrections ruled in scope, plan step
-      below.
+      — **complete except offline delivery and the cloud data path
+      (2026-09-07):** schema, state machine, store, desktop authoring IPC +
+      screen, banner mounts, server-issued cadence, early stop (`memo:stop`,
+      A2), 30-day retention sweep, and revisions all landed
+      (`cf69ec3c` → `9062a7c1`; rulings recorded inline below and in the
+      ruling journal). "Early stop by higher role" is now author-or-`memo:stop`
+      (registry grant, no rank map); "staff login screen" means once the PIN
+      pad is up (no pre-auth read); "drafts expire after 30 days" was dropped.
+      Open: (a) offline delivery (rides the outbox; needs the tablet data
+      path below to matter); (b) the KDS/tablet cloud-read data path —
+      memos authored on desktop must reach the cloud DB and the tablet read
+      a tenant-scoped endpoint (§"The tablet's Memo surface").
 - [ ] **Wire `revise_memo_scoped` (corrections).** The store path is fixed and
       TOCTOU-guarded (`e7b47b83`); this slice is the desktop IPC — gated
       `memo:write`, published-only, tenant-scoped — plus a revise control in
@@ -1435,29 +1435,70 @@ implementable remainder — what is left is decision-gated, listed at the end.
      inherited"). They come off the list only if authoring is ever ported to
      the tablet shell. `verify-ipc-parity.py` is green after the change.
 
-**Deliberately NOT built here, each for a recorded reason:**
+**Deliberately NOT built here, each for a recorded reason:** (all of these
+were subsequently unblocked — see the ruling journal below)
 
-- **Staff-login display surface** — `list_active_memos_scoped` derives the
-  terminal from an authenticated session, so it cannot answer pre-login.
-  Needs the owner's security ruling (session-free terminal-keyed read);
-  options are in §"The staff-login surface is architecturally unreachable".
-- **Early stop (`stop_memo`)** — the store method exists and is tested, but no
-  IPC exposes it: "author or higher role" needs a role→rank ordering and
-  custom roles make "higher" ambiguous (`commands/memo.rs` module doc records
-  this deliberately). No screen offers a control for an IPC that does not
-  exist.
-- **Revise UI** — `revise_memo` is fixed and tested in the store (TOCTOU guard
-  above), but has no IPC path and no plan step owns one (§"Separate, smaller
-  point"). Corrections remain out of scope until that checkbox exists; the
-  authoring screen covers create + publish + list only.
-- **Tablet/KDS data path** — the mount and cadence are live, but the tablet's
-  `memos` table is structurally empty (not in `sync_pull`, authoring is
-  desktop-only). Choosing among defer-to-Phase-3 / cloud read / sync is an
-  owner decision (§"The tablet's Memo surface is structurally empty").
-- **Retention sweep + stale-draft expiry** — both need the rulings flagged in
-  the technical design section ("Open decision to surface" and the stale-draft
-  options list). The `archived` and draft-expiry paths stay unwritten until
-  one of the four options is picked.
+- ~~**Staff-login display surface**~~ — **ruled 2026-09-07, option 3**: the
+  spec's "staff login screen" now means *once the staff PIN pad is up* —
+  after authentication, where the session-scoped read already works. No
+  pre-auth command will be added; the lock-screen mount covers the ruled
+  reading.
+- ~~**Early stop (`stop_memo`)**~~ — **ruled and built**: option A2 landed
+  (`a23d81bd`, see the RULING section and the journal below).
+- ~~**Revise UI**~~ — **ruled in scope and built** (`9062a7c1`).
+- **Tablet/KDS data path** — **ruled 2026-09-07: cloud read**; the slice is
+  designed and pending (see the ruling journal below).
+- ~~**Retention sweep + stale-draft expiry**~~ — **ruled and built**:
+  fixed 30-day window via `archived_at` (`c8d2a54f`); the draft-expiry rule
+  was dropped per ruling.
+
+## Memo ruling journal — stop, retention, revise (2026-09-07)
+
+After the owner ruled on all six open questions (each ruled section in this
+file carries the decision inline), three implementation slices landed:
+
+1. **`a23d81bd` — `stop_memo_scoped` + `memo:stop` (A2, `feat(ipc,ui)`).**
+   New registry key `memo:stop` granted to the Owner (`*`) and Admin presets
+   only — Manager keeps `memo:write` without it, pinning via
+   `memo_stop_follows_the_a2_ruling_owner_admin_only` the property the old
+   strict-`>` rank rule held (a peer manager cannot stop another manager's
+   memo). The desktop command allows the AUTHOR unconditionally (the
+   author-or-permission gate reads `author_user_id` from the memo row and the
+   actor from the session, so the client cannot forge the match), and the
+   rank-based `may_stop` helper was deleted with its tests per the ruling's
+   cleanup item. `memo:write`'s description drops "stop". UI: Stop button on
+   published authored rows (en+id), dev-mock handler, contract + screen
+   tests; tablet allowlist entry with the desktop-only reason. Command tests
+   drive the real session gate (author stop, admin stop, peer-manager deny,
+   staff deny, invalid session).
+
+2. **`c8d2a54f` — 30-day retention (`feat(core)`).** Migration
+   `20260914_memo_retention.sql` adds nullable `memos.archived_at` — the
+   deletion-clock anchor, because `stopped_at`/`expires_at` anchor the END,
+   not the archival. The sweep runs in the existing 5-minute memo daemon on
+   both shells: `sweep_ended_to_archived` transitions `stopped`/`expired` →
+   `archived` (stamping the clock; never touching draft/published), then
+   `sweep_expired_archives` deletes archives past
+   `RETENTION_WINDOW_DAYS = 30` (children cascade — the spec's sanctioned
+   deletion, only after the window). PG init regenerated (counts unchanged);
+   registry parity and the 110-table/157-index pins updated; tests cover
+   stamping, the day-29 boundary, cascade deletion, and the constant.
+
+3. **`9062a7c1` — `revise_memo_scoped` + revision UI (`feat(ipc,ui)`).** The
+   store's TOCTOU-guarded revise path gains a desktop command gated
+   `memo:write`, and `MemosScreen` gets a Revise control on published rows:
+   it loads the row into a revise-mode form that submits a new immutable
+   revision (v+1) — text-only by design, since a correction fixes the text,
+   not the duration or audience (those controls are disabled in revise
+   mode). Dev-mock handler, en+id keys, contract + screen tests; the
+   allowlist comment now covers five desktop-only management commands.
+
+**Remaining after the rulings: the cloud-read data path** (KDS/tablet reads
+memos through the shared cloud-server Postgres — needs a desktop→cloud write
+path for `memos`/`memo_recipients` and a tenant-scoped read endpoint;
+design-first slice, see §"The tablet's Memo surface"), and the display work
+is already complete (lock screen + all KDS branches mount the banner with
+server-issued cadence, per `796f1c7a` + `10bfb9ff`).
 
 **Verification at commit time:** `npm run typecheck` clean; `npx eslint` clean
 on touched files; UI suite 500 files / 8815 passed (including the new
