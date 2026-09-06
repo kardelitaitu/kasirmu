@@ -462,14 +462,14 @@ CREATE TABLE IF NOT EXISTS "memos" (
 , archived_at TEXT);
 
 CREATE TABLE IF NOT EXISTS topology_revisions (
-    id                  TEXT PRIMARY KEY,
-    branch_id           TEXT NOT NULL DEFAULT '',
-    revision            BIGINT NOT NULL,
+    id                      TEXT PRIMARY KEY,
+    branch_id               TEXT NOT NULL DEFAULT '',
+    revision                BIGINT NOT NULL,
 
     -- Author-chosen "what changed and why" (ADR #46 §6). Optional at the UI,
     -- empty by default; this column is the difference between a list of
     -- timestamps and an actual history.
-    change_note         TEXT NOT NULL DEFAULT '',
+    change_note             TEXT NOT NULL DEFAULT '',
 
     -- The full graph envelope, byte-identical to what was written to `settings`
     -- for this revision, so a revision is self-contained and needs no
@@ -477,36 +477,44 @@ CREATE TABLE IF NOT EXISTS topology_revisions (
     -- and why is kept permanently, the restorable snapshot is not. Every read
     -- path that offers a restore must check this for NULL and say
     -- "record only — snapshot pruned" rather than offering a restore that fails.
-    diagram             TEXT,
+    diagram                 TEXT,
 
     -- Workspace-diff COUNTS, not workspace rows (ADR #46 §2). Apply already has
     -- these in hand at commands.rs:272-274. They let a history row explain
     -- itself — "this Apply archived 3 workspaces" — without duplicating another
     -- table's contents or growing without bound.
-    workspace_creations BIGINT NOT NULL DEFAULT 0,
-    workspace_updates   BIGINT NOT NULL DEFAULT 0,
-    workspace_archives  BIGINT NOT NULL DEFAULT 0,
-    node_count          BIGINT NOT NULL DEFAULT 0,
-    wire_count          BIGINT NOT NULL DEFAULT 0,
+    workspace_creations     BIGINT NOT NULL DEFAULT 0,
+    workspace_updates       BIGINT NOT NULL DEFAULT 0,
+    workspace_archives      BIGINT NOT NULL DEFAULT 0,
+    node_count              BIGINT NOT NULL DEFAULT 0,
+    wire_count              BIGINT NOT NULL DEFAULT 0,
 
-    -- Stored per revision because the contract schema moves (ADR #45 took it
-    -- 1 -> 2). A revision written under an older version may no longer validate;
-    -- §7 shows it with its reason rather than migrating it forward.
-    schema_version      BIGINT NOT NULL,
+    -- Which SEMANTICS CONTRACT this revision was authored under, stamped from
+    -- `oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION` at write time.
+    --
+    -- Named for the axis it holds, deliberately. This repo maintains two
+    -- version axes that model.rs:273-285 warns "must never be conflated": the
+    -- ENVELOPE version (shape of a saved diagram, currently 1, already stored
+    -- inside `diagram` itself) and the CONTRACT version (the pairing table,
+    -- which ADR #45 moved 1 -> 2). ADR #46 §7's question — "can this revision
+    -- still be restored?" — is answered by the contract axis, so that is what
+    -- is recorded here. The envelope version would be a constant column that
+    -- duplicates a field already inside the JSON.
+    contract_schema_version BIGINT NOT NULL,
 
     -- Pinned revisions are exempt from both pruning and deflation (ADR #46 §4).
     -- This is what makes the table a DEPLOY history rather than a scratch pad:
     -- a known-good graph stays restorable however busy the branch gets after it.
-    pinned              BIGINT NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+    pinned                  BIGINT NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
 
-    published_at        TEXT NOT NULL,
-    published_by        TEXT NOT NULL,
+    published_at            TEXT NOT NULL,
+    published_by            TEXT NOT NULL,
     -- Stamped by the write path; NOT yet added to RLS_TABLES in
     -- scripts/generate-pg-migration.py. That mirrors memo_revisions exactly —
     -- enabling RLS is a policy decision the repo keeps separate from schema, and
     -- the generator surfaces uncovered tenant_id tables as a visible comment
     -- rather than failing (ADR #46 §9).
-    tenant_id           TEXT NOT NULL DEFAULT 'default',
+    tenant_id               TEXT NOT NULL DEFAULT 'default',
 
     UNIQUE (branch_id, revision)
 );
