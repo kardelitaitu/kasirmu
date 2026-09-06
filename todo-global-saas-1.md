@@ -512,7 +512,7 @@ Scope findings from the pre-implementation investigation, in execution order:
     |---|---|
     | `ui/src/api/stores.ts` shim | ~~kept solely for its contract test; retires together with 1c/1d~~ **retired `07c7b0f0`** |
     | `api-stores-contract.test.ts` | ~~pins the legacy command strings while the Rust aliases exist~~ **deleted with the shim `07c7b0f0`** |
-    | `features/stores/` directory name, `multi-store.ftl` filename, remaining `store`-worded FTL keys and copy | route/nav already renamed (`nav-locations` keys); file/dir and FTL renames remain — **the only 1e work still open** |
+    | `features/stores/` directory name, `multi-store.ftl` filename, remaining `store`-worded FTL keys and copy | route/nav already renamed (`nav-locations` keys) — **all three parts done 2026-09-07**: dir renamed `a965f481`/`b83785b6`, FTL filename renamed `88a14c91`/`f5e191aa`, and the 32 dead `topology-*` orphan keys (shortcuts sheet, sim controls, palette heading — dead since `f89a46b7`/`32d64336`/`4653d966` removed their consumers without removing the messages) deleted from both bundles in the same commit. Remaining `store`-worded copy is covered by the row below.
 
     **Update 2026-09-07:** the first two rows are done — the alias retirement
     (`07c7b0f0`) deleted the shim and its contract test outright (see the
