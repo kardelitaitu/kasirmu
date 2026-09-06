@@ -57,6 +57,9 @@ pub mod kds_routing;
 pub mod license;
 /// Local REST API server commands (loopback `oz-api` embed).
 pub mod local_api;
+/// Location-profile commands.
+#[path = "store_profiles.rs"]
+pub mod locations;
 /// Loyalty / rewards commands.
 pub mod loyalty;
 /// Offline-mode commands.
@@ -95,8 +98,10 @@ pub mod shifts;
 pub mod staff;
 /// Stock-transfer commands.
 pub mod stock_transfers;
-/// Store-profile commands.
-pub mod store_profiles;
+
+/// Deprecated compatibility alias for the pre-Phase 1 module name.
+#[deprecated(note = "use commands::locations")]
+pub use locations as store_profiles;
 /// Subscription capability commands (C2.2 tier gates).
 pub mod subscription;
 /// Sync commands.
