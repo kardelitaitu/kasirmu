@@ -628,6 +628,77 @@ fn store_to_location_rename_preserves_rows_and_foreign_keys() {
     );
 }
 
+// ── Location tenant isolation (Phase 1 P0: Protect tenant isolation) ──
+//
+// The 20260907 migration adds `tenant_id` to `locations` and
+// `user_location_access` so the cloud Postgres layer can scope location data
+// per tenant under RLS. This pins the contract at the SQLite layer: both
+// tables must expose the column, the default sentinel must be 'default', and
+// an explicit tenant must be preserved.
+
+#[test]
+fn location_tables_carry_tenant_id_after_migration() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    for table in ["locations", "user_location_access"] {
+        let cols: Vec<String> = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert!(
+            cols.iter().any(|c| c == "tenant_id"),
+            "{table} must carry a tenant_id column after the location-tenant migration"
+        );
+    }
+
+    // At least one row resolves to the single-tenant 'default' sentinel.
+    let default_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM locations WHERE tenant_id = 'default'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        default_rows >= 1,
+        "at least one location must belong to the default tenant"
+    );
+
+    // An insert without an explicit tenant takes the 'default' sentinel.
+    conn.execute("INSERT INTO locations (id, name) VALUES ('loc-x', 'X')", [])
+        .unwrap();
+    let got: String = conn
+        .query_row(
+            "SELECT tenant_id FROM locations WHERE id = 'loc-x'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        got, "default",
+        "implicit tenant_id must default to 'default'"
+    );
+
+    // An explicit tenant is preserved verbatim.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-y', 'Y', 'tenant-9')",
+        [],
+    )
+    .unwrap();
+    let got2: String = conn
+        .query_row(
+            "SELECT tenant_id FROM locations WHERE id = 'loc-y'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(got2, "tenant-9", "explicit tenant_id must be preserved");
+}
+
 // ── Store-scoped isolation (DB-04 end-state) ───────────────────
 //
 // The consolidated schema carries a store_id FK on products, customers,

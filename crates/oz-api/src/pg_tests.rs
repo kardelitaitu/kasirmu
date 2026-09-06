@@ -1416,3 +1416,168 @@ async fn pg_exchange_rates_roundtrip() {
         Err(PgError::NotFound)
     ));
 }
+
+/// Integration test: `locations` and `user_location_access` are tenant-scoped
+/// under RLS (Phase 1 P0 — protect tenant isolation at location scope). The
+/// column was added by the 20260907 SQLite migration and enabled in RLS_TABLES,
+/// so the generator emits the `tenant_isolation` policy for both tables.
+///
+/// Proofs (mirrors `pg_integration_rest_rls_non_owner`):
+/// 1. A restricted probe connection with no `oz.tenant_id` GUC sees ZERO
+///    location rows (even the cloud seed row, which is tenant 'default') and an
+///    INSERT is rejected by WITH CHECK.
+/// 2. With the GUC set to tenant A, only A's row is visible; switching the GUC
+///    to tenant B hides A's row entirely — genuine cross-tenant isolation.
+#[tokio::test]
+async fn pg_isolates_locations_by_tenant() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_loc_rls").await else {
+        eprintln!("PG location RLS test skipped (Postgres unreachable at {url})");
+        return;
+    };
+
+    let tenant_a = unique_id("pg-loc-a");
+    let tenant_b = unique_id("pg-loc-b");
+
+    // Restricted role (idempotent): DML on the location-scope tenant tables.
+    let owner = pool.get().await.expect("owner connection");
+    owner
+        .batch_execute(
+            "DO $$\n\
+             BEGIN\n\
+                 IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'oz_rest_probe') THEN\n\
+                     EXECUTE 'DROP OWNED BY oz_rest_probe';\n\
+                     EXECUTE 'DROP ROLE oz_rest_probe';\n\
+                 END IF;\n\
+             END $$;\n\
+             CREATE ROLE oz_rest_probe LOGIN PASSWORD 'oz_rest_probe_pw';\n\
+             GRANT USAGE ON SCHEMA public TO oz_rest_probe;\n\
+             GRANT SELECT, INSERT, UPDATE, DELETE ON locations, user_location_access\n\
+                 TO oz_rest_probe;",
+        )
+        .await
+        .expect("probe role setup should succeed");
+
+    // Probe connection must target the THROWAWAY DB (where PG_INIT was applied).
+    let (base, _old_db) = url.rsplit_once('/').expect("URL must have a database path");
+    let db_url = format!("{base}/{db_name}");
+    let scheme_end = db_url.find("://").expect("URL has a scheme") + 3;
+    let at = db_url.find('@').expect("URL has credentials");
+    let probe_url = format!(
+        "{}oz_rest_probe:oz_rest_probe_pw@{}",
+        &db_url[..scheme_end],
+        &db_url[at + 1..]
+    );
+
+    let (probe_raw, conn) = tokio_postgres::connect(&probe_url, tokio_postgres::NoTls)
+        .await
+        .expect("dedicated probe connection");
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
+    probe_raw
+        .batch_execute("SET ROLE oz_rest_probe")
+        .await
+        .expect("SET ROLE should succeed");
+
+    // Proof 1a: no GUC → the seed row (tenant 'default') is hidden.
+    let visible: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count should succeed")
+        .get(0);
+    assert_eq!(
+        visible, 0,
+        "RLS must hide all location rows when oz.tenant_id is unset"
+    );
+
+    // Proof 1b: an INSERT without the GUC is rejected by WITH CHECK.
+    let insert_err = probe_raw
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id) VALUES ($1, 'Intruder', $2)",
+            &[&unique_id("pg-loc-x"), &tenant_a],
+        )
+        .await
+        .expect_err("RLS must reject the write when oz.tenant_id is unset");
+    assert!(
+        insert_err
+            .as_db_error()
+            .is_some_and(|d| d.message().contains("row-level security")),
+        "expected an RLS violation, got: {insert_err:?}"
+    );
+
+    // Proof 2: with the GUC set, tenant A owns exactly its own row.
+    probe_raw
+        .batch_execute("BEGIN")
+        .await
+        .expect("begin tenant A");
+    probe_raw
+        .query("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_a])
+        .await
+        .expect("set GUC tenant A");
+    let loc_a = unique_id("pg-loc-row-a");
+    probe_raw
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id) VALUES ($1, 'Loc A', $2)",
+            &[&loc_a, &tenant_a],
+        )
+        .await
+        .expect("insert location for tenant A");
+    let count_a: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count tenant A")
+        .get(0);
+    assert_eq!(count_a, 1, "tenant A must see only its own location");
+
+    // Switch the GUC to tenant B in a fresh transaction: A's row must vanish.
+    probe_raw
+        .batch_execute("COMMIT")
+        .await
+        .expect("commit tenant A");
+    probe_raw
+        .batch_execute("BEGIN")
+        .await
+        .expect("begin tenant B");
+    probe_raw
+        .query("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_b])
+        .await
+        .expect("set GUC tenant B");
+    let count_b: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count tenant B")
+        .get(0);
+    assert_eq!(
+        count_b, 0,
+        "tenant B must not see tenant A's location (cross-tenant isolation)"
+    );
+    let loc_b = unique_id("pg-loc-row-b");
+    probe_raw
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id) VALUES ($1, 'Loc B', $2)",
+            &[&loc_b, &tenant_b],
+        )
+        .await
+        .expect("insert location for tenant B");
+    let count_b2: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count tenant B after insert")
+        .get(0);
+    assert_eq!(count_b2, 1, "tenant B must see only its own location");
+    probe_raw
+        .batch_execute("ROLLBACK")
+        .await
+        .expect("rollback tenant B");
+
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+}

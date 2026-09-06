@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS "locations" (
     is_primary  BIGINT NOT NULL DEFAULT 0,                        -- exactly one store is the primary
     created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
+, tenant_id TEXT NOT NULL DEFAULT 'default');
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
     ON locations(is_primary) WHERE is_primary = 1;
@@ -717,7 +717,7 @@ CREATE TABLE IF NOT EXISTS "user_location_access" (
                               ON DELETE RESTRICT
                               ON UPDATE CASCADE,
     access_level TEXT NOT NULL DEFAULT 'operator',
-    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')), tenant_id TEXT NOT NULL DEFAULT 'default',
     UNIQUE(user_id, location_id)
 );
 
@@ -1650,8 +1650,8 @@ INSERT INTO loyalty_tiers (id, name, min_points, points_per_unit, colour, sort_o
     ('tier-platinum', 'Platinum', 2000, 10, '#e5e4e2', 4, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 2000000)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id) VALUES
+    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
@@ -1770,10 +1770,10 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'media_assets', 'media_thumbnails', 'offline_queue', 'payment_gateways',
-                            'payment_settlements', 'product_activity', 'product_bundles', 'product_taxes', 'product_variants', 'products',
-                            'refunds', 'sales', 'sent_reports', 'stripe_customers', 'sync_terminals', 'tax_rates',
-                            'tenant_plans', 'tenant_subscription', 'users']
+    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'locations', 'media_assets', 'media_thumbnails', 'offline_queue',
+                            'payment_gateways', 'payment_settlements', 'product_activity', 'product_bundles', 'product_taxes', 'product_variants',
+                            'products', 'refunds', 'sales', 'sent_reports', 'stripe_customers', 'sync_terminals',
+                            'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (

@@ -332,6 +332,8 @@ RLS_TABLES = [
     "tenant_plans",
     "tenant_subscription",
     "users",
+    "locations",
+    "user_location_access",
 ]
 
 
