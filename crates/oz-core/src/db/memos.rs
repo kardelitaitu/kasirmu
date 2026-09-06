@@ -526,11 +526,15 @@ impl Store<'_> {
         Ok(deleted)
     }
 
-    /// Collect the tenant's COMPLETE non-deleted memo state for the cloud
+    /// Collect the DATABASE's complete non-deleted memo state for the cloud
     /// push (2026-09-07 cloud-read ruling): every memo that is not yet
-    /// retention-deleted, with targeting rows and the published fan-out's
-    /// recipients. The cloud reconciles by upsert + delete-by-omission, so
-    /// absence from this snapshot IS the deletion signal.
+    /// retention-deleted — all tenants, deliberately unfiltered — with
+    /// targeting rows and the published fan-out's recipients. The desktop
+    /// global DB is the single authoring authority; the cloud keys tenant
+    /// isolation off the authenticated token's tenant_id, never the payload
+    /// (MemoSyncRow carries no tenant_id). The cloud reconciles by upsert +
+    /// delete-by-omission, so absence from this snapshot IS the deletion
+    /// signal.
     pub fn collect_memo_sync_snapshot(&self) -> Result<Vec<MemoPushRow>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.tenant_id, m.author_user_id, m.author_role, m.title, m.body,
