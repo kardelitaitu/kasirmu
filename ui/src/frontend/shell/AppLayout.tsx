@@ -3,6 +3,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import RoleBadge from '@/components/RoleBadge';
 import Tooltip from './Tooltip';
 import UpdateBanner from './UpdateBanner';
+import MemoBanner from '@/features/memo/MemoBanner';
 import StoreSwitcher from '@/components/StoreSwitcher';
 import StockAlertBell from '@/components/StockAlertBell';
 import { useBrand } from '@/contexts/BrandContext';
@@ -310,6 +311,7 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
             </div>
           )}
           <UpdateBanner />
+          <MemoBanner />
           <div className="app-content-inner" key={route}>
             {children}
           </div>

@@ -2,6 +2,7 @@ import { type KeyboardEvent, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/frontend/shared/requiredLocalized';
 import { getNavItems } from '@/platform/ui/menu-registry';
+import MemoBanner from '@/features/memo/MemoBanner';
 import './tablet.css';
 
 // ── Props ───────────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ export default function TabletAppLayout({
         </a>
         {/* ── Main content area ─────────────────────── */}
         <main className="app-content" role="main" id="tablet-main-content">
+          <MemoBanner />
           <div className="app-content-inner" key={route}>
             {children}
           </div>
