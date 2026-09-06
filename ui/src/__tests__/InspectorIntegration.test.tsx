@@ -4,7 +4,7 @@ import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
 import { loadTopology } from '@/api/topology';
 import type * as nodeTopologyEditorState from '../features/locations/nodeTopologyEditorState';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 vi.mock('@/api/topology', () => ({

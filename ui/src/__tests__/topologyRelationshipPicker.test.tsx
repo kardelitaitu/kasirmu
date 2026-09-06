@@ -6,8 +6,8 @@ import { TopologyRelationshipPicker } from '@/features/locations/topologyRelatio
 import type { TopologyPickerState } from '@/features/locations/nodeTopologyEditorConnectionState';
 import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
 import type { WireRelationshipOption } from '@/features/locations/topologyCard';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
-import multiStoreIdFtl from '@/locales/multi-store.id.ftl?raw';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
+import multiStoreIdFtl from '@/locales/multi-location.id.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import sharedIdFtl from '@/locales/shared.id.ftl?raw';
 

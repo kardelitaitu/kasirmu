@@ -33,8 +33,8 @@ import purchasingEn from '@/locales/purchasing.ftl?raw';
 import purchasingId from '@/locales/purchasing.id.ftl?raw';
 import salesEn from '@/locales/sales.ftl?raw';
 import salesId from '@/locales/sales.id.ftl?raw';
-import multiStoreEn from '@/locales/multi-store.ftl?raw';
-import multiStoreId from '@/locales/multi-store.id.ftl?raw';
+import multiStoreEn from '@/locales/multi-location.ftl?raw';
+import multiStoreId from '@/locales/multi-location.id.ftl?raw';
 
 describe('i18n bundle loader', () => {
   it('exposes en and id locales via getAvailableLocales()', () => {

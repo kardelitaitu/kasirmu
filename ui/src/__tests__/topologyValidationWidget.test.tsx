@@ -5,8 +5,8 @@ import { withFluent, withFluentLocale } from '@/locales/test-utils';
 import { TopologyValidationWidget } from '@/features/locations/topologyValidationWidget';
 import type { TopologyValidationNodeIssue } from '@/features/locations/topologyValidationWidget';
 import type { TopologyValidationError } from '@/features/locations/topologyContract';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
-import multiStoreIdFtl from '@/locales/multi-store.id.ftl?raw';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
+import multiStoreIdFtl from '@/locales/multi-location.id.ftl?raw';
 
 // ── Mock data factories ───────────────────────────────────────────
 

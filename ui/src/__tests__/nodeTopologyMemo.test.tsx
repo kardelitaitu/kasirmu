@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderWithProvidersSync, rerenderWithProviders } from '@/__tests__/test-utils/render';
 import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
 import { loadTopology } from '@/api/topology';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 // Render-count probes. Each mock wraps the REAL memo'd component with a

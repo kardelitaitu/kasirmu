@@ -6,7 +6,7 @@ resolves in neither locale. The opposite question has no gate at all: a key sitt
 bundle with no code that reads it. That asymmetry is not academic. Two cases surfaced while
 this was being written:
 
-  - `topology-shortcuts-*`: 18 keys in multi-store.ftl. The only places the names appear are
+  - `topology-shortcuts-*`: 18 keys in multi-location.ftl. The only places the names appear are
     test fixtures that enumerate expected bundle contents, and a comment in
     popoverSurfaceCompliance.test.tsx:54 recording that "topology-shortcuts-popover [was]
     removed with the shortcuts feature". The feature is gone; the copy stayed.
