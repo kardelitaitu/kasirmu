@@ -19,6 +19,11 @@
 .wrangler/
 lighthouse*
 todo*
+# Ad-hoc watch-mode Vitest log written at the repo root by agents running the
+# UI suite. No repo tooling produces or reads it, it reappears on every watch
+# run, and it reached 1.3 MB in one sitting — close enough to a broad `git add`
+# to be committed by accident.
+.vitest_monitor.txt
 
 # Cargo workspaces have a single Cargo.lock at the workspace root, not
 # one per crate. OZ-POS ships binaries (oz-cli, and the Tauri app in
