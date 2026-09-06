@@ -1251,7 +1251,7 @@ fn import_snapshot_preserves_store_scoping() {
     // store_id write-through in the products upsert.
     let conn = oz_core::migrations::fresh_db();
     conn.execute_batch(
-        "INSERT INTO store_profiles (id, name) VALUES \
+        "INSERT INTO locations (id, name) VALUES \
              ('store-a', 'Store A'), ('store-b', 'Store B')",
     )
     .unwrap();
@@ -1336,7 +1336,7 @@ fn import_snapshot_unknown_store_id_fails_closed_and_rolls_back() {
     // products) — the same fail-closed contract as the oz-core path.
     let conn = oz_core::migrations::fresh_db();
     conn.execute(
-        "INSERT INTO store_profiles (id, name) VALUES ('store-a', 'Store A')",
+        "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A')",
         [],
     )
     .unwrap();
