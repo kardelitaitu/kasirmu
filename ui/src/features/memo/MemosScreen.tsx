@@ -100,10 +100,13 @@ export default function MemosScreen() {
   // blocking authoring.
   const [locations, setLocations] = useState<LocationProfile[]>([]);
 
-  // Create-form state.
+  // Create-form state. Targeting is a set of location ids: none selected ⇒
+  // Organization Memo (the empty set is the organization-wide audience).
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [scope, setScope] = useState<string>('org');
+  const [selectedLocations, setSelectedLocations] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   const [duration, setDuration] = useState<MemoDuration>('24h');
   const [creating, setCreating] = useState(false);
   // Dedicated notice for create/publish failures — the list load error state
@@ -151,6 +154,18 @@ export default function MemosScreen() {
 
   const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !creating;
 
+  const toggleLocation = (id: string) => {
+    setSelectedLocations((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const handleCreate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canSubmit || !sessionToken) return;
@@ -158,7 +173,7 @@ export default function MemosScreen() {
     setActionError(null);
     try {
       await createMemoScoped(sessionToken, {
-        locationId: scope === 'org' ? null : scope,
+        locationIds: [...selectedLocations],
         title: title.trim(),
         body: body.trim(),
         duration,
@@ -233,23 +248,30 @@ export default function MemosScreen() {
               />
             </div>
             <div className="memos-field">
-              {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-              <label className="memos-label" htmlFor="memos-scope">
+              <span className="memos-label" id="memos-scope-label">
                 <Localized id="memos-label-scope"><span>Audience</span></Localized>
-              </label>
-              <select
-                id="memos-scope"
-                className="memos-select"
-                value={scope}
-                onChange={(e) => setScope(e.target.value)}
+              </span>
+              <div
+                className="memos-scope-group"
+                role="group"
+                aria-labelledby="memos-scope-label"
               >
-                <Localized id="memos-scope-org">
-                  <option value="org">Organization</option>
-                </Localized>
                 {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  <label key={loc.id} className="memos-scope-option">
+                    <input
+                      type="checkbox"
+                      checked={selectedLocations.has(loc.id)}
+                      onChange={() => toggleLocation(loc.id)}
+                    />
+                    <span>{loc.name}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
+              <Localized id="memos-scope-hint">
+                <p className="memos-scope-hint">
+                  <span>Leave every location unchecked to reach all of them (Organization).</span>
+                </p>
+              </Localized>
             </div>
             <div className="memos-field">
               {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
@@ -373,14 +395,18 @@ export default function MemosScreen() {
                     </span>
                   </td>
                   <td>
-                    {memo.locationId ? (
-                      <span className="memos-scope-chip" title={memo.locationId}>
-                        {locationName(memo.locationId)}
-                      </span>
-                    ) : (
+                    {memo.locationIds.length === 0 ? (
                       <Localized id="memos-scope-org">
                         <span className="memos-scope-chip memos-scope-chip--org">Organization</span>
                       </Localized>
+                    ) : (
+                      <span className="memos-scope-chips">
+                        {memo.locationIds.map((id) => (
+                          <span key={id} className="memos-scope-chip" title={id}>
+                            {locationName(id)}
+                          </span>
+                        ))}
+                      </span>
                     )}
                   </td>
                   <td>

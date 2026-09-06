@@ -19,7 +19,7 @@ const memo: ActiveMemo = {
   memo: {
     id: 'm1',
     tenantId: 'default',
-    locationId: null,
+    locationIds: [],
     authorUserId: 'user-1',
     authorRole: 'role-owner',
     title: 'End-of-day checklist',

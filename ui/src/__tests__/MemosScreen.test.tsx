@@ -59,7 +59,7 @@ function FluentWrapper({ children }: { children: ReactNode }) {
 const publishedOrgMemo: Memo = {
   id: 'memo-org-1',
   tenantId: 'default',
-  locationId: null,
+  locationIds: [],
   authorUserId: 'user-1',
   authorRole: 'role-manager',
   title: 'End-of-day checklist',
@@ -75,7 +75,7 @@ const publishedOrgMemo: Memo = {
 const draftLocationMemo: Memo = {
   id: 'memo-loc-1',
   tenantId: 'default',
-  locationId: 'loc-1',
+  locationIds: ['loc-1'],
   authorUserId: 'user-1',
   authorRole: 'role-manager',
   title: 'Restock aisle 3',
@@ -97,6 +97,17 @@ const sampleLocations = [
     currency: 'USD',
     timezone: 'UTC',
     is_primary: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'loc-2',
+    name: 'Harbor',
+    address: '',
+    tax_id: '',
+    currency: 'USD',
+    timezone: 'UTC',
+    is_primary: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
@@ -125,10 +136,12 @@ describe('MemosScreen', () => {
     expect(await screen.findByText('End-of-day checklist')).toBeInTheDocument();
     expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
 
-    // 'Organization' appears as both the scope <option> and the org scope chip.
-    expect(screen.getAllByText('Organization').length).toBeGreaterThanOrEqual(1);
-    // 'Downtown' appears as both the scope <option> and the location chip.
-    expect(screen.getAllByText('Downtown').length).toBeGreaterThanOrEqual(1);
+    // 'Organization' renders once — the org scope chip on the org-targeted row
+    // (the checkbox group lists locations only; org is the empty selection).
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    // 'Downtown' appears twice: as the draft row's scope chip and as a
+    // checkbox label.
+    expect(screen.getAllByText('Downtown').length).toBeGreaterThanOrEqual(2);
 
     expect(screen.getByText('Draft')).toBeInTheDocument();
     expect(screen.getByText('Published')).toBeInTheDocument();
@@ -183,7 +196,7 @@ describe('MemosScreen', () => {
 
     await waitFor(() => expect(mocks.createMemoScoped).toHaveBeenCalledTimes(1));
     expect(mocks.createMemoScoped).toHaveBeenCalledWith('tok-1', {
-      locationId: null,
+      locationIds: [],
       title: 'Team briefing',
       body: 'Meet at the back office at 5 PM.',
       duration: '24h',
@@ -193,11 +206,13 @@ describe('MemosScreen', () => {
     await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalledTimes(2));
   });
 
-  it('passes the selected location scope and duration to createMemoScoped', async () => {
+  it('passes the selected locations and duration to createMemoScoped', async () => {
     render(<MemosScreen />, { wrapper: FluentWrapper });
     await screen.findByText('End-of-day checklist');
 
-    await userEvent.selectOptions(screen.getByLabelText('Audience'), 'loc-1');
+    // Multi-targeting: both location checkboxes go in as one targeting set.
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Downtown' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Harbor' }));
     await userEvent.selectOptions(screen.getByLabelText('Duration'), '7d');
     await userEvent.type(screen.getByLabelText('Title'), 'Deep clean');
     await userEvent.type(screen.getByLabelText('Message'), 'After close on Friday.');
@@ -206,10 +221,30 @@ describe('MemosScreen', () => {
 
     await waitFor(() => expect(mocks.createMemoScoped).toHaveBeenCalledTimes(1));
     expect(mocks.createMemoScoped).toHaveBeenCalledWith('tok-1', {
-      locationId: 'loc-1',
+      locationIds: ['loc-1', 'loc-2'],
       title: 'Deep clean',
       body: 'After close on Friday.',
       duration: '7d',
+    });
+  });
+
+  it('toggling a location checkbox back off returns to the organization audience', async () => {
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    await screen.findByText('End-of-day checklist');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Downtown' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Downtown' }));
+    await userEvent.type(screen.getByLabelText('Title'), 'All hands');
+    await userEvent.type(screen.getByLabelText('Message'), 'Org-wide notice.');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+
+    await waitFor(() => expect(mocks.createMemoScoped).toHaveBeenCalledTimes(1));
+    expect(mocks.createMemoScoped).toHaveBeenCalledWith('tok-1', {
+      locationIds: [],
+      title: 'All hands',
+      body: 'Org-wide notice.',
+      duration: '24h',
     });
   });
 

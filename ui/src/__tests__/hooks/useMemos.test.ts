@@ -19,7 +19,7 @@ function activeMemo(id: string, over: Partial<ActiveMemosResponse['memos'][numbe
     memo: {
       id,
       tenantId: 'default',
-      locationId: null,
+      locationIds: [],
       authorUserId: 'user-1',
       authorRole: 'role-owner',
       title: `Memo ${id}`,

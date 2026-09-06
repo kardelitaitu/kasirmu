@@ -183,7 +183,7 @@ const memo: ActiveMemo = {
   memo: {
     id: 'm1',
     tenantId: 'default',
-    locationId: 'loc-1',
+    locationIds: ['loc-1'],
     authorUserId: 'user-1',
     authorRole: 'role-manager',
     title: 'Restock aisle 3',

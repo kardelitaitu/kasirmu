@@ -13,8 +13,8 @@ export type DeliveryStatus = 'pending' | 'delivered' | 'acknowledged';
 export interface Memo {
   id: string;
   tenantId: string;
-  /** `null` ⇒ Organization Memo; a value ⇒ Location Memo for that location. */
-  locationId: string | null;
+  /** Locations the memo targets; empty ⇒ Organization Memo (all locations). */
+  locationIds: string[];
   authorUserId: string;
   authorRole: string;
   title: string;
@@ -71,8 +71,12 @@ export const acknowledgeMemoScoped = (sessionToken: string, memoId: string): Pro
 
 /** Arguments for creating a memo draft (matches `CreateMemoArgs`). */
 export interface CreateMemoArgs {
-  /** `null`/omitted ⇒ Organization Memo; a location id ⇒ Location Memo. */
-  locationId?: string | null;
+  /**
+   * Targeted location ids; empty/omitted ⇒ Organization Memo (the empty set
+   * is the organization-wide audience). One or more ⇒ the memo targets
+   * exactly those locations. The store trims and dedupes the ids.
+   */
+  locationIds?: string[];
   title: string;
   body: string;
   /** Display duration; defaults to `24h` when omitted. */
@@ -89,7 +93,7 @@ export const createMemoScoped = (
 ): Promise<Memo> =>
   loggedInvoke<Memo>('create_memo_scoped', {
     sessionToken,
-    args: { ...args, locationId: args.locationId ?? null },
+    args: { ...args, locationIds: args.locationIds ?? [] },
   });
 
 /**

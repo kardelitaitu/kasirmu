@@ -41,12 +41,12 @@ function renderWithL10n(ui: ReactNode) {
   return render(<LocalizationProvider l10n={l10n}>{ui}</LocalizationProvider>);
 }
 
-function activeMemo(id: string, locationId: string | null): ActiveMemo {
+function activeMemo(id: string, locationIds: string[]): ActiveMemo {
   return {
     memo: {
       id,
       tenantId: 'default',
-      locationId,
+      locationIds,
       authorUserId: 'user-1',
       authorRole: 'role-owner',
       title: `Title ${id}`,
@@ -67,7 +67,7 @@ beforeEach(() => {
   mockAcknowledge.mockReset();
   mockDismiss.mockReset();
   vi.mocked(useMemos).mockReturnValue({
-    memos: [activeMemo('m1', null)],
+    memos: [activeMemo('m1', [])],
     loading: false,
     error: null,
     acknowledge: mockAcknowledge,
@@ -99,7 +99,7 @@ describe('MemoBanner', () => {
     expect(screen.getByText('Organization notice')).toBeInTheDocument();
     unmount();
     vi.mocked(useMemos).mockReturnValue({
-      memos: [activeMemo('m2', 'loc-1')],
+      memos: [activeMemo('m2', ['loc-1'])],
       loading: false,
       error: null,
       acknowledge: mockAcknowledge,

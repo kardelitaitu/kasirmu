@@ -1,11 +1,10 @@
 use super::*;
 
-#[test]
-fn memo_dto_uses_camel_case_wire_fields() {
-    let dto = MemoDto {
+fn memo_dto(location_ids: Vec<String>, published_at: Option<String>) -> MemoDto {
+    MemoDto {
         id: "m-1".into(),
         tenant_id: "default".into(),
-        location_id: Some("loc-1".into()),
+        location_ids,
         author_user_id: "user-1".into(),
         author_role: "role-manager".into(),
         title: "Heads up".into(),
@@ -13,13 +12,28 @@ fn memo_dto_uses_camel_case_wire_fields() {
         status: "published".into(),
         duration: "24h".into(),
         revision: 1,
-        published_at: Some("2026-09-06T00:00:00.000Z".into()),
-        expires_at: Some("2026-09-07T00:00:00.000Z".into()),
+        published_at: published_at.clone(),
+        expires_at: published_at.map(|p| {
+            // Not a real expiry computation — just a paired non-null value.
+            p.replace("2026-09-06", "2026-09-07")
+        }),
         created_at: "2026-09-06T00:00:00.000Z".into(),
-    };
+    }
+}
+
+#[test]
+fn memo_dto_uses_camel_case_wire_fields() {
+    let dto = memo_dto(
+        vec!["loc-1".into(), "loc-2".into()],
+        Some("2026-09-06T00:00:00.000Z".into()),
+    );
     let json = serde_json::to_value(dto).unwrap();
     assert_eq!(json["tenantId"], "default");
-    assert_eq!(json["locationId"], "loc-1");
+    assert_eq!(
+        json["locationIds"],
+        serde_json::json!(["loc-1", "loc-2"]),
+        "the targeting set rides the wire as a locationIds array"
+    );
     assert_eq!(json["authorUserId"], "user-1");
     assert_eq!(json["authorRole"], "role-manager");
     assert_eq!(json["publishedAt"], "2026-09-06T00:00:00.000Z");
@@ -27,28 +41,18 @@ fn memo_dto_uses_camel_case_wire_fields() {
     assert_eq!(json["createdAt"], "2026-09-06T00:00:00.000Z");
     assert!(json.get("tenant_id").is_none());
     assert!(json.get("location_id").is_none());
+    assert!(json.get("location_ids").is_none());
 }
 
 #[test]
-fn memo_dto_org_scope_serializes_location_id_null() {
-    let dto = MemoDto {
-        id: "m-2".into(),
-        tenant_id: "default".into(),
-        location_id: None,
-        author_user_id: "user-1".into(),
-        author_role: "role-owner".into(),
-        title: "Org".into(),
-        body: "All terminals".into(),
-        status: "draft".into(),
-        duration: "12h".into(),
-        revision: 1,
-        published_at: None,
-        expires_at: None,
-        created_at: "2026-09-06T00:00:00.000Z".into(),
-    };
+fn memo_dto_org_scope_serializes_an_empty_location_ids_array() {
+    // The empty set IS the Organization audience — it serializes as an empty
+    // array, not null, so the UI never has to distinguish null from [].
+    let dto = memo_dto(vec![], None);
     let json = serde_json::to_value(dto).unwrap();
-    assert!(json["locationId"].is_null());
+    assert_eq!(json["locationIds"], serde_json::json!([]));
     assert!(json["publishedAt"].is_null());
+    assert!(json["expiresAt"].is_null());
 }
 
 #[test]
@@ -56,7 +60,7 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
     let memo = Memo {
         id: "m-3".into(),
         tenant_id: "default".into(),
-        location_id: None,
+        location_ids: vec![],
         author_user_id: "user-1".into(),
         author_role: "role-owner".into(),
         title: "T".into(),
@@ -106,6 +110,7 @@ fn memo_display_dto_carries_server_issued_cadence() {
 
 #[test]
 fn create_args_deserialize_camel_case_and_optional_fields() {
+    // Omitted locationIds ⇒ empty targeting set ⇒ Organization Memo.
     let args: CreateMemoArgs = serde_json::from_value(serde_json::json!({
         "title": "Heads up",
         "body": "Close early tonight",
@@ -114,7 +119,19 @@ fn create_args_deserialize_camel_case_and_optional_fields() {
     .unwrap();
     assert_eq!(args.title, "Heads up");
     assert_eq!(args.duration.as_deref(), Some("3d"));
-    assert_eq!(args.location_id, None);
+    assert!(args.location_ids.is_empty());
+
+    // One or more locationIds ⇒ a Location memo targeting those locations.
+    let located: CreateMemoArgs = serde_json::from_value(serde_json::json!({
+        "title": "Heads up",
+        "body": "Close early tonight",
+        "locationIds": ["loc-1", "loc-2"]
+    }))
+    .unwrap();
+    assert_eq!(
+        located.location_ids,
+        vec!["loc-1".to_string(), "loc-2".to_string()]
+    );
 }
 
 #[test]

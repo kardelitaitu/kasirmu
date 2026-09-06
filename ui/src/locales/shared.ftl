@@ -163,6 +163,7 @@ memos-placeholder-title = e.g. close the drawer at 10 PM
 memos-label-body = Message
 memos-placeholder-body = Write the message staff will see…
 memos-label-scope = Audience
+memos-scope-hint = Leave every location unchecked to reach all of them (Organization).
 memos-scope-org = Organization
 memos-label-duration = Duration
 memos-duration-12h = 12 hours

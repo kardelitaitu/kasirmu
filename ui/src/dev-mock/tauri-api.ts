@@ -385,7 +385,8 @@ function updateMockLegalEntity(args: unknown): typeof MOCK_LEGAL_ENTITY | null {
 interface MockMemo {
   id: string;
   tenantId: string;
-  locationId: string | null;
+  /** Locations the memo targets; empty ⇒ Organization Memo (all locations). */
+  locationIds: string[];
   authorUserId: string;
   authorRole: string;
   title: string;
@@ -414,7 +415,7 @@ let mockMemos: MockActiveMemo[] = [
     memo: {
       id: 'memo-org-1',
       tenantId: 'default',
-      locationId: null,
+      locationIds: [],
       authorUserId: 'user-owner',
       authorRole: 'role-owner',
       title: 'End-of-day checklist',
@@ -432,7 +433,7 @@ let mockMemos: MockActiveMemo[] = [
     memo: {
       id: 'memo-loc-1',
       tenantId: 'default',
-      locationId: 'loc-default',
+      locationIds: ['loc-default'],
       authorUserId: 'user-manager',
       authorRole: 'role-manager',
       title: 'Restock aisle 3',
@@ -465,7 +466,7 @@ function listMockActiveMemos(): {
   return {
     memos: mockMemos
       .filter((m) => m.memo.status === 'published')
-      .sort((a, b) => Number(a.memo.locationId === null) - Number(b.memo.locationId === null))
+      .sort((a, b) => Number(a.memo.locationIds.length === 0) - Number(b.memo.locationIds.length === 0))
       .map((m) => ({ ...m, memo: { ...m.memo } })),
     cadence: { ...MEMO_CADENCE },
   };
@@ -497,7 +498,7 @@ const MEMO_DURATION_MS: Record<string, number> = {
  *  terminals until published. */
 function createMockMemo(args: unknown): MockMemo {
   const payload = unwrapArgs<{
-    locationId?: string | null;
+    locationIds?: string[];
     title?: string;
     body?: string;
     duration?: string;
@@ -505,7 +506,7 @@ function createMockMemo(args: unknown): MockMemo {
   const memo: MockMemo = {
     id: `memo-${Date.now()}`,
     tenantId: 'default',
-    locationId: payload.locationId ?? null,
+    locationIds: payload.locationIds ?? [],
     authorUserId: 'user-1',
     authorRole: 'role-manager',
     title: payload.title ?? '(untitled)',

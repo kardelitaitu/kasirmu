@@ -38,7 +38,7 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   }
 
   const memoId = top.memo.id;
-  const isLocation = top.memo.locationId !== null;
+  const isLocation = top.memo.locationIds.length > 0;
 
   const handleAcknowledge = () => {
     pendingRef.current = () => acknowledge(memoId);

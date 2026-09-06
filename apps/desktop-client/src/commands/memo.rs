@@ -39,8 +39,10 @@ pub struct MemoDto {
     pub id: String,
     /// Organization/Tenant owner.
     pub tenant_id: String,
-    /// `null` ⇒ Organization Memo; a value ⇒ Location Memo for that location.
-    pub location_id: Option<String>,
+    /// Locations the memo targets (wire: `locationIds`); empty ⇒ Organization
+    /// Memo (organization-wide audience), non-empty ⇒ Location Memo for
+    /// exactly those locations.
+    pub location_ids: Vec<String>,
     /// Author's user id.
     pub author_user_id: String,
     /// Author's role snapshot at publish time.
@@ -68,7 +70,7 @@ impl From<Memo> for MemoDto {
         Self {
             id: m.id,
             tenant_id: m.tenant_id,
-            location_id: m.location_id,
+            location_ids: m.location_ids,
             author_user_id: m.author_user_id,
             author_role: m.author_role,
             title: m.title,
@@ -130,8 +132,12 @@ pub struct MemoDisplayDto {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateMemoArgs {
-    /// `null`/omitted ⇒ Organization Memo; a location id ⇒ Location Memo.
-    pub location_id: Option<String>,
+    /// Targeted location ids; empty/omitted ⇒ Organization Memo (the empty
+    /// set is the organization-wide audience). One or more ⇒ the memo targets
+    /// exactly those locations. Duplicates and whitespace-only entries are
+    /// normalized away by the store.
+    #[serde(default)]
+    pub location_ids: Vec<String>,
     /// Memo title (non-blank).
     pub title: String,
     /// Memo body (non-blank).
@@ -158,7 +164,7 @@ pub async fn create_memo_scoped(
     };
     let new = NewMemo {
         tenant_id: DEFAULT_TENANT_ID.into(),
-        location_id: args.location_id,
+        location_ids: args.location_ids,
         author_user_id: session.user_id,
         author_role: session.role_id,
         title: args.title,

@@ -179,6 +179,7 @@ memos-placeholder-title = mis. tutup laci pukul 22.00
 memos-label-body = Pesan
 memos-placeholder-body = Tulis pesan yang akan dilihat staf…
 memos-label-scope = Penerima
+memos-scope-hint = Biarkan semua lokasi tidak dicentang untuk menjangkau semuanya (Organisasi).
 memos-scope-org = Organisasi
 memos-label-duration = Durasi
 memos-duration-12h = 12 jam

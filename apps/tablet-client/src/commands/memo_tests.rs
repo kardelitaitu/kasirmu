@@ -5,7 +5,7 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
     let memo = Memo {
         id: "m-1".into(),
         tenant_id: "default".into(),
-        location_id: None,
+        location_ids: vec![],
         author_user_id: "user-1".into(),
         author_role: "role-owner".into(),
         title: "T".into(),
@@ -60,7 +60,7 @@ fn memo_dto_org_scope_serializes_location_id_null() {
     let memo = Memo {
         id: "m-2".into(),
         tenant_id: "default".into(),
-        location_id: None,
+        location_ids: vec![],
         author_user_id: "user-1".into(),
         author_role: "role-manager".into(),
         title: "Org".into(),
@@ -76,7 +76,11 @@ fn memo_dto_org_scope_serializes_location_id_null() {
         updated_at: "2026-09-06T00:00:00.000Z".into(),
     };
     let json = serde_json::to_value(MemoDto::from(memo)).unwrap();
-    assert!(json["locationId"].is_null());
+    assert_eq!(
+        json["locationIds"],
+        serde_json::json!([]),
+        "the Organization audience serializes as an empty targeting array"
+    );
     assert_eq!(json["duration"], "3d");
     assert_eq!(json["revision"], 2);
     assert_eq!(json["expiresAt"], "2026-09-09T00:00:00.000Z");

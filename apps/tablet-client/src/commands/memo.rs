@@ -32,8 +32,10 @@ pub struct MemoDto {
     pub id: String,
     /// Organization/Tenant owner.
     pub tenant_id: String,
-    /// `null` ⇒ Organization Memo; a value ⇒ Location Memo for that location.
-    pub location_id: Option<String>,
+    /// Locations the memo targets (wire: `locationIds`); empty ⇒ Organization
+    /// Memo (organization-wide audience), non-empty ⇒ Location Memo for
+    /// exactly those locations.
+    pub location_ids: Vec<String>,
     /// Author's user id.
     pub author_user_id: String,
     /// Author's role snapshot at publish time.
@@ -61,7 +63,7 @@ impl From<Memo> for MemoDto {
         Self {
             id: m.id,
             tenant_id: m.tenant_id,
-            location_id: m.location_id,
+            location_ids: m.location_ids,
             author_user_id: m.author_user_id,
             author_role: m.author_role,
             title: m.title,

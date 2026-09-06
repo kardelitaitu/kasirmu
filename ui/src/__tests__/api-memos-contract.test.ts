@@ -14,7 +14,7 @@ vi.mock('@/utils/logged-invoke', () => ({
   loggedInvoke: (cmd: string, args?: Record<string, unknown>) => mockInvoke(cmd, args),
 }));
 
-import { listActiveMemosScoped, acknowledgeMemoScoped } from '@/api/memos';
+import { listActiveMemosScoped, acknowledgeMemoScoped, createMemoScoped } from '@/api/memos';
 
 describe('memos.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
@@ -31,6 +31,20 @@ describe('memos.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('acknowledge_memo_scoped', {
       sessionToken: 'tok',
       memoId: 'memo-1',
+    });
+  });
+
+  it('createMemoScoped → create_memo_scoped with nested args; locationIds defaults to [] (Organization)', async () => {
+    mockInvoke.mockResolvedValue({});
+    await createMemoScoped('tok', { title: 'T', body: 'B', duration: '7d', locationIds: ['loc-1'] });
+    expect(mockInvoke).toHaveBeenCalledWith('create_memo_scoped', {
+      sessionToken: 'tok',
+      args: { title: 'T', body: 'B', duration: '7d', locationIds: ['loc-1'] },
+    });
+    await createMemoScoped('tok', { title: 'T', body: 'B' });
+    expect(mockInvoke).toHaveBeenLastCalledWith('create_memo_scoped', {
+      sessionToken: 'tok',
+      args: { title: 'T', body: 'B', locationIds: [] },
     });
   });
 });
