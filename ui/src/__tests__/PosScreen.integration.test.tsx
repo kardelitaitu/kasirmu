@@ -618,30 +618,37 @@ describe('PosScreen — Payment button (Charge)', () => {
 
     await addProductToCart();
 
-    // The button says "Charge" - find the one in the cart footer
-    const chargeButtons = screen.getAllByRole('button', { name: /charge/i });
-    expect(chargeButtons.length).toBeGreaterThan(0);
-    const chargeBtn = chargeButtons[0];
-    expect(chargeBtn).toBeInTheDocument();
+    // The Pay button's accessible name is `pos-cart-charge-aria` =
+    // "Charge the customer" (sales.ftl:616). The previous query was
+    // /charge/i across ALL buttons, which matched "Toggle service charge"
+    // first in DOM order — so this test asserted the presence of the
+    // service-charge toggle and never checked the Pay button existed.
+    // Deleting `pos-cart-pay-btn` from PosScreen.tsx left it green.
+    const payBtn = screen.getByRole('button', { name: 'Charge the customer' });
+    expect(payBtn).toBeInTheDocument();
+    expect(payBtn).toBeEnabled();
   });
 
-  // SKIPPED — genuinely broken, not flaky. Confirmed by re-running with the
-  // skip removed on 2026-09-06: clicking Charge leaves no element matching
-  // role="dialog" name=/payment/i. The preceding test in this block already
-  // asserts the Charge button itself IS present and clickable, so the gap is
-  // in what opens after the click — either the modal's accessible name or
-  // the flow behind it. Same root cause as
-  // `includes tax in payment total when tax is exclusive` further down; fix
-  // one and re-run the other.
-  it.skip('opens payment modal when Charge button clicked', async () => {
+  // Was skipped on a WRONG diagnosis, recorded here so it is not repeated:
+  // the modal was never broken and the `role="dialog"` name=/payment/i
+  // assertion is correct — PaymentModal.tsx:1157 renders
+  // role="dialog" aria-modal="true" with .aria-label = "Payment"
+  // (sales.ftl:36-37), and `if (!open && !leaving) return null` at :1150 is
+  // the only thing suppressing it. The failure was the SELECTOR:
+  // getAllByRole('button', { name: /charge/i })[0] matched
+  // "Toggle service charge" (pos-cart-service-toggle), which precedes the
+  // Pay button in DOM order, so the test clicked the service-charge toggle
+  // and correctly opened no modal. Probed 2026-09-06: the two /charge/i
+  // matches are [0] pos-cart-service-toggle and [1] pos-cart-pay-btn;
+  // clicking the latter yields dialogs=1, aria-label "Payment".
+  it('opens payment modal when Charge button clicked', async () => {
     await renderPosScreenWithShift();
 
     await addProductToCart();
 
-    const chargeButtons = screen.getAllByRole('button', { name: /charge/i });
-    expect(chargeButtons.length).toBeGreaterThan(0);
-    const chargeBtn = chargeButtons[0];
-    await userEvent.click(chargeBtn!);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Charge the customer' }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /payment/i })).toBeInTheDocument();
@@ -1740,33 +1747,34 @@ describe('PosScreen — Live tax preview (computeCartTax)', () => {
     expect(screen.getByText(/ppn/i)).toBeInTheDocument();
   });
 
-  // NOTE (0.0.37): this body never tested what its name promises. It asserts only
-  // that *some* element matching /total/i exists, which holds whether or not tax
-  // was added -- so un-skipping it would yield a green test that still verifies
-  // nothing. The real arithmetic is now pinned in RetailCartPanel.test.tsx
-  // ("grand total tax arithmetic"), which drives grandTotal() with
-  // exclusive/inclusive/zero tax and compares the rendered rows numerically;
-  // three sabotage mutations of grandTotal() were caught there. Left skipped
-  // rather than rewritten, because the payment-modal round trip is a separate
-  // concern from the total arithmetic.
-  // Re-verified 2026-09-06: still fails, and on that same round trip — no
-  // role="dialog" name=/payment/i after Charge. Identical root cause to
-  // `opens payment modal when Charge button clicked` earlier in this file, so
-  // the two should un-skip together or not at all.
-  it.skip('includes tax in payment total when tax is exclusive', async () => {
+  // Un-skipped and rewritten with a real assertion. See the selector note on
+  // `opens payment modal when Charge button clicked` — the old failure was
+  // /charge/i[0] matching "Toggle service charge", not a broken modal.
+  //
+  // The previous body only did getByText(/total/i), which would pass on the
+  // cart panel's own subtotal row and proves nothing about tax, so it did not
+  // test what its name claims. The arithmetic under test is PosScreen.tsx:1974
+  // — when `cartTaxExclusive && cartTax > 0` the modal is handed
+  // `total.minor_units + cartTax`. With the file's tax mock returning
+  // { taxMinor: 1000, hasExclusive: true } and one 400-minor line, the modal
+  // must show 1400, not 400. /14[.,]00/ tolerates either decimal separator so
+  // a locale-format change does not masquerade as a regression.
+  it('includes tax in payment total when tax is exclusive', async () => {
     await setupCart();
 
-    // Click Charge to open payment modal
-    const chargeButtons = screen.getAllByRole('button', { name: /charge/i });
-    expect(chargeButtons.length).toBeGreaterThan(0);
-    await userEvent.click(chargeButtons[0]!);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Charge the customer' }),
+    );
 
-    await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /payment/i })).toBeInTheDocument();
-    });
-
-    // Payment modal should show tax-inclusive total
-    expect(screen.getByText(/total/i)).toBeInTheDocument();
+    const dialog = await waitFor(() =>
+      screen.getByRole('dialog', { name: /payment/i }),
+    );
+    expect(dialog).toHaveTextContent(/Total Due/i);
+    expect(dialog).toHaveTextContent(/14[.,]00/);
+    // Guards against the total merely coincidentally rendering 14,00: the
+    // pre-tax cart line is 4,00, so if tax stopped being added the modal
+    // would show that instead.
+    expect(dialog).not.toHaveTextContent(/Total Due\D*4[.,]00/);
   });
 });
 
