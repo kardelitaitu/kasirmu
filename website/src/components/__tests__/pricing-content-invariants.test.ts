@@ -146,8 +146,12 @@ describe('tier shape invariants', () => {
     expect(idLabels.some((label) => /\btoko\b/i.test(label))).toBe(false);
     expect(enLabels).toContain('1 location');
     expect(enLabels).toContain('Locations');
+    expect(enLabels).toContain('1 warehouse workspace');
+    expect(enLabels).toContain('Warehouse workspaces');
     expect(idLabels).toContain('1 lokasi');
     expect(idLabels).toContain('Lokasi');
+    expect(idLabels).toContain('1 workspace gudang');
+    expect(idLabels).toContain('Workspace gudang');
   });
 
   it('Memo is Pro+ (card and comparison table agree, both locales)', () => {

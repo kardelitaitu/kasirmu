@@ -11,7 +11,7 @@
 
 | Tier | Position |
 | :--- | :--- |
-| **Free** | Free forever — 1 workspace only (1 location, 1 terminal, 1 warehouse, 3-month sales history) |
+| **Free** | Free forever — 1 workspace only (1 location, 1 terminal, 1 warehouse workspace, 3-month sales history) |
 | **Plus** | Entry paid tier — hero feature: **Daily Sales Dashboard** (Laporan Harian) |
 | **Pro** ⭐ **Most Popular** | Mid paid tier — best for growing single-to-multi-location businesses |
 | **Premium** | Top paid tier — multi-location chains with loyalty & automation |
@@ -91,7 +91,7 @@ Final pricing determined by: number of locations, terminals, users, support leve
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Max locations | 1 | 1 | 2 | 5 | Unlimited |
 | Max terminals (registers) / location | 1 | 2 | 5 | Unlimited | Unlimited |
-| Max warehouses | 1 | 2 | 3 | Unlimited | Unlimited |
+| Max warehouse workspaces | 1 | 2 | 3 | Unlimited | Unlimited |
 | Max KDS screens | 0 | 0 | 2 | Unlimited | Unlimited |
 | Max products/menu | 200 | 500 | 1,000 | 10,000 | Unlimited |
 | Max staff users * | 1 | 5 | 20 | 50 | Unlimited |
@@ -106,10 +106,15 @@ history preview with an upgrade CTA, not a hard error.
 
 ### Workspace Types
 
-| Feature | Free | Plus | Pro | Premium | Enterprise |
+These are terminal workspace contexts, not hierarchy resources. The canonical
+runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
+`store-pos` and `restaurant-pos` keys remain compatibility aliases.
+
+| Workspace type | Free | Plus | Pro | Premium | Enterprise |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| `restaurant-pos` / `store-pos` / `admin` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `inventory` / `warehouse` | ✗ | ✓ | ✓ | ✓ | ✓ |
+| `retail-pos` (legacy `store-pos`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `resto-pos` (legacy `restaurant-pos`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `warehouse` | ✗ | ✓ | ✓ | ✓ | ✓ |
 | `kds` | ✗ | ✗ | ✓ | ✓ | ✓ |
 
 ### Payments

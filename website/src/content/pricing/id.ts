@@ -34,7 +34,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 lokasi', included: true },
       { label: '1 register', included: true },
-      { label: '1 gudang', included: true },
+      { label: '1 workspace gudang', included: true },
       { label: 'Riwayat penjualan 3 bulan', included: true },
       { label: 'Pembayaran QRIS', included: true },
       { label: 'Sinkron cloud', included: false },
@@ -63,7 +63,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 lokasi', included: true },
       { label: '2 register', included: true },
-      { label: '2 gudang', included: true },
+      { label: '2 workspace gudang', included: true },
       { label: 'Pembayaran QRIS', included: true },
       { label: 'Dasbor Penjualan Harian', included: true },
       { label: 'Sinkron cloud', included: true },
@@ -145,7 +145,7 @@ export const pricing: PricingTier[] = [
 export const featureRows: FeatureRow[] = [
   { label: 'Lokasi', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
   { label: 'Terminal (register) per lokasi', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-  { label: 'Gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+  { label: 'Workspace gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Layar Display Dapur', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Max produk/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Tanpa batas' } },
   { label: 'Staf pengguna', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Tanpa batas' } },

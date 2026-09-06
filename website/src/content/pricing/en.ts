@@ -29,7 +29,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 location', included: true },
       { label: '1 register', included: true },
-      { label: '1 warehouse', included: true },
+      { label: '1 warehouse workspace', included: true },
       { label: '3-month sales history', included: true },
       { label: 'QRIS payments', included: true },
       { label: 'Cloud sync', included: false },
@@ -58,7 +58,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 location', included: true },
       { label: '2 registers', included: true },
-      { label: '2 warehouses', included: true },
+      { label: '2 warehouse workspaces', included: true },
       { label: 'QRIS payments', included: true },
       { label: 'Daily Sales Dashboard', included: true },
       { label: 'Cloud sync', included: true },
@@ -140,7 +140,7 @@ export const pricing: PricingTier[] = [
 export const featureRows: FeatureRow[] = [
   { label: 'Locations', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Unlimited' } },
   { label: 'Terminals (registers) per location', values: { free: 1, plus: 2, pro: 5, premium: 'Unlimited', enterprise: 'Unlimited' } },
-  { label: 'Warehouses', values: { free: 1, plus: 2, pro: 3, premium: 'Unlimited', enterprise: 'Unlimited' } },
+  { label: 'Warehouse workspaces', values: { free: 1, plus: 2, pro: 3, premium: 'Unlimited', enterprise: 'Unlimited' } },
   { label: 'Kitchen Display screens', values: { free: 0, plus: 0, pro: 2, premium: 'Unlimited', enterprise: 'Unlimited' } },
   { label: 'Max products/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Unlimited' } },
   { label: 'Staff users', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Unlimited' } },
