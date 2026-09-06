@@ -28,6 +28,20 @@ workflow, not a silent setting change.
       make custom roles explicit permission sets with explicit scopes. Unknown
       roles default to deny; do not assign unknown names a numeric hierarchy
       level automatically.
+      — **safety half already enforced and tested (verified 2026-09-07):**
+      `Store::authorize_with` resolves the role and fails closed with
+      `CoreError::PermissionDenied` when it does not exist
+      (`crates/oz-core/src/db/staff.rs:326`), and unknown role_ids are
+      rejected with typed `Validation` errors before any write on create and
+      update (`create_user_rejects_unknown_role_with_typed_error`,
+      `update_user_rejects_unknown_role_before_any_write` in
+      `staff_tests.rs`). No numeric hierarchy exists anywhere in the codebase
+      — the only rank consumer, `oz_core::memo::may_stop`, has no non-test
+      caller and no rank mapping to consult (see the stop_memo proposal in
+      todo-global-saas-2.md, which recommends permissions over ranks for the
+      same reason). What remains is the feature itself: authoring custom
+      roles as explicit permission-set rows with scopes, plus IPC + UI —
+      gated on the Phase 1 scoped-authorization decisions.
 - [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
 - [ ] **Define data residency and retention policy.** Document where tenant data,
