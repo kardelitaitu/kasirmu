@@ -17,6 +17,7 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
         expires_at: None,
         stopped_at: None,
         stopped_by: None,
+        archived_at: None,
         created_at: "2026-09-06T00:00:00.000Z".into(),
         updated_at: "2026-09-06T00:00:00.000Z".into(),
     };
@@ -72,6 +73,7 @@ fn memo_dto_org_scope_serializes_location_id_null() {
         expires_at: Some("2026-09-09T00:00:00.000Z".into()),
         stopped_at: None,
         stopped_by: None,
+        archived_at: None,
         created_at: "2026-09-06T00:00:00.000Z".into(),
         updated_at: "2026-09-06T00:00:00.000Z".into(),
     };
