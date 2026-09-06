@@ -132,6 +132,24 @@ describe('tier shape invariants', () => {
     }
   });
 
+  it('uses Location terminology for site-unit quota labels in both locales', () => {
+    const enLabels = [
+      ...enPricing.flatMap((tier) => tier.features.map((feature) => feature.label)),
+      ...featureRowsFor('en').map((row) => row.label),
+    ];
+    const idLabels = [
+      ...idPricing.flatMap((tier) => tier.features.map((feature) => feature.label)),
+      ...featureRowsFor('id').map((row) => row.label),
+    ];
+
+    expect(enLabels.some((label) => /\bstore(s)?\b/i.test(label))).toBe(false);
+    expect(idLabels.some((label) => /\btoko\b/i.test(label))).toBe(false);
+    expect(enLabels).toContain('1 location');
+    expect(enLabels).toContain('Locations');
+    expect(idLabels).toContain('1 lokasi');
+    expect(idLabels).toContain('Lokasi');
+  });
+
   it('Memo is Pro+ (card and comparison table agree, both locales)', () => {
     // todo-global-saas.md §14: Memo authoring is Pro+. Free/Plus must not
     // advertise it on any surface, the Pro card must list it, and the table

@@ -20,14 +20,14 @@ export const pricing: PricingTier[] = [
     tierKey: 'free',
     name: 'Free',
     currency: 'USD',
-    description: 'Free forever — run one store, fully offline.',
+    description: 'Free forever — run one location, fully offline.',
     cta: 'Download',
     prices: {
       monthly: { price: '$0', period: 'free forever' },
       yearly: { price: '$0', period: 'free forever' },
     },
     features: [
-      { label: '1 store', included: true },
+      { label: '1 location', included: true },
       { label: '1 register', included: true },
       { label: '1 warehouse', included: true },
       { label: '3-month sales history', included: true },
@@ -40,7 +40,7 @@ export const pricing: PricingTier[] = [
     tierKey: 'plus',
     name: 'Plus',
     currency: 'USD',
-    description: 'The entry plan for single-store shops ready to grow.',
+    description: 'The entry plan for single-location shops ready to grow.',
     cta: 'Subscribe',
     prices: {
       monthly: { price: '$4.99', period: '/month', priceId: 'pro_01m1amcb41qkbr7zzd1kxa3qnd' },
@@ -56,7 +56,7 @@ export const pricing: PricingTier[] = [
       },
     },
     features: [
-      { label: '1 store', included: true },
+      { label: '1 location', included: true },
       { label: '2 registers', included: true },
       { label: '2 warehouses', included: true },
       { label: 'QRIS payments', included: true },
@@ -85,8 +85,8 @@ export const pricing: PricingTier[] = [
       yearly: { price: '$99.99', period: '/year', priceId: 'pro_01m1ame8ckw8vzjnf8y4q15mww' },
     },
     features: [
-      { label: '2 stores', included: true },
-      { label: '5 registers per store', included: true },
+      { label: '2 locations', included: true },
+      { label: '5 registers per location', included: true },
       { label: '2 Kitchen Display', included: true },
       { label: 'Reports & analytics', included: true },
       { label: 'Memo', included: true },
@@ -99,14 +99,14 @@ export const pricing: PricingTier[] = [
     tierKey: 'premium',
     name: 'Premium',
     currency: 'USD',
-    description: 'For multi-store chains — whitelabel, loyalty, and automation.',
+    description: 'For multi-location chains — whitelabel, loyalty, and automation.',
     cta: 'Subscribe',
     prices: {
       monthly: { price: '$39.99', period: '/month', priceId: 'pro_01m1amema8yj6w5mfm8wx8jwhm' },
       yearly: { price: '$399.99', period: '/year', priceId: 'pro_01m1amf0vpbyfndg5rkvxvyqj4' },
     },
     features: [
-      { label: '5 stores', included: true },
+      { label: '5 locations', included: true },
       { label: 'Unlimited registers', included: true },
       { label: 'Whitelabel branding', included: true },
       { label: 'Loyalty program', included: true },
@@ -126,7 +126,7 @@ export const pricing: PricingTier[] = [
       yearly: { price: 'Custom', period: '' },
     },
     features: [
-      { label: 'Unlimited stores', included: true },
+      { label: 'Unlimited locations', included: true },
       { label: 'Unlimited registers', included: true },
       { label: 'White-label branding', included: true },
       { label: 'Custom HAL drivers', included: true },
@@ -138,8 +138,8 @@ export const pricing: PricingTier[] = [
 
 // Mirrors the quota & feature matrix in subscription-tiers.md §3.
 export const featureRows: FeatureRow[] = [
-  { label: 'Stores', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Unlimited' } },
-  { label: 'Terminals (registers) per store', values: { free: 1, plus: 2, pro: 5, premium: 'Unlimited', enterprise: 'Unlimited' } },
+  { label: 'Locations', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Unlimited' } },
+  { label: 'Terminals (registers) per location', values: { free: 1, plus: 2, pro: 5, premium: 'Unlimited', enterprise: 'Unlimited' } },
   { label: 'Warehouses', values: { free: 1, plus: 2, pro: 3, premium: 'Unlimited', enterprise: 'Unlimited' } },
   { label: 'Kitchen Display screens', values: { free: 0, plus: 0, pro: 2, premium: 'Unlimited', enterprise: 'Unlimited' } },
   { label: 'Max products/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Unlimited' } },

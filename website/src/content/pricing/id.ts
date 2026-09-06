@@ -25,14 +25,14 @@ export const pricing: PricingTier[] = [
     tierKey: 'free',
     name: 'Gratis',
     currency: 'IDR',
-    description: 'Gratis selamanya — jalankan satu toko, sepenuhnya offline.',
+    description: 'Gratis selamanya — jalankan satu lokasi, sepenuhnya offline.',
     cta: 'Unduh',
     prices: {
       monthly: { price: 'Rp 0', period: 'gratis selamanya' },
       yearly: { price: 'Rp 0', period: 'gratis selamanya' },
     },
     features: [
-      { label: '1 toko', included: true },
+      { label: '1 lokasi', included: true },
       { label: '1 register', included: true },
       { label: '1 gudang', included: true },
       { label: 'Riwayat penjualan 3 bulan', included: true },
@@ -45,7 +45,7 @@ export const pricing: PricingTier[] = [
     tierKey: 'plus',
     name: 'Plus',
     currency: 'IDR',
-    description: 'Paket awal untuk toko tunggal yang siap berkembang.',
+    description: 'Paket awal untuk lokasi tunggal yang siap berkembang.',
     cta: 'Berlangganan',
     prices: {
       monthly: { price: 'Rp 49.000', period: '/m', priceId: 'pro_01m1amcb41qkbr7zzd1kxa3qnd' },
@@ -61,7 +61,7 @@ export const pricing: PricingTier[] = [
       },
     },
     features: [
-      { label: '1 toko', included: true },
+      { label: '1 lokasi', included: true },
       { label: '2 register', included: true },
       { label: '2 gudang', included: true },
       { label: 'Pembayaran QRIS', included: true },
@@ -90,8 +90,8 @@ export const pricing: PricingTier[] = [
       yearly: { price: 'Rp 1.000.000', period: '/y', priceId: 'pro_01m1ame8ckw8vzjnf8y4q15mww' },
     },
     features: [
-      { label: '2 toko', included: true },
-      { label: '5 register per toko', included: true },
+      { label: '2 lokasi', included: true },
+      { label: '5 register per lokasi', included: true },
       { label: '2 Display Dapur', included: true },
       { label: 'Laporan & analitik', included: true },
       { label: 'Memo', included: true },
@@ -104,14 +104,14 @@ export const pricing: PricingTier[] = [
     tierKey: 'premium',
     name: 'Premium',
     currency: 'IDR',
-    description: 'Untuk jaringan multi-toko — whitelabel, loyalitas, dan otomatisasi.',
+    description: 'Untuk jaringan multi-lokasi — whitelabel, loyalitas, dan otomatisasi.',
     cta: 'Berlangganan',
     prices: {
       monthly: { price: 'Rp 399.000', period: '/m', priceId: 'pro_01m1amema8yj6w5mfm8wx8jwhm' },
       yearly: { price: 'Rp 3.999.000', period: '/y', priceId: 'pro_01m1amf0vpbyfndg5rkvxvyqj4' },
     },
     features: [
-      { label: '5 toko', included: true },
+      { label: '5 lokasi', included: true },
       { label: 'Register tanpa batas', included: true },
       { label: 'Branding whitelabel', included: true },
       { label: 'Program loyalitas', included: true },
@@ -131,7 +131,7 @@ export const pricing: PricingTier[] = [
       yearly: { price: 'Kustom', period: '' },
     },
     features: [
-      { label: 'Toko tanpa batas', included: true },
+      { label: 'Lokasi tanpa batas', included: true },
       { label: 'Register tanpa batas', included: true },
       { label: 'Branding white-label', included: true },
       { label: 'Driver HAL khusus', included: true },
@@ -143,8 +143,8 @@ export const pricing: PricingTier[] = [
 
 // Mirrors the quota & feature matrix in subscription-tiers.md §3.
 export const featureRows: FeatureRow[] = [
-  { label: 'Toko', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
-  { label: 'Terminal (register) per toko', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+  { label: 'Lokasi', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
+  { label: 'Terminal (register) per lokasi', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Layar Display Dapur', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Max produk/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Tanpa batas' } },

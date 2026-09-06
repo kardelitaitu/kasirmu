@@ -11,10 +11,10 @@
 
 | Tier | Position |
 | :--- | :--- |
-| **Free** | Free forever — 1 workspace only (1 store, 1 terminal, 1 warehouse, 3-month sales history) |
+| **Free** | Free forever — 1 workspace only (1 location, 1 terminal, 1 warehouse, 3-month sales history) |
 | **Plus** | Entry paid tier — hero feature: **Daily Sales Dashboard** (Laporan Harian) |
-| **Pro** ⭐ **Most Popular** | Mid paid tier — best for growing single-to-multi-store businesses |
-| **Premium** | Top paid tier — multi-store chains with loyalty & automation |
+| **Pro** ⭐ **Most Popular** | Mid paid tier — best for growing single-to-multi-location businesses |
+| **Premium** | Top paid tier — multi-location chains with loyalty & automation |
 | **Enterprise** | Bespoke — no list price, contact sales |
 
 ## 2. Pricing
@@ -39,11 +39,11 @@ Six Paddle prices total (Plus/Pro/Premium × monthly/yearly).
 ### Enterprise Pricing Guidance
 
 Enterprise pricing should be defined within these ranges to ensure consistency:
-- **Small Enterprise (5-20 stores):** $100-200/mo or Rp 1.000.000-2.000.000/mo
-- **Medium Enterprise (21-100 stores):** $200-400/mo or Rp 2.000.000-4.000.000/mo
-- **Large Enterprise (100+ stores):** $400+/mo or Rp 4.000.000+/mo
+- **Small Enterprise (5-20 locations):** $100-200/mo or Rp 1.000.000-2.000.000/mo
+- **Medium Enterprise (21-100 locations):** $200-400/mo or Rp 2.000.000-4.000.000/mo
+- **Large Enterprise (100+ locations):** $400+/mo or Rp 4.000.000+/mo
 
-Final pricing determined by: number of stores, terminals, users, support level, and custom integrations required.
+Final pricing determined by: number of locations, terminals, users, support level, and custom integrations required.
 
 ### Payment routing
 
@@ -80,17 +80,17 @@ Final pricing determined by: number of stores, terminals, users, support level, 
 | Tier | Best For | Hero Feature |
 | :--- | :--- | :--- |
 | **Free** | Warung / kios trying OZ-POS — limited to 3 months of sales history | Cash POS + receipt printing |
-| **Plus** | Single-store shops ready to grow from manual to smart | **Daily Sales Dashboard** (Laporan Harian) + QRIS |
+| **Plus** | Single-location shops ready to grow from manual to smart | **Daily Sales Dashboard** (Laporan Harian) + QRIS |
 | **Pro** ⭐ | Cafes, toko, growing businesses ready for full analytics & KDS | Analytics + KDS + multi-terminal |
-| **Premium** | Multi-store chains needing loyalty & automation | Loyalty program + 5 stores + 1h support |
+| **Premium** | Multi-location chains needing loyalty & automation | Loyalty program + 5 locations + 1h support |
 | **Enterprise** | Large organizations needing white-label, custom hardware & dedicated support | Account manager + custom HAL drivers |
 
 ### Numeric Limits
 
 | Feature | Free | Plus | Pro | Premium | Enterprise |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| Max stores | 1 | 1 | 2 | 5 | Unlimited |
-| Max terminals (registers) / store | 1 | 2 | 5 | Unlimited | Unlimited |
+| Max locations | 1 | 1 | 2 | 5 | Unlimited |
+| Max terminals (registers) / location | 1 | 2 | 5 | Unlimited | Unlimited |
 | Max warehouses | 1 | 2 | 3 | Unlimited | Unlimited |
 | Max KDS screens | 0 | 0 | 2 | Unlimited | Unlimited |
 | Max products/menu | 200 | 500 | 1,000 | 10,000 | Unlimited |
@@ -127,7 +127,7 @@ history preview with an upgrade CTA, not a hard error.
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Offline-first SQLite engine | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Cloud sync (PostgreSQL outbox) | ✗ | ✓ | ✓ | ✓ | ✓ |
-| Multi-store dashboard | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Multi-location dashboard | ✗ | ✗ | ✓ | ✓ | ✓ |
 | CSV / data export | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ### Business Logic
@@ -172,7 +172,7 @@ history preview with an upgrade CTA, not a hard error.
 ## 4. Trial & Conversion Strategy
 
 ### Free Tier Trial Flow
-- Free tier provides permanent access to basic features (1 store, 1 terminal, 1 staff, **3-month sales history**)
+- Free tier provides permanent access to basic features (1 location, 1 terminal, 1 staff, **3-month sales history**)
 - Trial offer is **segmented by signup vertical** — do NOT offer Pro trial universally:
   a Pro trial anchors users to features they won't pay for and suppresses Plus conversion.
 
@@ -233,7 +233,7 @@ A **hardware-fingerprint trial lock** prevents trial reset abuse by limiting one
 | **Toko / Minimarket** | Inventory + multi-terminal | Pro | Multi-terminal, warehouse, stock visibility |
 | **Salon / Laundry** | Staff & receipt management | Plus/Pro | Staff management, product bundles |
 | **Restoran / Rumah Makan** | KDS + loyalty | Pro → Premium | KDS, loyalty points, scheduled reports |
-| **Retail chain** | Multi-store ops | Premium | 5 stores, analytics, priority support |
+| **Retail chain** | Multi-location ops | Premium | 5 locations, analytics, priority support |
 
 ### Vertical Landing Pages (Month 1-3 priority)
 Create dedicated landing pages per vertical — higher-converting than a generic pricing page:
@@ -270,13 +270,13 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 | Condition | Trigger message |
 | :--- | :--- |
 | User opens analytics/reports tab (locked) | Locked screen with sample chart: *"Lihat laporan lengkap — upgrade ke Pro"* |
-| User attempts to add a second store | *"Buka toko ke-2 — upgrade ke Pro"* |
-| Terminal count reaches 2 (Plus limit) | *"Butuh lebih banyak kasir? Pro mendukung hingga 5 terminal per toko"* |
+| User attempts to add a second location | *"Buka lokasi ke-2 — upgrade ke Pro"* |
+| Terminal count reaches 2 (Plus limit) | *"Butuh lebih banyak kasir? Pro mendukung hingga 5 terminal per lokasi"* |
 
 ### Pro → Premium Triggers
 | Condition | Trigger message |
 | :--- | :--- |
-| Store count reaches 2 (approaching Pro limit) | *"Buka toko ke-3? Upgrade ke Premium — 5 stores"* |
+| Location count reaches 2 (approaching Pro limit) | *"Buka lokasi ke-3? Upgrade ke Premium — 5 locations"* |
 | Staff count reaches 16+ (approaching 20 limit) | *"Tim Anda berkembang! Premium mendukung 50 staff"* |
 | User views loyalty module (locked teaser) | Animated loyalty dashboard preview: *"Hadirkan program poin — upgrade ke Premium"* |
 
@@ -289,14 +289,14 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 | Tier | Churn risk | Primary reason | Key intervention |
 | :--- | :---: | :--- | :--- |
 | **Plus** | 🔴 High | "Doesn't do enough" or post-Pro-trial letdown | Strong Daily Sales Dashboard onboarding, 3-month history trigger |
-| **Pro** | 🟡 Medium | Staff/store limit reached without prompt | Proactive usage alerts at 80% of limits |
+| **Pro** | 🟡 Medium | Staff/location limit reached without prompt | Proactive usage alerts at 80% of limits |
 | **Premium** | 🟢 Low | Occasional downgrade to Pro | Enterprise self-serve pathway |
 | **Enterprise** | 🟢 Very Low | Long contracts | Quarterly business reviews |
 
 ### Features to Implement
 - ✅ **Pause subscription:** Allow 1-3 month pause (retain data, no billing) — C3.3
 - ✅ **Win-back campaigns:** Automated emails at 7d + 30d post-expiry with 20%/30% discount offers
-- ✅ **Usage monitoring:** Alert at 80% of limits (staff at 16/20, stores at cap, terminals at cap)
+- ✅ **Usage monitoring:** Alert at 80% of limits (staff at 16/20, locations at cap, terminals at cap)
 - ✅ **Feedback collection:** Exit survey modal with 6 churn-reason options
 
 ### Metrics to Track
@@ -339,13 +339,13 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 5. ✅ **Reframe annual discount as "2 bulan gratis" / "2 months free"** — all docs and pricing pages
 6. ✅ **Build Daily Sales Dashboard as the hero feature of Plus** — `DailyTotalWidget.tsx` with Free-tier lock (blurred teaser + upgrade CTA)
 7. ✅ **Define Enterprise pricing guidance** — ranges defined in §2
-8. ✅ **Enforce store-count quota on creation** — `enforce_store_quota()` blocks Free/Plus at 1, Pro at 2
+8. ✅ **Enforce location-count quota on creation** — `enforce_location_quota()` blocks Free/Plus at 1, Pro at 2
 9. ✅ **Enforce warehouse-count quota on creation** — `enforce_warehouse_quota()` blocks Free at 1, Plus at 2, Pro at 3
 
 ### Short-Term (Month 1-3)
 10. ✅ **Implement segmented trial strategy** — 14-day Plus trial for general; 14-day Pro for restaurant/cafe; 30-day Pro for enterprise-referral
 11. ✅ **Build vertical landing pages** — `/untuk-kafe`, `/untuk-warung`, `/untuk-minimarket`, `/untuk-restoran` — `VerticalLanding.astro` component with i18n, segmented trial CTAs, bundle paths
-12. ✅ **Implement in-app upgrade triggers** — All 9 triggers wired: TierLockedFeature (analytics, loyalty, daily dashboard, QRIS), quota error banners (staff, store, terminal), proactive alerts at 80% (staff approaching 16/20, store at 2/2)
+12. ✅ **Implement in-app upgrade triggers** — All 9 triggers wired: TierLockedFeature (analytics, loyalty, daily dashboard, QRIS), quota error banners (staff, location, terminal), proactive alerts at 80% (staff approaching 16/20, location at 2/2)
 13. ✅ **Implement upgrade/downgrade proration** — `paddleUpdate()` in paddle_webhook.go handles tier transitions; Paddle handles proration billing; grace period via `offline_grace_days`
 
 ### Medium-Term (Month 3-6)
