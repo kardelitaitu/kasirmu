@@ -27,6 +27,8 @@ import {
   pickImportFile,
 } from '@/api/data';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
 
@@ -146,7 +148,18 @@ function checkIcon(): React.ReactNode {
 // ── Component ──────────────────────────────────────────────────────
 
 /** Data management screen — encrypted export wizard, import wizard with dry-run preview, and one-click backup status. */
+/**
+ * §B administrative gate (todo-global-saas-1.md): Data Management is an
+ * administrative SaaS feature — it locks while the subscription is not
+ * `active` while POS operational runtime continues through grace.
+ */
 export default function DataManagementScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <DataManagementScreenContent />;
+}
+
+function DataManagementScreenContent() {
   const { l10n } = useLocalization();
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';

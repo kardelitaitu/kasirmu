@@ -11,6 +11,8 @@ import {
 } from '@/api/memos';
 import { listLocationsScoped, type LocationProfile } from '@/api/locations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -86,7 +88,18 @@ function formatDate(iso: string, locale: string): string {
  * The screen is registry-gated to `manager` + `memo:write`; the backend
  * re-checks the permission on every command (scoped — ADR #7).
  */
+/**
+ * §B administrative gate (todo-global-saas-1.md): Memo authoring/management
+ * is an administrative SaaS feature — it locks while the subscription is
+ * not `active` while POS operational runtime continues through grace.
+ */
 export default function MemosScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <MemosScreenContent />;
+}
+
+function MemosScreenContent() {
   const { l10n } = useLocalization();
   const locale = activeLocale(l10n);
   const { sessionToken: rawToken } = useWorkspace();

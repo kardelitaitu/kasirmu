@@ -11,7 +11,7 @@
  * publish flow on draft rows.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
@@ -19,6 +19,7 @@ import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import type { ReactNode } from 'react';
 
 import MemosScreen from '@/features/memo/MemosScreen';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import type { Memo } from '@/api/memos';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
@@ -49,11 +50,25 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok-1' }),
 }));
 
+// §B gate: defaults OPEN for the regular screen tests; the gate test
+// overrides per-test. subscription.ftl supplies the lock strings.
+vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@/contexts/SubscriptionContext')
+  >();
+  return {
+    ...actual,
+    useAdminGate: vi.fn().mockReturnValue({ locked: false, state: 'active' }),
+  };
+});
+import subscriptionFtl from '@/locales/subscription.ftl?raw';
+
 // ── Fluent wrapper over the real shared.ftl ───────────────────────
 
 function FluentWrapper({ children }: { children: ReactNode }) {
   const bundle = new FluentBundle('en-US');
   bundle.addResource(new FluentResource(sharedFtl));
+  bundle.addResource(new FluentResource(subscriptionFtl));
   const l10n = new ReactLocalization([bundle]);
   return <LocalizationProvider l10n={l10n}>{children}</LocalizationProvider>;
 }
@@ -116,6 +131,25 @@ const sampleLocations = [
     updated_at: '2026-01-01T00:00:00Z',
   },
 ];
+
+const adminGate = vi.mocked(useAdminGate);
+
+describe('MemosScreen §B administrative gate', () => {
+  afterEach(() => {
+    adminGate.mockReturnValue({ locked: false, state: 'active' });
+  });
+
+  it('locks the screen while the subscription is not active (grace)', () => {
+    // §B: Memo authoring/management is an administrative SaaS feature —
+    // it locks at expiresAt (grace onward) while operational POS
+    // runtime continues.
+    adminGate.mockReturnValue({ locked: true, state: 'grace' });
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    // The authoring surface must not render behind the lock.
+    expect(screen.queryByText('End-of-day checklist')).not.toBeInTheDocument();
+  });
+});
 
 describe('MemosScreen', () => {
   beforeEach(() => {
