@@ -22,6 +22,7 @@
 use rusqlite::{OptionalExtension, params};
 
 use crate::memo::{ActiveMemo, DeliveryStatus, Memo, MemoDuration, MemoStatus, NewMemo};
+use crate::sync_client::{MemoPushRow, MemoRecipientPush};
 use crate::{CoreError, Store};
 
 /// Current UTC time in the schema's canonical ISO-8601 millisecond form.
@@ -523,6 +524,72 @@ impl Store<'_> {
             params![now, format!("-{window_days} days")],
         )?;
         Ok(deleted)
+    }
+
+    /// Collect the tenant's COMPLETE non-deleted memo state for the cloud
+    /// push (2026-09-07 cloud-read ruling): every memo that is not yet
+    /// retention-deleted, with targeting rows and the published fan-out's
+    /// recipients. The cloud reconciles by upsert + delete-by-omission, so
+    /// absence from this snapshot IS the deletion signal.
+    pub fn collect_memo_sync_snapshot(&self) -> Result<Vec<MemoPushRow>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.tenant_id, m.author_user_id, m.author_role, m.title, m.body,
+                    m.status, m.duration, m.revision, m.published_at, m.expires_at,
+                    m.stopped_at, m.stopped_by, m.archived_at, m.created_at, m.updated_at
+             FROM memos m
+             ORDER BY m.created_at ASC",
+        )?;
+        let mut memos: Vec<MemoPushRow> = stmt
+            .query_map([], |row| {
+                Ok(MemoPushRow {
+                    id: row.get("id")?,
+                    author_user_id: row.get("author_user_id")?,
+                    author_role: row.get("author_role")?,
+                    title: row.get("title")?,
+                    body: row.get("body")?,
+                    status: row.get("status")?,
+                    duration: row.get("duration")?,
+                    revision: row.get("revision")?,
+                    published_at: row.get("published_at")?,
+                    expires_at: row.get("expires_at")?,
+                    stopped_at: row.get("stopped_at")?,
+                    stopped_by: row.get("stopped_by")?,
+                    archived_at: row.get("archived_at")?,
+                    created_at: row.get("created_at")?,
+                    updated_at: row.get("updated_at")?,
+                    location_ids: Vec::new(),
+                    recipients: Vec::new(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for memo in &mut memos {
+            let mut locs = self.conn.prepare(
+                "SELECT location_id FROM memo_locations WHERE memo_id = ?1 ORDER BY location_id",
+            )?;
+            memo.location_ids = locs
+                .query_map(params![memo.id], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let mut recs = self.conn.prepare(
+                "SELECT id, terminal_id, delivery_status, delivered_at, acknowledged_at,
+                        acknowledged_by
+                 FROM memo_recipients WHERE memo_id = ?1 ORDER BY id",
+            )?;
+            memo.recipients = recs
+                .query_map(params![memo.id], |r| {
+                    Ok(MemoRecipientPush {
+                        id: r.get(0)?,
+                        terminal_id: r.get(1)?,
+                        delivery_status: r.get(2)?,
+                        delivered_at: r.get(3)?,
+                        acknowledged_at: r.get(4)?,
+                        acknowledged_by: r.get(5)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+        }
+        Ok(memos)
     }
 
     /// Error if no such recipient exists for this tenant/memo/terminal; Ok if

@@ -425,32 +425,81 @@ pub fn run() {
                         interval.tick().await;
                         let now = chrono::Utc::now()
                             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                        let conn = db.lock().await;
-                        let store = oz_core::db::Store::new(&conn);
-                        match store.sweep_all_expired(&now) {
-                            Ok(n) if n > 0 => {
-                                tracing::info!("memo expiry sweep: expired {n} memo(s)")
+                        // Phase 1 — local sweeps + snapshot, under one lock
+                        // acquisition with NO awaits inside the block: the
+                        // `Store` borrow of the guard is not `Send`, so the
+                        // guard must die here, lexically, before the HTTP
+                        // await below.
+                        let push_state = {
+                            let conn = db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            match store.sweep_all_expired(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("memo expiry sweep: expired {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(error = %e, "memo expiry sweep failed"),
                             }
-                            Ok(_) => {}
-                            Err(e) => tracing::warn!(error = %e, "memo expiry sweep failed"),
-                        }
-                        match store.sweep_ended_to_archived(&now) {
-                            Ok(n) if n > 0 => {
-                                tracing::info!("memo retention sweep: archived {n} memo(s)")
+                            match store.sweep_ended_to_archived(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("memo retention sweep: archived {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "memo retention sweep failed")
+                                }
                             }
-                            Ok(_) => {}
-                            Err(e) => tracing::warn!(error = %e, "memo retention sweep failed"),
-                        }
-                        match store.sweep_expired_archives(
-                            &now,
-                            oz_core::memo::RETENTION_WINDOW_DAYS,
-                        ) {
-                            Ok(n) if n > 0 => tracing::info!(
-                                "memo retention sweep: deleted {n} archived memo(s)"
-                            ),
-                            Ok(_) => {}
-                            Err(e) => {
-                                tracing::warn!(error = %e, "memo retention delete failed")
+                            match store.sweep_expired_archives(
+                                &now,
+                                oz_core::memo::RETENTION_WINDOW_DAYS,
+                            ) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "memo retention sweep: deleted {n} archived memo(s)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "memo retention delete failed")
+                                }
+                            }
+                            // Cloud reconciliation (2026-09-07 cloud-read
+                            // ruling): push the tenant's COMPLETE memo
+                            // state — the cloud upserts and deletes by
+                            // omission, so a previously failed push
+                            // self-corrects on this tick. Best-effort: a
+                            // failure only logs; the next tick re-pushes.
+                            match oz_core::sync_client::SyncConfig::from_settings(&store) {
+                                Ok(Some(config)) => match store.collect_memo_sync_snapshot() {
+                                    Ok(snapshot) => Some((config, snapshot)),
+                                    Err(e) => {
+                                        tracing::warn!(error = %e, "memo snapshot failed");
+                                        None
+                                    }
+                                },
+                                Ok(None) => None,
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "memo sync config read failed");
+                                    None
+                                }
+                            }
+                        };
+                        // Phase 2 — HTTP push, no lock or borrow held.
+                        if let Some((config, snapshot)) = push_state {
+                            let ack =
+                                oz_core::sync_client::push_memos_to_server(&config, &snapshot)
+                                    .await;
+                            match ack {
+                                Ok(ack) if ack.upserted > 0 || ack.deleted > 0 => {
+                                    tracing::info!(
+                                        "memo cloud push: {} upserted, {} deleted",
+                                        ack.upserted,
+                                        ack.deleted
+                                    )
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "memo cloud push failed (retries next tick)"
+                                ),
                             }
                         }
                     }

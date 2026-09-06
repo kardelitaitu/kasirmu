@@ -522,6 +522,227 @@ pub async fn send_items_to_server(
     Ok(vec![PushOutcome::Accepted; items.len()])
 }
 
+// ── Memo cloud push (2026-09-07 cloud-read ruling) ─────────────────
+
+/// One recipient row of a memo the desktop pushes to the cloud.
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoRecipientPush {
+    /// Recipient row id (desktop-minted).
+    pub id: String,
+    /// The terminal this row addresses.
+    pub terminal_id: String,
+    /// Delivery state (`pending`/`delivered`/`acknowledged`).
+    pub delivery_status: String,
+    /// Delivery instant, if delivered.
+    pub delivered_at: Option<String>,
+    /// Acknowledgement instant, if acknowledged.
+    pub acknowledged_at: Option<String>,
+    /// Who acknowledged.
+    pub acknowledged_by: Option<String>,
+}
+
+/// One memo of the tenant's complete pushed state.
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoPushRow {
+    /// Memo id (desktop-minted, the cloud's primary key).
+    pub id: String,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot at publish time.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Lifecycle status.
+    pub status: String,
+    /// Display duration.
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant, if published.
+    pub published_at: Option<String>,
+    /// Expiry instant, if published.
+    pub expires_at: Option<String>,
+    /// Early-stop instant, if stopped.
+    pub stopped_at: Option<String>,
+    /// Who stopped it.
+    pub stopped_by: Option<String>,
+    /// Archival instant — the retention-deletion clock.
+    pub archived_at: Option<String>,
+    /// Creation timestamp.
+    pub created_at: String,
+    /// Last-update timestamp.
+    pub updated_at: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    pub location_ids: Vec<String>,
+    /// The published fan-out: one recipient per target terminal.
+    pub recipients: Vec<MemoRecipientPush>,
+}
+
+/// Server acknowledgement for a memo push.
+#[derive(Debug, Deserialize)]
+pub struct MemoSyncAck {
+    /// How many memos the server upserted.
+    pub upserted: i64,
+    /// How many stale rows it deleted (reconciliation).
+    pub deleted: i64,
+}
+
+/// Push the tenant's complete memo state to the cloud via
+/// `POST /api/v1/memos/sync` (async). The snapshot IS the truth — the
+/// server upserts and deletes by omission, so a failed push self-corrects
+/// on the next full push. Tenant scope rides the JWT, never the body.
+#[cfg(feature = "sync-http")]
+pub async fn push_memos_to_server(
+    config: &SyncConfig,
+    memos: &[MemoPushRow],
+) -> Result<MemoSyncAck, SyncHttpError> {
+    let url = format!(
+        "{}/api/v1/memos/sync",
+        config.server_url.trim_end_matches('/')
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .post(&url)
+        .header("Content-Type", "application/json");
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+    // ADR sync-auth-hardening P2: a gated deployment (OZ_ADMIN_KEY set)
+    // rejects the tenant-sync write for a non-terminal token without the
+    // admin key — mirror `request_token`'s passthrough so a desktop that
+    // provisioned via the fallback (admin-minted) path keeps pushing.
+    if let Some(key) = admin_key_from_env() {
+        request = request.header("x-admin-key", key);
+    }
+
+    let resp = request
+        .json(&serde_json::json!({ "memos": memos }))
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<MemoSyncAck>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// One active memo served by the cloud (`GET /api/v1/memos/active`).
+///
+/// Wire-mirrors `oz_api::pg::ActiveMemoPg` (snake_case field names —
+/// that struct carries no serde rename), so the tablet can map it into
+/// its display DTO without a serde rename on either side.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ActiveMemoCloud {
+    /// Memo id.
+    pub id: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    pub location_ids: Vec<String>,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Display duration.
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant, if published.
+    pub published_at: Option<String>,
+    /// Expiry instant, if published.
+    pub expires_at: Option<String>,
+    /// Creation timestamp.
+    pub created_at: String,
+    /// This terminal's delivery state.
+    pub delivery_status: String,
+}
+
+/// Server-issued poll cadence (base + KDS interval in seconds).
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoCadenceCloud {
+    /// Base notification interval in seconds.
+    pub base_interval_secs: i64,
+    /// KDS interval in seconds (2 × base).
+    pub kds_interval_secs: i64,
+}
+
+/// Response envelope for `GET /api/v1/memos/active`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ActiveMemosCloudResponse {
+    /// The memos this terminal should display.
+    pub memos: Vec<ActiveMemoCloud>,
+    /// Server-issued poll cadence.
+    pub cadence: MemoCadenceCloud,
+}
+
+/// Fetch the memos a terminal should display from the cloud
+/// (`GET /api/v1/memos/active?terminal_id=…`, async). The bearer token
+/// scopes the read to the token's tenant; a terminal-scoped token may
+/// only read its own terminal (server-enforced).
+#[cfg(feature = "sync-http")]
+pub async fn fetch_active_memos_from_server(
+    config: &SyncConfig,
+    terminal_id: &str,
+) -> Result<ActiveMemosCloudResponse, SyncHttpError> {
+    let url = format!(
+        "{}/api/v1/memos/active",
+        config.server_url.trim_end_matches('/')
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .get(&url)
+        .query(&[("terminal_id", terminal_id)]);
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<ActiveMemosCloudResponse>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub used when `sync-http` feature is disabled — always fails so the
+/// caller's local-read fallback applies (a read has no honest success
+/// stub, unlike the push path's pretend-accepted).
+#[cfg(not(feature = "sync-http"))]
+pub async fn fetch_active_memos_from_server(
+    config: &SyncConfig,
+    _terminal_id: &str,
+) -> Result<ActiveMemosCloudResponse, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
 #[cfg(test)]
 #[path = "sync_client_tests.rs"]
 mod tests;
