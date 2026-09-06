@@ -73,6 +73,8 @@ pub mod location_profile;
 pub mod location_resolver;
 /// Loyalty program — points, tiers, and redemption.
 pub mod loyalty;
+/// Memo lifecycle — status/delivery state machines, duration, and stop rule.
+pub mod memo;
 /// SQL migration definitions embedded at compile time.
 pub mod migrations;
 /// Money and currency primitives (re-exported from `foundation`).
