@@ -1957,6 +1957,8 @@ pub struct ActiveMemoPg {
     pub published_at: Option<String>,
     /// Expiry instant.
     pub expires_at: Option<String>,
+    /// Creation timestamp (the tablet's display DTO requires it).
+    pub created_at: String,
     /// This terminal's delivery state.
     pub delivery_status: String,
 }
@@ -1985,7 +1987,7 @@ pub async fn list_active_memos_for_terminal(
         .query(
             "SELECT m.id, m.author_user_id, m.author_role, m.title, m.body,
                     m.duration, m.revision, m.published_at, m.expires_at,
-                    r.delivery_status,
+                    m.created_at, r.delivery_status,
                     (SELECT string_agg(ml.location_id, ',')
                      FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
              FROM memos m
@@ -2024,6 +2026,7 @@ pub async fn list_active_memos_for_terminal(
             revision: row.get("revision"),
             published_at: row.get("published_at"),
             expires_at: row.get("expires_at"),
+            created_at: row.get("created_at"),
             delivery_status: row.get("delivery_status"),
         });
     }

@@ -1582,3 +1582,147 @@ async fn pg_isolates_locations_by_tenant() {
         .await
         .expect("drop throwaway database should succeed");
 }
+
+// ── Memo cloud-read serving layer (2026-09-07 cloud-read ruling) ────
+
+/// PG round-trip for the cloud memo serving layer: the desktop's
+/// reconciling push (`sync_memos`) followed by the terminal read
+/// (`list_active_memos_for_terminal`), plus the two invariants the
+/// design pins — delete-by-omission propagation (a dropped desktop row,
+/// including a retention delete, must vanish from the cloud) and RLS
+/// tenant isolation (another tenant's terminal must see nothing).
+#[tokio::test]
+async fn pg_integration_memo_sync_and_active_read() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_memo").await else {
+        eprintln!("PG memo integration test skipped (Postgres unreachable at {url})");
+        return;
+    };
+
+    let tenant = unique_id("pg-memo");
+    let other_tenant = unique_id("pg-memo-other");
+    let terminal = unique_id("pg-memo-term");
+
+    // memo_recipients.terminal_id references terminals(id) — seed the
+    // receiving terminal (the FK is global; the tenancy that RLS isolates
+    // is the memo/recipient rows', not the terminal row's).
+    {
+        let client = pool.get().await.unwrap();
+        client
+            .execute(
+                "INSERT INTO terminals (id, name, device_id, tenant_id) VALUES ($1, $2, $3, $4)",
+                &[
+                    &terminal,
+                    &"Receiving Terminal",
+                    &format!("dev-{terminal}"),
+                    &tenant,
+                ],
+            )
+            .await
+            .expect("seed terminal");
+    }
+
+    let now = "2026-09-07T08:00:00.000Z";
+    let memo = crate::pg::MemoSyncRow {
+        id: unique_id("memo"),
+        author_user_id: "user-manager".into(),
+        author_role: "role-manager".into(),
+        title: "Heads up".into(),
+        body: "Close early tonight".into(),
+        status: "published".into(),
+        duration: "24h".into(),
+        revision: 1,
+        published_at: Some("2026-09-07T07:00:00.000Z".into()),
+        expires_at: Some("2026-09-08T07:00:00.000Z".into()),
+        stopped_at: None,
+        stopped_by: None,
+        archived_at: None,
+        created_at: "2026-09-07T06:00:00.000Z".into(),
+        updated_at: "2026-09-07T07:00:00.000Z".into(),
+        location_ids: vec![],
+        recipients: vec![crate::pg::MemoRecipientSyncRow {
+            id: unique_id("recipient"),
+            terminal_id: terminal.clone(),
+            delivery_status: "pending".into(),
+            delivered_at: None,
+            acknowledged_at: None,
+            acknowledged_by: None,
+        }],
+    };
+
+    // ── Push: the desktop's full-state snapshot (one memo). ──
+    let ack = crate::pg::sync_memos(&pool, &tenant, &[memo.clone()])
+        .await
+        .expect("sync_memos push");
+    assert_eq!(ack.upserted, 1);
+    assert_eq!(ack.deleted, 0);
+
+    // ── Read: the receiving terminal sees the memo (Location-above-
+    // Organization ordering collapses to this one Organization memo),
+    // with the delivery state the desktop's fan-out carried.
+    let active = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("list_active_memos_for_terminal");
+    assert_eq!(active.len(), 1);
+    let served = &active[0];
+    assert_eq!(served.id, memo.id);
+    assert_eq!(served.title, "Heads up");
+    assert_eq!(served.delivery_status, "pending");
+    assert_eq!(served.revision, 1);
+    assert_eq!(served.created_at, "2026-09-07T06:00:00.000Z");
+    assert!(served.location_ids.is_empty(), "Organization memo");
+
+    // A terminal with no recipient row sees nothing.
+    let stranger =
+        crate::pg::list_active_memos_for_terminal(&pool, &tenant, "no-such-terminal", now)
+            .await
+            .expect("stranger read");
+    assert!(stranger.is_empty());
+
+    // ── Reconciliation: dropping the memo from the snapshot deletes it —
+    // the path a desktop-side retention delete rides.
+    let ack = crate::pg::sync_memos(&pool, &tenant, &[])
+        .await
+        .expect("sync_memos reconciliation");
+    assert_eq!(ack.deleted, 1, "the unpushed memo must be deleted");
+    let active = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("read after delete-by-omission");
+    assert!(active.is_empty());
+
+    // ── Tenant isolation: a memo pushed by another tenant is invisible
+    // here even with a recipient row naming this tenant's terminal.
+    let intruder = crate::pg::MemoSyncRow {
+        id: unique_id("memo"),
+        recipients: vec![crate::pg::MemoRecipientSyncRow {
+            id: unique_id("recipient"),
+            terminal_id: terminal.clone(),
+            delivery_status: "pending".into(),
+            delivered_at: None,
+            acknowledged_at: None,
+            acknowledged_by: None,
+        }],
+        ..memo.clone()
+    };
+    crate::pg::sync_memos(&pool, &other_tenant, &[intruder])
+        .await
+        .expect("other-tenant push");
+    let cross = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("cross-tenant read");
+    assert!(
+        cross.is_empty(),
+        "RLS must hide another tenant's memo even when a recipient row names this terminal"
+    );
+
+    // Cleanup: drop the throwaway database.
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+}
