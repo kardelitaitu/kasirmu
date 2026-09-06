@@ -16,6 +16,7 @@ use oz_core::Store;
 use oz_core::memo::{
     ActiveMemo, Memo, NOTIFICATION_BASE_INTERVAL_SECS, kds_notification_interval_secs,
 };
+use oz_core::sync_client::{self, ActiveMemoCloud, SyncConfig};
 use serde::Serialize;
 use tauri::State;
 
@@ -97,6 +98,33 @@ impl From<ActiveMemo> for ActiveMemoDto {
     }
 }
 
+/// Map a cloud-served memo into the display DTO. The cloud read is
+/// claim-scoped (it echoes no tenant) and its query only returns
+/// `published` rows, so those two DTO fields are filled from the read's
+/// own invariants — the same values the local-read path derives.
+impl From<ActiveMemoCloud> for ActiveMemoDto {
+    fn from(m: ActiveMemoCloud) -> Self {
+        Self {
+            memo: MemoDto {
+                id: m.id,
+                tenant_id: DEFAULT_TENANT_ID.to_string(),
+                location_ids: m.location_ids,
+                author_user_id: m.author_user_id,
+                author_role: m.author_role,
+                title: m.title,
+                body: m.body,
+                status: oz_core::memo::MemoStatus::Published.as_str().to_string(),
+                duration: m.duration,
+                revision: m.revision,
+                published_at: m.published_at,
+                expires_at: m.expires_at,
+                created_at: m.created_at,
+            },
+            delivery_status: m.delivery_status,
+        }
+    }
+}
+
 /// Display cadence served with the memo list. The backend is the single
 /// source of truth for the notification intervals — the UI schedules its polls
 /// from these values and never duplicates the literals (the spec's "coded as
@@ -124,12 +152,53 @@ pub struct MemoDisplayDto {
 /// List the memos the caller's terminal should display, tier-stacked, plus
 /// the server-issued display cadence. Authenticated-only: the recipient set
 /// is already terminal-scoped.
+///
+/// Cloud-first (2026-09-07 cloud-read ruling): memos are authored on the
+/// desktop and reach this tablet only through the cloud — the local
+/// `memos` table is structurally empty on a terminal. When sync is
+/// configured the read goes to `GET /api/v1/memos/active`; when sync is
+/// unconfigured or unreachable it falls back to the local read (today's
+/// behaviour, with a warn log).
 #[tauri::command]
 pub async fn list_active_memos_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<MemoDisplayDto, AppError> {
     let session = state.resolve_session(&session_token)?;
+
+    // Scoped block: the connection guard must never be held across the
+    // HTTP await below (it is not `Send`).
+    let config = {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        SyncConfig::from_settings(&store)?
+    };
+
+    if let Some(config) = config.as_ref() {
+        match sync_client::fetch_active_memos_from_server(config, &session.terminal_id).await {
+            Ok(response) => {
+                return Ok(MemoDisplayDto {
+                    memos: response
+                        .memos
+                        .into_iter()
+                        .map(ActiveMemoDto::from)
+                        .collect(),
+                    cadence: MemoCadenceDto {
+                        base_interval_secs: response.cadence.base_interval_secs,
+                        kds_interval_secs: response.cadence.kds_interval_secs,
+                    },
+                });
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    terminal = %session.terminal_id,
+                    "memo cloud read failed; falling back to local read"
+                );
+            }
+        }
+    }
+
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let db = state.db.lock().await;
     let store = Store::new(&db);

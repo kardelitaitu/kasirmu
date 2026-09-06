@@ -78,10 +78,16 @@ Memos already operate on "do NOT edit in place — insert a NEW immutable revisi
 row and bump the counter" (`db/memos.rs:250`). `published_at` / `published_by`
 map directly onto the publish boundary the roadmap wants.
 
-For retention, `cleanup_old_kds_orders(30)` runs inside the existing
-`spawn_daemon` + `tokio::time::interval(300s)` loop (`lib.rs:316`, call at
-`:394`), and `20260914_memo_retention.sql` records a ruled 30-day archival window
-with an `archived_at` anchor. Both are precedents to copy.
+For retention, `cleanup_old_kds_orders(30)` is the precedent to copy — it runs
+inside the `"kds health monitoring"` daemon (`spawn_daemon` +
+`tokio::time::interval(60s)` at `lib.rs:369`, the call at `:394`), and
+`20260914_memo_retention.sql` records a ruled 30-day archival window with an
+`archived_at` anchor.
+
+*(Corrected during step 1b. An earlier draft of this section cited the 300s
+loop at `lib.rs:316` as the host. That loop is a different daemon — `"session
+cleanup"`, sweeping expired in-memory sessions, with no database handle at all.
+The two were conflated. See §4 for why this matters beyond the line number.)*
 
 ---
 
@@ -173,9 +179,23 @@ branch Applies a few times a month. "7 days" would keep noise on active branches
 and almost nothing on quiet ones, and would delete the record of a known-good
 deploy just because nobody touched it that week.
 
-The sweep runs in the existing interval loop as `cleanup_old_topology_revisions(20)`,
+The sweep runs as `cleanup_old_topology_revisions(20)` on a background interval,
 mirroring `cleanup_old_kds_orders(30)`. Startup-only pruning is wrong for a
 desktop app that may run for weeks.
+
+**But it is not a drop-in, and step 1c must not treat it as one.** The KDS
+precedent iterates `db_manager.open_store_ids()` and prunes a PER-STORE
+database. `topology_revisions` lives in the GLOBAL database and is keyed by
+`branch_id`, not `store_id`. So the loop body differs in what it enumerates,
+and neither existing daemon fits as written:
+
+| Daemon | Cadence | Why it is not simply reused |
+|---|---|---|
+| `"session cleanup"` (`lib.rs:316`) | 300s | Right cadence for a config table, but holds only the in-memory `session_store` — no DB handle. |
+| `"kds health monitoring"` (`lib.rs:369`) | 60s | Has DB handles, but per-store; and 60s is far more often than a table pruned a few times a month needs. |
+
+Step 1c chooses between a third daemon and extending one of these, and that
+choice is a decision about daemon sprawl in `spawn_daemon`, not a detail.
 
 ### 5. Restore loads a draft; it never auto-applies
 
