@@ -799,6 +799,65 @@ Scope findings from the pre-implementation investigation, in execution order:
       distinguish active, loading, expired, canceled, paused, grace-period, and
       unavailable states. A missing subscription response must not silently grant
       tier-gated access.
+      - [x] **Lifecycle state contract slice (2026-09-07, `9896dac4`,
+            `4acaeea9`, `313f2c31`, `1176730a`).** The §B state machine now
+            exists end to end, and the fail-open bug in the capabilities read
+            is fixed at its root:
+            - **Core** (`oz_core::subscription`): new
+              `SubscriptionLifecycleState` (active/grace/expired/canceled/
+              paused/unavailable) + `TenantSubscription::lifecycle_state()`.
+              Server-written statuses (`grace_period` from the Midtrans
+              webhook, `paused`, `canceled`/`revoked`, `expired`) map first;
+              an unrecognized status fails closed as `unavailable`. An
+              `active` row is date-refined mirroring
+              `is_within_grace_period` exactly, so the reported state can
+              never disagree with `effective_tier` (Free stays active
+              forever; missing expiry = perpetual; unparseable expiry =
+              expired). 11 new unit tests.
+            - **Commands (desktop + tablet)**: the DTO carries `state`, and
+              the fail-open hole is closed — the old code turned a missing
+              row or tampered signature into `Err`, which the UI's catch
+              path rendered as `caps: null` with **every tier gate open**
+              (the old test-setup comment said so outright). Now any
+              missing/tampered/unreadable subscription returns Ok with Free
+              entitlements + `state: "unavailable"`, so every gate locks.
+              Usage counts became best-effort (banner inputs only). The
+              dev-only Free→Premium upgrade now applies only to a genuinely
+              `active` state, so expired/canceled/paused paths stay
+              exercisable in dev. Also fixed while here: desktop used
+              `tier.supports_analytics()` (ignoring the `advanced_analytics`
+              add-on) while tablet used `supports_analytics_with_addons()` —
+              both now compute static support from the entitlement tier and
+              flow the add-on grant only while active/in-grace (a canceled
+              Plus+add-on no longer shows analytics; previously tablet would
+              have shown it). 7 new desktop command tests (missing row,
+              tampered signature, grace/expired/canceled/paused states via
+              row-column edits — signature covers only `signed_payload`, so
+              columns are independent).
+            - **UI**: `SubscriptionCapabilities.state` typed
+              (`SubscriptionLifecycleState` union);
+              `SubscriptionContext` exposes `state` (`'loading'` during the
+              fetch, the backend state on success, `'unavailable'` on
+              transport failure — no longer silently open) and the
+              fail-open doc comment is gone. dev-mock reports `active`; the
+              global test stub reports `unavailable` (§B honest default;
+              gates do not read `state` yet). 10 consumer-test fixtures
+              updated; `tsc --noEmit` clean, eslint clean, 356 vitest tests
+              across the 13 affected suites green.
+            - **Residual (deliberate):** existing gates still render open
+              on `caps: null` (transport failure + the test stub); wiring
+              them to `state` is the operational/administrative entitlement
+              split below. Pricing page and license-server reconciliation
+              remain open under the expiry/grace item.
+            - **Note on commit hygiene (R36-13 pattern):** `313f2c31`
+              carries six of this slice's files under a commit made by a
+              concurrent agent; the subject matches the content, and the
+              file list is exactly the six — reviewed by file list, not
+              subject, per the standing rule. The state-machine edits to
+              both command files were clobbered once by a stale concurrent
+              buffer mid-slice (tablet reverted to HEAD byte-identical) and
+              were re-applied before commit; the tip of every file now
+              matches this journal's description.
 - [ ] **Implement the expiry and offline-grace policy.** Administrative SaaS
       features lock at `expiresAt`; POS operational runtime may continue under
       the approved Free/OneTime 7, Plus 14, Pro 14, Premium 30, or Enterprise
