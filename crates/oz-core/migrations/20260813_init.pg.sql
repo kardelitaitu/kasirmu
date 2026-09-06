@@ -744,15 +744,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id,
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
 
-CREATE TABLE IF NOT EXISTS memos (
+CREATE TABLE IF NOT EXISTS "memos" (
     id              TEXT PRIMARY KEY,
     tenant_id       TEXT NOT NULL,
     -- NULL => Organization Memo (all locations); set => Location Memo.
-    location_id     TEXT REFERENCES locations(id) ON DELETE CASCADE,
+    -- RESTRICT: a Location that still has Memos cannot be deleted (they are
+    -- its audit trail); see the header.
+    location_id     TEXT REFERENCES locations(id) ON DELETE RESTRICT,
     author_user_id  TEXT NOT NULL,
-    -- Author's role snapshot at publish time, so a later role change cannot
-    -- retroactively lock the author out of stopping their own memo or grant a
-    -- demoted user authority over a memo they no longer outrank.
     author_role     TEXT NOT NULL,
     title           TEXT NOT NULL,
     body            TEXT NOT NULL,
@@ -1060,16 +1059,17 @@ CREATE TABLE IF NOT EXISTS memo_revisions (
     UNIQUE (memo_id, revision)
 );
 
-CREATE TABLE IF NOT EXISTS memo_recipients (
+CREATE TABLE IF NOT EXISTS "memo_recipients" (
     id               TEXT PRIMARY KEY,
     memo_id          TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
-    terminal_id      TEXT NOT NULL REFERENCES terminals(id) ON DELETE CASCADE,
+    terminal_id      TEXT NOT NULL REFERENCES terminals(id) ON DELETE RESTRICT,
     user_id          TEXT,
     delivery_status  TEXT NOT NULL DEFAULT 'pending'
                      CHECK (delivery_status IN ('pending','delivered','acknowledged')),
     delivered_at     TEXT,
     acknowledged_at  TEXT,
-    acknowledged_by  TEXT, tenant_id TEXT NOT NULL DEFAULT 'default',
+    acknowledged_by  TEXT,
+    tenant_id        TEXT NOT NULL DEFAULT 'default',
     UNIQUE (memo_id, terminal_id)
 );
 
@@ -1530,14 +1530,11 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_owner
 CREATE INDEX IF NOT EXISTS idx_media_thumbnails_asset
     ON media_thumbnails(tenant_id, asset_id);
 
-CREATE INDEX IF NOT EXISTS idx_memo_recipients_memo
-    ON memo_recipients(memo_id);
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_memo ON memo_recipients(memo_id);
 
-CREATE INDEX IF NOT EXISTS idx_memo_recipients_tenant
-    ON memo_recipients(tenant_id, memo_id);
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_tenant ON memo_recipients(tenant_id, memo_id);
 
-CREATE INDEX IF NOT EXISTS idx_memo_recipients_terminal
-    ON memo_recipients(terminal_id, delivery_status);
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_terminal ON memo_recipients(terminal_id, delivery_status);
 
 CREATE INDEX IF NOT EXISTS idx_memo_revisions_memo
     ON memo_revisions(memo_id);
@@ -1545,14 +1542,11 @@ CREATE INDEX IF NOT EXISTS idx_memo_revisions_memo
 CREATE INDEX IF NOT EXISTS idx_memo_revisions_tenant
     ON memo_revisions(tenant_id, memo_id);
 
-CREATE INDEX IF NOT EXISTS idx_memos_expiry
-    ON memos(expires_at) WHERE status = 'published';
+CREATE INDEX IF NOT EXISTS idx_memos_expiry ON memos(expires_at) WHERE status = 'published';
 
-CREATE INDEX IF NOT EXISTS idx_memos_location
-    ON memos(location_id);
+CREATE INDEX IF NOT EXISTS idx_memos_location ON memos(location_id);
 
-CREATE INDEX IF NOT EXISTS idx_memos_tenant_status
-    ON memos(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_memos_tenant_status ON memos(tenant_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_modifiers_group_id ON modifiers(group_id);
 

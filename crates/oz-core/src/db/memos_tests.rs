@@ -471,3 +471,109 @@ fn sweep_expired_transitions_past_due_memos() {
     // Re-sweep is a no-op.
     assert_eq!(store.sweep_expired("default", &now()).unwrap(), 0);
 }
+
+// ── FK RESTRICT: a parent delete must not silently destroy Memo history ──
+//
+// Regression guard for the 20260911 fix. Before it, memos.location_id and
+// memo_recipients.terminal_id were ON DELETE CASCADE, so deleting a Location or
+// terminal erased the Memos and their audit/delivery trail — contradicting the
+// 30-day retention promise and the repo's CUST-11 policy (block, don't destroy).
+
+#[test]
+fn location_delete_is_blocked_by_its_memos() {
+    let store = store();
+    seed_location(&store, "del-loc");
+    // No terminal bound to del-loc, so the Memo is the ONLY dependent — this
+    // isolates memos.location_id as the blocker rather than a terminal binding.
+    let memo = store
+        .create_memo_draft(&new_memo("default", Some("del-loc")))
+        .unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
+    let result = store
+        .conn()
+        .execute("DELETE FROM locations WHERE id = ?1", params!["del-loc"]);
+    assert!(
+        result.is_err(),
+        "deleting a Location that has Memos must be blocked, not cascade-destroy them"
+    );
+    // The memo and its audit trail survive.
+    assert!(store.get_memo("default", &memo.id).unwrap().is_some());
+    let revisions: i64 = store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM memo_revisions WHERE memo_id = ?1",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        revisions, 1,
+        "the published revision (audit trail) is intact"
+    );
+}
+
+#[test]
+fn terminal_delete_is_blocked_by_its_recipients() {
+    let store = store();
+    seed_terminal(&store, "t-del", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap(); // org memo → recipient for t-del
+
+    let result = store
+        .conn()
+        .execute("DELETE FROM terminals WHERE id = ?1", params!["t-del"]);
+    assert!(
+        result.is_err(),
+        "deleting a terminal that has delivery records must be blocked"
+    );
+    assert_eq!(
+        recipient_count(&store, &memo.id),
+        1,
+        "delivery record intact"
+    );
+}
+
+#[test]
+fn parent_delete_still_works_without_memo_dependents() {
+    // Positive control (mirrors CUST-11): RESTRICT must not over-block. A
+    // Location/terminal with no Memo references is still deletable.
+    let store = store();
+    seed_location(&store, "free-loc");
+    seed_terminal(&store, "free-term", None);
+    store
+        .conn()
+        .execute("DELETE FROM terminals WHERE id = ?1", params!["free-term"])
+        .expect("terminal with no recipients is deletable");
+    store
+        .conn()
+        .execute("DELETE FROM locations WHERE id = ?1", params!["free-loc"])
+        .expect("location with no memos is deletable");
+}
+
+#[test]
+fn deleting_a_memo_still_cascades_to_its_children() {
+    // The genuine child edges (memo_id -> memos) must REMAIN cascade: removing
+    // a memo takes its revisions + recipients with it. Only the location and
+    // terminal edges were changed to RESTRICT.
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+    assert_eq!(recipient_count(&store, &memo.id), 1);
+
+    store
+        .conn()
+        .execute("DELETE FROM memos WHERE id = ?1", params![memo.id])
+        .expect("memo delete must succeed and cascade to children");
+    assert_eq!(recipient_count(&store, &memo.id), 0);
+    let revisions: i64 = store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM memo_revisions WHERE memo_id = ?1",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(revisions, 0);
+}
