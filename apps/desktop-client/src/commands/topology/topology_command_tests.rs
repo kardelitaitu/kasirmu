@@ -1532,6 +1532,86 @@ async fn can_save_topology_probe_gates_on_topology_write_permission() {
     );
 }
 
+#[tokio::test]
+async fn authorize_topology_write_enforces_location_scope() {
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute_batch(
+                "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+                    ('role-topo-mgr', 'Topo Manager', 'Scoped Topo', '[\"topology:write\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+            )
+            .unwrap();
+
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+                 VALUES ('user-scoped-mgr', 'scoped-mgr', 'hash', 'Scoped Mgr', 'role-topo-mgr', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+
+        // Assign user-scoped-mgr to store-allowed only
+        store
+            .set_assignment(
+                "user-scoped-mgr",
+                "role-topo-mgr",
+                &oz_core::db::assignments::AssignmentSpec {
+                    scope_mode: oz_core::db::assignments::ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec!["store-allowed".into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                },
+            )
+            .unwrap();
+    }
+
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+
+    let token = "token-scoped-mgr".to_string();
+    {
+        let mut sessions = state.session_store.write().unwrap();
+        sessions.insert(
+            token.clone(),
+            SessionContext::new(
+                "user-scoped-mgr".into(),
+                "role-topo-mgr".into(),
+                "term-1".into(),
+                "store-allowed".into(),
+                "inst-1".into(),
+                "admin".into(),
+                None,
+                0,
+            ),
+        );
+    }
+
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // authorize_topology_write for store-allowed succeeds
+    let key_ok = authorize_topology_write(&token, &app.state(), Some("store-allowed")).await;
+    assert!(
+        key_ok.is_ok(),
+        "scoped manager must be allowed on their assigned branch"
+    );
+
+    // authorize_topology_write for store-denied fails with PermissionDenied
+    let key_err = authorize_topology_write(&token, &app.state(), Some("store-denied")).await;
+    assert!(
+        matches!(key_err, Err(AppError::PermissionDenied(_))),
+        "scoped manager must be denied on an unassigned branch, got {key_err:?}"
+    );
+}
+
 #[test]
 fn request_ledger_key_rejects_path_injection() {
     assert!(topology_apply_request_key("request/evil").is_err());

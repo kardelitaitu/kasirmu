@@ -9,7 +9,7 @@ use oz_core::db::Store;
 use oz_core::permissions;
 use oz_core::subscription::TenantSubscription;
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::{require_permission_for_user, require_permission_for_user_scoped};
 use crate::commands::workspaces::CreateInstanceRequest;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -54,18 +54,23 @@ pub async fn can_save_topology(
 // template a branch loads becomes the diagram that branch Applies.
 
 /// Author a topology write and resolve the branch's topology key.
-async fn authorize_topology_write(
+pub async fn authorize_topology_write(
     session_token: &str,
     state: &State<'_, AppState>,
     branch_id: Option<&str>,
 ) -> Result<String, AppError> {
     let session = state.resolve_session(session_token)?;
-    // Topology is a global admin tool — scope-free permission check, matching
-    // `can_save_topology`.
+    // Topology mutation requires topology:write with branch scope (todo-global-saas-1.md §I).
     {
         let global_db = state.db.lock().await;
         let global_store = Store::new(&global_db);
-        require_permission_for_user(&global_store, &session.user_id, permissions::TOPOLOGY_WRITE)?;
+        require_permission_for_user_scoped(
+            &global_store,
+            &session.user_id,
+            permissions::TOPOLOGY_WRITE,
+            branch_id,
+            None,
+        )?;
     }
     topology_setting_key(branch_id)
 }
@@ -302,22 +307,29 @@ pub async fn apply_topology_diff(
         &resolved_issue_keys,
     )?;
 
-    // Authorization: workspace topology changes require admin access. The
-    // topology Apply is a GLOBAL admin operation — it modifies workspace
-    // instances across branches/stores, so it must NOT be scope-restricted.
-    // Use require_permission_for_user (which skips the branch/workspace
-    // scope check) instead of require_permission_for_session. The user's
-    // identity + role live in the GLOBAL identity DB — the store-scoped
-    // DB below has an empty `users` table by design, so the gate MUST run
-    // here against the global DB. (Authorizing against the store connection
-    // would deny every caller — owner included — with "user not found".)
+    // The diagram's Branch Location determines which store owns the workspace
+    // instances — this may differ from the session's store (e.g. the admin
+    // workspace is in store A but the topology references Branch Location B). Use the diagram's
+    // storeProfileId as the authoritative scope for all workspace operations;
+    // fall back to session.store_id for legacy graphs without semantic fields.
+    let effective_store_id = semantic_branch_profile_id(&diagram_nodes, &diagram_wires)
+        .map(str::to_owned)
+        .unwrap_or_else(|| session.store_id.clone());
+    tracing::info!(effective_store_id = %effective_store_id, session_store_id = %session.store_id, "topology Apply: effective store resolved");
+
+    // Authorization: workspace topology changes require topology:write access
+    // evaluated with location scope (todo-global-saas-1.md §I). A manager assigned
+    // to Location A cannot apply topology changes to Location B.
+    // The user's identity + role live in the GLOBAL identity DB.
     {
         let global_db = state.db.lock().await;
         let global_store = Store::new(&global_db);
-        match require_permission_for_user(
+        match require_permission_for_user_scoped(
             &global_store,
             &session.user_id,
             permissions::TOPOLOGY_WRITE,
+            Some(&effective_store_id),
+            None,
         ) {
             Ok(()) => {
                 tracing::info!(user_id = %session.user_id, "topology Apply: RBAC check PASSED")
@@ -328,17 +340,6 @@ pub async fn apply_topology_diff(
             }
         }
     }
-
-    // The topology is a global admin tool. The diagram's Branch Location
-    // determines which store owns the workspace instances — this may differ
-    // from the session's store (e.g. the admin workspace is in store A but
-    // the topology references Branch Location B). Use the diagram's
-    // storeProfileId as the authoritative scope for all workspace operations;
-    // fall back to session.store_id for legacy graphs without semantic fields.
-    let effective_store_id = semantic_branch_profile_id(&diagram_nodes, &diagram_wires)
-        .map(str::to_owned)
-        .unwrap_or_else(|| session.store_id.clone());
-    tracing::info!(effective_store_id = %effective_store_id, session_store_id = %session.store_id, "topology Apply: effective store resolved");
 
     // A retried request returns the original result without repeating any
     // workspace mutation. The process-wide Apply lock also makes the
