@@ -142,10 +142,14 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str]]:
 
     Mirrors the real rule in that file rather than a curated list: a `_scoped` name is
     answerable if it is registered directly, or if its unscoped base is (the general
-    aliasing pass added in b013005f). Keys come from two syntaxes -- object-literal
-    entries and `handlers['x'] = ...` assignments -- because the file uses both, and
-    reading only one is how an earlier grep wrongly concluded `get_hardware_settings`
-    had no handler at all.
+    aliasing pass added in b013005f). Keys come from three syntaxes -- object-literal
+    entries with an inline function, object-literal entries referencing a named
+    function (`'x': helperFn,`, introduced by the location-rename shared mock
+    helpers), and `handlers['x'] = ...` assignments -- because the file uses all of
+    them, and reading only one is how an earlier grep wrongly concluded
+    `get_hardware_settings` had no handler at all. The identifier branch is anchored
+    to end-of-line (optional trailing comma) so only a bare function reference
+    counts; `'key': expr` data entries cannot inflate the set.
 
     The aliasing is applied only if the pass that performs it is actually present in the
     source. That guard is load-bearing: an earlier version modelled the rule in Python and
@@ -155,7 +159,9 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str]]:
     with itself.
     """
     text = (REPO_ROOT / DEV_MOCK_REL).read_text(encoding="utf-8", errors="replace")
-    registered = set(re.findall(r"^\s*'([a-z0-9_]+)':\s*(?:\(|async|=>)", text, re.M))
+    registered = set(re.findall(
+        r"^\s*'([a-z0-9_]+)':\s*(?:\(|async|=>|[A-Za-z_$][A-Za-z0-9_$]*\s*,?\s*$)",
+        text, re.M))
     registered |= set(re.findall(r"handlers\[['\"]([a-z0-9_]+)['\"]\]\s*=", text))
     rule_present = re.search(
         r"for\s*\(\s*const\s+\w+\s+of\s+Object\.keys\(\s*handlers\s*\)\s*\)", text)
