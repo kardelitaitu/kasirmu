@@ -604,7 +604,6 @@ fn enqueue_settings_update(
 }
 
 /// Session-scoped variant of `get_receipt_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_receipt_settings_scoped(
     session_token: String,
@@ -614,12 +613,10 @@ pub async fn get_receipt_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    run_get_receipt_settings(&conn)
+    run_get_receipt_settings(&db_guard)
 }
 
 /// Session-scoped variant of `set_receipt_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_receipt_settings_scoped(
     session_token: String,
@@ -631,14 +628,12 @@ pub async fn set_receipt_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_receipt_settings(&conn, &args)
+    run_set_receipt_settings(&db_guard, &args)
 }
 
 /// Session-scoped variant of `get_store_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_store_settings_scoped(
     session_token: String,
@@ -648,12 +643,10 @@ pub async fn get_store_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    run_get_store_settings(&conn)
+    run_get_store_settings(&db_guard)
 }
 
 /// Session-scoped variant of `set_store_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_store_settings_scoped(
     session_token: String,
@@ -665,14 +658,12 @@ pub async fn set_store_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_store_settings(&conn, &args)
+    run_set_store_settings(&db_guard, &args)
 }
 
 /// Session-scoped variant of `get_credit_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_credit_settings_scoped(
     session_token: String,
@@ -682,16 +673,14 @@ pub async fn get_credit_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
     Ok(CreditSettingsDto {
-        enabled: Settings::is_credit_enabled(&conn)?,
-        reminder_interval_hours: Settings::get_credit_reminder_interval(&conn)?,
-        max_limit_minor: Settings::get_credit_max_limit(&conn)?,
+        enabled: Settings::is_credit_enabled(&db_guard)?,
+        reminder_interval_hours: Settings::get_credit_reminder_interval(&db_guard)?,
+        max_limit_minor: Settings::get_credit_max_limit(&db_guard)?,
     })
 }
 
 /// Session-scoped variant of `set_credit_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_credit_settings_scoped(
     session_token: String,
@@ -703,10 +692,9 @@ pub async fn set_credit_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
+    let tx = db_guard.unchecked_transaction()?;
     Settings::set_credit_enabled(&tx, args.enabled)?;
     Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
     Settings::set_credit_max_limit(&tx, args.max_limit_minor)?;
@@ -715,7 +703,6 @@ pub async fn set_credit_settings_scoped(
 }
 
 /// Session-scoped variant of `list_credit_sales`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_credit_sales_scoped(
     session_token: String,
@@ -725,8 +712,7 @@ pub async fn list_credit_sales_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let mut stmt = conn.prepare(
+    let mut stmt = db_guard.prepare(
         "SELECT s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at,
                 p.settled_at, COALESCE(u.display_name, '')
          FROM sales s
@@ -751,7 +737,6 @@ pub async fn list_credit_sales_scoped(
 }
 
 /// Session-scoped variant of `settle_credit`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn settle_credit_scoped(
     session_token: String,
@@ -763,10 +748,9 @@ pub async fn settle_credit_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
+    let tx = db_guard.unchecked_transaction()?;
     let now = chrono::Utc::now().to_rfc3339();
     tx.execute(
         "UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'",
@@ -777,7 +761,6 @@ pub async fn settle_credit_scoped(
 }
 
 /// Session-scoped variant of `get_hardware_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_hardware_settings_scoped(
     session_token: String,
@@ -787,18 +770,16 @@ pub async fn get_hardware_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
     Ok(HardwareSettingsDto {
-        printer_connection: Settings::get_printer_connection(&conn)?,
-        printer_device_path: Settings::get_printer_device_path(&conn)?,
-        printer_paper_size: Settings::get_printer_paper_size(&conn)?,
-        scanner_device_id: Settings::get_scanner_device_id(&conn)?,
-        scanner_input_mode: Settings::get_scanner_input_mode(&conn)?,
+        printer_connection: Settings::get_printer_connection(&db_guard)?,
+        printer_device_path: Settings::get_printer_device_path(&db_guard)?,
+        printer_paper_size: Settings::get_printer_paper_size(&db_guard)?,
+        scanner_device_id: Settings::get_scanner_device_id(&db_guard)?,
+        scanner_input_mode: Settings::get_scanner_input_mode(&db_guard)?,
     })
 }
 
 /// Session-scoped variant of `set_hardware_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_hardware_settings_scoped(
     session_token: String,
@@ -810,10 +791,9 @@ pub async fn set_hardware_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
+    let tx = db_guard.unchecked_transaction()?;
     Settings::set_printer_connection(&tx, &args.printer_connection)?;
     Settings::set_printer_device_path(&tx, &args.printer_device_path)?;
     Settings::set_printer_paper_size(&tx, &args.printer_paper_size)?;
@@ -824,7 +804,6 @@ pub async fn set_hardware_settings_scoped(
 }
 
 /// Session-scoped variant of `get_setting`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_setting_scoped(
     session_token: String,
@@ -835,12 +814,10 @@ pub async fn get_setting_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    run_get_setting(&conn, &key)
+    run_get_setting(&db_guard, &key)
 }
 
 /// Session-scoped variant of `set_setting`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_setting_scoped(
     session_token: String,
@@ -861,10 +838,9 @@ pub async fn set_setting_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_setting(&conn, &key, &value, &terminal_id)?;
+    run_set_setting(&db_guard, &key, &value, &terminal_id)?;
     // SYNC-10 parity: enqueue the change so the tablet's sync daemon
     // pushes it to the cloud (and the desktop's pull re-applies it).
     // Warn-and-continue — the local write already committed.
