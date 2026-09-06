@@ -1723,6 +1723,313 @@ pub async fn delete_exchange_rate_pg(pool: &Pool, id: &str) -> Result<(), PgErro
     Ok(())
 }
 
+// ── Memo cloud-read serving layer (2026-09-07 cloud-read ruling) ─────────
+//
+// Memos are authored on the desktop (local SQLite, the global identity DB)
+// and must display on KDS/tablet terminals whose local `memos` table is
+// structurally empty. The ruled design makes cloud Postgres the serving
+// layer: the desktop pushes the tenant's COMPLETE memo state (reconciling
+// upsert — self-healing, no tombstones), and terminals read their active
+// memos from here. All statements run under RLS (`oz.tenant_id`) like the
+// rest of this module.
+
+/// One memo + its derived audience, as the desktop pushes it.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemoSyncRow {
+    /// Memo id (UUID v7, desktop-minted).
+    pub id: String,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot at publish time.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Lifecycle status (`draft`/`published`/`expired`/`stopped`/`archived`).
+    pub status: String,
+    /// Display duration (`12h`/`24h`/`3d`/`7d`/`30d`).
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant (ISO-8601), if published.
+    #[serde(default)]
+    pub published_at: Option<String>,
+    /// Expiry instant (ISO-8601), if published.
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    /// Early-stop instant, if stopped.
+    #[serde(default)]
+    pub stopped_at: Option<String>,
+    /// Who stopped it.
+    #[serde(default)]
+    pub stopped_by: Option<String>,
+    /// Archival instant — the retention-deletion clock.
+    #[serde(default)]
+    pub archived_at: Option<String>,
+    /// Creation timestamp.
+    pub created_at: String,
+    /// Last-update timestamp.
+    pub updated_at: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    #[serde(default)]
+    pub location_ids: Vec<String>,
+    /// The published fan-out: one recipient per target terminal.
+    #[serde(default)]
+    pub recipients: Vec<MemoRecipientSyncRow>,
+}
+
+/// One recipient row of a pushed memo.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemoRecipientSyncRow {
+    /// Recipient row id (desktop-minted).
+    pub id: String,
+    /// The terminal this row addresses.
+    pub terminal_id: String,
+    /// Delivery state (`pending`/`delivered`/`acknowledged`).
+    pub delivery_status: String,
+    /// Delivery instant, if delivered.
+    #[serde(default)]
+    pub delivered_at: Option<String>,
+    /// Acknowledgement instant, if acknowledged.
+    #[serde(default)]
+    pub acknowledged_at: Option<String>,
+    /// Who acknowledged.
+    #[serde(default)]
+    pub acknowledged_by: Option<String>,
+}
+
+/// Result of the reconciling memo push.
+#[derive(Debug, serde::Serialize)]
+pub struct MemoSyncResult {
+    /// Memos upserted (the snapshot size).
+    pub upserted: i64,
+    /// Memo rows deleted because the desktop no longer has them.
+    pub deleted: i64,
+}
+
+/// Reconcile the tenant's memo state in PG with the desktop's snapshot.
+///
+/// The snapshot IS the truth: every memo in it is upserted (`ON CONFLICT
+/// (id)`), its targeting rows replaced, its recipients upserted, and any PG
+/// memo of this tenant NOT present in the snapshot is deleted (its children
+/// cascade) — the desktop-side retention delete propagates by omission.
+/// Idempotent: pushing the same state twice is a no-op the second time.
+/// The memo's CHECK constraints on status/duration reject garbage payloads.
+pub async fn sync_memos(
+    pool: &Pool,
+    tenant_id: &str,
+    memos: &[MemoSyncRow],
+) -> Result<MemoSyncResult, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    for m in memos {
+        tx.execute(
+            "INSERT INTO memos (id, tenant_id, author_user_id, author_role, title, body,
+                                status, duration, revision, published_at, expires_at,
+                                stopped_at, stopped_by, archived_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             ON CONFLICT (id) DO UPDATE SET
+                author_user_id = EXCLUDED.author_user_id,
+                author_role = EXCLUDED.author_role,
+                title = EXCLUDED.title,
+                body = EXCLUDED.body,
+                status = EXCLUDED.status,
+                duration = EXCLUDED.duration,
+                revision = EXCLUDED.revision,
+                published_at = EXCLUDED.published_at,
+                expires_at = EXCLUDED.expires_at,
+                stopped_at = EXCLUDED.stopped_at,
+                stopped_by = EXCLUDED.stopped_by,
+                archived_at = EXCLUDED.archived_at,
+                updated_at = EXCLUDED.updated_at",
+            &[
+                &m.id,
+                &tenant_id,
+                &m.author_user_id,
+                &m.author_role,
+                &m.title,
+                &m.body,
+                &m.status,
+                &m.duration,
+                &m.revision,
+                &m.published_at,
+                &m.expires_at,
+                &m.stopped_at,
+                &m.stopped_by,
+                &m.archived_at,
+                &m.created_at,
+                &m.updated_at,
+            ],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+        // Targeting is small and derived: replace the set wholesale so a
+        // desktop-side change can never leave a stale row behind.
+        tx.execute("DELETE FROM memo_locations WHERE memo_id = $1", &[&m.id])
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        for location_id in &m.location_ids {
+            tx.execute(
+                "INSERT INTO memo_locations (memo_id, location_id, tenant_id) VALUES ($1, $2, $3)",
+                &[&m.id, location_id, &tenant_id.to_string()],
+            )
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        }
+
+        // Recipients are REPLACED too — but only the rows the desktop still
+        // has. Acknowledgement state lives here, so an upsert would be
+        // wrong in the stop/push race: the snapshot's recipient row (with
+        // its current delivery state) IS the newest fact the desktop holds.
+        tx.execute("DELETE FROM memo_recipients WHERE memo_id = $1", &[&m.id])
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        for r in &m.recipients {
+            tx.execute(
+                "INSERT INTO memo_recipients (id, memo_id, terminal_id, delivery_status,
+                                             delivered_at, acknowledged_at, acknowledged_by, tenant_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                &[
+                    &r.id,
+                    &m.id,
+                    &r.terminal_id,
+                    &r.delivery_status,
+                    &r.delivered_at,
+                    &r.acknowledged_at,
+                    &r.acknowledged_by,
+                    &tenant_id.to_string(),
+                ],
+            )
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        }
+    }
+
+    // Reconciliation: drop every tenant memo the desktop did not push. The
+    // snapshot is the complete non-deleted set, so absence IS the deletion
+    // signal (the retention sweep's deletes propagate here naturally).
+    let ids: Vec<String> = memos.iter().map(|m| m.id.clone()).collect();
+    let deleted = tx
+        .execute(
+            "DELETE FROM memos WHERE tenant_id = $1 AND NOT (id = ANY($2))",
+            &[&tenant_id.to_string(), &ids],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(MemoSyncResult {
+        upserted: memos.len() as i64,
+        deleted: deleted as i64,
+    })
+}
+
+/// One active memo served to a terminal, mirroring the banner's read shape.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ActiveMemoPg {
+    /// Memo id.
+    pub id: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    pub location_ids: Vec<String>,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Display duration.
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant.
+    pub published_at: Option<String>,
+    /// Expiry instant.
+    pub expires_at: Option<String>,
+    /// This terminal's delivery state.
+    pub delivery_status: String,
+}
+
+/// Read the memos a terminal should currently display, tenant-scoped by RLS
+/// and audience-scoped by the recipient join — the PG twin of
+/// `Store::list_active_for_terminal` (Location stacked above Organization,
+/// newest-published first, expiry checked in the WHERE so an un-swept row
+/// cannot display past its deadline).
+pub async fn list_active_memos_for_terminal(
+    pool: &Pool,
+    tenant_id: &str,
+    terminal_id: &str,
+    now: &str,
+) -> Result<Vec<ActiveMemoPg>, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    let rows = tx
+        .query(
+            "SELECT m.id, m.author_user_id, m.author_role, m.title, m.body,
+                    m.duration, m.revision, m.published_at, m.expires_at,
+                    r.delivery_status,
+                    (SELECT string_agg(ml.location_id, ',')
+                     FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
+             FROM memos m
+             JOIN memo_recipients r ON r.memo_id = m.id
+             WHERE m.tenant_id = $1 AND r.terminal_id = $2
+               AND m.status = 'published'
+               AND (m.expires_at IS NULL OR m.expires_at > $3)
+             ORDER BY (EXISTS (SELECT 1 FROM memo_locations ml WHERE ml.memo_id = m.id)) DESC,
+                      m.published_at DESC",
+            &[
+                &tenant_id.to_string(),
+                &terminal_id.to_string(),
+                &now.to_string(),
+            ],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let location_ids_csv: Option<String> = row.get("location_ids_csv");
+        out.push(ActiveMemoPg {
+            id: row.get("id"),
+            location_ids: location_ids_csv
+                .map(|csv| {
+                    csv.split(',')
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            author_user_id: row.get("author_user_id"),
+            author_role: row.get("author_role"),
+            title: row.get("title"),
+            body: row.get("body"),
+            duration: row.get("duration"),
+            revision: row.get("revision"),
+            published_at: row.get("published_at"),
+            expires_at: row.get("expires_at"),
+            delivery_status: row.get("delivery_status"),
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 #[path = "pg_tests.rs"]
 mod tests;

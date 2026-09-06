@@ -302,6 +302,10 @@ pub fn router_with_openapi(
         .route(
             "/api/v1/settings",
             get(routes::settings::get_settings_handler).put(routes::settings::put_settings_handler),
+        )
+        .route(
+            "/api/v1/memos/active",
+            get(routes::memos::list_active_memos_handler),
         );
     let public = match openapi_json {
         Some(spec) => public.route(
@@ -353,6 +357,10 @@ pub fn router_with_openapi(
             get(routes::plans::get_my_plan_handler),
         )
         .route("/api/v1/users", post(routes::users::create_user))
+        .route(
+            "/api/v1/memos/sync",
+            post(routes::memos::sync_memos_handler),
+        )
         .route("/api/v1/sales", post(routes::sales::create_sale))
         .route("/api/v1/sales/{id}", get(routes::sales::get_sale))
         .route(
