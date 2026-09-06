@@ -92,10 +92,19 @@ Final pricing determined by: number of locations, terminals, users, support leve
 | Max locations | 1 | 1 | 2 | 5 | Unlimited |
 | Max terminals (registers) / location | 1 | 2 | 5 | Unlimited | Unlimited |
 | Max warehouse workspaces | 1 | 2 | 3 | Unlimited | Unlimited |
-| Max KDS screens | 0 | 0 | 2 | Unlimited | Unlimited |
-| Max products/menu | 200 | 500 | 1,000 | 10,000 | Unlimited |
+| Max KDS screens † | 0 | 0 | 2 | Unlimited | Unlimited |
+| Max products/menu † | 200 | 500 | 1,000 | 10,000 | Unlimited |
 | Max staff users * | 1 | 5 | 20 | 50 | Unlimited |
 | Sales history (view & export) ** | 3 months | 1 year | 5 years | Unlimited | Unlimited |
+| Audit log retention *** | — | 90 days | 180 days | 1 year | 3 years |
+
+† **Published contract, not yet enforced.** The KDS count exists only as the
+dashboard-side derivation `maxKDSForTier()` (the client gates the `kds`
+workspace *type*, not a screen count), and no product-count quota ships at
+all (the archived `plan-product-images.md` `max_products()` was never
+implemented). Phase 1 "Centralize quota enforcement" must issue these numbers
+server-side and enforce them in backend mutations; until then this table is
+the value they must agree with, and the pricing-page invariant test pins it.
 
 \* Max staff users — **MUST be enforced before launch** to prevent revenue leakage.
 
@@ -103,6 +112,14 @@ Final pricing determined by: number of locations, terminals, users, support leve
 3 months of transactions. After 3+ months of use, the owner naturally wants to compare
 months — that is the primary upgrade trigger for Free → Plus. Show a blurred/locked
 history preview with an upgrade CTA, not a hard error.
+
+\*\*\* Audit retention — per the Phase 2 audit baseline
+(`todo-global-saas-2.md`): paid tiers retain basic security events (failed
+login, role changes, terminal registration, topology Apply, license changes,
+destructive actions); Premium+ add full business audit logging, filtering,
+export, and compliance views. Retention is measured from the event timestamp;
+Enterprise supports a configurable contract override. Free has no
+tenant-facing audit logs.
 
 ### Workspace Types
 
@@ -122,7 +139,8 @@ runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
 | Feature | Free | Plus | Pro | Premium | Enterprise |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Cash & manual split | ✓ | ✓ | ✓ | ✓ | ✓ |
-| QRIS (Midtrans) | ✗ | ✓ | ✓ | ✓ | ✓ |
+| QRIS (Midtrans dynamic) | ✗ | ✓ | ✓ | ✓ | ✓ |
+| QRIS (static / at-counter) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Stripe cards | ✗ | ✗ | ✓ | ✓ | ✓ |
 | Multi-currency | ✗ | ✗ | ✓ | ✓ | ✓ |
 
@@ -171,7 +189,7 @@ runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
 | Support response SLA | — | 24h | 8h | 1h (24/7) | account manager |
 | Software updates | minor + major | minor + major | minor + major | minor + major | minor + major |
 | White-label branding | ✗ | ✗ | ✗ | ✓ | ✓ |
-| Offline grace period | 7 days | 14 days | 14 days | 30 days | custom |
+| Offline grace period | 7 days | 14 days | 14 days | 30 days | 60 days (contract overrides available) |
 | Enterprise services (dedicated hosting, ERP adaptors, account manager) | ✗ | ✗ | ✗ | ✗ | ✓ |
 
 ---

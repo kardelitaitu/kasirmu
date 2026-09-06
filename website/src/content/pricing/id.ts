@@ -157,10 +157,11 @@ export const featureRows: FeatureRow[] = [
   { label: 'Laporan & analitik', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
   { label: 'Memo', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
   { label: 'Log audit lengkap', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
+  { label: 'Retensi log audit', values: { free: 'Tidak ada', plus: '90 hari', pro: '180 hari', premium: '1 tahun', enterprise: '3 tahun' } },
   { label: 'Branding whitelabel', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Email laporan terjadwal', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Program loyalitas', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Skrip Lua', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Dukungan prioritas', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
-  { label: 'Masa tenggang offline', values: { free: '7 hari', plus: '14 hari', pro: '14 hari', premium: '30 hari', enterprise: 'Kustom' } },
+  { label: 'Masa tenggang offline', values: { free: '7 hari', plus: '14 hari', pro: '14 hari', premium: '30 hari', enterprise: '60 hari' } },
 ];

@@ -152,10 +152,11 @@ export const featureRows: FeatureRow[] = [
   { label: 'Reports & analytics', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
   { label: 'Memo', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
   { label: 'Full audit logging', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
+  { label: 'Audit log retention', values: { free: 'None', plus: '90 days', pro: '180 days', premium: '1 year', enterprise: '3 years' } },
   { label: 'Whitelabel branding', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Scheduled report emails', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Loyalty program', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Lua scripting', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
   { label: 'Priority support', values: { free: false, plus: false, pro: false, premium: true, enterprise: true } },
-  { label: 'Offline grace period', values: { free: '7 days', plus: '14 days', pro: '14 days', premium: '30 days', enterprise: 'Custom' } },
+  { label: 'Offline grace period', values: { free: '7 days', plus: '14 days', pro: '14 days', premium: '30 days', enterprise: '60 days' } },
 ];

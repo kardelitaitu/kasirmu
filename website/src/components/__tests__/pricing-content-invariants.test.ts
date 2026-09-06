@@ -216,3 +216,81 @@ describe('featureRowsFor', () => {
     }
   });
 });
+
+describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
+  // Canonical values, in enforcement order:
+  // - locations: tierQuotas() in apps/license-server/paddle_webhook.go
+  //   (free 1, plus 1, pro 2, premium 5, enterprise 0=unlimited) mirrored by
+  //   SubscriptionTier::max_locations() in crates/oz-core/src/subscription.rs.
+  // - terminals/location: tierQuotas max_pos_instances ↔ max_pos_instances().
+  // - warehouse workspaces: max_warehouses() (client-side per the Go comment).
+  // - KDS screens: maxKDSForTier() in web_dashboard.go — type-gating is
+  //   enforced (allows_workspace_type), the Pro count of 2 is display-only
+  //   until Phase 1 "centralize quota enforcement" lands a server-issued
+  //   field; the number published here is the contract it must match.
+  // - products: published contract; no enforcement exists yet (the archived
+  //   plan-product-images.md max_products() never shipped). Same rule: this
+  //   row is what future enforcement must agree with.
+  // - staff: max_staff_users() + enforce_staff_quota.
+  // - sales history: sales_history_days(), enforced in both shells' history.rs.
+  // - grace: todo-global-saas-1.md §B (Free/OneTime 7, Plus 14, Pro 14,
+  //   Premium 30, Enterprise 60 standard with signed contract overrides).
+  // - audit retention: todo-global-saas-2.md audit baseline (Free none,
+  //   Plus 90d, Pro 180d, Premium 1y, Enterprise 3y).
+  const TIERS: TierKey[] = ['free', 'plus', 'pro', 'premium', 'enterprise'];
+  const MATRIX_EN: { label: string; values: Record<TierKey, string | number> }[] = [
+    { label: 'Locations', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Unlimited' } },
+    { label: 'Terminals (registers) per location', values: { free: 1, plus: 2, pro: 5, premium: 'Unlimited', enterprise: 'Unlimited' } },
+    { label: 'Warehouse workspaces', values: { free: 1, plus: 2, pro: 3, premium: 'Unlimited', enterprise: 'Unlimited' } },
+    { label: 'Kitchen Display screens', values: { free: 0, plus: 0, pro: 2, premium: 'Unlimited', enterprise: 'Unlimited' } },
+    { label: 'Max products/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Unlimited' } },
+    { label: 'Staff users', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Unlimited' } },
+    { label: 'Sales history', values: { free: '3 months', plus: '1 year', pro: '5 years', premium: 'Unlimited', enterprise: 'Unlimited' } },
+    { label: 'Offline grace period', values: { free: '7 days', plus: '14 days', pro: '14 days', premium: '30 days', enterprise: '60 days' } },
+    { label: 'Audit log retention', values: { free: 'None', plus: '90 days', pro: '180 days', premium: '1 year', enterprise: '3 years' } },
+  ];
+  const MATRIX_ID: { label: string; values: Record<TierKey, string | number> }[] = [
+    { label: 'Lokasi', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
+    { label: 'Terminal (register) per lokasi', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+    { label: 'Workspace gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+    { label: 'Layar Display Dapur', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+    { label: 'Max produk/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Tanpa batas' } },
+    { label: 'Staf pengguna', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Tanpa batas' } },
+    { label: 'Riwayat penjualan', values: { free: '3 bulan', plus: '1 tahun', pro: '5 tahun', premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+    { label: 'Masa tenggang offline', values: { free: '7 hari', plus: '14 hari', pro: '14 hari', premium: '30 hari', enterprise: '60 hari' } },
+    { label: 'Retensi log audit', values: { free: 'Tidak ada', plus: '90 hari', pro: '180 hari', premium: '1 tahun', enterprise: '3 tahun' } },
+  ];
+
+  it.each([['en', MATRIX_EN], ['id', MATRIX_ID]] as const)(
+    '%s comparison table matches the canonical quota contract',
+    (locale, matrix) => {
+      const rows = featureRowsFor(locale);
+      for (const expected of matrix) {
+        const row = rows.find((r) => r.label === expected.label);
+        expect(row, `${locale}: row "${expected.label}" exists`).toBeDefined();
+        for (const tier of TIERS) {
+          expect(row!.values[tier], `${locale}: "${expected.label}" ${tier}`).toBe(expected.values[tier]);
+        }
+      }
+    },
+  );
+
+  it('the free card and the comparison table agree on the headline quotas', () => {
+    // The card bullets are prose ("1 location", "2 registers") while the
+    // table carries the structured values; drift between the two is the
+    // QRIS-class bug the card/table invariant above exists for. Pin the
+    // numeric bullets to the table too.
+    const cardQuota: { label: string; row: string; tier: TierKey }[] = [
+      { label: '1 location', row: 'Locations', tier: 'free' },
+      { label: '1 register', row: 'Terminals (registers) per location', tier: 'free' },
+      { label: '1 warehouse workspace', row: 'Warehouse workspaces', tier: 'free' },
+    ];
+    const rows = featureRowsFor('en');
+    const free = enPricing.find((t) => t.tierKey === 'free')!;
+    for (const q of cardQuota) {
+      expect(free.features.some((f) => f.label === q.label && f.included), `free card lists "${q.label}"`).toBe(true);
+      const tableRow = rows.find((r) => r.label === q.row)!;
+      expect(tableRow.values[q.tier], `table "${q.row}" free = 1`).toBe(1);
+    }
+  });
+});
