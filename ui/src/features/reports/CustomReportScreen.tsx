@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
@@ -58,7 +60,14 @@ interface ColumnItem {
 /** Custom report builder — dataset picker, drag-and-drop column selector, preview table, CSV export. */
 type DatasetKey = keyof typeof DATASETS;
 
+/** §B administrative gate — Reports lock while the subscription is not `active`. */
 export default function CustomReportScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <CustomReportScreenContent />;
+}
+
+function CustomReportScreenContent() {
   const { l10n } = useLocalization();
   // R36-07: read the token through the useWorkspace() hook rather than the
 // raw context object. The global test harness mocks the hook, not the

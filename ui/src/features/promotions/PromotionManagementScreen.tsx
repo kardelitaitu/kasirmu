@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import {
@@ -56,7 +58,18 @@ const emptyForm = (): Promotion => ({
   updated_at: '',
 });
 
+/**
+ * §B administrative gate (todo-global-saas-1.md): promotion management is
+ * an administrative SaaS feature — it locks while the subscription is not
+ * `active` while POS operational runtime continues through grace.
+ */
 export default function PromotionManagementScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <PromotionManagementScreenContent />;
+}
+
+function PromotionManagementScreenContent() {
   const { l10n } = useLocalization();
   // Dates follow the active Fluent locale (not the browser default).
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';

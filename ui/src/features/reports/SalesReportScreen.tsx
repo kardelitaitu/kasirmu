@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
@@ -98,7 +100,14 @@ function fmtCurrency(minor: number, currency: string, locale = 'en'): string {
 // the primary store (REP-03) -- the same helpers R36-01/R36-05 converged on.
 
 /** Sales report screen — daily/weekly/monthly revenue charts, top products, hourly heatmap, and category breakdown with CSV export. */
+/** §B administrative gate — Reports lock while the subscription is not `active`. */
 export default function SalesReportScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <SalesReportScreenContent />;
+}
+
+function SalesReportScreenContent() {
   const { l10n } = useLocalization();
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en';
   // R36-07: read the token through the useWorkspace() hook rather than the

@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { Localized, useLocalization } from '@fluent/react';
 import {
@@ -77,7 +79,18 @@ interface Cursor {
 type OutcomeFilter = 'all' | 'success' | 'failure';
 
 /** Audit log screen — view filtered action history with date range, action type, and outcome filters for compliance monitoring. */
+/**
+ * §B administrative gate (todo-global-saas-1.md): the Audit Log is an
+ * administrative SaaS feature — it locks while the subscription is not
+ * `active` while POS operational runtime continues through grace.
+ */
 export default function AuditLogScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <AuditLogScreenContent />;
+}
+
+function AuditLogScreenContent() {
   const { l10n } = useLocalization();
   const locale = activeLocale(l10n);
   const { isManager } = useAuth();

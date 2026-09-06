@@ -135,24 +135,25 @@ vi.mock('@/contexts/WorkspaceContext', async (importOriginal) => {
   };
 });
 
-// ── Global mock: @/contexts/SubscriptionContext ─────────────────────
-// C2.2 tier gates read `useSubscription()`. The safe default is `caps:
-// null` — every gate renders open (no lock, no banner) — so existing
-// tests are unaffected. Tests exercising a gate override per-test with
-// `vi.mocked(useSubscription).mockReturnValue({ caps: {…} })`. The state
-// default is `unavailable` (§B fail-closed); gates do not read it yet —
-// they will when the operational/administrative split lands.
+// ── Global mock: @/contexts/SubscriptionContext ─────────────────
+// C2.2 tier gates read `useSubscription()`. The safe default renders
+// every gate OPEN (`caps: null` + `state: 'active'`) so existing tests
+// are unaffected — the neutral rendering default, not a policy claim;
+// the §B fail-closed policy lives in the production context and command
+// layer, and gate tests override per-test (e.g.
+// `mockReturnValue({ …makeSubscriptionCaps(), state: 'grace' })`).
 vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
   const actual = await importOriginal<typeof SubscriptionContextModule>();
   const safeSubscriptionDefault = {
     caps: null,
-    state: 'unavailable',
+    state: 'active',
     loading: false,
     refresh: vi.fn(),
   };
   return {
     ...actual,
     useSubscription: vi.fn().mockImplementation(() => safeSubscriptionDefault),
+    useAdminGate: vi.fn().mockImplementation(() => ({ locked: false, state: 'active' })),
   };
 });
 

@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
+import { SubscriptionProvider, useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import type { SubscriptionCapabilities } from '@/api/subscription';
 
 // ── Opt out of the global SubscriptionContext stub ─────────────────────
@@ -144,5 +144,39 @@ describe('SubscriptionProvider', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(result.current.caps).toBeNull());
     expect(result.current.state).toBe('unavailable');
+  });
+
+  describe('useAdminGate (§B operational vs admin split)', () => {
+    it('reports unlocked when subscription state is active', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        state: 'active',
+      });
+      const { result } = renderHook(() => useAdminGate(), { wrapper });
+      await waitFor(() => expect(result.current.locked).toBe(false));
+      expect(result.current.state).toBe('active');
+    });
+
+    it('reports locked when subscription state is grace (operational continues, admin locks)', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        state: 'grace',
+      });
+      const { result } = renderHook(() => useAdminGate(), { wrapper });
+      await waitFor(() => expect(result.current.locked).toBe(true));
+      expect(result.current.state).toBe('grace');
+    });
+
+    it('reports locked when subscription state is expired, canceled, paused, or unavailable', async () => {
+      for (const st of ['expired', 'canceled', 'paused', 'unavailable'] as const) {
+        mocks.getSubscriptionCapabilities.mockResolvedValue({
+          ...caps,
+          state: st,
+        });
+        const { result } = renderHook(() => useAdminGate(), { wrapper });
+        await waitFor(() => expect(result.current.locked).toBe(true));
+        expect(result.current.state).toBe(st);
+      }
+    });
   });
 });

@@ -82,3 +82,24 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 export function useSubscription(): SubscriptionContextValue {
   return useContext(SubscriptionContext);
 }
+
+/**
+ * §B administrative entitlement gate (todo-global-saas-1.md):
+ * administrative SaaS features — Analytics, Reports, Audit Log, Memo,
+ * Promotions, Data Management, Topology editing, premium Settings — lock
+ * the moment the subscription leaves `active` (i.e. at `expiresAt`, and
+ * for canceled/paused/unavailable data too), while POS operational runtime
+ * continues through the tier's signed offline grace window. Grace never
+ * re-opens administrative features, and a missing/invalid subscription
+ * fails closed here exactly as it does in the capabilities command.
+ *
+ * Operational tier gates (QRIS, loyalty earning, quotas) keep reading
+ * `caps` — the backend already downgrades their entitlements via
+ * `effective_tier()` when grace lapses.
+ */
+export function useAdminGate(): { locked: boolean; state: SubscriptionUiState } {
+  const { state } = useSubscription();
+  // Absent state (legacy mock, unexpected payload) fails closed.
+  const resolved = state ?? 'unavailable';
+  return { locked: resolved !== 'active', state: resolved };
+}

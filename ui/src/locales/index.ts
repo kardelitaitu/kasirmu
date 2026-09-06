@@ -34,6 +34,7 @@ import stockTransfersFtl from './stock-transfers.ftl?raw';
 import stockCountingFtl from './stock-counting.ftl?raw';
 import purchasingFtl from './purchasing.ftl?raw';
 import giftCardsFtl from './gift-cards.ftl?raw';
+import subscriptionFtl from './subscription.ftl?raw';
 
 const ALL_FTL = [
   sharedFtl,
@@ -61,6 +62,7 @@ const ALL_FTL = [
   stockCountingFtl,
   purchasingFtl,
   giftCardsFtl,
+  subscriptionFtl,
 ].join('\n');
 
 let _bundle: ReactLocalization | null = null;

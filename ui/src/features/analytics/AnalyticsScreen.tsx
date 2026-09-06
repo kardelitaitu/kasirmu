@@ -15,6 +15,7 @@ import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
 import { useInvalidSession } from '@/hooks/useInvalidSession';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
 import TierLockedFeature from '@/components/TierLockedFeature';
 import { minorUnitExponent } from '@/types/domain';
 import { downloadCsv } from '@/utils/export-csv';
@@ -287,8 +288,11 @@ export default function AnalyticsScreen() {
   const { l10n } = useLocalization();
   const { currency } = useCurrency();
   // C2.2: Analytics is a Pro+ feature — caps arrive from the subscription
-  // context and gate the screen below.
-  const { caps } = useSubscription();
+  // context and gate the screen below. §B: Analytics is also an
+  // ADMINISTRATIVE SaaS feature, so it locks the moment the subscription
+  // leaves `active` (at expiresAt / canceled / paused / unavailable) even
+  // though the tier entitlements themselves survive the grace window.
+  const { caps, state: subscriptionState } = useSubscription();
   const exp = minorUnitExponent(currency);
   // Number formatting follows the active Fluent locale, matching the other
   // analytics cards' money formatter (never a hardcoded English locale).
@@ -729,6 +733,16 @@ export default function AnalyticsScreen() {
         : heatmapData.hourly.length === 0
     : false;
 
+
+  // §B administrative lock first — it outranks the tier gate: an expired
+  // Premium subscription gets the admin lock, not the upgrade prompt.
+  if (subscriptionState !== 'active') {
+    return (
+      <div className="analytics">
+        <AdminLockedFeature />
+      </div>
+    );
+  }
 
   // C2.2: Analytics tab lock (Plus→Pro trigger) — render a locked screen
   // with a blurred sample chart + upgrade CTA instead of the live cards.

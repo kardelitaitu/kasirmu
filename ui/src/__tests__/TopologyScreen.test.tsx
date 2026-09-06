@@ -75,6 +75,7 @@ vi.mock('@/contexts/SubscriptionContext', () => ({
     loading: false,
     refresh: vi.fn(),
   }),
+  useAdminGate: () => ({ locked: false, state: 'active' }),
 }));
 
 // The editor's Apply gate mirrors the backend `staff:update` permission via

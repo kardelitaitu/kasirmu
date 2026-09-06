@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { listLocationsScoped, createLocationProfileScoped, updateLocationProfileScoped, deleteLocationProfileScoped, type LocationProfile } from '@/api/locations';
 import {
   listWorkspacesScoped,
@@ -13,7 +14,7 @@ import {
 import { isTopologyInstance } from './topologyContract';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';
 import { useToast } from '@/frontend/shared/Toast';
@@ -47,7 +48,19 @@ import {
  * This is intentionally separate from the Stores dashboard: "Stores" manages
  * store profiles only, while topology is its own concern (ADR #7 IA cleanup).
  */
+/**
+ * §B administrative gate (todo-global-saas-1.md): topology editing is an
+ * administrative SaaS feature — the editor locks while the subscription is
+ * not `active`. Location *viewing* stays operational (workspace picker,
+ * dashboard); this screen is the management surface.
+ */
 export default function TopologyScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <TopologyScreenContent />;
+}
+
+function TopologyScreenContent() {
   const { sessionToken, resolvedStoreId } = useWorkspace();
   const { session } = useAuth();
   const { addToast } = useToast();
