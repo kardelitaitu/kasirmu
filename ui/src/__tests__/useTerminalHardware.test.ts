@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act, waitFor, configure } from '@testing-library/react';
 import {
   useTerminalHardware,
 } from '@/hooks/useTerminalHardware';
@@ -30,6 +30,11 @@ const defaultDto = {
   scannerInputMode: 'auto',
 } as const;
 
+// Async settle can exceed the default 1s waitFor timeout under a loaded
+// parallel run (same flake class as WorkspaceHome/SettingsPage); Vitest
+// isolates module state per file, so this does not leak.
+configure({ asyncUtilTimeout: 5000 });
+
 // ── Tests ─────────────────────────────────────────────────────────
 
 describe('useTerminalHardware', () => {
@@ -52,8 +57,13 @@ describe('useTerminalHardware', () => {
     // (lib.rs:933) and is the only path that actually reaches the DTO.
     const { result } = renderHook(() => useTerminalHardware('term-001'));
 
+    // Wait for the load to SETTLE (isLoading false), not merely for the spy
+    // to have been invoked: under a loaded parallel run waitFor can exit in
+    // the gap between the call and the promise resolution, flaking on the
+    // isLoading assertion below.
     await waitFor(() => {
       expect(mockGetHardwareSettingsScoped).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN);
+      expect(result.current.isLoading).toBe(false);
     });
     expect(mockGetHardwareSettings).not.toHaveBeenCalled();
     expect(result.current.isLoading).toBe(false);
