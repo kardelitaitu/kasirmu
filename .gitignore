@@ -24,6 +24,13 @@ todo*
 # run, and it reached 1.3 MB in one sitting — close enough to a broad `git add`
 # to be committed by accident.
 .vitest_monitor.txt
+# Commit-message drafts agents write to the repo root before `git commit -F`
+# (observed: .cmsg-dupid-2.txt, .cmsg-memoread.txt). Transient by nature, but
+# while they exist they sit untracked in `git status`, where every concurrent
+# agent has to stop and work out whether someone else owns the file — on a
+# branch where several agents commit in parallel, clean status output is a
+# coordination primitive, not just tidiness.
+.cmsg-*
 
 # Cargo workspaces have a single Cargo.lock at the workspace root, not
 # one per crate. OZ-POS ships binaries (oz-cli, and the Tauri app in
