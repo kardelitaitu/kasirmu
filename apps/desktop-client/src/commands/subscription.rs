@@ -82,7 +82,9 @@ fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabiliti
 
     Ok(SubscriptionCapabilitiesDto {
         tier: tier.tier_key().to_string(),
-        max_stores: tier.max_stores(),
+        // Wire field keeps the historical `max_stores` name (the UI reads it);
+        // the canonical quota method is max_locations.
+        max_stores: tier.max_locations(),
         max_pos_instances: tier.max_pos_instances(),
         max_warehouses: tier.max_warehouses(),
         max_staff_users: tier.max_staff_users(),

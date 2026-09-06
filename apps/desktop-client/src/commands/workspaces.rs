@@ -750,7 +750,7 @@ pub async fn resolve_boot_store(
             let db = state.db.lock().await;
             let store = Store::new(&db);
             let primary = store
-                .get_primary_store()?
+                .get_primary_location()?
                 .ok_or_else(|| AppError::Internal("no primary store found".into()))?;
             primary.id
         };
@@ -850,7 +850,7 @@ pub async fn resolve_boot_store(
         let db = state.db.lock().await;
         let store = Store::new(&db);
         let primary = store
-            .get_primary_store()?
+            .get_primary_location()?
             .ok_or_else(|| AppError::Internal("no primary store found".into()))?;
         primary.id
     };

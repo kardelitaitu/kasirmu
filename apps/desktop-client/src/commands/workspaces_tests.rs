@@ -129,7 +129,7 @@ fn boot_resolution_dto_debug() {
 // `role-owner`. Now the caller presents a short-lived HMAC ticket and the
 // REAL role is resolved from the global identity DB.
 
-use oz_core::StoreProfile;
+use oz_core::LocationProfile;
 use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
 use oz_core::migrations;
 use platform_core::StoreDatabaseManager;
@@ -151,8 +151,8 @@ fn seed_global_users(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn make_profile(id: &str, name: &str) -> StoreProfile {
-    StoreProfile {
+fn make_profile(id: &str, name: &str) -> LocationProfile {
+    LocationProfile {
         id: id.to_owned(),
         name: name.to_owned(),
         address: String::new(),
@@ -180,7 +180,7 @@ fn picker_state() -> (AppState, tempfile::TempDir) {
         let db = conn.lock().unwrap();
         let store = Store::new(&db);
         store
-            .create_store_profile(&make_profile(store_id, store_id))
+            .create_location_profile(&make_profile(store_id, store_id))
             .unwrap();
         store
             .create_workspace_instance(instance_id, "store-pos", store_id, "POS", "", None)

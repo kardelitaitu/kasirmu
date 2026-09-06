@@ -194,7 +194,15 @@ pub async fn create_location_profile_scoped(
 
     // The database manager still uses the historical store-db abstraction;
     // it is a physical data-store name, not the site-unit hierarchy term.
-    let _ = state.db_manager.create_store_db(&args.id);
+    // A failed side-car database is not fatal to the profile row itself,
+    // but it must not pass silently (mirrors the delete-path warning below).
+    if let Err(e) = state.db_manager.create_store_db(&args.id) {
+        tracing::warn!(
+            location_id = %args.id,
+            error = %e,
+            "location profile created but its database file could not be created"
+        );
+    }
 
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let profile = LocationProfile {
@@ -285,7 +293,7 @@ pub async fn delete_location_profile_scoped(
 #[tauri::command]
 pub async fn get_primary_store(
     state: State<'_, AppState>,
-) -> Result<Option<StoreProfileDto>, AppError> {
+) -> Result<Option<LocationProfileDto>, AppError> {
     get_primary_location(state).await
 }
 
@@ -295,7 +303,7 @@ pub async fn get_primary_store(
 pub async fn list_store_profiles_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Vec<StoreProfileDto>, AppError> {
+) -> Result<Vec<LocationProfileDto>, AppError> {
     list_locations_scoped(session_token, state).await
 }
 
@@ -306,7 +314,7 @@ pub async fn get_store_profile_scoped(
     id: String,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Option<StoreProfileDto>, AppError> {
+) -> Result<Option<LocationProfileDto>, AppError> {
     get_location_profile_scoped(id, session_token, state).await
 }
 
@@ -316,7 +324,7 @@ pub async fn get_store_profile_scoped(
 pub async fn get_primary_store_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Option<StoreProfileDto>, AppError> {
+) -> Result<Option<LocationProfileDto>, AppError> {
     get_primary_location_scoped(session_token, state).await
 }
 
@@ -324,10 +332,10 @@ pub async fn get_primary_store_scoped(
 #[deprecated(note = "use create_location_profile_scoped")]
 #[tauri::command]
 pub async fn create_store_profile_scoped(
-    args: CreateStoreProfileArgs,
+    args: CreateLocationArgs,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<StoreProfileDto, AppError> {
+) -> Result<LocationProfileDto, AppError> {
     create_location_profile_scoped(args, session_token, state).await
 }
 
@@ -335,10 +343,10 @@ pub async fn create_store_profile_scoped(
 #[deprecated(note = "use update_location_profile_scoped")]
 #[tauri::command]
 pub async fn update_store_profile_scoped(
-    args: UpdateStoreProfileArgs,
+    args: UpdateLocationArgs,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<StoreProfileDto, AppError> {
+) -> Result<LocationProfileDto, AppError> {
     update_location_profile_scoped(args, session_token, state).await
 }
 
@@ -349,7 +357,7 @@ pub async fn set_primary_store_scoped(
     id: String,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<StoreProfileDto, AppError> {
+) -> Result<LocationProfileDto, AppError> {
     set_primary_location_scoped(id, session_token, state).await
 }
 

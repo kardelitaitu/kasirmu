@@ -1,3 +1,9 @@
+// The tests below exercise the deprecated wire-compat aliases
+// (`StoreProfileDto`, `CreateStoreProfileArgs`, `UpdateStoreProfileArgs`)
+// on purpose: they pin the serde shapes clients built against the old
+// names, so the deprecation lint is expected here until the aliases retire.
+#![allow(deprecated)]
+
 use super::*;
 use crate::state::AppState;
 use oz_core::db::Store;
