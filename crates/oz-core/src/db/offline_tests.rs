@@ -899,3 +899,70 @@ fn status_summary_debug_output() {
     assert!(debug.contains("pending_count: 1"));
     assert!(debug.contains("synced_count: 2"));
 }
+
+// ── COR-20 degradation visibility (2026-09-06) ─────────────────────
+
+#[test]
+fn query_or_none_passes_through_a_real_value() {
+    let got = query_or_none("test", Ok("2026-09-06T00:00:00Z".into()));
+    assert_eq!(got.as_deref(), Some("2026-09-06T00:00:00Z"));
+}
+
+#[test]
+fn query_or_none_treats_empty_result_as_silent_none() {
+    // The normal "no rows" answer must NOT be logged as a degradation —
+    // an empty queue is the expected common case for last_synced_at and
+    // oldest_pending_at.
+    let got = query_or_none("test", Err(rusqlite::Error::QueryReturnedNoRows));
+    assert_eq!(got, None);
+}
+
+#[test]
+fn query_or_none_degrades_real_db_errors_to_none() {
+    // Same observable result as the empty case (None) but the log path —
+    // a real failure must not be silently indistinguishable in the log.
+    let err = rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some("boom".into()));
+    let got = query_or_none("test", Err(err));
+    assert_eq!(got, None);
+}
+
+#[test]
+fn status_summary_empty_db_returns_defaults_not_error() {
+    // Regression pin for the QueryReturnedNoRows separation: with no rows at all,
+    // the summary must still return Ok with zeros/None (the pre-fix .ok()
+    // did this by conflation; the fix must not turn empty into Err).
+    let conn = fresh();
+    let s = store(&conn);
+    let summary = s
+        .offline_queue_status_summary()
+        .expect("empty summary must be Ok");
+    assert_eq!(summary.pending_count, 0);
+    assert_eq!(summary.synced_count, 0);
+    assert_eq!(summary.failed_count, 0);
+    assert_eq!(summary.total_retry_count, 0);
+    assert_eq!(summary.last_synced_at, None);
+    assert_eq!(summary.oldest_pending_at, None);
+    assert_eq!(summary.conflict_count, 0);
+}
+
+#[test]
+fn status_summary_timestamps_survive_after_mark_synced() {
+    // The Ok path of query_or_none must still surface real timestamps —
+    // guarding against the separation accidentally dropping values.
+    let conn = fresh();
+    let s = store(&conn);
+    let item = s.enqueue_offline("sale.create", "{}").unwrap();
+    assert!(
+        s.offline_queue_status_summary()
+            .unwrap()
+            .oldest_pending_at
+            .is_some()
+    );
+    s.mark_offline_synced(&item.id).unwrap();
+    let summary = s.offline_queue_status_summary().unwrap();
+    assert!(
+        summary.last_synced_at.is_some(),
+        "synced_at must surface via query_or_none Ok path"
+    );
+    assert_eq!(summary.oldest_pending_at, None, "no pending items left");
+}

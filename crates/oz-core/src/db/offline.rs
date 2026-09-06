@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (oz-core slice B5: offline queue deep read)
 crate: oz-core | status: SAFE | lint: CLEAN
-findings: sync plumbing production-grade — tenant-scoped variants throughout (SYNC-07: cross-tenant reads as NotFound/no-op), sync_applied_items idempotency ledger (INSERT OR IGNORE + in-tx variant co-located with the domain mutation), durable pull anchor with crash-safe write-after-apply ordering, atomic dead-letter requeue (predicate inside the DELETE) with anchor rewind; COR-20 INFO: enqueue dedup EXISTS check and observability summary degrade silently on DB errors (.unwrap_or(false)/.ok()) — benign direction (duplicate enqueue is replay-safe; dashboards show zeros) but errors are invisible
+findings: sync plumbing production-grade — tenant-scoped variants throughout (SYNC-07: cross-tenant reads as NotFound/no-op), sync_applied_items idempotency ledger (INSERT OR IGNORE + in-tx variant co-located with the domain mutation), durable pull anchor with crash-safe write-after-apply ordering, atomic dead-letter requeue (predicate inside the DELETE) with anchor rewind; COR-20 CLOSED 2026-09-06: the dedup EXISTS check and the observability summary still degrade to their benign defaults (duplicate enqueue is replay-safe; dashboards show zeros), but every degradation now logs op + underlying error via log_degraded, and query_or_none separates the normal QueryReturnedNoRows empty case from real DB errors that .ok() previously conflated
 next: none | perf: status summary is 4 small queries, fine at desktop scale
 */
 
@@ -13,6 +13,40 @@ use crate::error::CoreError;
 use crate::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
 
 use super::Store;
+
+/// COR-20: a degraded observability query must be visible in the log.
+///
+/// The defaults chosen on DB error are deliberately benign — the dedup
+/// EXISTS check falls through to a normal enqueue (duplicate enqueues are
+/// replay-safe via the server's idempotency ledger), and the status summary
+/// reports zeros/None so dashboards degrade instead of failing. But a queue
+/// that silently reads "0 failed" because its database is unhealthy is
+/// exactly the hidden failure state the Phase 2 offline-sync spec forbids.
+/// Every degradation logs the operation name and the underlying error so
+/// the cause is discoverable without changing the benign behavior.
+fn log_degraded(operation: &str, err: &rusqlite::Error) {
+    tracing::warn!(
+        op = operation,
+        error = %err,
+        "offline_queue query degraded to default (COR-20)"
+    );
+}
+
+/// Run a single-row observability query whose "no rows" answer is normal.
+///
+/// `Ok` → value; `QueryReturnedNoRows` → `None` silently (an empty queue is the
+/// expected common case, not an error); any other DB error → `None` logged
+/// via [`log_degraded`]. This separates the conflation `.ok()` performed.
+fn query_or_none(operation: &str, result: Result<String, rusqlite::Error>) -> Option<String> {
+    match result {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => {
+            log_degraded(operation, &e);
+            None
+        }
+    }
+}
 
 /// Summary of offline queue status — counts by status and sync timing.
 /// Used by P1-6 sync observability dashboard widgets.
@@ -90,15 +124,20 @@ impl Store<'_> {
         action: &str,
         payload: &str,
     ) -> Result<Option<OfflineQueueItem>, CoreError> {
-        let exists: bool = self
-            .conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM offline_queue
-                  WHERE status = 'pending' AND action = ?1 AND payload = ?2)",
-                params![action, payload],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
+        let exists: bool = match self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM offline_queue
+              WHERE status = 'pending' AND action = ?1 AND payload = ?2)",
+            params![action, payload],
+            |row| row.get(0),
+        ) {
+            Ok(v) => v,
+            // COR-20: a failed dedup check falls through to a normal enqueue
+            // (replay-safe), but the DB error must be visible.
+            Err(e) => {
+                log_degraded("enqueue_offline_dedup.exists", &e);
+                false
+            }
+        };
 
         if exists {
             return Ok(None);
@@ -381,7 +420,15 @@ impl Store<'_> {
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
-            .filter_map(|r| r.ok())
+            .filter_map(|r| match r {
+                Ok(v) => Some(v),
+                // COR-20: a row that fails to read must not silently vanish
+                // from the counts the dashboard renders.
+                Err(e) => {
+                    log_degraded("offline_queue_status_summary.counts_row", &e);
+                    None
+                }
+            })
             .collect();
 
         let mut pending_count: i64 = 0;
@@ -397,44 +444,50 @@ impl Store<'_> {
         }
 
         // Total retry count across all failed items
-        let total_retry_count: i64 = self
-            .conn
-            .query_row(
-                "SELECT COALESCE(SUM(retry_count), 0) FROM offline_queue WHERE status = 'failed'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let total_retry_count: i64 = match self.conn.query_row(
+            "SELECT COALESCE(SUM(retry_count), 0) FROM offline_queue WHERE status = 'failed'",
+            [],
+            |row| row.get(0),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                log_degraded("offline_queue_status_summary.total_retry_count", &e);
+                0
+            }
+        };
 
         // Last synced at (most recent synced_at timestamp)
-        let last_synced_at: Option<String> = self
-            .conn
-            .query_row(
+        let last_synced_at: Option<String> = query_or_none(
+            "offline_queue_status_summary.last_synced_at",
+            self.conn.query_row(
                 "SELECT synced_at FROM offline_queue WHERE status = 'synced' AND synced_at IS NOT NULL ORDER BY synced_at DESC LIMIT 1",
                 [],
                 |row| row.get(0),
-            )
-            .ok();
+            ),
+        );
 
         // Oldest pending at (earliest created_at among pending items)
-        let oldest_pending_at: Option<String> = self
-            .conn
-            .query_row(
+        let oldest_pending_at: Option<String> = query_or_none(
+            "offline_queue_status_summary.oldest_pending_at",
+            self.conn.query_row(
                 "SELECT created_at FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
                 [],
                 |row| row.get(0),
-            )
-            .ok();
+            ),
+        );
 
         // P1-3: Count items resolved via conflict (last_error starts with "resolved: conflict")
-        let conflict_count: i64 = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM offline_queue WHERE last_error LIKE 'resolved: conflict%'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let conflict_count: i64 = match self.conn.query_row(
+            "SELECT COUNT(*) FROM offline_queue WHERE last_error LIKE 'resolved: conflict%'",
+            [],
+            |row| row.get(0),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                log_degraded("offline_queue_status_summary.conflict_count", &e);
+                0
+            }
+        };
 
         Ok(SyncStatusSummary {
             pending_count,
