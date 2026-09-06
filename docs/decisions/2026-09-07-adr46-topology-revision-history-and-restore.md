@@ -2,12 +2,13 @@
 num: 46
 area: topology
 title: ADR #46: Topology Revision History, Change Notes, and Draft Restore
-status: Proposed
+status: Accepted — phased; Phase 1 is the next committed unit of work (see §Solo Implementation Protocol)
 ---
 # ADR #46: Topology Revision History, Change Notes, and Draft Restore
 
-**Status:** Proposed
+**Status:** Accepted — phased; Phase 1 is the next committed unit of work (see §Solo Implementation Protocol)
 **Date:** 2026-09-07
+**Reviewed & accepted:** 2026-09-07, sole-maintainer review. Every code citation in this document was verified against the working tree before acceptance: `save_topology_json_at_key_with_revision` at `persistence.rs:247`, `cleanup_old_kds_orders(30)` at `lib.rs:394`, `log_audit` at `audit.rs:125`, `NodeTopologyEditor.tsx` at 6,146 lines, `topologyBranchCompare.ts` at 488 lines, and no pre-existing `topology_revisions` table. Two known topology debts were reviewed and deliberately parked, not attached to this ADR: the localStorage templates in `topologyExport.ts` (criticised by ADR #45 §4.2) and the unfinished ADR #45 §4.2/§4.3 UI. Both are recorded as candidates for their own ADRs.
 **Author:** Architecture Team & OZ-POS Contributors
 **Tags:** topology, revision-history, rollback, retention, audit, cold-start
 
@@ -102,7 +103,7 @@ CREATE TABLE IF NOT EXISTS topology_revisions (
     workspace_archives  BIGINT NOT NULL DEFAULT 0,
     node_count        BIGINT NOT NULL DEFAULT 0,
     wire_count        BIGINT NOT NULL DEFAULT 0,
-    schema_version    BIGINT NOT NULL,
+    contract_schema_version BIGINT NOT NULL,
     pinned            INTEGER NOT NULL DEFAULT 0,
     published_at      TEXT NOT NULL,
     published_by      TEXT NOT NULL,
@@ -207,7 +208,9 @@ topology currently has no answer to "who changed production" at all.
 
 ### 7. Old revisions are shown, never migrated
 
-`schema_version` is stored per revision. ADR #45 moved the contract from 1 to 2,
+`contract_schema_version` is stored per revision — the CONTRACT axis, not the
+envelope axis, which `model.rs:273-285` warns must never be conflated with it.
+ADR #45 moved the contract from 1 to 2,
 so a pre-v2 revision may fail today's validation.
 
 On browse, re-validate each revision and show *why* it cannot be restored. Do not
@@ -313,12 +316,94 @@ as its own ADR.
 
 Phases 1 and 2 are independently shippable and independently revertible.
 
+### Build gate for every phase
+
+No phase begins until the previous one is green. One gate command, run at the
+start of a phase's first session:
+
+```bash
+cargo test -p oz-pos-app topology    # Rust side, workspace builds clean
+```
+
+and, once Phase 2 adds UI, additionally:
+
+```bash
+cd ui && npm run typecheck && npm run test
+```
+
+If the gate fails, fix or revert before writing any new code. A safety-net
+feature must never be built on a red baseline — a green gate is also the
+regression reference for the phase's own tests.
+
+### Why Phase 1 first, in one paragraph
+
+Phase 1 is not merely the cheapest slice — it is the slice that protects every
+later one. Until revisions are recorded, every Apply irreversibly overwrites the
+graph, which makes all topology work (including this feature's own UI phase)
+uninsurable. Phase 1 is purely additive, touches no UI, reuses only
+already-green machinery (`memo_revisions` shape, the daemon loop, `log_audit`),
+and is independently revertible by dropping one table and one insert. It is
+therefore the correct first unit of work, ahead of any browse/restore UI.
+
+---
+
+## Solo Implementation Protocol
+
+This project is maintained by a single developer working with LLM assistance.
+That combination has a known failure mode: code is generated faster than it can
+be understood, and unreviewed surface area accumulates until no one can hold the
+system in their head. The following protocol is binding for this ADR's
+implementation. It exists so that the safety net this ADR builds is itself
+understood by the person who depends on it.
+
+**Rule 1 — Understood slices, not one diff.** Phase 1 lands as five sequential,
+independently understandable steps. Each step is one focused session; each ends
+with the step's tests passing before the next begins. Never open a second step
+in the same session as the first.
+
+| Step | Content | Understanding checkpoint (explain before writing) |
+|---|---|---|
+| 1a | `crates/oz-core/migrations/20260915_topology_revisions.sql` + registry entry in `crates/oz-core/src/migrations.rs` | Why registry order is canonical and filename order is not; why `generate-pg-migration.py --check` exists and what it compares. |
+| 1b | The revision INSERT inside `save_topology_json_at_key_with_revision`'s existing IMMEDIATE transaction, plus the compensation test (§3) | Locate the transaction in `persistence.rs`; explain why inserting before it or after `tx.commit()` each produces a specific wrong history. |
+| 1c | `cleanup_old_topology_revisions(20)` + hookup in the existing daemon loop beside `cleanup_old_kds_orders(30)` (`lib.rs:394`) | Explain deflation vs. pruning and why "20 restorable, rest record-only" beats a day window for configuration data. |
+| 1d | `log_audit` call on Apply (§6) | Read `audit.rs` retention/redaction notes; state what `SENSITIVE_DETAIL_KEYS` would redact in a topology note. |
+| 1e | Optional change-note field threaded from Apply through IPC (§6) | Trace the field's full path: dialog → command → `save_..._with_revision` → row. |
+
+**Rule 2 — Explain before it writes.** In every LLM session, the first output
+must be a plain-language explanation of what it is about to change, which
+existing code it touches, and why the ADR chose that approach — before any code
+is written. If the explanation cannot be given, no code is produced.
+
+**Rule 3 — No additions beyond this document.** Refactors, "while we're here"
+improvements, drive-by fixes to neighboring topology debt (localStorage
+templates, ADR #45 leftovers), and new abstractions are out of scope. They get
+written down as candidate ADRs and left there.
+
+**Rule 4 — No line ships that cannot be explained to a non-author.** At the end
+of each step, the implementer re-reads the diff and deletes or rewrites anything
+they cannot justify sentence by sentence. The understanding checkpoint in each
+step of Rule 1 is the pass condition for the step, equal in standing to its
+tests.
+
+**Rule 5 — UI changes stay out of `NodeTopologyEditor.tsx`.** Phase 2's
+version browser is a standalone overlay module, per §10. No panel, no hook, no
+state is added to the 6,146-line component. If a change seems to require it,
+the change is wrong for this ADR.
+
+**Rule 6 — Parked debt gets a paper trail, not a branch.** Anything discovered
+mid-implementation that deserves fixing goes into `docs/decisions/README.md`'s
+candidate list or a new ADR stub. It is never fixed inside this ADR's commits.
+
 ---
 
 ## Verification
 
-- **Migration** — `20260915_topology_revisions.sql`, registered in
-  `crates/oz-core/src/migrations.rs` (registry order is canonical, not filename
+- **Baseline (before Step 1a)** — `cargo test -p oz-pos-app topology` passes on
+  the untouched working tree; the editor launches and one real Apply round-trips
+  (validation → diff summary → publish). This is the regression reference every
+  later phase is measured against; no phase starts on a red baseline.
+- **Migration** — `crates/oz-core/migrations/20260915_topology_revisions.sql`,
+  registered in `crates/oz-core/src/migrations.rs` (registry order is canonical, not filename
   order); `generate-pg-migration.py --check` clean; migration column-type lint clean.
 - **Atomicity** — a test forcing Apply compensation asserts no revision row
   survives; a test crashing after commit asserts one does not go missing.
