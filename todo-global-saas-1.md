@@ -765,12 +765,14 @@ Scope findings from the pre-implementation investigation, in execution order:
       IDs, location scopes, topology graphs, sync payloads, audit records, and
       cached subscription data cannot cross tenant boundaries.
       - **Current-state inventory (2026-09-06 assist pass, corrected at
-        `5f263d11`)** — this item had no measurable state, so it read as either
+        `5f263d11`; updated 2026-09-06 by the terminals-tenant slice,
+        `56653839`)** — this item had no measurable state, so it read as either
         "nothing done" or "everything done" depending on who was asked.
         Counted from the generator's own emitted artifacts, not a grep:
-        **31 tables carry `tenant_id`; 23 are under RLS; 8 are not** —
+        **32 tables carry `tenant_id`; 23 are under RLS; 9 are not** —
         `image_refs`, `legal_entities`, `memo_recipients`, `memo_revisions`,
-        `memos`, `sale_lines`, `snapshot_versions`, `webhook_endpoints`.
+        `memos`, `sale_lines`, `snapshot_versions`, `terminals`,
+        `webhook_endpoints`.
         (An earlier revision of this note said 28/22/6 and then 30/22/8. Both
         were wrong in the covered count: a hand-rolled SQL parser missed
         `products`, whose `tenant_id` arrives via a
@@ -804,6 +806,16 @@ Scope findings from the pre-implementation investigation, in execution order:
         any future column-less table — which is why the `terminals` gap below
         is invisible to it too.
       - **`terminals` has no tenant link at all, and the spec says it must.**
+        **RESOLVED 2026-09-06 by `56653839` — schema-wise; authorization wiring
+        remains open.** The migration below gives `terminals` a real
+        `tenant_id`, so Organization ownership is now representable and the
+        Memo fan-out blocker named here is lifted at the schema layer. What is
+        still open: RLS coverage (deliberately deferred — the generator's
+        to-do block now lists `terminals` as uncovered, the honest visible
+        state), and any future cloud write path must populate the column
+        explicitly (today nothing writes `terminals` in PG; `pg.rs` touches
+        only `sync_terminals`, which is already tenant-scoped and covered).
+        The original finding is preserved below for the record.
         This is the one to fix here, not in Phase 2. The canonical hierarchy
         states it twice — "Terminals are owned by the Organization and assigned
         to a Location" (above) and "Each Terminal belongs to one Organization
@@ -836,6 +848,32 @@ Scope findings from the pre-implementation investigation, in execution order:
         link it asserts, Organization → Terminal ownership, is still
         unrepresentable in the schema even though Legal Entity and Location now
         both exist with tenant scoping.
+      - **[x] Terminals tenant slice (2026-09-06, `56653839`).** Added and
+        registered `20260912_terminals_tenant.sql`: `ALTER TABLE terminals ADD
+        COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`, a backfill of bound
+        terminals from their bound location's `tenant_id` (mirroring the
+        `20260910_memo_child_tenant_id.sql` pattern), and a covering
+        `idx_terminals_tenant` index for tenant-scoped fan-out reads. PG init
+        regenerated (`109 tables, 135 indexes, 11 seed inserts`; the
+        generator's to-do block now lists `terminals` as tenant-bearing but
+        not under RLS — deliberate, per the policy note above). The unbound
+        terminal keeps the `'default'` sentinel, which is exactly the state
+        `memos_tests.rs` depends on for Organization Memos.
+      - Evidence: new migration test `terminals_carry_tenant_id_after_migration`
+        (splits the registry at the migration id, seeds a `tenant-9` location
+        plus one bound and one unbound terminal into the legacy schema, runs
+        the backfill, and asserts bound→`tenant-9`, unbound→`default`,
+        implicit→`default`, explicit→preserved). The two pinned-surface tests
+        were updated for the new index/migration id (`init_sql_creates_complete_schema_surface`
+        index count 155→156; `existing_db_with_legacy_rows_upgrades_idempotently`
+        expected-id list). Full `cargo test -p oz-core --lib`: **2519/2519
+        passed**. No Rust caller changes were needed — `create_terminal`
+        omits the column and the `DEFAULT 'default'` covers the
+        single-tenant stage. Commit: `56653839`.
+      - Deliberately not complete: RLS_TABLES inclusion (policy step once a
+        cloud write path exists), Memo fan-out narrowing to `tenant_id`
+        (Phase 2 Memo work, now unblocked), and explicit tenant propagation
+        through `create_terminal` when multi-tenant writes arrive.
       - **Trend worth arresting:** the uncovered list was 4 entries before this
         workstream. `legal_entities` (`d0e7c823`), `memos` (`7fed26cc`) and then
         both Memo child tables (`5f263d11`) grew it to **8** — **every new
