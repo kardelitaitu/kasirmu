@@ -562,6 +562,78 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     );
 }
 
+#[test]
+fn store_to_location_rename_preserves_rows_and_foreign_keys() {
+    let split = ALL.len() - 1;
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    conn.execute(
+        "INSERT INTO store_profiles (id, name, is_primary) VALUES ('location-a', 'Location A', 1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles (id, name) VALUES ('role-location-test', 'Location Test')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id)\n         VALUES ('user-location-test', 'location-test', 'not-used', 'Location Test', 'role-location-test')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO user_store_access (user_id, store_id, access_level)\n         VALUES ('user-location-test', 'location-a', 'operator')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'store_profiles'",
+        ),
+        0
+    );
+    assert_eq!(row_count(&conn, "SELECT COUNT(*) FROM locations"), 2);
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM user_location_access WHERE location_id = 'location-a'",
+        ),
+        1
+    );
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT max_locations FROM tenant_subscription WHERE tenant_id = 'default'",
+        ),
+        1
+    );
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM workspace_instances WHERE location_id = 'default'",
+        ),
+        5
+    );
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM workspace_screens\n             WHERE workspace_key = 'admin' AND screen_key = 'locations'",
+        ),
+        1
+    );
+    assert_eq!(
+        row_count(&conn, "SELECT COUNT(*) FROM pragma_foreign_key_check"),
+        0,
+        "location rename must not leave broken foreign keys",
+    );
+}
+
 // ── Store-scoped isolation (DB-04 end-state) ───────────────────
 //
 // The consolidated schema carries a store_id FK on products, customers,

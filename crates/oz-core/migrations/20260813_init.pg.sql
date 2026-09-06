@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS "stock_counts" (
     completed_at TEXT,
     updated_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')));
 
-CREATE TABLE IF NOT EXISTS store_profiles (
+CREATE TABLE IF NOT EXISTS "locations" (
     id          TEXT PRIMARY KEY,                                   -- "default" or UUID for additional stores
     name        TEXT NOT NULL,
     address     TEXT DEFAULT '',
@@ -202,8 +202,8 @@ CREATE TABLE IF NOT EXISTS store_profiles (
     updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_store_profiles_primary
-    ON store_profiles(is_primary) WHERE is_primary = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
+    ON locations(is_primary) WHERE is_primary = 1;
 
 CREATE TABLE IF NOT EXISTS stripe_customers (
     stripe_customer_id TEXT PRIMARY KEY,
@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS tenant_subscription (
     tier_key           TEXT NOT NULL,        -- 'free', 'pro', 'premium', 'enterprise'
     status             TEXT NOT NULL,        -- 'active', 'past_due', 'canceled'
     expires_at         TEXT NULL,            -- ISO timestamp (NULL = lifetime/free)
-    max_stores         BIGINT NOT NULL,
+    max_locations         BIGINT NOT NULL,
     max_pos_instances  BIGINT NOT NULL,     -- Per-store register limit
     allowed_types_json TEXT NOT NULL,        -- '["restaurant-pos", "store-pos", "admin"]'
     signature          TEXT NOT NULL,        -- RSA/HMAC signature from apps/cloud-server
@@ -551,7 +551,7 @@ CREATE TABLE IF NOT EXISTS "customers" (
     notes           TEXT NOT NULL DEFAULT '',
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    store_id        TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE
+    store_id        TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS terminals (
@@ -564,7 +564,7 @@ CREATE TABLE IF NOT EXISTS terminals (
     metadata        TEXT,                   -- JSON blob for extra info
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, bound_store_id TEXT REFERENCES store_profiles(id), bound_instance_id TEXT, binding_signature TEXT);
+, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT);
 
 CREATE TABLE IF NOT EXISTS "products" (
     id          TEXT PRIMARY KEY,
@@ -581,7 +581,7 @@ CREATE TABLE IF NOT EXISTS "products" (
     product_type TEXT NOT NULL DEFAULT 'retail',
     cost_minor  BIGINT NOT NULL DEFAULT 0,
     version     BIGINT NOT NULL DEFAULT 1,
-    store_id    TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    store_id    TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
     tenant_id   TEXT NOT NULL DEFAULT 'default',
     kitchen_zone TEXT,
     brand TEXT,
@@ -614,7 +614,7 @@ CREATE TABLE IF NOT EXISTS role_workspace_types (
 CREATE TABLE IF NOT EXISTS "workspace_instances" (
     id          TEXT PRIMARY KEY,
     type_key    TEXT NOT NULL REFERENCES workspace_types(key),
-    store_id    TEXT NOT NULL REFERENCES store_profiles(id)
+    location_id    TEXT NOT NULL REFERENCES "locations"(id)
                               ON DELETE RESTRICT
                               ON UPDATE CASCADE,
     name        TEXT NOT NULL,
@@ -711,14 +711,14 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_orders_po_number ON purchase_orders(po_number);
 
-CREATE TABLE IF NOT EXISTS "user_store_access" (
+CREATE TABLE IF NOT EXISTS "user_location_access" (
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    store_id     TEXT NOT NULL REFERENCES store_profiles(id)
+    location_id     TEXT NOT NULL REFERENCES "locations"(id)
                               ON DELETE RESTRICT
                               ON UPDATE CASCADE,
     access_level TEXT NOT NULL DEFAULT 'operator',
     created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    UNIQUE(user_id, store_id)
+    UNIQUE(user_id, location_id)
 );
 
 CREATE TABLE IF NOT EXISTS user_workspaces (
@@ -757,7 +757,7 @@ CREATE TABLE IF NOT EXISTS "sales" (
     tax_total_minor     BIGINT NOT NULL DEFAULT 0,
     customer_id         TEXT REFERENCES customers(id),
     version             BIGINT NOT NULL DEFAULT 1,
-    store_id            TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    store_id            TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
     deduction_locations TEXT,
     pending_expires_at  TEXT,
     payment_reference   TEXT,
@@ -1115,7 +1115,7 @@ CREATE TABLE IF NOT EXISTS "sale_lines" (
     tax_minor     BIGINT NOT NULL DEFAULT 0,
     tax_rate_id   TEXT REFERENCES tax_rates(id),
     serial_number TEXT,
-    store_id      TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    store_id      TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
     course        TEXT,
     modifiers_json TEXT,
     tax_breakdown_json TEXT, cost_minor BIGINT, tenant_id TEXT NOT NULL DEFAULT 'default', product_id TEXT, product_name TEXT, category_id TEXT,
@@ -1606,8 +1606,8 @@ CREATE INDEX IF NOT EXISTS idx_tax_rates_tenant ON tax_rates(tenant_id);
 
 CREATE INDEX IF NOT EXISTS idx_terminals_device_id ON terminals(device_id);
 
-CREATE INDEX IF NOT EXISTS idx_user_store_access_user_id
-    ON user_store_access(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_location_access_user_id
+    ON user_location_access(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_user_wsi_user_id
     ON user_workspace_instances(user_id);
@@ -1650,11 +1650,11 @@ INSERT INTO loyalty_tiers (id, name, min_points, points_per_unit, colour, sort_o
     ('tier-platinum', 'Platinum', 2000, 10, '#e5e4e2', 4, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 2000000)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at) VALUES
+INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at) VALUES
     ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 ON CONFLICT DO NOTHING;
 
-INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_stores, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
+INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
     ('default', 'free', 'active', NULL, 1, 1, '["store-pos", "restaurant-pos", "admin"]', 'BOOTSTRAP_FREE', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '')
 ON CONFLICT DO NOTHING;
 
@@ -1676,7 +1676,7 @@ INSERT INTO workspaces (id, key, name, description, icon) VALUES
     ('ws-retail-pos', 'retail-pos', 'Retail POS', 'Cashier terminal for retail checkout', 'store')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO workspace_instances (id, type_key, store_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
+INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
     ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
     ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
     ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
@@ -1751,7 +1751,7 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (25, 'admin', 'offline-queue', '', 10),
     (26, 'admin', 'shifts', '', 11),
     (27, 'admin', 'terminals', '', 12),
-    (28, 'admin', 'stores', '', 13),
+    (28, 'admin', 'locations', '', 13),
     (29, 'admin', 'exchange-rates', '', 14),
     (30, 'admin', 'design', '', 15)
 ON CONFLICT DO NOTHING;
