@@ -591,6 +591,7 @@ describe('StaffManagementScreen', () => {
   it('shows the approaching-limit banner at 16+ staff on Pro (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'pro', maxStaffUsers: 20, staffCount: 16 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -603,6 +604,7 @@ describe('StaffManagementScreen', () => {
   it('hides the approaching-limit banner on Premium below its 50-staff cap (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'premium', maxStaffUsers: 50, staffCount: 16 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -614,6 +616,7 @@ describe('StaffManagementScreen', () => {
   it('hides the approaching-limit banner below 80% threshold on Pro (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'pro', maxStaffUsers: 20, staffCount: 15 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });

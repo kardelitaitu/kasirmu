@@ -27,6 +27,7 @@ beforeEach(() => {
   mockExportDailySummary.mockReset();
   vi.mocked(useSubscription).mockReturnValue({
     caps: null,
+    state: 'active',
     loading: false,
     refresh: vi.fn(),
   });
@@ -112,6 +113,7 @@ describe('DailyTotalWidget', () => {
   it('shows blurred teaser with upgrade CTA for Free tier (C2.2)', () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'free', supportsDailyDashboard: false }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -130,6 +132,7 @@ describe('DailyTotalWidget', () => {
   it('renders full widget for Plus tier with supportsDailyDashboard (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'plus', supportsDailyDashboard: true }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });

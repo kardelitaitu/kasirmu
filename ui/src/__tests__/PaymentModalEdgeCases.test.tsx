@@ -1100,6 +1100,7 @@ describe('PaymentModal — edge cases', () => {
   it('shows QRIS upgrade prompt and handles upgrade button click', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'free', supportsQris: false }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });

@@ -175,6 +175,7 @@ describe('PaymentModal — rendering & fast interaction', () => {
   it('shows the QRIS upgrade prompt when the tier does not support QRIS (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'free', supportsQris: false }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -196,6 +197,7 @@ describe('PaymentModal — rendering & fast interaction', () => {
   it('shows the QRIS generation UI when the tier supports QRIS (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'plus', supportsQris: true }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });

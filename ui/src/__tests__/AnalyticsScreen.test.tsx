@@ -2027,6 +2027,7 @@ describe('C2.2 analytics tab lock (Plus → Pro)', () => {
   afterEach(() => {
     vi.mocked(useSubscription).mockImplementation(() => ({
       caps: null,
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     }));
@@ -2035,6 +2036,7 @@ describe('C2.2 analytics tab lock (Plus → Pro)', () => {
   it('locks the screen with a blurred sample chart + upgrade CTA below Pro', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'plus', supportsAnalytics: false }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -2050,6 +2052,7 @@ describe('C2.2 analytics tab lock (Plus → Pro)', () => {
   it('renders the live dashboard when the tier supports analytics', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
