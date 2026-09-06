@@ -87,6 +87,8 @@ pub mod legal_entities;
 pub mod locations;
 /// Media asset (image) CRUD — PLANNED (stubs).
 pub mod media;
+/// Memo lifecycle repository — create/publish/stop, revisions, recipients.
+pub mod memos;
 /// Payment gateway configuration CRUD — PLANNED (stubs).
 pub mod payment_gateways;
 /// Payment settlement ledger CRUD — PLANNED (stubs).

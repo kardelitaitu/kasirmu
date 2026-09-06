@@ -297,6 +297,83 @@ pub fn kds_notification_interval_secs() -> i64 {
     NOTIFICATION_BASE_INTERVAL_SECS * KDS_INTERVAL_MULTIPLIER
 }
 
+// ── Persisted shapes ────────────────────────────────────────────────
+
+/// Error surfaced when a stored `status`/`duration` TEXT value is not a known
+/// enum variant. Given the schema CHECK constraints this is unreachable except
+/// on DB corruption; it exists so the repository fails closed rather than
+/// silently defaulting a corrupted row to some other state.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown memo enum value: {0}")]
+pub struct ParseError(pub String);
+
+/// A memo row as persisted in `memos`. `status` and `duration` are the domain
+/// enums; the repository maps them to/from the CHECK'd TEXT columns, so a row
+/// read back is always a valid state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Memo {
+    /// Stable identifier.
+    pub id: String,
+    /// Owning Organization/Tenant.
+    pub tenant_id: String,
+    /// `None` ⇒ Organization Memo; `Some` ⇒ Location Memo for that location.
+    pub location_id: Option<String>,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot at publish time (early-stop authority basis).
+    pub author_role: String,
+    /// Memo title.
+    pub title: String,
+    /// Memo body.
+    pub body: String,
+    /// Lifecycle status.
+    pub status: MemoStatus,
+    /// Author-chosen display duration.
+    pub duration: MemoDuration,
+    /// Current published revision (starts at 1 on first publish).
+    pub revision: i64,
+    /// ISO-8601 publish instant; `None` until first publish.
+    pub published_at: Option<String>,
+    /// ISO-8601 expiry instant; `None` until first publish.
+    pub expires_at: Option<String>,
+    /// ISO-8601 early-stop instant; `None` unless stopped.
+    pub stopped_at: Option<String>,
+    /// User id that stopped the memo; `None` unless stopped.
+    pub stopped_by: Option<String>,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// ISO-8601 last-update timestamp.
+    pub updated_at: String,
+}
+
+impl Memo {
+    /// The memo's audience scope, derived from `location_id`.
+    pub fn scope(&self) -> MemoScope {
+        MemoScope::from_location_id(self.location_id.as_deref())
+    }
+}
+
+/// Input for creating a draft memo. The store assigns the id, timestamps,
+/// initial status (`draft`), and revision (1); the caller supplies content,
+/// scope, author, and duration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewMemo {
+    /// Owning Organization/Tenant.
+    pub tenant_id: String,
+    /// `None` ⇒ Organization Memo; `Some` ⇒ Location Memo.
+    pub location_id: Option<String>,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role at creation (snapshotted again at publish).
+    pub author_role: String,
+    /// Memo title (must be non-blank).
+    pub title: String,
+    /// Memo body (must be non-blank).
+    pub body: String,
+    /// Display duration.
+    pub duration: MemoDuration,
+}
+
 #[cfg(test)]
 #[path = "memo_tests.rs"]
 mod tests;
