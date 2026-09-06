@@ -304,6 +304,82 @@ function deleteMockLocation(args: unknown): null {
   return null;
 }
 
+/** Seed Legal Entity mirroring migration `20260908_legal_entities.sql`, which
+ *  auto-creates one deterministic "Default Legal Entity" per existing tenant.
+ *  `tenantId: 'default'` matches DEFAULT_TENANT_ID in
+ *  apps/desktop-client/src/commands/legal_entities.rs, and the field names are
+ *  camelCase because the Rust DTO uses `#[serde(rename_all = "camelCase")]`. */
+const MOCK_LEGAL_ENTITY = {
+  id: 'le-default',
+  tenantId: 'default',
+  name: 'Default Legal Entity',
+  legalName: 'Default Legal Entity',
+  registrationNumber: '',
+  taxId: '',
+  status: 'active' as 'active' | 'inactive',
+  createdAt: '2026-09-08T00:00:00.000Z',
+  updatedAt: '2026-09-08T00:00:00.000Z',
+};
+
+/** Mutable Legal Entity list backing the dev mock — creates and updates
+ *  persist for the session exactly like the real DB (dev preview parity). */
+let mockLegalEntities: Array<typeof MOCK_LEGAL_ENTITY> = [{ ...MOCK_LEGAL_ENTITY }];
+
+/** List the Legal Entity rows served by the dev mock. */
+function listMockLegalEntities(): Array<typeof MOCK_LEGAL_ENTITY> {
+  return mockLegalEntities.map((entity) => ({ ...entity }));
+}
+
+/** Resolve one Legal Entity by id.
+ *  Unlike `getMockLocation`, an unknown id returns `null` rather than falling
+ *  back to the first row: the real command returns `Option<LegalEntityDto>`
+ *  and `ui/src/api/legalEntities.ts` declares `LegalEntity | null`, so callers
+ *  branch on the empty case and the mock must be able to express it. */
+function getMockLegalEntity(args: unknown): typeof MOCK_LEGAL_ENTITY | null {
+  const { id } = unwrapArgs<{ id?: string }>(args);
+  return mockLegalEntities.find((entity) => entity.id === id) ?? null;
+}
+
+/** Create a Legal Entity and persist it in the session-local mock list. */
+function createMockLegalEntity(args: unknown): typeof MOCK_LEGAL_ENTITY {
+  const payload = unwrapArgs<Partial<typeof MOCK_LEGAL_ENTITY>>(args);
+  const now = new Date().toISOString();
+  const created = {
+    ...MOCK_LEGAL_ENTITY,
+    ...payload,
+    id: payload.id ?? `le-${Date.now()}`,
+    // Organization-level resource: the staged tenant sentinel is fixed, so a
+    // client-supplied tenantId is ignored exactly as the real command ignores it.
+    tenantId: MOCK_LEGAL_ENTITY.tenantId,
+    createdAt: now,
+    updatedAt: now,
+  };
+  mockLegalEntities.push(created);
+  return { ...created };
+}
+
+/** Update a Legal Entity and persist it in the session-local mock list.
+ *  An unknown id returns `null`; the real command surfaces an error there, so
+ *  this stays closer to the backend than the location mock's first-row
+ *  fallback. `id` and `tenantId` are never taken from the payload. */
+function updateMockLegalEntity(args: unknown): typeof MOCK_LEGAL_ENTITY | null {
+  const { id, ...rest } = unwrapArgs<Partial<typeof MOCK_LEGAL_ENTITY> & { id?: string }>(args);
+  const existing = mockLegalEntities.find((entity) => entity.id === id);
+  if (!existing) return null;
+  const updated = {
+    ...existing,
+    ...rest,
+    id: existing.id,
+    tenantId: existing.tenantId,
+    createdAt: existing.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+  mockLegalEntities = mockLegalEntities.map((entity) =>
+    entity.id === updated.id ? updated : entity,
+  );
+  return { ...updated };
+}
+
 /** Live floor-plan snapshot for the analytics occupancy card: 5 of 12
  *  active tables occupied (2 seated, 1 reserved, 4 free, 1 cleaning). */
 function tablesSnapshot(): Array<{
@@ -1679,6 +1755,15 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'update_location_profile_scoped': updateMockLocation,
   'set_primary_location_scoped': setMockPrimaryLocation,
   'delete_location_profile_scoped': deleteMockLocation,
+
+  // Legal Entity (Organization-level, Phase 1 §G). Registered here because
+  // scripts/verify-ipc-parity.py treats a missing dev-mock handler as a hard
+  // violation: invoke() would return null and the caller would silently render
+  // its failure path instead of erroring.
+  'list_legal_entities_scoped': listMockLegalEntities,
+  'get_legal_entity_scoped': getMockLegalEntity,
+  'create_legal_entity_scoped': createMockLegalEntity,
+  'update_legal_entity_scoped': updateMockLegalEntity,
 
   'list_store_profiles': listMockLocations,
   'get_store_profile': getMockLocation,

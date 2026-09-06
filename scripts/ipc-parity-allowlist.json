@@ -1,5 +1,5 @@
 {
-  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant. pause_subscription_scoped / resume_subscription_scoped joined the same way: LicenseSettings now prefers the SETTINGS_EDIT-checked twins, and the tablet shell registers neither variant of either command. get_report_schedule_scoped joined the same way: EmailReportSettings now prefers the REPORTS_SCHEDULE-checked twin, and the tablet shell registers neither variant.",
+  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant. pause_subscription_scoped / resume_subscription_scoped joined the same way: LicenseSettings now prefers the SETTINGS_EDIT-checked twins, and the tablet shell registers neither variant of either command. get_report_schedule_scoped joined the same way: EmailReportSettings now prefers the REPORTS_SCHEDULE-checked twin, and the tablet shell registers neither variant. The four legal-entity commands (create/get/list/update) joined the same way at bcd1f501: Legal Entity is an Organization-level admin/settings surface, and the tablet shell registers no settings or location-admin surface at all -- it has no locations.rs either, so list_locations_scoped and friends were already listed here for the identical reason. This is a precedent-following call made while clearing a red gate, NOT a product ruling that tablet should never manage legal entities; if tablet is meant to expose them, delete these four entries and port apps/desktop-client/src/commands/legal_entities.rs to the tablet shell instead.",
   "desktop": [
     "adjust_stock",
     "create_product",
@@ -46,6 +46,7 @@
     "create_cash_payout_scoped",
     "create_inventory_location",
     "create_inventory_transaction",
+    "create_legal_entity_scoped",
     "create_location_profile_scoped",
     "create_product",
     "create_store_profile_scoped",
@@ -76,6 +77,7 @@
     "get_kds_device_scoped",
     "get_kds_order_lines_scoped",
     "get_key_rotation_info",
+    "get_legal_entity_scoped",
     "get_license_status",
     "get_location_profile_scoped",
     "get_low_stock_alerts_at_location_scoped",
@@ -106,6 +108,7 @@
     "list_inventory_transactions",
     "list_inventory_transactions_for_shift",
     "list_kds_devices_scoped",
+    "list_legal_entities_scoped",
     "list_locations_scoped",
     "list_products",
     "list_scanners",
@@ -171,6 +174,7 @@
     "update_kds_device_status_scoped",
     "update_kds_line_item_status_scoped",
     "update_kds_order_items_scoped",
+    "update_legal_entity_scoped",
     "update_location_profile_scoped",
     "update_pg_sync_settings_scoped",
     "update_product",
