@@ -63,10 +63,10 @@ fn seed_location_with_tenant(store: &Store<'_>, id: &str, tenant_id: &str) {
         .unwrap();
 }
 
-fn new_memo(tenant: &str, location: Option<&str>) -> NewMemo {
+fn new_memo(tenant: &str, locations: &[&str]) -> NewMemo {
     NewMemo {
         tenant_id: tenant.into(),
-        location_id: location.map(Into::into),
+        location_ids: locations.iter().map(|s| s.to_string()).collect(),
         author_user_id: "user-1".into(),
         author_role: "admin".into(),
         title: "Heads up".into(),
@@ -89,7 +89,7 @@ fn recipient_count(store: &Store<'_>, memo_id: &str) -> i64 {
 #[test]
 fn create_draft_sets_initial_state() {
     let store = store();
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     assert_eq!(memo.status, MemoStatus::Draft);
     assert_eq!(memo.revision, 1);
     assert_eq!(memo.duration, MemoDuration::Hours24);
@@ -103,7 +103,7 @@ fn create_draft_sets_initial_state() {
 #[test]
 fn create_rejects_blank_title() {
     let store = store();
-    let mut m = new_memo("default", None);
+    let mut m = new_memo("default", &[]);
     m.title = "   ".into();
     let err = store.create_memo_draft(&m).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field: "title", .. }));
@@ -114,16 +114,16 @@ fn location_memo_scope_is_location() {
     let store = store();
     // 'default' location exists in the seeded schema.
     let memo = store
-        .create_memo_draft(&new_memo("default", Some("default")))
+        .create_memo_draft(&new_memo("default", &["default"]))
         .unwrap();
     assert_eq!(memo.scope(), crate::memo::MemoScope::Location);
-    assert_eq!(memo.location_id.as_deref(), Some("default"));
+    assert_eq!(memo.location_ids, vec!["default".to_string()]);
 }
 
 #[test]
 fn publish_transitions_stamps_expiry_and_snapshots_revision() {
     let store = store();
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     let published = store.publish_memo("default", &memo.id).unwrap();
 
     assert_eq!(published.status, MemoStatus::Published);
@@ -149,7 +149,7 @@ fn publish_fans_out_one_pending_recipient_per_terminal() {
     let store = store();
     seed_terminal(&store, "t1", None);
     seed_terminal(&store, "t2", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
     assert_eq!(recipient_count(&store, &memo.id), 2);
@@ -172,7 +172,7 @@ fn publish_populates_child_table_tenant_id() {
     // covered by RLS (20260910), rather than relying solely on joining memos.
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
     let rev_tenant: String = store
@@ -203,7 +203,7 @@ fn location_memo_fans_out_only_bound_terminals() {
     seed_terminal(&store, "t-other", Some("other-loc"));
     seed_terminal(&store, "t-unbound", None);
     let memo = store
-        .create_memo_draft(&new_memo("default", Some("default")))
+        .create_memo_draft(&new_memo("default", &["default"]))
         .unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
@@ -224,9 +224,7 @@ fn org_memo_fanout_excludes_other_tenants_terminals() {
     seed_terminal_with_tenant(&store, "term-a", Some("loc-a"), "tenant-a");
     seed_terminal_with_tenant(&store, "term-b", Some("loc-b"), "tenant-b");
 
-    let memo = store
-        .create_memo_draft(&new_memo("tenant-a", None))
-        .unwrap();
+    let memo = store.create_memo_draft(&new_memo("tenant-a", &[])).unwrap();
     store.publish_memo("tenant-a", &memo.id).unwrap();
 
     // tenant-b's terminal must NOT receive tenant-a's Organization Memo.
@@ -250,7 +248,7 @@ fn org_memo_fanout_still_reaches_unbound_terminals_of_same_tenant() {
     // (and memos_tests' dependence on it) expects them to receive Org Memos.
     let store = store();
     seed_terminal_with_tenant(&store, "t-unbound", None, "default");
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
     assert_eq!(recipient_count(&store, &memo.id), 1);
@@ -259,7 +257,7 @@ fn org_memo_fanout_still_reaches_unbound_terminals_of_same_tenant() {
 #[test]
 fn publish_twice_is_rejected() {
     let store = store();
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     let err = store.publish_memo("default", &memo.id).unwrap_err();
     assert!(matches!(
@@ -274,7 +272,7 @@ fn publish_twice_is_rejected() {
 #[test]
 fn stop_published_records_actor_and_time() {
     let store = store();
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     let stopped = store.stop_memo("default", &memo.id, "user-2").unwrap();
 
@@ -286,7 +284,7 @@ fn stop_published_records_actor_and_time() {
 #[test]
 fn stop_draft_is_rejected() {
     let store = store();
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     let err = store.stop_memo("default", &memo.id, "user-2").unwrap_err();
     assert!(matches!(
         err,
@@ -300,7 +298,7 @@ fn stop_draft_is_rejected() {
 #[test]
 fn get_is_tenant_scoped() {
     let store = store();
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     // A different tenant cannot see it.
     assert_eq!(store.get_memo("other-tenant", &memo.id).unwrap(), None);
     // And cannot publish it.
@@ -316,10 +314,10 @@ fn get_is_tenant_scoped() {
 fn list_stacks_location_above_organization() {
     let store = store();
     seed_terminal(&store, "t1", Some("default"));
-    let org = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let org = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &org.id).unwrap();
     let loc = store
-        .create_memo_draft(&new_memo("default", Some("default")))
+        .create_memo_draft(&new_memo("default", &["default"]))
         .unwrap();
     store.publish_memo("default", &loc.id).unwrap();
 
@@ -337,10 +335,10 @@ fn list_stacks_location_above_organization() {
 fn list_excludes_expired_and_stopped() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let live = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let live = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &live.id).unwrap();
 
-    let expiring = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let expiring = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &expiring.id).unwrap();
     // Force it past expiry.
     store
@@ -351,7 +349,7 @@ fn list_excludes_expired_and_stopped() {
         )
         .unwrap();
 
-    let stopped = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let stopped = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &stopped.id).unwrap();
     store.stop_memo("default", &stopped.id, "user-2").unwrap();
 
@@ -367,7 +365,7 @@ fn list_is_terminal_scoped() {
     let store = store();
     seed_terminal(&store, "t1", None);
     seed_terminal(&store, "t2", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
     // Both terminals see the org memo.
@@ -398,7 +396,7 @@ fn list_is_terminal_scoped() {
 fn list_is_tenant_scoped() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
     // The owning tenant sees it on its terminal.
@@ -438,7 +436,7 @@ fn list_is_tenant_scoped() {
 fn mark_delivered_then_acknowledge() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
     store
@@ -471,7 +469,7 @@ fn mark_delivered_then_acknowledge() {
 fn acknowledge_from_pending_backfills_delivered_at() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     // Ack directly from pending (online terminal) — an ack proves delivery.
     store
@@ -494,7 +492,7 @@ fn acknowledge_from_pending_backfills_delivered_at() {
 fn ack_is_idempotent_and_rejects_unknown_recipient() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     store
         .acknowledge_memo("default", &memo.id, "t1", "user-9")
@@ -518,7 +516,7 @@ fn ack_is_idempotent_and_rejects_unknown_recipient() {
 fn sweep_expired_transitions_past_due_memos() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     store
         .conn()
@@ -545,10 +543,10 @@ fn sweep_all_expired_spans_tenants() {
     // user-facing read, so it carries no tenant filter).
     let store = store();
     seed_terminal(&store, "t1", None);
-    let a = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let a = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &a.id).unwrap();
     let b = store
-        .create_memo_draft(&new_memo("other-tenant", None))
+        .create_memo_draft(&new_memo("other-tenant", &[]))
         .unwrap();
     store.publish_memo("other-tenant", &b.id).unwrap();
     // Force both past their deadline.
@@ -576,8 +574,10 @@ fn sweep_all_expired_spans_tenants() {
 
 // ── FK RESTRICT: a parent delete must not silently destroy Memo history ──
 //
-// Regression guard for the 20260911 fix. Before it, memos.location_id and
-// memo_recipients.terminal_id were ON DELETE CASCADE, so deleting a Location or
+// Regression guard for the 20260911 fix, carried into the 20260913 join-table
+// world: the location-side blocker now lives on `memo_locations.location_id`
+// (memos no longer carries a location column). Before 20260911, the location
+// and terminal edges were ON DELETE CASCADE, so deleting a Location or
 // terminal erased the Memos and their audit/delivery trail — contradicting the
 // 30-day retention promise and the repo's CUST-11 policy (block, don't destroy).
 
@@ -585,10 +585,11 @@ fn sweep_all_expired_spans_tenants() {
 fn location_delete_is_blocked_by_its_memos() {
     let store = store();
     seed_location(&store, "del-loc");
-    // No terminal bound to del-loc, so the Memo is the ONLY dependent — this
-    // isolates memos.location_id as the blocker rather than a terminal binding.
+    // No terminal bound to del-loc, so the targeting row is the ONLY
+    // dependent — this isolates memo_locations.location_id as the blocker
+    // rather than a terminal binding.
     let memo = store
-        .create_memo_draft(&new_memo("default", Some("del-loc")))
+        .create_memo_draft(&new_memo("default", &["del-loc"]))
         .unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
@@ -619,7 +620,7 @@ fn location_delete_is_blocked_by_its_memos() {
 fn terminal_delete_is_blocked_by_its_recipients() {
     let store = store();
     seed_terminal(&store, "t-del", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap(); // org memo → recipient for t-del
 
     let result = store
@@ -660,7 +661,7 @@ fn deleting_a_memo_still_cascades_to_its_children() {
     // terminal edges were changed to RESTRICT.
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     assert_eq!(recipient_count(&store, &memo.id), 1);
 
@@ -697,7 +698,7 @@ fn revision_count(store: &Store<'_>, memo_id: &str) -> i64 {
 fn revise_bumps_revision_and_preserves_history() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     let published = store.publish_memo("default", &memo.id).unwrap();
     assert_eq!(published.revision, 1);
     let original_expiry = published.expires_at.clone();
@@ -738,7 +739,7 @@ fn revise_rejects_draft_and_terminal_states() {
     let store = store();
     seed_terminal(&store, "t1", None);
     // Draft: not yet published, nothing to correct.
-    let draft = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let draft = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     assert!(matches!(
         store
             .revise_memo("default", &draft.id, "user-1", "t", "b")
@@ -746,7 +747,7 @@ fn revise_rejects_draft_and_terminal_states() {
         CoreError::Validation { .. }
     ));
     // Stopped: a terminal state cannot be revised.
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     store.stop_memo("default", &memo.id, "user-1").unwrap();
     assert!(matches!(
@@ -761,7 +762,7 @@ fn revise_rejects_draft_and_terminal_states() {
 fn revise_rejects_blank_content_and_unknown_memo() {
     let store = store();
     seed_terminal(&store, "t1", None);
-    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     assert!(matches!(
         store
@@ -782,7 +783,7 @@ fn revise_rejects_blank_content_and_unknown_memo() {
 fn memo_by(author: &str) -> NewMemo {
     NewMemo {
         tenant_id: "default".into(),
-        location_id: None,
+        location_ids: vec![],
         author_user_id: author.into(),
         author_role: "admin".into(),
         title: format!("by {author}"),
@@ -846,4 +847,122 @@ fn list_authored_is_tenant_scoped() {
             .unwrap()
             .is_empty()
     );
+}
+
+// ── Multi-location targeting (20260913_memo_locations.sql) ──────────
+
+#[test]
+fn multi_location_memo_fans_out_to_every_targeted_location() {
+    let store = store();
+    seed_location(&store, "loc-a");
+    seed_location(&store, "loc-b");
+    seed_location(&store, "loc-c"); // targeted by nothing
+    // loc-a: one terminal; loc-b: two terminals; loc-c: one (must NOT get it).
+    seed_terminal(&store, "t-a1", Some("loc-a"));
+    seed_terminal(&store, "t-b1", Some("loc-b"));
+    seed_terminal(&store, "t-b2", Some("loc-b"));
+    seed_terminal(&store, "t-c1", Some("loc-c"));
+
+    let memo = store
+        .create_memo_draft(&new_memo("default", &["loc-a", "loc-b"]))
+        .unwrap();
+    assert_eq!(memo.location_ids.len(), 2);
+    store.publish_memo("default", &memo.id).unwrap();
+
+    for t in ["t-a1", "t-b1", "t-b2"] {
+        let active = store
+            .list_active_for_terminal("default", t, &now())
+            .unwrap();
+        assert_eq!(
+            active.len(),
+            1,
+            "terminal {t} must receive the two-location memo"
+        );
+        assert_eq!(active[0].memo.id, memo.id);
+    }
+    let excluded = store
+        .list_active_for_terminal("default", "t-c1", &now())
+        .unwrap();
+    assert!(
+        excluded.is_empty(),
+        "a terminal bound to an untargeted location must not receive the memo"
+    );
+}
+
+#[test]
+fn multi_location_targeting_normalizes_trims_and_dedupes() {
+    let store = store();
+    seed_location(&store, "loc-a");
+    let memo = store
+        .create_memo_draft(&new_memo("default", &["loc-a", "  loc-a  ", "loc-a", ""]))
+        .unwrap();
+    assert_eq!(
+        memo.location_ids,
+        vec!["loc-a".to_string()],
+        "whitespace is trimmed and duplicates collapse, preserving first order"
+    );
+    let rows: i64 = store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM memo_locations WHERE memo_id = ?1",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 1, "exactly one targeting row survives normalization");
+}
+
+#[test]
+fn multi_location_memo_is_rejected_when_a_target_does_not_exist() {
+    let store = store();
+    seed_location(&store, "loc-real");
+    let err = store
+        .create_memo_draft(&new_memo("default", &["loc-real", "loc-ghost"]))
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the unknown location fails the FK inside the create transaction"
+    );
+    // Nothing partial was written: no memo, no targeting row.
+    let memos: i64 = store
+        .conn()
+        .query_row("SELECT COUNT(*) FROM memos", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(memos, 0, "a failed create leaves no draft behind");
+}
+
+#[test]
+fn create_with_blank_targets_yields_an_organization_memo() {
+    let store = store();
+    let memo = store
+        .create_memo_draft(&new_memo("default", &["   ", ""]))
+        .unwrap();
+    assert!(
+        memo.location_ids.is_empty(),
+        "all-blank targeting normalizes to the empty (Organization) set"
+    );
+    assert_eq!(memo.scope(), crate::memo::MemoScope::Organization);
+}
+
+#[test]
+fn location_memo_still_sorts_above_organization() {
+    let store = store();
+    seed_location(&store, "loc-order");
+    seed_terminal(&store, "t-order", Some("loc-order"));
+    let org = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    let loc = store
+        .create_memo_draft(&new_memo("default", &["loc-order"]))
+        .unwrap();
+    store.publish_memo("default", &org.id).unwrap();
+    store.publish_memo("default", &loc.id).unwrap();
+
+    let active = store
+        .list_active_for_terminal("default", "t-order", &now())
+        .unwrap();
+    assert_eq!(active.len(), 2);
+    assert_eq!(
+        active[0].memo.id, loc.id,
+        "the Location memo (targeting rows present) stacks above the Organization memo"
+    );
+    assert_eq!(active[1].memo.id, org.id);
 }

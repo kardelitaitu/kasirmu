@@ -1,20 +1,22 @@
 //! Tenant-scoped Memo repository — the persistence behind the memo
 //! lifecycle (Phase 2 P1).
 //!
-//! Owns the `memos`, `memo_revisions`, and `memo_recipients` tables. Every
-//! read/write is tenant-scoped (`WHERE tenant_id = ?`). The repository
-//! enforces DATA invariants (valid state transitions, non-blank content,
-//! immutable revisions); AUTHORIZATION (the "author or higher role" early-stop
-//! rule via [`crate::memo::may_stop`]) is enforced by the scoped IPC command
-//! that holds the session role, mirroring how the rest of the store layer
-//! separates persistence from permission.
+//! Owns the `memos`, `memo_locations`, `memo_revisions`, and `memo_recipients`
+//! tables. Every read/write is tenant-scoped (`WHERE tenant_id = ?`). The
+//! repository enforces DATA invariants (valid state transitions, non-blank
+//! content, immutable revisions); AUTHORIZATION (the "author or higher role"
+//! early-stop rule via [`crate::memo::may_stop`]) is enforced by the scoped
+//! IPC command that holds the session role, mirroring how the rest of the
+//! store layer separates persistence from permission.
 //!
-//! Publish is the one multi-table write: it flips `draft → published`, stamps
-//! `published_at`/`expires_at` (expiry derived by the domain model), snapshots
-//! revision 1 into `memo_revisions`, and fans out one `pending` recipient row
-//! per target terminal (all terminals for an Organization Memo, the location's
-//! bound terminals for a Location Memo). It runs in a single transaction so a
-//! crash cannot leave a published memo without its revision or recipients.
+//! Targeting: a memo carries zero or more `memo_locations` rows. Zero rows ⇒
+//! Organization Memo (every terminal of the tenant); one or more ⇒ Location
+//! Memo for exactly those locations. Publish is the one multi-table write: it
+//! flips `draft → published`, stamps `published_at`/`expires_at` (expiry
+//! derived by the domain model), snapshots revision 1 into `memo_revisions`,
+//! and fans out one `pending` recipient row per target terminal. It runs in a
+//! single transaction so a crash cannot leave a published memo without its
+//! revision or recipients.
 
 use rusqlite::{OptionalExtension, params};
 
@@ -24,6 +26,21 @@ use crate::{CoreError, Store};
 /// Current UTC time in the schema's canonical ISO-8601 millisecond form.
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+/// Normalize the caller-supplied targeting set: trim each id, drop blanks,
+/// dedupe preserving first-occurrence order. An empty result is an
+/// Organization Memo — the empty set is the organization-wide audience.
+fn normalize_location_ids(ids: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for id in ids {
+        let trimmed = id.trim();
+        if !trimmed.is_empty() && seen.insert(trimmed.to_owned()) {
+            out.push(trimmed.to_owned());
+        }
+    }
+    out
 }
 
 /// Validate draft content before it can be persisted.
@@ -57,26 +74,25 @@ fn validate_new_memo(new: &NewMemo) -> Result<(), CoreError> {
 
 impl Store<'_> {
     /// Create a memo in the `draft` state. The id, timestamps, status, and
-    /// revision are assigned here; the caller supplies content + scope.
+    /// revision are assigned here; the caller supplies content + scope. The
+    /// targeting set is normalized (trimmed, deduped) before the rows are
+    /// written; an unknown location id fails the foreign key.
     pub fn create_memo_draft(&self, new: &NewMemo) -> Result<Memo, CoreError> {
         validate_new_memo(new)?;
+        let location_ids = normalize_location_ids(&new.location_ids);
         let id = uuid::Uuid::now_v7().to_string();
         let now = now_iso();
-        let location_id = new
-            .location_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned);
-        self.conn.execute(
+        // One transaction so a draft can never exist without its targeting
+        // rows (or vice versa — a memo_locations row whose memo vanished).
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO memos
-                (id, tenant_id, location_id, author_user_id, author_role, title, body,
+                (id, tenant_id, author_user_id, author_role, title, body,
                  status, duration, revision, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'draft', ?8, 1, ?9, ?9)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'draft', ?7, 1, ?8, ?8)",
             params![
                 id,
                 new.tenant_id,
-                location_id,
                 new.author_user_id,
                 new.author_role,
                 new.title.trim(),
@@ -85,6 +101,14 @@ impl Store<'_> {
                 now,
             ],
         )?;
+        for location_id in &location_ids {
+            tx.execute(
+                "INSERT INTO memo_locations (memo_id, location_id, tenant_id)
+                 VALUES (?1, ?2, ?3)",
+                params![id, location_id, new.tenant_id],
+            )?;
+        }
+        tx.commit()?;
         self.get_memo(&new.tenant_id, &id)
             .transpose()
             .ok_or_else(|| CoreError::Internal("memo vanished after insert".into()))?
@@ -94,10 +118,12 @@ impl Store<'_> {
     pub fn get_memo(&self, tenant_id: &str, memo_id: &str) -> Result<Option<Memo>, CoreError> {
         self.conn
             .query_row(
-                "SELECT id, tenant_id, location_id, author_user_id, author_role, title, body,
-                        status, duration, revision, published_at, expires_at, stopped_at,
-                        stopped_by, created_at, updated_at
-                 FROM memos WHERE tenant_id = ?1 AND id = ?2",
+                "SELECT m.id, m.tenant_id, m.author_user_id, m.author_role, m.title, m.body,
+                        m.status, m.duration, m.revision, m.published_at, m.expires_at,
+                        m.stopped_at, m.stopped_by, m.created_at, m.updated_at,
+                        (SELECT GROUP_CONCAT(ml.location_id, ',')
+                         FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
+                 FROM memos m WHERE m.tenant_id = ?1 AND m.id = ?2",
                 params![tenant_id, memo_id],
                 Self::row_to_memo,
             )
@@ -117,11 +143,13 @@ impl Store<'_> {
         author_user_id: &str,
     ) -> Result<Vec<Memo>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, tenant_id, location_id, author_user_id, author_role, title, body,
-                    status, duration, revision, published_at, expires_at, stopped_at,
-                    stopped_by, created_at, updated_at
-             FROM memos WHERE tenant_id = ?1 AND author_user_id = ?2
-             ORDER BY created_at DESC",
+            "SELECT m.id, m.tenant_id, m.author_user_id, m.author_role, m.title, m.body,
+                    m.status, m.duration, m.revision, m.published_at, m.expires_at,
+                    m.stopped_at, m.stopped_by, m.created_at, m.updated_at,
+                    (SELECT GROUP_CONCAT(ml.location_id, ',')
+                     FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
+             FROM memos m WHERE m.tenant_id = ?1 AND m.author_user_id = ?2
+             ORDER BY m.created_at DESC",
         )?;
         let rows = stmt.query_map(params![tenant_id, author_user_id], Self::row_to_memo)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
@@ -176,27 +204,27 @@ impl Store<'_> {
         )?;
         // Fan out one pending recipient per target terminal. Both branches
         // filter on `terminals.tenant_id` (20260912_terminals_tenant.sql) so a
-        // fan-out can never cross a tenant boundary; the tenant_id backfill
-        // gave unbound terminals the 'default' sentinel, so single-tenant
-        // behavior is unchanged.
-        let terminal_ids: Vec<String> = match memo.location_id.as_deref() {
-            // Location Memo: the memo's tenant's terminals bound to that
-            // location. The tenant predicate is defense-in-depth: it yields an
-            // empty (leak-free) set if a bad location_id ever slips through.
-            Some(loc) => {
-                let mut s = tx.prepare(
-                    "SELECT id FROM terminals WHERE bound_location_id = ?1 AND tenant_id = ?2 ORDER BY id",
-                )?;
-                s.query_map(params![loc, tenant_id], |r| r.get::<_, String>(0))?
-                    .collect::<Result<Vec<_>, _>>()?
-            }
-            // Organization Memo: every terminal owned by the memo's tenant.
-            None => {
-                let mut s =
-                    tx.prepare("SELECT id FROM terminals WHERE tenant_id = ?1 ORDER BY id")?;
-                s.query_map(params![tenant_id], |r| r.get::<_, String>(0))?
-                    .collect::<Result<Vec<_>, _>>()?
-            }
+        // fan-out can never cross a tenant boundary; the subquery's tenant
+        // predicate is defense-in-depth: it yields an empty (leak-free) set if
+        // a targeting row ever pointed at another tenant's location.
+        let terminal_ids: Vec<String> = if memo.location_ids.is_empty() {
+            // Organization Memo (empty targeting set): every terminal owned by
+            // the memo's tenant.
+            let mut s = tx.prepare("SELECT id FROM terminals WHERE tenant_id = ?1 ORDER BY id")?;
+            s.query_map(params![tenant_id], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            // Location Memo: the memo's tenant's terminals bound to ANY of the
+            // targeted locations.
+            let mut s = tx.prepare(
+                "SELECT id FROM terminals
+                 WHERE tenant_id = ?1
+                   AND bound_location_id IN (SELECT location_id FROM memo_locations
+                                             WHERE memo_id = ?2 AND tenant_id = ?1)
+                 ORDER BY id",
+            )?;
+            s.query_map(params![tenant_id, memo_id], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
         };
         for terminal_id in &terminal_ids {
             tx.execute(
@@ -341,8 +369,9 @@ impl Store<'_> {
     /// "Active" = the memo is `published`, not past its `expires_at` (defensive
     /// against an un-swept row), and this terminal is a recipient. Ordering
     /// stacks Location Memos above Organization Memos (the spec's display
-    /// rule): `location_id IS NULL` is false (0) for a Location Memo so it
-    /// sorts first, then newest-published first within each tier.
+    /// rule): an Organization memo has no targeting rows so `EXISTS` is false
+    /// (0) and sorts second under `DESC`; a Location memo has rows (1) and
+    /// sorts first. Within each tier, newest-published first.
     pub fn list_active_for_terminal(
         &self,
         tenant_id: &str,
@@ -350,13 +379,16 @@ impl Store<'_> {
         now: &str,
     ) -> Result<Vec<ActiveMemo>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT m.*, r.delivery_status AS recipient_status
+            "SELECT m.*, r.delivery_status AS recipient_status,
+                    (SELECT GROUP_CONCAT(ml.location_id, ',')
+                     FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
              FROM memos m
              JOIN memo_recipients r ON r.memo_id = m.id
              WHERE m.tenant_id = ?1 AND r.tenant_id = ?1 AND r.terminal_id = ?2
                AND m.status = 'published'
                AND (m.expires_at IS NULL OR m.expires_at > ?3)
-             ORDER BY (m.location_id IS NULL) ASC, m.published_at DESC",
+             ORDER BY (EXISTS (SELECT 1 FROM memo_locations ml WHERE ml.memo_id = m.id)) DESC,
+                      m.published_at DESC",
         )?;
         let rows = stmt.query_map(params![tenant_id, terminal_id, now], |row| {
             let memo = Self::row_to_memo(row)?;
@@ -483,7 +515,10 @@ impl Store<'_> {
 
     /// Map a `memos` row to the domain struct, failing closed on an unknown
     /// status/duration (the CHECK constraints make this unreachable unless the
-    /// DB is corrupted).
+    /// DB is corrupted). `location_ids_csv` is the GROUP_CONCAT subquery over
+    /// `memo_locations` — `NULL` for an Organization Memo (no targeting rows),
+    /// a comma-joined list otherwise (location ids are UUIDs, so ',' cannot
+    /// appear inside one).
     fn row_to_memo(row: &rusqlite::Row<'_>) -> rusqlite::Result<Memo> {
         let status_str: String = row.get("status")?;
         let duration_str: String = row.get("duration")?;
@@ -501,10 +536,19 @@ impl Store<'_> {
                 Box::new(crate::memo::ParseError(duration_str.clone())),
             )
         })?;
+        let location_ids_csv: Option<String> = row.get("location_ids_csv")?;
+        let location_ids = location_ids_csv
+            .map(|csv| {
+                csv.split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         Ok(Memo {
             id: row.get("id")?,
             tenant_id: row.get("tenant_id")?,
-            location_id: row.get("location_id")?,
+            location_ids,
             author_user_id: row.get("author_user_id")?,
             author_role: row.get("author_role")?,
             title: row.get("title")?,

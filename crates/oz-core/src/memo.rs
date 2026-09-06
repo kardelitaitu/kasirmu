@@ -28,26 +28,29 @@ use serde::{Deserialize, Serialize};
 
 // ── Scope ───────────────────────────────────────────────────────────
 
-/// Whether a memo targets the whole organization or a single location.
+/// Whether a memo targets the whole organization or a set of locations.
 ///
-/// Derived from whether `memos.location_id` is NULL (Organization) or set
-/// (Location); modeled explicitly so the store and UI share one vocabulary.
+/// Derived from the memo's targeting rows (`memo_locations`): zero rows ⇒
+/// Organization, one or more ⇒ Location. Modeled explicitly so the store and
+/// UI share one vocabulary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoScope {
     /// Organization Memo — owner/admin author, delivered to all registered
     /// terminals across every location.
     Organization,
-    /// Location Memo — owner/admin/manager author, delivered to one location.
+    /// Location Memo — owner/admin/manager author, delivered to the terminals
+    /// bound to one or more selected locations.
     Location,
 }
 
 impl MemoScope {
-    /// Build the scope from a memo's `location_id`: `None` ⇒ Organization.
-    pub fn from_location_id(location_id: Option<&str>) -> Self {
-        match location_id {
-            None | Some("") => MemoScope::Organization,
-            Some(_) => MemoScope::Location,
+    /// Build the scope from a memo's targeting set: empty ⇒ Organization.
+    pub fn from_location_ids(location_ids: &[String]) -> Self {
+        if location_ids.is_empty() {
+            MemoScope::Organization
+        } else {
+            MemoScope::Location
         }
     }
 }
@@ -316,8 +319,10 @@ pub struct Memo {
     pub id: String,
     /// Owning Organization/Tenant.
     pub tenant_id: String,
-    /// `None` ⇒ Organization Memo; `Some` ⇒ Location Memo for that location.
-    pub location_id: Option<String>,
+    /// Locations this memo targets, empty ⇒ Organization Memo (the empty set
+    /// is the organization-wide audience); non-empty ⇒ Location Memo for
+    /// exactly those locations.
+    pub location_ids: Vec<String>,
     /// Author's user id.
     pub author_user_id: String,
     /// Author's role snapshot at publish time (early-stop authority basis).
@@ -347,9 +352,9 @@ pub struct Memo {
 }
 
 impl Memo {
-    /// The memo's audience scope, derived from `location_id`.
+    /// The memo's audience scope, derived from its targeting set.
     pub fn scope(&self) -> MemoScope {
-        MemoScope::from_location_id(self.location_id.as_deref())
+        MemoScope::from_location_ids(&self.location_ids)
     }
 }
 
@@ -360,8 +365,9 @@ impl Memo {
 pub struct NewMemo {
     /// Owning Organization/Tenant.
     pub tenant_id: String,
-    /// `None` ⇒ Organization Memo; `Some` ⇒ Location Memo.
-    pub location_id: Option<String>,
+    /// Locations the memo targets; empty ⇒ Organization Memo. The store
+    /// normalizes the input (trims, drops blanks, dedupes in order).
+    pub location_ids: Vec<String>,
     /// Author's user id.
     pub author_user_id: String,
     /// Author's role at creation (snapshotted again at publish).

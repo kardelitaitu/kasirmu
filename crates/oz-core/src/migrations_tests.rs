@@ -385,14 +385,14 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 109 tables,
+    // All migrations applied (init + incremental) yield 110 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        109,
+        110,
         "table surface drifted"
     );
     assert_eq!(
@@ -400,9 +400,11 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
         ),
-        // 1 terminals-tenant index from `20260912_terminals_tenant.sql` on top
-        // of the previously pinned 155.
-        156,
+        // 1 terminals-tenant index from `20260912_terminals_tenant.sql` plus
+        // 2 memo-locations indexes (location + tenant) from
+        // `20260913_memo_locations.sql`, minus the dropped single-location
+        // index `idx_memos_location`, on top of the previously pinned 155.
+        157,
         "index surface drifted"
     );
     assert_eq!(
@@ -534,6 +536,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260910_memo_child_tenant_id.sql".to_string(),
             "20260911_memo_fk_restrict.sql".to_string(),
             "20260912_terminals_tenant.sql".to_string(),
+            "20260913_memo_locations.sql".to_string(),
         ]
     );
 
@@ -556,13 +559,14 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run.
+    // Schema surface is unchanged after the no-op re-run (110 tables = the
+    // 109 the surface test pinned before 20260913 added memo_locations).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        109,
+        110,
         "table surface must be unchanged after upgrade"
     );
 }
@@ -1809,4 +1813,173 @@ fn per_tenant_unique_rebuild_restores_documented_intent() {
         no_inline_unique, 0,
         "inline global UNIQUE constraints must be gone from the rebuilt products table"
     );
+}
+
+// The 20260913 migration replaces the single-location targeting column
+// (`memos.location_id`) with the `memo_locations` join table, so one Location
+// Memo can target several locations at once (Phase 3). Zero targeting rows is
+// the new representation of "Organization Memo".
+
+#[test]
+fn memo_location_column_becomes_a_join_table() {
+    // Split at the join-table migration: seed pre-migration memos into the
+    // legacy schema (which still has the location_id column), then verify the
+    // migration carries the targeting over and drops the column.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260913_memo_locations.sql")
+        .expect("memo-locations migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // One Location Memo (location_id set) and one Organization Memo (NULL),
+    // each with a published revision and a recipient row, so the rebuild's
+    // copy really is a full copy.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-old', 'Old', 'default')",
+        [],
+    )
+    .unwrap();
+    // The recipient FK needs its terminal to exist (terminal_id → terminals
+    // RESTRICT, per the 20260911 policy).
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('term-x', 'Term X', 'term-x-dev')",
+        [],
+    )
+    .unwrap();
+    for (id, location) in [("memo-loc", Some("loc-old")), ("memo-org", None)] {
+        conn.execute(
+            "INSERT INTO memos (id, tenant_id, location_id, author_user_id, author_role,
+                                title, body, status, duration)
+             VALUES (?1, 'default', ?2, 'user-1', 'admin', 'T', 'B', 'draft', '24h')",
+            rusqlite::params![id, location],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO memo_revisions (id, memo_id, tenant_id, revision, title, body,
+                                         published_at, published_by)
+             VALUES (?1 || '-rev', ?1, 'default', 1, 'T', 'B', '2026-09-07T00:00:00.000Z', 'user-1')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO memo_recipients (id, memo_id, tenant_id, terminal_id, delivery_status)
+             VALUES (?1 || '-r', ?1, 'default', 'term-x', 'pending')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    // The column is gone and the join table exists.
+    let memos_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(memos)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert!(
+        !memos_cols.iter().any(|c| c == "location_id"),
+        "memos.location_id must be replaced by the join table"
+    );
+    let tables: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memo_locations'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tables, 1, "memo_locations must exist after the migration");
+
+    // The Location Memo carried its targeting over; the Organization memo has
+    // no targeting rows (the new representation of organization-wide).
+    let targeted: Vec<String> = conn
+        .prepare("SELECT location_id FROM memo_locations WHERE memo_id = 'memo-loc'")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(targeted, vec!["loc-old".to_string()]);
+    let org_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM memo_locations WHERE memo_id = 'memo-org'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        org_rows, 0,
+        "an Organization memo must have no targeting rows"
+    );
+
+    // The rebuild is a full copy: revision + recipient rows survived for both
+    // memos, and the carried memo fields are intact.
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memos", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(total, 2, "both memos survive the rebuild");
+    let revisions: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memo_revisions", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(revisions, 2, "revision rows survive the rebuild");
+    let recipients: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memo_recipients", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(recipients, 2, "recipient rows survive the rebuild");
+    let (status, duration): (String, String) = conn
+        .query_row(
+            "SELECT status, duration FROM memos WHERE id = 'memo-loc'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "draft");
+    assert_eq!(duration, "24h");
+}
+
+#[test]
+fn memo_location_fks_follow_the_20260911_policy() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-fk', 'FK', 'default')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO memos (id, tenant_id, author_user_id, author_role, title, body, status, duration)
+         VALUES ('memo-fk', 'default', 'user-1', 'admin', 'T', 'B', 'draft', '24h')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO memo_locations (memo_id, location_id, tenant_id)
+         VALUES ('memo-fk', 'loc-fk', 'default')",
+        [],
+    )
+    .unwrap();
+
+    // RESTRICT on location_id (the 20260911 decision, inherited): a Location
+    // that a Memo still targets cannot be silently deleted.
+    let del_loc = conn.execute("DELETE FROM locations WHERE id = 'loc-fk'", []);
+    assert!(
+        del_loc.is_err(),
+        "deleting a Location that a Memo targets must be blocked (RESTRICT)"
+    );
+
+    // CASCADE on memo_id (the true-child edge): deleting the memo removes its
+    // targeting rows, exactly like memo_revisions/memo_recipients.
+    conn.execute("DELETE FROM memos WHERE id = 'memo-fk'", [])
+        .unwrap();
+    let left: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memo_locations", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(left, 0, "targeting rows go with their memo (CASCADE)");
+
+    // And the now-unreferenced Location is deletable again (no over-block).
+    conn.execute("DELETE FROM locations WHERE id = 'loc-fk'", [])
+        .expect("a location with no remaining memo targeting must be deletable");
 }

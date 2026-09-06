@@ -4,20 +4,21 @@ use chrono::{TimeZone, Utc};
 // ── Scope ───────────────────────────────────────────────────────────
 
 #[test]
-fn scope_from_location_id() {
+fn scope_from_location_ids() {
+    let empty: Vec<String> = vec![];
     assert_eq!(
-        MemoScope::from_location_id(None),
+        MemoScope::from_location_ids(&empty),
         MemoScope::Organization,
-        "NULL location is an Organization memo"
+        "the empty targeting set is an Organization memo"
     );
     assert_eq!(
-        MemoScope::from_location_id(Some("")),
-        MemoScope::Organization,
-        "empty-string location is treated as Organization, not a bogus Location"
-    );
-    assert_eq!(
-        MemoScope::from_location_id(Some("loc-1")),
+        MemoScope::from_location_ids(&["loc-1".to_string()]),
         MemoScope::Location
+    );
+    assert_eq!(
+        MemoScope::from_location_ids(&["loc-1".to_string(), "loc-2".to_string()]),
+        MemoScope::Location,
+        "a multi-location memo is still a Location memo"
     );
 }
 
