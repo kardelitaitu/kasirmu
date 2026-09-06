@@ -11,6 +11,7 @@ import {
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import analyticsFtl from '@/locales/analytics.ftl?raw';
+import subscriptionFtl from '@/locales/subscription.ftl?raw';
 import analyticsIdFtl from '@/locales/analytics.id.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import reportsFtl from '@/locales/reports.ftl?raw';
@@ -2059,6 +2060,78 @@ describe('C2.2 analytics tab lock (Plus → Pro)', () => {
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.queryByText('Analytics is a Pro feature')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('§B administrative gate (todo-global-saas-1.md)', () => {
+  afterEach(() => {
+    vi.mocked(useSubscription).mockImplementation(() => ({
+      caps: null,
+      state: 'active',
+      loading: false,
+      refresh: vi.fn(),
+    }));
+  });
+
+  it('locks the screen while the subscription is in grace — even for a Pro tier', async () => {
+    // §B: administrative features lock AT expiresAt; the tier entitlements
+    // survive grace for OPERATIONAL features only. An expired Premium/Pro
+    // subscription gets the admin lock, not the live dashboard.
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'grace',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+    // The admin lock replaces the content entirely — no live charts.
+    expect(screen.queryByTestId('echarts-mock')).not.toBeInTheDocument();
+  });
+
+  it('locks fail-closed when subscription data is unavailable', async () => {
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'unavailable',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+  });
+
+  it('prefers the admin lock over the tier upsell when both would apply', async () => {
+    // Expired Free-tier: the tier gate would say "upgrade to Pro", but §B
+    // says the admin lock is the truthful message — the tier is not the
+    // problem, the subscription state is.
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'free', supportsAnalytics: false }),
+      state: 'expired',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Analytics is a Pro feature')).not.toBeInTheDocument();
+  });
+
+  it('renders the live dashboard while active (no admin lock)', async () => {
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'active',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.queryByText('Administrative features locked')).not.toBeInTheDocument();
     });
   });
 });

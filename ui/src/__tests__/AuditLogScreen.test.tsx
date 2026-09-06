@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import AuditLogScreen from '@/features/audit/AuditLogScreen';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import {
   ACTION_FLUENT_IDS,
   ACTION_FALLBACK_ID,
@@ -13,6 +14,7 @@ import {
 } from '@/features/audit/auditCatalog';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import sharedIdFtl from '@/locales/shared.id.ftl?raw';
+import subscriptionFtl from '@/locales/subscription.ftl?raw';
 import type { AuditEntryDto, AuditLogPageDto } from '@/api/audit';
 
 const { mockListAuditLogScoped, mockGetAuditReviewStatusScoped, mockMarkAuditReviewedScoped, mockExportAuditLogScoped } =
@@ -35,6 +37,23 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok' }),
 }));
 
+// Forwarding partial mock: `useAdminGate` defaults to OPEN for the regular
+// screen tests (the §B gate test overrides it per-test), `useSubscription`
+// forwards to the real hook.
+vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@/contexts/SubscriptionContext')
+  >();
+  const adminGateMock = vi.fn().mockReturnValue({ locked: false, state: 'active' });
+  return {
+    ...actual,
+    useAdminGate: adminGateMock,
+    useSubscription: vi.fn((...args: unknown[]) =>
+      (actual.useSubscription as (...a: unknown[]) => unknown)(...args),
+    ),
+  };
+});
+
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     session: { user_id: 'user-1', username: 'admin', role_name: 'admin', token: 'tok', role_id: 'r1', display_name: 'Admin' },
@@ -54,6 +73,23 @@ function makeL10n(locale: string, ftl: string): ReactLocalization {
   bundle.addResource(new FluentResource(ftl));
   return new ReactLocalization([bundle]);
 }
+
+const adminGate = vi.mocked(useAdminGate);
+
+describe('AuditLogScreen §B administrative gate', () => {
+  afterEach(() => {
+    adminGate.mockReturnValue({ locked: false, state: 'active' });
+  });
+
+  it('locks the screen while the subscription is not active (grace)', async () => {
+    adminGate.mockReturnValue({ locked: true, state: 'grace' });
+    renderScreen(makeL10n('en-US', `${subscriptionFtl}\n${sharedFtl}`));
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Audit Log')).not.toBeInTheDocument();
+  });
+});
 
 const l10n = makeL10n('en-US', sharedFtl);
 
