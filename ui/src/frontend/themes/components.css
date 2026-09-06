@@ -1349,9 +1349,9 @@
 /* ── App boot splash (React stage) ───────────────────────────────
    Two-stage loading screen: the static stage lives inline in
    index.html / index.tablet.html (visible before any JS), and this
-   React stage renders the identical visual while AppShell's boot
-   gate (license + setup restore) resolves. Keep the static copies
-   synchronized. */
+   React stage renders the same localized label layout while
+   AppShell's boot gate (license + setup restore) resolves. Keep the
+   static copies synchronized. */
 .app-splash {
   position: fixed;
   inset: 0;
@@ -1364,25 +1364,11 @@
   font-family: var(--font-sans);
   font-size: var(--text-base);
 }
-.app-splash__logo {
-  width: 72px;
-  height: 72px;
-}
-.app-splash__spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--color-primary-soft);
-  border-top-color: var(--color-primary);
-  border-radius: var(--radius-full);
-}
 .app-splash__label {
   font-size: var(--text-sm);
 }
-@media (prefers-reduced-motion: no-preference) {
-  .app-splash__spinner {
-    animation: app-splash-spin var(--duration-600) var(--ease-linear) infinite;
-  }
-}
+/* Kept here: .lazy-boundary__spinner (below) reuses the
+   app-splash-spin keyframes. */
 @keyframes app-splash-spin {
   to { transform: rotate(360deg); }
 }

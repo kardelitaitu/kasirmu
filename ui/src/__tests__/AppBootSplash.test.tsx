@@ -8,7 +8,8 @@ import { AppBootSplash } from '@/components/AppBootSplash';
 // ── AppBootSplash tests ─────────────────────────────────────────────
 //
 // Covers the React stage of the two-stage boot splash:
-//   - renders the branded layout (logo + spinner + localized label)
+//   - renders the localized loading label (logo and spinner were
+//     removed from the splash)
 //   - exposes a polite status region with aria-busy (replaces the old
 //     bare-text AppShell gate)
 //   - removes the static stage-1 splash node (#boot-splash) on mount
@@ -25,11 +26,11 @@ describe('AppBootSplash', () => {
     document.body.appendChild(splash);
   }
 
-  it('renders the branded splash with logo, spinner and localized label', async () => {
+  it('renders the splash with the localized label and no logo or spinner', async () => {
     await renderInAct(withFluent(<AppBootSplash />, sharedFtl));
     expect(document.querySelector('.app-splash')).toBeInTheDocument();
-    expect(document.querySelector('.app-splash__logo')).toBeInTheDocument();
-    expect(document.querySelector('.app-splash__spinner')).toBeInTheDocument();
+    expect(document.querySelector('.app-splash__logo')).not.toBeInTheDocument();
+    expect(document.querySelector('.app-splash__spinner')).not.toBeInTheDocument();
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
