@@ -63,6 +63,8 @@ pub mod inventory;
 pub mod inventory_transaction;
 /// Kitchen Display System order pipeline.
 pub mod kds;
+/// Organization/Tenant legal business identity.
+pub mod legal_entity;
 /// License server client — verify, activate, renew subscriptions (ADR #9).
 pub mod license_verification;
 /// Location profile settings.
@@ -203,6 +205,7 @@ pub use kds::{
     CreateKdsLineItemInput, CreateKdsOrderInput, KdsLineItem, KdsModifier, KdsOrder, KdsStatus,
     RegisterKdsDeviceInput, UpdateKdsOrderItemsInput,
 };
+pub use legal_entity::{LegalEntity, UpdateLegalEntity};
 pub use location_profile::LocationProfile;
 
 /// Deprecated compatibility alias for the pre-Phase 1 site-unit name.

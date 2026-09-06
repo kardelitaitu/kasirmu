@@ -81,6 +81,8 @@ pub use offline::RemoteSyncFailure;
 pub mod edc_terminals;
 /// Cloud image content spine — refcount + push queue (spec 0046b §3.7).
 pub mod image_refs;
+/// Organization/Tenant-scoped Legal Entity CRUD and location assignment.
+pub mod legal_entities;
 /// Location profile CRUD.
 pub mod locations;
 /// Media asset (image) CRUD — PLANNED (stubs).
