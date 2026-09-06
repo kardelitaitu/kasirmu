@@ -1,16 +1,21 @@
 //! Subscription capability command (C2.2 in-app upgrade triggers).
 //!
-//! Exposes the active tenant subscription's quotas and feature flags —
-//! straight from `SubscriptionTier` in oz-core — plus the tenant's current
-//! usage counts (stores, staff, terminals). The UI uses this single read
-//! to render tier gates: analytics/loyalty locks, QRIS gate, second-store
+//! Exposes the tenant subscription's quotas and feature flags — straight
+//! from `SubscriptionTier` in oz-core — plus the tenant's current usage
+//! counts (stores, staff, terminals). The UI uses this single read to
+//! render tier gates: analytics/loyalty locks, QRIS gate, second-store
 //! gate, terminal-limit banner, and the approaching-limit banners.
+//!
+//! Fail-closed (todo-global-saas-1.md §B): the payload always carries a
+//! lifecycle `state`; a missing/tampered/unreadable subscription yields
+//! Free entitlements + `unavailable` instead of an IPC error, because the
+//! UI's error path renders gates open.
 
 use serde::Serialize;
 use tauri::State;
 
 use oz_core::db::Store;
-use oz_core::subscription::{SubscriptionTier, TenantSubscription};
+use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -21,6 +26,10 @@ use crate::state::AppState;
 pub struct SubscriptionCapabilitiesDto {
     /// Tier key (`free`, `plus`, `pro`, `premium`, `enterprise`).
     pub tier: String,
+    /// Lifecycle state (todo-global-saas-1.md §B): `active`, `grace`,
+    /// `expired`, `canceled`, `paused`, or `unavailable`. Anything other
+    /// than `active`/`grace` carries Free-tier entitlements below.
+    pub state: String,
     /// Maximum stores allowed (`None` = unlimited).
     pub max_stores: Option<i64>,
     /// Maximum POS registers per store (`None` = unlimited).
@@ -54,34 +63,73 @@ pub struct SubscriptionCapabilitiesDto {
 }
 
 /// Load the tenant's capabilities + usage from the global identity DB.
+///
+/// Fail-closed (todo-global-saas-1.md §B): a missing row, a tampered
+/// signature, or an unreadable subscription table must NOT error into the
+/// UI's catch path (where `caps: null` renders every gate open). It
+/// returns Free-tier capabilities with `state: "unavailable"` so every
+/// tier gate locks; the UI shows the state instead of silently granting.
 fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabilitiesDto, AppError> {
-    let sub = TenantSubscription::load(db, "default")?
-        .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-    sub.verify_signature()?;
-    let tier = sub.effective_tier();
+    let loaded = match TenantSubscription::load(db, "default") {
+        Ok(Some(sub)) => match sub.verify_signature() {
+            Ok(()) => Some(sub),
+            Err(e) => {
+                tracing::warn!("subscription signature verification failed — failing closed: {e}");
+                None
+            }
+        },
+        Ok(None) => {
+            tracing::warn!("no tenant_subscription row for 'default' — failing closed");
+            None
+        }
+        Err(e) => {
+            tracing::warn!("tenant_subscription read failed — failing closed: {e}");
+            None
+        }
+    };
+
+    let state = loaded
+        .as_ref()
+        .map(|sub| sub.lifecycle_state())
+        .unwrap_or(SubscriptionLifecycleState::Unavailable);
+    // Grace-aware entitlement tier; Free when the subscription is not
+    // readable (fail closed).
+    let tier = loaded
+        .as_ref()
+        .map(|sub| sub.effective_tier())
+        .unwrap_or(SubscriptionTier::Free);
 
     // In debug/dev builds, upgrade the bootstrap Free tier to Premium so
     // all features are available during development. This mirrors the
     // dev-mock's behavior (which returns Pro-tier capabilities). The real
     // Free tier is only enforced in release builds where a license server
-    // issues signed subscriptions.
+    // issues signed subscriptions. The upgrade applies only to a genuinely
+    // `active` subscription — expired/canceled/paused/unavailable rows
+    // keep their downgraded entitlements so dev can exercise those paths.
     #[cfg(debug_assertions)]
-    let tier = if tier == SubscriptionTier::Free {
+    let tier = if state == SubscriptionLifecycleState::Active && tier == SubscriptionTier::Free {
         SubscriptionTier::Premium
     } else {
         tier
     };
 
-    let location_count: i64 = db
-        .query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))
-        .map_err(|e| AppError::Internal(format!("count locations: {e}")))?;
-    let terminal_count: i64 = db
-        .query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))
-        .map_err(|e| AppError::Internal(format!("count terminals: {e}")))?;
-    let staff_count = Store::new(db).count_staff_users()?;
+    // Usage counts are best-effort: they drive approaching-limit banners
+    // only, and a broken global DB must still yield a definitive
+    // fail-closed capabilities payload rather than an IPC error.
+    let count = |sql: &str| -> i64 {
+        db.query_row(sql, [], |r| r.get(0)).unwrap_or_else(|e| {
+            tracing::warn!("usage count failed ({sql}) — reporting 0: {e}");
+            0
+        })
+    };
+    let staff_count = Store::new(db).count_staff_users().unwrap_or_else(|e| {
+        tracing::warn!("staff count failed — reporting 0: {e}");
+        0
+    });
 
     Ok(SubscriptionCapabilitiesDto {
         tier: tier.tier_key().to_string(),
+        state: state.as_str().to_string(),
         // Wire field keeps the historical `max_stores` name (the UI reads it);
         // the canonical quota method is max_locations.
         max_stores: tier.max_locations(),
@@ -90,15 +138,25 @@ fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabiliti
         max_staff_users: tier.max_staff_users(),
         sales_history_days: tier.sales_history_days(),
         supports_qris: tier.supports_qris(),
-        supports_analytics: tier.supports_analytics(),
+        // Addon-aware (C4.3): Plus + advanced_analytics unlocks analytics —
+        // parity with the tablet command. The static part comes from the
+        // entitlement tier (so the dev Free→Premium upgrade applies); the
+        // addon grant flows only while the subscription is active or in
+        // grace — canceled/expired rows get the downgraded answer.
+        supports_analytics: tier.supports_analytics()
+            || ((state == SubscriptionLifecycleState::Active
+                || state == SubscriptionLifecycleState::Grace)
+                && loaded
+                    .as_ref()
+                    .is_some_and(|sub| sub.supports_analytics_with_addons())),
         supports_loyalty: tier.supports_loyalty(),
         supports_daily_dashboard: tier.supports_daily_dashboard(),
         supports_cloud_sync: tier.supports_cloud_sync(),
         offline_grace_days: tier.offline_grace_days(),
-        location_count,
+        location_count: count("SELECT COUNT(*) FROM locations"),
         staff_count,
-        terminal_count,
-        addons: sub.addons(),
+        terminal_count: count("SELECT COUNT(*) FROM terminals"),
+        addons: loaded.as_ref().map(|sub| sub.addons()).unwrap_or_default(),
     })
 }
 

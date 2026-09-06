@@ -3,12 +3,17 @@
 //! Tablet mirror of the desktop command: exposes the active tenant
 //! subscription's quotas and feature flags plus current usage counts so the
 //! shared UI can render tier gates (QRIS gate, terminal-limit banner, …).
+//!
+//! Fail-closed (todo-global-saas-1.md §B): the payload always carries a
+//! lifecycle `state`; a missing/tampered/unreadable subscription yields
+//! Free entitlements + `unavailable` instead of an IPC error, because the
+//! UI's error path renders gates open.
 
 use serde::Serialize;
 use tauri::{State, command};
 
 use oz_core::db::Store;
-use oz_core::subscription::TenantSubscription;
+use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -19,6 +24,10 @@ use crate::state::AppState;
 pub struct SubscriptionCapabilitiesDto {
     /// Tier key (`free`, `plus`, `pro`, `premium`, `enterprise`).
     pub tier: String,
+    /// Lifecycle state (todo-global-saas-1.md §B): `active`, `grace`,
+    /// `expired`, `canceled`, `paused`, or `unavailable`. Anything other
+    /// than `active`/`grace` carries Free-tier entitlements below.
+    pub state: String,
     /// Maximum stores allowed (`None` = unlimited).
     pub max_stores: Option<i64>,
     /// Maximum POS registers per store (`None` = unlimited).
@@ -52,37 +61,83 @@ pub struct SubscriptionCapabilitiesDto {
 }
 
 /// Read the tenant's subscription capabilities and current usage.
+///
+/// Fail-closed (todo-global-saas-1.md §B): a missing row, a tampered
+/// signature, or an unreadable subscription table returns Free-tier
+/// capabilities with `state: "unavailable"` instead of an IPC error — the
+/// UI's error path renders gates open, so the authoritative fail-closed
+/// representation must come from here.
 #[command]
 pub async fn get_subscription_capabilities(
     state: State<'_, AppState>,
 ) -> Result<SubscriptionCapabilitiesDto, AppError> {
     let db = state.db.lock().await;
-    let sub = TenantSubscription::load(&db, "default")?
-        .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-    sub.verify_signature()?;
-    let tier = sub.effective_tier();
+    let loaded = match TenantSubscription::load(&db, "default") {
+        Ok(Some(sub)) => match sub.verify_signature() {
+            Ok(()) => Some(sub),
+            Err(e) => {
+                tracing::warn!("subscription signature verification failed — failing closed: {e}");
+                None
+            }
+        },
+        Ok(None) => {
+            tracing::warn!("no tenant_subscription row for 'default' — failing closed");
+            None
+        }
+        Err(e) => {
+            tracing::warn!("tenant_subscription read failed — failing closed: {e}");
+            None
+        }
+    };
 
-    let location_count: i64 = db
-        .query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))
-        .map_err(|e| AppError::Internal(format!("count locations: {e}")))?;
-    let terminal_count: i64 = db
-        .query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))
-        .map_err(|e| AppError::Internal(format!("count terminals: {e}")))?;
-    let staff_count = Store::new(&db).count_staff_users()?;
+    let lifecycle = loaded
+        .as_ref()
+        .map(|sub| sub.lifecycle_state())
+        .unwrap_or(SubscriptionLifecycleState::Unavailable);
+    // Grace-aware entitlement tier; Free when the subscription is not
+    // readable (fail closed).
+    let tier = loaded
+        .as_ref()
+        .map(|sub| sub.effective_tier())
+        .unwrap_or(SubscriptionTier::Free);
+
+    // Usage counts are best-effort: they drive approaching-limit banners
+    // only, and a broken global DB must still yield a definitive
+    // fail-closed capabilities payload rather than an IPC error.
+    let count = |sql: &str| -> i64 {
+        db.query_row(sql, [], |r| r.get(0)).unwrap_or_else(|e| {
+            tracing::warn!("usage count failed ({sql}) — reporting 0: {e}");
+            0
+        })
+    };
+    let staff_count = Store::new(&db).count_staff_users().unwrap_or_else(|e| {
+        tracing::warn!("staff count failed — reporting 0: {e}");
+        0
+    });
+    let location_count = count("SELECT COUNT(*) FROM locations");
+    let terminal_count = count("SELECT COUNT(*) FROM terminals");
 
     drop(db);
 
     Ok(SubscriptionCapabilitiesDto {
         tier: tier.tier_key().to_string(),
-        // Wire field keeps the historical `max_stores` name (the UI reads it);
-        // the canonical quota method is max_locations.
-        max_stores: tier.max_locations(),
+        state: lifecycle.as_str().to_string(),
+        max_stores: tier.max_stores(),
         max_pos_instances: tier.max_pos_instances(),
         max_warehouses: tier.max_warehouses(),
         max_staff_users: tier.max_staff_users(),
         sales_history_days: tier.sales_history_days(),
         supports_qris: tier.supports_qris(),
-        supports_analytics: sub.supports_analytics_with_addons(),
+        // Addon-aware (C4.3): Plus + advanced_analytics unlocks analytics.
+        // The static part comes from the entitlement tier; the addon grant
+        // flows only while the subscription is active or in grace —
+        // canceled/expired rows get the downgraded answer.
+        supports_analytics: tier.supports_analytics()
+            || ((lifecycle == SubscriptionLifecycleState::Active
+                || lifecycle == SubscriptionLifecycleState::Grace)
+                && loaded
+                    .as_ref()
+                    .is_some_and(|sub| sub.supports_analytics_with_addons())),
         supports_loyalty: tier.supports_loyalty(),
         supports_daily_dashboard: tier.supports_daily_dashboard(),
         supports_cloud_sync: tier.supports_cloud_sync(),
@@ -90,6 +145,6 @@ pub async fn get_subscription_capabilities(
         location_count,
         staff_count,
         terminal_count,
-        addons: sub.addons(),
+        addons: loaded.as_ref().map(|sub| sub.addons()).unwrap_or_default(),
     })
 }
