@@ -242,6 +242,30 @@ pub async fn create_product(
     let db = state.db.lock().await;
     let store = Store::new(&db);
 
+    // Quota: enforce the tier's product cap (subscription-tiers.md
+    // §Numeric Limits) against the same SQLite fallback DB. The cloud DB
+    // carries the tenant_subscription row (mirrored by the generated PG
+    // schema), so the effective tier resolves here directly. An unknown
+    // or tampered subscription fails closed at the Free cap.
+    let tier = oz_core::TenantSubscription::load(&db, tenant_id)
+        .ok()
+        .flatten()
+        .map(|sub| match sub.verify_signature() {
+            Ok(()) => sub.effective_tier(),
+            Err(_) => oz_core::SubscriptionTier::Free,
+        })
+        .unwrap_or(oz_core::SubscriptionTier::Free);
+    if let Err(e) = store.enforce_product_quota(&tier) {
+        // 402 Payment Required — the resource exists; the tier does not
+        // cover it. Matches the SubscriptionLimitExceeded messaging the
+        // IPC layer surfaces with an upgrade CTA.
+        return (
+            StatusCode::PAYMENT_REQUIRED,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response();
+    }
+
     match store.create_product(
         &body.sku,
         &body.name,

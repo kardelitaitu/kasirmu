@@ -376,6 +376,18 @@ pub async fn create_product(
     args: CreateProductArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateProductResult, AppError> {
+    // Quota: the tier's product/menu cap (subscription-tiers.md §Numeric
+    // Limits) is enforced before creation. This legacy pre-session command
+    // runs against the global database, so both the tier and the product
+    // count come from that single connection.
+    let sub = {
+        let global_db = state.db.lock().await;
+        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub
+    };
     // Scope the DB borrow so Store (which is !Send) is dropped before
     // the next .await point when we lock the kernel for event publishing.
     {
@@ -389,6 +401,7 @@ pub async fn create_product(
         if args.cost_minor != 0 {
             require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_EDIT_COST)?;
         }
+        store.enforce_product_quota(&sub.effective_tier())?;
 
         let currency: oz_core::Currency = args
             .currency
@@ -802,6 +815,17 @@ pub async fn create_product_scoped(
     // the next .await point when we lock the kernel for event publishing.
     {
         let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        // Quota: the tier's product/menu cap (subscription-tiers.md
+        // §Numeric Limits) is enforced per-location catalog before
+        // creation. Tier from the global identity DB, count from the
+        // scoped store DB.
+        let sub = {
+            let global_db = state.db.lock().await;
+            oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+            oz_core::TenantSubscription::load(&global_db, "default")?
+                .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+        };
+        sub.verify_signature()?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -815,6 +839,7 @@ pub async fn create_product_scoped(
         if args.cost_minor != 0 {
             require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
         }
+        store.enforce_product_quota(&sub.effective_tier())?;
 
         let currency: oz_core::Currency = args
             .currency

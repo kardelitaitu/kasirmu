@@ -526,6 +526,17 @@ pub async fn create_product_scoped(
         .open_store(&session.store_id)
         .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
 
+    // Quota: the tier's product/menu cap (subscription-tiers.md §Numeric
+    // Limits) is enforced per-location catalog before creation. The tier
+    // comes from the global identity DB; the count from the store DB.
+    let sub = {
+        let global_db = state.db.lock().await;
+        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+
     // Scope the DB borrow so Store (which is !Send) is dropped before
     // the next .await point when we lock the kernel for event publishing.
     {
@@ -533,6 +544,8 @@ pub async fn create_product_scoped(
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
+
+        store.enforce_product_quota(&sub.effective_tier())?;
 
         let currency: oz_core::Currency = args
             .currency

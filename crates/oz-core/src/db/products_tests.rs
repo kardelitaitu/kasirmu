@@ -2389,3 +2389,77 @@ fn list_products_stock_is_sum_across_locations() {
         "stock column must total units across all locations (ADR #36 D3)"
     );
 }
+
+// ── Product quota (subscription-tiers.md §Numeric Limits) ─────────────
+
+#[test]
+fn tier_max_products_matches_published_contract() {
+    use crate::subscription::SubscriptionTier;
+    assert_eq!(SubscriptionTier::Free.max_products(), Some(200));
+    assert_eq!(SubscriptionTier::Plus.max_products(), Some(500));
+    assert_eq!(SubscriptionTier::Pro.max_products(), Some(1_000));
+    assert_eq!(SubscriptionTier::Premium.max_products(), Some(10_000));
+    assert_eq!(SubscriptionTier::Enterprise.max_products(), None);
+}
+
+#[test]
+fn enforce_product_quota_allows_under_limit() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let store = Store::new(&conn);
+    // 3 seeded products, Free cap is 200 — passes.
+    store
+        .enforce_product_quota(&crate::subscription::SubscriptionTier::Free)
+        .expect("3 products must be under the Free 200 cap");
+}
+
+#[test]
+fn enforce_product_quota_rejects_at_limit() {
+    let conn = fresh();
+    let store = Store::new(&conn);
+    // Free cap is 200 — insert exactly 200 rows, then the next must fail.
+    for i in 0..200 {
+        store
+            .create_product(
+                &format!("SKU-{i:03}"),
+                &format!("P{i}"),
+                Money::zero(usd()),
+                None,
+                None,
+                0,
+                None,
+            )
+            .expect("insert under cap");
+    }
+    let err = store
+        .enforce_product_quota(&crate::subscription::SubscriptionTier::Free)
+        .expect_err("200 products must hit the Free cap");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("200 products"),
+        "actionable message expected, got: {msg}"
+    );
+    assert!(msg.contains("Free"), "tier name expected, got: {msg}");
+}
+
+#[test]
+fn enforce_product_quota_enterprise_unlimited() {
+    let conn = fresh();
+    let store = Store::new(&conn);
+    for i in 0..210 {
+        store
+            .create_product(
+                &format!("SKU-{i:03}"),
+                &format!("P{i}"),
+                Money::zero(usd()),
+                None,
+                None,
+                0,
+                None,
+            )
+            .expect("enterprise has no product cap");
+    }
+    store
+        .enforce_product_quota(&crate::subscription::SubscriptionTier::Enterprise)
+        .expect("Enterprise is unlimited");
+}

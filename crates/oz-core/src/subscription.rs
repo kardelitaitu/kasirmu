@@ -184,6 +184,32 @@ impl SubscriptionTier {
         }
     }
 
+    /// Maximum products/menu items allowed for this tier
+    /// (subscription-tiers.md §Numeric Limits — published contract,
+    /// now enforced). Returns `None` for unlimited (Enterprise).
+    pub fn max_products(&self) -> Option<i64> {
+        match self {
+            Self::Free | Self::OneTime => Some(200),
+            Self::Plus => Some(500),
+            Self::Pro => Some(1_000),
+            Self::Premium => Some(10_000),
+            Self::Enterprise => None,
+        }
+    }
+
+    /// Maximum KDS (kitchen display) screens allowed for this tier
+    /// (subscription-tiers.md §Numeric Limits — published contract,
+    /// now enforced). Free/Plus cannot run KDS at all (also rejected by
+    /// `allows_workspace_type`); Pro is capped at 2; Premium/Enterprise
+    /// are unlimited (`None`).
+    pub fn max_kds_screens(&self) -> Option<i64> {
+        match self {
+            Self::Free | Self::OneTime | Self::Plus => Some(0),
+            Self::Pro => Some(2),
+            Self::Premium | Self::Enterprise => None,
+        }
+    }
+
     /// How far back (in days) sales history can be viewed/exported.
     /// Returns `None` for unlimited (Premium/Enterprise). Free/Plus/Pro
     /// have capped history as a tier differentiator.
@@ -701,6 +727,26 @@ pub enum QuotaError {
         /// The current active warehouse count.
         current: i64,
     },
+    /// The tenant has reached their product/menu-item limit
+    /// (subscription-tiers.md §Numeric Limits).
+    ProductLimit {
+        /// The subscription tier name.
+        tier: String,
+        /// The maximum number of products allowed.
+        limit: i64,
+        /// The current product count.
+        current: i64,
+    },
+    /// The tenant has reached their KDS screen limit
+    /// (subscription-tiers.md §Numeric Limits).
+    KdsScreenLimit {
+        /// The subscription tier name.
+        tier: String,
+        /// The maximum number of KDS screens allowed.
+        limit: i64,
+        /// The current active KDS screen count.
+        current: i64,
+    },
 }
 
 impl std::fmt::Display for QuotaError {
@@ -754,6 +800,28 @@ impl std::fmt::Display for QuotaError {
                 write!(
                     f,
                     "Your {tier} tier allows maximum {limit} warehouse locations. \
+                     You currently have {current}. Upgrade to add more."
+                )
+            }
+            Self::ProductLimit {
+                tier,
+                limit,
+                current,
+            } => {
+                write!(
+                    f,
+                    "Your {tier} tier allows maximum {limit} products. \
+                     You currently have {current}. Upgrade to add more."
+                )
+            }
+            Self::KdsScreenLimit {
+                tier,
+                limit,
+                current,
+            } => {
+                write!(
+                    f,
+                    "Your {tier} tier allows maximum {limit} KDS screens. \
                      You currently have {current}. Upgrade to add more."
                 )
             }

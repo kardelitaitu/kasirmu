@@ -10,6 +10,7 @@
 //! Invariants: SKU uniqueness per tenant; money fields are i64 minor
 //! units; writes run inside transactions; version CAS returns Conflict.
 use super::*;
+use crate::subscription::{QuotaError, SubscriptionTier};
 
 // ── Product CRUD ─────────────────────────────────────────────────────
 
@@ -195,6 +196,33 @@ impl Store<'_> {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Enforce the subscription tier's product/menu-item limit before
+    /// creating a product (subscription-tiers.md §Numeric Limits —
+    /// Free 200 / Plus 500 / Pro 1,000 / Premium 10,000 / Enterprise
+    /// unlimited). The count runs against the products table of the
+    /// database this [`Store`] wraps (per-location catalog).
+    ///
+    /// When the tier's `max_products()` cap is reached, returns
+    /// [`QuotaError::ProductLimit`] (surfaced as
+    /// `SubscriptionLimitExceeded`, which the UI maps to an upgrade CTA).
+    /// Unlimited tiers (`None`) pass.
+    pub fn enforce_product_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
+        if let Some(limit) = tier.max_products() {
+            let current: i64 = self
+                .conn
+                .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
+            if current >= limit {
+                return Err(QuotaError::ProductLimit {
+                    tier: tier.name().into(),
+                    limit,
+                    current,
+                }
+                .into());
+            }
+        }
+        Ok(())
     }
 
     /// Insert a new product and optionally an inventory row.

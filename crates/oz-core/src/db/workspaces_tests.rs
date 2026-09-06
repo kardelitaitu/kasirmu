@@ -1706,3 +1706,132 @@ fn list_workspaces_with_entitlement_staff_filters_by_tier_after_assignment() {
     );
     assert_eq!(dto.len(), 1, "expected only store-pos, got {dto:?}");
 }
+
+// ── KDS screen quota (subscription-tiers.md §Numeric Limits) ──────────
+
+#[test]
+fn tier_max_kds_screens_matches_published_contract() {
+    assert_eq!(SubscriptionTier::Free.max_kds_screens(), Some(0));
+    assert_eq!(SubscriptionTier::Plus.max_kds_screens(), Some(0));
+    assert_eq!(SubscriptionTier::Pro.max_kds_screens(), Some(2));
+    assert_eq!(SubscriptionTier::Premium.max_kds_screens(), None);
+    assert_eq!(SubscriptionTier::Enterprise.max_kds_screens(), None);
+}
+
+#[test]
+fn enforce_instance_quota_rejects_third_kds_on_pro() {
+    // Pro allows 2 KDS screens — a third must be rejected with the
+    // actionable KDS message, not the register or type message.
+    let (store, _) = fresh();
+    let pro = sub_for_tier(SubscriptionTier::Pro);
+    // Force the kds type through the type allowlist (Pro allows it
+    // statically, but sub_for_tier carries the bootstrap `[]` payload —
+    // the empty list falls back to tier defaults, so kds passes).
+    let store_id = "kds-quota";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-quota', 'KDS Quota')",
+            [],
+        )
+        .unwrap();
+    for i in 0..2 {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'kds', ?2, ?3, 'active', '2026-01-01', '2026-01-01')",
+                rusqlite::params![format!("kds-{i}"), store_id, format!("KDS {i}")],
+            )
+            .unwrap();
+    }
+    let result = store.enforce_instance_quota(&pro, "kds", store_id);
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("2 KDS screens"),
+        "expected KDS screen message, got: {err}"
+    );
+}
+
+#[test]
+fn enforce_instance_quota_allows_two_kds_on_pro() {
+    let (store, _) = fresh();
+    let pro = sub_for_tier(SubscriptionTier::Pro);
+    let store_id = "kds-ok";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-ok', 'KDS Ok')",
+            [],
+        )
+        .unwrap();
+    store
+        .conn
+        .execute(
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+             VALUES ('kds-0', 'kds', 'kds-ok', 'KDS 0', 'active', '2026-01-01', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+    store
+        .enforce_instance_quota(&pro, "kds", store_id)
+        .expect("1 active KDS screen is under the Pro cap of 2");
+}
+
+#[test]
+fn enforce_instance_quota_kds_unlimited_on_premium() {
+    let (store, _) = fresh();
+    let premium = sub_for_tier(SubscriptionTier::Premium);
+    let store_id = "kds-premium";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-premium', 'KDS Premium')",
+            [],
+        )
+        .unwrap();
+    for i in 0..5 {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'kds', ?2, ?3, 'active', '2026-01-01', '2026-01-01')",
+                rusqlite::params![format!("kds-{i}"), store_id, format!("KDS {i}")],
+            )
+            .unwrap();
+    }
+    store
+        .enforce_instance_quota(&premium, "kds", store_id)
+        .expect("Premium has no KDS screen cap");
+}
+
+#[test]
+fn enforce_instance_quota_bundle_plus_kds_gets_two_screen_budget() {
+    // C3.2 + §Numeric Limits reconciliation: the signed bundle unlocks the
+    // kds TYPE on Plus; the screen budget becomes Pro's 2 (a static 0 would
+    // make the paid entitlement meaningless). Two screens pass, the third
+    // is rejected with the KDS message.
+    let (store, _) = fresh();
+    let sub = plus_bundle_sub();
+    let store_id = "kds-bundle";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-bundle', 'KDS Bundle')",
+            [],
+        )
+        .unwrap();
+    for i in 0..1 {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'kds', ?2, ?3, 'active', '2026-01-01', '2026-01-01')",
+                rusqlite::params![format!("kds-{i}"), store_id, format!("KDS {i}")],
+            )
+            .unwrap();
+    }
+    store
+        .enforce_instance_quota(&sub, "kds", store_id)
+        .expect("bundle Plus gets a 2-screen budget; 1 active leaves room for the second");
+}

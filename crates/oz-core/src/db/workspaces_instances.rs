@@ -329,6 +329,22 @@ impl Store<'_> {
         )?;
         Ok(count)
     }
+
+    /// Count active KDS (kitchen display) instances in a store.
+    ///
+    /// The tier's `max_kds_screens` limit governs KDS screens
+    /// (subscription-tiers.md §Numeric Limits — published contract).
+    pub fn count_active_kds_instances(&self, store_id: &str) -> Result<i64, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM workspace_instances
+             WHERE location_id = ?1
+               AND type_key = 'kds'
+               AND status NOT IN ('archived', 'quota_suspended')",
+            params![store_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
 }
 
 impl Store<'_> {

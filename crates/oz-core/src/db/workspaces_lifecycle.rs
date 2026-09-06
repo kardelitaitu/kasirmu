@@ -65,6 +65,29 @@ impl Store<'_> {
                     .into());
                 }
             }
+        } else if type_key == "kds" {
+            // KDS screen cap (subscription-tiers.md §Numeric Limits —
+            // published contract: Free/Plus 0, Pro 2, Premium+ unlimited).
+            // The type-allowlist above already rejects kds on Free/Plus, so
+            // this count gate only bites on Pro in practice — EXCEPT for a
+            // C3.2 bundle (Plus + restaurant_starter), whose signed payload
+            // unlocks the kds TYPE on a tier whose static cap is 0. A
+            // static 0 would make that paid entitlement meaningless, so a
+            // payload-widened kds gets Pro's screen budget (2).
+            if let Some(limit) = effective.max_kds_screens() {
+                let payload_widened =
+                    !effective.allows_workspace_type("kds") && sub.allows_workspace_type("kds");
+                let limit = if payload_widened { 2 } else { limit };
+                let current = self.count_active_kds_instances(store_id)?;
+                if current >= limit {
+                    return Err(QuotaError::KdsScreenLimit {
+                        tier: effective.name().into(),
+                        limit,
+                        current,
+                    }
+                    .into());
+                }
+            }
         }
 
         Ok(())
