@@ -317,6 +317,7 @@ pub struct ReviseMemoArgs {
     pub body: String,
 }
 
+/// Revise an existing memo with new title and body. Requires `memo:write`.
 #[tauri::command]
 pub async fn revise_memo_scoped(
     memo_id: String,
