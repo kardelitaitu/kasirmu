@@ -54,14 +54,14 @@ fn seed_restaurant_sale(state: &AppState) {
     let usd: oz_core::Currency = "USD".parse().unwrap();
     let unit = oz_core::Money {
         minor_units: 500,
-        currency: usd.clone(),
+        currency: usd,
     };
     let sale = oz_core::Sale {
         id: "sale-kds-t1".into(),
         status: oz_core::SaleStatus::Pending,
-        total: unit.clone(),
+        total: unit,
         line_count: 1,
-        currency: usd.clone(),
+        currency: usd,
         payment_method: None,
         tendered_minor: None,
         user_id: Some("user-owner".into()),
@@ -72,8 +72,8 @@ fn seed_restaurant_sale(state: &AppState) {
             sale_id: "sale-kds-t1".into(),
             sku: "BURGER".into(),
             qty: 1,
-            unit_price: unit.clone(),
-            line_total: unit.clone(),
+            unit_price: unit,
+            line_total: unit,
             line_position: 1,
             tax_amount: oz_core::Money {
                 minor_units: 0,
@@ -126,7 +126,7 @@ fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
         .unwrap()
 }
 
-fn create_order_in_store(state: &AppState, id: &str) -> KdsOrder {
+fn create_order_in_store(state: &AppState, _id: &str) -> KdsOrder {
     let store_db = state.db_manager.open_store("store-a").unwrap();
     let db = store_db.lock().unwrap();
     let s = Store::new(&db);

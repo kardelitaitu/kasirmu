@@ -1396,15 +1396,15 @@ fn create_restaurant_sale_in_store(state: &AppState, sale_id: &str) {
     let usd: Currency = "USD".parse().unwrap();
     let unit = Money {
         minor_units: 500,
-        currency: usd.clone(),
+        currency: usd,
     };
     let line_id = uuid::Uuid::now_v7().to_string();
     let sale = Sale {
         id: sale_id.into(),
         status: SaleStatus::Pending,
-        total: unit.clone(),
+        total: unit,
         line_count: 1,
-        currency: usd.clone(),
+        currency: usd,
         payment_method: None,
         tendered_minor: None,
         user_id: Some("user-owner".into()),
@@ -1415,12 +1415,12 @@ fn create_restaurant_sale_in_store(state: &AppState, sale_id: &str) {
             sale_id: sale_id.into(),
             sku: "BURGER".into(),
             qty: 1,
-            unit_price: unit.clone(),
-            line_total: unit.clone(),
+            unit_price: unit,
+            line_total: unit,
             line_position: 1,
             tax_amount: Money {
                 minor_units: 0,
-                currency: usd.clone(),
+                currency: usd,
             },
             tax_rate_id: None,
             tax_breakdown_json: None,
@@ -1430,7 +1430,7 @@ fn create_restaurant_sale_in_store(state: &AppState, sale_id: &str) {
         }],
         discount_percent: 0,
         discount_label: None,
-        subtotal: unit.clone(),
+        subtotal: unit,
         tax_total: Money {
             minor_units: 0,
             currency: usd,
