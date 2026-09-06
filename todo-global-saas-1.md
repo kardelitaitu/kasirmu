@@ -519,18 +519,28 @@ Scope findings from the pre-implementation investigation, in execution order:
     "Next slice" box and item 1d above). What keeps 1e checked-no is exactly
     row three: the `features/stores/` directory name, the `multi-store.ftl`
     filename, and the remaining `store`-worded FTL keys and copy.
-    **Dir-slice update 2026-09-07:** the directory part of row three is done —
-    `ui/src/features/stores/` is now `ui/src/features/locations/` (`git mv`,
-    40 files) with all 55 referencing sites rewritten (54 test files plus
-    `SettingsPage.tsx`'s `TopologyScreen` import) and both path-dependent
-    scripts updated. `verify-topology-parity.py` re-run: OK (byte-identical
-    semantics, 567-verdict corpus). `storageKeyPins.test.ts` and
-    `popoverSurfaceCompliance.test.ts` file pins updated to the new paths so
-    they keep auditing the real files. Commits: `a965f481` (rename + import
-    rewrites), `f809ccde` (SettingsPage import), `b83785b6` (stale index
-    entries dropped). Validation: `tsc --noEmit` clean, eslint clean, ~1,730
-    tests across the topology/dashboard/pin suites green. Still open in row
-    three: the `multi-store.ftl` filename and the `store`-worded FTL keys.
+    **FTL-slice update 2026-09-07:** the `multi-store.ftl` filename part is
+    done — both bundles are now `multi-location.ftl` / `multi-location.id.ftl`
+    (`88a14c91`/`f5e191aa`), the registry imports in `i18n/index.ts` and
+    `locales/index.ts` updated, `verify-ftl-orphans.py`'s prose path fixed, and
+    12 `?raw` test imports re-pointed. As part of the same commit the **32
+    orphan `topology-*` key pairs were deleted from both bundles** — they died
+    when their consumers were removed (`f89a46b7` deleted the shortcuts-help
+    popover, `32d64336` the palette heading, `4653d966` the sim controls) but
+    pre-date the orphan gate (`a410ea9f`), which is staged-scoped and could
+    never see them; the whole-file rename re-counted every key in the renamed
+    file as "added", which is what finally surfaced them. 333 keys remain in
+    the renamed bundle, all referenced. Validation: `tsc --noEmit` clean,
+    orphan gate OK (333/333 referenced), bundle parity 0 missing, 1,300+
+    tests green across the 13 touched suites (i18nBundle, NodeTopologyEditor,
+    a11y, minimap/node-card/finder/relationship-picker/validation-widget/
+    warehouse-card/wire-group, memo, Inspector, DevMock).
+
+    **1e is now closed.** The only remaining `store`-worded strings are
+    intentionally preserved per the Terminology table: `store-pos` /
+    `restaurant-pos` legacy workspace identifiers, the `multi-store` feature
+    flag, `storeProfileId` topology metadata, CSS class names, and
+    `inventory_locations` stock points.
 
     The journal's earlier "cheapest high-value move" advice — migrate the five
     report/analytics screens' `getPrimaryStoreScoped` imports first since the
@@ -763,10 +773,13 @@ Scope findings from the pre-implementation investigation, in execution order:
             scoped-alias tests. **Completed 2026-09-06** (`07c7b0f0`) — 7
             tablet allowlist entries removed, dev-mock legacy handler families
             removed, scoped-alias regression list trimmed; gate exits 0.
-      - [ ] 1e. UI: `api/stores.ts` → `api/locations.ts`, `features/stores/` →
+      - [x] 1e. UI: `api/stores.ts` → `api/locations.ts`, `features/stores/` →
             `features/locations/`, `stores` route → `locations`, tool card,
             FTL keys (enumerate; `multi-store.ftl` → `multi-location.ftl`),
-            tests.
+            tests. **Completed 2026-09-07** — callers migrated `a18a6134`, shim
+            retired `07c7b0f0`, directory renamed `a965f481`-`b83785b6`, FTL
+            filename + dead-key cleanup `88a14c91`-`f5e191aa` (journal: the
+            "Remaining UI work" block above).
       - [x] 1f. Website: pricing "Stores" row → "Locations", card features
             ("1 store" → "1 location"), invariants test labels,
             `subscription-tiers.md` matrix. Updated both English and
