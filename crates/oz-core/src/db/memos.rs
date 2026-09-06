@@ -174,27 +174,27 @@ impl Store<'_> {
                 tenant_id,
             ],
         )?;
-        // Fan out one pending recipient per target terminal.
+        // Fan out one pending recipient per target terminal. Both branches
+        // filter on `terminals.tenant_id` (20260912_terminals_tenant.sql) so a
+        // fan-out can never cross a tenant boundary; the tenant_id backfill
+        // gave unbound terminals the 'default' sentinel, so single-tenant
+        // behavior is unchanged.
         let terminal_ids: Vec<String> = match memo.location_id.as_deref() {
-            // Location Memo: terminals bound to that location.
+            // Location Memo: the memo's tenant's terminals bound to that
+            // location. The tenant predicate is defense-in-depth: it yields an
+            // empty (leak-free) set if a bad location_id ever slips through.
             Some(loc) => {
-                let mut s = tx
-                    .prepare("SELECT id FROM terminals WHERE bound_location_id = ?1 ORDER BY id")?;
-                s.query_map(params![loc], |r| r.get::<_, String>(0))?
+                let mut s = tx.prepare(
+                    "SELECT id FROM terminals WHERE bound_location_id = ?1 AND tenant_id = ?2 ORDER BY id",
+                )?;
+                s.query_map(params![loc, tenant_id], |r| r.get::<_, String>(0))?
                     .collect::<Result<Vec<_>, _>>()?
             }
-            // Organization Memo: every registered terminal. Correct for the
-            // single-tenant desktop (all terminals belong to the one tenant).
-            // It CANNOT be narrowed to the memo's tenant here: `terminals` has
-            // no tenant_id, and the only tenant link is bound_location_id ->
-            // locations.tenant_id, which would wrongly exclude the unbound
-            // terminals a single-tenant desktop legitimately uses. A
-            // multi-tenant fan-out is therefore blocked on Phase 1 giving
-            // `terminals` a tenant_id — not a Memo-layer fix. (See the
-            // tenant-isolation reconciliation in the Phase 2 journal.)
+            // Organization Memo: every terminal owned by the memo's tenant.
             None => {
-                let mut s = tx.prepare("SELECT id FROM terminals ORDER BY id")?;
-                s.query_map([], |r| r.get::<_, String>(0))?
+                let mut s =
+                    tx.prepare("SELECT id FROM terminals WHERE tenant_id = ?1 ORDER BY id")?;
+                s.query_map(params![tenant_id], |r| r.get::<_, String>(0))?
                     .collect::<Result<Vec<_>, _>>()?
             }
         };

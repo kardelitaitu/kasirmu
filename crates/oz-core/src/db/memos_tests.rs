@@ -21,23 +21,44 @@ fn store() -> Store<'static> {
 /// Seed a terminal; `bound_location` sets `bound_location_id` (NULL for an
 /// unbound terminal).
 fn seed_terminal(store: &Store<'_>, id: &str, bound_location: Option<&str>) {
+    seed_terminal_with_tenant(store, id, bound_location, "default");
+}
+
+/// Seed a terminal with an explicit tenant. `bound_location` sets
+/// `bound_location_id` (NULL for an unbound terminal). Mirrors the
+/// 20260912_terminals_tenant.sql backfill: a bound terminal carries its
+/// location's tenant_id; an unbound one carries the 'default' sentinel.
+fn seed_terminal_with_tenant(
+    store: &Store<'_>,
+    id: &str,
+    bound_location: Option<&str>,
+    tenant_id: &str,
+) {
     store
         .conn()
         .execute(
-            "INSERT INTO terminals (id, name, device_id, bound_location_id)
-             VALUES (?1, ?1, ?1 || '-dev', ?2)",
-            params![id, bound_location],
+            "INSERT INTO terminals (id, name, device_id, bound_location_id, tenant_id)
+             VALUES (?1, ?1, ?1 || '-dev', ?2, ?3)",
+            params![id, bound_location, tenant_id],
         )
         .unwrap();
 }
 
 /// Seed a location row (terminals.bound_location_id has an FK to locations).
 fn seed_location(store: &Store<'_>, id: &str) {
+    seed_location_with_tenant(store, id, "default");
+}
+
+/// Seed a location in an explicit tenant — lets a fixture express a second
+/// tenant, which the hardcoded-'default' helper could not (the fixture
+/// limitation the Phase 2 journal flagged: without it, no cross-tenant
+/// fan-out test can even be written).
+fn seed_location_with_tenant(store: &Store<'_>, id: &str, tenant_id: &str) {
     store
         .conn()
         .execute(
-            "INSERT INTO locations (id, name, tenant_id) VALUES (?1, ?1, 'default')",
-            params![id],
+            "INSERT INTO locations (id, name, tenant_id) VALUES (?1, ?1, ?2)",
+            params![id, tenant_id],
         )
         .unwrap();
 }
@@ -187,6 +208,51 @@ fn location_memo_fans_out_only_bound_terminals() {
     store.publish_memo("default", &memo.id).unwrap();
 
     // Only the terminal bound to 'default' receives the Location Memo.
+    assert_eq!(recipient_count(&store, &memo.id), 1);
+}
+
+#[test]
+fn org_memo_fanout_excludes_other_tenants_terminals() {
+    // The Phase 2 journal's tenant-isolation reconciliation named exactly this
+    // test as the one that could not be written while `seed_location`
+    // hardcoded 'default' and `terminals` had no tenant_id. Both are closed:
+    // two tenants, one location + terminal each, and the Organization Memo
+    // published by tenant-a must reach only tenant-a's terminal.
+    let store = store();
+    seed_location_with_tenant(&store, "loc-a", "tenant-a");
+    seed_location_with_tenant(&store, "loc-b", "tenant-b");
+    seed_terminal_with_tenant(&store, "term-a", Some("loc-a"), "tenant-a");
+    seed_terminal_with_tenant(&store, "term-b", Some("loc-b"), "tenant-b");
+
+    let memo = store
+        .create_memo_draft(&new_memo("tenant-a", None))
+        .unwrap();
+    store.publish_memo("tenant-a", &memo.id).unwrap();
+
+    // tenant-b's terminal must NOT receive tenant-a's Organization Memo.
+    assert_eq!(recipient_count(&store, &memo.id), 1);
+    let recipients: Vec<String> = store
+        .conn()
+        .prepare("SELECT terminal_id FROM memo_recipients WHERE memo_id = ?1")
+        .unwrap()
+        .query_map(params![memo.id], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(recipients, vec!["term-a".to_string()]);
+}
+
+#[test]
+fn org_memo_fanout_still_reaches_unbound_terminals_of_same_tenant() {
+    // Behavior-preservation pin: the tenant narrowing must NOT silently drop
+    // unbound terminals of the memo's own tenant — they carry the 'default'
+    // sentinel (20260912_terminals_tenant.sql) and the pre-narrowing behavior
+    // (and memos_tests' dependence on it) expects them to receive Org Memos.
+    let store = store();
+    seed_terminal_with_tenant(&store, "t-unbound", None, "default");
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
     assert_eq!(recipient_count(&store, &memo.id), 1);
 }
 
