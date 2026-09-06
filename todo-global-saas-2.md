@@ -234,6 +234,17 @@ actual relationship mutation.
       lock screen, and a dismissible top-left notification every 15 minutes
       (30s per cycle; KDS doubles the interval to 30 min, coded as 2× the
       base interval); Location stacks above Organization.
+      — **core + desktop surface complete, three pieces still open (2026-09-07,
+      see the implementation journal at the end of this file):** schema, state
+      machine, store, desktop authoring IPC + screen, banner mounts, and the
+      server-issued cadence all landed (`cf69ec3c` → `3fb745cf`). Open:
+      (a) the staff-login display surface (needs a session-free terminal-keyed
+      read = security ruling, §"The staff-login surface"); (b) early stop
+      (`stop_memo` IPC needs the role→rank ruling; `revise_memo` likewise has
+      no IPC owner); (c) tablet/KDS data path (the tablet `memos` table is
+      structurally empty until sync or a cloud read is chosen, §"The tablet's
+      Memo surface is structurally empty"). Offline delivery and the retention
+      sweep ride on the same deferred decisions.
 - [ ] **Add the Locations-to-Topology entry point.** Keep Locations
       status-oriented, but route location creation/details into the relevant
       scoped Topology Editor graph.
@@ -768,6 +779,16 @@ which drags in the tenant-isolation work — `memo_recipients.tenant_id` exists
 now, but `terminals.tenant_id` still does not, so the fan-out cannot be scoped
 per tenant yet.
 
+> **Update 2026-09-07:** the tenant-isolation half of option three is DONE:
+> `terminals.tenant_id` landed as `56653839` (with a backfill to the `default`
+> sentinel), and the fan-out was narrowed to per-tenant as `7ed4412b` — both
+> branches of `publish_memo`'s recipient fan-out now filter on the memo's
+> tenant, with cross-tenant exclusion tests. What remains open is unchanged and
+> is the actual blocker: the tablet's `memos` table is still structurally empty
+> (memos are not in `sync_pull`, authoring is desktop-only), so the KDS banner
+> has a mount and a cadence but no data until one of the three options above is
+> chosen. That choice is an owner decision; see the implementation journal.
+
 - **Progress (2026-09-06, round 6):** step (2)'s schema-independent half LANDED
   as `cf69ec3c` — `oz-core::memo` (MemoScope, MemoStatus + DeliveryStatus state
   machines, MemoDuration + expiry, `may_stop` rule, cadence constants; 16
@@ -775,6 +796,14 @@ per tenant yet.
   step (1) migration + store (persists these validated states), then (3)-(5).
 
 ## `revise_memo` discards its UPDATE's affected-row count — a TOCTOU the new sweep daemon just made reachable
+
+> **✅ RESOLVED 2026-09-06 — committed as `e7b47b83`** (`fix(core): guard
+> revise_memo against the expiry-sweep TOCTOU`). The fix is the suggested one:
+> `revise_memo` now captures the UPDATE's affected-row count and, on 0 rows
+> (sweep raced it to `expired` mid-transaction), errors out before the revision
+> INSERT, so the transaction rolls back and `memo_revisions` can never hold a
+> revision the memo never had. Everything below is the original finding, kept
+> for the reasoning.
 
 Reviewed `e560138e` (Memo revise) on commit. The design is otherwise careful:
 tenant-scoped read, non-blank validation, `Published`-only gate, prior revision
@@ -1275,3 +1304,109 @@ tenant filters are already Location-agnostic. Multi-location targeting touches
 exactly three things: the column (→ a `memo_locations` join table), the one
 fan-out query (`WHERE bound_location_id = ?1` → `IN (...)`), and the authoring
 UI. Worth recording in the Phase 3 item so it is not estimated as a rewrite.
+
+## Memo implementation journal — mounts, cadence, authoring UI (2026-09-07)
+
+Four slices landed this session, each verified against the gates it could break
+and committed with an explicit pathspec. They complete the Memo workstream's
+implementable remainder — what is left is decision-gated, listed at the end.
+
+1. **`7ed4412b` — fan-out narrowed to the memo's tenant (`fix(core)`).** The
+   Org branch of `publish_memo`'s recipient fan-out was
+   `SELECT id FROM terminals ORDER BY id` — unfiltered — so an Organization
+   Memo fanned out to every terminal in the database, not the tenant's.
+   `56653839` (concurrent Phase 1 agent) added `terminals.tenant_id` with a
+   backfill to the `default` sentinel, which unblocked the fix: both fan-out
+   branches now filter `tenant_id = ?`, and unbound terminals keep working
+   because the backfill assigned them the sentinel. Tests:
+   `org_memo_fanout_excludes_other_tenants_terminals` and
+   `org_memo_fanout_still_reaches_unbound_terminals_of_same_tenant`, on new
+   `seed_location_with_tenant` / `seed_terminal_with_tenant` fixtures.
+   oz-core: 2521/2521.
+
+2. **`796f1c7a` — `MemoBanner` mounted on the spec'd surfaces (`fix(ui)`).**
+   The banner was in `AppLayout`/`TabletAppLayout`, but the shells early-return
+   before those layouts on every surface the spec names. Now mounted in
+   `AppShell`'s lock-screen branch and all four KDS branches (kiosk,
+   standalone, restaurant-pos-kds, store-pos-kds) and `TabletAppShell`'s kds
+   branch. `MemoBannerMount.test.tsx` was rewritten to render the REAL shells
+   and drive them into each surface, asserting the memo API is called with the
+   harness session token — the previous version rendered `TabletAppLayout`
+   directly and certified wiring that shipped invisible (round 17's finding,
+   fixed by testing the thing the spec names). The lock screen deliberately
+   gets the base interval (no `kds` prop); the KDS branches get `kds`.
+
+3. **`10bfb9ff` — cadence served by the backend (`feat(ui,ipc)`).** Killed the
+   `MEMO_POLL_INTERVAL_MS = 900_000` duplicate of the backend constant: the UI
+   now polls on the server-issued cadence. `list_active_memos_scoped` (desktop
+   + tablet) returns `MemoDisplayDto { memos, cadence: { baseIntervalSecs,
+   kdsIntervalSecs } }`; `useMemos({ kds })` schedules its poll only after the
+   cadence arrives (no client-side fallback literal to drift), `MemoBanner({
+   kds })` threads the surface, and the KDS branches pass `kds` so kitchen
+   displays run at the doubled interval. Dev-mock serves the envelope.
+
+4. **`3fb745cf` — authoring screen + desktop writer IPC (`feat(ui,ipc)`).**
+   - `MemosScreen` (`ui/src/features/memo/`): create-draft form (scope
+     Organization-vs-location via `listLocationsScoped`, duration select
+     defaulting 24h, non-blank title/body), publish on draft rows, authored
+     list (title + body preview, scope chip, status badge, duration, revision,
+     created). Registry-gated `manager` + `memo:write`; loading skeleton,
+     error + retry, and empty states follow the AuditLog screen conventions;
+     every string through `@fluent/react` (`memos-*` keys in both locales).
+     Create/publish failures surface in a dedicated `role="alert"` notice —
+     the list-load error state only renders when the table is empty, so a
+     publish failure with rows present would otherwise be silent (the AUD-09
+     rationale). Locations fetch failure is non-fatal: the scope selector
+     degrades to Organization-only rather than blocking authoring.
+   - `list_authored_memos_scoped` desktop command (MEMO_WRITE-gated, reads
+     `list_memos_authored_by`), registered in `lib.rs`; the UI api gained
+     `createMemoScoped` / `publishMemoScoped` / `listAuthoredMemosScoped`.
+   - Dev-mock handlers for all three (drafts are invisible to terminals until
+     published; `listMockActiveMemos` now filters to `published`), so browser
+     previews exercise the same draft→publish→display path.
+   - `useMemos` fetch errors now map through `plainErrorMessage` — the ERR-10
+     static scan flagged the hook's raw `e instanceof Error ? e.message` as a
+     user-visible leak; the hook's `error` field is diagnostic (the banner
+     renders nothing when cold), and the mapper is the sanctioned non-Fluent
+     path. The hook test that asserted the raw message was updated to the
+     mapped copy.
+   - **Product choice, written down:** authoring is desktop-only. The parity
+     gate requires every UI-invoked command registered on both shells (the UI
+     api is shared), so `create_memo_scoped`, `publish_memo_scoped` and
+     `list_authored_memos_scoped` are allowlisted in the `tablet` array
+     following the legal-entity precedent — with the reason recorded in the
+     allowlist's `_comment` per the spec's own instruction (todo §"Step (3)
+     status": "a product decision … written down as a choice rather than
+     inherited"). They come off the list only if authoring is ever ported to
+     the tablet shell. `verify-ipc-parity.py` is green after the change.
+
+**Deliberately NOT built here, each for a recorded reason:**
+
+- **Staff-login display surface** — `list_active_memos_scoped` derives the
+  terminal from an authenticated session, so it cannot answer pre-login.
+  Needs the owner's security ruling (session-free terminal-keyed read);
+  options are in §"The staff-login surface is architecturally unreachable".
+- **Early stop (`stop_memo`)** — the store method exists and is tested, but no
+  IPC exposes it: "author or higher role" needs a role→rank ordering and
+  custom roles make "higher" ambiguous (`commands/memo.rs` module doc records
+  this deliberately). No screen offers a control for an IPC that does not
+  exist.
+- **Revise UI** — `revise_memo` is fixed and tested in the store (TOCTOU guard
+  above), but has no IPC path and no plan step owns one (§"Separate, smaller
+  point"). Corrections remain out of scope until that checkbox exists; the
+  authoring screen covers create + publish + list only.
+- **Tablet/KDS data path** — the mount and cadence are live, but the tablet's
+  `memos` table is structurally empty (not in `sync_pull`, authoring is
+  desktop-only). Choosing among defer-to-Phase-3 / cloud read / sync is an
+  owner decision (§"The tablet's Memo surface is structurally empty").
+- **Retention sweep + stale-draft expiry** — both need the rulings flagged in
+  the technical design section ("Open decision to surface" and the stale-draft
+  options list). The `archived` and draft-expiry paths stay unwritten until
+  one of the four options is picked.
+
+**Verification at commit time:** `npm run typecheck` clean; `npx eslint` clean
+on touched files; UI suite 500 files / 8815 passed (including the new
+`MemosScreen.test.tsx`, 7 tests over real `@fluent/react` with `shared.ftl`);
+`cargo test -p oz-pos-app memo` 7/7; `scripts/lint-i18n.sh` clean;
+`verify-ipc-parity.py` OK. All ten pre-commit gates ran green on `3fb745cf`
+(bundle parity: 35 new keys, 0 missing; FTL orphans: OK).

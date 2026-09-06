@@ -201,7 +201,7 @@
     "suspend_surplus_workspace_instances_scoped",
     "test_auth_connection_scoped"
   ],
-  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The two *_memo_* authoring entries (create/publish) are NOT host-only \u2014 they are the desktop Memo authoring IPC landed ahead of its admin UI; the read/consumer pair (list_active_memos/acknowledge) was wired this cycle (desktop+tablet commands, ui/src/api/memos.ts, dev-mock) and removed from this list. When the authoring screen lands it should invoke create/publish from the shared api, at which point those become stale and must be removed (and, if the authoring UI is meant to run on tablet, the two commands ported to the tablet shell first).",
+  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The memo authoring entries (create/publish/list_authored) are NOT host-only orphans \u2014 the authoring screen now invokes all three from the shared api (3fb745cf), so they left this list and moved to the tablet allowlist with a recorded product choice: authoring is desktop-only, following the legal-entity precedent. They return here only if tablet registration would leave them caller-less again.",
   "dev_mock": [
     "delete_topology_template",
     "gateway_status",
