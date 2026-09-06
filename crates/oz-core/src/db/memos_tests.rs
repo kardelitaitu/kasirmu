@@ -613,3 +613,100 @@ fn deleting_a_memo_still_cascades_to_its_children() {
         .unwrap();
     assert_eq!(revisions, 0);
 }
+
+// ── Revise: corrections create a new immutable revision ─────────────
+
+fn revision_count(store: &Store<'_>, memo_id: &str) -> i64 {
+    store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM memo_revisions WHERE memo_id = ?1",
+            params![memo_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn revise_bumps_revision_and_preserves_history() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    let published = store.publish_memo("default", &memo.id).unwrap();
+    assert_eq!(published.revision, 1);
+    let original_expiry = published.expires_at.clone();
+
+    let revised = store
+        .revise_memo(
+            "default",
+            &memo.id,
+            "user-1",
+            "Corrected title",
+            "Corrected body",
+        )
+        .unwrap();
+
+    assert_eq!(revised.status, MemoStatus::Published, "stays published");
+    assert_eq!(revised.revision, 2, "revision bumped");
+    assert_eq!(revised.title, "Corrected title");
+    assert_eq!(revised.body, "Corrected body");
+    assert_eq!(
+        revised.expires_at, original_expiry,
+        "a correction does not extend the memo's life"
+    );
+    // Both revisions now exist as immutable rows.
+    assert_eq!(revision_count(&store, &memo.id), 2);
+    let rev1_body: String = store
+        .conn()
+        .query_row(
+            "SELECT body FROM memo_revisions WHERE memo_id = ?1 AND revision = 1",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rev1_body, "Close early tonight", "revision 1 is untouched");
+}
+
+#[test]
+fn revise_rejects_draft_and_terminal_states() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    // Draft: not yet published, nothing to correct.
+    let draft = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    assert!(matches!(
+        store
+            .revise_memo("default", &draft.id, "user-1", "t", "b")
+            .unwrap_err(),
+        CoreError::Validation { .. }
+    ));
+    // Stopped: a terminal state cannot be revised.
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+    store.stop_memo("default", &memo.id, "user-1").unwrap();
+    assert!(matches!(
+        store
+            .revise_memo("default", &memo.id, "user-1", "t", "b")
+            .unwrap_err(),
+        CoreError::Validation { .. }
+    ));
+}
+
+#[test]
+fn revise_rejects_blank_content_and_unknown_memo() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+    assert!(matches!(
+        store
+            .revise_memo("default", &memo.id, "user-1", "  ", "body")
+            .unwrap_err(),
+        CoreError::Validation { .. }
+    ));
+    assert!(matches!(
+        store
+            .revise_memo("default", "no-such-memo", "user-1", "t", "b")
+            .unwrap_err(),
+        CoreError::NotFound { .. }
+    ));
+}

@@ -194,6 +194,79 @@ impl Store<'_> {
             .ok_or_else(|| CoreError::Internal("memo vanished after publish".into()))
     }
 
+    /// Correct a published memo. Content is immutable, so a correction does
+    /// NOT edit in place: it inserts a NEW immutable `memo_revisions` row and
+    /// bumps `memos.revision`; prior revision rows are never mutated (the
+    /// spec's "published content is immutable; corrections create a new
+    /// revision"). The memo stays `published`, and its `published_at` /
+    /// `expires_at` are left untouched — a correction fixes the text, it does
+    /// not extend the memo's life. Authorization (author-or-higher) is the
+    /// caller's gate; this enforces only that the memo is published and the
+    /// new content is non-blank.
+    pub fn revise_memo(
+        &self,
+        tenant_id: &str,
+        memo_id: &str,
+        actor_user_id: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<Memo, CoreError> {
+        if title.trim().is_empty() {
+            return Err(CoreError::Validation {
+                field: "title",
+                message: "must not be empty".into(),
+            });
+        }
+        if body.trim().is_empty() {
+            return Err(CoreError::Validation {
+                field: "body",
+                message: "must not be empty".into(),
+            });
+        }
+        let memo = self
+            .get_memo(tenant_id, memo_id)?
+            .ok_or_else(|| CoreError::NotFound {
+                entity: "memo",
+                id: memo_id.into(),
+            })?;
+        if memo.status != MemoStatus::Published {
+            return Err(CoreError::Validation {
+                field: "status",
+                message: format!(
+                    "can only revise a published memo, not '{}'",
+                    memo.status.as_str()
+                ),
+            });
+        }
+        let now = now_iso();
+        let new_revision = memo.revision + 1;
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "UPDATE memos
+             SET title = ?2, body = ?3, revision = ?4, updated_at = ?5
+             WHERE tenant_id = ?1 AND id = ?6 AND status = 'published'",
+            params![tenant_id, title, body, new_revision, now, memo_id],
+        )?;
+        tx.execute(
+            "INSERT INTO memo_revisions
+                (id, memo_id, tenant_id, revision, title, body, published_at, published_by)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                uuid::Uuid::now_v7().to_string(),
+                memo_id,
+                tenant_id,
+                new_revision,
+                title,
+                body,
+                now,
+                actor_user_id,
+            ],
+        )?;
+        tx.commit()?;
+        self.get_memo(tenant_id, memo_id)?
+            .ok_or_else(|| CoreError::Internal("memo vanished after revise".into()))
+    }
+
     /// Early-stop a published memo: `published → stopped`. Records who and
     /// when. Authorization (author-or-higher) is the caller's gate; this
     /// enforces only that the memo is currently published.
