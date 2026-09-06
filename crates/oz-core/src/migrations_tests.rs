@@ -400,7 +400,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
         ),
-        153,
+        155,
         "index surface drifted"
     );
     assert_eq!(
@@ -529,6 +529,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260907_add_location_tenant_id.sql".to_string(),
             "20260908_legal_entities.sql".to_string(),
             "20260909_memos.sql".to_string(),
+            "20260910_memo_child_tenant_id.sql".to_string(),
         ]
     );
 

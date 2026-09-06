@@ -1056,7 +1056,7 @@ CREATE TABLE IF NOT EXISTS memo_revisions (
     title         TEXT NOT NULL,
     body          TEXT NOT NULL,
     published_at  TEXT NOT NULL,
-    published_by  TEXT NOT NULL,
+    published_by  TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'default',
     UNIQUE (memo_id, revision)
 );
 
@@ -1069,7 +1069,7 @@ CREATE TABLE IF NOT EXISTS memo_recipients (
                      CHECK (delivery_status IN ('pending','delivered','acknowledged')),
     delivered_at     TEXT,
     acknowledged_at  TEXT,
-    acknowledged_by  TEXT,
+    acknowledged_by  TEXT, tenant_id TEXT NOT NULL DEFAULT 'default',
     UNIQUE (memo_id, terminal_id)
 );
 
@@ -1533,11 +1533,17 @@ CREATE INDEX IF NOT EXISTS idx_media_thumbnails_asset
 CREATE INDEX IF NOT EXISTS idx_memo_recipients_memo
     ON memo_recipients(memo_id);
 
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_tenant
+    ON memo_recipients(tenant_id, memo_id);
+
 CREATE INDEX IF NOT EXISTS idx_memo_recipients_terminal
     ON memo_recipients(terminal_id, delivery_status);
 
 CREATE INDEX IF NOT EXISTS idx_memo_revisions_memo
     ON memo_revisions(memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memo_revisions_tenant
+    ON memo_revisions(tenant_id, memo_id);
 
 CREATE INDEX IF NOT EXISTS idx_memos_expiry
     ON memos(expires_at) WHERE status = 'published';
@@ -1852,6 +1858,8 @@ ON CONFLICT DO NOTHING;
 -- tenant_id before each can be added to RLS_TABLES):
 --   image_refs
 --   legal_entities
+--   memo_recipients
+--   memo_revisions
 --   memos
 --   sale_lines
 --   snapshot_versions

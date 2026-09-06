@@ -140,8 +140,8 @@ impl Store<'_> {
         // Snapshot the immutable revision 1 (title/body as published).
         tx.execute(
             "INSERT INTO memo_revisions
-                (id, memo_id, revision, title, body, published_at, published_by)
-             VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6)",
+                (id, memo_id, tenant_id, revision, title, body, published_at, published_by)
+             VALUES (?1, ?2, ?7, 1, ?3, ?4, ?5, ?6)",
             params![
                 uuid::Uuid::now_v7().to_string(),
                 memo_id,
@@ -149,6 +149,7 @@ impl Store<'_> {
                 memo.body,
                 published_at,
                 memo.author_user_id,
+                tenant_id,
             ],
         )?;
         // Fan out one pending recipient per target terminal.
@@ -169,10 +170,15 @@ impl Store<'_> {
         };
         for terminal_id in &terminal_ids {
             tx.execute(
-                "INSERT INTO memo_recipients (id, memo_id, terminal_id, delivery_status)
-                 VALUES (?1, ?2, ?3, 'pending')
+                "INSERT INTO memo_recipients (id, memo_id, tenant_id, terminal_id, delivery_status)
+                 VALUES (?1, ?2, ?4, ?3, 'pending')
                  ON CONFLICT (memo_id, terminal_id) DO NOTHING",
-                params![uuid::Uuid::now_v7().to_string(), memo_id, terminal_id],
+                params![
+                    uuid::Uuid::now_v7().to_string(),
+                    memo_id,
+                    terminal_id,
+                    tenant_id,
+                ],
             )?;
         }
         tx.commit()?;

@@ -135,6 +135,36 @@ fn publish_fans_out_one_pending_recipient_per_terminal() {
 }
 
 #[test]
+fn publish_populates_child_table_tenant_id() {
+    // Convention + future-proofing: memo_revisions and memo_recipients carry a
+    // denormalized tenant_id so they can be tenant-filtered by predicate and
+    // covered by RLS (20260910), rather than relying solely on joining memos.
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
+    let rev_tenant: String = store
+        .conn()
+        .query_row(
+            "SELECT tenant_id FROM memo_revisions WHERE memo_id = ?1",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rev_tenant, "default");
+    let recip_tenant: String = store
+        .conn()
+        .query_row(
+            "SELECT tenant_id FROM memo_recipients WHERE memo_id = ?1",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(recip_tenant, "default");
+}
+
+#[test]
 fn location_memo_fans_out_only_bound_terminals() {
     let store = store();
     seed_location(&store, "other-loc");
