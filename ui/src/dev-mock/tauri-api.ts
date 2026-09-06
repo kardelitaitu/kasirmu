@@ -247,6 +247,63 @@ function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>
   return boxed.args ?? ((args as T | undefined) ?? ({} as T));
 }
 
+/** List the mutable location-profile rows served by the dev mock. */
+function listMockLocations(): Array<typeof MOCK_STORE> {
+  return mockStores.map((location) => ({ ...location }));
+}
+
+/** Resolve one location profile using the mock's historical fallback behavior. */
+function getMockLocation(args: unknown): typeof MOCK_STORE {
+  const { id } = unwrapArgs<{ id?: string }>(args);
+  return mockStores.find((location) => location.id === id) ?? MOCK_STORE;
+}
+
+/** Resolve the primary location profile from the mutable mock list. */
+function getMockPrimaryLocation(): typeof MOCK_STORE {
+  return mockStores.find((location) => location.is_primary) ?? mockStores[0] ?? MOCK_STORE;
+}
+
+/** Create a location profile and persist it in the session-local mock list. */
+function createMockLocation(args: unknown): typeof MOCK_STORE {
+  const payload = unwrapArgs<Partial<typeof MOCK_STORE>>(args);
+  const created = {
+    ...MOCK_STORE,
+    ...payload,
+    id: (payload.id as string | undefined) ?? `store-${Date.now()}`,
+    is_primary: mockStores.length === 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  mockStores.push(created);
+  return { ...created };
+}
+
+/** Update a location profile and persist it in the session-local mock list. */
+function updateMockLocation(args: unknown): typeof MOCK_STORE {
+  const { id, ...rest } = unwrapArgs<Partial<typeof MOCK_STORE> & { id?: string }>(args);
+  // id-mismatch falls back to the first profile (mock laxness — the real
+  // backend returns an error for unknown ids).
+  const existing = mockStores.find((location) => location.id === id) ?? mockStores[0] ?? MOCK_STORE;
+  const updated = { ...existing, ...rest, id: existing.id, updated_at: new Date().toISOString() };
+  mockStores = mockStores.map((location) => (location.id === updated.id ? updated : location));
+  if (!mockStores.some((location) => location.id === updated.id)) mockStores.push(updated);
+  return { ...updated };
+}
+
+/** Make a location primary and persist the choice in the mock list. */
+function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
+  const { id } = unwrapArgs<{ id?: string }>(args);
+  mockStores = mockStores.map((location) => ({ ...location, is_primary: location.id === id }));
+  return { ...getMockLocation({ id }) };
+}
+
+/** Delete a location profile from the session-local mock list. */
+function deleteMockLocation(args: unknown): null {
+  const { id } = unwrapArgs<{ id?: string }>(args);
+  mockStores = mockStores.filter((location) => location.id !== id);
+  return null;
+}
+
 /** Live floor-plan snapshot for the analytics occupancy card: 5 of 12
  *  active tables occupied (2 seated, 1 reserved, 4 free, 1 cleaning). */
 function tablesSnapshot(): Array<{
@@ -1609,51 +1666,40 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   }),
 
   // ═══════════════════════════════════════════════════════════════
-  // STORES
+  // LOCATIONS / DEPRECATED STORE PROFILE ALIASES
   // ═══════════════════════════════════════════════════════════════
+  // Location is the canonical site-unit term. The old command names stay
+  // available while clients migrate, but both families share the same
+  // stateful mock list so browser-mode behavior matches the real IPC surface.
 
-  'list_store_profiles': () => mockStores.map((s) => ({ ...s })),
-  'get_store_profile': (args) => {
-    const { id } = unwrapArgs<{ id?: string }>(args);
-    return mockStores.find((s) => s.id === id) ?? MOCK_STORE;
-  },
-  'get_primary_store': () => mockStores.find((s) => s.is_primary) ?? mockStores[0] ?? MOCK_STORE,
-  'create_store_profile': (args) => {
-    const payload = unwrapArgs<Partial<typeof MOCK_STORE>>(args);
-    const created = {
-      ...MOCK_STORE,
-      ...payload,
-      id: (payload.id as string | undefined) ?? `store-${Date.now()}`,
-      is_primary: mockStores.length === 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    mockStores.push(created);
-    return { ...created };
-  },
-  'update_store_profile': (args) => {
-    const { id, ...rest } = unwrapArgs<Partial<typeof MOCK_STORE> & { id?: string }>(args);
-    // id-mismatch falls back to the first profile (mock laxness — the real
-    // backend returns an error for unknown ids).
-    const existing = mockStores.find((s) => s.id === id) ?? mockStores[0] ?? MOCK_STORE;
-    const updated = { ...existing, ...rest, id: existing.id, updated_at: new Date().toISOString() };
-    mockStores = mockStores.map((s) => (s.id === updated.id ? updated : s));
-    if (!mockStores.some((s) => s.id === updated.id)) mockStores.push(updated);
-    return { ...updated };
-  },
-  'set_primary_store': (args) => {
-    const { id } = unwrapArgs<{ id?: string }>(args);
-    mockStores = mockStores.map((s) => ({ ...s, is_primary: s.id === id }));
-    return { ...(mockStores.find((s) => s.id === id) ?? mockStores[0] ?? MOCK_STORE) };
-  },
+  'list_locations_scoped': listMockLocations,
+  'get_location_profile_scoped': getMockLocation,
+  'get_primary_location_scoped': getMockPrimaryLocation,
+  'create_location_profile_scoped': createMockLocation,
+  'update_location_profile_scoped': updateMockLocation,
+  'set_primary_location_scoped': setMockPrimaryLocation,
+  'delete_location_profile_scoped': deleteMockLocation,
+
+  'list_store_profiles': listMockLocations,
+  'get_store_profile': getMockLocation,
+  'get_primary_store': getMockPrimaryLocation,
+  'create_store_profile': createMockLocation,
+  'update_store_profile': updateMockLocation,
+  'set_primary_store': setMockPrimaryLocation,
   // Deletes mutate the stateful store list so a reload (or the topology
   // editor's branch seed) no longer sees the removed branch — same
-  // persistence contract as the real store_profiles row.
-  'delete_store_profile': (args) => {
-    const { id } = unwrapArgs<{ id?: string }>(args);
-    mockStores = mockStores.filter((s) => s.id !== id);
-    return null;
-  },
+  // persistence contract as the real locations row.
+  'delete_store_profile': deleteMockLocation,
+
+  // Explicit scoped aliases keep the legacy API contract visible here rather
+  // than relying only on the general suffix-based aliasing pass below.
+  'list_store_profiles_scoped': listMockLocations,
+  'get_store_profile_scoped': getMockLocation,
+  'get_primary_store_scoped': getMockPrimaryLocation,
+  'create_store_profile_scoped': createMockLocation,
+  'update_store_profile_scoped': updateMockLocation,
+  'set_primary_store_scoped': setMockPrimaryLocation,
+  'delete_store_profile_scoped': deleteMockLocation,
 
   // ═══════════════════════════════════════════════════════════════
   // WORKSPACES (ADR #4 / #7)

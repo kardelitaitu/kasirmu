@@ -35,37 +35,37 @@ export interface UpdateLocationArgs {
 
 /** List all location profiles for the session's tenant (scoped — ADR #7). */
 export const listLocationsScoped = (sessionToken: string): Promise<LocationProfile[]> =>
-  loggedInvoke<LocationProfile[]>('list_store_profiles_scoped', { sessionToken });
+  loggedInvoke<LocationProfile[]>('list_locations_scoped', { sessionToken });
 
 /** Get a single location profile by its identifier (scoped — ADR #7). */
 export const getLocationProfileScoped = (
   sessionToken: string,
   id: string,
 ): Promise<LocationProfile | null> =>
-  loggedInvoke<LocationProfile | null>('get_store_profile_scoped', { sessionToken, id });
+  loggedInvoke<LocationProfile | null>('get_location_profile_scoped', { sessionToken, id });
 
 /** Get the primary location profile (scoped — ADR #7). */
 export const getPrimaryLocationScoped = (sessionToken: string): Promise<LocationProfile | null> =>
-  loggedInvoke<LocationProfile | null>('get_primary_store_scoped', { sessionToken });
+  loggedInvoke<LocationProfile | null>('get_primary_location_scoped', { sessionToken });
 
 /** Create a new location profile (scoped — ADR #7). */
 export const createLocationProfileScoped = (
   sessionToken: string,
   args: CreateLocationArgs,
 ): Promise<LocationProfile> =>
-  loggedInvoke<LocationProfile>('create_store_profile_scoped', { sessionToken, args });
+  loggedInvoke<LocationProfile>('create_location_profile_scoped', { sessionToken, args });
 
 /** Update an existing location profile (scoped — ADR #7). */
 export const updateLocationProfileScoped = (
   sessionToken: string,
   args: UpdateLocationArgs,
 ): Promise<LocationProfile> =>
-  loggedInvoke<LocationProfile>('update_store_profile_scoped', { sessionToken, args });
+  loggedInvoke<LocationProfile>('update_location_profile_scoped', { sessionToken, args });
 
 /** Set a location as the primary location (scoped — ADR #7). */
 export const setPrimaryLocationScoped = (sessionToken: string, id: string): Promise<LocationProfile> =>
-  loggedInvoke<LocationProfile>('set_primary_store_scoped', { sessionToken, id });
+  loggedInvoke<LocationProfile>('set_primary_location_scoped', { sessionToken, id });
 
 /** Delete a location profile by its identifier (scoped — ADR #7). */
 export const deleteLocationProfileScoped = (sessionToken: string, id: string): Promise<void> =>
-  loggedInvoke<void>('delete_store_profile_scoped', { sessionToken, id });
+  loggedInvoke<void>('delete_location_profile_scoped', { sessionToken, id });

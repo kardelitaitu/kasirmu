@@ -225,6 +225,46 @@ describe('dev-mock store + topology round-trip', () => {
     const afterDelete = await invoke('list_store_profiles') as MockStoreRow[];
     expect(afterDelete.find((s) => s.id === 'store-sc-1')).toBeUndefined();
   });
+
+  it('answers canonical location commands with the same stateful contract', async () => {
+    const sessionToken = 'test-location-session';
+    const list = await invoke('list_locations_scoped', { sessionToken }) as MockStoreRow[];
+    expect(list.some((location) => location.id === 'store-1')).toBe(true);
+
+    const created = await invoke('create_location_profile_scoped', {
+      sessionToken,
+      args: { id: 'location-sc-1', name: 'Canonical Location' },
+    }) as MockStoreRow;
+    expect(created.name).toBe('Canonical Location');
+
+    const renamed = await invoke('update_location_profile_scoped', {
+      sessionToken,
+      args: {
+        id: 'location-sc-1',
+        name: 'Canonical Renamed',
+        address: '',
+        tax_id: '',
+        currency: 'USD',
+        timezone: 'UTC',
+      },
+    }) as MockStoreRow;
+    expect(renamed.name).toBe('Canonical Renamed');
+
+    const primary = await invoke('set_primary_location_scoped', {
+      sessionToken,
+      id: 'location-sc-1',
+    }) as MockStoreRow;
+    expect(primary.id).toBe('location-sc-1');
+    expect((await invoke('get_primary_location_scoped', { sessionToken }) as MockStoreRow).id)
+      .toBe('location-sc-1');
+
+    await invoke('delete_location_profile_scoped', {
+      sessionToken,
+      id: 'location-sc-1',
+    });
+    const afterDelete = await invoke('list_locations_scoped', { sessionToken }) as MockStoreRow[];
+    expect(afterDelete.find((location) => location.id === 'location-sc-1')).toBeUndefined();
+  });
 });
 
 // ── Dev-mock revision-conflict parity (round 138) ────────────────

@@ -58,7 +58,6 @@ pub mod license;
 /// Local REST API server commands (loopback `oz-api` embed).
 pub mod local_api;
 /// Location-profile commands.
-#[path = "store_profiles.rs"]
 pub mod locations;
 /// Loyalty / rewards commands.
 pub mod loyalty;
