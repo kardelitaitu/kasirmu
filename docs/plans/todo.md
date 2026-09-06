@@ -157,7 +157,7 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 match the plan (`Free, Plus, Pro, Premium, Enterprise`). `Standard` maps to the new
 `Plus`; `OneTime` is deprecated. Rename before any new quota code builds on the old names.
 
-- [x] In [`crates/oz-core/src/subscription.rs`](./crates/oz-core/src/subscription.rs):
+- [x] In [`crates/oz-core/src/subscription.rs`](../../crates/oz-core/src/subscription.rs):
   - [x] Add `Plus` variant (maps to what `Standard` did — 1 store, 2 terminals, 2 warehouses, QRIS, cloud sync)
   - [x] Update `from_db()` to accept `"plus"` and keep `"standard"` as a legacy alias → `Plus`
   - [x] Rename docstring of `Free` from "90-day Free Trial" to "Free forever — 3-month sales history"
@@ -195,10 +195,10 @@ match the plan (`Free, Plus, Pro, Premium, Enterprise`). `Standard` maps to the 
 
 #### C0.2 — License Server (Go) — Add `plus` tier to `tierQuotas()`
 
-Files: [`apps/license-server/paddle_webhook.go`](./apps/license-server/paddle_webhook.go),
-[`apps/license-server/pb_schema.json`](./apps/license-server/pb_schema.json),
-[`apps/license-server/renew.go`](./apps/license-server/renew.go),
-[`apps/license-server/expiry.go`](./apps/license-server/expiry.go)
+Files: [`apps/license-server/paddle_webhook.go`](../../apps/license-server/paddle_webhook.go),
+[`apps/license-server/pb_schema.json`](../../apps/license-server/pb_schema.json),
+[`apps/license-server/renew.go`](../../apps/license-server/renew.go),
+[`apps/license-server/expiry.go`](../../apps/license-server/expiry.go)
 
 - [x] In `paddle_webhook.go` → `tierQuotas()`: add `"plus"` case with
   `maxStores=1, maxPosInstances=2, allowedTypes=["restaurant-pos","store-pos","admin","inventory","warehouse"]` (no `kds`)

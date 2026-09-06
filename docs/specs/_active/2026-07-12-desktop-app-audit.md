@@ -2,7 +2,11 @@
 
 - **Audit ID:** 2026-07-12-desktop-app-audit
 - **Status:** All CRITICAL + HIGH findings resolved — **SHIPPABLE TO RELEASE**
-- **Auditor:** RSA-Agent (Buffy) following the [`rust-auditor`](../../.agents/skills/rust-auditor/SKILL.md) framework
+- **Auditor:** RSA-Agent (Buffy) following the `rust-auditor` framework (a
+  harness-provided skill, not versioned in this repo — the previous form was a
+  link to `.agents/skills/rust-auditor/SKILL.md`, which has never existed here;
+  `.agents/skills/` ships `rust-backend`, `tdd`, `tauri-ipc` and others, but not
+  that one)
 - **Audit date:** 12-07-26
 - **C-1 closure:** closed in Epic X-3 PR (see §11) — exchange rates converted end-to-end to `i64` millionths.
 - **H-1/H-2/H-3 closure:** closed in 0.0.23 (see §12) — LAN retry, sync pull safety, brand logo validation all resolved.
@@ -48,7 +52,7 @@ pub rate: f64,                       // line 54, CreateExchangeRateArgs
 if args.rate <= 0.0 { /* reject */ } // line 65 — float-comparison validation
 ```
 
-**Why critical:** Violates [`rust-backend` rule #1](../../AGENTS.md#rust-standards) ("Money is always `i64` minor units, never `f32`/`f64`"). Exchange rates feed `Money::checked_add`/`from_major` conversions; their float source contaminates every downstream multiplication. The `<= 0.0` check is also non-deterministic near zero (`1e-20` flips to negative).
+**Why critical:** Violates [`rust-backend` rule #1](../../../AGENTS.md#1-rust-standards) ("Money is always `i64` minor units, never `f32`/`f64`"). Exchange rates feed `Money::checked_add`/`from_major` conversions; their float source contaminates every downstream multiplication. The `<= 0.0` check is also non-deterministic near zero (`1e-20` flips to negative).
 
 **Fix:** Replace `f64` with `i64` minor units (e.g. `rate_millionths` or `rate_scaled_by_1_000_000`). Update `<= 0.0` to `<= 0`. Update the DB column type (`exchange_rate.rate` SQL schema in `oz-core`). Re-validate every consumer (`cart.rs` multi-currency paths, frontend `formatMoney` on cross-currency totals, reporting aggregates).
 
@@ -346,7 +350,7 @@ Remaining items (M-1 through M-6) are MEDIUM-priority backlog.
 
 ---
 
-## 9. Audit stamps applied (Phase 4) — per [`rust-auditor` skill](../../.agents/skills/rust-auditor/SKILL.md)
+## 9. Audit stamps applied (Phase 4) — per the `rust-auditor` skill (harness-provided, not in-repo; see the note in §1)
 
 | File                                                  | Status  | Lint   |
 |-------------------------------------------------------|---------|--------|
