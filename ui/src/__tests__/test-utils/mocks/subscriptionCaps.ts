@@ -8,6 +8,7 @@ export function makeSubscriptionCaps(
 ): SubscriptionCapabilities {
   return {
     tier: 'free',
+    state: 'active',
     maxStores: 1,
     maxPosInstances: 1,
     maxWarehouses: 1,

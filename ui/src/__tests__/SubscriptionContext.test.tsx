@@ -2,9 +2,11 @@
  * Tests for `SubscriptionProvider` / `useSubscription` — the C2.2
  * subscription capabilities context.
  *
- * Fetches capabilities once at mount, degrades to null on failure, and
- * exposes a refresh callback. The provider is the gate for every
- * tier-limited feature (analytics, loyalty, QRIS, store limits).
+ * Fetches capabilities once at mount, exposes the lifecycle state (§B:
+ * active/grace/expired/canceled/paused/unavailable, plus the provider's
+ * own `loading` phase), reports `unavailable` on failure (fail-closed),
+ * and exposes a refresh callback. The provider is the gate for every
+ * tier-limited feature (analytics, loyalty, QRIS, location limits).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -42,6 +44,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 const caps: SubscriptionCapabilities = {
   tier: 'pro',
+  state: 'active',
   maxStores: 10,
   maxPosInstances: 5,
   maxWarehouses: 3,
@@ -74,6 +77,7 @@ describe('SubscriptionProvider', () => {
     const { result } = renderHook(() => useSubscription(), { wrapper });
     expect(result.current.loading).toBe(true);
     expect(result.current.caps).toBeNull();
+    expect(result.current.state).toBe('loading');
   });
 
   it('resolves caps and sets loading=false on success', async () => {
@@ -81,13 +85,32 @@ describe('SubscriptionProvider', () => {
     const { result } = renderHook(() => useSubscription(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.caps).toEqual(caps);
+    expect(result.current.state).toBe('active');
   });
 
-  it('degradates to caps=null on API failure', async () => {
+  it('reports the backend lifecycle state verbatim', async () => {
+    // §B: the backend is the state authority — grace/expired/canceled/
+    // paused flow through verbatim with the fail-closed Free entitlements
+    // the command already applied.
+    mocks.getSubscriptionCapabilities.mockResolvedValue({
+      ...caps,
+      tier: 'free',
+      state: 'grace',
+      supportsQris: false,
+    });
+    const { result } = renderHook(() => useSubscription(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.state).toBe('grace');
+    expect(result.current.caps?.tier).toBe('free');
+  });
+
+  it('degradates to caps=null + unavailable state on API failure', async () => {
     mocks.getSubscriptionCapabilities.mockRejectedValue(new Error('offline'));
     const { result } = renderHook(() => useSubscription(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.caps).toBeNull();
+    // §B fail-closed: a missing response must not look like a healthy one.
+    expect(result.current.state).toBe('unavailable');
   });
 
   it('refresh re-fetches capabilities and loads them', async () => {
@@ -106,10 +129,11 @@ describe('SubscriptionProvider', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('refresh degrades to null on failure', async () => {
+  it('refresh degrades to null + unavailable on failure', async () => {
     mocks.getSubscriptionCapabilities.mockResolvedValue(caps);
     const { result } = renderHook(() => useSubscription(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.state).toBe('active');
 
     // Refresh fails.
     mocks.getSubscriptionCapabilities.mockRejectedValue(new Error('gone'));
@@ -119,5 +143,6 @@ describe('SubscriptionProvider', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(result.current.caps).toBeNull());
+    expect(result.current.state).toBe('unavailable');
   });
 });

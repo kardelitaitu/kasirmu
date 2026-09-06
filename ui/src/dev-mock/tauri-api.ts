@@ -1920,6 +1920,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   }),
   'get_subscription_capabilities': () => ({
     tier: 'premium',
+    state: 'active',
     maxStores: null,
     maxPosInstances: null,
     maxWarehouses: null,

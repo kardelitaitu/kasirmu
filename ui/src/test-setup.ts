@@ -139,10 +139,17 @@ vi.mock('@/contexts/WorkspaceContext', async (importOriginal) => {
 // C2.2 tier gates read `useSubscription()`. The safe default is `caps:
 // null` — every gate renders open (no lock, no banner) — so existing
 // tests are unaffected. Tests exercising a gate override per-test with
-// `vi.mocked(useSubscription).mockReturnValue({ caps: {…} })`.
+// `vi.mocked(useSubscription).mockReturnValue({ caps: {…} })`. The state
+// default is `unavailable` (§B fail-closed); gates do not read it yet —
+// they will when the operational/administrative split lands.
 vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
   const actual = await importOriginal<typeof SubscriptionContextModule>();
-  const safeSubscriptionDefault = { caps: null, loading: false, refresh: vi.fn() };
+  const safeSubscriptionDefault = {
+    caps: null,
+    state: 'unavailable',
+    loading: false,
+    refresh: vi.fn(),
+  };
   return {
     ...actual,
     useSubscription: vi.fn().mockImplementation(() => safeSubscriptionDefault),
