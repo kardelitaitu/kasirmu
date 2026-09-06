@@ -92,6 +92,7 @@ fn semantic_save_persists_and_clears_resolved_issue_keys() {
         None,
         None,
         None,
+        None,
     )
     .unwrap();
     let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
@@ -106,6 +107,7 @@ fn semantic_save_persists_and_clears_resolved_issue_keys() {
         wires,
         TOPOLOGY_SETTING_KEY,
         &[],
+        None,
         None,
         None,
         None,
@@ -908,6 +910,7 @@ fn apply_gate_and_save_accept_branch_profile_from_store_registry() {
         None,
         None,
         Some(&store_db),
+        None,
     )
     .unwrap();
     assert_eq!(revision, 1);
@@ -933,6 +936,7 @@ fn save_with_registry_still_rejects_unknown_branch() {
         None,
         None,
         Some(&store_db),
+        None,
     );
     assert!(matches!(
         result,

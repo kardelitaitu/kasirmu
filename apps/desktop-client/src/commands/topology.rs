@@ -15,6 +15,7 @@
 mod commands;
 mod model;
 mod persistence;
+mod revisions;
 mod semantics;
 
 /// Apply a full topology diff atomically.
@@ -61,6 +62,8 @@ pub(crate) use oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION;
 #[cfg(test)]
 pub(crate) use persistence::*;
 #[cfg(test)]
+pub(crate) use revisions::*;
+#[cfg(test)]
 pub(crate) use semantics::*;
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -71,6 +74,8 @@ mod topology_command_tests;
 mod topology_field_tests;
 #[cfg(test)]
 mod topology_persistence_tests;
+#[cfg(test)]
+mod topology_revision_tests;
 #[cfg(test)]
 mod topology_serde_tests;
 #[cfg(test)]

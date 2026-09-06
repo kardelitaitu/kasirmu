@@ -16,6 +16,7 @@ use crate::state::AppState;
 
 use super::model::*;
 use super::persistence::*;
+use super::revisions::*;
 use super::semantics::*;
 
 // ── Commands ───────────────────────────────────────────────────────
@@ -779,6 +780,17 @@ pub async fn apply_topology_diff(
         let branch_db = branch_conn
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        // ADR #46 §1-§3: this Apply becomes an immutable revision row, written
+        // inside the same transaction as the envelope. The counts are the ones
+        // captured above, before the workspace block moved the request vectors.
+        let revision_ctx = TopologyRevisionContext {
+            // Empty until the change-note field lands (ADR #46 §6).
+            change_note: "",
+            published_by: &session.user_id,
+            workspace_creations: created,
+            workspace_updates: updated,
+            workspace_archives: archived,
+        };
         save_topology_json_at_key_with_revision(
             &global_db,
             diagram_nodes,
@@ -788,6 +800,7 @@ pub async fn apply_topology_diff(
             Some(base_revision),
             Some((&request_key, &request_fingerprint)),
             Some(&branch_db),
+            Some(&revision_ctx),
         )
         // branch_db and branch_conn drop here with the block.
     };

@@ -13,6 +13,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 use super::model::*;
+use super::revisions::*;
 use super::semantics::*;
 
 /// Resolve the branch-scoped runtime plan key paired with a topology key.
@@ -227,7 +228,17 @@ pub(crate) fn save_topology_json_at_key(
     wires: Vec<Value>,
     setting_key: &str,
 ) -> Result<u64, AppError> {
-    save_topology_json_at_key_with_revision(conn, nodes, wires, setting_key, &[], None, None, None)
+    save_topology_json_at_key_with_revision(
+        conn,
+        nodes,
+        wires,
+        setting_key,
+        &[],
+        None,
+        None,
+        None,
+        None,
+    )
 }
 
 /// Save a versioned topology envelope under a settings key.
@@ -238,6 +249,12 @@ pub(crate) fn save_topology_json_at_key(
 /// committed first aborts this save with a `topology-revision-conflict`.
 /// When `request` is given, the request ledger is persisted and the Apply
 /// recovery journal is cleared in the same transaction.
+///
+/// When `revision_ctx` is given, an immutable revision row is written to
+/// `topology_revisions` in THIS transaction (ADR #46 §3). The caller must NOT
+/// write it instead: outside this transaction, history can either survive a
+/// compensated Apply or go missing after a committed one. `None` is for the
+/// `#[cfg(test)]` save helper, which is not a publish.
 ///
 /// `branch_registry` (ADR #7): when given, the canonical Branch Location
 /// profile may live in EITHER `conn` (global registry) or this connection
@@ -253,6 +270,7 @@ pub(crate) fn save_topology_json_at_key_with_revision(
     expected_revision: Option<u64>,
     request: Option<(&str, &str)>,
     branch_registry: Option<&Connection>,
+    revision_ctx: Option<&TopologyRevisionContext<'_>>,
 ) -> Result<u64, AppError> {
     match branch_registry {
         Some(branch_db) => validate_semantic_ownership_in(&[conn, branch_db], &nodes, &wires)?,
@@ -288,6 +306,16 @@ pub(crate) fn save_topology_json_at_key_with_revision(
     let runtime_branch_id = setting_key
         .strip_prefix(&format!("{TOPOLOGY_SETTING_KEY}/"))
         .map(str::to_owned);
+    // Owned copy taken before `runtime_branch_id` moves into the compiler
+    // below. Cloned rather than re-derived so the settings-key prefix rule
+    // stays defined in exactly one place; a branch id is short and this runs
+    // once per Apply.
+    //
+    // `unwrap_or_default()` yields `""` for the unscoped legacy graph, and the
+    // revision row stores `""` rather than NULL for the reason the migration
+    // header gives: UNIQUE ignores NULLs in both engines, so a nullable branch
+    // would let the unscoped graph reuse a revision number.
+    let revision_branch_id = runtime_branch_id.clone().unwrap_or_default();
     let runtime_plan = compile_topology_runtime_plan(&nodes, &wires, runtime_branch_id);
     let runtime_json = serde_json::to_string(&runtime_plan)
         .map_err(|e| AppError::Internal(format!("serialize topology runtime plan: {e}")))?;
@@ -298,6 +326,21 @@ pub(crate) fn save_topology_json_at_key_with_revision(
         let ledger = topology_apply_ledger_json(revision, fingerprint)?;
         oz_core::Settings::set(&tx, request_key, &ledger)?;
         oz_core::Settings::remove(&tx, TOPOLOGY_APPLY_RECOVERY_KEY)?;
+    }
+    // ADR #46 §3: the revision row commits or rolls back with the envelope.
+    // Placed after the envelope write so `json` is recorded byte-identically
+    // to what `settings` now holds — a revision must be self-contained and
+    // needs no reconstruction (§2).
+    if let Some(ctx) = revision_ctx {
+        insert_topology_revision(
+            &tx,
+            &revision_branch_id,
+            revision,
+            &json,
+            nodes.len(),
+            wires.len(),
+            ctx,
+        )?;
     }
     tx.commit()?;
     Ok(revision)
