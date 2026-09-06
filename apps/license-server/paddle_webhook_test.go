@@ -683,7 +683,7 @@ func TestActivate_PaddleKeyWithoutAPIKey_MintsKeyAndReusesSubscription(t *testin
 	// The webhook-created active subscription (signed_payload "{}" marks it).
 	seedSubscription(t, app, tenantID, "pro", "active")
 
-	body := fmt.Sprintf(`{"key":"OZ-PRO-PADDLE-0001","machine_id":"aaaaaaaaaaaaaaa","email":"paddle-activate@example.com"}`)
+	body := `{"key":"OZ-PRO-PADDLE-0001","machine_id":"aaaaaaaaaaaaaaa","email":"paddle-activate@example.com"}`
 	rec := webRequest(t, se, http.MethodPost, "/api/v1/license/activate", body, "", "")
 
 	if rec.Code != http.StatusOK {
@@ -737,7 +737,7 @@ func TestActivate_ManualKeyExistingTenantStillRequiresAPIKey(t *testing.T) {
 	expiresAt := time.Now().UTC().AddDate(1, 0, 0).Format(time.RFC3339)
 	seedLicenseKey(t, app, "OZ-PRO-MANUAL-0001", "pro", "unused", expiresAt)
 
-	body := fmt.Sprintf(`{"key":"OZ-PRO-MANUAL-0001","machine_id":"aaaaaaaaaaaaaaa","email":"MANUALTENANT001@example.com"}`)
+	body := `{"key":"OZ-PRO-MANUAL-0001","machine_id":"aaaaaaaaaaaaaaa","email":"MANUALTENANT001@example.com"}`
 	rec := webRequest(t, se, http.MethodPost, "/api/v1/license/activate", body, "", "")
 
 	if rec.Code != http.StatusUnauthorized {

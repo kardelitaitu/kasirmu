@@ -533,12 +533,12 @@ func buildReceiptEmail(from, to, licenseKey, tier, expiresAt string) []byte {
 		tier, licenseKey, expiresAt)
 
 	var sb strings.Builder
-	sb.WriteString("From: OZ-POS <" + from + ">\r\n")
-	sb.WriteString("To: " + to + "\r\n")
-	sb.WriteString("Subject: " + subject + "\r\n")
+	fmt.Fprintf(&sb, "From: OZ-POS <%s>\r\n", from)
+	fmt.Fprintf(&sb, "To: %s\r\n", to)
+	fmt.Fprintf(&sb, "Subject: %s\r\n", subject)
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	sb.WriteString("Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n")
+	fmt.Fprintf(&sb, "Date: %s\r\n", time.Now().UTC().Format(time.RFC1123Z))
 	sb.WriteString("\r\n")
 	sb.WriteString(body)
 	return []byte(sb.String())
