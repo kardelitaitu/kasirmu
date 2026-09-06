@@ -39,19 +39,31 @@ impl Store<'_> {
             .into());
         }
 
-        // 2. Per-store register limit from the effective tier. Only POS
-        //    registers (store-pos/restaurant-pos) consume the register
-        //    budget — kds/warehouse/inventory/admin are separate types and
-        //    must not block register creation.
-        if let Some(limit) = effective.max_pos_instances() {
-            let current = self.count_active_pos_instances(store_id)?;
-            if current >= limit {
-                return Err(QuotaError::RegisterLimit {
-                    tier: effective.name().into(),
-                    limit,
-                    current,
+        // 2. Per-store register limit from the effective tier for POS registers,
+        //    or warehouse limit for warehouse instances.
+        if type_key == "store-pos" || type_key == "restaurant-pos" {
+            if let Some(limit) = effective.max_pos_instances() {
+                let current = self.count_active_pos_instances(store_id)?;
+                if current >= limit {
+                    return Err(QuotaError::RegisterLimit {
+                        tier: effective.name().into(),
+                        limit,
+                        current,
+                    }
+                    .into());
                 }
-                .into());
+            }
+        } else if type_key == "warehouse" {
+            if let Some(limit) = effective.max_warehouses() {
+                let current = self.count_active_warehouse_instances(store_id)?;
+                if current >= limit {
+                    return Err(QuotaError::WarehouseLimit {
+                        tier: effective.name().into(),
+                        limit,
+                        current,
+                    }
+                    .into());
+                }
             }
         }
 

@@ -576,6 +576,79 @@ fn enforce_instance_quota_non_pos_types_do_not_inflate_pos_count() {
 }
 
 #[test]
+fn enforce_instance_quota_enforces_warehouse_limit() {
+    let (store, _) = fresh();
+    let free = sub_for_tier(SubscriptionTier::Free);
+    let plus = sub_for_tier(SubscriptionTier::Plus);
+    let store_id = "wh-quota-test";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('wh-quota-test', 'WH Test')",
+            [],
+        )
+        .unwrap();
+
+    // Free tier rejects warehouse type entirely
+    assert!(
+        store
+            .enforce_instance_quota(&free, "warehouse", store_id)
+            .is_err()
+    );
+
+    // Plus allows 2 warehouses: 0 existing allows creation
+    assert!(
+        store
+            .enforce_instance_quota(&plus, "warehouse", store_id)
+            .is_ok()
+    );
+
+    // Add 1st warehouse instance
+    store
+        .conn
+        .execute(
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+             VALUES ('wh-1', 'warehouse', 'wh-quota-test', 'WH 1', 'active', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+    // 1 warehouse exists; Plus (limit 2) still allows creation
+    assert!(
+        store
+            .enforce_instance_quota(&plus, "warehouse", store_id)
+            .is_ok()
+    );
+
+    // Add 2nd warehouse instance
+    store
+        .conn
+        .execute(
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+             VALUES ('wh-2', 'warehouse', 'wh-quota-test', 'WH 2', 'active', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+    // Now 2 warehouses exist; Plus (limit 2) should be blocked on count
+    let err = store
+        .enforce_instance_quota(&plus, "warehouse", store_id)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        CoreError::SubscriptionLimitExceeded(msg) if msg.contains("warehouse")
+    ));
+
+    // Pro tier allows 3 warehouses (2 exist currently)
+    let pro = sub_for_tier(SubscriptionTier::Pro);
+    assert!(
+        store
+            .enforce_instance_quota(&pro, "warehouse", store_id)
+            .is_ok()
+    );
+}
+
+#[test]
 fn enforce_instance_quota_bundle_plus_allows_kds() {
     let (store, _) = fresh();
     // A fresh store id has zero active instances, so the type check is

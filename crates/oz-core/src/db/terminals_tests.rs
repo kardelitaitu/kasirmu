@@ -399,3 +399,47 @@ fn update_terminal_empty_name_rejected() {
     let err = store(&conn).update_terminal(&t).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "name"));
 }
+
+#[test]
+fn enforce_terminal_quota_allows_within_tier_limit() {
+    let conn = fresh();
+    let s = store(&conn);
+    // 0 terminals: Free allows 1
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Free).is_ok());
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Plus).is_ok());
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Pro).is_ok());
+    assert!(
+        s.enforce_terminal_quota(&SubscriptionTier::Enterprise)
+            .is_ok()
+    );
+}
+
+#[test]
+fn enforce_terminal_quota_blocks_at_limit() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.create_terminal(&make_terminal("t1", "Term 1", "dev-1"))
+        .unwrap();
+
+    // 1 terminal: Free (limit 1) is blocked; Plus (limit 2) allows it
+    let err_free = s
+        .enforce_terminal_quota(&SubscriptionTier::Free)
+        .unwrap_err();
+    assert!(matches!(
+        err_free,
+        CoreError::SubscriptionLimitExceeded(msg) if msg.contains("1 registers")
+    ));
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Plus).is_ok());
+
+    // 2 terminals: Plus (limit 2) is blocked; Pro (limit 5) allows it
+    s.create_terminal(&make_terminal("t2", "Term 2", "dev-2"))
+        .unwrap();
+    let err_plus = s
+        .enforce_terminal_quota(&SubscriptionTier::Plus)
+        .unwrap_err();
+    assert!(matches!(
+        err_plus,
+        CoreError::SubscriptionLimitExceeded(msg) if msg.contains("2 registers")
+    ));
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Pro).is_ok());
+}

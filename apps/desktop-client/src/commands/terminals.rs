@@ -412,6 +412,15 @@ pub async fn register_terminal_scoped(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, oz_core::permissions::TERMINALS_REGISTER)
         .await?;
+
+    let sub = {
+        let global_db = state.db.lock().await;
+        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+
     let conn = state
         .db_manager
         .open_store(&session.store_id)
@@ -429,6 +438,7 @@ pub async fn register_terminal_scoped(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
+    store.enforce_terminal_quota(&sub.effective_tier())?;
     store.create_terminal(&terminal)?;
     drop(db);
 

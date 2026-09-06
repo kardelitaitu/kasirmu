@@ -10,6 +10,7 @@ use rusqlite::params;
 
 use crate::Terminal;
 use crate::error::CoreError;
+use crate::subscription::{QuotaError, SubscriptionTier};
 
 use super::Store;
 
@@ -56,6 +57,34 @@ impl Store<'_> {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Enforce the subscription tier's terminal/register limit before registering
+    /// a new terminal.
+    ///
+    /// When the tier's `max_pos_instances()` cap is reached, returns
+    /// [`QuotaError::RegisterLimit`]. Unlimited tiers (`None`) pass.
+    pub fn enforce_terminal_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
+        if let Some(limit) = tier.max_pos_instances() {
+            let current = self.count_terminals()?;
+            if current >= limit {
+                return Err(QuotaError::RegisterLimit {
+                    tier: tier.name().into(),
+                    limit,
+                    current,
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Count all registered terminals in the store.
+    pub fn count_terminals(&self) -> Result<i64, CoreError> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))?;
+        Ok(count)
     }
 
     /// Register a new terminal.

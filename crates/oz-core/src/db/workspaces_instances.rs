@@ -314,6 +314,21 @@ impl Store<'_> {
         )?;
         Ok(count)
     }
+
+    /// Count active warehouse instances in a store.
+    ///
+    /// The tier's `max_warehouses` limit governs warehouse instances.
+    pub fn count_active_warehouse_instances(&self, store_id: &str) -> Result<i64, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM workspace_instances
+             WHERE location_id = ?1
+               AND type_key = 'warehouse'
+               AND status NOT IN ('archived', 'quota_suspended')",
+            params![store_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
 }
 
 impl Store<'_> {
