@@ -161,7 +161,15 @@ impl Store<'_> {
                 s.query_map(params![loc], |r| r.get::<_, String>(0))?
                     .collect::<Result<Vec<_>, _>>()?
             }
-            // Organization Memo: every registered terminal.
+            // Organization Memo: every registered terminal. Correct for the
+            // single-tenant desktop (all terminals belong to the one tenant).
+            // It CANNOT be narrowed to the memo's tenant here: `terminals` has
+            // no tenant_id, and the only tenant link is bound_location_id ->
+            // locations.tenant_id, which would wrongly exclude the unbound
+            // terminals a single-tenant desktop legitimately uses. A
+            // multi-tenant fan-out is therefore blocked on Phase 1 giving
+            // `terminals` a tenant_id — not a Memo-layer fix. (See the
+            // tenant-isolation reconciliation in the Phase 2 journal.)
             None => {
                 let mut s = tx.prepare("SELECT id FROM terminals ORDER BY id")?;
                 s.query_map([], |r| r.get::<_, String>(0))?
