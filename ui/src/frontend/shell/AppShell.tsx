@@ -25,6 +25,7 @@ import { hasUsers } from '@/api/staff';
 import LicenseActivationScreen from '@/features/auth/LicenseActivationScreen';
 import CreatePinScreen from '@/features/auth/CreatePinScreen';
 import SessionLockScreen from '@/features/auth/SessionLockScreen';
+import MemoBanner from '@/features/memo/MemoBanner';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 // These screens are only reachable after login, so each is code-split
@@ -362,9 +363,16 @@ export default function AppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
-  // P12-4: Session lock screen takes precedence over all other views
+  // P12-4: Session lock screen takes precedence over all other views.
+  // Memo surface (spec): locking keeps the session alive, so the
+  // session-scoped memo read still answers here.
   if (isLocked && session) {
-    return <SessionLockScreen onUnlock={handleUnlock} />;
+    return (
+      <>
+        <MemoBanner />
+        <SessionLockScreen onUnlock={handleUnlock} />
+      </>
+    );
   }
 
   if (loading) {
@@ -419,6 +427,7 @@ export default function AppShell() {
   if (isKdsKiosk) {
     return (
       <>
+        <MemoBanner />
         <div className="workspace-fullscreen">
           <div className="kds-workspace">
             <LazyBoundary>
@@ -452,6 +461,7 @@ export default function AppShell() {
     if (currentRoute === 'kds') {
       return (
         <>
+          <MemoBanner />
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -492,6 +502,7 @@ export default function AppShell() {
     if (currentRoute === 'kds') {
       return (
         <>
+          <MemoBanner />
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -530,6 +541,7 @@ export default function AppShell() {
   if (activeWorkspace === 'kds') {
     return (
       <>
+        <MemoBanner />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <KdsScreen />

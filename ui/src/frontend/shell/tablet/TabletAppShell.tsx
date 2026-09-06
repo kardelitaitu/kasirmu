@@ -9,6 +9,7 @@ import { getPage, isPageAccessible } from '@/platform/ui/page-registry';
 import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
+import MemoBanner from '@/features/memo/MemoBanner';
 import type { WizardState } from '@/features/setup/SetupWizard';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
@@ -174,11 +175,14 @@ export default function TabletAppShell() {
 
   if (activeWorkspace === 'kds') {
     return (
-      <div className="workspace-fullscreen">
-        <LazyBoundary>
-          <KdsScreen />
-        </LazyBoundary>
-      </div>
+      <>
+        <MemoBanner />
+        <div className="workspace-fullscreen">
+          <LazyBoundary>
+            <KdsScreen />
+          </LazyBoundary>
+        </div>
+      </>
     );
   }
 
