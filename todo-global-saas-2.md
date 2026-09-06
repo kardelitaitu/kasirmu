@@ -840,6 +840,62 @@ per tenant yet.
 > `7ed4412b` fan-out filter carries over), and the read path needs the same
 > isolation care the sync option would have — just on the cloud side.
 
+### Cloud-read design (2026-09-07) — REST serving layer, not queue replication
+
+Grounded in how the cloud actually works today, verified before writing:
+the sync queue (`POST /api/sync/push|pull` + `SyncQueue::apply_remote` in
+`platform/sync/src/queue.rs`) replicates pushed items into each receiving
+terminal's **local** database — that is precisely the rejected *sync* option.
+The REST surface (`crates/oz-api/src/routes/*` + `pg.rs`) is what writes and
+serves from cloud Postgres directly, with RLS (`set_config('oz.tenant_id')`)
+and JWT claims (`tenant_id`, `terminal_id` from terminal client-credentials,
+`crates/oz-api/src/auth.rs:58`). So the cloud read is built as REST:
+
+**Write half — desktop → cloud, full-state reconciliation.** A new
+`POST /api/v1/memos/sync` accepts the tenant's **complete memo state** from
+the desktop (every non-deleted memo row + its `memo_locations` +
+`memo_recipients`, including `archived_at` on archived rows) and reconciles
+PG with it in one transaction: upsert rows `ON CONFLICT (id)`, insert missing
+targeting/recipients, and DELETE any PG memo of that tenant absent from the
+snapshot (self-healing — a dropped desktop row, including a retention
+delete, propagates by omission; no tombstones, no sync markers, no schema).
+Desktop pushes best-effort at write time (publish/stop/revise) and
+re-pushes the full state on the existing 5-minute memo daemon tick, so a
+failed or offline push self-corrects within one cycle; memos are few
+(live for days), so the snapshot is bounded. Auth: the same JWT the sync
+stack already mints; the server stamps `tenant_id` from claims, never the
+body (the push_handler pattern).
+
+**Read half — `GET /api/v1/memos/active?terminal_id=`.** Serves the exact
+`MemoDisplayDto` envelope the banner already consumes (`memos` +
+server-issued `cadence` from `oz_core::memo` constants — one source of
+truth, no drift), reading PG `memos` joined `memo_recipients` where
+`status='published' AND expires_at > now`, tenant = claims, ordered
+Location-above-Organization (the `7ed4412b`/`list_active_for_terminal`
+semantics, ported to PG with RLS). `terminal_id` comes from the query and
+must equal `claims.terminal_id` when the token is terminal-scoped (defense
+in depth, matching `require_admin_write`'s pattern of scoping device
+credentials).
+
+**Tablet integration.** `list_active_memos_scoped` (tablet command) gains a
+cloud path: when sync is configured (the existing `SyncConfig`), it fetches
+the cloud endpoint and maps the response 1:1; when unconfigured or
+unreachable it falls back to the local read (structurally empty — the
+banner is silent, exactly today's behaviour, with a `tracing::warn`).
+No new UI surface, no parity-gate change (the command name and DTO are
+unchanged; the switch is inside the command).
+
+**Work breakdown, in order:** (1) `crates/oz-api/src/pg.rs`:
+`sync_memos` (the reconciling upsert) + `list_active_memos_for_terminal`,
+both RLS-scoped, with tests; (2) `crates/oz-api/src/routes/memos.rs`: the
+two endpoints + auth guards + route registration + tests; (3) desktop:
+push-at-write + daemon reconciliation in the memo sweep (requires the
+desktop's sync config/token plumbing — reuse, do not invent, the pg sync
+daemon's credentials path); (4) tablet: the cloud-first read with local
+fallback; (5) cloud retention mirror: the push handler deletes PG archives
+past `RETENTION_WINDOW_DAYS` for the tenant (piggyback maintenance — no new
+daemon). Each numbered step is one commit.
+
 - **Progress (2026-09-06, round 6):** step (2)'s schema-independent half LANDED
   as `cf69ec3c` — `oz-core::memo` (MemoScope, MemoStatus + DeliveryStatus state
   machines, MemoDuration + expiry, `may_stop` rule, cadence constants; 16
