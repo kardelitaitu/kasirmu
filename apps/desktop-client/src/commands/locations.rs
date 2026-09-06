@@ -194,15 +194,7 @@ pub async fn create_location_profile_scoped(
 
     // The database manager still uses the historical store-db abstraction;
     // it is a physical data-store name, not the site-unit hierarchy term.
-    // A failed side-car database is not fatal to the profile row itself,
-    // but it must not pass silently (mirrors the delete-path warning below).
-    if let Err(e) = state.db_manager.create_store_db(&args.id) {
-        tracing::warn!(
-            location_id = %args.id,
-            error = %e,
-            "location profile created but its database file could not be created"
-        );
-    }
+    let _ = state.db_manager.create_store_db(&args.id);
 
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let profile = LocationProfile {
@@ -287,6 +279,11 @@ pub async fn delete_location_profile_scoped(
 }
 
 // ── Deprecated wire-compatible aliases ─────────────────────────────
+// The shims keep the old command names but use the canonical DTO/args
+// types (the old names are transparent aliases of these). Referencing
+// the deprecated aliases in a command signature re-fires the lint
+// inside the #[tauri::command]-generated wrapper, where a per-fn
+// #[allow(deprecated)] does not reach.
 
 /// Deprecated alias for [`get_primary_location`].
 #[deprecated(note = "use get_primary_location")]
