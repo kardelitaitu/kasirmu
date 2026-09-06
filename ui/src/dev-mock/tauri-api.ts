@@ -1853,28 +1853,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'list_active_memos_scoped': listMockActiveMemos,
   'acknowledge_memo_scoped': acknowledgeMockMemo,
 
-  'list_store_profiles': listMockLocations,
-  'get_store_profile': getMockLocation,
-  'get_primary_store': getMockPrimaryLocation,
-  'create_store_profile': createMockLocation,
-  'update_store_profile': updateMockLocation,
-  'set_primary_store': setMockPrimaryLocation,
-  // Deletes mutate the stateful store list so a reload (or the topology
-  // editor's branch seed) no longer sees the removed branch — same
-  // persistence contract as the real locations row.
-  'delete_store_profile': deleteMockLocation,
-
-  // Explicit scoped aliases keep the legacy API contract visible here rather
-  // than relying only on the general suffix-based aliasing pass below.
-  'list_store_profiles_scoped': listMockLocations,
-  'get_store_profile_scoped': getMockLocation,
-  'get_primary_store_scoped': getMockPrimaryLocation,
-  'create_store_profile_scoped': createMockLocation,
-  'update_store_profile_scoped': updateMockLocation,
-  'set_primary_store_scoped': setMockPrimaryLocation,
-  'delete_store_profile_scoped': deleteMockLocation,
-
-  // ═══════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   // WORKSPACES (ADR #4 / #7)
   // ═══════════════════════════════════════════════════════════════
 

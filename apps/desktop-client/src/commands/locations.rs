@@ -1,8 +1,9 @@
 //! Tauri commands for location-profile CRUD.
 //!
 //! Each command talks to the [`oz_core::Store`] facade via the shared
-//! [`AppState`] database connection. The old store-profile command names remain
-//! as deprecated wire-compatible aliases until all clients migrate.
+//! [`AppState`] database connection. The old store-profile command names
+//! were retired once every client migrated to the canonical commands
+//! (todo-global-saas-1.md, rename slice 1c/1d).
 
 use oz_core::LocationProfile;
 use oz_core::subscription::{SubscriptionTier, TenantSubscription};
@@ -55,10 +56,6 @@ impl From<LocationProfile> for LocationProfileDto {
     }
 }
 
-/// Deprecated compatibility alias for the pre-Phase 1 DTO name.
-#[deprecated(note = "use LocationProfileDto; Store is now Location")]
-pub type StoreProfileDto = LocationProfileDto;
-
 /// Arguments for creating a location profile.
 #[derive(Debug, Deserialize)]
 pub struct CreateLocationArgs {
@@ -76,10 +73,6 @@ pub struct CreateLocationArgs {
     pub timezone: Option<String>,
 }
 
-/// Deprecated compatibility alias for the pre-Phase 1 argument name.
-#[deprecated(note = "use CreateLocationArgs; Store is now Location")]
-pub type CreateStoreProfileArgs = CreateLocationArgs;
-
 /// Arguments for updating a location profile.
 #[derive(Debug, Deserialize)]
 pub struct UpdateLocationArgs {
@@ -96,10 +89,6 @@ pub struct UpdateLocationArgs {
     /// Timezone.
     pub timezone: String,
 }
-
-/// Deprecated compatibility alias for the pre-Phase 1 argument name.
-#[deprecated(note = "use UpdateLocationArgs; Store is now Location")]
-pub type UpdateStoreProfileArgs = UpdateLocationArgs;
 
 // ── Canonical commands ─────────────────────────────────────────────
 
@@ -276,97 +265,6 @@ pub async fn delete_location_profile_scoped(
         );
     }
     Ok(())
-}
-
-// ── Deprecated wire-compatible aliases ─────────────────────────────
-// The shims keep the old command names but use the canonical DTO/args
-// types (the old names are transparent aliases of these). Referencing
-// the deprecated aliases in a command signature re-fires the lint
-// inside the #[tauri::command]-generated wrapper, where a per-fn
-// #[allow(deprecated)] does not reach.
-
-/// Deprecated alias for [`get_primary_location`].
-#[deprecated(note = "use get_primary_location")]
-#[tauri::command]
-pub async fn get_primary_store(
-    state: State<'_, AppState>,
-) -> Result<Option<LocationProfileDto>, AppError> {
-    get_primary_location(state).await
-}
-
-/// Deprecated alias for [`list_locations_scoped`].
-#[deprecated(note = "use list_locations_scoped")]
-#[tauri::command]
-pub async fn list_store_profiles_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<LocationProfileDto>, AppError> {
-    list_locations_scoped(session_token, state).await
-}
-
-/// Deprecated alias for [`get_location_profile_scoped`].
-#[deprecated(note = "use get_location_profile_scoped")]
-#[tauri::command]
-pub async fn get_store_profile_scoped(
-    id: String,
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Option<LocationProfileDto>, AppError> {
-    get_location_profile_scoped(id, session_token, state).await
-}
-
-/// Deprecated alias for [`get_primary_location_scoped`].
-#[deprecated(note = "use get_primary_location_scoped")]
-#[tauri::command]
-pub async fn get_primary_store_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Option<LocationProfileDto>, AppError> {
-    get_primary_location_scoped(session_token, state).await
-}
-
-/// Deprecated alias for [`create_location_profile_scoped`].
-#[deprecated(note = "use create_location_profile_scoped")]
-#[tauri::command]
-pub async fn create_store_profile_scoped(
-    args: CreateLocationArgs,
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<LocationProfileDto, AppError> {
-    create_location_profile_scoped(args, session_token, state).await
-}
-
-/// Deprecated alias for [`update_location_profile_scoped`].
-#[deprecated(note = "use update_location_profile_scoped")]
-#[tauri::command]
-pub async fn update_store_profile_scoped(
-    args: UpdateLocationArgs,
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<LocationProfileDto, AppError> {
-    update_location_profile_scoped(args, session_token, state).await
-}
-
-/// Deprecated alias for [`set_primary_location_scoped`].
-#[deprecated(note = "use set_primary_location_scoped")]
-#[tauri::command]
-pub async fn set_primary_store_scoped(
-    id: String,
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<LocationProfileDto, AppError> {
-    set_primary_location_scoped(id, session_token, state).await
-}
-
-/// Deprecated alias for [`delete_location_profile_scoped`].
-#[deprecated(note = "use delete_location_profile_scoped")]
-#[tauri::command]
-pub async fn delete_store_profile_scoped(
-    id: String,
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    delete_location_profile_scoped(id, session_token, state).await
 }
 
 #[cfg(test)]

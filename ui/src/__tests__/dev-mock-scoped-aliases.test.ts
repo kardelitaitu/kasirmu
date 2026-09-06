@@ -30,20 +30,22 @@ const OBSERVED = [
 
 // A pair outside the curated SCOPED_ALIASES list whose base IS registered, so passing
 // it proves the fix is a rule rather than more hand-added entries. If a future change
-// reverts to a curated list, this is the case that fails. Two earlier drafts of this
-// control were wrong: list_store_profiles_scoped is curated, and get_brand_settings_scoped
-// is registered directly -- both passed against the broken code and proved nothing.
+// reverts to a curated list, this is the case that fails. One earlier draft of this
+// control was wrong: get_brand_settings_scoped
+// is registered directly -- it passed against the broken code and proved nothing.
 // 115 such gaps exist on the current tree; this asserts one.
 const UNLISTED_CONTROL = 'check_license_status_scoped';
 
 // Every pair the curated SCOPED_ALIASES list used to hold, transcribed before it was
 // deleted. These are the regression net for that deletion: they passed via the list
-// before, and must pass via the general rule after. All 34 are of the form
+// before, and must pass via the general rule after. All are of the form
 // (X_scoped, X) with X registered -- verified, not assumed -- which is what lets the
 // rule subsume them. Two of them (set_settings_scoped, update_kds_order_items_scoped)
 // also carry a direct stub, so they additionally pin that the rule does not clobber an
 // explicit handler: the curated loop ran before the stubs and the stub overwrote it,
 // while the rule runs last and skips them. Same end state, different path.
+// (The seven store-profile pairs were removed with the commands themselves when the
+// Store → Location alias family retired — todo-global-saas-1.md slice 1c/1d.)
 const FORMERLY_CURATED = [
   'get_daily_revenue_scoped', 'get_weekly_revenue_scoped', 'get_monthly_revenue_scoped',
   'get_top_products_scoped', 'get_category_popularity_scoped', 'get_category_popularity_trend_scoped',
@@ -54,9 +56,6 @@ const FORMERLY_CURATED = [
   'remove_count_line_scoped', 'complete_stock_count_scoped', 'update_stock_count_status_scoped',
   'create_category_scoped', 'update_category_scoped', 'delete_category_scoped',
   'create_customer_scoped', 'update_customer_scoped', 'delete_customer_scoped',
-  'list_store_profiles_scoped', 'get_store_profile_scoped', 'get_primary_store_scoped',
-  'create_store_profile_scoped', 'update_store_profile_scoped', 'set_primary_store_scoped',
-  'delete_store_profile_scoped',
 ];
 
 async function resolvesToData(cmd: string) {

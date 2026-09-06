@@ -102,9 +102,6 @@ pub mod staff;
 /// Stock-transfer commands.
 pub mod stock_transfers;
 
-/// Deprecated compatibility alias for the pre-Phase 1 module name.
-#[deprecated(note = "use commands::locations")]
-pub use locations as store_profiles;
 /// Subscription capability commands (C2.2 tier gates).
 pub mod subscription;
 /// Sync commands.

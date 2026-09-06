@@ -1,7 +1,8 @@
-// The tests below exercise the deprecated wire-compat aliases
-// (`StoreProfileDto`, `CreateStoreProfileArgs`, `UpdateStoreProfileArgs`)
-// on purpose: they pin the serde shapes clients built against the old
-// names, so the deprecation lint is expected here until the aliases retire.
+// Canonical location command tests. The pre-migration file also pinned the
+// deprecated `store_profile` alias shapes and invoked the legacy IPC names;
+// those aliases retired with the Store → Location caller migration
+// (todo-global-saas-1.md slice 1c/1d), so the suite now exercises the
+// canonical names only.
 #![allow(deprecated)]
 
 use super::*;
@@ -10,31 +11,14 @@ use oz_core::db::Store;
 use oz_core::migrations;
 use oz_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
+use serde_json::json;
 use tauri::Manager;
 
-// ── StoreProfileDto ─────────────────────────────────────────────────
+// ── DTO + args serde shapes ─────────────────────────────────────────
 
 #[test]
-fn store_profile_dto_debug() {
-    let dto = StoreProfileDto {
-        id: "sp1".into(),
-        name: "Main Store".into(),
-        address: "123 Main St".into(),
-        tax_id: "TAX-001".into(),
-        currency: "USD".into(),
-        timezone: "UTC".into(),
-        is_primary: true,
-        created_at: "2025-01-01".into(),
-        updated_at: "2025-01-01".into(),
-    };
-    let d = format!("{dto:?}");
-    assert!(d.contains("Main Store"));
-    assert!(d.contains("USD"));
-}
-
-#[test]
-fn store_profile_dto_serialize() {
-    let dto = StoreProfileDto {
+fn location_profile_dto_serialize() {
+    let dto = LocationProfileDto {
         id: "sp2".into(),
         name: "Branch".into(),
         address: String::new(),
@@ -45,71 +29,42 @@ fn store_profile_dto_serialize() {
         created_at: "2025-02-01".into(),
         updated_at: "2025-02-01".into(),
     };
-    let json = serde_json::to_value(&dto).unwrap();
-    assert_eq!(json["name"], "Branch");
-    assert_eq!(json["is_primary"], false);
+    let v = serde_json::to_value(&dto).unwrap();
+    assert_eq!(v["id"], "sp2");
+    assert_eq!(v["name"], "Branch");
+    assert_eq!(v["is_primary"], false);
+    assert_eq!(v["currency"], "IDR");
+    assert_eq!(v["timezone"], "Asia/Jakarta");
 }
 
-// ── CreateStoreProfileArgs ──────────────────────────────────────────
-
 #[test]
-fn create_store_profile_args_deserialize_minimal() {
-    let json = r#"{"id":"sp-new","name":"New Store"}"#;
-    let args: CreateStoreProfileArgs = serde_json::from_str(json).unwrap();
+fn create_location_args_deserialize_minimal() {
+    let v = json!({"id":"sp-new","name":"New Location"});
+    let args: CreateLocationArgs = serde_json::from_value(v).unwrap();
     assert_eq!(args.id, "sp-new");
     assert_eq!(args.address, None);
     assert_eq!(args.currency, None);
 }
 
 #[test]
-fn create_store_profile_args_deserialize_full() {
-    let json = r##"{"id":"sp-full","name":"Full Store","address":"123 Rd","tax_id":"T1","currency":"EUR","timezone":"CET"}"##;
-    let args: CreateStoreProfileArgs = serde_json::from_str(json).unwrap();
+fn create_location_args_deserialize_full() {
+    let v = json!({"id":"sp-full","name":"Full Location","address":"123 Rd","tax_id":"T1","currency":"EUR","timezone":"CET"});
+    let args: CreateLocationArgs = serde_json::from_value(v).unwrap();
     assert_eq!(args.currency.as_deref(), Some("EUR"));
     assert_eq!(args.timezone.as_deref(), Some("CET"));
 }
 
 #[test]
-fn create_store_profile_args_debug() {
-    let args = CreateStoreProfileArgs {
-        id: "x".into(),
-        name: "Y".into(),
-        address: None,
-        tax_id: None,
-        currency: None,
-        timezone: None,
-    };
-    let d = format!("{args:?}");
-    assert!(d.contains("Y"));
-}
-
-// ── UpdateStoreProfileArgs ──────────────────────────────────────────
-
-#[test]
-fn update_store_profile_args_deserialize() {
-    let json = r##"{"id":"sp1","name":"Updated","address":"New Rd","tax_id":"T2","currency":"USD","timezone":"EST"}"##;
-    let args: UpdateStoreProfileArgs = serde_json::from_str(json).unwrap();
+fn update_location_args_deserialize() {
+    let v = json!({"id":"sp1","name":"Updated","address":"New Rd","tax_id":"T2","currency":"USD","timezone":"EST"});
+    let args: UpdateLocationArgs = serde_json::from_value(v).unwrap();
     assert_eq!(args.name, "Updated");
     assert_eq!(args.address, "New Rd");
 }
 
-#[test]
-fn update_store_profile_args_debug() {
-    let args = UpdateStoreProfileArgs {
-        id: "x".into(),
-        name: "Z".into(),
-        address: "A".into(),
-        tax_id: "T".into(),
-        currency: "C".into(),
-        timezone: "TZ".into(),
-    };
-    let d = format!("{args:?}");
-    assert!(d.contains("Z"));
-}
-
-// ── create_store_profile_scoped flow ────────────────────────────────
+// ── create_location_profile_scoped flow ─────────────────────────────
 //
-// The scoped command resolves the session's STORE database and then runs
+// The scoped command resolves the session's location database and then runs
 // the tenant-subscription quota gate + profile INSERT against it. These
 // tests pin the end-to-end behaviour (C1.2 quota, seeded rows, permission
 // gating) so the branch-creation flow cannot silently regress.
@@ -126,7 +81,7 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-/// AppState with a fresh migrated global DB and an isolated store-db dir
+/// AppState with a fresh migrated global DB and an isolated location-db dir
 /// (mirrors the security_scoped_integration_tests harness).
 fn flow_state(conn: rusqlite::Connection) -> AppState {
     let temp_dir = tempfile::tempdir().unwrap();
@@ -145,15 +100,15 @@ fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
         .unwrap()
 }
 
-/// The full happy path on a fresh migrated state: the store db the session
+/// The full happy path on a fresh migrated state: the location db the session
 /// resolves to already contains exactly one `default` profile row (the
 /// migration seed). Debug builds mirror `get_subscription_capabilities`'s
 /// dev shim — the bootstrap Free tier is upgraded to Premium before the
 /// quota gate — so branch creation must SUCCEED here. This is the exact
 /// flow that used to dead-end every dev user with a subscription-limit
-/// rejection despite the UI reporting unlimited stores.
+/// rejection despite the UI reporting unlimited locations.
 #[tokio::test]
-async fn create_store_profile_scoped_end_to_end_owner() {
+async fn create_location_profile_scoped_end_to_end_owner() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
     let state = flow_state(conn);
@@ -172,9 +127,9 @@ async fn create_store_profile_scoped_end_to_end_owner() {
     );
     let app = mock_app(state);
 
-    let result = create_store_profile_scoped(
-        CreateStoreProfileArgs {
-            id: "store-test-1".into(),
+    let result = create_location_profile_scoped(
+        CreateLocationArgs {
+            id: "location-test-1".into(),
             name: "Second Branch".into(),
             address: None,
             tax_id: None,
@@ -187,11 +142,11 @@ async fn create_store_profile_scoped_end_to_end_owner() {
     .await;
 
     let created = result.unwrap();
-    assert_eq!(created.id, "store-test-1");
+    assert_eq!(created.id, "location-test-1");
     assert_eq!(created.name, "Second Branch");
     assert!(!created.is_primary);
 
-    // The row must now exist in the store-scoped profile registry.
+    // The row must now exist in the location-scoped profile registry.
     let conn = app
         .state::<AppState>()
         .db_manager
@@ -205,13 +160,13 @@ async fn create_store_profile_scoped_end_to_end_owner() {
     assert_eq!(count, 2); // migration seed + the new branch
 }
 
-/// A Plus tenant allows 1 store, and the migrated store db already contains
-/// the `default` profile row — so a second creation must be rejected with
-/// the typed subscription-limit error (mapped to the localized plan copy on
-/// the front-end), NEVER a generic Internal/Db error. Plus is used instead
+/// A Plus tenant allows 1 location, and the migrated location db already
+/// contains the `default` profile row — so a second creation must be rejected
+/// with the typed subscription-limit error (mapped to the localized plan copy
+/// on the front-end), NEVER a generic Internal/Db error. Plus is used instead
 /// of Free because debug builds upgrade only the bootstrap Free tier.
 #[tokio::test]
-async fn create_store_profile_scoped_rejects_when_plus_quota_reached() {
+async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
     let state = flow_state(conn);
@@ -228,7 +183,7 @@ async fn create_store_profile_scoped_rejects_when_plus_quota_reached() {
             0,
         ),
     );
-    // Re-tier the tenant to Plus (max 1 store — already consumed by the
+    // Re-tier the tenant to Plus (max 1 location — already consumed by the
     // migration-seeded `default` profile). Debug builds shim only Free, so
     // this row exercises the real quota gate.
     {
@@ -244,9 +199,9 @@ async fn create_store_profile_scoped_rejects_when_plus_quota_reached() {
     }
     let app = mock_app(state);
 
-    let result = create_store_profile_scoped(
-        CreateStoreProfileArgs {
-            id: "store-test-2".into(),
+    let result = create_location_profile_scoped(
+        CreateLocationArgs {
+            id: "location-test-2".into(),
             name: "Third Branch".into(),
             address: None,
             tax_id: None,
@@ -274,7 +229,7 @@ async fn create_store_profile_scoped_rejects_when_plus_quota_reached() {
 /// A staff session without `settings:edit` must be denied — typed
 /// PermissionDenied, not Internal.
 #[tokio::test]
-async fn create_store_profile_scoped_denies_staff_without_settings_edit() {
+async fn create_location_profile_scoped_denies_staff_without_settings_edit() {
     let conn = migrations::fresh_db();
     {
         let store = Store::new(&conn);
@@ -303,9 +258,9 @@ async fn create_store_profile_scoped_denies_staff_without_settings_edit() {
     );
     let app = mock_app(state);
 
-    let result = create_store_profile_scoped(
-        CreateStoreProfileArgs {
-            id: "store-test-3".into(),
+    let result = create_location_profile_scoped(
+        CreateLocationArgs {
+            id: "location-test-3".into(),
             name: "Staff Branch".into(),
             address: None,
             tax_id: None,

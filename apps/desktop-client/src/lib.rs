@@ -949,14 +949,6 @@ pub fn run() {
             commands::locations::update_location_profile_scoped,
             commands::locations::set_primary_location_scoped,
             commands::locations::delete_location_profile_scoped,
-            // Deprecated Store → Location IPC aliases.
-            commands::locations::list_store_profiles_scoped,
-            commands::locations::get_store_profile_scoped,
-            commands::locations::get_primary_store_scoped,
-            commands::locations::create_store_profile_scoped,
-            commands::locations::update_store_profile_scoped,
-            commands::locations::set_primary_store_scoped,
-            commands::locations::delete_store_profile_scoped,
             // ── Hardware, scale, branding, product variants, bundles (H-1) ──
             commands::hardware::open_cash_drawer_scoped,
             commands::hardware::print_receipt_scoped,
