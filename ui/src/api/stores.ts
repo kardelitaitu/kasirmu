@@ -1,62 +1,42 @@
-import { loggedInvoke } from '@/utils/logged-invoke';
+import {
+  createLocationProfileScoped,
+  deleteLocationProfileScoped,
+  getLocationProfileScoped,
+  getPrimaryLocationScoped,
+  listLocationsScoped,
+  setPrimaryLocationScoped,
+  updateLocationProfileScoped,
+  type CreateLocationArgs,
+  type LocationProfile,
+  type UpdateLocationArgs,
+} from '@/api/locations';
 
-/** A store profile with location and configuration info. */
-export interface StoreProfile {
-  id: string;
-  name: string;
-  address: string;
-  tax_id: string;
-  currency: string;
-  timezone: string;
-  is_primary: boolean;
-  created_at: string;
-  updated_at: string;
-}
+/** @deprecated Use `LocationProfile`; Store is now Location. */
+export type StoreProfile = LocationProfile;
 
-/** Arguments for creating a new store profile. */
-export interface CreateStoreArgs {
-  id: string;
-  name: string;
-  address?: string;
-  tax_id?: string;
-  currency?: string;
-  timezone?: string;
-}
+/** @deprecated Use `CreateLocationArgs`; Store is now Location. */
+export type CreateStoreArgs = CreateLocationArgs;
 
-/** Arguments for updating an existing store profile. */
-export interface UpdateStoreArgs {
-  id: string;
-  name: string;
-  address: string;
-  tax_id: string;
-  currency: string;
-  timezone: string;
-}
+/** @deprecated Use `UpdateLocationArgs`; Store is now Location. */
+export type UpdateStoreArgs = UpdateLocationArgs;
 
-/** List all store profiles for the session's tenant (scoped — ADR #7). */
-export const listStoresScoped = (sessionToken: string): Promise<StoreProfile[]> =>
-  loggedInvoke<StoreProfile[]>('list_store_profiles_scoped', { sessionToken });
+/** @deprecated Use `listLocationsScoped`; Store is now Location. */
+export const listStoresScoped = listLocationsScoped;
 
-/** Get a single store profile by its identifier (scoped — ADR #7). */
-export const getStoreProfileScoped = (sessionToken: string, id: string): Promise<StoreProfile | null> =>
-  loggedInvoke<StoreProfile | null>('get_store_profile_scoped', { sessionToken, id });
+/** @deprecated Use `getLocationProfileScoped`; Store is now Location. */
+export const getStoreProfileScoped = getLocationProfileScoped;
 
-/** Get the primary store profile (scoped — ADR #7). */
-export const getPrimaryStoreScoped = (sessionToken: string): Promise<StoreProfile | null> =>
-  loggedInvoke<StoreProfile | null>('get_primary_store_scoped', { sessionToken });
+/** @deprecated Use `getPrimaryLocationScoped`; Store is now Location. */
+export const getPrimaryStoreScoped = getPrimaryLocationScoped;
 
-/** Create a new store profile (scoped — ADR #7). */
-export const createStoreProfileScoped = (sessionToken: string, args: CreateStoreArgs): Promise<StoreProfile> =>
-  loggedInvoke<StoreProfile>('create_store_profile_scoped', { sessionToken, args });
+/** @deprecated Use `createLocationProfileScoped`; Store is now Location. */
+export const createStoreProfileScoped = createLocationProfileScoped;
 
-/** Update an existing store profile (scoped — ADR #7). */
-export const updateStoreProfileScoped = (sessionToken: string, args: UpdateStoreArgs): Promise<StoreProfile> =>
-  loggedInvoke<StoreProfile>('update_store_profile_scoped', { sessionToken, args });
+/** @deprecated Use `updateLocationProfileScoped`; Store is now Location. */
+export const updateStoreProfileScoped = updateLocationProfileScoped;
 
-/** Set a store as the primary store (scoped — ADR #7). */
-export const setPrimaryStoreScoped = (sessionToken: string, id: string): Promise<StoreProfile> =>
-  loggedInvoke<StoreProfile>('set_primary_store_scoped', { sessionToken, id });
+/** @deprecated Use `setPrimaryLocationScoped`; Store is now Location. */
+export const setPrimaryStoreScoped = setPrimaryLocationScoped;
 
-/** Delete a store profile by its identifier (scoped — ADR #7). */
-export const deleteStoreProfileScoped = (sessionToken: string, id: string): Promise<void> =>
-  loggedInvoke<void>('delete_store_profile_scoped', { sessionToken, id });
+/** @deprecated Use `deleteLocationProfileScoped`; Store is now Location. */
+export const deleteStoreProfileScoped = deleteLocationProfileScoped;
