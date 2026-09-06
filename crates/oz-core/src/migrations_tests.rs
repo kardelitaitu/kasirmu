@@ -385,14 +385,15 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 110 tables,
+    // All migrations applied (init + incremental) yield 111 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
+    // (20260915_topology_revisions.sql added the 111th.)
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        110,
+        111,
         "table surface drifted"
     );
     assert_eq!(
@@ -403,8 +404,12 @@ fn init_sql_creates_complete_schema_surface() {
         // 1 terminals-tenant index from `20260912_terminals_tenant.sql` plus
         // 2 memo-locations indexes (location + tenant) from
         // `20260913_memo_locations.sql`, minus the dropped single-location
-        // index `idx_memos_location`, on top of the previously pinned 155.
-        157,
+        // index `idx_memos_location`, plus the partial retention-sweep index
+        // `idx_topology_revisions_unpinned` from
+        // `20260915_topology_revisions.sql`, on top of the previously pinned 155.
+        // (The table's UNIQUE constraint is NOT counted: SQLite names that
+        // index `sqlite_autoindex_*` and the query excludes that prefix.)
+        158,
         "index surface drifted"
     );
     assert_eq!(
@@ -538,6 +543,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260912_terminals_tenant.sql".to_string(),
             "20260913_memo_locations.sql".to_string(),
             "20260914_memo_retention.sql".to_string(),
+            "20260915_topology_revisions.sql".to_string(),
         ]
     );
 
@@ -560,14 +566,15 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run (110 tables = the
-    // 109 the surface test pinned before 20260913 added memo_locations).
+    // Schema surface is unchanged after the no-op re-run (111 tables = the
+    // 109 the surface test pinned before 20260913 added memo_locations, plus
+    // memo_locations itself and 20260915's topology_revisions).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        110,
+        111,
         "table surface must be unchanged after upgrade"
     );
 }

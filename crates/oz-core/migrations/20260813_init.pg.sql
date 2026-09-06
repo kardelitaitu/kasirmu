@@ -461,6 +461,56 @@ CREATE TABLE IF NOT EXISTS "memos" (
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 , archived_at TEXT);
 
+CREATE TABLE IF NOT EXISTS topology_revisions (
+    id                  TEXT PRIMARY KEY,
+    branch_id           TEXT NOT NULL DEFAULT '',
+    revision            BIGINT NOT NULL,
+
+    -- Author-chosen "what changed and why" (ADR #46 §6). Optional at the UI,
+    -- empty by default; this column is the difference between a list of
+    -- timestamps and an actual history.
+    change_note         TEXT NOT NULL DEFAULT '',
+
+    -- The full graph envelope, byte-identical to what was written to `settings`
+    -- for this revision, so a revision is self-contained and needs no
+    -- reconstruction. NULL means DEFLATED (ADR #46 §4): the record of who, when,
+    -- and why is kept permanently, the restorable snapshot is not. Every read
+    -- path that offers a restore must check this for NULL and say
+    -- "record only — snapshot pruned" rather than offering a restore that fails.
+    diagram             TEXT,
+
+    -- Workspace-diff COUNTS, not workspace rows (ADR #46 §2). Apply already has
+    -- these in hand at commands.rs:272-274. They let a history row explain
+    -- itself — "this Apply archived 3 workspaces" — without duplicating another
+    -- table's contents or growing without bound.
+    workspace_creations BIGINT NOT NULL DEFAULT 0,
+    workspace_updates   BIGINT NOT NULL DEFAULT 0,
+    workspace_archives  BIGINT NOT NULL DEFAULT 0,
+    node_count          BIGINT NOT NULL DEFAULT 0,
+    wire_count          BIGINT NOT NULL DEFAULT 0,
+
+    -- Stored per revision because the contract schema moves (ADR #45 took it
+    -- 1 -> 2). A revision written under an older version may no longer validate;
+    -- §7 shows it with its reason rather than migrating it forward.
+    schema_version      BIGINT NOT NULL,
+
+    -- Pinned revisions are exempt from both pruning and deflation (ADR #46 §4).
+    -- This is what makes the table a DEPLOY history rather than a scratch pad:
+    -- a known-good graph stays restorable however busy the branch gets after it.
+    pinned              BIGINT NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+
+    published_at        TEXT NOT NULL,
+    published_by        TEXT NOT NULL,
+    -- Stamped by the write path; NOT yet added to RLS_TABLES in
+    -- scripts/generate-pg-migration.py. That mirrors memo_revisions exactly —
+    -- enabling RLS is a policy decision the repo keeps separate from schema, and
+    -- the generator surfaces uncovered tenant_id tables as a visible comment
+    -- rather than failing (ADR #46 §9).
+    tenant_id           TEXT NOT NULL DEFAULT 'default',
+
+    UNIQUE (branch_id, revision)
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -1707,6 +1757,9 @@ CREATE INDEX IF NOT EXISTS idx_terminals_device_id ON terminals(device_id);
 CREATE INDEX IF NOT EXISTS idx_terminals_tenant
     ON terminals(tenant_id);
 
+CREATE INDEX IF NOT EXISTS idx_topology_revisions_unpinned
+    ON topology_revisions(branch_id, revision) WHERE pinned = 0;
+
 CREATE INDEX IF NOT EXISTS idx_user_location_access_user_id
     ON user_location_access(user_id);
 
@@ -1871,6 +1924,7 @@ ON CONFLICT DO NOTHING;
 --   memos
 --   snapshot_versions
 --   terminals
+--   topology_revisions
 --   webhook_endpoints
 --
 -- ── Row-Level Security: tenant isolation (PG-only) ─────────────────────
