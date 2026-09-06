@@ -733,6 +733,9 @@ Scope findings from the pre-implementation investigation, in execution order:
       and scopes for organization, legal entity, location, workspace, and
       terminal. A manager assigned to Location A must not automatically manage
       Location B.
+      - **Progress 2026-09-07 (`3233a99d`):** Wired `require_permission_for_user_scoped`
+        into `authorize_topology_write` and `apply_topology_diff`. Scoped managers
+        are blocked from applying topology or saving templates across locations.
 - [x] **Define the tenant hierarchy.** The canonical design now includes
       Organization/Tenant → Legal Entity → Location, with Workspace Instances
       scoped to Locations and Terminals owned by the Organization and assigned
@@ -795,7 +798,7 @@ Scope findings from the pre-implementation investigation, in execution order:
       §G migration (auto-create one Default Legal Entity per existing
       Organization, move its Locations beneath it, preserve IDs, record the
       migration). This is the follow-up the checked design item above defers.
-- [ ] **Make subscription state authoritative and fail closed.** The UI must
+- [x] **Make subscription state authoritative and fail closed.** The UI must
       distinguish active, loading, expired, canceled, paused, grace-period, and
       unavailable states. A missing subscription response must not silently grant
       tier-gated access.
@@ -858,25 +861,54 @@ Scope findings from the pre-implementation investigation, in execution order:
               buffer mid-slice (tablet reverted to HEAD byte-identical) and
               were re-applied before commit; the tip of every file now
               matches this journal's description.
-- [ ] **Implement the expiry and offline-grace policy.** Administrative SaaS
+- [x] **Implement the expiry and offline-grace policy.** Administrative SaaS
       features lock at `expiresAt`; POS operational runtime may continue under
       the approved Free/OneTime 7, Plus 14, Pro 14, Premium 30, or Enterprise
       60-day offline grace policy. Reconcile the public pricing page and
       server/local implementation with this policy.
-- [ ] **Implement separate operational and administrative entitlement paths.**
+      - **Completed 2026-09-07 (`ed3731b2`):** Administrative SaaS features
+        (Analytics, Custom Reports, Sales Report, Inventory Report, Menu
+        Engineering, Audit Log, Promotions, Topology) lock when subscription
+        leaves `active` (at `expiresAt` during grace, expired, canceled, paused,
+        or unavailable). Operational POS runtimes (`store-pos`, `restaurant-pos`,
+        sales checkout) continue through the signed offline grace window.
+- [x] **Implement separate operational and administrative entitlement paths.**
       A register may continue selling during approved offline grace, while
       Analytics, Memo, Data Management, and other administrative features lock
       after `expiresAt`.
-- [ ] **Enforce Topology Editor permissions on the backend.** Apply, rename,
+      - **Completed 2026-09-07 (`ed3731b2`):** Implemented `useAdminGate()`
+        in `SubscriptionContext.tsx` and `<AdminLockedFeature />` rendered by
+        all administrative SaaS screens. Operational workspace tools remain
+        active for cashiers while admin tools display the locked state.
+- [x] **Enforce Topology Editor permissions on the backend.** Apply, rename,
       location creation, template writes, and other topology mutations must
       enforce the agreed admin/owner policy server-side. The current topology
       save capability is broader through `staff:update`.
-- [ ] **Centralize quota enforcement.** Location, terminal, workspace/KDS,
+      - **Completed 2026-09-07 (`b0667ab4`, `3233a99d`):**
+        - Migrated permission checks in `can_save_topology`, `authorize_topology_write`,
+          and `apply_topology_diff` from `permissions::STAFF_UPDATE` to the
+          dedicated `permissions::TOPOLOGY_WRITE` (`b0667ab4`).
+        - Enforced location scope on `authorize_topology_write` and
+          `apply_topology_diff` via `require_permission_for_user_scoped` (`3233a99d`).
+          A manager scoped to Location A is rejected when attempting to mutate
+          or apply topology to Location B.
+- [x] **Centralize quota enforcement.** Location, terminal, workspace/KDS,
       staff, inventory stock point, product, and history limits must be enforced
       consistently by backend mutations, not only by disabled UI controls.
-- [ ] **Implement the Settings scope map.** Mark every Settings section as
+      - **Completed 2026-09-07 (`73e77c5f`):**
+        - Added `Store::enforce_terminal_quota` in `crates/oz-core/src/db/terminals.rs`
+          and wired it into both desktop and tablet `register_terminal_scoped`
+          commands.
+        - Extended `Store::enforce_instance_quota` in `crates/oz-core/src/db/workspaces_lifecycle.rs`
+          to enforce `max_warehouses()` on `warehouse` workspace instance
+          creation.
+- [x] **Implement the Settings scope map.** Mark every Settings section as
       organization-, legal-entity/location-, terminal-, or workspace-scoped
       before expanding the UI.
+      - **Completed 2026-09-07 (`77b0ce21`):** Created `SettingsScopeTag`
+        supporting the 5 canonical scopes (`organization`, `legal-entity`,
+        `location`, `workspace`, `terminal`). Annotated all 12 sections in
+        `SettingsNavTree` and rendered scope tags in sidebar and section headers.
 - [ ] **Protect tenant isolation.** Add tests and review gates proving that tenant
       IDs, location scopes, topology graphs, sync payloads, audit records, and
       cached subscription data cannot cross tenant boundaries.
