@@ -744,6 +744,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id,
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
 
+CREATE TABLE IF NOT EXISTS memos (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    -- NULL => Organization Memo (all locations); set => Location Memo.
+    location_id     TEXT REFERENCES locations(id) ON DELETE CASCADE,
+    author_user_id  TEXT NOT NULL,
+    -- Author's role snapshot at publish time, so a later role change cannot
+    -- retroactively lock the author out of stopping their own memo or grant a
+    -- demoted user authority over a memo they no longer outrank.
+    author_role     TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    body            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft','published','expired','stopped','archived')),
+    duration        TEXT NOT NULL DEFAULT '24h'
+                    CHECK (duration IN ('12h','24h','3d','7d','30d')),
+    revision        BIGINT NOT NULL DEFAULT 1,
+    published_at    TEXT,
+    expires_at      TEXT,
+    stopped_at      TEXT,
+    stopped_by      TEXT,
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+);
+
 CREATE TABLE IF NOT EXISTS assignment_branches (
     assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
     branch_id          TEXT NOT NULL,
@@ -1022,6 +1047,30 @@ CREATE TABLE IF NOT EXISTS product_images (
     position   BIGINT NOT NULL DEFAULT 0,   -- display order of alternatives
     updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     PRIMARY KEY (product_id, slot)
+);
+
+CREATE TABLE IF NOT EXISTS memo_revisions (
+    id            TEXT PRIMARY KEY,
+    memo_id       TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
+    revision      BIGINT NOT NULL,
+    title         TEXT NOT NULL,
+    body          TEXT NOT NULL,
+    published_at  TEXT NOT NULL,
+    published_by  TEXT NOT NULL,
+    UNIQUE (memo_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS memo_recipients (
+    id               TEXT PRIMARY KEY,
+    memo_id          TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
+    terminal_id      TEXT NOT NULL REFERENCES terminals(id) ON DELETE CASCADE,
+    user_id          TEXT,
+    delivery_status  TEXT NOT NULL DEFAULT 'pending'
+                     CHECK (delivery_status IN ('pending','delivered','acknowledged')),
+    delivered_at     TEXT,
+    acknowledged_at  TEXT,
+    acknowledged_by  TEXT,
+    UNIQUE (memo_id, terminal_id)
 );
 
 CREATE TABLE IF NOT EXISTS gift_card_transactions (
@@ -1481,6 +1530,24 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_owner
 CREATE INDEX IF NOT EXISTS idx_media_thumbnails_asset
     ON media_thumbnails(tenant_id, asset_id);
 
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_memo
+    ON memo_recipients(memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_terminal
+    ON memo_recipients(terminal_id, delivery_status);
+
+CREATE INDEX IF NOT EXISTS idx_memo_revisions_memo
+    ON memo_revisions(memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memos_expiry
+    ON memos(expires_at) WHERE status = 'published';
+
+CREATE INDEX IF NOT EXISTS idx_memos_location
+    ON memos(location_id);
+
+CREATE INDEX IF NOT EXISTS idx_memos_tenant_status
+    ON memos(tenant_id, status);
+
 CREATE INDEX IF NOT EXISTS idx_modifiers_group_id ON modifiers(group_id);
 
 CREATE INDEX IF NOT EXISTS idx_offline_queue_status ON offline_queue(status);
@@ -1785,6 +1852,7 @@ ON CONFLICT DO NOTHING;
 -- tenant_id before each can be added to RLS_TABLES):
 --   image_refs
 --   legal_entities
+--   memos
 --   sale_lines
 --   snapshot_versions
 --   webhook_endpoints

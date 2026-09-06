@@ -385,14 +385,14 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 106 tables,
+    // All migrations applied (init + incremental) yield 109 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        106,
+        109,
         "table surface drifted"
     );
     assert_eq!(
@@ -400,7 +400,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
         ),
-        147,
+        153,
         "index surface drifted"
     );
     assert_eq!(
@@ -528,6 +528,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260906_rename_store_to_location.sql".to_string(),
             "20260907_add_location_tenant_id.sql".to_string(),
             "20260908_legal_entities.sql".to_string(),
+            "20260909_memos.sql".to_string(),
         ]
     );
 
@@ -556,7 +557,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        106,
+        109,
         "table surface must be unchanged after upgrade"
     );
 }
@@ -709,7 +710,14 @@ fn location_tables_carry_tenant_id_after_migration() {
 
 #[test]
 fn legal_entity_migration_creates_defaults_and_moves_locations() {
-    let split = ALL.len() - 1;
+    // Isolate the LE migration by id, not by "last entry" — later migrations
+    // (e.g. memos) are appended after it, so `ALL.len() - 1` would apply the
+    // wrong migration. Splitting at the LE index applies everything up to but
+    // not including LE, then LE (and anything after) in the second run.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260908_legal_entities.sql")
+        .expect("legal_entities migration present in registry");
     let mut conn = fresh();
     platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
 
