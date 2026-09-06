@@ -20,6 +20,7 @@ import {
   createMemoScoped,
   publishMemoScoped,
   stopMemoScoped,
+  reviseMemoScoped,
 } from '@/api/memos';
 
 describe('memos.ts IPC contract', () => {
@@ -69,6 +70,16 @@ describe('memos.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('stop_memo_scoped', {
       sessionToken: 'tok',
       memoId: 'memo-1',
+    });
+  });
+
+  it('reviseMemoScoped → revise_memo_scoped with nested args', async () => {
+    mockInvoke.mockResolvedValue({});
+    await reviseMemoScoped('tok', 'memo-1', { title: 'T2', body: 'B2' });
+    expect(mockInvoke).toHaveBeenCalledWith('revise_memo_scoped', {
+      sessionToken: 'tok',
+      memoId: 'memo-1',
+      args: { title: 'T2', body: 'B2' },
     });
   });
 });

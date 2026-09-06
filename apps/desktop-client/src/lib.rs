@@ -965,6 +965,7 @@ pub fn run() {
             commands::memo::create_memo_scoped,
             commands::memo::publish_memo_scoped,
             commands::memo::stop_memo_scoped,
+            commands::memo::revise_memo_scoped,
             commands::memo::list_active_memos_scoped,
             commands::memo::acknowledge_memo_scoped,
             commands::memo::list_authored_memos_scoped,

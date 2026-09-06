@@ -4,6 +4,7 @@ import {
   createMemoScoped,
   listAuthoredMemosScoped,
   publishMemoScoped,
+  reviseMemoScoped,
   stopMemoScoped,
   type Memo,
   type MemoDuration,
@@ -110,6 +111,11 @@ export default function MemosScreen() {
   );
   const [duration, setDuration] = useState<MemoDuration>('24h');
   const [creating, setCreating] = useState(false);
+  // Revision mode: when set, the form submits a correction for the published
+  // memo instead of creating a draft (the spec's "corrections create a new
+  // revision"). Location/duration controls are hidden — a correction fixes
+  // the text, it does not re-target or extend the memo's life.
+  const [revising, setRevising] = useState<Memo | null>(null);
   // Dedicated notice for create/publish failures — the list load error state
   // only renders when the table is empty, so a publish failure with rows
   // present would otherwise be silent (same rationale as AUD-09).
@@ -221,6 +227,43 @@ export default function MemosScreen() {
     }
   };
 
+  const startRevise = (memo: Memo) => {
+    setRevising(memo);
+    setTitle(memo.title);
+    setBody(memo.body);
+    setSelectedLocations(new Set(memo.locationIds));
+    setDuration(memo.duration);
+    setActionError(null);
+  };
+
+  const cancelRevise = () => {
+    setRevising(null);
+    setTitle('');
+    setBody('');
+    setSelectedLocations(new Set());
+    setDuration('24h');
+    setActionError(null);
+  };
+
+  const handleRevise = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!revising || !canSubmit || !sessionToken) return;
+    setCreating(true);
+    setActionError(null);
+    try {
+      await reviseMemoScoped(sessionToken, revising.id, {
+        title: title.trim(),
+        body: body.trim(),
+      });
+      cancelRevise();
+      await load();
+    } catch (err) {
+      setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const locationName = (id: string): string =>
     locations.find((loc) => loc.id === id)?.name ?? id.slice(0, 8);
 
@@ -245,10 +288,20 @@ export default function MemosScreen() {
 
       {/* Create form */}
       <Card shadow="sm" className="memos-form-card">
-        <Localized id="memos-new-heading">
-          <h2 className="memos-form-heading"><span>New memo</span></h2>
+        <Localized id={revising ? 'memos-revise-heading' : 'memos-new-heading'}>
+          <h2 className="memos-form-heading"><span>{revising ? 'Revise memo' : 'New memo'}</span></h2>
         </Localized>
-        <form className="memos-form" onSubmit={(e) => void handleCreate(e)}>
+        {revising && (
+          <p className="memos-revise-note">
+            <Localized id="memos-revise-note">
+              <span>Corrections publish a new revision (v{(revising.revision ?? 0) + 1}); the duration and audience stay unchanged.</span>
+            </Localized>
+          </p>
+        )}
+        <form
+          className="memos-form"
+          onSubmit={(e) => void (revising ? handleRevise(e) : handleCreate(e))}
+        >
           <div className="memos-form-grid">
             <div className="memos-field memos-field--full">
               {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
@@ -301,6 +354,7 @@ export default function MemosScreen() {
                 id="memos-duration"
                 className="memos-select"
                 value={duration}
+                disabled={revising !== null}
                 onChange={(e) => setDuration(e.target.value as MemoDuration)}
               >
                 {DURATIONS.map((d) => (
@@ -332,11 +386,26 @@ export default function MemosScreen() {
             </div>
           )}
           <div className="memos-form-actions">
-            <Button type="submit" disabled={!canSubmit} state={creating ? 'processing' : 'ready'}>
-              <Localized id="memos-create">
-                <span>Create draft</span>
-              </Localized>
-            </Button>
+            {revising ? (
+              <>
+                <Button type="submit" disabled={!canSubmit} state={creating ? 'processing' : 'ready'}>
+                  <Localized id="memos-revise">
+                    <span>Publish revision</span>
+                  </Localized>
+                </Button>
+                <Button type="button" variant="secondary" onClick={cancelRevise}>
+                  <Localized id="memos-revise-cancel">
+                    <span>Cancel</span>
+                  </Localized>
+                </Button>
+              </>
+            ) : (
+              <Button type="submit" disabled={!canSubmit} state={creating ? 'processing' : 'ready'}>
+                <Localized id="memos-create">
+                  <span>Create draft</span>
+                </Localized>
+              </Button>
+            )}
           </div>
         </form>
       </Card>
@@ -459,16 +528,27 @@ export default function MemosScreen() {
                         </Button>
                       </Localized>
                     ) : memo.status === 'published' ? (
-                      <Localized id="memos-stop">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          state={stoppingId === memo.id ? 'processing' : 'ready'}
-                          onClick={() => void handleStop(memo.id)}
-                        >
-                          <span>Stop</span>
-                        </Button>
-                      </Localized>
+                      <span className="memos-actions-pair">
+                        <Localized id="memos-revise-row">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => startRevise(memo)}
+                          >
+                            <span>Revise</span>
+                          </Button>
+                        </Localized>
+                        <Localized id="memos-stop">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            state={stoppingId === memo.id ? 'processing' : 'ready'}
+                            onClick={() => void handleStop(memo.id)}
+                          >
+                            <span>Stop</span>
+                          </Button>
+                        </Localized>
+                      </span>
                     ) : (
                       <span className="memos-actions-none">&mdash;</span>
                     )}

@@ -113,6 +113,23 @@ export const publishMemoScoped = (sessionToken: string, memoId: string): Promise
 export const stopMemoScoped = (sessionToken: string, memoId: string): Promise<Memo> =>
   loggedInvoke<Memo>('stop_memo_scoped', { sessionToken, memoId });
 
+/** Corrected content for a published memo. */
+export interface ReviseMemoArgs {
+  title: string;
+  body: string;
+}
+
+/**
+ * Revise a published memo: inserts a new immutable revision (v + 1) and
+ * never extends the memo's lifetime. Requires `memo:write` (scoped — ADR #7).
+ */
+export const reviseMemoScoped = (
+  sessionToken: string,
+  memoId: string,
+  args: ReviseMemoArgs,
+): Promise<Memo> =>
+  loggedInvoke<Memo>('revise_memo_scoped', { sessionToken, memoId, args });
+
 /**
  * List every memo authored by the session user, newest first — the
  * management read behind the authoring screen (matches

@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   listAuthoredMemosScoped: vi.fn(),
   publishMemoScoped: vi.fn(),
   stopMemoScoped: vi.fn(),
+  reviseMemoScoped: vi.fn(),
   listLocationsScoped: vi.fn(),
 }));
 
@@ -37,6 +38,7 @@ vi.mock('@/api/memos', () => ({
   listAuthoredMemosScoped: mocks.listAuthoredMemosScoped,
   publishMemoScoped: mocks.publishMemoScoped,
   stopMemoScoped: mocks.stopMemoScoped,
+  reviseMemoScoped: mocks.reviseMemoScoped,
 }));
 
 vi.mock('@/api/locations', () => ({
@@ -121,6 +123,7 @@ describe('MemosScreen', () => {
     mocks.createMemoScoped.mockReset();
     mocks.publishMemoScoped.mockReset();
     mocks.stopMemoScoped.mockReset();
+    mocks.reviseMemoScoped.mockReset();
     mocks.listLocationsScoped.mockReset();
 
     mocks.listAuthoredMemosScoped.mockResolvedValue([publishedOrgMemo, draftLocationMemo]);
@@ -293,5 +296,44 @@ describe('MemosScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
 
     expect(await screen.findByText('The memo action failed. Please try again.')).toBeInTheDocument();
+  });
+
+  // ── Revise (corrections ruled in scope 2026-09-07) ───────────
+
+  it('loads a published row into revise mode and publishes a new revision', async () => {
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    await screen.findByText('End-of-day checklist');
+
+    // Entering revise mode swaps the form heading and fills the fields.
+    await userEvent.click(screen.getByRole('button', { name: 'Revise' }));
+    expect(screen.getByRole('heading', { name: 'Revise memo' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Title')).toHaveValue('End-of-day checklist');
+    expect(screen.getByLabelText('Message')).toHaveValue('Close the drawer and count the float.');
+
+    // The correction edits the text and submits a revision.
+    await userEvent.clear(screen.getByLabelText('Title'));
+    await userEvent.type(screen.getByLabelText('Title'), 'End-of-day checklist (updated)');
+    await userEvent.click(screen.getByRole('button', { name: 'Publish revision' }));
+
+    await waitFor(() =>
+      expect(mocks.reviseMemoScoped).toHaveBeenCalledWith('tok-1', 'memo-org-1', {
+        title: 'End-of-day checklist (updated)',
+        body: 'Close the drawer and count the float.',
+      }),
+    );
+    await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalledTimes(2));
+  });
+
+  it('cancelling revise mode returns the form to create state', async () => {
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    await screen.findByText('End-of-day checklist');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Revise' }));
+    expect(screen.getByRole('heading', { name: 'Revise memo' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('heading', { name: 'New memo' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Title')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Publish revision' })).not.toBeInTheDocument();
   });
 });

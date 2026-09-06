@@ -576,6 +576,27 @@ function stopMockMemo(args: unknown): MockMemo {
   return { ...found.memo };
 }
 
+/** Revise a published memo in the session-local mock: bumps the revision
+ *  with the corrected content (dev preview parity with the real
+ *  `revise_memo_scoped`). Published-only, like the real command. */
+function reviseMockMemo(args: unknown): MockMemo {
+  const payload = unwrapArgs<{ memoId?: string; args?: { title?: string; body?: string } }>(args);
+  const found = mockMemos.find((m) => m.memo.id === payload.memoId);
+  if (!found) {
+    throw new Error(`memo not found: ${payload.memoId}`);
+  }
+  if (found.memo.status !== 'published') {
+    throw new Error(`memo ${payload.memoId} is not published`);
+  }
+  found.memo = {
+    ...found.memo,
+    title: payload.args?.title ?? found.memo.title,
+    body: payload.args?.body ?? found.memo.body,
+    revision: found.memo.revision + 1,
+  };
+  return { ...found.memo };
+}
+
 /** Live floor-plan snapshot for the analytics occupancy card: 5 of 12
  *  active tables occupied (2 seated, 1 reserved, 4 free, 1 cleaning). */
 function tablesSnapshot(): Array<{
@@ -1970,6 +1991,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'create_memo_scoped': createMockMemo,
   'publish_memo_scoped': publishMockMemo,
   'stop_memo_scoped': stopMockMemo,
+  'revise_memo_scoped': reviseMockMemo,
   'list_authored_memos_scoped': listMockAuthoredMemos,
 
   // ═════════════════════════════════════════════════════════

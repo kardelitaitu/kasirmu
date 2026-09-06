@@ -301,6 +301,42 @@ pub async fn stop_memo_scoped(
     )?))
 }
 
+/// Revise a published memo (the spec's "corrections create a new revision"):
+/// inserts a NEW immutable `memo_revisions` row and bumps `memos.revision`;
+/// prior revisions and the memo's lifetime are never touched. Requires
+/// `memo:write` — matching authoring, since a correction is authorship of
+/// new content (ruled in scope 2026-09-07; the store's TOCTOU guard rejects
+/// a memo the expiry sweep ended mid-transaction). Non-blank validation
+/// mirrors the create path.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviseMemoArgs {
+    /// Corrected title (non-blank).
+    pub title: String,
+    /// Corrected body (non-blank).
+    pub body: String,
+}
+
+#[tauri::command]
+pub async fn revise_memo_scoped(
+    memo_id: String,
+    args: ReviseMemoArgs,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<MemoDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::MEMO_WRITE).await?;
+    let conn = state.db.lock().await;
+    let store = Store::new(&conn);
+    Ok(MemoDto::from(store.revise_memo(
+        DEFAULT_TENANT_ID,
+        &memo_id,
+        &session.user_id,
+        &args.title,
+        &args.body,
+    )?))
+}
+
 #[cfg(test)]
 #[path = "memo_tests.rs"]
 mod tests;
