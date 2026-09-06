@@ -710,3 +710,74 @@ fn revise_rejects_blank_content_and_unknown_memo() {
         CoreError::NotFound { .. }
     ));
 }
+
+// ── Management read: list_memos_authored_by ───────────────────────
+
+fn memo_by(author: &str) -> NewMemo {
+    NewMemo {
+        tenant_id: "default".into(),
+        location_id: None,
+        author_user_id: author.into(),
+        author_role: "admin".into(),
+        title: format!("by {author}"),
+        body: "body".into(),
+        duration: MemoDuration::Hours24,
+    }
+}
+
+#[test]
+fn list_authored_scopes_to_author_and_includes_drafts() {
+    let store = store();
+    let draft = store.create_memo_draft(&memo_by("alice")).unwrap();
+    let published = store.create_memo_draft(&memo_by("alice")).unwrap();
+    store.publish_memo("default", &published.id).unwrap();
+    // A different author's memo must not appear.
+    store.create_memo_draft(&memo_by("bob")).unwrap();
+
+    // Distinct timestamps so newest-first ordering is deterministic — memos
+    // created in the same millisecond would otherwise tie on created_at.
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET created_at = ?1 WHERE id = ?2",
+            params!["2026-01-01T00:00:00.000Z", draft.id],
+        )
+        .unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET created_at = ?1 WHERE id = ?2",
+            params!["2026-01-02T00:00:00.000Z", published.id],
+        )
+        .unwrap();
+
+    let alice = store.list_memos_authored_by("default", "alice").unwrap();
+    assert_eq!(alice.len(), 2, "alice's two memos, drafts included");
+    assert!(alice.iter().all(|m| m.author_user_id == "alice"));
+    assert_eq!(alice[0].id, published.id, "newest first");
+    assert_eq!(alice[1].id, draft.id);
+    assert!(alice.iter().any(|m| m.status == MemoStatus::Published));
+    assert!(alice.iter().any(|m| m.status == MemoStatus::Draft));
+    // Bob sees only his own.
+    assert_eq!(
+        store
+            .list_memos_authored_by("default", "bob")
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn list_authored_is_tenant_scoped() {
+    let store = store();
+    store.create_memo_draft(&memo_by("alice")).unwrap();
+    // Same author id, different tenant: the memo belongs to 'default', so a
+    // query under another tenant returns nothing.
+    assert!(
+        store
+            .list_memos_authored_by("other-tenant", "alice")
+            .unwrap()
+            .is_empty()
+    );
+}

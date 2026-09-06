@@ -105,6 +105,28 @@ impl Store<'_> {
             .map_err(CoreError::from)
     }
 
+    /// List every memo authored by a given user within a tenant, newest first —
+    /// the management read behind an author's "my Memos" view (drafts,
+    /// published, and terminal states alike, so they can see and act on their
+    /// own history). Deliberately filters on *authorship*, not on the
+    /// location/org authority a scoped "manage all Memos" view would require —
+    /// that broader view waits for Phase 1 scoped authorization.
+    pub fn list_memos_authored_by(
+        &self,
+        tenant_id: &str,
+        author_user_id: &str,
+    ) -> Result<Vec<Memo>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, tenant_id, location_id, author_user_id, author_role, title, body,
+                    status, duration, revision, published_at, expires_at, stopped_at,
+                    stopped_by, created_at, updated_at
+             FROM memos WHERE tenant_id = ?1 AND author_user_id = ?2
+             ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![tenant_id, author_user_id], Self::row_to_memo)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
+    }
+
     /// Publish a draft: `draft → published`, stamp expiry, snapshot revision 1,
     /// and fan out pending recipients. Idempotent-safe: publishing an already
     /// published memo is rejected (only a draft may be published).
