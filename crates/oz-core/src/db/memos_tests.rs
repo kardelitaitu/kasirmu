@@ -572,6 +572,136 @@ fn sweep_all_expired_spans_tenants() {
     assert_eq!(store.sweep_all_expired(&now()).unwrap(), 0);
 }
 
+// ── Retention sweep (ruled 2026-09-07: fixed 30-day window) ──────
+// "stopped and expired Memos remain archived for 30 days before deletion or
+// anonymization." Stage one transitions ended memos to `archived`, stamping
+// `archived_at` as the deletion clock; stage two deletes archives past the
+// window. The cascade removes the targeting/revisions/recipient rows, which
+// is the spec's sanctioned deletion — it happens only after the window, never
+// at stop/expire time (20260911 made the parent-delete guards RESTRICT for
+// locations/terminals, but memo-child rows are true children).
+
+#[test]
+fn retention_sweep_archives_ended_memos_and_stamps_the_clock() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let expired = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &expired.id).unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET expires_at = ?1 WHERE id = ?2",
+            params![long_ago(), expired.id],
+        )
+        .unwrap();
+    store.sweep_expired("default", &now()).unwrap();
+
+    let stopped = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &stopped.id).unwrap();
+    store.stop_memo("default", &stopped.id, "user-1").unwrap();
+
+    // A published memo must NOT be archived by the retention sweep —
+    // ending a live memo is explicit (stop) or natural (expire), never
+    // silent.
+    let active = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &active.id).unwrap();
+    let draft = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+
+    let archived = store.sweep_ended_to_archived(&now()).unwrap();
+    assert_eq!(archived, 2, "the expired and stopped memos archive");
+
+    let archived_expired = store.get_memo("default", &expired.id).unwrap().unwrap();
+    assert_eq!(archived_expired.status, MemoStatus::Archived);
+    assert!(
+        archived_expired.archived_at.is_some(),
+        "the deletion clock is stamped at archival"
+    );
+    let archived_stopped = store.get_memo("default", &stopped.id).unwrap().unwrap();
+    assert_eq!(archived_stopped.status, MemoStatus::Archived);
+    // stopped_at survives: the reason for ending is still recorded.
+    assert!(archived_stopped.stopped_at.is_some());
+
+    assert_eq!(
+        store
+            .get_memo("default", &active.id)
+            .unwrap()
+            .unwrap()
+            .status,
+        MemoStatus::Published
+    );
+    assert_eq!(
+        store
+            .get_memo("default", &draft.id)
+            .unwrap()
+            .unwrap()
+            .status,
+        MemoStatus::Draft
+    );
+    // Re-run is a no-op.
+    assert_eq!(store.sweep_ended_to_archived(&now()).unwrap(), 0);
+}
+
+#[test]
+fn retention_sweep_deletes_archives_only_past_the_window() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET expires_at = ?1 WHERE id = ?2",
+            params![long_ago(), memo.id],
+        )
+        .unwrap();
+    store.sweep_expired("default", &now()).unwrap();
+    let archived_at = store.sweep_ended_to_archived(&now()).unwrap();
+    assert_eq!(archived_at, 1);
+
+    // Day 29: still inside the 30-day window — the memo and its history
+    // survive (the audit trail is the point of the window).
+    let now29 = (chrono::Utc::now() + chrono::Duration::days(-29))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    assert_eq!(store.sweep_expired_archives(&now29, 30).unwrap(), 0);
+    assert!(store.get_memo("default", &memo.id).unwrap().is_some());
+
+    // Backdate archived_at past the window: deletion removes the memo and
+    // every child row in one cascade.
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET archived_at = ?1 WHERE id = ?2",
+            params![long_ago(), memo.id],
+        )
+        .unwrap();
+    assert_eq!(store.sweep_expired_archives(&now(), 30).unwrap(), 1);
+    assert!(store.get_memo("default", &memo.id).unwrap().is_none());
+    let child_rows: i64 = store
+        .conn()
+        .query_row(
+            "SELECT (SELECT COUNT(*) FROM memo_revisions WHERE memo_id = ?1)
+                   + (SELECT COUNT(*) FROM memo_recipients WHERE memo_id = ?1)
+                   + (SELECT COUNT(*) FROM memo_locations WHERE memo_id = ?1)
+                   + (SELECT COUNT(*) FROM memos WHERE id = ?1)
+                   + (SELECT COUNT(*) FROM memos WHERE status = 'archived' AND archived_at IS NULL)
+                   + (SELECT COUNT(*) FROM memos WHERE status = 'archived' AND archived_at > '2000-01-01T00:00:00.000Z' AND status = 'stopped')",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        child_rows, 0,
+        "cascade removes revisions, recipients, targeting; no archived row ever lacks a stamp"
+    );
+    // Re-run is a no-op.
+    assert_eq!(store.sweep_expired_archives(&now(), 30).unwrap(), 0);
+}
+
+#[test]
+fn retention_window_is_thirty_days_per_the_ruling() {
+    assert_eq!(crate::memo::RETENTION_WINDOW_DAYS, 30);
+}
+
 // ── FK RESTRICT: a parent delete must not silently destroy Memo history ──
 //
 // Regression guard for the 20260911 fix, carried into the 20260913 join-table

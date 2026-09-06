@@ -195,8 +195,11 @@ pub fn run() {
                 // ── Memo expiry sweep daemon ───────────────────────────────
                 // Mirrors the desktop sweep: every 5 minutes, transition
                 // published Memos past their `expires_at` to `expired` on the
-                // global identity DB. Needed here too so a tablet-only
-                // deployment still keeps the Memo status column truthful.
+                // global identity DB, then run the two retention stages
+                // (ended → `archived` with `archived_at` stamped; deletion of
+                // archives past the fixed 30-day window — ruled 2026-09-07).
+                // Needed here too so a tablet-only deployment still keeps the
+                // Memo status column truthful and honors the retention window.
                 {
                     let sweep_handle = app_handle.clone();
                     platform_startup::spawn_daemon("tablet memo expiry sweep", async move {
@@ -218,6 +221,27 @@ pub fn run() {
                                 }
                                 Ok(_) => {}
                                 Err(e) => tracing::warn!(error = %e, "tablet memo sweep failed"),
+                            }
+                            match store.sweep_ended_to_archived(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("tablet memo sweep: archived {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "tablet memo retention failed")
+                                }
+                            }
+                            match store.sweep_expired_archives(
+                                &now,
+                                oz_core::memo::RETENTION_WINDOW_DAYS,
+                            ) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "tablet memo sweep: deleted {n} archived memo(s)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "tablet memo retention delete failed")
+                                }
                             }
                         }
                     });

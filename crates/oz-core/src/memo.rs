@@ -26,6 +26,10 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use core::str::FromStr;
 use serde::{Deserialize, Serialize};
 
+/// How long a memo remains `archived` before the retention sweep deletes it
+/// (ruled 2026-09-07: fixed 30 days, the window the spec already promised).
+pub const RETENTION_WINDOW_DAYS: i64 = 30;
+
 // ── Scope ───────────────────────────────────────────────────────────
 
 /// Whether a memo targets the whole organization or a set of locations.
@@ -341,6 +345,9 @@ pub struct Memo {
     pub stopped_at: Option<String>,
     /// User id that stopped the memo; `None` unless stopped.
     pub stopped_by: Option<String>,
+    /// ISO-8601 archival instant — the retention-deletion clock anchor,
+    /// stamped by the retention sweep; `None` until archived.
+    pub archived_at: Option<String>,
     /// ISO-8601 creation timestamp.
     pub created_at: String,
     /// ISO-8601 last-update timestamp.

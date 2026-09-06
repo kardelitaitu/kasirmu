@@ -121,7 +121,7 @@ impl Store<'_> {
             .query_row(
                 "SELECT m.id, m.tenant_id, m.author_user_id, m.author_role, m.title, m.body,
                         m.status, m.duration, m.revision, m.published_at, m.expires_at,
-                        m.stopped_at, m.stopped_by, m.created_at, m.updated_at,
+                        m.stopped_at, m.stopped_by, m.archived_at, m.created_at, m.updated_at,
                         (SELECT GROUP_CONCAT(ml.location_id, ',')
                          FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
                  FROM memos m WHERE m.tenant_id = ?1 AND m.id = ?2",
@@ -146,7 +146,7 @@ impl Store<'_> {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.tenant_id, m.author_user_id, m.author_role, m.title, m.body,
                     m.status, m.duration, m.revision, m.published_at, m.expires_at,
-                    m.stopped_at, m.stopped_by, m.created_at, m.updated_at,
+                    m.stopped_at, m.stopped_by, m.archived_at, m.created_at, m.updated_at,
                     (SELECT GROUP_CONCAT(ml.location_id, ',')
                      FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
              FROM memos m WHERE m.tenant_id = ?1 AND m.author_user_id = ?2
@@ -491,6 +491,40 @@ impl Store<'_> {
         Ok(swept)
     }
 
+    /// Retention sweep, first stage: transition every ended memo
+    /// (`stopped`/`expired`) to `archived`, stamping `archived_at` as the
+    /// anchor for the deletion window. `archived` is terminal, so the sweep
+    /// is the only writer of the column; safe to call repeatedly
+    /// (idempotent). Returns the number archived.
+    pub fn sweep_ended_to_archived(&self, now: &str) -> Result<usize, CoreError> {
+        let archived = self.conn.execute(
+            "UPDATE memos
+             SET status = 'archived', archived_at = ?1, updated_at = ?1
+             WHERE status IN ('stopped', 'expired')",
+            params![now],
+        )?;
+        Ok(archived)
+    }
+
+    /// Retention sweep, second stage: delete archived memos whose
+    /// `archived_at` is past the retention window (ruled 2026-09-07: a fixed
+    /// 30 days — "stopped and expired Memos remain archived for 30 days
+    /// before deletion or anonymization"). The `memo_locations`,
+    /// `memo_revisions`, and `memo_recipients` rows cascade with the memo;
+    /// rows still referenced by a `RESTRICT` FK (a location/terminal delete
+    /// guard) cannot exist here, so the delete is unconditional once aged.
+    /// Returns the number deleted; idempotent.
+    pub fn sweep_expired_archives(&self, now: &str, window_days: i64) -> Result<usize, CoreError> {
+        let deleted = self.conn.execute(
+            "DELETE FROM memos
+             WHERE status = 'archived'
+               AND archived_at IS NOT NULL
+               AND archived_at <= datetime(?1, ?2)",
+            params![now, format!("-{window_days} days")],
+        )?;
+        Ok(deleted)
+    }
+
     /// Error if no such recipient exists for this tenant/memo/terminal; Ok if
     /// it exists (used to distinguish a no-op idempotent update from a genuine
     /// missing row).
@@ -562,6 +596,7 @@ impl Store<'_> {
             expires_at: row.get("expires_at")?,
             stopped_at: row.get("stopped_at")?,
             stopped_by: row.get("stopped_by")?,
+            archived_at: row.get("archived_at")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
         })

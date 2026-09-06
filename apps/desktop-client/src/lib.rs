@@ -402,12 +402,17 @@ pub fn run() {
             // ── Memo expiry sweep daemon ───────────────────────────────
             // Runs every 5 minutes to transition published Memos past their
             // `expires_at` to `expired` — the domain's Published → Expired
-            // edge. The display read path already filters by `expires_at`, so
-            // this is record hygiene: it makes `expired` a live status rather
-            // than a value that only exists in the enum, and keeps the
-            // partial `idx_memos_expiry` (status='published') from accumulating
-            // stale rows. Mirrors the session-cleanup and KDS-retention
-            // daemons; operates on the global identity DB where Memos live.
+            // edge — and then runs the two retention stages on the same tick:
+            // ended Memos (`stopped`/`expired`) → `archived` (stamping
+            // `archived_at`), and deletion of archives past the fixed 30-day
+            // window (ruled 2026-09-07). The display read path already filters
+            // by `expires_at`/status, so this is record hygiene: it makes
+            // `expired`/`archived` live statuses rather than values that only
+            // exist in the enum, keeps the partial `idx_memos_expiry`
+            // (status='published') from accumulating stale rows, and enforces
+            // the retention promise. Mirrors the session-cleanup and
+            // KDS-retention daemons; operates on the global identity DB where
+            // Memos live.
             {
                 let db = app.state::<AppState>().db.clone();
                 platform_startup::spawn_daemon("memo expiry sweep", async move {
@@ -428,6 +433,25 @@ pub fn run() {
                             }
                             Ok(_) => {}
                             Err(e) => tracing::warn!(error = %e, "memo expiry sweep failed"),
+                        }
+                        match store.sweep_ended_to_archived(&now) {
+                            Ok(n) if n > 0 => {
+                                tracing::info!("memo retention sweep: archived {n} memo(s)")
+                            }
+                            Ok(_) => {}
+                            Err(e) => tracing::warn!(error = %e, "memo retention sweep failed"),
+                        }
+                        match store.sweep_expired_archives(
+                            &now,
+                            oz_core::memo::RETENTION_WINDOW_DAYS,
+                        ) {
+                            Ok(n) if n > 0 => tracing::info!(
+                                "memo retention sweep: deleted {n} archived memo(s)"
+                            ),
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(error = %e, "memo retention delete failed")
+                            }
                         }
                     }
                 });

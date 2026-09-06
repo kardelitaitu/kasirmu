@@ -537,6 +537,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260911_memo_fk_restrict.sql".to_string(),
             "20260912_terminals_tenant.sql".to_string(),
             "20260913_memo_locations.sql".to_string(),
+            "20260914_memo_retention.sql".to_string(),
         ]
     );
 
