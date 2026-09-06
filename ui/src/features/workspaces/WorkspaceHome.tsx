@@ -204,10 +204,10 @@ const TOOLS: ToolItem[] = [
     ),
   },
   {
-    id: 'stores',
-    route: 'stores',
-    labelKey: 'workspace-home-stores-title',
-    descKey: 'workspace-home-stores-desc',
+    id: 'locations',
+    route: 'locations',
+    labelKey: 'workspace-home-locations-title',
+    descKey: 'workspace-home-locations-desc',
     minRole: 'manager',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">

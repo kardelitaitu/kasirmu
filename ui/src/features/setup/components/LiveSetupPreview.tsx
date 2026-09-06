@@ -90,7 +90,7 @@ const KNOWN_NAV_ITEMS: NavItemDef[] = [
   { route: 'staff', label: 'Staff' },
   { route: 'shifts', label: 'Shifts' },
   { route: 'terminals', label: 'Terminals' },
-  { route: 'stores', label: 'Stores', feature: 'multi-store' },
+  { route: 'locations', label: 'Locations', feature: 'multi-store' },
   { route: 'settings', label: 'Settings' },
   { route: 'features', label: 'Features' },
   { route: 'data-management', label: 'Data' },

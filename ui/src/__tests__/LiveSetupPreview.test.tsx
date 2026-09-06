@@ -134,13 +134,13 @@ describe('LiveSetupPreview', () => {
 
   // ── Multi-store features ────────────────────────────────────────
 
-  it('shows Stores nav item with multi-store feature', () => {
+  it('shows Locations nav item with multi-store feature', () => {
     render(
       <LiveSetupPreview selectedFeatures={new Set(['multi-store'])} />,
       { wrapper: FluentWrapper },
     );
 
-    expect(screen.getByText('Stores')).toBeInTheDocument();
+    expect(screen.getByText('Locations')).toBeInTheDocument();
   });
 
   // ── Combined features ───────────────────────────────────────────
@@ -200,7 +200,7 @@ describe('LiveSetupPreview', () => {
     expect(screen.getByText('Tables')).toBeInTheDocument();
     expect(screen.getByText('Kiosk')).toBeInTheDocument();
     expect(screen.getByText('Gift Cards')).toBeInTheDocument();
-    expect(screen.getByText('Stores')).toBeInTheDocument();
+    expect(screen.getByText('Locations')).toBeInTheDocument();
     expect(screen.getByText('Tax Rates')).toBeInTheDocument();
 
     // No navigation-empty message when items exist.
