@@ -460,11 +460,45 @@ Scope findings from the pre-implementation investigation, in execution order:
     | `createStoreProfileScoped` | 1 — `TopologyScreen` |
     | `getStoreProfileScoped` | 1 — `NodeTopologyEditor` |
 
-    **`getPrimaryStoreScoped` is the cheapest high-value move:** five
-    report/analytics screens need only a one-line import swap to
-    `getPrimaryLocationScoped`, no behaviour change, since the shim already
-    forwards to the canonical command. Doing that first shrinks what the Rust
-    command-string rename has to touch.
+  - [x] **2026-09-06 — UI live-caller migration completed.** All 12 live
+        files (13 with `topologyApply.ts`) moved off the `@/api/stores` shim
+        to `@/api/locations`: the seven deprecated functions (measured totals:
+        `getPrimaryStoreScoped` ×5 files, `listStoresScoped` ×6,
+        `updateStoreProfileScoped` ×2, `deleteStoreProfileScoped` ×2,
+        `setPrimaryStoreScoped` ×2, `createStoreProfileScoped` ×1,
+        `getStoreProfileScoped` ×1) plus every `StoreProfile` type reference
+        and `useState` annotation. Ten test files migrated in lockstep — each
+        screen test that mocked `@/api/stores` by module path now mocks
+        `@/api/locations` with the canonical names, so no timezone-anchor or
+        store-list path lost its mock. `StaffManagementScreen.test.tsx`'s
+        strict invoke mock flipped its branch to `list_locations_scoped`.
+        `storeZoneCase.ts`'s helper comment renamed to match.
+  - Evidence: `npm run typecheck` clean; `npm run lint -- --quiet` clean;
+        focused Vitest run of 15 suites — 11 migrated + StaffManagement + the
+        three deliberately-kept shim/mock suites (`api-stores-contract`,
+        `api-locations-contract`, `dev-mock-stores`, `dev-mock-scoped-aliases`)
+        — **431/431 passed**. Commit: `a18a6134`.
+  - Deliberately kept on the deprecated path: `ui/src/api/stores.ts` (shim)
+        and `api-stores-contract.test.ts` — the shim's only remaining importer
+        is its contract test, so the alias family keeps coverage until the
+        Rust-side alias retirement in 1c/1d. `dev-mock` continues serving both
+        command families. Local variable names inside screens/tests
+        (`storeProfiles`, `stores`, `mockListStores`) were intentionally left
+        alone — they are not API identifiers.
+  - [ ] **Remaining UI work (re-measured 2026-09-06 after the migration).**
+    Zero live callers of the shim remain; what keeps 1e open is now
+    mechanical/structural, not caller work:
+
+    | item | state |
+    |---|---|
+    | `ui/src/api/stores.ts` shim | kept solely for its contract test; retires together with 1c/1d |
+    | `api-stores-contract.test.ts` | pins the legacy command strings while the Rust aliases exist |
+    | `features/stores/` directory name, `multi-store.ftl` filename, remaining `store`-worded FTL keys and copy | route/nav already renamed (`nav-locations` keys); file/dir and FTL renames remain |
+
+    The journal's earlier "cheapest high-value move" advice — migrate the five
+    report/analytics screens' `getPrimaryStoreScoped` imports first since the
+    shim already forwards to the canonical command — has been executed and
+    superseded by the full caller migration above.
 
     Two notes so this measurement is not misread. First, counting *call sites*
     rather than *command strings* is the only way that sees this work at all:
@@ -476,7 +510,10 @@ Scope findings from the pre-implementation investigation, in execution order:
     (`api-stores-contract.test.ts`, `StoreSwitcher.test.tsx`,
     `keyboardNavigationCompliance.test.tsx`) deliberately exercise the shim and
     should keep importing the deprecated path while it exists, or the alias
-    silently loses its coverage.
+    silently loses its coverage. **Update 2026-09-06:** the type import and the
+    two component-driven mocks have since moved with their components
+    (`a18a6134`); only `api-stores-contract.test.ts` still imports the shim, by
+    design.
   - [x] **2026-09-06 — Canonical location IPC slice completed.** Renamed the
         desktop command module path to `commands::locations`, added canonical
         scoped DTOs and handlers (`list_locations_scoped`,
