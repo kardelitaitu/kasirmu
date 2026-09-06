@@ -1,6 +1,16 @@
 use super::*;
-use crate::memo::{MemoDuration, MemoStatus, NewMemo};
+use crate::memo::{DeliveryStatus, MemoDuration, MemoStatus, NewMemo};
 use rusqlite::params;
+
+/// A current ISO-8601 timestamp string (for the `now` params).
+fn now() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+/// A timestamp far in the past, to force expiry.
+fn long_ago() -> String {
+    "2000-01-01T00:00:00.000Z".to_string()
+}
 
 fn store() -> Store<'static> {
     let conn = crate::migrations::fresh_db();
@@ -232,4 +242,194 @@ fn get_is_tenant_scoped() {
         store.publish_memo("other-tenant", &memo.id).unwrap_err(),
         CoreError::NotFound { .. }
     ));
+}
+
+// ── Read path: list_active_for_terminal ─────────────────────────────
+
+#[test]
+fn list_stacks_location_above_organization() {
+    let store = store();
+    seed_terminal(&store, "t1", Some("default"));
+    let org = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &org.id).unwrap();
+    let loc = store
+        .create_memo_draft(&new_memo("default", Some("default")))
+        .unwrap();
+    store.publish_memo("default", &loc.id).unwrap();
+
+    let active = store
+        .list_active_for_terminal("default", "t1", &now())
+        .unwrap();
+    assert_eq!(active.len(), 2);
+    // Location Memo stacks above Organization Memo.
+    assert_eq!(active[0].memo.id, loc.id, "location memo first");
+    assert_eq!(active[1].memo.id, org.id);
+    assert_eq!(active[0].delivery_status, DeliveryStatus::Pending);
+}
+
+#[test]
+fn list_excludes_expired_and_stopped() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let live = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &live.id).unwrap();
+
+    let expiring = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &expiring.id).unwrap();
+    // Force it past expiry.
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET expires_at = ?1 WHERE id = ?2",
+            params![long_ago(), expiring.id],
+        )
+        .unwrap();
+
+    let stopped = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &stopped.id).unwrap();
+    store.stop_memo("default", &stopped.id, "user-2").unwrap();
+
+    let active = store
+        .list_active_for_terminal("default", "t1", &now())
+        .unwrap();
+    let ids: Vec<&str> = active.iter().map(|a| a.memo.id.as_str()).collect();
+    assert_eq!(ids, vec![live.id.as_str()], "only the live memo displays");
+}
+
+#[test]
+fn list_is_terminal_scoped() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    seed_terminal(&store, "t2", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
+    // Both terminals see the org memo.
+    assert_eq!(
+        store
+            .list_active_for_terminal("default", "t1", &now())
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .list_active_for_terminal("default", "t2", &now())
+            .unwrap()
+            .len(),
+        1
+    );
+    // An unknown terminal sees nothing.
+    assert!(
+        store
+            .list_active_for_terminal("default", "t-unknown", &now())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+// ── Delivery / acknowledgement ──────────────────────────────────────
+
+#[test]
+fn mark_delivered_then_acknowledge() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
+    store
+        .mark_recipient_delivered("default", &memo.id, "t1")
+        .unwrap();
+    let active = store
+        .list_active_for_terminal("default", "t1", &now())
+        .unwrap();
+    assert_eq!(active[0].delivery_status, DeliveryStatus::Delivered);
+
+    store
+        .acknowledge_memo("default", &memo.id, "t1", "user-9")
+        .unwrap();
+    let active = store
+        .list_active_for_terminal("default", "t1", &now())
+        .unwrap();
+    assert_eq!(active[0].delivery_status, DeliveryStatus::Acknowledged);
+    let ack_by: String = store
+        .conn()
+        .query_row(
+            "SELECT acknowledged_by FROM memo_recipients WHERE memo_id = ?1 AND terminal_id = 't1'",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(ack_by, "user-9");
+}
+
+#[test]
+fn acknowledge_from_pending_backfills_delivered_at() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+    // Ack directly from pending (online terminal) — an ack proves delivery.
+    store
+        .acknowledge_memo("default", &memo.id, "t1", "user-9")
+        .unwrap();
+    let (status, delivered): (String, Option<String>) = store
+        .conn()
+        .query_row(
+            "SELECT delivery_status, delivered_at FROM memo_recipients
+             WHERE memo_id = ?1 AND terminal_id = 't1'",
+            params![memo.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "acknowledged");
+    assert!(delivered.is_some(), "delivered_at backfilled by the ack");
+}
+
+#[test]
+fn ack_is_idempotent_and_rejects_unknown_recipient() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+    store
+        .acknowledge_memo("default", &memo.id, "t1", "user-9")
+        .unwrap();
+    // Second ack is a no-op success (already acknowledged).
+    store
+        .acknowledge_memo("default", &memo.id, "t1", "user-9")
+        .unwrap();
+    // Unknown recipient → NotFound.
+    assert!(matches!(
+        store
+            .acknowledge_memo("default", &memo.id, "t-nope", "user-9")
+            .unwrap_err(),
+        CoreError::NotFound { .. }
+    ));
+}
+
+// ── Expiry sweep ────────────────────────────────────────────────────
+
+#[test]
+fn sweep_expired_transitions_past_due_memos() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET expires_at = ?1 WHERE id = ?2",
+            params![long_ago(), memo.id],
+        )
+        .unwrap();
+
+    let swept = store.sweep_expired("default", &now()).unwrap();
+    assert_eq!(swept, 1);
+    assert_eq!(
+        store.get_memo("default", &memo.id).unwrap().unwrap().status,
+        MemoStatus::Expired
+    );
+    // Re-sweep is a no-op.
+    assert_eq!(store.sweep_expired("default", &now()).unwrap(), 0);
 }

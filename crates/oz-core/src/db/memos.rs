@@ -18,7 +18,7 @@
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::memo::{Memo, MemoDuration, MemoStatus, NewMemo};
+use crate::memo::{ActiveMemo, DeliveryStatus, Memo, MemoDuration, MemoStatus, NewMemo};
 use crate::{CoreError, Store};
 
 /// Current UTC time in the schema's canonical ISO-8601 millisecond form.
@@ -216,6 +216,136 @@ impl Store<'_> {
         )?;
         self.get_memo(tenant_id, memo_id)?
             .ok_or_else(|| CoreError::Internal("memo vanished after stop".into()))
+    }
+
+    /// List the memos a given terminal should currently display, each paired
+    /// with that terminal's delivery state.
+    ///
+    /// "Active" = the memo is `published`, not past its `expires_at` (defensive
+    /// against an un-swept row), and this terminal is a recipient. Ordering
+    /// stacks Location Memos above Organization Memos (the spec's display
+    /// rule): `location_id IS NULL` is false (0) for a Location Memo so it
+    /// sorts first, then newest-published first within each tier.
+    pub fn list_active_for_terminal(
+        &self,
+        tenant_id: &str,
+        terminal_id: &str,
+        now: &str,
+    ) -> Result<Vec<ActiveMemo>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT m.*, r.delivery_status AS recipient_status
+             FROM memos m
+             JOIN memo_recipients r ON r.memo_id = m.id
+             WHERE m.tenant_id = ?1 AND r.tenant_id = ?1 AND r.terminal_id = ?2
+               AND m.status = 'published'
+               AND (m.expires_at IS NULL OR m.expires_at > ?3)
+             ORDER BY (m.location_id IS NULL) ASC, m.published_at DESC",
+        )?;
+        let rows = stmt.query_map(params![tenant_id, terminal_id, now], |row| {
+            let memo = Self::row_to_memo(row)?;
+            let ds_str: String = row.get("recipient_status")?;
+            let delivery_status = DeliveryStatus::parse(&ds_str).ok_or_else(|| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(crate::memo::ParseError(ds_str.clone())),
+                )
+            })?;
+            Ok(ActiveMemo {
+                memo,
+                delivery_status,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
+    }
+
+    /// Record that a terminal received a memo: `pending → delivered`.
+    /// Idempotent — an already-delivered/acknowledged recipient is a no-op
+    /// success; an unknown recipient is `NotFound`.
+    pub fn mark_recipient_delivered(
+        &self,
+        tenant_id: &str,
+        memo_id: &str,
+        terminal_id: &str,
+    ) -> Result<(), CoreError> {
+        let now = now_iso();
+        let changed = self.conn.execute(
+            "UPDATE memo_recipients
+             SET delivery_status = 'delivered', delivered_at = ?4
+             WHERE tenant_id = ?1 AND memo_id = ?2 AND terminal_id = ?3
+               AND delivery_status = 'pending'",
+            params![tenant_id, memo_id, terminal_id, now],
+        )?;
+        if changed == 0 {
+            self.require_recipient(tenant_id, memo_id, terminal_id)?;
+        }
+        Ok(())
+    }
+
+    /// Record a user's acknowledgement: `pending|delivered → acknowledged`. An
+    /// ack proves delivery, so `delivered_at` is backfilled if absent.
+    /// Idempotent — an already-acknowledged recipient is a no-op success; an
+    /// unknown recipient is `NotFound`.
+    pub fn acknowledge_memo(
+        &self,
+        tenant_id: &str,
+        memo_id: &str,
+        terminal_id: &str,
+        user_id: &str,
+    ) -> Result<(), CoreError> {
+        let now = now_iso();
+        let changed = self.conn.execute(
+            "UPDATE memo_recipients
+             SET delivery_status = 'acknowledged',
+                 delivered_at = COALESCE(delivered_at, ?4),
+                 acknowledged_at = ?4,
+                 acknowledged_by = ?5
+             WHERE tenant_id = ?1 AND memo_id = ?2 AND terminal_id = ?3
+               AND delivery_status IN ('pending', 'delivered')",
+            params![tenant_id, memo_id, terminal_id, now, user_id],
+        )?;
+        if changed == 0 {
+            self.require_recipient(tenant_id, memo_id, terminal_id)?;
+        }
+        Ok(())
+    }
+
+    /// Sweep published memos whose `expires_at` has passed to `expired`.
+    /// Returns the number swept. Runs the domain's `Published → Expired`
+    /// transition in bulk; safe to call repeatedly (idempotent).
+    pub fn sweep_expired(&self, tenant_id: &str, now: &str) -> Result<usize, CoreError> {
+        let swept = self.conn.execute(
+            "UPDATE memos
+             SET status = 'expired', updated_at = ?2
+             WHERE tenant_id = ?1 AND status = 'published'
+               AND expires_at IS NOT NULL AND expires_at <= ?2",
+            params![tenant_id, now],
+        )?;
+        Ok(swept)
+    }
+
+    /// Error if no such recipient exists for this tenant/memo/terminal; Ok if
+    /// it exists (used to distinguish a no-op idempotent update from a genuine
+    /// missing row).
+    fn require_recipient(
+        &self,
+        tenant_id: &str,
+        memo_id: &str,
+        terminal_id: &str,
+    ) -> Result<(), CoreError> {
+        let exists: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM memo_recipients
+             WHERE tenant_id = ?1 AND memo_id = ?2 AND terminal_id = ?3",
+            params![tenant_id, memo_id, terminal_id],
+            |r| r.get(0),
+        )?;
+        if exists == 0 {
+            return Err(CoreError::NotFound {
+                entity: "memo_recipient",
+                id: format!("{memo_id}/{terminal_id}"),
+            });
+        }
+        Ok(())
     }
 
     /// Map a `memos` row to the domain struct, failing closed on an unknown

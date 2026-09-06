@@ -374,6 +374,17 @@ pub struct NewMemo {
     pub duration: MemoDuration,
 }
 
+/// A memo paired with this terminal's delivery state — the projection the
+/// display surfaces read. `delivery_status` is per-terminal (from
+/// `memo_recipients`), independent of the memo's own lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveMemo {
+    /// The memo itself.
+    pub memo: Memo,
+    /// This terminal's delivery/acknowledgement state for it.
+    pub delivery_status: DeliveryStatus,
+}
+
 #[cfg(test)]
 #[path = "memo_tests.rs"]
 mod tests;
