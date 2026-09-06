@@ -137,7 +137,9 @@ pub async fn activate_license(
 
     // ── Update tenant_subscription for quota enforcement ──────
     // The activate_license response includes a signed_payload with
-    // tier, max_stores, max_pos_instances, etc. We persist this to
+    // tier, max_stores (wire name; local column is max_locations
+    // pending the 1g license-server payload rename), max_pos_instances,
+    // etc. We persist this to
     // the tenant_subscription table keyed as "default" (NOT the
     // server-assigned tenant_id from resp.tenant_id) so workspace
     // commands like create_workspace_instance_scoped pick it up via
@@ -433,7 +435,9 @@ pub struct ServerLicenseStatusDto {
     pub expires_at: Option<String>,
     /// When the grace period ends (RFC 3339).
     pub grace_until: Option<String>,
-    /// Maximum stores allowed.
+    /// Tier location quota. Wire field keeps the historical `max_stores`
+    /// name until the license-server payload rename (todo-global-saas-1.md
+    /// item 1g, versioned migration with dual-read).
     pub max_stores: i64,
 }
 

@@ -230,7 +230,9 @@ pub struct LicenseStatusResponse {
     /// When the grace period ends (RFC 3339).
     #[serde(default)]
     pub grace_until: Option<String>,
-    /// Maximum stores allowed.
+    /// Tier location quota. Wire field keeps the historical `max_stores`
+    /// name until the license-server payload rename (todo-global-saas-1.md
+    /// item 1g, versioned migration with dual-read).
     #[serde(default)]
     pub max_stores: i64,
 }
@@ -245,7 +247,10 @@ pub struct SignedSubscriptionPayload {
     pub tier_key: String,
     /// The subscription status.
     pub status: String,
-    /// Maximum number of stores allowed.
+    /// Maximum number of stores allowed. Wire field keeps the historical
+    /// `max_stores` name (Go `SubscriptionPayload`) until the license-server
+    /// payload rename (todo-global-saas-1.md item 1g, versioned, dual-read);
+    /// it persists into the local `max_locations` column.
     #[serde(default)]
     pub max_stores: i64,
     /// Maximum POS register instances allowed.
@@ -485,7 +490,10 @@ pub fn store_subscription(
     signature: &str,
     api_key: &str,
 ) -> Result<(), CoreError> {
-    // Parse the payload to extract tier info
+    // Parse the payload to extract tier info. The wire field is
+    // `max_stores` (Go `SubscriptionPayload`), persisted into the local
+    // `max_locations` column — the mapping is the 1c "activation mapping"
+    // step; the wire rename itself is item 1g (versioned, dual-read).
     let payload: SignedSubscriptionPayload = serde_json::from_str(signed_payload)
         .map_err(|e| CoreError::Internal(format!("failed to parse signed payload: {e}")))?;
 

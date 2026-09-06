@@ -11,6 +11,7 @@ export interface SubscriptionCapabilities {
   /** Tier key: `free` | `plus` | `pro` | `premium` | `enterprise`. */
   tier: string;
   // ── Quota limits (`null` = unlimited) ─────────────────────
+  /** Location quota — wire field keeps the historical `maxStores` name (1g wire rename pending). */
   maxStores: number | null;
   maxPosInstances: number | null;
   maxWarehouses: number | null;
