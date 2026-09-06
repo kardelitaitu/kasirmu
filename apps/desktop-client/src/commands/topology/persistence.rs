@@ -590,7 +590,7 @@ pub(crate) fn validate_semantic_ownership_in(
     };
     for conn in registries {
         let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM store_profiles WHERE id = ?1)",
+            "SELECT EXISTS(SELECT 1 FROM locations WHERE id = ?1)",
             rusqlite::params![profile_id],
             |row| row.get(0),
         )?;

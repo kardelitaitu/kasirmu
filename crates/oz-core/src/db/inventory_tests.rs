@@ -54,7 +54,7 @@ fn test_workspace_locations() {
     )
     .unwrap();
     conn.execute(
-        "INSERT INTO workspace_instances (id, type_key, store_id, name) VALUES ('ws-1', 'retail', 'default', 'Main POS')",
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) VALUES ('ws-1', 'retail', 'default', 'Main POS')",
         []
     ).unwrap();
     let s = store(&conn);
@@ -355,7 +355,7 @@ fn get_workspace_locations_empty_for_unbound_workspace() {
     )
     .unwrap();
     conn.execute(
-        "INSERT INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) \
          VALUES ('ws-empty', 'retail', 'default', 'Empty')",
         [],
     )
@@ -622,7 +622,7 @@ fn set_workspace_locations_replaces_existing_bindings() {
     )
     .unwrap();
     conn.execute(
-        "INSERT INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) \
          VALUES ('ws-replace', 'retail', 'default', 'Replace')",
         [],
     )

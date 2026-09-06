@@ -301,13 +301,13 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
     {
         let db = store_conn.lock().unwrap();
         db.execute_batch(
-            "INSERT OR IGNORE INTO store_profiles (id, name, is_primary) VALUES ('store-stock-route-e2e', 'Stock Route E2E', 0);
+            "INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-stock-route-e2e', 'Stock Route E2E', 0);
              INSERT INTO inventory_locations (id, name, type) VALUES
                 ('stock-route-pos-location', 'Stock Route POS', 'store'),
                 ('stock-route-warehouse-location', 'Stock Route Warehouse', 'warehouse');
-             INSERT INTO workspace_instances (id, type_key, store_id, name, bound_location_id)
+             INSERT INTO workspace_instances (id, type_key, location_id, name, bound_location_id)
                 VALUES ('pos-stock-route-e2e', 'restaurant-pos', 'store-stock-route-e2e', 'Route POS', 'stock-route-pos-location');
-             INSERT INTO workspace_instances (id, type_key, store_id, name, bound_location_id)
+             INSERT INTO workspace_instances (id, type_key, location_id, name, bound_location_id)
                 VALUES ('warehouse-stock-route-e2e', 'warehouse', 'store-stock-route-e2e', 'Route Warehouse', 'stock-route-warehouse-location');
              INSERT INTO products (id, sku, name, price_minor, currency, product_type)
                 VALUES ('stock-route-product', 'STOCK-ROUTE-COFFEE', 'Stock Route Coffee', 1000, 'USD', 'retail');

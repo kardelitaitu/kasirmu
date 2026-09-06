@@ -89,13 +89,13 @@ impl LocalApiHandle {
     }
 }
 
-/// The primary store's id from the GLOBAL DB (`store_profiles`),
+/// The primary store's id from the GLOBAL DB (`locations`),
 /// falling back to `'default'` when no row is flagged (fresh install
 /// before `seed_primary_store` promotion, or a corrupted profile).
 pub fn primary_store_id(global: &Connection) -> String {
     global
         .query_row(
-            "SELECT id FROM store_profiles WHERE is_primary = 1 LIMIT 1",
+            "SELECT id FROM locations WHERE is_primary = 1 LIMIT 1",
             [],
             |r| r.get::<_, String>(0),
         )
@@ -106,7 +106,7 @@ pub fn primary_store_id(global: &Connection) -> String {
 pub fn store_exists(global: &Connection, id: &str) -> bool {
     global
         .query_row(
-            "SELECT 1 FROM store_profiles WHERE id = ?1 LIMIT 1",
+            "SELECT 1 FROM locations WHERE id = ?1 LIMIT 1",
             rusqlite::params![id],
             |_| Ok(true),
         )

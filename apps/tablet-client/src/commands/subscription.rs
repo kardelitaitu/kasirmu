@@ -63,8 +63,8 @@ pub async fn get_subscription_capabilities(
     let tier = sub.effective_tier();
 
     let store_count: i64 = db
-        .query_row("SELECT COUNT(*) FROM store_profiles", [], |r| r.get(0))
-        .map_err(|e| AppError::Internal(format!("count store_profiles: {e}")))?;
+        .query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))
+        .map_err(|e| AppError::Internal(format!("count locations: {e}")))?;
     let terminal_count: i64 = db
         .query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))
         .map_err(|e| AppError::Internal(format!("count terminals: {e}")))?;

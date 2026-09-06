@@ -102,7 +102,7 @@ pub async fn get_primary_store(
 }
 
 // The core store profile CRUD logic is tested in oz-core's
-// `db::store_profiles` module (13 tests). This module only
+// `db::locations` module (13 tests). This module only
 // provides Tauri command wrappers; the facade-level tests in
 // `oz-core` already validate all error paths and edge cases.
 

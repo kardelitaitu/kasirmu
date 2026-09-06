@@ -1,7 +1,7 @@
 //! Store-profile domain type — each location has its own identity,
 //! settings, and feature flags.
 //!
-//! Maps to the `store_profiles` table (migration `025_store_profiles.sql`).
+//! Maps to the `locations` table (migration `025_store_profiles.sql`).
 
 use serde::{Deserialize, Serialize};
 

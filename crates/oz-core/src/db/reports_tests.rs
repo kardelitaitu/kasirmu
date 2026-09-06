@@ -2196,7 +2196,7 @@ fn reports_fall_back_to_join_for_legacy_null_snapshots() {
 
 // ── REP-03: store-timezone bucketing ───────────────────────────────
 //
-// Contract: store_profiles.timezone holds a FIXED UTC OFFSET string
+// Contract: locations.timezone holds a FIXED UTC OFFSET string
 // ('+HH:MM' / '-HH:MM' / 'UTC'). IANA names are NOT interpreted (no
 // tzdata dependency in core) — anything unparseable falls back to UTC
 // so a misconfigured store never silently shifts money into wrong
@@ -2206,7 +2206,7 @@ fn reports_fall_back_to_join_for_legacy_null_snapshots() {
 
 fn set_primary_store_tz(conn: &Connection, tz: &str) {
     conn.execute(
-        "INSERT INTO store_profiles (id, name, timezone, is_primary)
+        "INSERT INTO locations (id, name, timezone, is_primary)
          VALUES ('store-tz', 'TZ Store', ?1, 1)
          ON CONFLICT(id) DO UPDATE SET timezone = excluded.timezone",
         params![tz],

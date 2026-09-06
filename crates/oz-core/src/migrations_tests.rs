@@ -182,7 +182,7 @@ fn migrations_create_expected_tables() {
         "category_taxes",
         "payments",
         "cash_payouts",
-        "store_profiles",
+        "locations",
         "terminal_feature_overrides",
         "promotions",
         "promotion_applications",
@@ -214,7 +214,7 @@ fn migrations_create_expected_tables() {
         "user_workspace_instances",
         "role_workspace_types",
         "login_attempts",
-        "user_store_access",
+        "user_location_access",
         // ── ADR #18 Phase 1+2 (migrations 078-090) ──
         "inventory_locations",
         "workspace_inventory_locations",
@@ -288,10 +288,7 @@ fn seed_data_bootstraps_essential_rows() {
     // Default store profile — the FK target for store-scoped rows and the
     // canonical `workspace_instances` store.
     assert_eq!(
-        row_count(
-            &conn,
-            "SELECT COUNT(*) FROM store_profiles WHERE id = 'default'",
-        ),
+        row_count(&conn, "SELECT COUNT(*) FROM locations WHERE id = 'default'",),
         1,
         "missing default store profile"
     );
@@ -475,7 +472,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
 
     // User data that must survive the upgrade untouched.
     conn.execute(
-        "INSERT INTO store_profiles (id, name) VALUES ('store-x', 'Store X')",
+        "INSERT INTO locations (id, name) VALUES ('store-x', 'Store X')",
         [],
     )
     .unwrap();
@@ -543,10 +540,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
 
     // User data survived.
     assert_eq!(
-        row_count(
-            &conn,
-            "SELECT COUNT(*) FROM store_profiles WHERE id = 'store-x'"
-        ),
+        row_count(&conn, "SELECT COUNT(*) FROM locations WHERE id = 'store-x'"),
         1,
         "user data must survive the upgrade"
     );
@@ -679,7 +673,7 @@ fn global_row_ids(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
 /// for the SELECT test.
 fn seed_cross_store_fixture(conn: &rusqlite::Connection) {
     conn.execute_batch(
-        "INSERT INTO store_profiles (id, name)
+        "INSERT INTO locations (id, name)
              VALUES ('store-a', 'Store A'), ('store-b', 'Store B');
          INSERT INTO products (id, sku, name, price_minor, currency, product_type, store_id)
              VALUES ('p-a', 'SKU-A', 'A', 100, 'USD', 'retail', 'store-a'),
@@ -764,7 +758,7 @@ fn store_scoped_query_never_returns_null_or_other_store_rows() {
     }
 
     // FK ownership integrity (migration 117): a store_id with no
-    // matching store_profiles row is rejected at the database layer,
+    // matching locations row is rejected at the database layer,
     // so a scoped query can never be pointed at a phantom store.
     let ghost = conn.execute(
         "INSERT INTO products (id, sku, name, price_minor, currency, product_type, store_id)
@@ -790,7 +784,7 @@ fn store_deletion_reverts_scoped_rows_to_null_sentinel() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
     conn.execute(
-        "INSERT INTO store_profiles (id, name) VALUES ('store-a', 'Store A')",
+        "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A')",
         [],
     )
     .unwrap();
@@ -803,7 +797,7 @@ fn store_deletion_reverts_scoped_rows_to_null_sentinel() {
     )
     .unwrap();
 
-    conn.execute("DELETE FROM store_profiles WHERE id = 'store-a'", [])
+    conn.execute("DELETE FROM locations WHERE id = 'store-a'", [])
         .unwrap();
 
     // Scoped query for the deleted store returns nothing…

@@ -2768,8 +2768,8 @@ fn complete_sale_partial_shortfall_rolls_back_sale_row() {
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES
             ('loc-pri', 'Primary', 'store'),
             ('loc-sec', 'Secondary', 'warehouse');
-         INSERT OR IGNORE INTO store_profiles (id, name, is_primary) VALUES ('store-1', 'Test Store', 1);
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name)
+         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-1', 'Test Store', 1);
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name)
             VALUES ('ws-multi-test',
                 (SELECT key FROM workspace_types LIMIT 1),
                 'store-1', 'Multi-Test');

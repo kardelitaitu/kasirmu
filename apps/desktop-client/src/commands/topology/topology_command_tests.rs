@@ -1054,11 +1054,11 @@ fn commit_creation_to_store(state: &AppState, creation: &CreateInstanceRequest) 
     let store_conn = state.db_manager.open_store(&creation.store_id).unwrap();
     let store = store_conn.lock().unwrap();
     let tx = store.unchecked_transaction().unwrap();
-    // The store DB seeds its own `store_profiles` row when provisioned;
+    // The store DB seeds its own `locations` row when provisioned;
     // the workspace FKs require both it and the type row before any
     // instance can be inserted.
     tx.execute(
-        "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+        "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
         rusqlite::params![creation.store_id, "Test Store"],
     )
     .unwrap();
@@ -1071,7 +1071,7 @@ fn commit_creation_to_store(state: &AppState, creation: &CreateInstanceRequest) 
     .unwrap();
     tx.execute(
         "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, purpose_key, status, \
+             (id, type_key, location_id, name, description, colour, purpose_key, status, \
               last_accessed_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
@@ -1292,14 +1292,14 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
             .unwrap();
         global
             .execute(
-                "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
                 rusqlite::params![store_id, "Test Store"],
             )
             .unwrap();
         global
             .execute(
                 "INSERT OR IGNORE INTO tenant_subscription \
-                     (tenant_id, tier_key, status, expires_at, max_stores, max_pos_instances, \
+                     (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, \
                       allowed_types_json, signature, signed_payload, api_key, updated_at) \
                      VALUES ('default', 'pro', 'active', NULL, 2, 3, '[]', 'BOOTSTRAP_FREE', \
                              '', '', '2026-08-10T00:00:00.000Z')",
@@ -1445,7 +1445,7 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
         }
         global
             .execute(
-                "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
                 rusqlite::params![store_id, "Test Store"],
             )
             .unwrap();
@@ -1722,7 +1722,7 @@ fn seed_instance_in_store(
     let store = store_conn.lock().unwrap();
     let tx = store.unchecked_transaction().unwrap();
     tx.execute(
-        "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+        "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
         rusqlite::params![store_id, "Test Store"],
     )
     .unwrap();
@@ -1735,7 +1735,7 @@ fn seed_instance_in_store(
     .unwrap();
     tx.execute(
         "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, purpose_key, status, \
+             (id, type_key, location_id, name, description, colour, purpose_key, status, \
               last_accessed_at) \
              VALUES (?1, 'pos', ?2, ?3, ?4, NULL, ?5, ?6, \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",

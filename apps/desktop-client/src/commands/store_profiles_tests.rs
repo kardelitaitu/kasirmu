@@ -194,7 +194,7 @@ async fn create_store_profile_scoped_end_to_end_owner() {
     let count: i64 = conn
         .lock()
         .unwrap()
-        .query_row("SELECT COUNT(*) FROM store_profiles", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))
         .unwrap();
     assert_eq!(count, 2); // migration seed + the new branch
 }

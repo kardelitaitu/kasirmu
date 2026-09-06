@@ -21,7 +21,7 @@ impl Store<'_> {
     pub fn list_store_profiles(&self) -> Result<Vec<StoreProfile>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at
-             FROM store_profiles ORDER BY is_primary DESC, created_at ASC",
+             FROM locations ORDER BY is_primary DESC, created_at ASC",
         )?;
         let rows = stmt.query_map([], Self::row_to_store_profile)?;
         let mut profiles = Vec::new();
@@ -35,7 +35,7 @@ impl Store<'_> {
     pub fn get_store_profile(&self, id: &str) -> Result<Option<StoreProfile>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at
-             FROM store_profiles WHERE id = ?1",
+             FROM locations WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], Self::row_to_store_profile)?;
         match rows.next() {
@@ -49,7 +49,7 @@ impl Store<'_> {
     pub fn get_primary_store(&self) -> Result<Option<StoreProfile>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at
-             FROM store_profiles WHERE is_primary = 1 LIMIT 1",
+             FROM locations WHERE is_primary = 1 LIMIT 1",
         )?;
         let mut rows = stmt.query_map([], Self::row_to_store_profile)?;
         match rows.next() {
@@ -63,7 +63,7 @@ impl Store<'_> {
     pub fn count_store_profiles(&self) -> Result<i64, CoreError> {
         let count: i64 = self
             .conn
-            .query_row("SELECT COUNT(*) FROM store_profiles", [], |row| row.get(0))?;
+            .query_row("SELECT COUNT(*) FROM locations", [], |row| row.get(0))?;
         Ok(count)
     }
 
@@ -95,7 +95,7 @@ impl Store<'_> {
     /// creation.
     pub fn create_store_profile(&self, profile: &StoreProfile) -> Result<StoreProfile, CoreError> {
         self.conn.execute(
-            "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 profile.id,
@@ -125,7 +125,7 @@ impl Store<'_> {
         timezone: &str,
     ) -> Result<StoreProfile, CoreError> {
         let affected = self.conn.execute(
-            "UPDATE store_profiles SET name = ?1, address = ?2, tax_id = ?3,
+            "UPDATE locations SET name = ?1, address = ?2, tax_id = ?3,
              currency = ?4, timezone = ?5, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
              WHERE id = ?6",
             params![name, address, tax_id, currency, timezone, id],
@@ -151,12 +151,12 @@ impl Store<'_> {
         let tx = self.conn.unchecked_transaction()?;
         // Demote the current primary.
         tx.execute(
-            "UPDATE store_profiles SET is_primary = 0 WHERE is_primary = 1",
+            "UPDATE locations SET is_primary = 0 WHERE is_primary = 1",
             [],
         )?;
         // Promote the target.
         let affected = tx.execute(
-            "UPDATE store_profiles SET is_primary = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            "UPDATE locations SET is_primary = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
              WHERE id = ?1",
             params![id],
         )?;
@@ -192,7 +192,7 @@ impl Store<'_> {
             });
         }
         self.conn
-            .execute("DELETE FROM store_profiles WHERE id = ?1", params![id])?;
+            .execute("DELETE FROM locations WHERE id = ?1", params![id])?;
         Ok(())
     }
 

@@ -10,7 +10,7 @@ next: none | perf: indexed resolution queries
 //! ADR #4 Phase 1: Type/Instance Separation
 //!
 //! A user's effective workspace set is resolved as:
-//! 1. `role-owner` with empty `user_store_access` → all instances in store
+//! 1. `role-owner` with empty `user_location_access` → all instances in store
 //! 2. `user_workspace_instances` rows exist → return ONLY those instances
 //! 3. Otherwise → fall back to `role_workspace_types` → instances of allowed types
 
@@ -105,7 +105,7 @@ pub struct WorkspaceDto {
     pub type_key: String,
     /// Store ID for data scoping.
     pub store_id: String,
-    /// Store display name (from store_profiles).
+    /// Store display name (from locations).
     pub store_name: String,
     /// Controlled business purpose, independent from type, label, and access policy.
     pub purpose_key: String,

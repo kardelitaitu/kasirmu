@@ -277,7 +277,7 @@ async fn snapshot_serves_store_id_when_present() {
     {
         let conn = state.db.lock().await;
         conn.execute(
-            "INSERT INTO store_profiles (id, name) VALUES ('store-a', 'Store A')",
+            "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A')",
             [],
         )
         .unwrap();

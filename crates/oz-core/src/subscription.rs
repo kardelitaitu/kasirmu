@@ -318,7 +318,7 @@ impl TenantSubscription {
     /// Load the subscription for a tenant from the global database.
     pub fn load(conn: &rusqlite::Connection, tenant_id: &str) -> Result<Option<Self>, CoreError> {
         let mut stmt = conn.prepare(
-            "SELECT tenant_id, tier_key, status, expires_at, max_stores,
+            "SELECT tenant_id, tier_key, status, expires_at, max_locations,
                     max_pos_instances, allowed_types_json, signature, signed_payload,
                     api_key, updated_at
              FROM tenant_subscription

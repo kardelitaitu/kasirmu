@@ -2130,8 +2130,8 @@ fn seed_allow_negative_terminal(conn: &rusqlite::Connection) -> String {
     }
 
     conn.execute_batch(&format!(
-        "INSERT OR IGNORE INTO store_profiles (id, name) VALUES ('store-neg', 'Neg Store');
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT OR IGNORE INTO locations (id, name) VALUES ('store-neg', 'Neg Store');
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('{ws}', (SELECT key FROM workspace_types LIMIT 1), 'store-neg', 'NegTest');
          INSERT OR IGNORE INTO workspace_inventory_locations \
            (id, instance_id, location_id, is_primary, allow_negative_stock, sort_order) \

@@ -7,13 +7,13 @@ fn setup() -> (Store<'static>, String) {
     let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
     let store = Store::new(conn);
 
-    // Migration 025 seeds a default store_profiles row (id='default',
+    // Migration 025 seeds a default locations row (id='default',
     // is_primary=0). Update it to is_primary=1 with full test data.
     // We use UPDATE rather than INSERT OR REPLACE because the latter
     // triggers a DELETE (blocked by ON DELETE RESTRICT from
-    // workspace_instances referencing store_profiles).
+    // workspace_instances referencing locations).
     conn.execute(
-        "UPDATE store_profiles SET
+        "UPDATE locations SET
             name = ?1,
             address = ?2,
             tax_id = ?3,
@@ -200,7 +200,7 @@ fn delete_store_with_workspace_instances_rejected() {
 
     // Create a workspace instance referencing this store.
     store.conn.execute(
-        "INSERT INTO workspace_instances (id, type_key, store_id, name) VALUES (?1, 'store-pos', ?2, 'Branch POS')",
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) VALUES (?1, 'store-pos', ?2, 'Branch POS')",
         rusqlite::params!["wi-branch-pos", "store-branch"],
     ).unwrap();
 
@@ -222,7 +222,7 @@ fn delete_store_with_workspace_instances_rejected() {
     store.delete_store_profile("store-branch").unwrap();
 }
 
-/// ADR #6: user_store_access FK also enforces ON DELETE RESTRICT.
+/// ADR #6: user_location_access FK also enforces ON DELETE RESTRICT.
 #[test]
 fn delete_store_with_user_access_rejected() {
     let (store, _) = setup();
@@ -243,7 +243,7 @@ fn delete_store_with_user_access_rejected() {
     store.conn.execute_batch(
         "INSERT INTO roles (id, name, description, permissions) VALUES ('r-cashier', 'Cashier', '', '[]');
          INSERT INTO users (id, username, pin_hash, display_name, role_id) VALUES ('u-cashier', 'cash', 'hash', 'Cash', 'r-cashier');
-         INSERT INTO user_store_access (user_id, store_id, access_level) VALUES ('u-cashier', 'store-b2', 'operator');"
+         INSERT INTO user_location_access (user_id, location_id, access_level) VALUES ('u-cashier', 'store-b2', 'operator');"
     ).unwrap();
 
     // Attempt to delete the store — must fail due to FK RESTRICT.
@@ -257,7 +257,7 @@ fn delete_store_with_user_access_rejected() {
     store
         .conn
         .execute(
-            "DELETE FROM user_store_access WHERE store_id = ?1",
+            "DELETE FROM user_location_access WHERE location_id = ?1",
             rusqlite::params!["store-b2"],
         )
         .unwrap();
@@ -334,7 +334,7 @@ fn list_orders_primary_first() {
 
 #[test]
 fn create_store_with_is_primary_true_rejected_by_db() {
-    // The store_profiles table has a partial unique index on
+    // The locations table has a partial unique index on
     // is_primary=1 (migration 025). Creating a second store with
     // is_primary=true is rejected at the DB level, so the
     // single-primary invariant is enforced by the schema, not by
@@ -435,7 +435,7 @@ fn get_primary_returns_none_when_no_primary() {
     // Demote the only primary to simulate corruption.
     store
         .conn
-        .execute("UPDATE store_profiles SET is_primary = 0", [])
+        .execute("UPDATE locations SET is_primary = 0", [])
         .unwrap();
     let result = store.get_primary_store().unwrap();
     assert!(result.is_none(), "no primary must return None, not error");

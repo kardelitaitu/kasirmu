@@ -163,7 +163,7 @@ impl Store<'_> {
         }
 
         tx.execute(
-            "INSERT INTO workspace_instances (id, type_key, store_id, name, description, colour, purpose_key, status, last_accessed_at)
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, purpose_key, status, last_accessed_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
             params![id, type_key, store_id, name, description, colour, purpose_key],
         )?;
@@ -171,7 +171,7 @@ impl Store<'_> {
         tx.commit()?;
 
         let row: WorkspaceInstanceRow = self.conn.query_row(
-            "SELECT id, type_key, store_id, name, description, colour, purpose_key, status, created_at, updated_at
+            "SELECT id, type_key, location_id, name, description, colour, purpose_key, status, created_at, updated_at
              FROM workspace_instances WHERE id = ?1",
             params![id],
             |row| {
@@ -232,7 +232,7 @@ impl Store<'_> {
                     "UPDATE workspace_instances
                      SET status = 'active',
                          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-                     WHERE store_id = ?1 AND status = 'quota_suspended'",
+                     WHERE location_id = ?1 AND status = 'quota_suspended'",
                     params![store_id],
                 )?;
                 tx.commit()?;
@@ -250,7 +250,7 @@ impl Store<'_> {
         // Count already-active instances (they count toward the limit).
         let active_count: i64 = tx.query_row(
             "SELECT COUNT(*) FROM workspace_instances
-             WHERE store_id = ?1 AND status = 'active'",
+             WHERE location_id = ?1 AND status = 'active'",
             params![store_id],
             |row| row.get(0),
         )?;
@@ -268,7 +268,7 @@ impl Store<'_> {
                  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
              WHERE id IN (
                  SELECT id FROM workspace_instances
-                 WHERE store_id = ?1 AND status = 'quota_suspended'
+                 WHERE location_id = ?1 AND status = 'quota_suspended'
                  ORDER BY last_accessed_at DESC
                  LIMIT ?2
              )",
@@ -316,7 +316,7 @@ impl Store<'_> {
 
         let active_count: i64 = tx.query_row(
             "SELECT COUNT(*) FROM workspace_instances
-             WHERE store_id = ?1 AND status = 'active'",
+             WHERE location_id = ?1 AND status = 'active'",
             params![store_id],
             |row| row.get(0),
         )?;
@@ -334,7 +334,7 @@ impl Store<'_> {
                  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
              WHERE id IN (
                  SELECT id FROM workspace_instances
-                 WHERE store_id = ?1 AND status = 'active'
+                 WHERE location_id = ?1 AND status = 'active'
                  ORDER BY last_accessed_at ASC
                  LIMIT ?2
              )",

@@ -872,7 +872,7 @@ fn semantic_ownership_accepts_branch_profile_in_second_registry() {
     // The scoped create command wrote the profile into the store database.
     store_db
         .execute(
-            "INSERT INTO store_profiles (id, name) VALUES ('branch-1', 'Branch One')",
+            "INSERT INTO locations (id, name) VALUES ('branch-1', 'Branch One')",
             [],
         )
         .unwrap();
@@ -888,7 +888,7 @@ fn apply_gate_and_save_accept_branch_profile_from_store_registry() {
     let store_db = fresh_conn();
     store_db
         .execute(
-            "INSERT INTO store_profiles (id, name) VALUES ('branch-1', 'Branch One')",
+            "INSERT INTO locations (id, name) VALUES ('branch-1', 'Branch One')",
             [],
         )
         .unwrap();

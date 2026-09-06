@@ -288,7 +288,7 @@ fn set_user_workspace_instances_empty_clears() {
 #[test]
 fn list_workspaces_owner_without_store_access_sees_all() {
     let (store, _) = fresh();
-    // role-owner with no user_store_access (Phase 1 single-store mode)
+    // role-owner with no user_location_access (Phase 1 single-store mode)
     let dto = store
         .list_workspaces("role-owner", None, "default")
         .unwrap();
@@ -468,7 +468,7 @@ fn owner_with_user_store_access_filtered_by_assigned_stores() {
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -485,11 +485,11 @@ fn owner_with_user_store_access_filtered_by_assigned_stores() {
         )
         .unwrap();
 
-    // Seed user_store_access — user-1 only has access to "default", not "store-b".
+    // Seed user_location_access — user-1 only has access to "default", not "store-b".
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES (?1, 'default', 'manager')",
             params![user_id],
         )
@@ -510,7 +510,7 @@ fn owner_with_user_store_access_filtered_by_assigned_stores() {
         .unwrap();
     assert!(
         dto_store_b.is_empty(),
-        "owner with user_store_access should not see unassigned store"
+        "owner with user_location_access should not see unassigned store"
     );
 }
 
@@ -551,14 +551,14 @@ fn enforce_instance_quota_non_pos_types_do_not_inflate_pos_count() {
     store
         .conn
         .execute(
-            "INSERT OR IGNORE INTO store_profiles (id, name) VALUES ('quota-test', 'Quota Test')",
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('quota-test', 'Quota Test')",
             [],
         )
         .unwrap();
     store
         .conn
         .execute(
-            "INSERT INTO workspace_instances (id, type_key, store_id, name, status, created_at, updated_at)
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
              VALUES ('quota-kds', 'kds', 'quota-test', 'KDS', 'active', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
             [],
         )
@@ -791,7 +791,7 @@ fn direct_insert_on_outer_tx_persists_on_commit() {
 
     tx.execute(
         "INSERT INTO workspace_instances \
-         (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+         (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
          VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'active', \
                  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         params!["direct-1", "restaurant-pos", "default", "Direct", ""],
@@ -814,7 +814,7 @@ fn direct_insert_on_outer_tx_rolls_back_on_drop() {
         let tx = conn.unchecked_transaction().unwrap();
         tx.execute(
             "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+             (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'active', \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
             params!["rollback-1", "restaurant-pos", "default", "Roll", ""],
@@ -843,7 +843,7 @@ fn mixed_create_update_archive_on_one_tx_commits_atomically() {
     for (id, name) in [("diff-a", "A"), ("diff-b", "B")] {
         tx.execute(
             "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+             (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
              VALUES (?1, 'store-pos', 'default', ?2, '', NULL, 'active', \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
             params![id, name],
@@ -887,7 +887,7 @@ fn failed_step_rolls_back_entire_diff_tx() {
     // Create.
     tx.execute(
         "INSERT INTO workspace_instances \
-         (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+         (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
          VALUES (?1, 'store-pos', 'default', 'Will Roll Back', '', NULL, 'active', \
                  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         params!["diff-rollback"],
@@ -1001,7 +1001,7 @@ fn update_cannot_move_instance_to_another_store() {
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1143,7 +1143,7 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
 fn verify_instance_access_denies_unknown_user() {
     let (store, _) = fresh();
     // A ghost user id with the owner claim previously passed the owner
-    // bypass (no `user_store_access` rows → single-store mode) and
+    // bypass (no `user_location_access` rows → single-store mode) and
     // would have minted a session for an identity that does not exist.
     let ok = store
         .verify_instance_access(
@@ -1262,7 +1262,7 @@ fn verify_instance_access_multi_store_owner_limited_to_assigned_stores() {
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1280,7 +1280,7 @@ fn verify_instance_access_multi_store_owner_limited_to_assigned_stores() {
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES ('user-owner', 'default', 'manager')",
             [],
         )
@@ -1496,7 +1496,7 @@ fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() 
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1515,7 +1515,7 @@ fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() 
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES ('user-staff', 'default', 'staff')",
             [],
         )
@@ -1533,7 +1533,7 @@ fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() 
         .unwrap();
     assert!(
         out_of_scope.is_empty(),
-        "staff without user_store_access on store-b must not enumerate it, got {out_of_scope:?}"
+        "staff without user_location_access on store-b must not enumerate it, got {out_of_scope:?}"
     );
 }
 
@@ -1559,7 +1559,7 @@ fn verify_instance_access_staff_respects_user_store_access_out_of_scope_denied()
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1577,7 +1577,7 @@ fn verify_instance_access_staff_respects_user_store_access_out_of_scope_denied()
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES ('user-staff', 'default', 'staff')",
             [],
         )

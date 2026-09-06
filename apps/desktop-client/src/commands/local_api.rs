@@ -4,7 +4,7 @@
 //! Device-level settings (`local_api.*` on the global DB, like the
 //! `lan_server.*` precedent): the server is one per machine, not per
 //! store — but it SERVES the primary store's database (resolved via
-//! `store_profiles.is_primary`, see `local_api::open_api_store_connection`).
+//! `locations.is_primary`, see `local_api::open_api_store_connection`).
 //! Mutations require `settings:edit`; status reads require
 //! `settings:read`. The signing secret never crosses the IPC boundary —
 //! the UI gets a minted token, not the secret (the secret doubles as the
@@ -51,7 +51,7 @@ fn persist_setting(conn: &Connection, key: &str, value: &str) -> Result<(), AppE
 /// The global-db guard is dropped before returning —
 /// `open_api_store_connection` opens its own handle. The served store
 /// id is resolved on the GLOBAL DB (`local_api.store_id` override,
-/// else `store_profiles.is_primary`), never the store DB. `image_dir`
+/// else `locations.is_primary`), never the store DB. `image_dir`
 /// is injected by the caller (command or test).
 async fn prepare(
     state: &AppState,

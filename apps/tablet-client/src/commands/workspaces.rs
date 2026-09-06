@@ -79,7 +79,7 @@ pub async fn list_workspaces(
     };
 
     // 3. List instances in the requested store using the REAL role + user.
-    //    `list_workspaces` applies the owner bypass, `user_store_access`
+    //    `list_workspaces` applies the owner bypass, `user_location_access`
     //    (multi-store), explicit instance assignment, and role workspace types.
     let conn = state
         .db_manager

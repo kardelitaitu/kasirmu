@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 2: reports deep read)
 crate: oz-core | status: SAFE | lint: CLEAN
-findings: COR-21 MEDIUM RESOLVED (REP-03, 2026-08-31): all date/hour bucketing now applies the primary store's fixed UTC offset — store_profiles.timezone holds '+HH:MM'/'-HH:MM'/'UTC' (IANA names fall back to UTC; no tzdata dep), threaded through reports/analytics/popularity-trend/sales-today/shift-hours, and date boundaries are validated as strict YYYY-MM-DD. Remaining from the original finding: top_products limit still unclamped (voided_items clamps — inconsistent, low impact); COGS uses current product cost by documented reporting-layer semantics
+findings: COR-21 MEDIUM RESOLVED (REP-03, 2026-08-31): all date/hour bucketing now applies the primary store's fixed UTC offset — locations.timezone holds '+HH:MM'/'-HH:MM'/'UTC' (IANA names fall back to UTC; no tzdata dep), threaded through reports/analytics/popularity-trend/sales-today/shift-hours, and date boundaries are validated as strict YYYY-MM-DD. Remaining from the original finding: top_products limit still unclamped (voided_items clamps — inconsistent, low impact); COGS uses current product cost by documented reporting-layer semantics
 next: none for COR-21 (cloud email parity for tz recorded as follow-up in audit-open-findings) | perf: correlated COGS subqueries are deliberate anti-multiplication design, documented
 */
 
@@ -411,7 +411,7 @@ impl Store<'_> {
     /// modifiers (REP-03). Shared by every date-bucketed query in the
     /// `db` module tree (analytics, popularity, sales, shifts).
     ///
-    /// Contract: `store_profiles.timezone` holds `'+HH:MM'` / `'-HH:MM'` /
+    /// Contract: `locations.timezone` holds `'+HH:MM'` / `'-HH:MM'` /
     /// `'UTC'`. IANA names are deliberately NOT interpreted — core carries
     /// no tzdata dependency, and a misconfigured store must fall back to
     /// UTC (the pre-REP-03 semantics) rather than guess. The returned
@@ -421,7 +421,7 @@ impl Store<'_> {
         let raw: Option<String> = self
             .conn
             .query_row(
-                "SELECT timezone FROM store_profiles WHERE is_primary = 1 LIMIT 1",
+                "SELECT timezone FROM locations WHERE is_primary = 1 LIMIT 1",
                 [],
                 |r| r.get(0),
             )

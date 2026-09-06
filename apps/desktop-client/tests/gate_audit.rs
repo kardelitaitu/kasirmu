@@ -180,7 +180,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("stock_transfers", 1, &["INVENTORY_TRANSFER"]),
-    ("store_profiles", 7, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("locations", 7, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("subscription", 0, &[]),
     ("sync", 10, &["SYNC_MANAGE"]),
     (

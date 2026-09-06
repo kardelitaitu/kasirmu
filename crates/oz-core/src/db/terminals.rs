@@ -157,7 +157,7 @@ impl Store<'_> {
     /// Update a terminal's device binding (store + instance).
     ///
     /// Also stores the HMAC signature for tamper detection.
-    /// `store_id` must exist in `store_profiles` (enforced by FK).
+    /// `store_id` must exist in `locations` (enforced by FK).
     /// `instance_id` is a logical reference validated at boot.
     pub fn update_terminal_binding(
         &self,
@@ -168,7 +168,7 @@ impl Store<'_> {
     ) -> Result<(), CoreError> {
         let affected = self.conn.execute(
             "UPDATE terminals SET
-                bound_store_id = ?1,
+                bound_location_id = ?1,
                 bound_instance_id = ?2,
                 binding_signature = ?3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -198,7 +198,7 @@ impl Store<'_> {
         terminal_id: &str,
     ) -> Result<Option<(String, String, String)>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT bound_store_id, bound_instance_id, binding_signature
+            "SELECT bound_location_id, bound_instance_id, binding_signature
              FROM terminals WHERE id = ?1",
         )?;
         let result = stmt.query_row(params![terminal_id], |row| {
@@ -224,7 +224,7 @@ impl Store<'_> {
     pub fn clear_terminal_binding(&self, terminal_id: &str) -> Result<(), CoreError> {
         let affected = self.conn.execute(
             "UPDATE terminals SET
-                bound_store_id = NULL,
+                bound_location_id = NULL,
                 bound_instance_id = NULL,
                 binding_signature = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

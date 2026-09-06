@@ -284,7 +284,7 @@ fn primary_store_id_resolves_and_falls_back() {
     assert_eq!(primary_store_id(&global), "default");
     global
         .execute(
-            "UPDATE store_profiles SET is_primary = 1 WHERE id = 'default'",
+            "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
             [],
         )
         .unwrap();
@@ -292,20 +292,20 @@ fn primary_store_id_resolves_and_falls_back() {
     // A flagged non-default store wins.
     global
         .execute(
-            "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES ('store-b', 'B', '', '', 'USD', 'UTC', 0, 'x', 'x')",
             [],
         )
         .unwrap();
     global
         .execute(
-            "UPDATE store_profiles SET is_primary = 0 WHERE id = 'default'",
+            "UPDATE locations SET is_primary = 0 WHERE id = 'default'",
             [],
         )
         .unwrap();
     global
         .execute(
-            "UPDATE store_profiles SET is_primary = 1 WHERE id = 'store-b'",
+            "UPDATE locations SET is_primary = 1 WHERE id = 'store-b'",
             [],
         )
         .unwrap();
@@ -319,7 +319,7 @@ async fn serves_the_primary_store_database_not_the_global_one() {
     let global = oz_core::migrations::fresh_db();
     global
         .execute(
-            "UPDATE store_profiles SET is_primary = 1 WHERE id = 'default'",
+            "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
             [],
         )
         .unwrap();
@@ -406,13 +406,13 @@ fn resolve_store_id_prefers_configured_and_degrades() {
     let global = oz_core::migrations::fresh_db();
     global
         .execute(
-            "UPDATE store_profiles SET is_primary = 1 WHERE id = 'default'",
+            "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
             [],
         )
         .unwrap();
     global
         .execute(
-            "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES ('store-b', 'B', '', '', 'USD', 'UTC', 0, 'x', 'x')",
             [],
         )
@@ -424,7 +424,7 @@ fn resolve_store_id_prefers_configured_and_degrades() {
     assert_eq!(resolve_store_id(&global), "store-b");
     // Configured but the store was deleted → degrade to primary.
     global
-        .execute("DELETE FROM store_profiles WHERE id = 'store-b'", [])
+        .execute("DELETE FROM locations WHERE id = 'store-b'", [])
         .unwrap();
     assert_eq!(resolve_store_id(&global), "default");
 }
@@ -436,7 +436,7 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
     let global = oz_core::migrations::fresh_db();
     global
         .execute(
-            "UPDATE store_profiles SET is_primary = 1 WHERE id = 'default'",
+            "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
             [],
         )
         .unwrap();

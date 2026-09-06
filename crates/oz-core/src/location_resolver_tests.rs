@@ -9,7 +9,7 @@ fn migrated() -> rusqlite::Connection {
 /// inserting a `workspace_instances` test row.
 fn seed_fks(conn: &rusqlite::Connection) {
     conn.execute_batch(
-        "INSERT OR IGNORE INTO store_profiles (id, name) VALUES ('store-1', 'Test Store');",
+        "INSERT OR IGNORE INTO locations (id, name) VALUES ('store-1', 'Test Store');",
     )
     .unwrap();
 }
@@ -25,7 +25,7 @@ fn resolve_primary_location_unbound_returns_canonical_default() {
     let conn = migrated();
     seed_fks(&conn);
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
          VALUES ('ws-unbound', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Unbound')",
         [],
     )
@@ -45,7 +45,7 @@ fn resolve_primary_location_single_binding_returns_bound() {
     )
     .unwrap();
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
          VALUES ('ws-single', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Single', 'loc-store')",
         [],
     )
@@ -61,7 +61,7 @@ fn resolve_primary_location_multi_binding_returns_is_primary() {
     conn.execute_batch(
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-1', 'A', 'store');\
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-2', 'B', 'warehouse');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-multi', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Multi');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-1', 'ws-multi', 'loc-2', 1, 0);\
@@ -83,7 +83,7 @@ fn resolve_primary_location_explicit_override_wins() {
     )
     .unwrap();
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
          VALUES ('ws-single', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Single', 'loc-store')",
         [],
     )
@@ -103,7 +103,7 @@ fn resolve_all_locations_single_binding() {
     )
     .unwrap();
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
          VALUES ('ws-single', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Single', 'loc-store')",
         [],
     )
@@ -121,7 +121,7 @@ fn resolve_all_locations_multi_binding_primary_first() {
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-3', 'C', 'store');\
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-1', 'A', 'warehouse');\
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-2', 'B', 'warehouse');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-multi', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Multi');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-1', 'ws-multi', 'loc-1', 0, 1);\
@@ -144,7 +144,7 @@ fn resolve_all_locations_unbound_returns_canonical() {
     let conn = migrated();
     seed_fks(&conn);
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
          VALUES ('ws-unbound', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Unbound')",
         [],
     )
@@ -165,7 +165,7 @@ fn resolve_location_chain_requires_one_location_when_primary_suffices() {
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-wh-a', 'WH A', 'warehouse');\
          INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) \
            VALUES ('prod-gf', 'GF-001', 'Greedy', 100, 'IDR', 'retail');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-gf', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'GF');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-gf-1', 'ws-gf', 'loc-store', 1, 0);\
@@ -192,7 +192,7 @@ fn resolve_location_chain_exact_fill_stops_at_exact_match() {
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-wh-a', 'WH A', 'warehouse');\
          INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) \
            VALUES ('prod-ef', 'EF-001', 'Exact', 100, 'IDR', 'retail');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-ef', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'EF');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-ef-1', 'ws-ef', 'loc-store', 1, 0);\
@@ -217,7 +217,7 @@ fn resolve_location_chain_under_stock_includes_all_available() {
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-wh-a', 'WH A', 'warehouse');\
          INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) \
            VALUES ('prod-us', 'US-001', 'Under', 100, 'IDR', 'retail');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-us', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'US');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-us-1', 'ws-us', 'loc-store', 1, 0);\
@@ -246,7 +246,7 @@ fn resolve_location_chain_for_sku_returns_stocked_alternatives() {
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-wh-b', 'WH B', 'warehouse');\
          INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) \
            VALUES ('prod-test', 'CHO-001', 'Choco Bar', 15000, 'IDR', 'retail');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-multi', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'Multi');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-1', 'ws-multi', 'loc-store', 1, 0);\
@@ -275,7 +275,7 @@ fn resolve_location_chain_for_sku_no_stock_anywhere_returns_empty() {
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-1', 'A', 'store');\
          INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) \
            VALUES ('prod-empty', 'EMPTY', 'Empty', 100, 'IDR', 'retail');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-1', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'WS1');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-1', 'ws-1', 'loc-1', 1, 0);",
@@ -292,7 +292,7 @@ fn resolve_primary_location_multi_binding_no_primary_returns_canonical() {
     conn.execute_batch(
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-a', 'A', 'store');\
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-b', 'B', 'warehouse');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-no-primary', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'NoPrimary');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order) \
            VALUES ('wsl-a', 'ws-no-primary', 'loc-a', 0, 0);\
@@ -321,7 +321,7 @@ fn location_cache_returns_cached_value_invalidation_forces_db_read() {
     )
     .expect("insert inventory_locations");
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
          VALUES ('ws-cache-zz99', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'CacheTestZZ99', 'loc-cache-zzz')",
         [],
     )
@@ -391,7 +391,7 @@ fn location_cache_notfound_cleared_by_invalidation() {
     // Create a workspace and resolve again.
     conn.execute_batch(
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-b', 'B', 'store');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
            VALUES ('ws-noexist-cache', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'NowExists', 'loc-b');",
     )
     .unwrap();
@@ -412,7 +412,7 @@ fn location_cache_explicit_override_never_cached() {
     seed_fks(&conn);
     conn.execute_batch(
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-z', 'Z', 'store');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
            VALUES ('ws-override-cache', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'OCache', 'loc-z');",
     )
     .unwrap();
@@ -466,7 +466,7 @@ fn resolve_location_chain_for_sku_nonexistent_product_errors() {
     let conn = migrated();
     seed_fks(&conn);
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
          VALUES ('ws-1', (SELECT key FROM workspace_types LIMIT 1), 'store-1', 'WS1')",
         [],
     )
@@ -488,7 +488,7 @@ fn get_workspace_locations_unknown_type_returns_empty() {
     let conn = migrated();
     seed_fks(&conn);
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
          VALUES ('ws-admin', 'admin', 'store-1', 'Admin')",
         [],
     )
@@ -504,7 +504,7 @@ fn get_workspace_locations_store_pos_multi_binding() {
     conn.execute_batch(
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-a', 'Store Front', 'store');\
          INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES ('loc-b', 'Back Room', 'warehouse');\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-pos', 'store-pos', 'store-1', 'Main POS');\
          INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, allow_negative_stock, sort_order) \
            VALUES ('wsl-1', 'ws-pos', 'loc-b', 1, 1, 0);\
@@ -529,7 +529,7 @@ fn get_workspace_locations_store_pos_no_bindings_returns_default() {
     let conn = migrated();
     seed_fks(&conn);
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
          VALUES ('ws-pos-empty', 'store-pos', 'store-1', 'Empty POS')",
         [],
     )
@@ -550,7 +550,7 @@ fn get_workspace_locations_warehouse_single_binding() {
     )
     .unwrap();
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
          VALUES ('ws-wh', 'warehouse', 'store-1', 'Warehouse', 'loc-wh')",
         [],
     )
@@ -570,7 +570,7 @@ fn get_workspace_locations_warehouse_unbound_returns_all_active() {
         "INSERT OR IGNORE INTO inventory_locations (id, name, type, is_active) VALUES ('loc-a', 'WH A', 'warehouse', 1);\
          INSERT OR IGNORE INTO inventory_locations (id, name, type, is_active) VALUES ('loc-b', 'Store B', 'store', 1);\
          INSERT OR IGNORE INTO inventory_locations (id, name, type, is_active) VALUES ('loc-c', 'Inactive C', 'warehouse', 0);\
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('ws-wh-unbound', 'warehouse', 'store-1', 'Unbound WH');",
     )
     .unwrap();
@@ -599,7 +599,7 @@ fn get_workspace_locations_split_brain_errors() {
     )
     .unwrap();
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
          VALUES ('ws-brain', 'store-pos', 'store-1', 'SplitBrain', 'loc-x')",
         [],
     )
@@ -650,7 +650,7 @@ fn get_workspace_locations_warehouse_type_key_from_instance() {
     )
     .unwrap();
     conn.execute(
-        "INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, bound_location_id) \
+        "INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name, bound_location_id) \
          VALUES ('ws-wh', 'warehouse', 'store-1', 'WH Instance', 'loc-wh')",
         [],
     )

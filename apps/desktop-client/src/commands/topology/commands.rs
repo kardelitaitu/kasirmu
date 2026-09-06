@@ -582,7 +582,7 @@ pub async fn apply_topology_diff(
             let owner: String = store
                 .conn()
                 .query_row(
-                    "SELECT store_id FROM workspace_instances WHERE id = ?1",
+                    "SELECT location_id FROM workspace_instances WHERE id = ?1",
                     rusqlite::params![update.id],
                     |row| row.get(0),
                 )
@@ -610,7 +610,7 @@ pub async fn apply_topology_diff(
             let owner: String = store
                 .conn()
                 .query_row(
-                    "SELECT store_id FROM workspace_instances WHERE id = ?1",
+                    "SELECT location_id FROM workspace_instances WHERE id = ?1",
                     rusqlite::params![archive_id],
                     |row| row.get(0),
                 )
@@ -703,7 +703,7 @@ pub async fn apply_topology_diff(
             }
             tx.execute(
                 "INSERT INTO workspace_instances \
-                 (id, type_key, store_id, name, description, colour, purpose_key, status, last_accessed_at) \
+                 (id, type_key, location_id, name, description, colour, purpose_key, status, last_accessed_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', \
                          strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 rusqlite::params![

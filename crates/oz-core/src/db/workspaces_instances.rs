@@ -69,14 +69,14 @@ impl Store<'_> {
         user_id: Option<&str>,
         store_id: &str,
     ) -> Result<Vec<WorkspaceDto>, CoreError> {
-        // 0. Multi-store enforcement (user_store_access) applies to every role,
+        // 0. Multi-store enforcement (user_location_access) applies to every role,
         //    not just the owner-bypass roles. If the user has store-access rows
         //    and this store is not among them, fail closed — even staff fallback
         //    resolution (user_workspace_instances or role_workspace_types) must
         //    not leak instances from unassigned stores.
         if let Some(uid) = user_id {
             let has_store_access_rows: bool = self.conn.query_row(
-                "SELECT COUNT(*) > 0 FROM user_store_access WHERE user_id = ?1",
+                "SELECT COUNT(*) > 0 FROM user_location_access WHERE user_id = ?1",
                 params![uid],
                 |row| row.get(0),
             )?;
@@ -85,7 +85,7 @@ impl Store<'_> {
                 let store_accessible: bool = self
                     .conn
                     .query_row(
-                        "SELECT COUNT(*) > 0 FROM user_store_access WHERE user_id = ?1 AND store_id = ?2",
+                        "SELECT COUNT(*) > 0 FROM user_location_access WHERE user_id = ?1 AND location_id = ?2",
                         params![uid, store_id],
                         |row| row.get(0),
                     )?;
@@ -143,15 +143,15 @@ impl Store<'_> {
     /// the user ID sits in their parameter array.
     fn instance_dto_sql(user_id_param: &str) -> String {
         format!(
-            "SELECT wi.id, wi.type_key, wi.store_id,
-                    COALESCE(sp.name, wi.store_id) AS store_name,
+            "SELECT wi.id, wi.type_key, wi.location_id,
+                    COALESCE(sp.name, wi.location_id) AS store_name,
                     wi.purpose_key,
                     wi.name, wt.description, wt.icon, wt.layout_mode,
                     COALESCE(wi.colour, wt.accent_colour) AS colour,
                     COALESCE(uwi.is_default, 0) AS is_default
              FROM workspace_instances wi
              JOIN workspace_types wt ON wi.type_key = wt.key
-             LEFT JOIN store_profiles sp ON wi.store_id = sp.id
+             LEFT JOIN locations sp ON wi.location_id = sp.id
              LEFT JOIN user_workspace_instances uwi
                ON uwi.instance_id = wi.id AND uwi.user_id = {user_id_param}"
         )
@@ -182,7 +182,7 @@ impl Store<'_> {
     ) -> Result<Vec<WorkspaceDto>, CoreError> {
         let uid = user_id.unwrap_or("");
         let sql = format!(
-            "{} WHERE wi.store_id = ?1 AND wi.status = 'active' ORDER BY wt.sort_order, wi.name",
+            "{} WHERE wi.location_id = ?1 AND wi.status = 'active' ORDER BY wt.sort_order, wi.name",
             Self::instance_dto_sql("?2")
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -204,7 +204,7 @@ impl Store<'_> {
             .collect();
         // Params: ?1 = user_id, ?2 = store_id, ?3.. = instance_ids
         let sql = format!(
-            "{} WHERE wi.id IN ({}) AND wi.store_id = ?2 AND wi.status = 'active' ORDER BY wt.sort_order, wi.name",
+            "{} WHERE wi.id IN ({}) AND wi.location_id = ?2 AND wi.status = 'active' ORDER BY wt.sort_order, wi.name",
             Self::instance_dto_sql("?1"),
             placeholders.join(", ")
         );
@@ -231,7 +231,7 @@ impl Store<'_> {
         let uid = user_id.unwrap_or("");
         let sql = format!(
             "{} JOIN role_workspace_types rwt ON wt.key = rwt.type_key
-             WHERE wi.store_id = ?1 AND rwt.role_id = ?2 AND wi.status = 'active'
+             WHERE wi.location_id = ?1 AND rwt.role_id = ?2 AND wi.status = 'active'
              ORDER BY wt.sort_order, wi.name",
             Self::instance_dto_sql("?3")
         );
@@ -251,8 +251,8 @@ impl Store<'_> {
     ) -> Result<WorkspaceDto, CoreError> {
         let uid = user_id.unwrap_or("");
         let mut stmt = self.conn.prepare(
-            "SELECT wi.id, wi.type_key, wi.store_id,
-                    COALESCE(sp.name, wi.store_id) AS store_name,
+            "SELECT wi.id, wi.type_key, wi.location_id,
+                    COALESCE(sp.name, wi.location_id) AS store_name,
                     wi.purpose_key,
                     wi.name, wt.description, wt.icon, wt.layout_mode,
                     COALESCE(wi.colour, wt.accent_colour) AS colour,
@@ -260,7 +260,7 @@ impl Store<'_> {
                               WHERE user_id = ?2 AND instance_id = wi.id), 0) AS is_default
              FROM workspace_instances wi
              JOIN workspace_types wt ON wi.type_key = wt.key
-             LEFT JOIN store_profiles sp ON wi.store_id = sp.id
+             LEFT JOIN locations sp ON wi.location_id = sp.id
              WHERE wi.id = ?1
                AND wi.status = 'active'",
         )?;
@@ -287,7 +287,7 @@ impl Store<'_> {
     pub fn count_active_instances(&self, store_id: &str) -> Result<i64, CoreError> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM workspace_instances
-             WHERE store_id = ?1 AND status NOT IN ('archived', 'quota_suspended')",
+             WHERE location_id = ?1 AND status NOT IN ('archived', 'quota_suspended')",
             params![store_id],
             |row| row.get(0),
         )?;
@@ -306,7 +306,7 @@ impl Store<'_> {
     pub fn count_active_pos_instances(&self, store_id: &str) -> Result<i64, CoreError> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM workspace_instances
-             WHERE store_id = ?1
+             WHERE location_id = ?1
                AND type_key IN ('store-pos', 'restaurant-pos')
                AND status NOT IN ('archived', 'quota_suspended')",
             params![store_id],
@@ -323,9 +323,9 @@ impl Store<'_> {
         store_id: &str,
     ) -> Result<Vec<WorkspaceInstanceRow>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, type_key, store_id, name, description, colour, purpose_key, status, created_at, updated_at
+            "SELECT id, type_key, location_id, name, description, colour, purpose_key, status, created_at, updated_at
              FROM workspace_instances
-             WHERE store_id = ?1
+             WHERE location_id = ?1
              ORDER BY name",
         )?;
         let rows = stmt.query_map(params![store_id], |row| {
@@ -406,7 +406,7 @@ impl Store<'_> {
     ///    could mint a session as that owner (privilege escalation) in any
     ///    store's active instance (cross-store session minting).
     /// 1. Owner/admin role keys — instance must exist and be active (with
-    ///    `user_store_access` check for multi-store mode)
+    ///    `user_location_access` check for multi-store mode)
     /// 2. `user_workspace_instances` — direct assignment for this user
     /// 3. `role_workspace_types` — role grants access to the instance's type
     ///
@@ -435,18 +435,18 @@ impl Store<'_> {
         }
         let role_id = &user.role_id;
 
-        // 0. Multi-store enforcement (user_store_access) applies to every role,
+        // 0. Multi-store enforcement (user_location_access) applies to every role,
         //    not just the owner-bypass roles. If the user has store-access rows
         //    and this store is not among them, fail closed — staff fallback
         //    resolution must not open a session in an unassigned store.
         let has_store_access: bool = self.conn.query_row(
-            "SELECT COUNT(*) > 0 FROM user_store_access WHERE user_id = ?1",
+            "SELECT COUNT(*) > 0 FROM user_location_access WHERE user_id = ?1",
             params![user_id],
             |row| row.get(0),
         )?;
         if has_store_access {
             let store_accessible: bool = self.conn.query_row(
-                "SELECT COUNT(*) > 0 FROM user_store_access WHERE user_id = ?1 AND store_id = ?2",
+                "SELECT COUNT(*) > 0 FROM user_location_access WHERE user_id = ?1 AND location_id = ?2",
                 params![user_id, store_id],
                 |row| row.get(0),
             )?;
@@ -471,7 +471,7 @@ impl Store<'_> {
             let exists: bool = self
                 .conn
                 .query_row(
-                    "SELECT COUNT(*) > 0 FROM workspace_instances WHERE id = ?1 AND store_id = ?2 AND status = 'active'",
+                    "SELECT COUNT(*) > 0 FROM workspace_instances WHERE id = ?1 AND location_id = ?2 AND status = 'active'",
                     params![instance_id, store_id],
                     |row| row.get(0),
                 )?;
@@ -496,7 +496,7 @@ impl Store<'_> {
             "SELECT COUNT(*) > 0 FROM workspace_instances wi
                  JOIN role_workspace_types rwt ON wi.type_key = rwt.type_key
                  WHERE wi.id = ?1
-                   AND wi.store_id = ?2
+                   AND wi.location_id = ?2
                    AND wi.status = 'active'
                    AND rwt.role_id = ?3",
             params![instance_id, store_id, role_id],

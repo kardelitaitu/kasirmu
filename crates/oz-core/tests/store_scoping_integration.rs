@@ -16,7 +16,7 @@
 //! databases only and `list_products` intentionally has no store filter.
 //! The genuinely store-scoped repository API is the workspace-instance
 //! layer exercised here. Note `workspace_instances.store_id` is NOT NULL
-//! with an FK to `store_profiles(id)` (created in migration 060, rebuilt
+//! with an FK to `locations(id)` (created in migration 060, rebuilt
 //! with ON DELETE RESTRICT in migration 066) — so unlike the domain
 //! tables there is NO NULL global-sentinel ambiguity at all: every
 //! instance belongs to exactly one store, and a scoped listing can only
@@ -53,7 +53,7 @@ fn make_profile(id: &str, name: &str) -> StoreProfile {
 /// Seed store-a / store-b profiles plus a workspace instance in each.
 ///
 /// `workspace_instances.store_id` is NOT NULL with an FK to
-/// `store_profiles(id)`, so every instance created here is owned by
+/// `locations(id)`, so every instance created here is owned by
 /// exactly one store.
 fn seed_two_stores(conn: &Connection) {
     let s = store(conn);
@@ -139,7 +139,7 @@ fn list_all_instances_empty_for_store_without_instances() {
 
 // ── Ownership enforcement through the API ─────────────────────────────
 
-/// The 066 FK (`workspace_instances.store_id` → `store_profiles(id)`,
+/// The 066 FK (`workspace_instances.store_id` → `locations(id)`,
 /// ON DELETE RESTRICT) is enforced on the write path: a caller cannot
 /// create an instance for a store that does not exist. The failure is
 /// pinned to the FK mechanism itself (a constraint violation, not some

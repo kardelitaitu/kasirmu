@@ -125,7 +125,7 @@ pub struct AppState {
     /// Store-scoped database manager (ADR #4 Phase 2).
     ///
     /// Manages per-store SQLite files created when additional stores
-    /// are added. The global database (store_profiles, users, terminals)
+    /// are added. The global database (locations, users, terminals)
     /// is accessed via `db_manager.global()`.
     pub db_manager: StoreDatabaseManager,
 
@@ -379,11 +379,11 @@ impl AppState {
 /// `get_primary_store()` (which queries `is_primary = 1`) returning `None`
 /// and breaking boot on a fresh install.
 fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM store_profiles", [], |r| r.get(0))?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
     if count == 0 {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         conn.execute(
-            "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES ('default', 'Main Store', '', '', 'USD', 'UTC', 1, ?1, ?1)",
             rusqlite::params![now],
         )?;
@@ -393,10 +393,10 @@ fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
         // index on is_primary = 1 allows at most one primary store, so only
         // promote when no other store is already primary (multi-store case).
         let affected = conn.execute(
-            "UPDATE store_profiles SET is_primary = 1
+            "UPDATE locations SET is_primary = 1
              WHERE id = 'default'
                AND NOT EXISTS (
-                 SELECT 1 FROM store_profiles WHERE is_primary = 1 AND id != 'default'
+                 SELECT 1 FROM locations WHERE is_primary = 1 AND id != 'default'
                )",
             [],
         )?;
@@ -620,7 +620,7 @@ impl AppState {
         let db = self.db.blocking_lock();
         let binding: Option<String> = db
             .query_row(
-                "SELECT bound_store_id FROM terminals WHERE id = ?1",
+                "SELECT bound_location_id FROM terminals WHERE id = ?1",
                 rusqlite::params![restaurant_pos_id],
                 |row| row.get(0),
             )

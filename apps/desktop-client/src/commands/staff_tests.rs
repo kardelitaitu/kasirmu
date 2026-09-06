@@ -893,7 +893,7 @@ async fn scoped_update_staff_writes_assignment_scope_atomically() {
             profile: None,
             // ADR #35 D5 (spec 0048): scoped assignment with explicit
             // all/list per dimension — `retail-pos` is FK-valid (seeded
-            // by migration 128), branch ids are store_profiles ids.
+            // by migration 128), branch ids are locations ids.
             assignment: Some(AssignmentArgs {
                 scope_mode: "scoped".into(),
                 branches_all: false,

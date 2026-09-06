@@ -294,7 +294,7 @@ async fn resolve_boot_store_returns_primary_store() {
     let store = Store::new(&conn);
     let now = "2026-07-31T00:00:00.000Z";
     conn.execute(
-        "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
          VALUES ('store-main', 'Main', '', '', 'USD', 'UTC', 1, ?1, ?1)",
         [now],
     )
@@ -344,11 +344,11 @@ fn binding_state() -> (AppState, tempfile::TempDir, oz_security::InMemoryKeyring
 
     let terminal = Terminal::new("Tablet-1", "tablet-1");
     store.create_terminal(&terminal).unwrap();
-    // `bound_store_id` is FK-enforced against the global `store_profiles`,
+    // `bound_store_id` is FK-enforced against the global `locations`,
     // and `resolve_boot_store` reads the primary from the same table.
     let now = "2026-07-31T00:00:00.000Z";
     conn.execute(
-        "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
          VALUES ('store-a', 'Store A', '', '', 'USD', 'UTC', 0, ?1, ?1), ('store-main', 'Main', '', '', 'USD', 'UTC', 1, ?1, ?1)",
         [now],
     )

@@ -494,7 +494,7 @@ pub fn store_subscription(
 
     conn.execute(
         "INSERT OR REPLACE INTO tenant_subscription
-         (tenant_id, tier_key, status, expires_at, max_stores,
+         (tenant_id, tier_key, status, expires_at, max_locations,
           max_pos_instances, allowed_types_json, signature, signed_payload,
           api_key, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",

@@ -444,10 +444,10 @@ fn run_set_device_binding_writes_verifiable_binding() {
     let t = Terminal::new("Counter", "host-bind");
     store.create_terminal(&t).unwrap();
 
-    // `bound_store_id` is FK-enforced against the global `store_profiles`.
+    // `bound_store_id` is FK-enforced against the global `locations`.
     let now = "2026-07-31T00:00:00.000Z";
     conn.execute(
-        "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
          VALUES ('store-a', 'Store A', '', '', 'USD', 'UTC', 0, ?1, ?1)",
         [now],
     )
