@@ -4,10 +4,11 @@
 //! Owns the `memos`, `memo_locations`, `memo_revisions`, and `memo_recipients`
 //! tables. Every read/write is tenant-scoped (`WHERE tenant_id = ?`). The
 //! repository enforces DATA invariants (valid state transitions, non-blank
-//! content, immutable revisions); AUTHORIZATION (the "author or higher role"
-//! early-stop rule via [`crate::memo::may_stop`]) is enforced by the scoped
-//! IPC command that holds the session role, mirroring how the rest of the
-//! store layer separates persistence from permission.
+//! content, immutable revisions); AUTHORIZATION (the early-stop rule ruled
+//! 2026-09-07: the AUTHOR may always stop their own memo, otherwise the actor
+//! must hold `memo:stop`) is enforced by the scoped IPC command that holds
+//! the session, mirroring how the rest of the store layer separates
+//! persistence from permission.
 //!
 //! Targeting: a memo carries zero or more `memo_locations` rows. Zero rows ⇒
 //! Organization Memo (every terminal of the tenant); one or more ⇒ Location
@@ -332,8 +333,9 @@ impl Store<'_> {
     }
 
     /// Early-stop a published memo: `published → stopped`. Records who and
-    /// when. Authorization (author-or-higher) is the caller's gate; this
-    /// enforces only that the memo is currently published.
+    /// when. Authorization (the author, or a `memo:stop` holder — 2026-09-07
+    /// A2 ruling) is the caller's gate; this enforces only that the memo is
+    /// currently published.
     pub fn stop_memo(
         &self,
         tenant_id: &str,

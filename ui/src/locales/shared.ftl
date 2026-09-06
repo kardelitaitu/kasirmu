@@ -173,6 +173,7 @@ memos-duration-7d = 7 days
 memos-duration-30d = 30 days
 memos-create = Create draft
 memos-publish = Publish
+memos-stop = Stop
 memos-col-title = Title
 memos-col-scope = Audience
 memos-col-status = Status

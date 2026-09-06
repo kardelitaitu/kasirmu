@@ -556,6 +556,26 @@ function listMockAuthoredMemos(): MockMemo[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/** Early-stop a published memo in the session-local mock (dev preview parity
+ *  with the real `stop_memo_scoped` command, A2 ruling: author or
+ *  `memo:stop`). Unknown ids and non-published memos reject, matching the
+ *  real command's state guard. */
+function stopMockMemo(args: unknown): MockMemo {
+  const { memoId } = unwrapArgs<{ memoId?: string }>(args);
+  const found = mockMemos.find((m) => m.memo.id === memoId);
+  if (!found) {
+    throw new Error(`memo not found: ${memoId}`);
+  }
+  if (found.memo.status !== 'published') {
+    throw new Error(`memo ${memoId} is not published`);
+  }
+  found.memo = {
+    ...found.memo,
+    status: 'stopped',
+  };
+  return { ...found.memo };
+}
+
 /** Live floor-plan snapshot for the analytics occupancy card: 5 of 12
  *  active tables occupied (2 seated, 1 reserved, 4 free, 1 cleaning). */
 function tablesSnapshot(): Array<{
@@ -1948,6 +1968,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // real commands: drafts are invisible to terminals until published.
   'create_memo_scoped': createMockMemo,
   'publish_memo_scoped': publishMockMemo,
+  'stop_memo_scoped': stopMockMemo,
   'list_authored_memos_scoped': listMockAuthoredMemos,
 
   // ═════════════════════════════════════════════════════════

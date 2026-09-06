@@ -4,6 +4,7 @@ import {
   createMemoScoped,
   listAuthoredMemosScoped,
   publishMemoScoped,
+  stopMemoScoped,
   type Memo,
   type MemoDuration,
 } from '@/api/memos';
@@ -115,6 +116,7 @@ export default function MemosScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!sessionToken) return;
@@ -199,6 +201,23 @@ export default function MemosScreen() {
       setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  // Early stop (A2 ruling): on this authoring screen every row is the
+  // session user's own memo, so the author short-circuit always applies —
+  // the button is a first-class alternative to waiting out the duration.
+  const handleStop = async (memoId: string) => {
+    if (!sessionToken || stoppingId) return;
+    setStoppingId(memoId);
+    setActionError(null);
+    try {
+      await stopMemoScoped(sessionToken, memoId);
+      await load();
+    } catch (err) {
+      setActionError(l10nErrorMessage(err, l10n, 'memos-error-action'));
+    } finally {
+      setStoppingId(null);
     }
   };
 
@@ -437,6 +456,17 @@ export default function MemosScreen() {
                           onClick={() => void handlePublish(memo.id)}
                         >
                           <span>Publish</span>
+                        </Button>
+                      </Localized>
+                    ) : memo.status === 'published' ? (
+                      <Localized id="memos-stop">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          state={stoppingId === memo.id ? 'processing' : 'ready'}
+                          onClick={() => void handleStop(memo.id)}
+                        >
+                          <span>Stop</span>
                         </Button>
                       </Localized>
                     ) : (

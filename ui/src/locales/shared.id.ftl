@@ -189,6 +189,7 @@ memos-duration-7d = 7 hari
 memos-duration-30d = 30 hari
 memos-create = Buat draf
 memos-publish = Terbitkan
+memos-stop = Hentikan
 memos-col-title = Judul
 memos-col-scope = Penerima
 memos-col-status = Status

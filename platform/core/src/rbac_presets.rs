@@ -1,7 +1,7 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: static data tables only (no unsafe/unwrap/expect) — B-1 CLOSED: Manager and Admin presets now grant terminals:read explicitly (view follows manage, never a family wildcard), pinned by the terminal_read_follows_terminal_manage_b1 test alongside the six ADR #35 presets (Owner=*; Manager broad; Staff checkout-only; Admin explicit, never wildcard, no staff:delete; Auditor read-only; Custom empty); ALL_ENFORCED (83 keys) still bidirectionally anchored to the registry by the 62-test inventory suite; evidence: 317 + 4 platform-core tests green
+findings: static data tables only (no unsafe/unwrap/expect) — B-1 CLOSED: Manager and Admin presets now grant terminals:read explicitly (view follows manage, never a family wildcard), pinned by the terminal_read_follows_terminal_manage_b1 test alongside the six ADR #35 presets (Owner=*; Manager broad; Staff checkout-only; Admin explicit, never wildcard, no staff:delete; Auditor read-only; Custom empty); ALL_ENFORCED (83 keys at audit; 84 since the 2026-09-07 memo:stop ruling) still bidirectionally anchored to the registry by the inventory suite; evidence: 317 + 4 platform-core tests green
 next: none — campaign closed for this file | perf: n/a — compile-time constants
 */
 //! Built-in role presets and the enforced-permission inventory for
@@ -226,6 +226,10 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             // is the §I enforcement slice; the grant lands first so the
             // switch cannot lock Admin out.
             permissions::MEMO_WRITE,
+            // Memo early-stop ruling (2026-09-07, option A2): stopping
+            // another author's Memo is Owner/Admin — Manager authors can
+            // stop their own via the command's author short-circuit.
+            permissions::MEMO_STOP,
             permissions::TOPOLOGY_WRITE,
         ],
     },
@@ -349,5 +353,6 @@ pub const ALL_ENFORCED: &[&str] = &[
     permissions::PLAN_READ,
     permissions::DATA_EXPORT,
     permissions::MEMO_WRITE,
+    permissions::MEMO_STOP,
     permissions::TOPOLOGY_WRITE,
 ];

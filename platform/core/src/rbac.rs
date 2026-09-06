@@ -583,11 +583,17 @@ pub mod permissions {
     pub const DATA_EXPORT: &str = "data:export";
 
     // ── Memo ──────────────────────────────────────────────────────
-    /// Author, publish, stop, or archive a Memo (Organization or Location).
-    /// Phase 1 §F / Phase 2 Memo lifecycle: Location Memo is manager+,
-    /// Organization Memo owner/admin — the role split is enforced by the
-    /// memo surface itself; this key is the write gate.
+    /// Author or publish a Memo (Organization or Location). Phase 1 §F /
+    /// Phase 2 Memo lifecycle: Location Memo is manager+, Organization Memo
+    /// owner/admin — the role split is enforced by the memo surface itself;
+    /// this key is the write gate. Early-stop lives on [`Self::MEMO_STOP`].
     pub const MEMO_WRITE: &str = "memo:write";
+
+    /// Early-stop (end before `expiresAt`) a published Memo — the author may
+    /// always stop their own; this key covers stopping anyone's (Owner/Admin
+    /// presets). Ruled 2026-09-07 (option A2): "higher role" is expressed as
+    /// a registry grant, not a rank map, so custom roles stay deny-by-default.
+    pub const MEMO_STOP: &str = "memo:stop";
 
     // ── Topology ──────────────────────────────────────────────────
     /// Mutate the topology graph (Apply, location creation, rename,

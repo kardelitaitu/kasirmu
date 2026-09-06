@@ -105,6 +105,15 @@ export const publishMemoScoped = (sessionToken: string, memoId: string): Promise
   loggedInvoke<Memo>('publish_memo_scoped', { sessionToken, memoId });
 
 /**
+ * Early-stop a published memo (`published → stopped`): it leaves every
+ * display surface immediately. Authorization is the 2026-09-07 A2 ruling —
+ * the author may always stop their own; anyone else must hold `memo:stop`
+ * (Owner/Admin presets).
+ */
+export const stopMemoScoped = (sessionToken: string, memoId: string): Promise<Memo> =>
+  loggedInvoke<Memo>('stop_memo_scoped', { sessionToken, memoId });
+
+/**
  * List every memo authored by the session user, newest first — the
  * management read behind the authoring screen (matches
  * `list_memos_authored_by`). Requires `memo:write` (scoped — ADR #7).

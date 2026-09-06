@@ -157,3 +157,155 @@ fn create_args_rejects_missing_required_fields() {
     }));
     assert!(missing_body.is_err());
 }
+
+// ── stop_memo_scoped: the A2 author-or-`memo:stop` gate ────────────
+//
+// The 2026-09-07 ruling: the AUTHOR may always stop their own memo;
+// anyone else must hold `memo:stop` (Owner/Admin presets). These tests
+// drive the real command through the global identity DB, so the gate
+// evaluated is the same one production uses (roles resolved server-side).
+//
+// Harness notes: the memo tables live in the GLOBAL identity DB, which is
+// exactly the DB `AppState::for_test_with_conn` hands the command — no
+// store-DB isolation is needed (unlike the store-scoped customer
+// commands). `SessionContext::new(user_id, role_id, terminal, store,
+// instance, type_key, token?, expiry)`; the role_id on the session is
+// cosmetic, the gate resolves the user's role row.
+
+use oz_core::session::SessionContext;
+use tauri::Manager as _;
+
+/// Seed roles + a fixed-id user with the given role on the identity DB.
+fn seed_user(conn: &rusqlite::Connection, user_id: &str, role_id: &str) {
+    let store = Store::new(conn);
+    store.seed_default_roles().unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES (?1, ?1, 'hash', ?1, ?2, 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        rusqlite::params![user_id, role_id],
+    )
+    .unwrap();
+}
+
+fn session_for(user_id: &str, role_id: &str) -> SessionContext {
+    SessionContext::new(
+        user_id.into(),
+        role_id.into(),
+        "term-1".into(),
+        "store-a".into(),
+        "inst-1".into(),
+        "store-pos".into(),
+        None,
+        0,
+    )
+}
+
+/// Published memo authored by `user-manager` (the fixed author all stop
+/// cases act on).
+fn seed_published_memo(conn: &rusqlite::Connection) -> String {
+    let store = Store::new(conn);
+    let draft = store
+        .create_memo_draft(&oz_core::memo::NewMemo {
+            tenant_id: "default".into(),
+            location_ids: vec![],
+            author_user_id: "user-manager".into(),
+            author_role: "role-manager".into(),
+            title: "Heads up".into(),
+            body: "Close early".into(),
+            duration: oz_core::memo::MemoDuration::Hours24,
+        })
+        .unwrap();
+    store.publish_memo("default", &draft.id).unwrap().id
+}
+
+fn test_state(conn: rusqlite::Connection) -> tauri::App<tauri::test::MockRuntime> {
+    tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn author_can_stop_their_own_memo_without_memo_stop() {
+    // A manager author holds only `memo:write` — the author short-circuit
+    // must let them stop their own memo (the ruling preserves that right).
+    let conn = oz_core::migrations::fresh_db();
+    seed_user(&conn, "user-manager", "role-manager");
+    let memo_id = seed_published_memo(&conn);
+    let app = test_state(conn);
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), session_for("user-manager", "role-manager"));
+    let dto = stop_memo_scoped(memo_id, "tok".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(dto.status, "stopped");
+    assert_eq!(dto.author_user_id, "user-manager");
+}
+
+#[tokio::test]
+async fn admin_can_stop_another_authors_memo() {
+    // `memo:stop` covers stopping anyone's memo (Owner/Admin presets).
+    let conn = oz_core::migrations::fresh_db();
+    seed_user(&conn, "user-manager", "role-manager");
+    seed_user(&conn, "user-admin", "role-admin");
+    let memo_id = seed_published_memo(&conn);
+    let app = test_state(conn);
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), session_for("user-admin", "role-admin"));
+    let dto = stop_memo_scoped(memo_id, "tok".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(dto.status, "stopped");
+}
+
+#[tokio::test]
+async fn peer_manager_cannot_stop_another_managers_memo() {
+    // The property the old strict-> rank rule pinned, now enforced by the
+    // grant: a manager holds `memo:write` but NOT `memo:stop`, so stopping
+    // another manager's memo denies even though the caller could author.
+    let conn = oz_core::migrations::fresh_db();
+    seed_user(&conn, "user-manager", "role-manager");
+    seed_user(&conn, "user-peer", "role-manager");
+    let memo_id = seed_published_memo(&conn);
+    let app = test_state(conn);
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), session_for("user-peer", "role-manager"));
+    let result = stop_memo_scoped(memo_id, "tok".into(), app.state()).await;
+    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+}
+
+#[tokio::test]
+async fn staff_cannot_stop_any_memo_even_their_own_claim_is_checked() {
+    // Staff holds neither memo key. Stopping a memo they did not author
+    // must deny — and because the denial comes from the permission gate,
+    // not the author check, this also proves an unknown/unrelated user
+    // cannot ride the author short-circuit.
+    let conn = oz_core::migrations::fresh_db();
+    seed_user(&conn, "user-manager", "role-manager");
+    seed_user(&conn, "user-staff", "role-staff");
+    let memo_id = seed_published_memo(&conn);
+    let app = test_state(conn);
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), session_for("user-staff", "role-staff"));
+    let result = stop_memo_scoped(memo_id, "tok".into(), app.state()).await;
+    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+}
+
+#[tokio::test]
+async fn stop_rejects_invalid_session() {
+    let app = test_state(oz_core::migrations::fresh_db());
+    let result = stop_memo_scoped("memo-1".into(), "missing-token".into(), app.state()).await;
+    assert!(matches!(result, Err(AppError::InvalidSession)));
+}

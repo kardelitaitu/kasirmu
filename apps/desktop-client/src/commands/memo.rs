@@ -12,10 +12,11 @@
 //!   terminal via the session and requires no extra permission — a staff member
 //!   must be able to see and acknowledge memos addressed to their terminal, and
 //!   the recipient set is already terminal-scoped by the store's fan-out.
-//! - `stop` is intentionally NOT exposed yet: the spec's "early stop by author
-//!   or higher role" needs a role→rank ordering, and the presence of custom
-//!   roles (`role-custom`) makes "higher" ambiguous. That is a design decision
-//!   to make deliberately, not a gap to paper over with an arbitrary rank map.
+//! - Early stop (`stop`) is the 2026-09-07 A2 ruling: the AUTHOR of the memo
+//!   may always stop it; anyone else must hold `memo:stop` (Owner/Admin
+//!   presets; custom roles deny by default). "Higher role" is a registry
+//!   grant, not a rank map — the rank-based `may_stop` helper was deleted
+//!   with its tests when this ruling landed.
 
 use chrono::Utc;
 use oz_core::memo::{
@@ -255,6 +256,49 @@ pub async fn list_authored_memos_scoped(
         .into_iter()
         .map(MemoDto::from)
         .collect())
+}
+
+/// Early-stop a published memo (`published → stopped`): it leaves every
+/// display surface immediately and `stopped_by` records who ended it.
+///
+/// Authorization is the 2026-09-07 A2 ruling, enforced here rather than in
+/// the store: the memo's AUTHOR may always stop their own (a manager author
+/// keeps that right even without the new key); any other actor must hold
+/// `memo:stop` (Owner/Admin presets — a peer manager cannot stop another
+/// manager's memo, the property the old strict-`>` rank rule pinned). The
+/// gate is evaluated against the global identity DB like every other
+/// permission check, so a tampered client cannot forge the author match —
+/// `author_user_id` comes from the memo row, the actor from the session.
+#[tauri::command]
+pub async fn stop_memo_scoped(
+    memo_id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<MemoDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    // Scope-checked read first so the author comparison below runs on the
+    // tenant's own row. The lock guard and the `Store` borrow are dropped
+    // BEFORE the permission gate, which re-locks `state.db` — holding the
+    // mutex (a `RefCell`-backed rusqlite connection) across that `.await`
+    // would make the command future non-`Send`.
+    let is_author = {
+        let conn = state.db.lock().await;
+        let store = Store::new(&conn);
+        let memo = store
+            .get_memo(DEFAULT_TENANT_ID, &memo_id)?
+            .ok_or_else(|| AppError::Invalid(format!("memo not found: {memo_id}")))?;
+        memo.author_user_id == session.user_id
+    };
+    if !is_author {
+        require_permission_for_session(&state, &session, permissions::MEMO_STOP).await?;
+    }
+    let conn = state.db.lock().await;
+    let store = Store::new(&conn);
+    Ok(MemoDto::from(store.stop_memo(
+        DEFAULT_TENANT_ID,
+        &memo_id,
+        &session.user_id,
+    )?))
 }
 
 #[cfg(test)]

@@ -1,14 +1,14 @@
 //! Memo domain model — the schema-independent logic behind the Memo
 //! lifecycle (Phase 2 P1): the memo status state machine, the per-recipient
 //! delivery/acknowledgement state machine, the author-chosen duration and its
-//! expiry computation, the early-stop authorization rule, and the display
-//! cadence constants.
+//! expiry computation, and the display cadence constants.
 //!
-//! This module deliberately owns NO database access and NO role→rank mapping:
-//! the store/IPC layer persists these enums as `TEXT` columns and supplies the
-//! actor/author role ranks to [`may_stop`]. Keeping the pure rules here (and
-//! fully unit-tested) means the eventual migration only has to persist states
-//! this module already validates transitions between.
+//! This module deliberately owns NO database access and NO authorization
+//! vocabulary: the store/IPC layer persists these enums as `TEXT` columns and
+//! enforces author-or-`memo:stop` (the 2026-09-07 early-stop ruling) at the
+//! command gate. Keeping the pure rules here (and fully unit-tested) means
+//! the migration only had to persist states this module already validates
+//! transitions between.
 //!
 //! Two orthogonal state dimensions (conflating them is the classic memo bug):
 //! - A memo's own lifecycle: [`MemoStatus`] `draft → published → {expired |
@@ -266,20 +266,16 @@ impl FromStr for MemoDuration {
     }
 }
 
-// ── Early-stop authorization rule ───────────────────────────────────
+// ── Early-stop authorization ────────────────────────────────────────
 
-/// Whether an actor may early-stop a memo.
-///
-/// The spec: "early stop by author or higher role." The role→rank mapping is
-/// owned by the caller (the session/authz layer that already resolves the
-/// actor's role), so this module encodes only the RULE and cannot drift from a
-/// hierarchy it does not define. `actor_is_author` short-circuits so an author
-/// can always stop their own memo even if their role was later demoted;
-/// otherwise the actor must strictly outrank the author (`>`, not `>=`, so a
-/// peer manager cannot stop another manager's Location Memo).
-pub fn may_stop(actor_is_author: bool, actor_rank: u8, author_rank: u8) -> bool {
-    actor_is_author || actor_rank > author_rank
-}
+// The spec's "early stop by author or higher role" is ruled (2026-09-07,
+// option A2) as: the AUTHOR may always stop their own memo, otherwise the
+// actor must hold the `memo:stop` permission (Owner/Admin presets; custom
+// roles deny by default). "Higher role" is expressed as a registry grant,
+// not a rank map, so no hierarchy lives here — the rule is enforced at the
+// `stop_memo_scoped` command gate, and the rank-based `may_stop` helper was
+// deleted with its tests rather than left as a tested pure rule with no
+// caller.
 
 // ── Display cadence constants ───────────────────────────────────────
 

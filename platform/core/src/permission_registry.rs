@@ -586,7 +586,13 @@ pub const REGISTRY: &[PermissionEntry] = &[
         key: "memo:write",
         family: "memo",
         sensitive: false,
-        description: "Author, publish, stop, or archive a Memo (Organization or Location).",
+        description: "Author or publish a Memo (Organization or Location).",
+    },
+    PermissionEntry {
+        key: "memo:stop",
+        family: "memo",
+        sensitive: false,
+        description: "Early-stop a published Memo (any author's); the author can always stop their own.",
     },
     // ── topology (Phase 1 §I) ────────────────────────────────────
     PermissionEntry {

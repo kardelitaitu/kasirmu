@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   createMemoScoped: vi.fn(),
   listAuthoredMemosScoped: vi.fn(),
   publishMemoScoped: vi.fn(),
+  stopMemoScoped: vi.fn(),
   listLocationsScoped: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ vi.mock('@/api/memos', () => ({
   createMemoScoped: mocks.createMemoScoped,
   listAuthoredMemosScoped: mocks.listAuthoredMemosScoped,
   publishMemoScoped: mocks.publishMemoScoped,
+  stopMemoScoped: mocks.stopMemoScoped,
 }));
 
 vi.mock('@/api/locations', () => ({
@@ -118,6 +120,7 @@ describe('MemosScreen', () => {
     mocks.listAuthoredMemosScoped.mockReset();
     mocks.createMemoScoped.mockReset();
     mocks.publishMemoScoped.mockReset();
+    mocks.stopMemoScoped.mockReset();
     mocks.listLocationsScoped.mockReset();
 
     mocks.listAuthoredMemosScoped.mockResolvedValue([publishedOrgMemo, draftLocationMemo]);
@@ -261,5 +264,34 @@ describe('MemosScreen', () => {
       expect(mocks.publishMemoScoped).toHaveBeenCalledWith('tok-1', 'memo-loc-1'),
     );
     await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalledTimes(2));
+  });
+
+  // ── Early stop (A2 ruling: author or memo:stop) ──────────────
+
+  it('stops a published row and reloads the list', async () => {
+    // On the authoring screen every row is the viewer's own memo, so the
+    // author short-circuit applies — Stop renders regardless of role.
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    await screen.findByText('End-of-day checklist');
+
+    const stopBtn = screen.getByRole('button', { name: 'Stop' });
+    expect(stopBtn).toBeInTheDocument();
+
+    await userEvent.click(stopBtn);
+
+    await waitFor(() =>
+      expect(mocks.stopMemoScoped).toHaveBeenCalledWith('tok-1', 'memo-org-1'),
+    );
+    await waitFor(() => expect(mocks.listAuthoredMemosScoped).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows the action error when the stop fails', async () => {
+    mocks.stopMemoScoped.mockRejectedValue(new Error('boom'));
+    render(<MemosScreen />, { wrapper: FluentWrapper });
+    await screen.findByText('End-of-day checklist');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+    expect(await screen.findByText('The memo action failed. Please try again.')).toBeInTheDocument();
   });
 });

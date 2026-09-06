@@ -14,7 +14,13 @@ vi.mock('@/utils/logged-invoke', () => ({
   loggedInvoke: (cmd: string, args?: Record<string, unknown>) => mockInvoke(cmd, args),
 }));
 
-import { listActiveMemosScoped, acknowledgeMemoScoped, createMemoScoped } from '@/api/memos';
+import {
+  listActiveMemosScoped,
+  acknowledgeMemoScoped,
+  createMemoScoped,
+  publishMemoScoped,
+  stopMemoScoped,
+} from '@/api/memos';
 
 describe('memos.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
@@ -45,6 +51,24 @@ describe('memos.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenLastCalledWith('create_memo_scoped', {
       sessionToken: 'tok',
       args: { title: 'T', body: 'B', locationIds: [] },
+    });
+  });
+
+  it('publishMemoScoped → publish_memo_scoped with sessionToken + memoId', async () => {
+    mockInvoke.mockResolvedValue({});
+    await publishMemoScoped('tok', 'memo-1');
+    expect(mockInvoke).toHaveBeenCalledWith('publish_memo_scoped', {
+      sessionToken: 'tok',
+      memoId: 'memo-1',
+    });
+  });
+
+  it('stopMemoScoped → stop_memo_scoped with sessionToken + memoId (A2 ruling)', async () => {
+    mockInvoke.mockResolvedValue({});
+    await stopMemoScoped('tok', 'memo-1');
+    expect(mockInvoke).toHaveBeenCalledWith('stop_memo_scoped', {
+      sessionToken: 'tok',
+      memoId: 'memo-1',
     });
   });
 });

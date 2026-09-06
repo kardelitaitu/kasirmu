@@ -170,28 +170,6 @@ fn duration_expiry_boundary_is_exclusive() {
     assert!(d.is_expired(published, expires + ChronoDuration::seconds(1)));
 }
 
-// ── Early-stop rule ─────────────────────────────────────────────────
-
-#[test]
-fn author_can_always_stop() {
-    // Even a demoted author (rank 0) can stop their own memo.
-    assert!(may_stop(true, 0, 99));
-}
-
-#[test]
-fn higher_rank_can_stop_lower() {
-    assert!(may_stop(false, 3, 2), "owner outranks manager");
-}
-
-#[test]
-fn equal_or_lower_rank_cannot_stop() {
-    assert!(
-        !may_stop(false, 2, 2),
-        "a peer manager cannot stop another manager's memo (strict >)"
-    );
-    assert!(!may_stop(false, 1, 2), "lower rank cannot stop higher");
-}
-
 // ── Cadence constants ───────────────────────────────────────────────
 
 #[test]
