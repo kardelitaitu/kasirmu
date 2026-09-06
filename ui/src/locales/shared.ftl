@@ -147,6 +147,13 @@ update-banner-rollback-desc = Previous version { $version } available for downlo
 update-banner-rollback = Restore Previous Version
 update-banner-rollback-aria = Download previous version from GitHub
 
+# Memo Banner
+memo-banner-scope-location = Location notice
+memo-banner-scope-organization = Organization notice
+memo-banner-acknowledge = Acknowledge
+memo-banner-acknowledge-aria = Acknowledge this memo
+memo-banner-dismiss-aria = Dismiss memo
+
 # Toast
 toast-dismiss-aria = Dismiss notification
 toast-notifications-aria = Notifications

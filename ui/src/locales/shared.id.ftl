@@ -163,6 +163,13 @@ update-banner-rollback-desc = Versi sebelumnya { $version } tersedia untuk diund
 update-banner-rollback = Pulihkan Versi Sebelumnya
 update-banner-rollback-aria = Unduh versi sebelumnya dari GitHub
 
+# Memo Banner
+memo-banner-scope-location = Pemberitahuan Lokasi
+memo-banner-scope-organization = Pemberitahuan Organisasi
+memo-banner-acknowledge = Konfirmasi
+memo-banner-acknowledge-aria = Konfirmasi memo ini
+memo-banner-dismiss-aria = Tutup memo
+
 # Accessibility
 a11y-skip-to-content = Lewati ke konten utama
 # Shared right-click menu (see shared.ftl).

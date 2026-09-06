@@ -1,0 +1,178 @@
+/* ============================================================
+ * OZ-POS Memo Notification Banner
+ *
+ * A dismissible top-left notification for the highest-priority
+ * active memo addressed to this terminal. Styling mirrors the
+ * UpdateBanner; the exit animation follows the exit-animation-pattern
+ * skill (exact reverse of entry, fill-mode both, pointer-events none,
+ * all inside prefers-reduced-motion: no-preference).
+ * ============================================================ */
+
+.memo-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2_5) var(--space-4);
+  background: linear-gradient(
+    135deg,
+    var(--color-accent-subtle),
+    color-mix(in srgb, var(--color-accent-subtle) 85%, var(--color-accent) 15%)
+  );
+  border-bottom: 1px solid var(--color-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .memo-banner {
+    animation: memo-banner-slide-in var(--duration-200) var(--ease-out);
+  }
+
+  @keyframes memo-banner-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(-100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* ── Exit: exact mirror of slide-in (down → up + fade out) ─── */
+  /* Source order: entry rule → entry keyframe → exit keyframe →
+     exit rule. fill-mode: both holds the TO-frame across React
+     unmount (no opacity flash); pointer-events: none blocks stale
+     clicks during the fade. */
+  @keyframes memo-banner-slide-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-100%);
+    }
+  }
+  .memo-banner--exiting {
+    animation: memo-banner-slide-out var(--duration-200) var(--ease-out) both;
+    pointer-events: none;
+  }
+}
+
+.memo-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.memo-banner-scope {
+  display: inline-flex;
+}
+
+.memo-banner-badge {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-0_5) var(--space-1_5);
+  border-radius: var(--radius-sm);
+  line-height: var(--leading-tight);
+}
+
+.memo-banner-badge--location {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent-active);
+}
+
+.memo-banner-badge--organization {
+  background: color-mix(in srgb, var(--color-fg-secondary) 16%, transparent);
+  color: var(--color-fg-secondary);
+}
+
+.memo-banner-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  line-height: var(--leading-tight);
+}
+
+.memo-banner-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  line-height: var(--leading-normal);
+}
+
+.memo-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.memo-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1_5);
+  padding: var(--space-1_5) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+  border: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .memo-banner-btn {
+    transition: background-color var(--duration-150) var(--ease-out),
+      opacity var(--duration-150) var(--ease-out);
+  }
+}
+
+.memo-banner-btn--acknowledge {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.memo-banner-btn--acknowledge:hover {
+  opacity: 0.9;
+}
+
+.memo-banner-btn--acknowledge:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.memo-banner-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.memo-banner-btn--dismiss {
+  background: transparent;
+  color: var(--color-fg-tertiary);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.memo-banner-btn--dismiss:hover {
+  background: var(--color-bg-surface);
+  color: var(--color-fg-secondary);
+}
+
+.memo-banner-btn--dismiss:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Dark mode adjustments */
+[data-theme='dark'] .memo-banner {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent) 15%, transparent),
+    color-mix(in srgb, var(--color-accent) 8%, transparent)
+  );
+}
