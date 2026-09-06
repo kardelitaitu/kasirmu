@@ -20,7 +20,7 @@ import {
   type MenuEngineeringResult,
   type MenuQuadrant,
 } from '@/api/reports';
-import { getPrimaryStoreScoped } from '@/api/stores';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -135,7 +135,7 @@ const { sessionToken: rawToken } = useWorkspace();
   useEffect(() => {
     if (!sessionToken) return;
     let alive = true;
-    getPrimaryStoreScoped(sessionToken)
+    getPrimaryLocationScoped(sessionToken)
       .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
       .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
     return () => { alive = false; };

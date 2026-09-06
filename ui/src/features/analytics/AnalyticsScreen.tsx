@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 
 import { createPortal } from 'react-dom';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { getPrimaryStoreScoped } from '@/api/stores';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
 import { useInvalidSession } from '@/hooks/useInvalidSession';
@@ -353,7 +353,7 @@ export default function AnalyticsScreen() {
   useEffect(() => {
     if (!sessionToken) return;
     let alive = true;
-    getPrimaryStoreScoped(sessionToken)
+    getPrimaryLocationScoped(sessionToken)
       .then((p) => {
         if (alive) setStoreTz(p?.timezone ?? null);
       })

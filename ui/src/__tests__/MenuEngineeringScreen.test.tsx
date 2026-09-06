@@ -39,9 +39,9 @@ vi.mock('@/api/reports', () => ({
 // R36-06: the screen now fetches the primary store to anchor its default
 // window. Unmocked, that call rejects and is swallowed, leaving the store-zone
 // path untested while the suite stays green.
-const mockGetPrimaryStoreScoped = vi.fn();
-vi.mock('@/api/stores', () => ({
-  getPrimaryStoreScoped: (...args: unknown[]) => mockGetPrimaryStoreScoped(...args),
+const mockGetPrimaryLocationScoped = vi.fn();
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
 }));
 
 // The screen renders money via the store default currency.
@@ -115,21 +115,21 @@ describe('MenuEngineeringScreen', () => {
   beforeEach(() => {
     vi.mocked(reportsApi.getMenuEngineering).mockResolvedValue(mockResult);
     // No timezone -> the UTC fallback, so pre-existing assertions hold.
-    mockGetPrimaryStoreScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: null });
+    mockGetPrimaryLocationScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: null });
   });
 
   
   it('anchors the default window to the primary store timezone (R36-06)', async () => {
     const zone = discriminatingStoreZone();
     assertCaseDiscriminates(zone);
-    mockGetPrimaryStoreScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: zone.offset });
+    mockGetPrimaryLocationScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: zone.offset });
     renderWithLocales(<MenuEngineeringScreen />);
 
     await waitFor(() => {
       expect((screen.getByLabelText('End date') as HTMLInputElement).value).toBe(expectedStoreDay(zone, 0));
       expect((screen.getByLabelText('Start date') as HTMLInputElement).value).toBe(expectedStoreDay(zone, 30));
     });
-    expect(mockGetPrimaryStoreScoped).toHaveBeenCalled();
+    expect(mockGetPrimaryLocationScoped).toHaveBeenCalled();
   });
 
   it('does not clobber a window the operator already edited (R36-06)', async () => {
@@ -139,7 +139,7 @@ describe('MenuEngineeringScreen', () => {
     // re-seed changes startDate, the fetch effect refires, and `loading`
     // unmounts the inputs out from under the assertion.
     let resolveStore: (v: unknown) => void = () => {};
-    mockGetPrimaryStoreScoped.mockReturnValue(
+    mockGetPrimaryLocationScoped.mockReturnValue(
       new Promise((r) => { resolveStore = r; }),
     );
 
@@ -150,7 +150,7 @@ describe('MenuEngineeringScreen', () => {
     fireEvent.change(startInput, { target: { value: '2026-01-05' } });
 
     resolveStore({ id: 'store-a', name: 'Store A', timezone: zone.offset });
-    await waitFor(() => expect(mockGetPrimaryStoreScoped).toHaveBeenCalled());
+    await waitFor(() => expect(mockGetPrimaryLocationScoped).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
 
     // The screen may be mid-refetch; wait for the inputs to come back, then

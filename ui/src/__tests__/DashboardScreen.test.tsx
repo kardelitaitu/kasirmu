@@ -59,14 +59,14 @@ const mockGetTopProducts = vi.fn();
 const mockGetLowStockAlerts = vi.fn();
 const mockGetCategoryBreakdown = vi.fn();
 const mockGetHourlyHeatmap = vi.fn();
-const mockGetPrimaryStoreScoped = vi.fn();
+const mockGetPrimaryLocationScoped = vi.fn();
 
 // R36-05: DashboardScreen now fetches the primary store to anchor its default
 // date range to the store's zone. Without this mock the call hits real invoke,
 // rejects, and the component silently falls back to UTC -- so the store-zone
 // path would look green while never being exercised.
-vi.mock('@/api/stores', () => ({
-  getPrimaryStoreScoped: (...args: unknown[]) => mockGetPrimaryStoreScoped(...args),
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
 }));
 
 vi.mock('@/api/reports', () => ({
@@ -167,7 +167,7 @@ describe('DashboardScreen', () => {
     // Default: a store profile with no timezone configured, so the range lands
     // on the UTC fallback and the pre-existing assertions stay meaningful.
     // Tests that care about the store anchor override this explicitly.
-    mockGetPrimaryStoreScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: null });
+    mockGetPrimaryLocationScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: null });
   });
 
   /** Resolve all 7 endpoints with empty/default data to get past loading */
@@ -465,7 +465,7 @@ describe('DashboardScreen', () => {
     // moment the test runs -- a hardcoded +14:00 is vacuous for ten hours a day.
     const zone = discriminatingStoreZone();
     assertCaseDiscriminates(zone);
-    mockGetPrimaryStoreScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: zone.offset });
+    mockGetPrimaryLocationScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: zone.offset });
 
     renderScreen();
     await waitFor(() => expect(screen.getByText('Revenue Trend')).toBeTruthy());
@@ -479,7 +479,7 @@ describe('DashboardScreen', () => {
     });
     // The store must actually have been consulted -- otherwise storeTz stayed
     // null and these values would be the UTC fallback.
-    expect(mockGetPrimaryStoreScoped).toHaveBeenCalled();
+    expect(mockGetPrimaryLocationScoped).toHaveBeenCalled();
   });
 
   it('does not clobber a range the operator already edited', async () => {
@@ -489,7 +489,7 @@ describe('DashboardScreen', () => {
     // eagerly races: the re-seed refires the fetch effect and the loading state
     // can unmount the inputs mid-assertion.
     let resolveStore: (v: unknown) => void = () => {};
-    mockGetPrimaryStoreScoped.mockReturnValue(new Promise((r) => { resolveStore = r; }));
+    mockGetPrimaryLocationScoped.mockReturnValue(new Promise((r) => { resolveStore = r; }));
 
     renderScreen();
     await waitFor(() => expect(screen.getByText('Revenue Trend')).toBeTruthy());

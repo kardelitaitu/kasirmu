@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
-import { listStoresScoped, createStoreProfileScoped, updateStoreProfileScoped, deleteStoreProfileScoped, type StoreProfile } from '@/api/stores';
+import { listLocationsScoped, createLocationProfileScoped, updateLocationProfileScoped, deleteLocationProfileScoped, type LocationProfile } from '@/api/locations';
 import {
   listWorkspacesScoped,
   updateWorkspaceInstanceScoped,
@@ -75,7 +75,7 @@ export default function TopologyScreen() {
   }, [session]);
   /** Real workspace instances loaded from the backend, used to seed the editor. */
   const [workspaceInstances, setWorkspaceInstances] = useState<WorkspaceDto[]>([]);
-  const [stores, setStores] = useState<StoreProfile[]>([]);
+  const [stores, setStores] = useState<LocationProfile[]>([]);
   /** Branch (store profile) whose topology graph is on canvas. */
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   /** Latest dirty flag from the editor (a ref: the branch selector's
@@ -134,7 +134,7 @@ export default function TopologyScreen() {
     if (!sessionToken) return; // not ready yet — effect re-runs when it resolves
 
     try {
-      const storeData = await listStoresScoped(sessionToken);
+      const storeData = await listLocationsScoped(sessionToken);
       setStores(storeData);
       setStoresUnavailable(false);
       storesResolvedRef.current = true;
@@ -352,7 +352,7 @@ export default function TopologyScreen() {
       return;
     }
     try {
-      const created = await createStoreProfileScoped(sessionToken, { id: `store-${crypto.randomUUID()}`, name });
+      const created = await createLocationProfileScoped(sessionToken, { id: `store-${crypto.randomUUID()}`, name });
       setStores((prev) => [...prev, created]);
       setSelectedBranchId(created.id);
       setAddingBranch(false);
@@ -385,7 +385,7 @@ export default function TopologyScreen() {
     const remaining = stores.filter((s) => s.id !== id);
     setDeleteBranchSaving(true);
     try {
-      await deleteStoreProfileScoped(sessionToken, id);
+      await deleteLocationProfileScoped(sessionToken, id);
       setStores(remaining);
       setSelectedBranchId(remaining[0]?.id ?? null);
       // No branches left: nothing owns the graph — clear the instances so
@@ -425,7 +425,7 @@ export default function TopologyScreen() {
       return false;
     }
     try {
-      const updated = await updateStoreProfileScoped(sessionToken, {
+      const updated = await updateLocationProfileScoped(sessionToken, {
         id: store.id,
         name: trimmed,
         address: store.address,

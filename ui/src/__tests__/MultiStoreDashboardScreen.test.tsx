@@ -15,10 +15,10 @@ import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionC
 const mockListStores = vi.fn();
 const mockListTerminals = vi.fn();
 
-vi.mock('@/api/stores', () => ({
-  listStoresScoped: () => mockListStores(),
-  setPrimaryStoreScoped: vi.fn(),
-  deleteStoreProfileScoped: vi.fn(),
+vi.mock('@/api/locations', () => ({
+  listLocationsScoped: () => mockListStores(),
+  setPrimaryLocationScoped: vi.fn(),
+  deleteLocationProfileScoped: vi.fn(),
 }));
 
 vi.mock('@/api/terminals', () => ({

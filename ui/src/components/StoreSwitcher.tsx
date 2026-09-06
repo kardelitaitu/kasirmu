@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
-import { listStoresScoped, setPrimaryStoreScoped, type StoreProfile } from '@/api/stores';
+import { listLocationsScoped, setPrimaryLocationScoped, type LocationProfile } from '@/api/locations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import './StoreSwitcher.css';
 
@@ -12,8 +12,8 @@ import './StoreSwitcher.css';
 export default function StoreSwitcher() {
   const { l10n } = useLocalization();
   const { switchStore, sessionToken } = useWorkspace();
-  const [stores, setStores] = useState<StoreProfile[]>([]);
-  const [primary, setPrimary] = useState<StoreProfile | null>(null);
+  const [stores, setStores] = useState<LocationProfile[]>([]);
+  const [primary, setPrimary] = useState<LocationProfile | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -22,7 +22,7 @@ export default function StoreSwitcher() {
 
   const load = useCallback(async () => {
     try {
-      const data = await listStoresScoped(sessionToken!);
+      const data = await listLocationsScoped(sessionToken!);
       setStores(data);
       const p = data.find((s) => s.is_primary) ?? data[0] ?? null;
       setPrimary(p);
@@ -39,13 +39,13 @@ export default function StoreSwitcher() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleSelect = useCallback(async (store: StoreProfile) => {
+  const handleSelect = useCallback(async (store: LocationProfile) => {
     if (store.id === primary?.id) {
       setOpen(false);
       return;
     }
     try {
-      await setPrimaryStoreScoped(sessionToken!, store.id);
+      await setPrimaryLocationScoped(sessionToken!, store.id);
       setPrimary(store);
       setStores((prev) =>
         prev.map((s) => ({ ...s, is_primary: s.id === store.id })),
@@ -63,7 +63,7 @@ export default function StoreSwitcher() {
     // dep -- setPrimary() changes primary on every selection, so the callback was rebuilt
     // anyway. That is coincidence, not correctness: a token change that does not move
     // `primary` (an expiry refresh, a re-login into the same store) would leave this calling
-    // setPrimaryStoreScoped with the dead token.
+    // setPrimaryLocationScoped with the dead token.
   }, [primary, switchStore, sessionToken]);
 
   useEffect(() => {

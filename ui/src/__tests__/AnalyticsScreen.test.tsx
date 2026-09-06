@@ -64,9 +64,9 @@ vi.mock('@/hooks/useWorkspaceNav', () => ({
 // the store-zone path looked green while never being exercised. The session token
 // from the global WorkspaceContext stub is truthy ('mock-session-token'), so the
 // fetch really does fire in every test here; only its result was being dropped.
-const mockGetPrimaryStoreScoped = vi.fn();
-vi.mock('@/api/stores', () => ({
-  getPrimaryStoreScoped: (...args: unknown[]) => mockGetPrimaryStoreScoped(...args),
+const mockGetPrimaryLocationScoped = vi.fn();
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
 }));
 
 // AnalyticsCardContent (rendered inside each card) formats money via
@@ -287,8 +287,8 @@ describe('AnalyticsScreen layout shell', () => {
     // behaviour it was written against (storeTz stays null → UTC fallback).
     // Only the anchoring tests below resolve it, which keeps the new mock from
     // silently changing the dates 60+ existing assertions depend on.
-    mockGetPrimaryStoreScoped.mockReset();
-    mockGetPrimaryStoreScoped.mockRejectedValue(new Error('no store in this test'));
+    mockGetPrimaryLocationScoped.mockReset();
+    mockGetPrimaryLocationScoped.mockRejectedValue(new Error('no store in this test'));
     localStorage.clear();
     // The analytics cache is a module-level singleton — wipe it so each
     // test starts from a cold cache (otherwise the daily/retail query
@@ -732,12 +732,12 @@ describe('AnalyticsScreen layout shell', () => {
     // moment the test runs -- a hardcoded +14:00 is vacuous for ten hours a day.
     const zone = discriminatingStoreZone();
     assertCaseDiscriminates(zone);
-    mockGetPrimaryStoreScoped.mockResolvedValue({
+    mockGetPrimaryLocationScoped.mockResolvedValue({
       id: 'store-a', name: 'Store A', timezone: zone.offset,
     });
 
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
-    await waitFor(() => expect(mockGetPrimaryStoreScoped).toHaveBeenCalled());
+    await waitFor(() => expect(mockGetPrimaryLocationScoped).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole('radio', { name: 'Custom' }));
     const from = screen.getByLabelText('From') as HTMLInputElement;
@@ -752,7 +752,7 @@ describe('AnalyticsScreen layout shell', () => {
     // The store must actually have been consulted -- otherwise storeTz stayed
     // null and these values would be the UTC fallback, which for a ±10/±14
     // offset is a different day and so would have failed above anyway.
-    expect(mockGetPrimaryStoreScoped).toHaveBeenCalled();
+    expect(mockGetPrimaryLocationScoped).toHaveBeenCalled();
   });
 
   it('collapses all card bodies with the toggle and restores them', () => {

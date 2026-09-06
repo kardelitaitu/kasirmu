@@ -5,16 +5,16 @@ import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import StoreSwitcher from '@/components/StoreSwitcher';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import type { StoreProfile } from '@/api/stores';
+import type { LocationProfile } from '@/api/locations';
 
 const { mockListStores, mockSetPrimaryStore } = vi.hoisted(() => ({
   mockListStores: vi.fn(),
   mockSetPrimaryStore: vi.fn(),
 }));
 
-vi.mock('@/api/stores', () => ({
-  listStoresScoped: () => mockListStores(),
-  setPrimaryStoreScoped: (_sessionToken: string, id: string) => mockSetPrimaryStore(id),
+vi.mock('@/api/locations', () => ({
+  listLocationsScoped: () => mockListStores(),
+  setPrimaryLocationScoped: (_sessionToken: string, id: string) => mockSetPrimaryStore(id),
 }));
 
 // ADR #4 Phase 2b: StoreSwitcher now calls switchStore from WorkspaceContext.
@@ -52,7 +52,7 @@ function renderComponent() {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function makeStore(overrides: Partial<StoreProfile> = {}): StoreProfile {
+function makeStore(overrides: Partial<LocationProfile> = {}): LocationProfile {
   return {
     id: 'store-1',
     name: 'Main Store',

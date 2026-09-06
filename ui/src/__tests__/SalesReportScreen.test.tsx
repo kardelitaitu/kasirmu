@@ -132,9 +132,9 @@ vi.mock('@/api/sales', () => ({
 // window. Without this mock the call hits real invoke, rejects, and is swallowed
 // by the .catch -- the store-zone path would stay untested while the suite stayed
 // green (exactly the trap R36-05 hit).
-const mockGetPrimaryStoreScoped = vi.fn();
-vi.mock('@/api/stores', () => ({
-  getPrimaryStoreScoped: (...args: unknown[]) => mockGetPrimaryStoreScoped(...args),
+const mockGetPrimaryLocationScoped = vi.fn();
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
 }));
 
 vi.mock('@/components/Card', () => ({
@@ -308,7 +308,7 @@ describe('SalesReportScreen', () => {
     mockGetCategoryBreakdown.mockImplementation(() => new Promise(() => {}));
     // Store profile with no timezone -> the UTC fallback, so pre-existing
     // assertions stay meaningful. Anchoring tests override this.
-    mockGetPrimaryStoreScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: null });
+    mockGetPrimaryLocationScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: null });
     // Category popularity defaults to empty (not pending) so tests that
     // override only the other mocks still resolve the shared Promise.all.
     mockGetCategoryPopularity.mockResolvedValue([]);
@@ -373,7 +373,7 @@ describe('SalesReportScreen', () => {
     // hardcoded +14:00 is vacuous for ten hours of every day.
     const zone = discriminatingStoreZone();
     assertCaseDiscriminates(zone);
-    mockGetPrimaryStoreScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: zone.offset });
+    mockGetPrimaryLocationScoped.mockResolvedValue({ id: 'store-a', name: 'Store A', timezone: zone.offset });
 
     renderScreen();
     await waitFor(() => {
@@ -382,7 +382,7 @@ describe('SalesReportScreen', () => {
     });
     // Without this, a rejected fetch would fall back to UTC and could coincide
     // with the expectation, making the test vacuous.
-    expect(mockGetPrimaryStoreScoped).toHaveBeenCalled();
+    expect(mockGetPrimaryLocationScoped).toHaveBeenCalled();
   });
 
   it('does not clobber a window the operator already edited (R36-06)', async () => {
@@ -392,7 +392,7 @@ describe('SalesReportScreen', () => {
     // eagerly races: the re-seed refires the fetch effect and `loading`
     // unmounts the date inputs mid-assertion.
     let resolveStore: (v: unknown) => void = () => {};
-    mockGetPrimaryStoreScoped.mockReturnValue(new Promise((r) => { resolveStore = r; }));
+    mockGetPrimaryLocationScoped.mockReturnValue(new Promise((r) => { resolveStore = r; }));
 
     renderScreen();
     await waitFor(() => expect(screen.getByLabelText('Start date')).toBeTruthy());

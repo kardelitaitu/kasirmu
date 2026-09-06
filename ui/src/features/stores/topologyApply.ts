@@ -10,7 +10,7 @@
 import { applyTopologyDiff, type TopologyApplyResult } from '@/api/topology';
 import { listWorkspacesScoped, type WorkspaceDto } from '@/api/workspaces';
 
-import { type StoreProfile } from '@/api/stores';
+import { type LocationProfile } from '@/api/locations';
 import {
   isTopologyInstance,
   normalizeTopologyGraph,
@@ -28,7 +28,7 @@ export interface ApplyContext {
   /** Current workspace instances (loaded from backend). */
   workspaceInstances: WorkspaceDto[];
   /** Store profiles for type-change archive+recreate. */
-  stores: StoreProfile[];
+  stores: LocationProfile[];
   /** License tier for validation gating. */
   licenseTier: string;
   /** Selected branch ID (for multi-branch topologies). */

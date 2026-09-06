@@ -13,7 +13,7 @@ import {
   isStaffQuotaLimitError,
 } from '@/api/staff';
 import { listAllWorkspacesScoped, type WorkspaceTypeDto } from '@/api/workspaces';
-import { listStoresScoped, type StoreProfile } from '@/api/stores';
+import { listLocationsScoped, type LocationProfile } from '@/api/locations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { parseMinorUnits } from '@/types/domain';
 import { LocaleContext } from '@/i18n/LocaleContext';
@@ -257,7 +257,7 @@ export default function StaffManagementScreen() {
   const [workspaceNameMap, setWorkspaceNameMap] = useState<Map<string, string>>(new Map());
   /** Branch picker source — `store_profiles` rows are the branch ids the
    * assignment model scopes on (ADR #35 D5). */
-  const [branches, setBranches] = useState<StoreProfile[]>([]);
+  const [branches, setBranches] = useState<LocationProfile[]>([]);
   const [loading, setLoading] = useState(true);
   /** STAFF-08: primary staff/roles load failed — show error + retry. */
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -303,7 +303,7 @@ export default function StaffManagementScreen() {
       try {
         const [workspaces, storeProfiles] = await Promise.all([
           listAllWorkspacesScoped(sessionToken),
-          listStoresScoped(sessionToken),
+          listLocationsScoped(sessionToken),
         ]);
         const nameMap = new Map<string, string>();
         for (const w of workspaces) {
@@ -393,7 +393,7 @@ export default function StaffManagementScreen() {
       const [profile, workspaces, storeProfiles] = await Promise.all([
         getStaffProfileScoped(sessionToken, member.id),
         listAllWorkspacesScoped(sessionToken),
-        listStoresScoped(sessionToken),
+        listLocationsScoped(sessionToken),
       ]);
       setForm((prev) => ({
         ...prev,

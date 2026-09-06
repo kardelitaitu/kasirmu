@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { listStoresScoped, setPrimaryStoreScoped, deleteStoreProfileScoped, type StoreProfile } from '@/api/stores';
+import { listLocationsScoped, setPrimaryLocationScoped, deleteLocationProfileScoped, type LocationProfile } from '@/api/locations';
 import { listTerminalsScoped, type TerminalDto } from '@/api/terminals';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -30,7 +30,7 @@ export default function MultiStoreDashboardScreen() {
   const locale = useContext(LocaleContext)?.locale ?? 'en';
   const atProLocationCap = caps?.tier === 'pro' && (caps.locationCount ?? 0) >= 2;
   const sessionToken = rawToken || '';
-  const [stores, setStores] = useState<StoreProfile[]>([]);
+  const [stores, setStores] = useState<LocationProfile[]>([]);
   const [terminals, setTerminals] = useState<TerminalDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export default function MultiStoreDashboardScreen() {
     setError(null);
     try {
       const [storeData, termData] = await Promise.all([
-        listStoresScoped(sessionToken),
+        listLocationsScoped(sessionToken),
         listTerminalsScoped(sessionToken),
       ]);
       setStores(storeData);
@@ -57,7 +57,7 @@ export default function MultiStoreDashboardScreen() {
 
   const handleSetPrimary = useCallback(async (id: string) => {
     try {
-      await setPrimaryStoreScoped(sessionToken, id);
+      await setPrimaryLocationScoped(sessionToken, id);
       setStores((prev) =>
         prev.map((s) => ({ ...s, is_primary: s.id === id })),
       );
@@ -69,7 +69,7 @@ export default function MultiStoreDashboardScreen() {
   const handleDelete = useCallback(async (id: string) => {
     setDeletingId(id);
     try {
-      await deleteStoreProfileScoped(sessionToken, id);
+      await deleteLocationProfileScoped(sessionToken, id);
       setStores((prev) => prev.filter((s) => s.id !== id));
     } catch {
       // silently fail

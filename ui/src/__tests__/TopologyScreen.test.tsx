@@ -35,11 +35,11 @@ const mockListStores = vi.fn();
 const mockCreateStore = vi.fn();
 const mockUpdateStore = vi.fn();
 const mockDeleteStore = vi.fn();
-vi.mock('@/api/stores', () => ({
-  listStoresScoped: (...args: unknown[]) => mockListStores(...args),
-  createStoreProfileScoped: (...args: unknown[]) => mockCreateStore(...args),
-  updateStoreProfileScoped: (...args: unknown[]) => mockUpdateStore(...args),
-  deleteStoreProfileScoped: (...args: unknown[]) => mockDeleteStore(...args),
+vi.mock('@/api/locations', () => ({
+  listLocationsScoped: (...args: unknown[]) => mockListStores(...args),
+  createLocationProfileScoped: (...args: unknown[]) => mockCreateStore(...args),
+  updateLocationProfileScoped: (...args: unknown[]) => mockUpdateStore(...args),
+  deleteLocationProfileScoped: (...args: unknown[]) => mockDeleteStore(...args),
 }));
 
 const mockListWorkspacesScoped = vi.fn();

@@ -17,7 +17,7 @@ import {
   type TerminalFeatureOverride,
   type DeviceBindingDto,
 } from '@/api/terminals';
-import { listStoresScoped, type StoreProfile } from '@/api/stores';
+import { listLocationsScoped, type LocationProfile } from '@/api/locations';
 import {
   listWorkspacesForStoreScoped,
   type WorkspaceDto,
@@ -189,7 +189,7 @@ export default function TerminalManagementScreen() {
   // Device binding (ADR #4 Phase 3)
   const [binding, setBinding] = useState<DeviceBindingDto | null>(null);
   const [bindingLoading, setBindingLoading] = useState(false);
-  const [bindingStores, setBindingStores] = useState<StoreProfile[]>([]);
+  const [bindingStores, setBindingStores] = useState<LocationProfile[]>([]);
   const [bindingInstances, setBindingInstances] = useState<WorkspaceDto[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
@@ -273,7 +273,7 @@ export default function TerminalManagementScreen() {
       try {
         const [b, stores] = await Promise.all([
           getDeviceBindingScoped(sessionToken, editingId),
-          listStoresScoped(sessionToken),
+          listLocationsScoped(sessionToken),
         ]);
         if (!cancelled) {
           setBinding(b);

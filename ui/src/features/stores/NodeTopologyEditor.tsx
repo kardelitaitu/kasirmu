@@ -10,7 +10,7 @@ import { useSettings } from '@/contexts/SettingsContext';
 import {
   type WorkspaceCardProps,
 } from '@/features/settings/workspace-cards';
-import { updateStoreProfileScoped, getStoreProfileScoped, type StoreProfile } from '@/api/stores';
+import { updateLocationProfileScoped, getLocationProfileScoped, type LocationProfile } from '@/api/locations';
 import {
   CheckIcon,
   TrashIcon,
@@ -337,9 +337,9 @@ function BranchLocationFields({ nodeId, sessionToken, l10n, beginInspectorEdit }
   l10n: ReturnType<typeof useLocalization>['l10n'];
   beginInspectorEdit: (id: string) => void;
 }) {
-  const [profile, setProfile] = useState<StoreProfile | null>(null);
+  const [profile, setProfile] = useState<LocationProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [draft, setDraft] = useState<Partial<Pick<StoreProfile, 'address' | 'currency' | 'timezone' | 'tax_id'>> | null>(null);
+  const [draft, setDraft] = useState<Partial<Pick<LocationProfile, 'address' | 'currency' | 'timezone' | 'tax_id'>> | null>(null);
   const active = draft && profile ? { ...profile, ...draft } : profile;
   const { addToast } = useToast();
 
@@ -378,7 +378,7 @@ function BranchLocationFields({ nodeId, sessionToken, l10n, beginInspectorEdit }
         const currentDraft = draftRef.current;
         if (!currentDraft) break;
         const merged = { ...profileRef.current, ...currentDraft };
-        const updated = await updateStoreProfileScoped(sessionToken, merged);
+        const updated = await updateLocationProfileScoped(sessionToken, merged);
         profileRef.current = updated;
         setProfile(updated);
         if (queuedRef.current) continue;
@@ -403,7 +403,7 @@ function BranchLocationFields({ nodeId, sessionToken, l10n, beginInspectorEdit }
       return () => { cancelled = true; };
     }
     setLoading(true);
-    getStoreProfileScoped(sessionToken, nodeId)
+    getLocationProfileScoped(sessionToken, nodeId)
       .then((p) => { if (!cancelled) { setProfile(p); setLoading(false); } })
       .catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

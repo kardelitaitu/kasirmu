@@ -103,7 +103,7 @@ beforeEach(() => {
       { key: 'restaurant', name: 'Restaurant', description: 'Dine-in service', icon: 'restaurant' },
       { key: 'store', name: 'Retail Store', description: 'Retail counter', icon: 'store' },
     ]);
-    if (cmd === 'list_store_profiles_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+    if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
     // Reached via the app shell's branding provider, not the screen itself.
     // Without it every test below rendered the error branch -- 23 of 26.
     // Shape matches the other suites that mock this (CloudSyncSettings.test.tsx).

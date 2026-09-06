@@ -30,7 +30,7 @@ import {
   type TopProductRow, type LowStockAlert, type CategoryBreakdownRow,
   type HourlyHeatmapRow,
 } from '@/api/reports';
-import { getPrimaryStoreScoped } from '@/api/stores';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import './DashboardScreen.css';
 
@@ -144,7 +144,7 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (!sessionToken) return;
     let alive = true;
-    getPrimaryStoreScoped(sessionToken)
+    getPrimaryLocationScoped(sessionToken)
       .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
       .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
     return () => { alive = false; };
