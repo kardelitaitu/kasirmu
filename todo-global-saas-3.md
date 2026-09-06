@@ -45,9 +45,30 @@ workflow, not a silent setting change.
 - [ ] **Add multi-Organization user switching.** One human identity may hold
       memberships in several Organizations; switching between them is a later
       capability built on scoped assignments, not a second hierarchy layer.
-- [ ] **Extend Location Memos to multiple selected locations.** The first
+- [x] **Extend Location Memos to multiple selected locations.** The first
       version targets one location per Location Memo; a later capability lets
       one Memo target several locations at once.
+      — **completed 2026-09-07** (`4df091d3` core + migration, `b40593a0`
+      IPC + UI): `memos.location_id` is replaced by a `memo_locations` join
+      table — zero rows ⇒ Organization Memo, one or more ⇒ Location Memo
+      targeting exactly those locations, so there is one source of truth for
+      targeting and no legacy column to drift. Publish fans out to terminals
+      bound to any targeted location (tenant-filtered subquery, the `7ed4412b`
+      defense-in-depth carried over); display ordering keys on targeting-row
+      existence instead of `location_id IS NULL`; `Memo.locationIds: string[]`
+      rides the wire with the empty array meaning Organization (never null).
+      The authoring form's scope select became a location checkbox group with
+      an org-hint caption; the authored list renders one chip per targeted
+      location. FKs inherit the `f5d6482f` policy — `location_id` RESTRICT
+      (deleting a Location a Memo targets is blocked), `memo_id` CASCADE
+      (targeting rows go with their memo) — with both directions pinned in
+      migration tests plus the four Phase 2 RESTRICT guard tests, which now
+      pass through the join table unchanged. Create normalizes the input
+      (trims, drops blanks, dedupes) and rejects unknown locations via the FK
+      inside the create transaction, leaving no partial draft. Pre-migration
+      single-location memos are carried over by the migration. oz-core 3040
+      passed; UI 8426 passed; parity, i18n, column-type and PG-drift gates
+      green on both commits.
       - **Cheaper than it reads (verified 2026-09-06 against the landed
         schema).** Publish fans out into `memo_recipients` rows and
         `list_active_for_terminal` reads from those rows — it never reads
@@ -59,3 +80,4 @@ workflow, not a silent setting change.
         See `todo-global-saas-2.md` §"`memos.location_id ON DELETE CASCADE`"
         before designing the join table — that FK needs reworking in the same
         migration, and a `memo_locations` table inherits the same question.
+        (It did: `f5d6482f` picked RESTRICT, and the join table inherits it.)
