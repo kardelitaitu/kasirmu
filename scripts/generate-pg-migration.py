@@ -368,7 +368,7 @@ END $$;
 """
 
 
-def render() -> str:
+def render() -> tuple[str, int, int, int, list[str]]:
     ids = registry_ids()
     db = build_db(ids)
 
