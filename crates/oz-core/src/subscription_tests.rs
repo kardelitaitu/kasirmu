@@ -363,6 +363,143 @@ fn enterprise_lifetime_never_downgrades() {
     assert_eq!(sub.effective_tier(), SubscriptionTier::Enterprise);
 }
 
+// ── Lifecycle state (§B fail-closed contract) ─────────
+
+/// Fixture: a subscription row with only the fields `lifecycle_state`
+/// reads (tier, status, expires_at); the rest are bootstrap filler.
+fn state_sub(
+    tier: SubscriptionTier,
+    status: &str,
+    expires_at: Option<String>,
+) -> TenantSubscription {
+    TenantSubscription {
+        tenant_id: "default".into(),
+        tier,
+        status: status.into(),
+        expires_at,
+        max_stores: 1,
+        max_pos_instances: 1,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    }
+}
+
+#[test]
+fn lifecycle_state_paid_no_expiry_is_active() {
+    assert_eq!(
+        state_sub(SubscriptionTier::Pro, "active", None).lifecycle_state(),
+        SubscriptionLifecycleState::Active
+    );
+}
+
+#[test]
+fn lifecycle_state_future_expiry_is_active() {
+    let future = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "active", Some(future)).lifecycle_state(),
+        SubscriptionLifecycleState::Active
+    );
+}
+
+#[test]
+fn lifecycle_state_within_grace_is_grace() {
+    // Premium grace is 30 days — 7 days past expiry is still grace.
+    let recent = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+    assert_eq!(
+        state_sub(SubscriptionTier::Premium, "active", Some(recent)).lifecycle_state(),
+        SubscriptionLifecycleState::Grace
+    );
+}
+
+#[test]
+fn lifecycle_state_past_grace_is_expired() {
+    // Plus grace is 14 days — 30 days past expiry is outside it.
+    let old = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "active", Some(old)).lifecycle_state(),
+        SubscriptionLifecycleState::Expired
+    );
+}
+
+#[test]
+fn lifecycle_state_free_is_active_even_past_expiry() {
+    // Mirrors is_within_grace_period: Free never downgrades.
+    let ancient = (chrono::Utc::now() - chrono::Duration::days(400)).to_rfc3339();
+    assert_eq!(
+        state_sub(SubscriptionTier::Free, "active", Some(ancient)).lifecycle_state(),
+        SubscriptionLifecycleState::Active
+    );
+}
+
+#[test]
+fn lifecycle_state_unparseable_expiry_fails_closed_as_expired() {
+    assert_eq!(
+        state_sub(SubscriptionTier::Pro, "active", Some("not-a-date".into())).lifecycle_state(),
+        SubscriptionLifecycleState::Expired
+    );
+}
+
+#[test]
+fn lifecycle_state_canceled_and_revoked_statuses() {
+    // Even with a live future expiry, the server's word is final.
+    let future = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    assert_eq!(
+        state_sub(SubscriptionTier::Pro, "canceled", Some(future.clone())).lifecycle_state(),
+        SubscriptionLifecycleState::Canceled
+    );
+    assert_eq!(
+        state_sub(SubscriptionTier::Pro, "revoked", Some(future)).lifecycle_state(),
+        SubscriptionLifecycleState::Canceled
+    );
+}
+
+#[test]
+fn lifecycle_state_paused_status() {
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "paused", None).lifecycle_state(),
+        SubscriptionLifecycleState::Paused
+    );
+}
+
+#[test]
+fn lifecycle_state_server_written_grace_and_expired_statuses() {
+    // Midtrans writes grace_period on failed payment; admin tooling
+    // reads/writes expired — both map directly.
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "grace_period", None).lifecycle_state(),
+        SubscriptionLifecycleState::Grace
+    );
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "expired", None).lifecycle_state(),
+        SubscriptionLifecycleState::Expired
+    );
+}
+
+#[test]
+fn lifecycle_state_unknown_status_is_unavailable() {
+    // Unrecognized data must fail closed, not guess.
+    assert_eq!(
+        state_sub(SubscriptionTier::Pro, "something_else", None).lifecycle_state(),
+        SubscriptionLifecycleState::Unavailable
+    );
+}
+
+#[test]
+fn lifecycle_state_as_str_matches_serde_snake_case() {
+    assert_eq!(SubscriptionLifecycleState::Active.as_str(), "active");
+    assert_eq!(SubscriptionLifecycleState::Grace.as_str(), "grace");
+    assert_eq!(SubscriptionLifecycleState::Expired.as_str(), "expired");
+    assert_eq!(SubscriptionLifecycleState::Canceled.as_str(), "canceled");
+    assert_eq!(SubscriptionLifecycleState::Paused.as_str(), "paused");
+    assert_eq!(
+        SubscriptionLifecycleState::Unavailable.as_str(),
+        "unavailable"
+    );
+}
+
 // ── constants ────────────────────────────────────────
 
 // ── allowed_types_json workspace-type entitlement (C3.2 bundle) ──────

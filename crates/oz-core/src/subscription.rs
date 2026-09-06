@@ -570,6 +570,86 @@ impl TenantSubscription {
             SubscriptionTier::Free
         }
     }
+
+    /// Normalize the row into the shared lifecycle state contract
+    /// (todo-global-saas-1.md §B: loading/active/grace/expired/canceled/
+    /// paused/unavailable — `loading` is the UI's fetch phase, the rest
+    /// live here).
+    ///
+    /// Status strings the license server writes (`active`, `grace_period`,
+    /// `paused`, `canceled`, `revoked`, `expired`) map first; anything else
+    /// is [`SubscriptionLifecycleState::Unavailable`] — unrecognized data
+    /// must fail closed, not guess. An `active` row is then refined by
+    /// date, mirroring [`Self::is_within_grace_period`] exactly so the
+    /// reported state can never disagree with `effective_tier`: Free is
+    /// active forever, a missing expiry is a perpetual license, an
+    /// unparseable expiry fails closed as expired, and a paid row past its
+    /// expiry reports `Grace` until the tier's offline grace window ends.
+    pub fn lifecycle_state(&self) -> SubscriptionLifecycleState {
+        match self.status.as_str() {
+            "canceled" | "revoked" => return SubscriptionLifecycleState::Canceled,
+            "paused" => return SubscriptionLifecycleState::Paused,
+            "expired" => return SubscriptionLifecycleState::Expired,
+            "grace_period" => return SubscriptionLifecycleState::Grace,
+            "active" => {}
+            _ => return SubscriptionLifecycleState::Unavailable,
+        }
+        // Free is active forever (same semantics as is_within_grace_period).
+        if self.tier == SubscriptionTier::Free {
+            return SubscriptionLifecycleState::Active;
+        }
+        let Some(expires_at) = &self.expires_at else {
+            return SubscriptionLifecycleState::Active; // perpetual / lifetime
+        };
+        let Ok(expiry) = chrono::DateTime::parse_from_rfc3339(expires_at) else {
+            // Unparseable expiry — is_within_grace_period fails closed here.
+            return SubscriptionLifecycleState::Expired;
+        };
+        let now = chrono::Utc::now();
+        if now <= expiry {
+            return SubscriptionLifecycleState::Active;
+        }
+        if now <= expiry + chrono::Duration::days(self.tier.offline_grace_days()) {
+            return SubscriptionLifecycleState::Grace;
+        }
+        SubscriptionLifecycleState::Expired
+    }
+}
+
+/// Normalized subscription lifecycle state shared by the license server,
+/// the local snapshot, and the UI (todo-global-saas-1.md §B).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionLifecycleState {
+    /// Paid period valid (`now <= expires_at`, or no expiry, or Free).
+    Active,
+    /// Paid period elapsed but still inside the tier's offline grace
+    /// window. Operational entitlements continue; grace never grants new
+    /// access.
+    Grace,
+    /// Expired and outside grace (or the server marked the row expired).
+    Expired,
+    /// Canceled or revoked server-side — never within grace.
+    Canceled,
+    /// Paused by the server (pause window / billing hold).
+    Paused,
+    /// Missing, tampered, or unrecognized subscription data — fail closed
+    /// for tier-gated features.
+    Unavailable,
+}
+
+impl SubscriptionLifecycleState {
+    /// Database/wire representation (snake_case, matches the serde form).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Grace => "grace",
+            Self::Expired => "expired",
+            Self::Canceled => "canceled",
+            Self::Paused => "paused",
+            Self::Unavailable => "unavailable",
+        }
+    }
 }
 
 // ── Quota Enforcement ─────────────────────────────────────────────────
