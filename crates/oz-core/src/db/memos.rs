@@ -263,12 +263,26 @@ impl Store<'_> {
         let now = now_iso();
         let new_revision = memo.revision + 1;
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute(
+        // Re-check the guard inside the UPDATE and read the affected-row count:
+        // the memo could have left `published` between the read above and this
+        // statement — the expiry sweep daemon transitions `published → expired`
+        // on a timer. If the predicate matched 0 rows, the memo is no longer
+        // published, so we must NOT write a revision it never had (that would
+        // corrupt the audit trail the feature exists to keep). Returning before
+        // `tx.commit()` rolls the whole transaction back, so the INSERT below
+        // never runs. Mirrors `mark_delivered`'s `changed == 0` handling.
+        let changed = tx.execute(
             "UPDATE memos
              SET title = ?2, body = ?3, revision = ?4, updated_at = ?5
              WHERE tenant_id = ?1 AND id = ?6 AND status = 'published'",
             params![tenant_id, title, body, new_revision, now, memo_id],
         )?;
+        if changed == 0 {
+            return Err(CoreError::Validation {
+                field: "status",
+                message: "memo is no longer published (expired or stopped); cannot revise".into(),
+            });
+        }
         tx.execute(
             "INSERT INTO memo_revisions
                 (id, memo_id, tenant_id, revision, title, body, published_at, published_by)
