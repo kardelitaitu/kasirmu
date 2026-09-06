@@ -367,6 +367,8 @@ pub fn run() {
                 commands::loyalty::update_loyalty_tier_scoped,
                 commands::loyalty::get_points_value_scoped,
                 commands::loyalty::get_or_create_loyalty_account_scoped,
+                commands::memo::list_active_memos_scoped,
+                commands::memo::acknowledge_memo_scoped,
                 commands::staff::list_staff_scoped,
                 commands::staff::list_roles_scoped,
                 commands::staff::create_staff_scoped,

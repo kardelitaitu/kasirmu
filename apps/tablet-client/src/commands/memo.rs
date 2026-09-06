@@ -1,0 +1,135 @@
+//! Tauri commands for the Memo read/consumer path (Phase 2 P1).
+//!
+//! Tablet parity with the desktop `commands/memo.rs` consumption commands.
+//! Memos live in the global identity database (tenant sentinel `default`),
+//! the same database the tablet staff/terminals commands use.
+//!
+//! Only the consumer half is exposed here: `list_active_memos` and
+//! `acknowledge_memo` are scoped to the caller's own terminal via the session
+//! and require no extra permission — a staff member on a tablet must be able to
+//! see and acknowledge memos addressed to their terminal. Authoring
+//! (`create`/`publish`) is a manager/admin surface and is not wired to the
+//! tablet shell yet; see the desktop module and the ipc-parity allowlist.
+
+use chrono::Utc;
+use oz_core::Store;
+use oz_core::memo::{ActiveMemo, Memo};
+use serde::Serialize;
+use tauri::State;
+
+use crate::error::AppError;
+use crate::state::AppState;
+
+const DEFAULT_TENANT_ID: &str = "default";
+
+/// JSON representation of a memo returned to the front-end.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoDto {
+    /// Stable memo identifier.
+    pub id: String,
+    /// Organization/Tenant owner.
+    pub tenant_id: String,
+    /// `null` ⇒ Organization Memo; a value ⇒ Location Memo for that location.
+    pub location_id: Option<String>,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot at publish time.
+    pub author_role: String,
+    /// Memo title.
+    pub title: String,
+    /// Memo body.
+    pub body: String,
+    /// Lifecycle status (`draft`/`published`/`expired`/`stopped`/`archived`).
+    pub status: String,
+    /// Display duration (`12h`/`24h`/`3d`/`7d`/`30d`).
+    pub duration: String,
+    /// Current published revision.
+    pub revision: i64,
+    /// ISO-8601 publish instant, if published.
+    pub published_at: Option<String>,
+    /// ISO-8601 expiry instant, if published.
+    pub expires_at: Option<String>,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+}
+
+impl From<Memo> for MemoDto {
+    fn from(m: Memo) -> Self {
+        Self {
+            id: m.id,
+            tenant_id: m.tenant_id,
+            location_id: m.location_id,
+            author_user_id: m.author_user_id,
+            author_role: m.author_role,
+            title: m.title,
+            body: m.body,
+            status: m.status.as_str().to_string(),
+            duration: m.duration.as_str().to_string(),
+            revision: m.revision,
+            published_at: m.published_at,
+            expires_at: m.expires_at,
+            created_at: m.created_at,
+        }
+    }
+}
+
+/// A memo plus this terminal's delivery state.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveMemoDto {
+    /// The memo.
+    pub memo: MemoDto,
+    /// This terminal's delivery/acknowledgement state.
+    pub delivery_status: String,
+}
+
+impl From<ActiveMemo> for ActiveMemoDto {
+    fn from(a: ActiveMemo) -> Self {
+        Self {
+            memo: MemoDto::from(a.memo),
+            delivery_status: a.delivery_status.as_str().to_string(),
+        }
+    }
+}
+
+/// List the memos the caller's terminal should display, tier-stacked.
+/// Authenticated-only: the recipient set is already terminal-scoped.
+#[tauri::command]
+pub async fn list_active_memos_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ActiveMemoDto>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    Ok(store
+        .list_active_for_terminal(DEFAULT_TENANT_ID, &session.terminal_id, &now)?
+        .into_iter()
+        .map(ActiveMemoDto::from)
+        .collect())
+}
+
+/// Acknowledge a memo on the caller's terminal. Authenticated-only.
+#[tauri::command]
+pub async fn acknowledge_memo_scoped(
+    memo_id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    store.acknowledge_memo(
+        DEFAULT_TENANT_ID,
+        &memo_id,
+        &session.terminal_id,
+        &session.user_id,
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "memo_tests.rs"]
+mod tests;

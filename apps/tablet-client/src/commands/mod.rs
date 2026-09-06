@@ -43,6 +43,8 @@ pub mod inventory_counts;
 pub mod kds;
 /// Loyalty / rewards commands.
 pub mod loyalty;
+/// Memo read/consumer commands (list/acknowledge).
+pub mod memo;
 /// Offline-mode commands.
 pub mod offline;
 /// Pre-session picker-ticket HMAC (audit-open-findings residual, desktop parity).

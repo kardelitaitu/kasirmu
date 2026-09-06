@@ -380,6 +380,91 @@ function updateMockLegalEntity(args: unknown): typeof MOCK_LEGAL_ENTITY | null {
   return { ...updated };
 }
 
+/** A memo plus this terminal's delivery state, as the dev mock serves it.
+ *  Mirrors `ui/src/api/memos.ts` `ActiveMemo` (camelCase wire shape). */
+interface MockActiveMemo {
+  memo: {
+    id: string;
+    tenantId: string;
+    locationId: string | null;
+    authorUserId: string;
+    authorRole: string;
+    title: string;
+    body: string;
+    status: string;
+    duration: string;
+    revision: number;
+    publishedAt: string | null;
+    expiresAt: string | null;
+    createdAt: string;
+  };
+  deliveryStatus: string;
+}
+
+/** Mutable memo list backing the dev mock — acknowledgements persist for the
+ *  session exactly like the real recipient row (dev preview parity). Seeded
+ *  with one Organization and one Location memo so the tier-stacking display
+ *  has something to order. */
+let mockMemos: MockActiveMemo[] = [
+  {
+    memo: {
+      id: 'memo-org-1',
+      tenantId: 'default',
+      locationId: null,
+      authorUserId: 'user-owner',
+      authorRole: 'role-owner',
+      title: 'End-of-day checklist',
+      body: 'Close the drawer, count the float, and log the safe before you leave.',
+      status: 'published',
+      duration: '24h',
+      revision: 1,
+      publishedAt: '2026-09-08T09:00:00.000Z',
+      expiresAt: '2026-09-09T09:00:00.000Z',
+      createdAt: '2026-09-08T09:00:00.000Z',
+    },
+    deliveryStatus: 'pending',
+  },
+  {
+    memo: {
+      id: 'memo-loc-1',
+      tenantId: 'default',
+      locationId: 'loc-default',
+      authorUserId: 'user-manager',
+      authorRole: 'role-manager',
+      title: 'Restock aisle 3',
+      body: 'Refill the front shelf before doors open.',
+      status: 'published',
+      duration: '12h',
+      revision: 1,
+      publishedAt: '2026-09-08T10:00:00.000Z',
+      expiresAt: '2026-09-08T22:00:00.000Z',
+      createdAt: '2026-09-08T10:00:00.000Z',
+    },
+    deliveryStatus: 'pending',
+  },
+];
+
+/** List the active memos served by the dev mock (Location stacked above
+ *  Organization, matching the real read path's ordering). */
+function listMockActiveMemos(): MockActiveMemo[] {
+  return mockMemos
+    .slice()
+    .sort((a, b) => Number(a.memo.locationId === null) - Number(b.memo.locationId === null))
+    .map((m) => ({ ...m, memo: { ...m.memo } }));
+}
+
+/** Acknowledge a memo on the caller's terminal in the session-local mock.
+ *  Returns `null` to match the real command's `Result<(), AppError>` (void). */
+function acknowledgeMockMemo(args: unknown): null {
+  const { memoId } = unwrapArgs<{ memoId?: string }>(args);
+  if (memoId) {
+    mockMemos = mockMemos.map((m) =>
+      m.memo.id === memoId ? { ...m, deliveryStatus: 'acknowledged' } : m,
+    );
+  }
+  return null;
+}
+
 /** Live floor-plan snapshot for the analytics occupancy card: 5 of 12
  *  active tables occupied (2 seated, 1 reserved, 4 free, 1 cleaning). */
 function tablesSnapshot(): Array<{
@@ -1764,6 +1849,9 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'get_legal_entity_scoped': getMockLegalEntity,
   'create_legal_entity_scoped': createMockLegalEntity,
   'update_legal_entity_scoped': updateMockLegalEntity,
+
+  'list_active_memos_scoped': listMockActiveMemos,
+  'acknowledge_memo_scoped': acknowledgeMockMemo,
 
   'list_store_profiles': listMockLocations,
   'get_store_profile': getMockLocation,
