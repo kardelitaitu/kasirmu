@@ -966,8 +966,10 @@ func TestOTPStore_SweepRemovesExpired(t *testing.T) {
 
 func TestWindowLimiter_AllowsThenBlocks(t *testing.T) {
 	wl := &windowLimiter{entries: make(map[string]*windowEntry), limit: 2, window: time.Minute}
-	if !wl.allow("k") || !wl.allow("k") {
-		t.Error("first two should be allowed")
+	first := wl.allow("k")
+	second := wl.allow("k")
+	if !first || !second {
+		t.Errorf("first two should be allowed, got %v then %v", first, second)
 	}
 	if wl.allow("k") {
 		t.Error("third should be blocked")
