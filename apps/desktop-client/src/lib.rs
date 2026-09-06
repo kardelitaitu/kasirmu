@@ -506,6 +506,49 @@ pub fn run() {
                 });
             }
 
+            // ── Topology revision retention (ADR #46 §4) ───────────────
+            // Deflates restorable snapshots beyond the newest
+            // TOPOLOGY_REVISION_RESTORABLE_KEEP per branch while keeping every
+            // row's who/when/why. Shape copied from the memo expiry sweep
+            // above, for two reasons that are not interchangeable:
+            //
+            // - `state.db` is the GLOBAL database, which is where
+            //   topology_revisions lives, keyed by branch_id. The kds health
+            //   loop walks per-store databases via open_store_ids() and is the
+            //   wrong handle for this table.
+            // - 300s is already generous for a configuration table pruned a few
+            //   times a month; startup-only pruning would be worse still, since
+            //   a desktop app may run for weeks without restarting.
+            {
+                let db = app.state::<AppState>().db.clone();
+                platform_startup::spawn_daemon(
+                    "topology revision retention",
+                    async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(300));
+                        // Skip the first tick so startup isn't delayed.
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let conn = db.lock().await;
+                            match commands::topology::cleanup_old_topology_revisions(
+                                &conn,
+                                commands::topology::TOPOLOGY_REVISION_RESTORABLE_KEEP,
+                            ) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "topology revision retention: deflated {n} snapshot(s)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "topology revision retention sweep failed"
+                                ),
+                            }
+                        }
+                    },
+                );
+            }
+
             // ── LAN event forwarder ────────────────────────────────────
             // Read LAN server config from the settings table (C-4).
             // Default: loopback-only, no PSK. External bind requires

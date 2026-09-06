@@ -283,3 +283,150 @@ fn a_save_without_a_context_records_no_row() {
         1
     );
 }
+
+// ── ADR #46 §4: the retention sweep ────────────────────────────
+
+/// Apply `n` times through the real write path, returning the revision numbers.
+fn apply_n_times(conn: &rusqlite::Connection, n: u64) {
+    let context = ctx("note", "user-sweep");
+    for expected in 0..n {
+        save(
+            conn,
+            vec![store_node("store-1")],
+            Some(expected),
+            Some(&context),
+        )
+        .unwrap();
+    }
+}
+
+fn restorable_count(conn: &rusqlite::Connection, branch_id: &str) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM topology_revisions
+         WHERE branch_id = ?1 AND diagram IS NOT NULL",
+        rusqlite::params![branch_id],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+fn sweep(conn: &rusqlite::Connection, keep: usize) -> usize {
+    cleanup_old_topology_revisions(conn, keep).unwrap()
+}
+
+#[test]
+fn the_sweep_deflates_beyond_the_budget_but_keeps_the_record() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+
+    assert_eq!(sweep(&conn, 20), 5, "the 5 oldest snapshots go");
+    assert_eq!(restorable_count(&conn, ""), 20);
+
+    // THE POINT OF DEFLATION. The row survives with who/when/why intact, so
+    // "what happened here?" stays answerable forever while "can I restore
+    // this?" is bounded. If this query returns no row, the sweep deleted
+    // history instead of pruning it, and §4's read-vs-restore split is gone.
+    let (note, who, archives): (String, String, i64) = conn
+        .query_row(
+            "SELECT change_note, published_by, workspace_archives
+             FROM topology_revisions WHERE branch_id = '' AND revision = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (note.as_str(), who.as_str(), archives),
+        ("note", "user-sweep", 3)
+    );
+
+    // ...and that row is explicitly NOT restorable.
+    let diagram: Option<String> = conn
+        .query_row(
+            "SELECT diagram FROM topology_revisions WHERE branch_id = '' AND revision = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(diagram.is_none(), "revision 1 must be record-only");
+}
+
+#[test]
+fn a_branch_inside_its_budget_is_untouched() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 20);
+
+    assert_eq!(sweep(&conn, 20), 0);
+    assert_eq!(restorable_count(&conn, ""), 20);
+}
+
+#[test]
+fn pinned_revisions_survive_and_do_not_consume_the_budget() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+
+    // Pin the three OLDEST. They are excluded from the unpinned ranking, so the
+    // 20-slot budget still holds 20 and the pins are additive: 23 restorable.
+    conn.execute(
+        "UPDATE topology_revisions SET pinned = 1
+         WHERE branch_id = '' AND revision <= 3",
+        [],
+    )
+    .unwrap();
+
+    assert_eq!(
+        sweep(&conn, 20),
+        2,
+        "only revs 4 and 5 fall out of the window"
+    );
+    assert_eq!(restorable_count(&conn, ""), 23);
+    let pinned_still_there: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM topology_revisions
+             WHERE branch_id = '' AND pinned = 1 AND diagram IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(pinned_still_there, 3, "a pin is never deflated");
+}
+
+#[test]
+fn the_sweep_is_idempotent() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+
+    assert_eq!(sweep(&conn, 20), 5);
+    // The `diagram IS NOT NULL` guard makes a re-run a no-op, which is what
+    // lets the sweep skip a transaction: a partway failure finishes next tick.
+    assert_eq!(sweep(&conn, 20), 0);
+    assert_eq!(restorable_count(&conn, ""), 20);
+}
+
+#[test]
+fn the_sweep_prunes_each_branch_against_its_own_budget() {
+    let conn = fresh_conn();
+    let context = ctx("", "user-a");
+    for branch in ["branch-a", "branch-b"] {
+        let key = format!("{TOPOLOGY_SETTING_KEY}/{branch}");
+        for expected in 0..25u64 {
+            save_topology_json_at_key_with_revision(
+                &conn,
+                vec![store_node("store-1")],
+                vec![],
+                &key,
+                &[],
+                Some(expected),
+                None,
+                None,
+                Some(&context),
+            )
+            .unwrap();
+        }
+    }
+
+    // Both branches are over budget, so one pass must handle both — the sweep
+    // enumerates branches rather than assuming a single graph.
+    assert_eq!(sweep(&conn, 20), 10);
+    assert_eq!(restorable_count(&conn, "branch-a"), 20);
+    assert_eq!(restorable_count(&conn, "branch-b"), 20);
+}

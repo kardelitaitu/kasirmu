@@ -33,7 +33,7 @@
 //! committed with that diagram. When it compensates, it restores the previous
 //! envelope and never increments `revision`, so no row is expected.
 
-use rusqlite::{Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::error::AppError;
 
@@ -66,6 +66,85 @@ pub(crate) struct TopologyRevisionContext<'a> {
     pub workspace_creations: usize,
     pub workspace_updates: usize,
     pub workspace_archives: usize,
+}
+
+/// How many revisions per branch stay restorable before deflation begins
+/// (ADR #46 §4).
+///
+/// Deliberately a constant in one place rather than a setting. §4's argument is
+/// that 20 is an informed guess: a busy branch Applies a few times a month, so
+/// this is months of history, and deflation means changing the number later is
+/// a sweep, not a migration. Promoting it to a merchant-facing setting before
+/// evidence says it needs to be would be the "while we're here" kind of scope
+/// Rule 3 excludes.
+pub(crate) const TOPOLOGY_REVISION_RESTORABLE_KEEP: usize = 20;
+
+/// Deflate revision snapshots older than the newest `keep_restorable` per
+/// branch (ADR #46 §4).
+///
+/// # Deflate, do not delete
+///
+/// The only mutation is `diagram = NULL`. The row survives with its
+/// who/when/why intact, which separates the two questions a day window
+/// conflates: "what happened here?" is answered forever (a ~200-byte metadata
+/// row), "can I restore this?" only for the recent window and anything pinned.
+///
+/// # Pinned rows are additive, not a substitution
+///
+/// Pinned rows are excluded from the ranking entirely, so pinning one does NOT
+/// consume a slot from the `keep_restorable` budget. A branch with 20 unpinned
+/// revisions plus 3 pinned keeps 23 restorable. A pin means "keep this one
+/// too", which is the only reading consistent with §4's claim that pinning is
+/// what makes the table a deploy history rather than a scratch pad.
+///
+/// # Idempotent and unlocked by design
+///
+/// The `diagram IS NOT NULL` guard makes a re-run a no-op, so no transaction
+/// wraps the per-branch loop: a failure partway through leaves some branches
+/// deflated and the next tick finishes the job. The cadence is 300s and the
+/// work is a few hundred bytes per branch, which does not justify holding the
+/// global write lock across all of it.
+pub(crate) fn cleanup_old_topology_revisions(
+    conn: &Connection,
+    keep_restorable: usize,
+) -> Result<usize, AppError> {
+    // Only branches with something left to deflate are visited, so a steady
+    // state costs one cheap indexed scan rather than a loop over every branch
+    // that has ever Applied.
+    let branches: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT branch_id FROM topology_revisions
+             WHERE diagram IS NOT NULL AND pinned = 0",
+        )?;
+        stmt.query_map([], |r| r.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?
+    };
+
+    let mut deflated = 0usize;
+    for branch_id in branches {
+        // The (keep+1)-th newest UNPINNED revision is the oldest one that must
+        // survive; everything at or below it goes. `None` means the branch is
+        // still inside its budget, which is the common case.
+        let cutoff: Option<i64> = conn
+            .query_row(
+                "SELECT revision FROM topology_revisions
+                 WHERE branch_id = ?1 AND pinned = 0
+                 ORDER BY revision DESC
+                 LIMIT 1 OFFSET ?2",
+                params![branch_id, keep_restorable as i64],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(cutoff) = cutoff else { continue };
+
+        deflated += conn.execute(
+            "UPDATE topology_revisions
+             SET diagram = NULL
+             WHERE branch_id = ?1 AND pinned = 0 AND diagram IS NOT NULL AND revision <= ?2",
+            params![branch_id, cutoff],
+        )?;
+    }
+    Ok(deflated)
 }
 
 /// Insert one immutable revision row, inside the caller's transaction.

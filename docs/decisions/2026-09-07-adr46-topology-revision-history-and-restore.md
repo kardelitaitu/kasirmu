@@ -165,6 +165,13 @@ Keep the last **20** revisions per branch restorable. Beyond that, **deflate**:
 `UPDATE topology_revisions SET diagram = NULL` and keep the row. `pinned = 1`
 exempts a row from both pruning and deflation.
 
+**A pin is additive, not a substitution** (settled in 1c, which §4 left open).
+Pinned rows are excluded from the ranking entirely, so pinning one does NOT
+consume a slot from the `keep` budget: 20 unpinned plus 3 pinned keeps 23
+restorable. The alternative — pins competing for the budget — would mean a
+merchant could *lose* a restorable revision by pinning something, which is
+self-defeating for the feature that exists to protect known-good deploys.
+
 Deflation is the substance of this section. It separates the two questions that
 "keep 7 days" conflates:
 
@@ -196,6 +203,21 @@ and neither existing daemon fits as written:
 
 Step 1c chooses between a third daemon and extending one of these, and that
 choice is a decision about daemon sprawl in `spawn_daemon`, not a detail.
+
+**Resolved by 1c: a third daemon, shaped like the memo sweep.** The table above
+was still incomplete — it omitted a third loop, `"memo expiry sweep"`
+(`lib.rs:418`), which is the one whose *shape* fits: it holds
+`app.state::<AppState>().db.clone()` (the global handle this table needs) and
+runs at 300s. It is also literally the memo retention precedent §4 already
+cites, so the two retention sweeps now look alike instead of inventing a third
+convention.
+
+It is not reused as a *host*, because the repo's established pattern is one
+daemon per concern — there are already thirteen, including separate `session
+cleanup`, `prune daemon`, and `kds health monitoring` loops. Folding topology
+pruning into a daemon named for memos would make the sweep's owner unfindable
+from its name, which is a worse price than a fourteenth `spawn_daemon` call.
+`"topology revision retention"` it is.
 
 ### 5. Restore loads a draft; it never auto-applies
 
