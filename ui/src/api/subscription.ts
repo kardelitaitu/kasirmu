@@ -25,7 +25,7 @@ export interface SubscriptionCapabilities {
   supportsCloudSync: boolean;
   offlineGraceDays: number;
   // ── Current usage (for approaching-limit banners) ──────────
-  storeCount: number;
+  locationCount: number;
   staffCount: number;
   terminalCount: number;
   // ── C4.3: Add-on identifiers ───────────────────────────────

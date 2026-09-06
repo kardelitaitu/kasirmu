@@ -169,7 +169,7 @@ describe('MultiStoreDashboardScreen', () => {
 
   it('shows the 3rd-store upgrade banner when Pro is at its 2-store cap (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
-      caps: makeSubscriptionCaps({ tier: 'pro', storeCount: 2 }),
+      caps: makeSubscriptionCaps({ tier: 'pro', locationCount: 2 }),
       loading: false,
       refresh: vi.fn(),
     });
@@ -181,7 +181,7 @@ describe('MultiStoreDashboardScreen', () => {
 
   it('hides the store-cap banner on Premium below its 5-store cap (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
-      caps: makeSubscriptionCaps({ tier: 'premium', maxStores: 5, storeCount: 2 }),
+      caps: makeSubscriptionCaps({ tier: 'premium', maxStores: 5, locationCount: 2 }),
       loading: false,
       refresh: vi.fn(),
     });

@@ -1450,7 +1450,7 @@ describe('TopologyScreen', () => {
   // ── C2.2: second-store gate (Plus→Pro trigger) ───────────────
 
   it('shows the store-limit upgrade banner at the tier cap and blocks creation (C2.2)', async () => {
-    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 1, storeCount: 1 }));
+    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 1, locationCount: 1 }));
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
@@ -1461,7 +1461,7 @@ describe('TopologyScreen', () => {
   });
 
   it('hides the store-limit banner when under the cap (C2.2)', async () => {
-    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 2, storeCount: 1 }));
+    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 2, locationCount: 1 }));
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 

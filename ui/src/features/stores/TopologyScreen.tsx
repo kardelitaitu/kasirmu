@@ -336,7 +336,7 @@ export default function TopologyScreen() {
   const licenseTier = caps?.tier?.toLowerCase() ?? 'free';
   const locale = useContext(LocaleContext)?.locale ?? 'en';
   const atStoreLimit =
-    caps !== null && caps.maxStores !== null && caps.storeCount >= caps.maxStores;
+    caps !== null && caps.maxStores !== null && caps.locationCount >= caps.maxStores;
 
   const handleAddBranch = async () => {
     const name = newBranchName.trim();
@@ -357,7 +357,7 @@ export default function TopologyScreen() {
       setSelectedBranchId(created.id);
       setAddingBranch(false);
       setNewBranchName('');
-      // Keep the C2.2 gate honest: storeCount in caps just changed.
+      // Keep the C2.2 gate honest: locationCount in caps just changed.
       refreshCaps();
     } catch (err) {
       addToast({
@@ -393,7 +393,7 @@ export default function TopologyScreen() {
       if (remaining.length === 0) setWorkspaceInstances([]);
       setDeleteTargetId(null);
       setDeletingBranch(false);
-      // Keep the C2.2 gate honest: storeCount in caps just changed.
+      // Keep the C2.2 gate honest: locationCount in caps just changed.
       refreshCaps();
     } catch (err) {
       addToast({

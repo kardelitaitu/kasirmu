@@ -46,7 +46,7 @@ fn capabilities_reflect_free_tier_and_zero_usage() {
         assert!(!dto.supports_analytics);
         assert!(!dto.supports_loyalty);
     }
-    assert_eq!(dto.store_count, 1, "fresh DB seeds the primary store");
+    assert_eq!(dto.location_count, 1, "fresh DB seeds the primary store");
     assert_eq!(dto.staff_count, 0);
     assert_eq!(dto.terminal_count, 0);
 }

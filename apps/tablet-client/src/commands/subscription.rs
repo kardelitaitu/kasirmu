@@ -43,8 +43,8 @@ pub struct SubscriptionCapabilitiesDto {
     pub supports_cloud_sync: bool,
     /// Offline grace period in days.
     pub offline_grace_days: i64,
-    /// Current store count (approaching-limit banners).
-    pub store_count: i64,
+    /// Current location count (approaching-limit banners).
+    pub location_count: i64,
     /// Current active staff count (approaching-limit banners).
     pub staff_count: i64,
     /// Current registered terminal count (limit banners).
@@ -62,7 +62,7 @@ pub async fn get_subscription_capabilities(
     sub.verify_signature()?;
     let tier = sub.effective_tier();
 
-    let store_count: i64 = db
+    let location_count: i64 = db
         .query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))
         .map_err(|e| AppError::Internal(format!("count locations: {e}")))?;
     let terminal_count: i64 = db
@@ -85,7 +85,7 @@ pub async fn get_subscription_capabilities(
         supports_daily_dashboard: tier.supports_daily_dashboard(),
         supports_cloud_sync: tier.supports_cloud_sync(),
         offline_grace_days: tier.offline_grace_days(),
-        store_count,
+        location_count,
         staff_count,
         terminal_count,
         addons: sub.addons(),

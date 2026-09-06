@@ -19,7 +19,7 @@ export function makeSubscriptionCaps(
     supportsDailyDashboard: false,
     supportsCloudSync: false,
     offlineGraceDays: 7,
-    storeCount: 1,
+    locationCount: 1,
     staffCount: 0,
     terminalCount: 0,
     addons: [],

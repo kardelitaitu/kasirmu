@@ -54,7 +54,7 @@ const caps: SubscriptionCapabilities = {
   supportsDailyDashboard: true,
   supportsCloudSync: true,
   offlineGraceDays: 30,
-  storeCount: 2,
+  locationCount: 2,
   staffCount: 5,
   terminalCount: 3,
 };

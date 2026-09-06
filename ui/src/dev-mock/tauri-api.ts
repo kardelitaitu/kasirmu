@@ -1820,7 +1820,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     supportsDailyDashboard: true,
     supportsCloudSync: true,
     offlineGraceDays: 30,
-    storeCount: 1,
+    locationCount: 1,
     staffCount: 1,
     terminalCount: 1,
     addons: [],

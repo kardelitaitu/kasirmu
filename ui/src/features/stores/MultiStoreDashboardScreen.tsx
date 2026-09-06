@@ -28,7 +28,7 @@ export default function MultiStoreDashboardScreen() {
   // nudge the owner toward Premium.
   const { caps } = useSubscription();
   const locale = useContext(LocaleContext)?.locale ?? 'en';
-  const atProStoreCap = caps?.tier === 'pro' && (caps.storeCount ?? 0) >= 2;
+  const atProLocationCap = caps?.tier === 'pro' && (caps.locationCount ?? 0) >= 2;
   const sessionToken = rawToken || '';
   const [stores, setStores] = useState<StoreProfile[]>([]);
   const [terminals, setTerminals] = useState<TerminalDto[]>([]);
@@ -95,7 +95,7 @@ export default function MultiStoreDashboardScreen() {
       </div>
 
       {/* C2.2: Pro tier at its 2-store cap — "Buka toko ke-3? Upgrade ke Premium". */}
-      {atProStoreCap && (
+      {atProLocationCap && (
         <div className="multi-store-limit-banner" role="note">
           <span>{l10n.getString('store-limit-upgrade-premium')}</span>
           <Button variant="primary" size="sm" onClick={() => openUpgradePricing(locale, 'premium')}>
