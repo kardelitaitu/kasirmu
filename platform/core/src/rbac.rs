@@ -581,4 +581,18 @@ pub mod permissions {
     // ── Data ─────────────────────────────────────────────────────
     /// Create a full data backup (bulk export of all records).
     pub const DATA_EXPORT: &str = "data:export";
+
+    // ── Memo ──────────────────────────────────────────────────────
+    /// Author, publish, stop, or archive a Memo (Organization or Location).
+    /// Phase 1 §F / Phase 2 Memo lifecycle: Location Memo is manager+,
+    /// Organization Memo owner/admin — the role split is enforced by the
+    /// memo surface itself; this key is the write gate.
+    pub const MEMO_WRITE: &str = "memo:write";
+
+    // ── Topology ──────────────────────────────────────────────────
+    /// Mutate the topology graph (Apply, location creation, rename,
+    /// templates, property edits). Phase 1 §I: dedicated key replacing
+    /// the broader `staff:update` gate the editor currently rides;
+    /// admin/owner only (Owner holds it via the global wildcard).
+    pub const TOPOLOGY_WRITE: &str = "topology:write";
 }

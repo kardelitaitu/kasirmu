@@ -104,6 +104,10 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::TERMINALS_READ,
             permissions::KDS_VIEW,
             permissions::KDS_UPDATE,
+            // Phase 2 Memo lifecycle: Location Memo is manager+ within the
+            // assignment scope (Organization Memo stays owner/admin, gated
+            // by the memo surface on top of this key).
+            permissions::MEMO_WRITE,
         ],
     },
     RolePreset {
@@ -216,6 +220,13 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::PLUGINS_MANAGE,
             permissions::KDS_VIEW,
             permissions::KDS_UPDATE,
+            // Phase 1 §F/§I keys: Admin authors both Memo types and mutates
+            // topology (Owner holds these via the global wildcard). The
+            // topology commands' gate switch from staff:update to this key
+            // is the §I enforcement slice; the grant lands first so the
+            // switch cannot lock Admin out.
+            permissions::MEMO_WRITE,
+            permissions::TOPOLOGY_WRITE,
         ],
     },
     RolePreset {
@@ -337,4 +348,6 @@ pub const ALL_ENFORCED: &[&str] = &[
     permissions::REFERENCE_READ,
     permissions::PLAN_READ,
     permissions::DATA_EXPORT,
+    permissions::MEMO_WRITE,
+    permissions::TOPOLOGY_WRITE,
 ];

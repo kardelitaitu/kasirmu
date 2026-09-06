@@ -581,6 +581,20 @@ pub const REGISTRY: &[PermissionEntry] = &[
         sensitive: true,
         description: "Create a full data backup (bulk export of all records).",
     },
+    // ── memo (Phase 1 §F / Phase 2 Memo lifecycle) ───────────────
+    PermissionEntry {
+        key: "memo:write",
+        family: "memo",
+        sensitive: false,
+        description: "Author, publish, stop, or archive a Memo (Organization or Location).",
+    },
+    // ── topology (Phase 1 §I) ────────────────────────────────────
+    PermissionEntry {
+        key: "topology:write",
+        family: "topology",
+        sensitive: false,
+        description: "Mutate the topology graph (Apply, location creation, rename, templates, property edits).",
+    },
 ];
 
 /// Look up a registered key.
