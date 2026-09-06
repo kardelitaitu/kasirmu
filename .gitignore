@@ -31,14 +31,14 @@ todo*
 # branch where several agents commit in parallel, clean status output is a
 # coordination primitive, not just tidiness.
 .cmsg-*
-# Redirected `cargo check` output agents write to the repo root to read a long
-# build log back in chunks (observed: .cargo_check.txt, .cargo_check_core.txt,
-# both regenerated within minutes during the 0.0.37 store→location rename).
-# Same reason as the two entries above: untracked files in the root make
-# `git status` ambiguous for every concurrent agent, and a broad `git add`
-# would commit a build log. Ignored rather than deleted, because the producing
-# agent is actively reading them.
-.cargo_check*.txt
+# Redirected `cargo check`/`cargo test` output agents write to the repo root to
+# read a long build log back in chunks (observed: .cargo_check.txt,
+# .cargo_check_core.txt, .cargo_test.txt — three variants, all regenerated
+# within minutes during the 0.0.37 store→location rename). Same reason as the
+# two entries above: untracked files in the root make `git status` ambiguous for
+# every concurrent agent, and a broad `git add` would commit a build log.
+# Ignored rather than deleted, because the producing agent is reading them.
+.cargo_*.txt
 
 # Cargo workspaces have a single Cargo.lock at the workspace root, not
 # one per crate. OZ-POS ships binaries (oz-cli, and the Tauri app in
