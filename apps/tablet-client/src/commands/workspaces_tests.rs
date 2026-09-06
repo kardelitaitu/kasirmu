@@ -1,6 +1,6 @@
 use super::*;
 
-use oz_core::StoreProfile;
+use oz_core::LocationProfile;
 use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
 use oz_core::migrations;
 use platform_core::StoreDatabaseManager;
@@ -22,8 +22,8 @@ fn seed_global_users(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn make_profile(id: &str, name: &str) -> StoreProfile {
-    StoreProfile {
+fn make_profile(id: &str, name: &str) -> LocationProfile {
+    LocationProfile {
         id: id.to_owned(),
         name: name.to_owned(),
         address: String::new(),
@@ -50,7 +50,7 @@ fn picker_state() -> (AppState, tempfile::TempDir) {
     let db = conn.lock().unwrap();
     let store = Store::new(&db);
     store
-        .create_store_profile(&make_profile("store-a", "Store A"))
+        .create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
     store
         .create_workspace_instance("ws-a-1", "store-pos", "store-a", "POS", "", None)
@@ -205,7 +205,7 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store() {
         let db = conn.lock().unwrap();
         let store = Store::new(&db);
         store
-            .create_store_profile(&make_profile("store-b", "Store B"))
+            .create_location_profile(&make_profile("store-b", "Store B"))
             .unwrap();
         store
             .create_workspace_instance("ws-b-1", "store-pos", "store-b", "POS", "", None)
@@ -365,7 +365,7 @@ fn binding_state() -> (AppState, tempfile::TempDir, oz_security::InMemoryKeyring
     let db = conn.lock().unwrap();
     let store = Store::new(&db);
     store
-        .create_store_profile(&make_profile("store-a", "Store A"))
+        .create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
     store
         .create_workspace_instance("ws-a-1", "store-pos", "store-a", "POS", "", None)
