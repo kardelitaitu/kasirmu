@@ -588,17 +588,24 @@ describe('PosScreen — Sub-screens navigation', () => {
     });
   });
 
-  // SKIPPED — genuinely broken, not flaky. Confirmed by re-running with the
-  // skip removed on 2026-09-06: "Unable to find an accessible element with
-  // the role button and name /sales history/i". The POS header exposes no
-  // control resolving to that name, so this test asserts an entry point that
-  // is not currently in the UI. Needs a product decision on where Sales
-  // History is reached from — do NOT loosen the query to make it green, that
-  // would only prove the test can find something.
-  it.skip('navigates to Sales History sub-screen via header button', async () => {
+  // Un-skipped. The comment here previously said the header "exposes no
+  // control resolving to that name" and that this "needs a product decision"
+  // — that was wrong, and the entry point has been in place the whole time:
+  // PosScreen.tsx:1442 `onClick={() => setShowSalesHistory(true)}` with
+  // aria-label from `retail-fn-history`, and :1255 renders
+  // <SalesHistoryScreen/> whose <h1 className="sales-history-title">
+  // Sales History</h1> is at :610. The bug was only that the button's
+  // accessible name is "History" (sales.ftl:713; "Riwayat" in
+  // sales.id.ftl:658), not "Sales History" — /sales history/i is too narrow,
+  // the mirror image of the /charge/i query being too broad further down.
+  // The heading assertion is unchanged because it was already correct.
+  it('navigates to Sales History sub-screen via header button', async () => {
     await renderPosScreenWithShift();
 
-    const historyBtn = screen.getByRole('button', { name: /sales history/i });
+    // Exact name, not a regex: getByRole throws if more than one button
+    // resolves to "History", so this cannot quietly bind to a different
+    // control the way the /charge/i query did.
+    const historyBtn = screen.getByRole('button', { name: 'History' });
     await userEvent.click(historyBtn);
 
     // Check for the Sales History screen
