@@ -53,6 +53,8 @@ pub mod kds;
 pub mod kds_device;
 /// KDS order routing resolution.
 pub mod kds_routing;
+/// Organization/Tenant Legal Entity commands.
+pub mod legal_entities;
 /// License commands.
 pub mod license;
 /// Local REST API server commands (loopback `oz-api` embed).
