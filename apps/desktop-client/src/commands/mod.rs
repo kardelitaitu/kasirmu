@@ -63,6 +63,8 @@ pub mod local_api;
 pub mod locations;
 /// Loyalty / rewards commands.
 pub mod loyalty;
+/// Memo lifecycle commands (create/publish/list/acknowledge).
+pub mod memo;
 /// Offline-mode commands.
 pub mod offline;
 /// Pre-session picker-ticket signing / verification.

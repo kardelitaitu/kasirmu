@@ -185,7 +185,9 @@
     "void_pending_sale"
   ],
   "scoped_orphans": [
+    "acknowledge_memo_scoped",
     "check_license_status_scoped",
+    "create_memo_scoped",
     "currency_info_scoped",
     "edc_terminal_status_scoped",
     "enqueue_offline_scoped",
@@ -197,11 +199,13 @@
     "get_local_ip_scoped",
     "get_machine_id_scoped",
     "list_active_carts_scoped",
+    "list_active_memos_scoped",
     "list_pending_offline_scoped",
     "list_scale_devices_scoped",
     "list_warehouse_products_scoped",
     "pending_sync_count_scoped",
     "ping_scoped",
+    "publish_memo_scoped",
     "recover_workspace_instances_scoped",
     "renew_license_scoped",
     "rotate_encryption_key_scoped",
@@ -209,7 +213,7 @@
     "suspend_surplus_workspace_instances_scoped",
     "test_auth_connection_scoped"
   ],
-  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale.",
+  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The four *_memo_* entries are NOT host-only — they are the desktop Memo IPC landed ahead of its UI: the next slice adds the shared TS api (ui/src/api/memos.ts) + dev-mock handlers + the tablet port, at which point these become stale and must be removed (list/acknowledge will additionally need the tablet shell registered before the shared api can invoke them without a forward-direction violation).",
   "dev_mock": [
     "delete_topology_template",
     "gateway_status",
