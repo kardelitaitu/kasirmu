@@ -805,8 +805,11 @@ fn every_spec_get_operation_has_read_key_entry() {
                 continue;
             }
             // Sync routes keep their existing gating (spec 0047 §4 F3) —
-            // they are excluded from the read-key map.
-            if path.starts_with("/api/sync/") {
+            // they are excluded from the read-key map. The memo active read
+            // keeps its own too: it is a device-facing poll whose audience
+            // is already terminal-scoped by the recipient join and the
+            // token's claims, with no read-tier key in the registry.
+            if path.starts_with("/api/sync/") || path == "/api/v1/memos/active" {
                 continue;
             }
 

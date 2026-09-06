@@ -54,6 +54,7 @@ pub fn base_spec() -> Value {
             { "name": "Exchange Rates", "description": "Currency exchange rate management (global reference data)" },
             { "name": "Users", "description": "User account management" },
             { "name": "Sales", "description": "Sale creation, retrieval, and status transitions" },
+            { "name": "Memos", "description": "Cloud memo serving layer (2026-09-07 ruling): the desktop pushes its complete memo state and terminals read their active memos. Serving is cloud-Postgres-backed; both endpoints are JWT-protected." },
             { "name": "Plans", "description": "Tenant cloud sync plans (ADR sync-plan-gating)" },
             { "name": "Terminals", "description": "Terminal registration for client-credential authentication" },
             { "name": "Settings", "description": "Per-tenant cloud settings provisioning (SMTP, report schedule, store name). Gated by the admin key (X-Admin-Key), not by JWT — see the operation descriptions." },

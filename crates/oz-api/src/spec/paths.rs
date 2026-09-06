@@ -513,6 +513,45 @@ pub(super) fn build_base_paths() -> Value {
             }
         },
 
+        // ── Memos (cloud-read serving layer, 2026-09-07 ruling) ───
+        "/api/v1/memos/sync": {
+            "post": {
+                "tags": ["Memos"],
+                "summary": "Reconcile the tenant's memo state (desktop push)",
+                "description": "The desktop pushes its DATABASE's complete non-deleted memo state (memos + memo_locations + memo_recipients) and the server reconciles cloud Postgres with it in one transaction: upsert rows ON CONFLICT (id), replace targeting and recipient rows wholesale, and delete any tenant memo absent from the snapshot (desktop-side retention deletes propagate by omission). Tenant scope rides the JWT claims — never the body; a terminal-scoped token may only sync its own registration's tenant, and an admin-minted token additionally needs the X-Admin-Key header when one is configured. Requires JWT auth.",
+                "operationId": "syncMemos",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "required": true,
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoSyncEnvelope" } } }
+                },
+                "responses": {
+                    "200": { "description": "Reconciled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoSyncResult" } } } },
+                    "401": { "description": "Missing/invalid JWT or admin key (`invalid_token` / `invalid_admin_key`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "Terminal-scoped token syncing another registration's tenant", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "No Postgres backend (`pg_unavailable`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+        "/api/v1/memos/active": {
+            "get": {
+                "tags": ["Memos"],
+                "summary": "List the memos a terminal should currently display",
+                "description": "The terminal's active memos (status 'published', not expired, addressed to the terminal via its recipient rows), Location-stacked above Organization, newest-published first, with the server-issued poll cadence (base interval and the KDS 2× derivative from oz_core::memo — one source of truth). Tenant comes from the JWT claims; when the token is terminal-scoped the query's terminal_id must equal the claim (403 terminal_mismatch otherwise). The wire is snake_case, mirroring the desktop IPC DTO's fields. Requires JWT auth.",
+                "operationId": "listActiveMemos",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "terminal_id", "in": "query", "required": true, "schema": { "type": "string" }, "description": "The asking terminal; must match a terminal-scoped token's claim" }
+                ],
+                "responses": {
+                    "200": { "description": "Active memos + cadence", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoDisplayEnvelope" } } } },
+                    "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "terminal_mismatch — the query names another terminal than the token's claim", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "No Postgres backend (`pg_unavailable`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+
         // ── Docs ────────────────────────────────────────────────────
         "/api/openapi.json": {
             "get": {
