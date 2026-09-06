@@ -328,6 +328,44 @@ fn list_is_terminal_scoped() {
     );
 }
 
+#[test]
+fn list_is_tenant_scoped() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", None)).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
+    // The owning tenant sees it on its terminal.
+    assert_eq!(
+        store
+            .list_active_for_terminal("default", "t1", &now())
+            .unwrap()
+            .len(),
+        1
+    );
+    // A different tenant asking about the SAME terminal id sees nothing.
+    // Deliberately the shared-terminal case: `terminals` carries no
+    // tenant_id (see the org fan-out comment in memos.rs), so a terminal id
+    // is precisely the thing two tenants could both address. This is the
+    // only coverage for tenant scoping on the read path — every other list
+    // test passes "default" for both.
+    //
+    // What this pins, measured by mutation (not assumed): dropping EITHER
+    // `m.tenant_id` or `r.tenant_id` from the query still passes, because
+    // the other predicate catches it. Dropping both fails here. So it proves
+    // the boundary holds, not that each predicate is individually required.
+    // `r.tenant_id` is therefore untested on its own — the store cannot
+    // produce a recipient tagged with a different tenant than its memo, so
+    // pinning it would need a directly-inserted inconsistent row. Left as
+    // deliberate defense-in-depth rather than loosened.
+    assert!(
+        store
+            .list_active_for_terminal("other-tenant", "t1", &now())
+            .unwrap()
+            .is_empty()
+    );
+}
+
 // ── Delivery / acknowledgement ──────────────────────────────────────
 
 #[test]
