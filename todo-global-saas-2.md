@@ -1,0 +1,1277 @@
+# Global SaaS POS — Phase 2: P1 Product Maturity
+
+Phase 2 of 3. Sibling phases:
+[`todo-global-saas-1.md`](./todo-global-saas-1.md) (Phase 1 — P0 platform
+foundations; carries the shared contract: baseline, access contract, canonical
+hierarchy, adopted policy §A/B/E/F/G/H/I, and the decisions list) ·
+[`todo-global-saas-3.md`](./todo-global-saas-3.md) (Phase 3 — P2 scale &
+operations).
+
+This file holds the P1 work list and the domain specs it implements: Memo
+lifecycle, Shifts, downgrades, entitlements beyond tiers, the offline outbox,
+audit baseline, and Locations/Topology navigation. Phase 1 gates this work:
+the P0 review checkpoint in the Phase 1 file must be complete and verified
+before the full Tools redesign and this phase's deeper features begin.
+
+Supersedes the single-file `todo-global-saas.md` (split into phases
+2026-09-05).
+
+## Memo lifecycle (adopted §C, merged with former §14)
+
+Two Memo types, adopted 2026-09-05 — Organization Memo (owner/admin, every
+registered terminal) and Location Memo (owner/admin/manager, every terminal of
+one selected location). Proposed rules:
+
+- managers may create and edit Location Memo drafts within their assignment
+  scope; only owner/admin create Organization Memos;
+- publishing requires the same scoped write permission as creation;
+- published content is immutable; corrections create a new revision;
+- the author picks a duration of 12h, 24h, 3d, 7d, or 30d; 24 hours is the
+  default;
+- the author or any higher role may stop a published Memo before its duration
+  ends; stopping is a first-class state, distinct from natural expiry;
+- authoring, stopping, and archiving lock at `expiresAt` like other
+  administrative features; Memos already active keep displaying until their
+  duration ends (at most 30 days);
+- acknowledgement is optional by default, with a future per-Memo required flag;
+- the target terminal is read-only and may acknowledge receipt;
+- the author or a scoped admin/owner may archive a Memo;
+- drafts expire after 30 days without activity; stopped and expired Memos
+  remain archived for 30 days before deletion or anonymization;
+- active Memos display on the staff login screen and lock screen, plus a
+  dismissible top-left notification every 15 minutes (30s per cycle; on KDS
+  the interval doubles to 30 minutes — kitchen traffic cannot afford a
+  15-minute interruption — and the cadence must be implemented as 2× the
+  shared base interval, never a second independently-tuned constant);
+  when both types are active they stack with Location above Organization;
+- stopping or expiry removes the Memo from every surface immediately;
+- the notification's visual design is TBD — the working candidate is the
+  tooltip treatment with a close button revealed on hover or first click, so
+  dismissal on a no-mouse (touch) environment takes two interactions and
+  cannot happen accidentally.
+
+Memos use the states `draft`, `published`, `queued`, `delivered`,
+`acknowledged`, `stopped`, `expired`, and `archived` (`stopped` records a
+deliberate early end, distinct from natural expiry). There is no `read` state:
+the display surfaces are passive, so only terminal receipt and explicit
+acknowledgement are measurable. Memo delivery is confirmed when the target
+terminal reports receipt (`delivered`); operator acknowledgement
+(`acknowledged`) is optional and tracked as a separate state (from former
+§12's Memo clause).
+
+> **Implemented as two orthogonal machines, not one 8-state list — the spec
+> above is now stale and should be read as superseded on this point.**
+> `cf69ec3c`/`7fed26cc`/`ebddda1f` landed:
+>
+> - `MemoStatus` (5): `draft → published → {expired | stopped} → archived`
+> - `DeliveryStatus` (3), **per recipient, per terminal**: `pending →
+>   delivered → acknowledged`
+>
+> `queued` became `DeliveryStatus::Pending`; `delivered`/`acknowledged` moved
+> onto the recipient row, not the memo. The module doc at `memo.rs:13-17`
+> gives the reason, and it is the right one: *"conflating them
+> is the classic memo bug"* — a Published memo legitimately has Pending
+> recipients while a terminal is offline, which a single linear machine cannot
+> express. The schema CHECK constraints mirror the enums exactly
+> (`20260909_memos.sql:26-27,73-74`), so code and storage agree.
+>
+> **Why this is recorded rather than fixed in place:** the 8-state list above
+> is adopted policy §C, so rewriting it is the owner's call, not a
+> drive-by. But leaving it as-is is the worse option — the next agent to read
+> "Memos use the states … `queued` … `acknowledged`" may well "correct" the
+> working two-machine design to match the spec and break offline delivery.
+> Anyone picking up Memo work should read the two enums as normative.
+>
+> Verified 2026-09-06: no inconsistency between the domain enums and the
+> schema — all 5 + 3 states are persistable and nothing in the enums lacks a
+> CHECK arm.
+
+## Shifts (adopted §D)
+
+Keep Shifts in Operations with `manager+` access for active tiers. Scope all
+reads and mutations to assigned locations. Basic open/close, break, handover,
+and shift history remain role-only. Advanced scheduling, forecasting, or
+labor analytics may become a Pro+ entitlement later, but should not block the
+first operational implementation.
+
+## Downgrade behavior (adopted §J, merged with former §11)
+
+A downgrade must not interrupt an active sale or delete customer data. Mark
+resources above the new quota as `over_quota`, keep existing data readable, and
+block new creation, registration, expansion, or premium mutations. Show owners
+which resources are affected and offer archive-or-upgrade remediation. Retain
+historical records according to the tenant's retention policy. Active sales
+are not interrupted mid-transaction; premium data remains retained under the
+data-retention policy.
+
+## Entitlements beyond tiers (from former §10)
+
+The server returns features, quotas, add-ons, billing state, trial state,
+expiry, grace policy, and Enterprise overrides. UI `minimumTier` values are
+configuration hints; final access uses server-issued feature entitlements.
+
+## Offline synchronization (from former §12)
+
+Use an outbox with `pending`, `sending`, `delivered`, retryable-failure, and
+permanent-failure states. Every mutation carries a tenant/scope, aggregate ID,
+and idempotency key. Retries use backoff; aggregate ordering is preserved;
+conflicts are visible rather than silently overwritten. Offline Queue visibility
+is available to all active tiers; Cloud Sync and advanced conflict tools are
+Plus+.
+
+## Audit baseline (from former §13)
+
+Premium and Enterprise receive full business audit logging. Paid tiers
+retain basic security events: failed login, role changes, terminal
+registration, topology Apply, license changes, and destructive actions. Full
+plans add longer retention, filtering, export, and compliance views. Free has
+no tenant-facing audit logs and no audit-log retention entitlement.
+
+Adopted default retention schedule:
+
+- **Free:** no audit logs.
+- **Plus:** 90 days.
+- **Pro:** 180 days.
+- **Premium:** 1 year.
+- **Enterprise:** 3 years by default, with a configurable retention period for
+  contracted compliance requirements.
+
+Retention is measured from the event timestamp. Expired audit data is deleted
+or irreversibly anonymized according to the tenant's data-retention policy;
+legal holds and compliance exports must be handled separately.
+
+## Locations and Topology navigation (from former §15)
+
+Locations remains a status-oriented page with `View details` and
+`Configure topology` actions. Location creation begins from Locations for
+discoverability, then opens the scoped Topology Editor for workspace, terminal,
+KDS, warehouse, and routing configuration. Topology remains the owner of the
+actual relationship mutation.
+
+## P1 — required for a mature global product
+
+- [ ] **Implement regional configuration.** Support locale, language, timezone,
+      currency, tax regime, fiscalization, receipt format, numbering, and local
+      payment settings at the decided organization/legal-entity/location scopes.
+- [ ] **Separate business tax configuration from application defaults.** Tax
+      rules, effective dates, tax-inclusive behavior, and fiscal requirements
+      should be location-aware; display currency and UI preferences should not
+      accidentally change tax calculation.
+- [ ] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
+      quotas, billing state, trial state, expiry, grace policy, and server-issued
+      feature entitlements. Tiers alone are not enough for custom Enterprise
+      contracts.
+- [x] **Publish the numeric plan limits.** ~~Put the real quota numbers~~
+      — **premise was stale**: the pricing page has carried the full §3
+      numeric matrix since 2026-08-17. What was actually missing was the §E
+      verification half, delivered 2026-09-06 in `883386f4`:
+      - `pricing-content-invariants` now pins all nine quota rows in both
+        locales to the canonical enforcement values (`tierQuotas()` ↔
+        `SubscriptionTier::max_*()`), so pricing ↔ code drift fails CI;
+      - the adopted audit retention schedule is published (Free none, Plus
+        90d, Pro 180d, Premium 1y, Enterprise 3y);
+      - Enterprise grace published as 60 days per adopted §B;
+      - §3 footnotes the two published-but-unenforced numbers (KDS screen
+        count, product quota) as the contract Phase 1 "centralize quota
+        enforcement" must match — **these remain open work, tracked there**;
+      - QRIS docs row split static-vs-dynamic to resolve the apparent
+        docs↔pricing contradiction (both were right about different things).
+      Remaining sub-decisions this surfaced, NOT resolved here: whether
+      staff/KDS/products quotas become server-issued payload fields
+      (Phase 1 §E says they must), and whether Free keeps the "QRIS
+      payments" marketing label while `supports_qris()` is dynamic-only.
+- [ ] **Implement downgrade behavior.** Preserve over-limit locations,
+      terminals, staff, KDS screens, history, and topology nodes as
+      readable/marked `over_quota`; block new creation and provide
+      archive-or-upgrade remediation.
+- [x] **Implement offline synchronization guarantees.** Add durable outbox
+      states, retries, conflict handling, idempotency, ordering, clock handling,
+      and visible failure states. — **verified complete 2026-09-06** across
+      rounds 3–5 against the live code (not the todo's stale premise). Each
+      spec clause maps to existing, tested behaviour:
+      - **durable outbox states** — `offline_queue.status` pending/synced/failed
+        + a `sync_remote_failures` dead-letter side table (pull side). The
+        spec's 5-name enumeration is covered semantically: `sending` is
+        deliberately absent (at-least-once + idempotency make an in-flight
+        state unnecessary and crash-stuck-prone), and retryable-failure folds
+        into `pending` (transient failures stay pending and re-drive next
+        cycle). Assessed, not an oversight.
+      - **retries** — daemon cycle-level exponential backoff with full jitter
+        (`compute_backoff`, capped 60s, 60–120s rhythm) + pull-side retry
+        budget 3 → dead-letter.
+      - **conflict handling** — ADR #21 shared resolver (`apply_push_conflict`);
+        a remote product update that disagrees with the local row returns
+        `CoreError::Conflict` and dead-letters visibly rather than overwriting.
+      - **idempotency** — client-generated item id + server `ON CONFLICT (id)
+        DO NOTHING` + `sync_applied_items` receipts; `09c9d0f1` fixed the one
+        real gap (a `duplicate id:` replay was stranded as terminal-failed
+        instead of synced).
+      - **ordering** — strict `created_at ASC` FIFO on every pending query.
+      - **clock handling** — durable pull anchor (SYNC-01), operator-rewind
+        detection (SYNC-09), AnchorExpired→snapshot recovery.
+      - **visible failure states** — daemon status (`backoff_ms`,
+        `consecutive_failures`, `last_error`), summary (`failed_count`,
+        `conflict_count`), `8dad239c` COR-20 made degraded reads log, and
+        dead-lettering stays surfaced in status after the page advances.
+      Commits this session: `8dad239c` (COR-20), `09c9d0f1` (duplicate-id),
+      `3901b5e3` (unblock platform-sync), `e0a1d7f3` (correct the misleading
+      pull-path validation stamp). Remaining outbox ideas (per-item
+      `next_attempt_at`, non-retryable fast-fail) are enhancements beyond the
+      spec, each needing a migration or a highest-risk-path behavior change —
+      deferred, not dropped.
+- [ ] **Implement the audit baseline and retention schedule.** Paid tiers
+      retain basic security events; Plus defaults to 90 days, Pro to 180 days,
+      Premium to one year, and Enterprise to three years with a configurable
+      contract override. Free has no tenant-facing audit logs. Premium and
+      Enterprise also receive full business audit logging, filtering, export,
+      and compliance views.
+- [ ] **Implement the Memo lifecycle.** Ship both Memo types — Organization
+      Memo (owner/admin, all registered terminals) and Location Memo
+      (owner/admin/manager, one selected location) — with author-chosen
+      duration (12h/24h/3d/7d/30d, default 24h), early stop by author or
+      higher role, immutable published revisions, delivery and acknowledgement
+      states, offline delivery, and retention. Display: staff login screen,
+      lock screen, and a dismissible top-left notification every 15 minutes
+      (30s per cycle; KDS doubles the interval to 30 min, coded as 2× the
+      base interval); Location stacks above Organization.
+- [ ] **Add the Locations-to-Topology entry point.** Keep Locations
+      status-oriented, but route location creation/details into the relevant
+      scoped Topology Editor graph.
+- [ ] **Version and publish topology changes.** Preserve validation, optimistic
+      concurrency, diff review, rollback/recovery, and an explicit Apply/publish
+      boundary for location/workspace/device relationships.
+- [x] **Scale navigation.** Preserve Operations, Insights, and Configuration;
+      add search, stable page registration, favorites, or recent pages before the
+      home screen becomes an unstructured card grid. — **verified complete
+      2026-09-06** (round 6). The spec's list is disjunctive ("or"); three of the
+      four affordances already ship, and the fourth is premature:
+      - **stable page registration** — `platform/ui/page-registry` +
+        `menu-registry` are the single source of truth; `AppLayout` renders the
+        sidebar from `getNavItems()` grouped by a canonical `SECTION_ORDER`
+        accordion (Operations/Insights/Configuration preserved), never a
+        hardcoded list.
+      - **favorites** — `WorkspaceHome` pins by `type_key` (`pinnedKeys`,
+        `togglePin`, persisted via `savePins`/`loadPins`), pinned cards sort
+        first.
+      - **recent pages** — `WorkspaceContext.lastWorkspace` + `WorkspaceHome`
+        `lastUsedMap` (`recordLastUsed`/`saveLastUsed`) sort unpinned cards by
+        recency.
+      - **search** — deliberately NOT added: the picker keys one card per
+        workspace *type* (~6-8, bounded regardless of location count because
+        `availableWorkspaces` is consumed by `type_key`), so the grid never
+        becomes the "unstructured card grid" the clause guards against; a search
+        box over 6-8 pinned/recency-sorted cards is gold-plating. Revisit only
+        if the picker is ever changed to one-card-per-location-instance.
+
+## Phase 2 execution plan (2026-09-06)
+
+Phase 1 gates this file, so the P1 list was dependency-triaged against the
+Phase 1 checkboxes rather than taken in order. Triage result:
+
+- **Unblocked now:** publish numeric plan limits ✅; offline outbox hardening
+  ✅; scale navigation ✅. **All three are now verified complete (2026-09-06)**
+  — the migration-free, non-Phase-1-blocked work is exhausted. Everything
+  remaining is either migration-gated with an ambiguous window (Memo schema,
+  Shifts) or blocked on Phase 1 P0 (entitlements, downgrade, audit baseline,
+  regional config, topology entry/versioning).
+- **Partially startable:** Memo lifecycle (schema, state machine, and
+  owner/admin paths work under today's role checks; manager Location-Memo
+  scoping waits for Phase 1 scoped authorization and the §F `memo:write`
+  constant); Shifts scope validation (commands exist, per-location scoping
+  waits).
+- **Blocked:** entitlements beyond tiers (§B), downgrade behavior (centralized
+  quotas), audit baseline (entitlement plumbing), regional configuration (§G
+  Legal Entity, in flight), Locations→Topology entry and topology
+  versioning/publish (rename completion + §I).
+
+Execution order agreed 2026-09-06:
+
+1. **Publish numeric plan limits.** ✅ DONE 2026-09-06 (`883386f4`) — see the
+   P1 checkbox above for findings; the enforcement gaps it surfaced are
+   recorded there and belong to Phase 1's quota-centralization item. Truth sources: `tierQuotas()` in
+   `apps/license-server/paddle_webhook.go` (server-issued stores/POS
+   instances/workspace types per tier), `SubscriptionTier::max_locations()` /
+   `max_warehouses()` in `crates/oz-core/src/subscription.rs` (client mirror),
+   §B grace days (Free/OneTime 7 · Plus 14 · Pro 14 · Premium 30 · Enterprise
+   60), and the audit retention schedule above. Render into the website
+   pricing table (en + id), `docs/guides/subscription-tiers.md`, and pin the
+   numbers with `pricing-content-invariants` assertions. Known gap to surface
+   as a decision, not invent: staff identities and KDS screens have no
+   server-issued quota field today.
+2. **Offline outbox hardening** — queue states, idempotency keys, aggregate
+   ordering, visible failure surface. ✅ CLOSED 2026-09-06 — all seven spec clauses
+    verified against live code; delivered 8dad239c (COR-20 visibility),
+    09c9d0f1 (duplicate-id replay to synced), 3901b5e3 (unblock suite),
+    e0a1d7f3 (correct pull-path stamp). See the checked P1 entry + Step 2 status.
+3. **Memo groundwork** — `memo:write` constant → schema + 8-state machine →
+   owner/admin IPC → deferred manager scoping → display surfaces (KDS cadence
+   coded as 2× the shared base interval).
+   - Checkpoint (2026-09-06): `728b1598` registered `memo:write` (Manager +
+     Admin) and `topology:write` (Admin) through the full inventory contract
+     (rbac.rs constant, REGISTRY 83→85, ALL_ENFORCED, preset grants);
+     platform-core 330/330. Grants land ahead of enforcement so the §I
+     staff:update→topology:write switch cannot lock Admin out.
+4. **Scale navigation** after the rename churn settles.
+
+Step 2 (outbox) status: audit closed 2026-09-06 (the delegated audit agent
+was stopped after 3 rounds without a report; its scope was fully covered by
+direct evidence gathered in rounds 1-2, recorded below). Findings: client
+queue is `pending|synced|failed` with no CHECK constraint; permanent-failure
+exists as the `sync_remote_failures` side table (attempts/max_attempts/
+dead_lettered, atomic requeue); idempotency = item id + server
+`ON CONFLICT (id) DO NOTHING` with per-item outcomes; push ordering is
+strict `created_at ASC` FIFO (priority column deliberately not honored in
+push — priority-jumping would break aggregate ordering); conflicts are
+server-wins with a `resolved: conflict` marker counted in the status summary
+(OFF-11); tier gating holds (queue visible all tiers, sync gated via
+PlanRequired 403 + supports_cloud_sync). The sync_client.rs audit stamp was
+stale (its "next: COR-31 timeout" had already landed in sync_pull.rs
+10s/120s) — corrected by the rename agent in `c1d14ce8`.
+
+- Checkpoint (2026-09-06): `8dad239c` closed **COR-20**, the spec's
+  "visible failure states" requirement for the queue's defensive paths:
+  dedup EXISTS and the status summary keep their benign defaults but now
+  log op + error via `log_degraded`, and `query_or_none` separates the
+  normal `QueryReturnedNoRows` empty case from real DB errors that `.ok()`
+  conflated. 5 new tests; offline 54/54, sync 59/59.
+- Checkpoint (2026-09-06): deeper push-path read found a real state bug the
+  spec's "correct outbox states" clause covers. The server's `push_batch`
+  emits only Accepted/Rejected (never Conflict), and a `duplicate id:`
+  Rejected means the server already holds the item — the crash-then-repush
+  recovery signal. Both client handlers marked ALL Rejected as terminal
+  `failed`, but push-side failed items have no requeue path, so an item that
+  had actually synced was stranded as a permanent failure polluting
+  `failed_count`. `09c9d0f1` routes duplicate-id rejections to
+  `mark_offline_synced` (shared `is_duplicate_id_rejection` predicate used by
+  both `apply_sync_outcomes` and the daemon's `apply_push_results`); genuine
+  rejections still fail, pinned by a boundary test. 3 new tests; oz-core
+  sync_client 35/35, platform-sync 299/299.
+- Checkpoint (2026-09-06): `3901b5e3` repaired two platform-sync
+  `import_snapshot` test fixtures still inserting into the pre-rename
+  `store_profiles` table — red at HEAD since `10260a03` renamed it to
+  `locations` (the migration preserves columns, so the fix is the table name
+  alone). Unblocked the platform-sync suite needed to verify the fix above.
+- Checkpoint (2026-09-06): traced the pull (apply_remote) path to settle the
+  queue.rs stamp's open "payload validation parity" question. It was a
+  non-issue: `create_product_if_absent_in_tx` already rejects blank/oversize
+  sku+name, negative price/initial_stock, and returns `CoreError::Conflict` on
+  a same-sku-different-data replay, so malformed/conflicting pull items fail
+  closed and dead-letter rather than writing garbage. `e0a1d7f3` corrected the
+  misleading stamp (comment-only). **Step 2 is now closed as a spec item** —
+  all seven clauses verified against live code (see the checked P1 entry); the
+  only residuals are beyond-spec enhancements below.
+
+Remaining Step 2 candidates (both need a migration, so they collide with
+the rename agent's hot files `migrations.rs`/`migrations_tests.rs`/PG init
+while their Legal Entity work is in flight — deferred, not dropped):
+client-side per-item retry backoff (no `next_attempt_at` on offline_queue;
+note the daemon ALREADY has cycle-level exponential backoff with full jitter
+— `compute_backoff`, capped 60s — so the gap is only per-item pacing, which
+is lower-value than it first looked) and whether a `sending` in-flight state
+is worth its crash-stuck risk given at-least-once + dedup + the
+duplicate-id-synced fix now cover correctness. The push-side state model is
+now: `pending` (incl. transient-retry), `synced` (delivered incl. replay),
+`failed` (genuine server rejection = permanent), pull-side dead-letter.
+
+Coordination: the concurrent Phase 1 rename agent owns the store→location
+workstream and recently committed website pricing copy — every Step 1 commit
+re-checks tree state first and uses an explicit pathspec.
+
+## Assist-pass verification (2026-09-06, DSH)
+
+- **Repo-wide sweep for the COR-31 defect class came back clean.** Every
+  `findings:`/`next:` audit stamp under `crates/`, `apps/`, `platform/` and
+  `modules/` was scanned for parenthesized line citations past its own file's
+  EOF. One hit — and it was the quoted text inside the `c1d14ce8` correction.
+  Nothing else of that kind outstanding.
+- **Step 2's remaining starting claims are true as read**, so no phantom work:
+  `offline_queue.status` is `TEXT NOT NULL DEFAULT 'pending'` with **no CHECK
+  constraint** (`20260813_init.sql:357`), `retry_count` exists while
+  `next_attempt_at` does not; and `priority` really is never honored in push —
+  every pending-queue query orders by `created_at ASC`
+  (`db/offline.rs:252,275,473`), none by `priority`.
+- **Green baseline at `728b1598`, so any red from here is new:** website
+  `npm run check` exits 0 (42 files / 758 tests; `astro check` 0 errors /
+  0 warnings / 25 hints); UI `npm run test` exits 0 (494 files / **8781
+  passed, 16 skipped**); UI `npm run typecheck` clean. The website suite's
+  stderr is noisy **by design** — jsdom `Not implemented: navigation` and
+  `checkout open failed` are failure paths a test provokes on purpose, not
+  failures. `todo-global-saas-1.md` used to call these "known failures";
+  corrected there so no agent dismisses a real red as expected noise.
+- **Docs pointer repair** (`f86b5a72`): both `subscription-tiers.md` copies
+  cited a `BUSINESS_PLAN.md` path that never existed; now point at
+  `docs/guides/BUSINESS_PLAN.md`. The guides↔records *entitlement* divergence
+  is **R36-14 and still open** — deliberately untouched, it needs a ruling,
+  not a reformat.
+
+## Memo technical design (2026-09-06, DSH) — ready-to-execute, migration pending
+
+The migration window is ambiguous (rename agent past schema into dev-mock, but
+the LE migration comment says `legal_entity_id` is "intentionally nullable in
+this schema-only slice," implying a future NOT-NULL enforcement migration), so
+the Memo schema is NOT written this round. This design pins it so the moment
+the window opens the migration + state machine + owner/admin IPC is one clean
+slice. Grounded in verified conventions: `tenant_id` scoping + RLS (fd7f2ebc),
+`locations(id, …, legal_entity_id)` (20260908), `Money`/i64 minor units, the
+offline outbox just hardened (delivery/ack ride it), `memo:write` already
+registered (728b1598), `init.pg.sql` is generated not hand-edited.
+
+**Two orthogonal state dimensions** (the spec's "delivery and acknowledgement
+states" are per-recipient, not per-memo — conflating them is the trap):
+
+- Memo lifecycle: `draft → published → {expired | stopped} → archived`.
+  `expired` is set by a sweep comparing `expires_at` to now (no DB clock
+  trigger); `stopped` is the early-stop path; `archived` is the retention sweep.
+- Per-recipient: `pending → delivered → acknowledged`.
+
+**Schema (three tables, one migration `2026xxxx_memos.sql`):**
+- `memos(id, tenant_id→tenants, location_id NULL→locations, author_user_id,
+  author_role, title, body, status, duration, published_at, expires_at,
+  stopped_at, stopped_by, revision, created_at, updated_at)`. `location_id
+  IS NULL` ⇒ Organization Memo (all locations); set ⇒ Location Memo. Index
+  `memos(tenant_id,status)`, partial `memos(expires_at) WHERE status='published'`
+  for the expiry sweep.
+- `memo_revisions(id, memo_id→memos ON DELETE CASCADE, revision, title, body,
+  published_at, published_by, UNIQUE(memo_id,revision))` — immutability: an
+  edit after publish inserts a NEW revision row and bumps `memos.revision`;
+  prior rows are never UPDATEd.
+- `memo_recipients(id, memo_id→memos ON DELETE CASCADE, terminal_id,
+  user_id NULL, delivery_status, delivered_at, acknowledged_at, acknowledged_by,
+  UNIQUE(memo_id,terminal_id))` — `user_id NULL` ⇒ terminal-wide (any user at
+  that terminal acks). Offline delivery = a `memo.deliver` pull item; an offline
+  ack = a `memo.acknowledge` push item through the existing outbox.
+
+**Guards (server-side, not just UI):**
+- Org Memo author ∈ {owner, admin}; Location Memo author ∈ {owner, admin,
+  manager} AND author has access to that location (Phase 1 scoped authz — the
+  deferred manager half).
+- Early stop allowed iff `actor == author_user_id` OR `role_rank(actor) >
+  author_role` (author_role is the snapshot taken at publish, so a later role
+  change can't retroactively lock the author out or grant a demoted user).
+- All writes require `memo:write`; reads are tenant-scoped + location-scoped.
+
+**Display cadence (spec-pinned constants, single source of truth):**
+base notification interval 15 min, 30 s per cycle; KDS = `2 × base` = 30 min
+(code the multiplier, not the literal 30, so the "2×" intent survives a base
+change); Location Memos stack above Organization Memos. Surfaces: staff login
+screen, lock screen, dismissible top-left notification.
+
+**Open decision to surface, not invent:** memo retention window — the spec says
+memos have "retention" but gives no schedule (unlike audit's tier ladder).
+Options: reuse the audit retention schedule, or a fixed window. Needs a ruling
+before the `archived` sweep is written.
+
+**A second open decision of the same kind, currently untracked:** stale-draft
+expiry. The rule is stated twice as settled — here ("drafts expire after 30
+days without activity") and at `todo-global-saas-1.md:775` — but the state
+machine cannot express it. `MemoStatus::can_transition` (`memo.rs:121-131`)
+allows `Draft → Published` and `Draft → Archived`, and the doc comment labels
+the latter **"(discard)"**, i.e. an explicit author action. There is no
+`Draft → Expired` arm, and the store's only sweep is `Published → Expired`
+(`db/memos.rs:324`), so nothing ever touches a stale draft.
+
+That is not a free omission, and the module says so itself one line lower: a
+live `Published` memo may not go straight to `Archived` because "ending a live
+memo is an explicit `Stopped` (early stop), never a silent archive, so the
+reason for ending is always recorded." Routing stale drafts to `Archived` to
+satisfy the 30-day rule performs exactly that conflation on the draft side —
+discard and expiry become indistinguishable afterwards.
+
+Options, none of them invented here:
+
+1. Add `(Draft, Expired)`. Cheapest, but overloads `Expired` to mean both
+   "published then elapsed" and "never published", which display and audit
+   then cannot tell apart.
+2. Add a distinct terminal status for stale drafts. Honest, but changes the
+   enum, the schema CHECK, and the generated PG init.
+3. Keep `Draft → Archived` and add an `archived_reason` column, which preserves
+   the "reason is always recorded" principle the module already commits to.
+4. Drop the rule. Genuinely defensible — a draft is visible only to its author
+   (`memo.rs:61`), so an un-expired draft leaks nothing to anyone — but then
+   amend both spec sentences rather than leaving them to be re-discovered as a
+   bug.
+
+Worth ruling on before step (4) builds UI that has to render whichever answer
+wins. Unlike the retention window, nothing currently flags this as open, which
+is precisely how a decided-sounding spec line goes missing unnoticed.
+
+**Build order when the window opens:** (1) migration + `init.pg.sql` regen +
+registry entry + column-type lint; (2) `oz-core` memo store + state machine
+with tests (the transitions/guards above are pure logic, testable before any
+IPC); (3) owner/admin scoped IPC (desktop + tablet, `*_scoped`, parity
+allowlist); (4) display surfaces + cadence; (5) deferred manager Location-Memo
+scoping after Phase 1 scoped authz lands.
+
+### Step (3) status: ✅ RESOLVED — `verify-ipc-parity.py` is green at `86c278fd`
+
+Kept in place because the reasoning still applies to the next slice, but the
+state below is historical. **Resolved 2026-09-06 by `86c278fd`**: the read pair
+was registered on tablet (285→287) rather than allowlisted, dev-mock handlers
+added for both (508→510), and the two now-stale `scoped_orphans` entries
+removed — which is the mechanism working as intended, since the allowlist
+comment itself says "an entry that gains a caller fails the gate as stale".
+`create_memo_scoped`/`publish_memo_scoped` remain allowlisted as genuinely
+transient (no authoring UI yet). Re-run the script before calling any IPC slice
+done; do not assume the pre-commit hook covers it.
+
+Checked at `c9772415` with the memo commands registered: **4 violations, exit
+1**, all from the new desktop commands having no UI caller yet —
+`create_memo_scoped`, `publish_memo_scoped`, `list_active_memos_scoped`,
+`acknowledge_memo_scoped`. This is the same trap that shipped Legal Entities
+red (`bcd1f501`): the gate is **not** one of the ten `.githooks/pre-commit`
+steps and `dev-ci.yml` has no `push` trigger, so it passes every local check
+and first appears at PR time. Run the script directly before calling step (3)
+done.
+
+Most of it self-resolves once `ui/src/api/memos.ts` exists and invokes them —
+that is the expected direction, and the remaining Legal Entity lesson applies:
+the dev-mock needs a handler for each, or `invoke()` returns `null` and the
+caller silently renders its failure path.
+
+⚠️ **But do not "fix" the two read commands by adding a permission check.**
+The gate reports `list_active_memos_scoped` and `acknowledge_memo_scoped` as
+"enforces no permission, so it is a redundant twin", which reads like a defect
+and is not one. Verified against the spec:
+
+- Memos display on the **staff login screen and the lock screen** — surfaces
+  reached before anyone has a role-bearing session. Requiring a permission here
+  means staff cannot see the memo the feature exists to show them.
+- "The target terminal is read-only and may acknowledge receipt" — an ack is a
+  receipt confirmation, not an administrative act. `MEMO_WRITE` would be wrong.
+
+Both correctly do `resolve_session` (authenticated) and nothing more, while
+`create`/`publish` both require `MEMO_WRITE`. So the honest remedy is an
+`ipc-parity-allowlist.json` `scoped_orphans` entry **with that reasoning**, not
+a new check. The gate says as much in its own message; the risk is that the
+path of least resistance looks like adding a permission.
+
+Also note the gate now counts **10** "GATED DEAD SURFACE" entries, up from 8 —
+`create_memo_scoped` and `publish_memo_scoped` joined. Those two are genuinely
+transient (no UI yet); the other 8 predate this workstream.
+
+⚠️ **`list_active_memos_scoped` and `acknowledge_memo_scoped` cannot be
+allowlisted on tablet — they have to be registered there.** Checked at
+`c9772415`: `apps/tablet-client/src/commands/` has **no `memo.rs` at all**
+(every "memo" hit in that crate is the substring "mem**ory**"), so the tablet
+currently has zero Memo surface. The tempting move is to add four `tablet`
+allowlist entries and call the gate green — the file has 153 of them already,
+which is exactly how a tablet gap becomes permanent. But the spec puts Memos on
+tablet surfaces by name:
+
+- "on **KDS** the interval doubles to 30 minutes" — KDS is served by
+  `apps/tablet-client/src/commands/kds.rs`. Verified the UI actually reaches
+  it on tablet: the tablet has its own entry `ui/src/main.tablet.tsx` (built by
+  `npm run build:tablet` → `ui/dist-tablet`, a *separate* bundle from desktop's
+  `ui/dist`, so "shared source" alone would not prove it) and that entry calls
+  `registerAllFeatures()` at line 23 — no KDS exclusion. A KDS cadence that no
+  tablet command can serve is unimplementable.
+- The staff **login screen and lock screen** are named display surfaces, and
+  the tablet has its own `commands/auth.rs` session path.
+
+So: register `list_active_memos_scoped` + `acknowledge_memo_scoped` on tablet.
+`create_memo_scoped` / `publish_memo_scoped` are authoring and *may* follow the
+`legal_entities` precedent (desktop-only, allowlisted with a reason) — but that
+is a product decision about whether a manager can author a Memo from the floor,
+not a parity chore, and it should be written down as a choice rather than
+inherited from whatever was convenient.
+
+And the part that bit Legal Entities: the **dev-mock needs a handler for each
+tablet command too**, or `invoke()` returns `null` in the browser and the KDS
+screen renders its failure path with nothing in the CI logs to say why.
+
+### Step (4) status: cadence + surfaces — what the spec pins, measured at `322c8cd5`
+
+Step (4) is in flight (`MemoBanner.tsx`, `useMemos.ts`, `MemoBanner.test.tsx`,
+the `memo-banner-*` FTL keys). Checked against the cadence rules above so the
+remaining requirements are visible rather than assumed:
+
+- ✅ **Backend cadence is exactly right.** `memo.rs:286-298` defines
+  `NOTIFICATION_BASE_INTERVAL_SECS = 15 * 60`, `KDS_INTERVAL_MULTIPLIER = 2`,
+  and *derives* `kds_notification_interval_secs()` from them — the spec's "code
+  the multiplier, not the literal 30", implemented as written.
+- ✅ **FTL keys are clean.** All five `memo-banner-*` keys have real Indonesian
+  values (`Pemberitahuan Lokasi` / `Pemberitahuan Organisasi`, not
+  byte-identical, so lint category 1 is satisfied), each is referenced by the
+  component *and* a test, and `lint-i18n.sh` passes live. "Location notice" is
+  not a substring of "Organization notice", so the unanchored-regex hazard
+  flagged for Legal Entity labels does not bite here.
+- ✅ **The new tests use exact accessible names, not loose regex** —
+  `getByRole('button', { name: 'Acknowledge this memo' })`,
+  `getByText('Location notice')`. That is precisely the fix the `/charge/i` bug
+  needed in `PosScreen.integration.test.tsx` (see `563b23ac`), applied from the
+  start rather than after three tests went vacuous.
+- ⚠️ **KDS doubling has no client-side counterpart yet.** `useMemos.ts:17` is a
+  single `MEMO_POLL_INTERVAL_MS = 900_000`, and there is no `kds`, multiplier or
+  1800s path anywhere in `ui/src/features/memo/`. The banner therefore polls
+  every 15 minutes on KDS too — the specific interruption the spec's rationale
+  says kitchen traffic cannot afford. If it is planned for the mount step,
+  fine; recorded because nothing enforces it.
+- ⚠️ **`900_000` duplicates the literal the backend just declared a single
+  source of truth.** The backend comment says the base exists "so the 'KDS
+  doubles it' intent is expressed as a multiplier, not a duplicated literal" —
+  and the UI duplicates it anyway. No TS↔Rust constant parity gate exists (the
+  parity scripts cover IPC commands, topology and bundles, not consts), so a
+  base change drifts silently. Deriving the UI value from a shared constant or
+  from the server response is the fix; "mirrors X" in a comment is what is
+  there now, and comments are not enforced.
+- ❌ **This bullet was overtaken by a real defect while it was being written.**
+  I noted `MemoBanner` was mounted nowhere; it is now being mounted in
+  `AppLayout.tsx` and `TabletAppLayout.tsx` — and **neither of those renders on
+  any of the three surfaces the spec names.** `AppShell.tsx` early-returns
+  before `AppLayout` for every one of them:
+
+  | `AppShell.tsx` | branch | reaches `AppLayout`? |
+  |---|---|---|
+  | `:367` | `return <SessionLockScreen/>` — **lock screen** | ✗ |
+  | `:405` | `<StaffLoginScreen/>` — **staff login** | ✗ |
+  | `:530` | `activeWorkspace === 'kds'` → `<KdsScreen/>` only | ✗ |
+  | `:544` | other `pageRegistration.fullscreen` pages | ✗ |
+  | `:560` | normal authenticated workspace | ✓ |
+
+  Tablet is the same shape: `TabletAppShell.tsx:127` (login) and `:175` (KDS)
+  both return before `TabletAppLayout` at `:192`.
+
+  And `MemoBannerMount.test.tsx`, added in the same commit, **cannot catch
+  this**: it renders `TabletAppLayout` *directly* (`:52`, `route="sales"`),
+  bypassing `TabletAppShell` entirely. So it proves the banner appears when the
+  layout is mounted by hand — true, and irrelevant to whether a real session
+  ever reaches that layout. A mount test has to render the **shell** and drive
+  it into each surface; otherwise it certifies the wiring of a component that
+  ships invisible. This is the same vacuity shape as the `/charge/i` tests in
+  `563b23ac`: green, technically correct, testing the wrong contract.
+
+  So the chosen mount covers the ordinary POS/admin/inventory views — which the
+  spec does **not** list as memo surfaces — and misses all three it does. The
+  banner will be invisible on the login screen, the lock screen, and KDS.
+
+  **Now proven empirically, not just structurally.** A throwaway probe rendered
+  the real `TabletAppShell` with `activeWorkspace: 'kds'` and spied on
+  `listActiveMemosScoped`, against a positive control that rendered
+  `TabletAppLayout` directly (exactly what `MemoBannerMount.test.tsx` does).
+  Same component, same mock, same token — the only variable is the route:
+
+  | render path | `memoApiCalls` |
+  |---|---|
+  | `TabletAppLayout` mounted directly (the control) | **1** — spy works |
+  | Real `TabletAppShell`, `activeWorkspace: 'kds'` | **0**, banner absent |
+
+  Worth recording how the first two attempts were wrong, because the failure
+  mode is easy to repeat: the initial probe reported `memoApiCalls=0` for KDS
+  and looked like confirmation, but its *control* also read 0 — the number was
+  meaningless. Cause: `useMemos` bails at `if (!token)` (`useMemos.ts:62`)
+  before touching the API, and `mockWorkspaceValue` in
+  `TabletAppShell.test.tsx:124` does not set `sessionToken`, so it defaulted
+  null. Only after passing a token did the control go to 1 and the KDS reading
+  become real. A negative result with a non-firing control is not evidence.
+  Probe was reverted (`git checkout --`), nothing committed.
+- ⚠️ **Which makes the KDS cadence question moot rather than merely missing.**
+  The doubled interval could not be expressed today even if the banner did
+  render: `MemoBanner()` takes no props (`MemoBanner.tsx:21`) and `useMemos()`
+  takes no options (`useMemos.ts:44`), so there is no seam to tell a surface
+  apart. But the mount is the blocking issue — fix that first, then the
+  multiplier. Note the spec's own rationale ("kitchen traffic cannot afford a
+  15-minute interruption") presumes the banner is *on* KDS at all.
+
+### The staff-login surface is architecturally unreachable, not merely unmounted
+
+Found while the Memo agent was idle at `f5d6482f`, checking whether round 17's
+mount finding explains all three surfaces. **It does not** — two of the three
+are fixed by mounting elsewhere, but the login screen cannot use the command
+that exists, and that needs a different kind of decision.
+
+`list_active_memos_scoped` (`commands/memo.rs:166-178`) does two things that
+both require an authenticated session:
+
+```rust
+let session = state.resolve_session(&session_token)?;
+... store.list_active_for_terminal(DEFAULT_TENANT_ID, &session.terminal_id, &now)
+```
+
+The terminal identity comes **out of the session**, so there is no way to ask
+"what is active for this device" before anyone has logged in.
+
+Checked whether the data even exists pre-auth, because that decides how hard the
+fix is — **it does exist**:
+
+- `WorkspaceContext.tsx:149-152` resolves `terminalId` once on mount from
+  `getDeviceId()` (ADR #22), with no auth dependency; and
+- `AppShell.tsx:81` already holds `terminalId` in scope for every branch,
+  including the `StaffLoginScreen` one at `:405`.
+
+So the only missing piece is a command that accepts a terminal id without a
+session. The repo already has that exact shape: `get_brand_settings(state)` at
+`commands/branding.rs:62` takes no `session_token` and calls no
+`resolve_session`, because branding must render before login too.
+
+| surface | session available? | what it needs |
+|---|---|---|
+| Lock screen | ✓ — `AppShell.tsx:366` reads `if (isLocked && session)` | a mount outside `AppLayout`, nothing more |
+| KDS notification | ✓ | a mount outside `AppLayout`, nothing more |
+| **Staff login** | ✗ by definition | **a new session-free, terminal-keyed read** |
+
+⚠️ **That command should not be added casually.** Branding is public by
+construction — a logo and a store name. A Memo is an internal operational
+instruction. A session-free read keyed on `terminal_id` means any caller who can
+reach the IPC surface (or the cloud HTTP surface once Memos sync) and knows or
+guesses a terminal id can enumerate that tenant's active Memos. The existing
+command also hardcodes `DEFAULT_TENANT_ID`, so tenancy is not a constraint there
+yet either. Options for the owner to weigh explicitly: expose only a scoped
+subset pre-auth (titles only, or Organization Memos only); require a device
+handshake that is not a full session; or amend the spec so the login surface
+means "once the staff PIN pad is up" rather than "before any authentication".
+
+The third option is legitimate and may be what was already intended — but it
+should be written down as a decision rather than discovered by the next agent
+mid-implementation, which is how the Legal Entity IPC slice lost two days.
+
+## The tablet's Memo surface is structurally empty — KDS Memos have no data path
+
+Verified end to end at `f5d6482f` while reviewing the in-flight expiry-sweep
+daemon. Three links, each checked rather than assumed:
+
+1. **The tablet opens its own SQLite file** — `resolve_db_path(app)` →
+   `Connection::open(&db_path)` (`tablet-client/src/state.rs:104-111`), separate
+   from desktop's `StoreDatabaseManager::new(db_dir, …)`
+   (`desktop-client/src/state.rs:303`).
+2. **Memos can only be authored on desktop.** `apps/tablet-client/src/commands/
+   memo.rs` has exactly two commands — `list_active_memos_scoped:99` and
+   `acknowledge_memo_scoped:116`. Desktop has four, adding
+   `create_memo_scoped:120` and `publish_memo_scoped:149`.
+3. **Memos are not in the sync path.** `sync_pull.rs` references only `products`,
+   `tax_rates` and `users`; `memos`/`memo_recipients` appear nowhere in the sync
+   or cloud-API code. The 21 "memo" hits under `crates/oz-api/src` are all
+   `in-memory` / `open_in_memory` substrings.
+
+So the tablet's `memos` table is **always empty**, and therefore:
+
+- `list_active_memos_scoped` on tablet can only ever return `[]`, and
+  `acknowledge_memo_scoped` can only ever fail to find a recipient;
+- **the KDS banner cannot display a Memo no matter where it is mounted.** This
+  is upstream of the round-17 mount defect, not the same defect — fixing the
+  mount moves an empty box;
+- the `tablet memo expiry sweep` daemon now in flight will sweep an empty table
+  every five minutes, forever. Harmless, but it advertises a capability the
+  deployment does not have.
+
+**This reflects on my own round-11 advice and should be said plainly.** I told
+the next agent to *register* the read pair on tablet rather than allowlist it,
+because the spec puts Memos on KDS. That was right about intent and it correctly
+avoided the Legal Entities failure — but registering commands is not the same as
+giving them data. The allowlist would have kept the gap visible; the registration
+made it invisible. Treat "registered on tablet" as wiring, not capability.
+
+**What actually unblocks KDS Memos**, in ascending cost: declare Phase 2's KDS
+cadence requirement a Phase 3 item and say so in the spec (cheapest, and possibly
+the honest reading); or route the KDS read through shared cloud-server Postgres
+instead of the local file; or sync `memos` + `memo_recipients` to the tablet,
+which drags in the tenant-isolation work — `memo_recipients.tenant_id` exists
+now, but `terminals.tenant_id` still does not, so the fan-out cannot be scoped
+per tenant yet.
+
+- **Progress (2026-09-06, round 6):** step (2)'s schema-independent half LANDED
+  as `cf69ec3c` — `oz-core::memo` (MemoScope, MemoStatus + DeliveryStatus state
+  machines, MemoDuration + expiry, `may_stop` rule, cadence constants; 16
+  tests). It needs no migration, so it shipped ahead of the window. Remaining:
+  step (1) migration + store (persists these validated states), then (3)-(5).
+
+## `revise_memo` discards its UPDATE's affected-row count — a TOCTOU the new sweep daemon just made reachable
+
+Reviewed `e560138e` (Memo revise) on commit. The design is otherwise careful:
+tenant-scoped read, non-blank validation, `Published`-only gate, prior revision
+rows never mutated, and `published_at`/`expires_at` deliberately left alone so a
+correction cannot extend a memo's life. It uses a transaction, as required.
+
+But the guard it wrote into the UPDATE is never read:
+
+```rust
+tx.execute(
+    "UPDATE memos SET title=?2, body=?3, revision=?4, updated_at=?5
+     WHERE tenant_id = ?1 AND id = ?6 AND status = 'published'",
+    params![...],
+)?;                                    // <- rows-affected discarded
+tx.execute("INSERT INTO memo_revisions (...) VALUES (...)", ...)?;
+```
+
+**Its own file does this correctly three functions earlier.** `mark_delivered`
+(`memos.rs:353-362`) runs the same shape — conditional UPDATE with a status guard
+— captures `let changed = …`, and handles `if changed == 0`. So this is a
+deviation from local convention, not a matter of taste.
+
+The interleaving that matters:
+
+1. `get_memo` reads the memo: `status = published`, `revision = 1`
+2. the expiry sweep transitions it to `expired`
+3. the UPDATE's `status = 'published'` predicate matches **0 rows** — silently
+4. the INSERT still writes a `revision = 2` row, and the transaction commits
+5. the final `get_memo` returns `revision = 1`, `status = expired`
+
+`memo_revisions` now holds a revision the memo never had. That is precisely the
+audit-integrity property the feature is named for, broken by the one step that
+checks nothing.
+
+**Why this is new rather than pre-existing:** step 2 needs a concurrent writer
+that moves `published → expired`, and until `5ee1064a` (the commit immediately
+before) the only such writer was a user-facing action. `5ee1064a` added a daemon
+that does it on a timer every five minutes. The two commits are individually
+fine; it is their combination that opens the window.
+
+**Not empirically proven, and it would be dishonest to imply it was.** The race
+cannot be made deterministic from outside: the read happens before
+`unchecked_transaction()`, and the test `Store` shares one mutex-guarded
+connection, so nothing can interleave between them. A test that hand-ran the two
+statements would only demonstrate the author's own SQL, not this code path. The
+claim rests on reading the affected-row count away, which is a static fact, plus
+the file's own convention at `:360`.
+
+Suggested fix, matching `mark_delivered`: capture the count and, if 0, roll back
+the revision insert by returning an error before `tx.commit()` — the transaction
+makes that free, since nothing has been written yet.
+
+### Separate, smaller point: `revise_memo` has no path to a user, and no plan step owns one
+
+`git grep revise_memo` returns the definition (`memos.rs:206`) and five call
+sites, **all in `memos_tests.rs`**. No command in either shell, no UI reference.
+For contrast, `publish_memo` shows up in `apps/desktop-client/src/commands/
+memo.rs` *and* `lib.rs` — the shape a wired feature has.
+
+That is not sloppiness: the commit is honestly scoped as `feat(core)`, and a
+core-first slice is a reasonable way to build. The gap is that **the Phase 2 plan
+has no step that would ever wire it.** Step 3's chain is `memo:write` constant →
+schema + 8-state machine → owner/admin IPC → deferred manager scoping → display
+surfaces. Revise is not named in it, and the word does not appear in any of the
+three todo files as a task. Meanwhile the spec states the requirement directly,
+at the top of this file: "published content is immutable; corrections create a
+new revision" (`todo-global-saas-2.md:28`).
+
+So a spec'd behaviour now has a tested core implementation and no owner for the
+last mile — which is the mirror image of round 21's finding, where the tablet had
+wiring with no data. Both directions of the same failure: **capability and
+wiring get tracked as if they were one thing.** Worth one checkbox naming the
+IPC + UI slice, or an explicit note that corrections are out of scope for Phase
+2, so the next agent does not have to rediscover which it is.
+
+## Assist-pass notes (2026-09-06, DSH) — applies to Memo steps (3) and (4)
+
+**Static-gate baseline: all 24 CI gates pass at HEAD.** Ran the whole
+`dev-ci.yml#static-gates` set locally (architecture-boundaries, money-format,
+windows-config, unwrap-panic, release-workflow +selftest, pg-schema-drift,
+migration-column-types, test-shadow-copies, ipc-parity, invoke-parity,
+scoped-reads +selftest, topology-parity, feature-registry,
+plugin-guide-parity, ci-docs-drift, ftl-orphans-selftest, bundle-parity-full,
+lint-i18n, no-raw-params, scoped-coverage, eol-guard-selftest,
+typecheck-gate-selftest) — **24 pass / 0 fail**. Worth stating because nothing
+else does: `dev-ci.yml` has no `push` trigger and the pre-commit hook is
+opt-in, so on this branch these gates are otherwise unrun until a PR. Re-run
+them before declaring a slice verified. UI baseline alongside it: 495 files /
+**8798 passed / 5 skipped**, typecheck and eslint clean.
+
+**Hazard for step (4) display surfaces — an unanchored dialog regex makes a
+green test that proves nothing.** Found and fixed in `b907b985`. PosScreen has
+two controls whose names are substrings of each other ("Save as open bill" vs
+"View open bills") opening two modals likewise nested as strings ("Open bill"
+vs "Open bills list"). A test clicking `/open bills/i` and asserting
+`getByRole('dialog', { name: /open bill/i })` passes against the LIST modal
+while believing it opened the INPUT one — and it dragged two correct tests
+into `it.skip` that then looked unfixable. Six tests were recovered; four
+needed nothing at all, one skip comment blaming "FTL variable interpolation
+complexity" was simply false.
+
+Memo will hit exactly this: Organization Memo vs Location Memo are two scopes
+with near-identical labels, and the surfaces stack (Location above
+Organization). **Anchor the accessible names (`/^open bill$/` style) wherever
+one label is a substring of another**, and when a test in a new area fails,
+check which control the test actually clicked before assuming the assertion is
+wrong.
+
+**Method that made this safe on a shared tree:** establish the skip/no-skip
+split by running the file with every `it.skip` flipped, then `git checkout --`
+the same file inside the *same* bash invocation, so the working tree was never
+left modified while other agents were committing. Every commit this pass used
+an explicit pathspec; `b907b985` landed clean alongside an in-flight Memo
+migration touching `migrations.rs`/`init.pg.sql`.
+
+### Tenant-isolation gap in the committed Memo schema (`7fed26cc`)
+
+Aimed at the memo store being written right now (`db/mod.rs` + `memo.rs` are
+the in-flight files). **Not a blocker claim — a decision to make explicitly
+before the store's queries are fixed in shape.**
+
+`memo_revisions` and `memo_recipients` carry **no `tenant_id` column**. The
+consequence is not just "RLS cannot cover them" — it is that **they cannot be
+tenant-filtered in either backend.** SQLite here is a single shared database
+filtered by predicate (`db/offline.rs:275,309,361` — `WHERE … AND tenant_id =
+?1`), so a missing column removes the filter there too, not only on Postgres.
+Isolation for these two tables rests entirely on every future caller routing
+through `memos`.
+
+The sharper problem is that **nothing will ever surface this as debt.** The
+generator's to-do block is built from tables that *have* `tenant_id` but are
+not covered — `init.pg.sql` currently lists exactly: `image_refs`,
+`legal_entities`, `memos`, `sale_lines`, `snapshot_versions`,
+`webhook_endpoints`. `memos` is tracked; the two child tables are invisible to
+the only mechanism that watches this, because they lack the column the
+mechanism keys on.
+
+This deviates from an unambiguous convention in this repo. Child tables get
+`tenant_id` denormalized onto them precisely so they can be covered:
+`20260814_sale_lines_tenant.sql`, `20260814_tenant_uniqueness.sql`
+(`bundle_items`, `product_bundles`, `product_taxes`, `product_variants`),
+`20260827_refunds_tenant.sql`, `20260831_per_tenant_unique_rebuild.sql`
+(`product_activity`). Three of those are child tables that **are** in
+`RLS_TABLES` today — so the pattern is proven in practice, not theoretical.
+
+Why it will actually bite: the migration ships
+`idx_memo_recipients_terminal ON memo_recipients(terminal_id,
+delivery_status)`, which exists to answer "what is pending at this terminal" —
+a query that never touches `memos`. That index is the tell that a direct read
+is planned. Phase 1's P0 list also requires isolation tests to cover **Memos**
+by name.
+
+Two ways to close it; pick one deliberately:
+
+1. **Follow the convention.** Add `tenant_id TEXT NOT NULL` to both child
+   tables, populate it on insert, then add all three Memo tables to
+   `RLS_TABLES` in `scripts/generate-pg-migration.py` once the write path sets
+   it. Regenerate `init.pg.sql` — pre-commit step 7 and CI both police drift.
+2. **Keep the schema and make the dependency explicit.** Forbid direct reads
+   on the child tables (every query joins `memos` for its tenant predicate)
+   and pin that with the Phase 1 isolation test, so a later caller cannot
+   regress it silently.
+
+Option 1 matches how every other child table here was handled. Option 2 is
+defensible only if the isolation test genuinely lands — without it the gap is
+both real and untracked, which is the combination worth avoiding. Raised for
+the owner to decide, deliberately not edited: the migration is committed and
+the store is mid-write by another agent.
+
+**Concrete instance — now COMMITTED in `ebddda1f`, not merely in-flight.**
+`crates/oz-core/src/db/memos.rs`, Organization-Memo fan-out:
+
+```rust
+// Organization Memo: every registered terminal.
+None => { let mut s = tx.prepare("SELECT id FROM terminals ORDER BY id")?; … }
+```
+
+`terminals` has **no `tenant_id` column** — verified absent from the
+`CREATE TABLE terminals` block in *both* `20260813_init.sql` and
+`20260813_init.pg.sql`, and `20260907_add_location_tenant_id.sql` adds the
+column to `locations` and `user_location_access` only. So terminal tenancy is
+transitive: `terminals.bound_location_id → locations.tenant_id`.
+
+That query applies no such filter, so publishing an Organization Memo inserts
+a `memo_recipients` row for **every terminal in the shared database, across all
+tenants**. The store is otherwise careful — `publish_memo` validates via
+`get_memo(tenant_id, …)` and `WHERE tenant_id = ?1 AND id = ?4 AND status =
+'draft'` — which makes this one branch a genuine oversight rather than a
+convention. Consequences: cross-tenant rows in a tenant's memo, a plausible
+path for one company's staff memo to surface on another company's terminal,
+and unbounded row growth on every publish. The Location-Memo branch directly
+above it *is* scoped (`WHERE bound_location_id = ?1`, and that location is
+tenant-validated), so only the `None` arm needs the join.
+
+Suggested shape, matching how tenancy already works for this table:
+
+```sql
+SELECT t.id FROM terminals t
+  JOIN locations l ON t.bound_location_id = l.id
+ WHERE l.tenant_id = ?1
+ ORDER BY t.id
+```
+
+Note this also silently excludes unbound terminals (`bound_location_id IS
+NULL`), which is arguably correct — an unbound terminal belongs to no location,
+so it has no provable tenant. Worth stating explicitly in the Memo spec,
+because "every registered terminal" currently reads as including them.
+
+**Severity, stated honestly:** latent, not live. Every write path still pins
+the staged sentinel — `DEFAULT_TENANT_ID: &str = "default"` in
+`legal_entities.rs:17`, and the Phase 1 journal records the sentinel being kept
+"until tenant claims are available in the session context" — so today exactly
+one tenant exists and the fan-out cannot cross a boundary that isn't there.
+The defect is that it becomes cross-tenant data **the moment tenant claims
+land**, with no test and no schema constraint to catch it, and by then
+`memo_recipients` rows are already persisted. Fixing the query now costs one
+JOIN; fixing it later means a backfill plus an isolation incident. Treat it as
+cheap-now/expensive-later, not as a shipping blocker.
+
+**The scoping gap predates Memos; Memos is what makes it persist data.**
+`db/terminals.rs:22` already runs an unfiltered `FROM terminals ORDER BY name`,
+and every other terminal query in that file keys off `id`/`device_id` with no
+tenant predicate either. That has been tolerable because terminals were only
+ever *read* within a single-tenant install. Writing per-terminal rows into a
+tenant-owned table is new: it converts a latent read-side scoping gap into
+persisted cross-tenant rows. Phase 1's isolation list names Memos
+specifically, so the test that closes this belongs to that P0 item rather than
+to the Memo feature alone.
+
+**The specific test that is missing (checked against `memos_tests.rs` as
+written now).** The file already has `get_is_tenant_scoped` (cross-tenant read
+rejection), `location_memo_fans_out_only_bound_terminals`, and
+`publish_fans_out_one_pending_recipient_per_terminal`. What none of them do is
+put a **second tenant's** terminal in the database and assert the
+Organization-Memo fan-out skips it. `publish_fans_out_one_pending_recipient_per_terminal`
+is the one that matters: with a single tenant seeded it passes either way, so
+today it would still pass *after* the bug is fixed — it does not pin the
+behavior.
+
+The existing helpers make it a ~10-line addition; `seed_terminal` already takes
+`bound_location`, and `seed_location` already writes `tenant_id`:
+
+```rust
+#[test]
+fn org_memo_fanout_excludes_other_tenants_terminals() {
+    let store = store();
+    // two tenants, one location each, one terminal each
+    seed_location_with_tenant(&store, "loc-a", "tenant-a");
+    seed_location_with_tenant(&store, "loc-b", "tenant-b");
+    seed_terminal(&store, "term-a", Some("loc-a"));
+    seed_terminal(&store, "term-b", Some("loc-b"));
+
+    let memo = store.create_memo_draft(&new_memo("tenant-a", None)).unwrap();
+    store.publish_memo("tenant-a", &memo.id).unwrap();
+
+    // tenant-b's terminal must NOT receive tenant-a's organization memo
+    assert_eq!(recipient_count(&store, &memo.id), 1);
+}
+```
+
+`seed_location` currently hardcodes `'default'` (`memos_tests.rs:29`), so it
+needs a tenant parameter or a sibling — hence the `seed_location_tenant` name
+above. Without that the test cannot be written at all, **which is itself the
+tell: the fixture cannot express a second tenant, so no fan-out test ever could
+have caught this.** Worth checking the same limitation in the Legal Entity and
+Location store fixtures.
+
+**One thing the existing tests settle, and it changes the fix.**
+`publish_fans_out_one_pending_recipient_per_terminal` seeds both terminals with
+`bound_location = None` and asserts 2 recipients — so **unbound terminals do
+receive Organization Memos today**, which answers the open question raised
+above in the "yes" direction. That means the suggested JOIN is not safe as
+written: `JOIN locations ON t.bound_location_id = l.id` silently drops every
+unbound terminal and turns that test red. Either:
+
+1. keep unbound terminals in scope and give `terminals` a real `tenant_id`
+   (the convention every other child table here followed), or
+2. accept that unbound terminals stop receiving org memos, and change that
+   test deliberately with the reason recorded.
+
+Option 1 is the only one that is both tenant-safe and behavior-preserving.
+Option 2 quietly changes what "every registered terminal" means in the spec.
+
+### Reconciliation — `5f263d11` fixed the schema half and rebutted the rest
+
+**The substantive part was accepted and is verified fixed.**
+`20260910_memo_child_tenant_id.sql` denormalizes `tenant_id` onto both child
+tables, backfills from the owning memo, adds tenant-scoped indexes, and the
+store populates it on both inserts. Confirmed against the regenerated PG init:
+`memo_recipients` and `memo_revisions` now appear in the generator's
+not-yet-covered list (it went 4 → 6 → **8**), so the *invisibility* problem —
+the part that would have let this rot unnoticed — is genuinely closed. Choosing
+a follow-up migration over editing `7fed26cc` is also right: the runner
+enforces DB-02 checksum-fails-closed on applied migrations.
+
+**The rebuttal is real but over-reads its citation.** `edc_terminals.rs:4` does
+say "multi-tenancy that does not exist", quoted accurately — but in context it
+argues something narrower: *do not write `'default'` explicitly on inserts,
+because that would imply callers thread a tenant when none does yet.* That is a
+comment-honesty rule about the write path, not an architectural ruling that
+`terminals` should never be tenant-scoped. Phase 1's premise is making the
+platform safe to call multi-tenant, and `legal_entities.rs:6` explicitly
+anticipates "future tenant claims … supply the resolved tenant".
+
+**Their fix also weakens my own original claim, and that should be said
+plainly.** I wrote that one company's staff memo could surface on another
+company's terminal. With `memo_recipients.tenant_id` now NOT NULL and populated
+from the memo, a correctly-written read (`WHERE terminal_id = ? AND tenant_id =
+?`) filters foreign rows out. What survives is narrower: **(a)** unbounded row
+growth — every publish still writes one recipient row per terminal in the whole
+database — and **(b)** those rows assert a tenant claim about a terminal the
+tenant does not own, which is false data even while nothing reads it wrongly.
+Neither is a shipping blocker on a single-tenant desktop.
+
+**Still genuinely unresolved: the question cannot be tested.** `seed_location`
+hardcodes `'default'` (`memos_tests.rs:29`), so no fixture can place a location
+— and therefore a bound terminal — in a second tenant. The new
+`publish_populates_child_table_tenant_id` asserts `"default"` for both children,
+which confirms plumbing, not isolation. So the fan-out dispute cannot be settled
+by a test in either direction today. Prerequisite for closure: a tenant
+parameter on `seed_location`. The assertion after that is one line.
+
+**Net:** the durable finding (untracked, unfilterable child tables) is fixed.
+The behavioral finding is deferred with a defensible rationale that cites
+slightly more than its source says.
+
+## `memos.location_id ON DELETE CASCADE` inverts the schema's own convention
+
+> ### ✅ RESOLVED — committed as `f5d6482f`
+>
+> The Memo agent picked **option 2 (RESTRICT)** — the one this note called "the
+> only option that cannot lose data by accident" — and the migration header
+> cites both **CUST-11** and the nine-FK enumeration from the round-14
+> correction, so the precedent did the work rather than the preference.
+> Verified against the working tree rather than taken on faith:
+>
+> - **Both** instances fixed, not just the headline one: `memos.location_id`
+>   *and* `memo_recipients.terminal_id` → `ON DELETE RESTRICT`.
+> - **Correctly left alone:** `memo_revisions.memo_id` and
+>   `memo_recipients.memo_id` stay `ON DELETE CASCADE` — true child tables that
+>   must go with their memo. That distinction was not spelled out in this note;
+>   getting it right is what stops the fix from breaking publish.
+> - Reached the generated PG schema: `20260813_init.pg.sql:753` and `:1065` now
+>   read `ON DELETE RESTRICT`. `generate-pg-migration.py --check` green (109
+>   tables, 134 indexes); `verify-migration-column-types.py` green.
+> - Registered in `migrations.rs` via `include_str!`, using the
+>   `20260831_per_tenant_unique_rebuild` table-rebuild pattern, since SQLite
+>   cannot alter a column's FK in place.
+> - Checked the remaining `terminal_id … ON DELETE CASCADE` edges for the same
+>   class of problem and they are **not** it: `terminal_feature_overrides`,
+>   `terminal_profiles` (1:1 PK extension) and a topology node config — all
+>   configuration owned by the terminal and meaningless without it. The
+>   records-vs-config line the migration draws is the right one, and there is no
+>   wider pattern to chase here.
+>
+> **The test suite is better than what this note asked for.** Four tests cover
+> all four directions, so the fix cannot be wrong in either the too-weak or the
+> too-strong way:
+>
+> - `location_delete_is_blocked_by_its_memos` / `terminal_delete_is_blocked_by_its_recipients`
+>   — the guard fires.
+> - `parent_delete_still_works_without_memo_dependents` — the guard does **not**
+>   over-block. A fix that rejected every Location delete would pass the first
+>   two and break real usage; this is the test that catches that.
+> - `deleting_a_memo_still_cascades_to_its_children` — the deliberately-kept
+>   child CASCADE still works, so the records-vs-config decision is pinned, not
+>   just asserted in a comment.
+>
+> Mutation-checked: rewriting the two `ON DELETE RESTRICT` clauses back to
+> `CASCADE` fails **exactly those two blocking tests** (37 passed / 2 failed),
+> and the file restores clean. So the tests genuinely pin the FK action rather
+> than passing alongside it. `cargo test -p oz-core memo` 39/39 at `f5d6482f`.
+>
+> This closes the highest-severity finding of the assist passes: raised as a
+> schema observation on `7fed26cc` (round 5), traced to a reachable data-loss
+> path and the CUST-11 precedent (rounds 10 and 13), fixed and tested (round
+> 17), now committed and mutation-verified (round 19).
+
+Found in the round-10 assist pass while checking whether Phase 3's
+multi-location Memo item is blocked by the new schema. It is not (note at the
+end) — but that check surfaced something that is.
+
+**The rule.** `20260909_memos.sql:18`:
+
+    location_id  TEXT REFERENCES locations(id) ON DELETE CASCADE
+
+Enumerating every FK in the schema pointing at `locations`/`store_profiles`
+(the rename means both names matter): **9 total — 5 `ON DELETE SET NULL`, 3
+default `NO ACTION`, exactly 1 `CASCADE`.** This one. Every other table that
+can name a Location either *detaches* the record when the Location goes away or
+*blocks* the deletion. `memos` is the only one that destroys it.
+
+**Why that is a problem, not a style preference.** The delete path is live and
+user-reachable:
+
+    ui/src/api/locations.ts:71   loggedInvoke('delete_location_profile_scoped')
+      → commands/locations.rs:258            (registered at lib.rs:917)
+        → db/locations.rs:198                DELETE FROM locations WHERE id = ?1
+
+`delete_location_profile` guards exactly one thing — `is_primary` — and checks
+nothing about dependents. So deleting a non-primary Location silently deletes
+every Location Memo scoped to it, **their `memo_revisions` rows** (which exist
+precisely because "prior revisions are never mutated" and *are* the audit
+trail), and **their `memo_recipients` rows** (the delivery/acknowledgement
+record).
+
+That contradicts this file's own promise: *"stopped and expired Memos remain
+archived for 30 days before deletion or anonymization."* A Location delete
+bypasses the window entirely, and because the erased rows are the record,
+nothing testifies the Memo ever existed. No warning, no audit entry naming the
+erasure.
+
+**Same class, second instance.** `memo_recipients.terminal_id` also cascades
+(`20260909_memos.sql:71`) and `db/terminals.rs:147` hard-deletes. Deleting a
+terminal erases its delivery history — the evidence behind "delivery is
+confirmed when the target terminal reports receipt".
+
+**How it happened.** `delete_location_profile` predates Memos by many releases
+and could not guard a table that did not exist. `CASCADE` is what a child-table
+FK usually wants; here the parent has an established delete path whose semantics
+were settled before Memos arrived.
+
+### Round-14 correction and strengthening
+
+Two things found later change the shape of the above, one in each direction.
+
+**My reachability claim was overstated.** I wrote as though deleting a
+non-primary Location always cascade-destroys Memos. It does not: three of the
+nine location FKs use the default `NO ACTION`, so with FK enforcement on a
+Location delete is **already blocked** whenever the Location has
+
+- a terminal bound to it (`terminals.bound_store_id`, `20260813_init.sql:936`),
+- a user access grant (`user_store_access.store_id`, `:948`), or
+- a workspace instance (`workspace_instances.store_id`, `:986`).
+
+The cascade needs those absent. It is still reachable, by a specific but
+entirely ordinary sequence:
+
+1. bind terminals to Location L and publish Location Memos, so recipients and
+   revisions accumulate;
+2. `clear_terminal_binding` on each — IPC-exposed at
+   `commands/terminals.rs:796`, and it sets `bound_location_id = NULL`
+   (`db/terminals.rs:227`) rather than deleting the terminal, so the blocking FK
+   stops applying while the memo history stays behind;
+3. delete Location L. Nothing blocks — creating a Location inserts no
+   `user_store_access` or `workspace_instances` rows (verified: no such INSERT
+   in `db/locations.rs`) — and the CASCADE erases the Memos with their audit
+   trail.
+
+Narrower than I said, but not theoretical, and every step is a normal admin
+action.
+
+**The normative case is much stronger than "inconsistent with 9 FKs".** The
+repo already has a *named, tested policy* for this exact problem:
+`delete_customer_scoped_is_blocked_by_loyalty_and_sales_references`
+(`apps/desktop-client/src/commands/customers_tests.rs:683`, **CUST-11**) —
+"a customer referenced by a loyalty account or sales rows must NOT be silently
+deleted — the FK guard (`foreign_keys = ON`) rejects the delete so no orphaned
+child rows can be left behind." Its mechanism is `REFERENCES customers(id)`
+with no ON DELETE clause (`20260813_init.sql:302,615`), i.e. `NO ACTION`.
+
+So this is not really a three-way judgment call. The codebase has already
+answered "should a parent delete be blocked rather than silently destroy
+dependents?" with *yes, and a test enforces it* — for customers. `memos` chose
+the opposite.
+
+**And the CASCADE is live, not inert.** Worth stating explicitly, because SQLite
+silently disables FK enforcement by default and that alone would have made this
+whole finding moot: `PRAGMA foreign_keys = ON` is set on every connection path —
+`desktop-client/src/state.rs:207`, `desktop-client/src/local_api.rs:149`,
+`tablet-client/src/state.rs:112`, `cloud-server/src/db.rs:132,142`. The cascade
+fires.
+
+**Options — none chosen, this is the owner's call:**
+
+1. `SET NULL`, matching the 5 precedents. But an orphaned Location Memo loses
+   its audience and would need a guard so it does not silently start displaying
+   org-wide — wrong in a different way.
+2. `RESTRICT` / default `NO ACTION`, matching the 3 others. Deleting a Location
+   that has Memos fails with a clear error. Consistent with "the primary
+   location cannot be deleted" already being a blocking guard in the same
+   function.
+3. Keep CASCADE and amend the spec to state that Location Memos are erased with
+   their Location. Honest, but it makes the 30-day retention promise have an
+   exception triggered by an ordinary admin action.
+
+Option 2 is the only one that cannot lose data by accident.
+
+**Timing matters.** No Location Memos exist in the wild yet — the store landed
+today and the UI is being written now. Changing the FK is a fresh-migration edit
+today, and a backfill-plus-recovery conversation next month.
+
+**The Phase 3 question, answered.** Multi-location Memos
+(`todo-global-saas-3.md:48-50`) are *not* blocked by this schema. Publish fans
+out into `memo_recipients` rows and `list_active_for_terminal` reads from those
+rows — never from `location_id` — so display, acknowledgement, expiry and the
+tenant filters are already Location-agnostic. Multi-location targeting touches
+exactly three things: the column (→ a `memo_locations` join table), the one
+fan-out query (`WHERE bound_location_id = ?1` → `IN (...)`), and the authoring
+UI. Worth recording in the Phase 3 item so it is not estimated as a rewrite.

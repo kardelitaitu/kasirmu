@@ -18,7 +18,6 @@
 /website/.astro/
 .wrangler/
 lighthouse*
-todo*
 # Ad-hoc watch-mode Vitest log written at the repo root by agents running the
 # UI suite. No repo tooling produces or reads it, it reappears on every watch
 # run, and it reached 1.3 MB in one sitting — close enough to a broad `git add`
