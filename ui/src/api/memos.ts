@@ -68,3 +68,42 @@ export const listActiveMemosScoped = (sessionToken: string): Promise<ActiveMemos
  */
 export const acknowledgeMemoScoped = (sessionToken: string, memoId: string): Promise<void> =>
   loggedInvoke<void>('acknowledge_memo_scoped', { sessionToken, memoId });
+
+/** Arguments for creating a memo draft (matches `CreateMemoArgs`). */
+export interface CreateMemoArgs {
+  /** `null`/omitted ⇒ Organization Memo; a location id ⇒ Location Memo. */
+  locationId?: string | null;
+  title: string;
+  body: string;
+  /** Display duration; defaults to `24h` when omitted. */
+  duration?: MemoDuration;
+}
+
+/**
+ * Create a memo draft as the authenticated author. Requires `memo:write`
+ * (scoped — ADR #7).
+ */
+export const createMemoScoped = (
+  sessionToken: string,
+  args: CreateMemoArgs,
+): Promise<Memo> =>
+  loggedInvoke<Memo>('create_memo_scoped', {
+    sessionToken,
+    args: { ...args, locationId: args.locationId ?? null },
+  });
+
+/**
+ * Publish a draft memo. Requires `memo:write` (scoped — ADR #7). Publishing
+ * stamps the expiry, snapshots immutable revision 1, and fans out one pending
+ * recipient per target terminal.
+ */
+export const publishMemoScoped = (sessionToken: string, memoId: string): Promise<Memo> =>
+  loggedInvoke<Memo>('publish_memo_scoped', { sessionToken, memoId });
+
+/**
+ * List every memo authored by the session user, newest first — the
+ * management read behind the authoring screen (matches
+ * `list_memos_authored_by`). Requires `memo:write` (scoped — ADR #7).
+ */
+export const listAuthoredMemosScoped = (sessionToken: string): Promise<Memo[]> =>
+  loggedInvoke<Memo[]>('list_authored_memos_scoped', { sessionToken });

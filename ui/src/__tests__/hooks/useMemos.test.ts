@@ -175,7 +175,12 @@ describe('useMemos', () => {
     await act(async () => {
       await result.current.refresh();
     });
-    await waitFor(() => expect(result.current.error).toBe('ipc down'));
+    // The raw backend text never reaches the error field (ERR-10): the hook
+    // maps through plainErrorMessage, so a generic Error yields the shared
+    // user-safe fallback copy.
+    await waitFor(() =>
+      expect(result.current.error).toBe('Something went wrong. Please try again.'),
+    );
     // Prior memos retained (error path does not clear the list).
     expect(result.current.memos.map((m) => m.memo.id)).toEqual(['m1']);
   });

@@ -231,6 +231,26 @@ pub async fn acknowledge_memo_scoped(
     Ok(())
 }
 
+/// List every memo authored by the session user, newest first — the
+/// management read behind the authoring screen. Requires `memo:write`; the
+/// store deliberately filters on authorship rather than org-wide authority
+/// (a "manage all Memos" view waits for Phase 1 scoped authorization).
+#[tauri::command]
+pub async fn list_authored_memos_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<MemoDto>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::MEMO_WRITE).await?;
+    let conn = state.db.lock().await;
+    let store = Store::new(&conn);
+    Ok(store
+        .list_memos_authored_by(DEFAULT_TENANT_ID, &session.user_id)?
+        .into_iter()
+        .map(MemoDto::from)
+        .collect())
+}
+
 #[cfg(test)]
 #[path = "memo_tests.rs"]
 mod tests;

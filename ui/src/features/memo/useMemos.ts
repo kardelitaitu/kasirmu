@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { plainErrorMessage } from '@/utils/app-error';
 import {
   acknowledgeMemoScoped,
   listActiveMemosScoped,
@@ -80,7 +81,9 @@ export function useMemos(options: UseMemosOptions = {}): UseMemosResult {
       setCadence(result.cadence);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed to load memos');
+      // Non-Fluent hook: route through the shared user-safe mapper (ERR-05/10)
+      // — raw backend text never reaches the exposed error field.
+      setError(plainErrorMessage(e));
     } finally {
       setLoading(false);
     }

@@ -170,6 +170,42 @@ memo-banner-acknowledge = Konfirmasi
 memo-banner-acknowledge-aria = Konfirmasi memo ini
 memo-banner-dismiss-aria = Tutup memo
 
+# Memos (authoring)
+memos-title = Memo
+memos-refresh = Segarkan
+memos-new-heading = Memo baru
+memos-label-title = Judul
+memos-placeholder-title = mis. tutup laci pukul 22.00
+memos-label-body = Pesan
+memos-placeholder-body = Tulis pesan yang akan dilihat staf…
+memos-label-scope = Penerima
+memos-scope-org = Organisasi
+memos-label-duration = Durasi
+memos-duration-12h = 12 jam
+memos-duration-24h = 24 jam
+memos-duration-3d = 3 hari
+memos-duration-7d = 7 hari
+memos-duration-30d = 30 hari
+memos-create = Buat draf
+memos-publish = Terbitkan
+memos-col-title = Judul
+memos-col-scope = Penerima
+memos-col-status = Status
+memos-col-duration = Durasi
+memos-col-revision = Revisi
+memos-col-created = Dibuat
+memos-col-actions = Tindakan
+memos-status-draft = Draf
+memos-status-published = Terbit
+memos-status-expired = Kedaluwarsa
+memos-status-stopped = Dihentikan
+memos-status-archived = Arsip
+memos-table-aria = Daftar memo
+memos-empty = Belum ada memo. Buat memo pertama Anda dengan formulir di atas.
+memos-error-load = Gagal memuat memo
+memos-error-action = Tindakan memo gagal. Silakan coba lagi.
+memos-retry = Coba lagi
+
 # Accessibility
 a11y-skip-to-content = Lewati ke konten utama
 # Shared right-click menu (see shared.ftl).
@@ -205,6 +241,7 @@ nav-locations = Lokasi
 nav-features = Fitur
 nav-data = Data
 nav-audit-log = Log Audit
+nav-memos = Memo
 nav-offline-queue = Antrian Offline
 nav-shifts = Shift
 nav-bundles = Bundel

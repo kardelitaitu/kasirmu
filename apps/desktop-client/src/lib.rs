@@ -942,6 +942,7 @@ pub fn run() {
             commands::memo::publish_memo_scoped,
             commands::memo::list_active_memos_scoped,
             commands::memo::acknowledge_memo_scoped,
+            commands::memo::list_authored_memos_scoped,
             commands::locations::list_locations_scoped,
             commands::locations::get_location_profile_scoped,
             commands::locations::get_primary_location_scoped,

@@ -1,0 +1,276 @@
+/* ── Memos (authoring) ─────────────────────────────────────── */
+
+.memos {
+  max-width: 75rem;
+  margin: 0 auto;
+  padding: var(--space-6);
+  font-family: var(--font-sans);
+}
+
+.memos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.memos-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg-primary);
+  margin: 0;
+}
+
+/* ── Create form ─────────────────────────────────────────── */
+
+.memos-form-card {
+  margin-bottom: var(--space-6);
+}
+
+.memos-form-heading {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-primary);
+  margin: 0 0 var(--space-4);
+}
+
+.memos-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.memos-field--full {
+  grid-column: 1 / -1;
+}
+
+.memos-label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.memos-input,
+.memos-select,
+.memos-textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  color: var(--color-fg-primary);
+  font-size: var(--text-md);
+  font-family: inherit;
+  transition: border-color var(--duration-150) var(--ease-out);
+}
+
+.memos-textarea {
+  resize: vertical;
+  min-height: 6rem;
+}
+
+.memos-input:focus-visible,
+.memos-select:focus-visible,
+.memos-textarea:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent-dim);
+}
+
+.memos-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+/* ── Action error (create/publish) — stays visible while rows are
+   rendered, unlike the list-load error state ─────────────────── */
+
+.memos-action-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.memos-action-error-icon {
+  flex: 0 0 auto;
+}
+
+/* ── Empty / load-error states ────────────────────────────── */
+
+.memos-state {
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+  color: var(--color-fg-tertiary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.memos-state p {
+  margin: 0 0 var(--space-4);
+  color: var(--color-danger);
+}
+
+/* ── Table ────────────────────────────────────────────────── */
+
+.memos-table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-bg-primary);
+}
+
+.memos-loading-skeleton .memos-table-wrap {
+  pointer-events: none;
+}
+
+.memos-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.memos-table thead {
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.memos-table th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.memos-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-fg-primary);
+  vertical-align: middle;
+}
+
+.memos-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.memos-table tbody tr:hover {
+  background: var(--color-bg-secondary);
+  transition: background var(--duration-100) var(--ease-out);
+}
+
+/* ── Cells ────────────────────────────────────────────────── */
+
+.memos-cell-title {
+  max-width: 22rem;
+}
+
+.memos-memo-title {
+  display: block;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-primary);
+}
+
+.memos-body-preview {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+  margin-top: 0.0625rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memos-cell-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+}
+
+.memos-cell-date {
+  white-space: nowrap;
+  color: var(--color-fg-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.memos-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-accent-dim);
+  color: var(--color-accent);
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memos-scope-chip--org {
+  background: var(--color-bg-secondary);
+  color: var(--color-fg-secondary);
+  border: 1px solid var(--color-border);
+}
+
+/* ── Status badges ────────────────────────────────────────── */
+
+.memos-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: capitalize;
+}
+
+.memos-badge--draft {
+  background: var(--color-accent-dim);
+  color: var(--color-accent);
+}
+
+.memos-badge--published {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.memos-badge--stopped {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.memos-badge--muted {
+  background: var(--color-bg-secondary);
+  color: var(--color-fg-tertiary);
+}
+
+.memos-actions-none {
+  color: var(--color-fg-tertiary);
+}
+
+/* ── Narrow screens ───────────────────────────────────────── */
+
+@media (max-width: 48rem) {
+  .memos-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .memos-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+}

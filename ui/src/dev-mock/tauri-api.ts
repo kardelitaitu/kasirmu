@@ -380,24 +380,28 @@ function updateMockLegalEntity(args: unknown): typeof MOCK_LEGAL_ENTITY | null {
   return { ...updated };
 }
 
+/** A memo as the dev mock serves it. Mirrors `ui/src/api/memos.ts` `Memo`
+ *  (camelCase wire shape). */
+interface MockMemo {
+  id: string;
+  tenantId: string;
+  locationId: string | null;
+  authorUserId: string;
+  authorRole: string;
+  title: string;
+  body: string;
+  status: string;
+  duration: string;
+  revision: number;
+  publishedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
 /** A memo plus this terminal's delivery state, as the dev mock serves it.
- *  Mirrors `ui/src/api/memos.ts` `ActiveMemo` (camelCase wire shape). */
+ *  Mirrors `ui/src/api/memos.ts` `ActiveMemo`. */
 interface MockActiveMemo {
-  memo: {
-    id: string;
-    tenantId: string;
-    locationId: string | null;
-    authorUserId: string;
-    authorRole: string;
-    title: string;
-    body: string;
-    status: string;
-    duration: string;
-    revision: number;
-    publishedAt: string | null;
-    expiresAt: string | null;
-    createdAt: string;
-  };
+  memo: MockMemo;
   deliveryStatus: string;
 }
 
@@ -452,14 +456,15 @@ const MEMO_CADENCE = { baseIntervalSecs: 900, kdsIntervalSecs: 2 * 900 };
 
 /** List the active memos served by the dev mock (Location stacked above
  *  Organization, matching the real read path's ordering) plus the display
- *  cadence, matching the real command's `MemoDisplayDto` envelope. */
+ *  cadence, matching the real command's `MemoDisplayDto` envelope. Only
+ *  published memos reach terminals — drafts stay on the authoring side. */
 function listMockActiveMemos(): {
   memos: MockActiveMemo[];
   cadence: { baseIntervalSecs: number; kdsIntervalSecs: number };
 } {
   return {
     memos: mockMemos
-      .slice()
+      .filter((m) => m.memo.status === 'published')
       .sort((a, b) => Number(a.memo.locationId === null) - Number(b.memo.locationId === null))
       .map((m) => ({ ...m, memo: { ...m.memo } })),
     cadence: { ...MEMO_CADENCE },
@@ -476,6 +481,78 @@ function acknowledgeMockMemo(args: unknown): null {
     );
   }
   return null;
+}
+
+/** Display-duration to wall-clock offset, mirroring `MemoDuration`. */
+const MEMO_DURATION_MS: Record<string, number> = {
+  '12h': 12 * 3_600_000,
+  '24h': 24 * 3_600_000,
+  '3d': 72 * 3_600_000,
+  '7d': 168 * 3_600_000,
+  '30d': 720 * 3_600_000,
+};
+
+/** Create a memo draft in the session-local mock (dev preview parity with
+ *  the real `create_memo_scoped` command). The draft is invisible to
+ *  terminals until published. */
+function createMockMemo(args: unknown): MockMemo {
+  const payload = unwrapArgs<{
+    locationId?: string | null;
+    title?: string;
+    body?: string;
+    duration?: string;
+  }>(args);
+  const memo: MockMemo = {
+    id: `memo-${Date.now()}`,
+    tenantId: 'default',
+    locationId: payload.locationId ?? null,
+    authorUserId: 'user-1',
+    authorRole: 'role-manager',
+    title: payload.title ?? '(untitled)',
+    body: payload.body ?? '',
+    status: 'draft',
+    duration: payload.duration ?? '24h',
+    revision: 0,
+    publishedAt: null,
+    expiresAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  mockMemos.push({ memo, deliveryStatus: 'pending' });
+  return { ...memo };
+}
+
+/** Publish a draft in the session-local mock: stamps publication/expiry and
+ *  revision 1, matching the real `publish_memo_scoped` command. Unknown ids
+ *  reject (the real command errors). */
+function publishMockMemo(args: unknown): MockMemo {
+  const { memoId } = unwrapArgs<{ memoId?: string }>(args);
+  const found = mockMemos.find((m) => m.memo.id === memoId);
+  if (!found) {
+    throw new Error(`memo not found: ${memoId}`);
+  }
+  if (found.memo.status !== 'draft') {
+    throw new Error(`memo ${memoId} is not a draft`);
+  }
+  const now = Date.now();
+  const expiresMs = MEMO_DURATION_MS[found.memo.duration] ?? 24 * 3_600_000;
+  found.memo = {
+    ...found.memo,
+    status: 'published',
+    revision: 1,
+    publishedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + expiresMs).toISOString(),
+  };
+  return { ...found.memo };
+}
+
+/** List every memo the session user authored, newest first — the read behind
+ *  the authoring screen (matches `list_authored_memos_scoped`). The mock
+ *  serves the whole list; single-user previews cannot exercise per-author
+ *  filtering. */
+function listMockAuthoredMemos(): MockMemo[] {
+  return mockMemos
+    .map((m) => ({ ...m.memo }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 /** Live floor-plan snapshot for the analytics occupancy card: 5 of 12
@@ -1865,6 +1942,12 @@ const handlers: Record<string, (args: unknown) => unknown> = {
 
   'list_active_memos_scoped': listMockActiveMemos,
   'acknowledge_memo_scoped': acknowledgeMockMemo,
+
+  // Memo authoring (desktop management surface). The dev mock mirrors the
+  // real commands: drafts are invisible to terminals until published.
+  'create_memo_scoped': createMockMemo,
+  'publish_memo_scoped': publishMockMemo,
+  'list_authored_memos_scoped': listMockAuthoredMemos,
 
   // ═════════════════════════════════════════════════════════
   // WORKSPACES (ADR #4 / #7)
