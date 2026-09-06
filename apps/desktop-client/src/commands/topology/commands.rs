@@ -34,7 +34,7 @@ pub async fn can_save_topology(
     {
         let global_db = state.db.lock().await;
         let global_store = Store::new(&global_db);
-        require_permission_for_user(&global_store, &session.user_id, permissions::STAFF_UPDATE)?;
+        require_permission_for_user(&global_store, &session.user_id, permissions::TOPOLOGY_WRITE)?;
     }
     Ok(true)
 }
@@ -65,7 +65,7 @@ async fn authorize_topology_write(
     {
         let global_db = state.db.lock().await;
         let global_store = Store::new(&global_db);
-        require_permission_for_user(&global_store, &session.user_id, permissions::STAFF_UPDATE)?;
+        require_permission_for_user(&global_store, &session.user_id, permissions::TOPOLOGY_WRITE)?;
     }
     topology_setting_key(branch_id)
 }
@@ -317,7 +317,7 @@ pub async fn apply_topology_diff(
         match require_permission_for_user(
             &global_store,
             &session.user_id,
-            permissions::STAFF_UPDATE,
+            permissions::TOPOLOGY_WRITE,
         ) {
             Ok(()) => {
                 tracing::info!(user_id = %session.user_id, "topology Apply: RBAC check PASSED")

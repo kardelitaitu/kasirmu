@@ -1404,25 +1404,19 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
 // clippy's await_holding_lock cannot see through the explicit drop and
 // flags a false positive. Allowed with the drop in place.
 #[allow(clippy::await_holding_lock)]
-async fn can_save_topology_probe_gates_on_staff_update_permission() {
-    // Round 145: the capability probe the editor uses to gate the Save
+async fn can_save_topology_probe_gates_on_topology_write_permission() {
+    // Phase 1 §I: the capability probe the editor uses to gate the Save
     // toolbar (TopologyScreen -> canSaveTopology -> can_save_topology)
     // must agree with the Apply gate: both resolve the session against
-    // the GLOBAL identity DB and require STAFF_UPDATE. A divergence
-    // (probe allows, Apply denies) would let the UI offer a Save that
-    // always fails; the reverse would hide editing from a manager who
-    // can apply. Until this test the command was the only registered
-    // topology command with no direct Rust coverage — the TS side is
-    // pinned by the api-ipc contract test, the Rust side was not.
+    // the GLOBAL identity DB and require TOPOLOGY_WRITE (dedicated key
+    // replacing staff:update, admin/owner only).
     let store_id = "store-cap";
     let dir = tempdir().unwrap();
     let global = oz_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
-        // role-lite: narrow custom role without staff:* — the new
-        // role-staff preset grants staff:update, which would flip the
-        // denial below (0048 retirement sweep).
+        // role-lite: narrow custom role without topology:write.
         global
                 .execute_batch(
                     "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
@@ -1431,6 +1425,8 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
                 .unwrap();
         for (id, username, role_id) in [
             ("user-owner", "owner", "role-owner"),
+            ("user-admin", "admin", "role-admin"),
+            ("user-manager", "manager", "role-manager"),
             ("user-cashier", "cashier", "role-lite"),
         ] {
             global
@@ -1454,6 +1450,8 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
     state.db_manager =
         platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
     let owner_token = "token-owner".to_string();
+    let admin_token = "token-admin".to_string();
+    let manager_token = "token-manager".to_string();
     let cashier_token = "token-cashier".to_string();
     let mut sessions = state.session_store.write().unwrap();
     sessions.insert(
@@ -1470,13 +1468,39 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
         ),
     );
     sessions.insert(
+        admin_token.clone(),
+        SessionContext::new(
+            "user-admin".into(),
+            "role-admin".into(),
+            "terminal-2".into(),
+            store_id.into(),
+            "instance-2".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    sessions.insert(
+        manager_token.clone(),
+        SessionContext::new(
+            "user-manager".into(),
+            "role-manager".into(),
+            "terminal-3".into(),
+            store_id.into(),
+            "instance-3".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    sessions.insert(
         cashier_token.clone(),
         SessionContext::new(
             "user-cashier".into(),
             "role-lite".into(),
-            "terminal-2".into(),
+            "terminal-4".into(),
             store_id.into(),
-            "instance-2".into(),
+            "instance-4".into(),
             "pos".into(),
             None,
             0,
@@ -1491,6 +1515,15 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
     assert!(
         can_save_topology(owner_token, app.state()).await.unwrap(),
         "an owner session must be allowed to save topology"
+    );
+    assert!(
+        can_save_topology(admin_token, app.state()).await.unwrap(),
+        "an admin session must be allowed to save topology"
+    );
+    let manager_denied = can_save_topology(manager_token, app.state()).await;
+    assert!(
+        matches!(manager_denied, Err(AppError::PermissionDenied(_))),
+        "a manager session (has staff:update, lacks topology:write) must be denied by the capability probe, got {manager_denied:?}"
     );
     let denied = can_save_topology(cashier_token, app.state()).await;
     assert!(
