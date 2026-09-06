@@ -4,17 +4,20 @@ import {
   acknowledgeMemoScoped,
   listActiveMemosScoped,
   type ActiveMemo,
+  type MemoCadence,
 } from '@/api/memos';
 
 /**
- * Poll cadence for the memo display surface. Mirrors
- * `oz_core::memo::NOTIFICATION_BASE_INTERVAL_SECS` (900s = 15 min) — the
- * backend's notification cycle. Memos change rarely, so a long poll is enough
- * to pick up newly-published and expired memos without hammering the IPC
- * boundary. Kept in sync by comment, not import, because the Rust constant is
- * not exposed over IPC.
+ * Options for the memo display surface.
+ *
+ * `kds` selects the server-issued doubled interval (KDS kitchen traffic
+ * cannot afford the base-interrupt cadence). The multiplier itself lives in
+ * `oz_core::memo::KDS_INTERVAL_MULTIPLIER` and arrives over IPC — the UI
+ * never hardcodes either interval.
  */
-export const MEMO_POLL_INTERVAL_MS = 900_000;
+export interface UseMemosOptions {
+  kds?: boolean;
+}
 
 export interface UseMemosResult {
   /** Memos this terminal should display: not acknowledged, not dismissed. */
@@ -33,17 +36,24 @@ export interface UseMemosResult {
 
 /**
  * Backing state for the Memo display surface (Phase 2 P1). Fetches the memos
- * addressed to the caller's terminal, refreshes on the notification cadence,
+ * addressed to the caller's terminal, refreshes on the server-issued cadence,
  * and exposes acknowledge/dismiss.
+ *
+ * The poll interval is the one the backend serves with the first response
+ * (`baseIntervalSecs`, or `kdsIntervalSecs` for KDS surfaces) — no interval
+ * literal lives in the UI, so a backend cadence change propagates without a
+ * front-end edit and cannot drift.
  *
  * Acknowledge is durable (writes the recipient row, so the memo stops showing
  * on later polls); dismiss is a local, session-only hide. A memo already
  * acknowledged by this terminal is filtered out of `memos` so the banner never
  * nags about something the staff has confirmed reading.
  */
-export function useMemos(): UseMemosResult {
+export function useMemos(options: UseMemosOptions = {}): UseMemosResult {
+  const { kds = false } = options;
   const { sessionToken } = useWorkspace();
   const [memos, setMemos] = useState<ActiveMemo[]>([]);
+  const [cadence, setCadence] = useState<MemoCadence | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(
@@ -66,7 +76,8 @@ export function useMemos(): UseMemosResult {
     setLoading(true);
     try {
       const result = await listActiveMemosScoped(token);
-      setMemos(result);
+      setMemos(result.memos);
+      setCadence(result.cadence);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load memos');
@@ -75,12 +86,23 @@ export function useMemos(): UseMemosResult {
     }
   }, []);
 
+  // Initial fetch. The poll interval is deliberately NOT scheduled here —
+  // it starts only once the server has told us the cadence (see below), so
+  // there is no client-side fallback literal to drift from the backend.
   useEffect(() => {
     void load();
     if (!sessionToken) return;
-    const id = setInterval(() => void load(), MEMO_POLL_INTERVAL_MS);
-    return () => clearInterval(id);
   }, [load, sessionToken]);
+
+  // Poll on the server-issued interval, choosing the KDS value when the
+  // surface is KDS. Rebuilt when the cadence changes so a backend change
+  // propagates after the next response.
+  useEffect(() => {
+    if (!sessionToken || !cadence) return;
+    const secs = kds ? cadence.kdsIntervalSecs : cadence.baseIntervalSecs;
+    const id = setInterval(() => void load(), secs * 1000);
+    return () => clearInterval(id);
+  }, [load, sessionToken, cadence, kds]);
 
   const acknowledge = useCallback((memoId: string) => {
     // Optimistically drop it from view; the durable write follows.

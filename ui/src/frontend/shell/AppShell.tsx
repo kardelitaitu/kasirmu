@@ -427,7 +427,7 @@ export default function AppShell() {
   if (isKdsKiosk) {
     return (
       <>
-        <MemoBanner />
+        <MemoBanner kds />
         <div className="workspace-fullscreen">
           <div className="kds-workspace">
             <LazyBoundary>
@@ -461,7 +461,7 @@ export default function AppShell() {
     if (currentRoute === 'kds') {
       return (
         <>
-          <MemoBanner />
+          <MemoBanner kds />
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -502,7 +502,7 @@ export default function AppShell() {
     if (currentRoute === 'kds') {
       return (
         <>
-          <MemoBanner />
+          <MemoBanner kds />
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -541,7 +541,7 @@ export default function AppShell() {
   if (activeWorkspace === 'kds') {
     return (
       <>
-        <MemoBanner />
+        <MemoBanner kds />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <KdsScreen />

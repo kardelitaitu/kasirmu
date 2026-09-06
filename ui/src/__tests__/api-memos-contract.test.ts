@@ -20,7 +20,7 @@ describe('memos.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
 
   it('listActiveMemosScoped → list_active_memos_scoped with sessionToken', async () => {
-    mockInvoke.mockResolvedValue([]);
+    mockInvoke.mockResolvedValue({ memos: [], cadence: { baseIntervalSecs: 900, kdsIntervalSecs: 1800 } });
     await listActiveMemosScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('list_active_memos_scoped', { sessionToken: 'tok' });
   });

@@ -33,6 +33,29 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
 }
 
 #[test]
+fn memo_display_dto_carries_server_issued_cadence() {
+    // The display read serves the cadence alongside the memos so the UI never
+    // hardcodes the intervals: the KDS value is derived as 2 × the base in
+    // `oz_core::memo`, and this test pins both the envelope shape and the 2×
+    // relationship across the wire.
+    let dto = MemoDisplayDto {
+        memos: vec![],
+        cadence: MemoCadenceDto {
+            base_interval_secs: oz_core::memo::NOTIFICATION_BASE_INTERVAL_SECS,
+            kds_interval_secs: oz_core::memo::kds_notification_interval_secs(),
+        },
+    };
+    let json = serde_json::to_value(&dto).unwrap();
+    assert_eq!(json["cadence"]["baseIntervalSecs"], 900);
+    assert_eq!(json["cadence"]["kdsIntervalSecs"], 1_800);
+    assert_eq!(
+        json["cadence"]["kdsIntervalSecs"].as_i64().unwrap(),
+        2 * json["cadence"]["baseIntervalSecs"].as_i64().unwrap()
+    );
+    assert!(json["memos"].is_array());
+}
+
+#[test]
 fn memo_dto_org_scope_serializes_location_id_null() {
     let memo = Memo {
         id: "m-2".into(),

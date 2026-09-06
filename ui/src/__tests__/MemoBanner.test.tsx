@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import MemoBanner from '@/features/memo/MemoBanner';
@@ -77,6 +77,17 @@ beforeEach(() => {
 });
 
 describe('MemoBanner', () => {
+  it('forwards the kds surface flag to useMemos', () => {
+    // The seam the Phase 2 journal flagged as missing: the surface decides
+    // which server-issued interval the poll runs on, so the banner must pass
+    // the flag through rather than every surface polling at the base rate.
+    const first = renderWithL10n(<MemoBanner kds />);
+    expect(vi.mocked(useMemos)).toHaveBeenCalledWith({ kds: true });
+    first.unmount();
+    renderWithL10n(<MemoBanner />);
+    expect(vi.mocked(useMemos)).toHaveBeenLastCalledWith({ kds: false });
+  });
+
   it('renders the top memo title and body', () => {
     renderWithL10n(<MemoBanner />);
     expect(screen.getByText('Title m1')).toBeInTheDocument();

@@ -176,7 +176,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'kds') {
     return (
       <>
-        <MemoBanner />
+        <MemoBanner kds />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <KdsScreen />

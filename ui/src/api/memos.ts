@@ -34,12 +34,33 @@ export interface ActiveMemo {
 }
 
 /**
- * List the memos the caller's terminal should display, Location Memos stacked
- * above Organization Memos. Authenticated-only — the recipient set is already
- * terminal-scoped by the backend fan-out (scoped — ADR #7).
+ * Display cadence served by the backend with the memo list (matches
+ * `MemoCadenceDto`). The server is the single source of truth for the
+ * notification intervals — `oz_core::memo` derives the KDS value as 2 × the
+ * base — and the UI schedules its polls from these values instead of
+ * hardcoding the literals.
  */
-export const listActiveMemosScoped = (sessionToken: string): Promise<ActiveMemo[]> =>
-  loggedInvoke<ActiveMemo[]>('list_active_memos_scoped', { sessionToken });
+export interface MemoCadence {
+  /** Base notification interval in seconds (all non-KDS surfaces). */
+  baseIntervalSecs: number;
+  /** KDS interval in seconds (2 × base, derived server-side). */
+  kdsIntervalSecs: number;
+}
+
+/** Response envelope of `list_active_memos_scoped` (matches `MemoDisplayDto`). */
+export interface ActiveMemosResponse {
+  memos: ActiveMemo[];
+  cadence: MemoCadence;
+}
+
+/**
+ * List the memos the caller's terminal should display, Location Memos stacked
+ * above Organization Memos, plus the server-issued poll cadence.
+ * Authenticated-only — the recipient set is already terminal-scoped by the
+ * backend fan-out (scoped — ADR #7).
+ */
+export const listActiveMemosScoped = (sessionToken: string): Promise<ActiveMemosResponse> =>
+  loggedInvoke<ActiveMemosResponse>('list_active_memos_scoped', { sessionToken });
 
 /**
  * Acknowledge a memo on the caller's terminal. Authenticated-only (scoped —

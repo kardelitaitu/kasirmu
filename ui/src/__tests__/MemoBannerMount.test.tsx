@@ -198,12 +198,19 @@ const memo: ActiveMemo = {
   deliveryStatus: 'pending',
 };
 
+/** Response envelope of the real `list_active_memos_scoped` command:
+ *  memos plus the server-issued cadence (`MemoDisplayDto`). */
+const envelope = {
+  memos: [memo],
+  cadence: { baseIntervalSecs: 900, kdsIntervalSecs: 1800 },
+};
+
 beforeEach(() => {
   mockList.mockReset();
   // Seed BEFORE render: the shell mounts the banner synchronously and the
   // hook fires on mount — an unseeded mock returns undefined, which would
   // crash useMemos' re-render (setMemos(undefined)) and mask the assertion.
-  mockList.mockResolvedValue([memo]);
+  mockList.mockResolvedValue(envelope);
   mockTerminalProfile.mockReturnValue({
     profile: null,
     loading: false,

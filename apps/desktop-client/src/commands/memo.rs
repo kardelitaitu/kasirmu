@@ -18,7 +18,9 @@
 //!   to make deliberately, not a gap to paper over with an arbitrary rank map.
 
 use chrono::Utc;
-use oz_core::memo::{ActiveMemo, Memo, NewMemo};
+use oz_core::memo::{
+    ActiveMemo, Memo, NOTIFICATION_BASE_INTERVAL_SECS, NewMemo, kds_notification_interval_secs,
+};
 use oz_core::{Store, permissions};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -100,6 +102,30 @@ impl From<ActiveMemo> for ActiveMemoDto {
     }
 }
 
+/// Display cadence served with the memo list. The backend is the single
+/// source of truth for the notification intervals — the UI schedules its polls
+/// from these values and never duplicates the literals (the spec's "coded as
+/// 2× the shared base interval" lives in `oz_core::memo`, not in TypeScript).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoCadenceDto {
+    /// Base notification interval in seconds (all non-KDS surfaces).
+    pub base_interval_secs: i64,
+    /// KDS interval in seconds — derived as 2 × base, never tuned separately.
+    pub kds_interval_secs: i64,
+}
+
+/// Response envelope for the memo display read: the memos this terminal
+/// should display plus the cadence to poll them on.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoDisplayDto {
+    /// Memos this terminal should display (Location stacked above Organization).
+    pub memos: Vec<ActiveMemoDto>,
+    /// The server-issued poll cadence.
+    pub cadence: MemoCadenceDto,
+}
+
 /// Arguments for creating a memo draft.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,22 +186,30 @@ pub async fn publish_memo_scoped(
     ))
 }
 
-/// List the memos the caller's terminal should display, newest tier-stacked.
-/// Authenticated-only: the recipient set is already terminal-scoped.
+/// List the memos the caller's terminal should display, newest tier-stacked,
+/// plus the server-issued display cadence. Authenticated-only: the recipient
+/// set is already terminal-scoped.
 #[tauri::command]
 pub async fn list_active_memos_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Vec<ActiveMemoDto>, AppError> {
+) -> Result<MemoDisplayDto, AppError> {
     let session = state.resolve_session(&session_token)?;
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let conn = state.db.lock().await;
     let store = Store::new(&conn);
-    Ok(store
+    let memos = store
         .list_active_for_terminal(DEFAULT_TENANT_ID, &session.terminal_id, &now)?
         .into_iter()
         .map(ActiveMemoDto::from)
-        .collect())
+        .collect();
+    Ok(MemoDisplayDto {
+        memos,
+        cadence: MemoCadenceDto {
+            base_interval_secs: NOTIFICATION_BASE_INTERVAL_SECS,
+            kds_interval_secs: kds_notification_interval_secs(),
+        },
+    })
 }
 
 /// Acknowledge a memo on the caller's terminal. Authenticated-only.

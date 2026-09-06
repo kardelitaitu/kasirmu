@@ -18,9 +18,9 @@ import './MemoBanner.css';
  * Renders nothing when there are no active memos, no session, or the fetch is
  * still cold — it never occupies space when empty.
  */
-export default function MemoBanner() {
+export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   const { l10n } = useLocalization();
-  const { memos, acknowledge, dismiss } = useMemos();
+  const { memos, acknowledge, dismiss } = useMemos({ kds });
   const top = memos[0];
   const open = top !== undefined;
 

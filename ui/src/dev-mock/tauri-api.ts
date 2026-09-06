@@ -444,13 +444,26 @@ let mockMemos: MockActiveMemo[] = [
   },
 ];
 
+/** Cadence served with the memo list — mirrors `oz_core::memo`:
+ *  `NOTIFICATION_BASE_INTERVAL_SECS` (900s) and the derived
+ *  `kds_notification_interval_secs()` (2 × base). Expressed as base × 2 so
+ *  the multiplier intent survives a base change, exactly like the backend. */
+const MEMO_CADENCE = { baseIntervalSecs: 900, kdsIntervalSecs: 2 * 900 };
+
 /** List the active memos served by the dev mock (Location stacked above
- *  Organization, matching the real read path's ordering). */
-function listMockActiveMemos(): MockActiveMemo[] {
-  return mockMemos
-    .slice()
-    .sort((a, b) => Number(a.memo.locationId === null) - Number(b.memo.locationId === null))
-    .map((m) => ({ ...m, memo: { ...m.memo } }));
+ *  Organization, matching the real read path's ordering) plus the display
+ *  cadence, matching the real command's `MemoDisplayDto` envelope. */
+function listMockActiveMemos(): {
+  memos: MockActiveMemo[];
+  cadence: { baseIntervalSecs: number; kdsIntervalSecs: number };
+} {
+  return {
+    memos: mockMemos
+      .slice()
+      .sort((a, b) => Number(a.memo.locationId === null) - Number(b.memo.locationId === null))
+      .map((m) => ({ ...m, memo: { ...m.memo } })),
+    cadence: { ...MEMO_CADENCE },
+  };
 }
 
 /** Acknowledge a memo on the caller's terminal in the session-local mock.
