@@ -29,22 +29,32 @@ one selected location; v1 rule — multi-location targeting has since landed,
 - published content is immutable; corrections create a new revision;
 - the author picks a duration of 12h, 24h, 3d, 7d, or 30d; 24 hours is the
   default;
-- the author or any higher role may stop a published Memo before its duration
-  ends; stopping is a first-class state, distinct from natural expiry;
+- the author or a holder of the `memo:stop` permission may stop a published
+  Memo before its duration ends; stopping is a first-class state, distinct
+  from natural expiry; *(ruled 2026-09-07: option A2 — `memo:stop` granted to
+  the Owner and Admin presets, author short-circuit preserved, everything
+  else deny-by-default; fallback A1 reuse `memo:write`. Rationale in the
+  ruling section at the end of this file.)*
 - authoring, stopping, and archiving lock at `expiresAt` like other
   administrative features; Memos already active keep displaying until their
   duration ends (at most 30 days);
 - acknowledgement is optional by default, with a future per-Memo required flag;
 - the target terminal is read-only and may acknowledge receipt;
 - the author or a scoped admin/owner may archive a Memo;
-- drafts expire after 30 days without activity; stopped and expired Memos
-  remain archived for 30 days before deletion or anonymization;
+- stopped and expired Memos remain archived for 30 days before deletion or
+  anonymization *(ruled 2026-09-07: fixed 30-day window — the `archived` sweep
+  is unblocked)*; the draft-expiry clause this bullet used to carry was
+  dropped the same day — a draft is visible only to its author (`memo.rs:61`),
+  so a stale draft leaks nothing and no `Draft → Expired` arm is added;
 - active Memos display on the staff login screen and lock screen, plus a
   dismissible top-left notification every 15 minutes (30s per cycle; on KDS
   the interval doubles to 30 minutes — kitchen traffic cannot afford a
   15-minute interruption — and the cadence must be implemented as 2× the
   shared base interval, never a second independently-tuned constant);
-  when both types are active they stack with Location above Organization;
+  when both types are active they stack with Location above Organization
+  *(ruled 2026-09-07: "staff login screen" means once the staff PIN pad is
+  up — after authentication, via the existing session-scoped read; no
+  pre-auth Memo read will exist)*;
 - stopping or expiry removes the Memo from every surface immediately;
 - the notification's visual design is TBD — the working candidate is the
   tooltip treatment with a close button revealed on hover or first click, so
@@ -236,17 +246,22 @@ actual relationship mutation.
       lock screen, and a dismissible top-left notification every 15 minutes
       (30s per cycle; KDS doubles the interval to 30 min, coded as 2× the
       base interval); Location stacks above Organization.
-      — **core + desktop surface complete, three pieces still open (2026-09-07,
-      see the implementation journal at the end of this file):** schema, state
+      — **core + desktop surface complete; all six open decisions ruled
+      2026-09-07, so what remains is build work, not decisions** (schema, state
       machine, store, desktop authoring IPC + screen, banner mounts, and the
-      server-issued cadence all landed (`cf69ec3c` → `3fb745cf`). Open:
-      (a) the staff-login display surface (needs a session-free terminal-keyed
-      read = security ruling, §"The staff-login surface"); (b) early stop
-      (`stop_memo` IPC needs the role→rank ruling; `revise_memo` likewise has
-      no IPC owner); (c) tablet/KDS data path (the tablet `memos` table is
-      structurally empty until sync or a cloud read is chosen, §"The tablet's
-      Memo surface is structurally empty"). Offline delivery and the retention
-      sweep ride on the same deferred decisions.
+      server-issued cadence landed `cf69ec3c` → `3fb745cf`): (a) staff-login
+      surface = "once the PIN pad is up", no pre-auth read (§"The staff-login
+      surface"); (b) early stop = new `memo:stop` key, Owner/Admin presets,
+      fallback reuse `memo:write` (ruling section at the end of this file);
+      (c) tablet/KDS data path = cloud read via shared cloud-server Postgres
+      (§"The tablet's Memo surface"); (d) retention = fixed 30-day window,
+      the `archived` sweep is unblocked; (e) stale-draft expiry = rule
+      dropped; (f) `revise_memo` = corrections ruled in scope, plan step
+      below.
+- [ ] **Wire `revise_memo_scoped` (corrections).** The store path is fixed and
+      TOCTOU-guarded (`e7b47b83`); this slice is the desktop IPC — gated
+      `memo:write`, published-only, tenant-scoped — plus a revise control in
+      `MemosScreen`. Ruled in scope 2026-09-07 (§"Separate, smaller point").
 - [ ] **Add the Locations-to-Topology entry point.** Keep Locations
       status-oriented, but route location creation/details into the relevant
       scoped Topology Editor graph.
@@ -467,6 +482,8 @@ states" are per-recipient, not per-memo — conflating them is the trap):
 - Early stop allowed iff `actor == author_user_id` OR `role_rank(actor) >
   author_role` (author_role is the snapshot taken at publish, so a later role
   change can't retroactively lock the author out or grant a demoted user).
+  *(Ruled 2026-09-07: ranks never materialized — early stop is author OR
+  `memo:stop` holder; see the ruling section at the end of this file.)*
 - All writes require `memo:write`; reads are tenant-scoped + location-scoped.
 
 **Display cadence (spec-pinned constants, single source of truth):**
@@ -478,7 +495,11 @@ screen, lock screen, dismissible top-left notification.
 **Open decision to surface, not invent:** memo retention window — the spec says
 memos have "retention" but gives no schedule (unlike audit's tier ladder).
 Options: reuse the audit retention schedule, or a fixed window. Needs a ruling
-before the `archived` sweep is written.
+before the `archived` sweep is written. — **Ruled 2026-09-07: fixed 30-day
+window**, matching the promise the spec already makes ("stopped and expired
+Memos remain archived for 30 days before deletion or anonymization"). The
+`archived` sweep is unblocked; the exact stopped/expired → archived → deleted
+staging is the slice's design work.
 
 **A second open decision of the same kind, currently untracked:** stale-draft
 expiry. The rule is stated twice as settled — here ("drafts expire after 30
@@ -513,6 +534,12 @@ Options, none of them invented here:
 Worth ruling on before step (4) builds UI that has to render whichever answer
 wins. Unlike the retention window, nothing currently flags this as open, which
 is precisely how a decided-sounding spec line goes missing unnoticed.
+
+**Ruled 2026-09-07: option 4 — drop the rule.** A draft is visible only to its
+author (`memo.rs:61`), so an un-expired draft leaks nothing and the nuisance
+stays cosmetic. Both spec sentences are amended (§"Memo lifecycle" above and
+todo-global-saas-1.md's decisions list), `can_transition` gains no
+`Draft → Expired` arm, and no sweep touches drafts.
 
 **Build order when the window opens:** (1) migration + `init.pg.sql` regen +
 registry entry + column-type lint; (2) `oz-core` memo store + state machine
@@ -743,6 +770,13 @@ The third option is legitimate and may be what was already intended — but it
 should be written down as a decision rather than discovered by the next agent
 mid-implementation, which is how the Legal Entity IPC slice lost two days.
 
+**Ruled 2026-09-07: option 3.** The spec's "staff login screen" is amended to
+mean *once the staff PIN pad is up* — after authentication, where the existing
+session-scoped `list_active_memos_scoped` already works. No session-free,
+terminal-keyed read will be added; the enumeration risk is declined by
+construction rather than mitigated. Remaining display work is the lock-screen
+and KDS mounts ("a mount outside `AppLayout`, nothing more"), both unblocked.
+
 ## The tablet's Memo surface is structurally empty — KDS Memos have no data path
 
 Verified end to end at `f5d6482f` while reviewing the in-flight expiry-sweep
@@ -796,6 +830,15 @@ per tenant yet.
 > (memos are not in `sync_pull`, authoring is desktop-only), so the KDS banner
 > has a mount and a cadence but no data until one of the three options above is
 > chosen. That choice is an owner decision; see the implementation journal.
+>
+> **Ruled 2026-09-07: option two — cloud read.** The KDS/tablet Memo read
+> routes through the shared cloud-server Postgres instead of the
+> structurally-empty local file. Scope this choice buys: memos must reach the
+> cloud database (authoring stays desktop-local, so a desktop → cloud write
+> path for `memos`/`memo_recipients` is part of the slice), the read endpoint
+> must be tenant-scoped (`terminals.tenant_id` landed `56653839` and the
+> `7ed4412b` fan-out filter carries over), and the read path needs the same
+> isolation care the sync option would have — just on the cloud side.
 
 - **Progress (2026-09-06, round 6):** step (2)'s schema-independent half LANDED
   as `cf69ec3c` — `oz-core::memo` (MemoScope, MemoStatus + DeliveryStatus state
@@ -886,6 +929,10 @@ wiring with no data. Both directions of the same failure: **capability and
 wiring get tracked as if they were one thing.** Worth one checkbox naming the
 IPC + UI slice, or an explicit note that corrections are out of scope for Phase
 2, so the next agent does not have to rediscover which it is.
+
+**Ruled 2026-09-07: corrections are in scope.** The plan step now exists —
+see the `revise_memo_scoped` checkbox in the P1 list above (IPC gated
+`memo:write`, published-only; the TOCTOU guard is already in the store).
 
 ## Assist-pass notes (2026-09-06, DSH) — applies to Memo steps (3) and (4)
 
@@ -1419,13 +1466,16 @@ on touched files; UI suite 500 files / 8815 passed (including the new
 `verify-ipc-parity.py` OK. All ten pre-commit gates ran green on `3fb745cf`
 (bundle parity: 35 new keys, 0 missing; FTL orphans: OK).
 
-## PROPOSAL — `stop_memo` early-stop authorization (2026-09-07) — needs owner approval
+## RULING — `stop_memo` early-stop authorization (2026-09-07) — approved: option A2, fallback A1
 
-> **Nothing below is implemented.** This section exists so the owner can pick
-> an option in one reading instead of re-deriving the grounding. Until a
-> choice is recorded here, `stop_memo` stays unwired exactly as documented in
-> the implementation journal ("Early stop (`stop_memo`)") and the
-> `commands/memo.rs` module doc.
+> **Ruled 2026-09-07: option A2 approved, A1 the named fallback** — a new
+> `memo:stop` key granted to the Owner and Admin presets, the author
+> short-circuit preserved, everything else deny-by-default. If A2 hits a wall
+> in implementation, fall back to A1 (reuse `memo:write`) and record why.
+> The options below are kept as the ruling's rationale. The implementation
+> slice: registry entry + preset grants + `stop_memo_scoped` desktop command
+> + `MemosScreen` stop control + tests + the `may_stop` cleanup item below.
+> Nothing below is implemented yet.
 
 **The spec requirement** (§"Memo lifecycle"): "early stop by author or higher
 role". Both halves below it already exist, tested, with authorization

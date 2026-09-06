@@ -994,14 +994,22 @@ implementation work:
   tenant-facing audit logs.
 - Memo has two types: Organization Memo (owner/admin, every registered
   terminal) and Location Memo (owner/admin/manager, every terminal of one
-  selected location). Duration is author-selected (12h, 24h, 3d, 7d, 30d;
-  default 24h) and a Memo can be stopped early by its author or any higher
-  role. Published content is immutable, acknowledgement is optional, drafts
-  expire after 30 inactive days, and stopped/expired Memos remain archived for
-  30 days. Active Memos show on the staff login and lock screens plus a
+  selected location; multi-location targeting landed 2026-09-07 — see
+  todo-global-saas-3.md). Duration is author-selected (12h, 24h, 3d, 7d, 30d;
+  default 24h) and a Memo can be stopped early by its author or a holder of
+  the `memo:stop` permission (Owner/Admin presets — ruled 2026-09-07, option
+  A2, fallback reuse `memo:write`). Published content is immutable and
+  acknowledgement is optional; stopped/expired Memos remain archived for
+  30 days (ruled 2026-09-07: fixed 30-day retention window). The
+  draft-expiry rule ("drafts expire after 30 inactive days") was dropped the
+  same day — a draft is visible only to its author, so a stale draft leaks
+  nothing. Active Memos show on the staff login and lock screens plus a
   dismissible top-left notification every 15 minutes (30s per cycle; KDS
   terminals see it every 30 minutes instead, coded as 2× the base interval);
   when both types are active they stack with Location above Organization.
+  "Staff login screen" means once the staff PIN pad is up — after
+  authentication, via the existing session-scoped read (ruled 2026-09-07;
+  no pre-auth Memo read will exist).
 - Shifts are manager+ and available to all active tiers; advanced scheduling,
   forecasting, and labor analytics may become Pro+ later.
 - Quotas are server-issued: locations and staff organization-wide, terminals,
