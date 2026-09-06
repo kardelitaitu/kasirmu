@@ -1,6 +1,6 @@
 //! Brand / white-label Tauri commands.
 //!
-//! Exposes brand settings (primary colour, logo path, store name) to the
+//! Exposes brand settings (primary colour, logo path, location name) to the
 //! front-end and provides a file-picker for the logo image.
 
 use std::path::Path;
@@ -23,7 +23,7 @@ use oz_core::permissions;
 pub struct BrandSettingsDto {
     /// Primary brand colour as a hex string (e.g. `"#147EFB"`).
     pub primary_colour: String,
-    /// Filesystem path to the store logo, if set.
+    /// Filesystem path to the location logo, if set.
     pub logo_path: Option<String>,
     /// Display name shown in the header.
     pub store_name: String,
@@ -52,28 +52,28 @@ pub async fn get_brand_settings_scoped(
     })
 }
 
-/// Load brand settings from the primary store **without a session**.
+/// Load brand settings from the primary location **without a session**.
 ///
-/// Pre-auth IPC surface for the lock/login screen, which shows the store
+/// Pre-auth IPC surface for the lock/login screen, which shows the location
 /// name, logo, and brand colour before any user is signed in. Branding is
-/// non-sensitive and store-wide, so the primary store is the correct
+/// non-sensitive and location-wide, so the primary location is the correct
 /// source when no session scope exists yet.
 #[tauri::command]
 pub async fn get_brand_settings(state: State<'_, AppState>) -> Result<BrandSettingsDto, AppError> {
     let primary_id = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
-        // Prefer the primary store; fall back to the first profile so
+        // Prefer the primary location; fall back to the first profile so
         // installs whose seeding never promoted a primary (is_primary=0)
         // still get lock-screen branding instead of an error toast.
-        match store.get_primary_store()? {
+        match store.get_primary_location()? {
             Some(primary) => primary.id,
             None => {
                 store
-                    .list_store_profiles()?
+                    .list_locations()?
                     .into_iter()
                     .next()
-                    .ok_or_else(|| AppError::Internal("no store profile found".into()))?
+                    .ok_or_else(|| AppError::Internal("no location profile found".into()))?
                     .id
             }
         }
