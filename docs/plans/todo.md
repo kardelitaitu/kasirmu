@@ -126,6 +126,17 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 > This link points at the guides copy because that is where the existing
 > `docs/guides/BUSINESS_PLAN.md` reference already resolves — **that is a
 > tie-break for link purposes, not a ruling on which entitlements are correct.**
+> ⚠️ That justification was false as written, and is fixed only as of
+> 2026-09-06: neither copy resolved. The guides copy cited
+> `docs/BUSINESS_PLAN.md` and the records copy cited
+> `docs/archived/BUSINESS_PLAN.md`, and the file has lived at
+> `docs/guides/BUSINESS_PLAN.md` throughout (the guides path has been broken
+> since it was introduced in `feb25194`). Both are now corrected to the real
+> location, so the tie-break above holds for the first time — but note it was
+> never a tie-break on 2026-08-17 reasoning, only on a broken link.
+> These are inline-code paths, not Markdown links, so no link checker can
+> catch their rot; treat `docs/**` path citations as unverified unless a gate
+> resolves them.
 > See **R36-14** in [`0.0.36-backlog.md`](./0.0.36-backlog.md).
 >
 > **Legend:** `[ ]` todo · `[/]` in progress · `[x]` done

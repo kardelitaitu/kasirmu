@@ -2,7 +2,7 @@
 
 > **Status: FINAL** — Approved 2026-08-17. Single source of truth for tier
 > pricing, quotas, and feature gates. Supersedes the tier/pricing sections of
-> `docs/BUSINESS_PLAN.md` §2, ADR #5, and the older pricing content until
+> `docs/guides/BUSINESS_PLAN.md` §2, ADR #5, and the older pricing content until
 > those are updated to match.
 
 ## 1. Lineup
@@ -336,7 +336,7 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 
 | File | Role | Tier source |
 | :--- | :--- | :--- |
-| `docs/BUSINESS_PLAN.md` §2 | Market/pricing plan (IDR, annual) | 1-Time / Standard / Pro / Enterprise — **rewritten 2026-08-26 to the 5-tier lineup** (Free/Plus/Pro/Premium/Enterprise); no longer historical |
+| `docs/guides/BUSINESS_PLAN.md` §2 | Market/pricing plan (IDR, annual) | 1-Time / Standard / Pro / Enterprise — **rewritten 2026-08-26 to the 5-tier lineup** (Free/Plus/Pro/Premium/Enterprise); no longer historical |
 | `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md` (ADR #5) | Design intent | Free / Pro / Premium / Enterprise with numeric quotas — **supersession note added 2026-08-17** (mechanism still valid; quotas from §3) |
 | `docs/decisions/archived/2026-07-20-free-trial-lifecycle-and-license-activation-workflow.md` (ADR #23) | Trial lifecycle + custom_data contracts | 90-day trial — **re-scope note + 3 deviation notes** (see cross-ref (see ADR Index)): **Dev 1:** segmented trials implemented 2026-08-18 (`trial_vertical` in `activate.go`, 14-day Plus general / 14-day Pro restaurant-cafe / 30-day Pro enterprise-referral). **Dev 2:** Paddle `custom_data` contract documented — `email` (register-first, webhook upserts tenant) + `bundle` (C3.2, cross-checked against price map) + `phone` (backfilled); signup vertical **not** carried. **Dev 3:** hardware-fingerprint trial lock shipped (`trial_registrations`, `POST /license/trial`, `enforceTrialLock`, client `get_hardware_fingerprint`). |
 | `docs/decisions/2026-08-18-adr39-midtrans-subscription-payments.md` (ADR #39) | Midtrans webhook + custom-field contracts | Midtrans checkout routing + 8 deviation notes (see cross-ref (see ADR Index)): SHA-512 not HMAC, `custom_field1`–`custom_field4` contract (tier/email/period/bundle), period cross-check, amount-authoritative tier resolution, grace, dedup, notification fallthrough, key fast-path. |
