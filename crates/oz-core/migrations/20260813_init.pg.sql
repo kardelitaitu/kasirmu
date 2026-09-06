@@ -685,7 +685,7 @@ CREATE TABLE IF NOT EXISTS terminals (
     metadata        TEXT,                   -- JSON blob for extra info
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT);
+, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT, tenant_id TEXT NOT NULL DEFAULT 'default');
 
 CREATE TABLE IF NOT EXISTS "user_location_access" (
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1694,6 +1694,9 @@ CREATE INDEX IF NOT EXISTS idx_tax_rates_tenant ON tax_rates(tenant_id);
 
 CREATE INDEX IF NOT EXISTS idx_terminals_device_id ON terminals(device_id);
 
+CREATE INDEX IF NOT EXISTS idx_terminals_tenant
+    ON terminals(tenant_id);
+
 CREATE INDEX IF NOT EXISTS idx_user_location_access_user_id
     ON user_location_access(user_id);
 
@@ -1857,6 +1860,7 @@ ON CONFLICT DO NOTHING;
 --   memos
 --   sale_lines
 --   snapshot_versions
+--   terminals
 --   webhook_endpoints
 --
 -- ── Row-Level Security: tenant isolation (PG-only) ─────────────────────

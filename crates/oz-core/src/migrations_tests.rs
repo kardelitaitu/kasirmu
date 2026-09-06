@@ -400,7 +400,9 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
         ),
-        155,
+        // 1 terminals-tenant index from `20260912_terminals_tenant.sql` on top
+        // of the previously pinned 155.
+        156,
         "index surface drifted"
     );
     assert_eq!(
@@ -531,6 +533,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260909_memos.sql".to_string(),
             "20260910_memo_child_tenant_id.sql".to_string(),
             "20260911_memo_fk_restrict.sql".to_string(),
+            "20260912_terminals_tenant.sql".to_string(),
         ]
     );
 
@@ -708,6 +711,118 @@ fn location_tables_carry_tenant_id_after_migration() {
         )
         .unwrap();
     assert_eq!(got2, "tenant-9", "explicit tenant_id must be preserved");
+}
+
+// ── Terminal tenant ownership (Phase 1 P0: Protect tenant isolation) ──
+//
+// The 20260912 migration adds `tenant_id` to `terminals` so "each Terminal
+// belongs to one Organization" becomes representable: bound terminals
+// backfill from their bound location's tenant, unbound terminals resolve to
+// the 'default' sentinel (the state Memo fan-out tests depend on).
+
+#[test]
+fn terminals_carry_tenant_id_after_migration() {
+    // Split at the terminal-tenant migration: seed pre-migration rows into the
+    // legacy schema (no tenant_id on terminals yet), then let the backfill run.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260912_terminals_tenant.sql")
+        .expect("terminals-tenant migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // One non-default-tenant location, one terminal bound to it, one unbound.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-t9', 'T9', 'tenant-9')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id, bound_location_id)
+         VALUES ('term-bound', 'Bound', 'dev-bound', 'loc-t9')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('term-free', 'Free', 'dev-free')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    let cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(terminals)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert!(
+        cols.iter().any(|c| c == "tenant_id"),
+        "terminals must carry a tenant_id column after the terminal-tenant migration"
+    );
+
+    // A bound terminal inherits its bound location's tenant (the backfill).
+    let bound: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-bound'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        bound, "tenant-9",
+        "bound terminal must inherit its bound location's tenant"
+    );
+
+    // An unbound terminal resolves to the 'default' sentinel — the state the
+    // Memo Organization fan-out depends on for legacy unbound terminals.
+    let unbound: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-free'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        unbound, "default",
+        "unbound terminal must resolve to the default tenant"
+    );
+
+    // Post-migration writes: implicit inserts take the 'default' sentinel...
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('term-new', 'New', 'dev-new')",
+        [],
+    )
+    .unwrap();
+    let implicit: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-new'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        implicit, "default",
+        "implicit tenant_id must default to 'default'"
+    );
+
+    // ...and an explicit tenant is preserved verbatim.
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id, tenant_id)
+         VALUES ('term-explicit', 'Explicit', 'dev-explicit', 'tenant-3')",
+        [],
+    )
+    .unwrap();
+    let explicit: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-explicit'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(explicit, "tenant-3", "explicit tenant_id must be preserved");
 }
 
 #[test]
