@@ -510,9 +510,15 @@ Scope findings from the pre-implementation investigation, in execution order:
 
     | item | state |
     |---|---|
-    | `ui/src/api/stores.ts` shim | kept solely for its contract test; retires together with 1c/1d |
-    | `api-stores-contract.test.ts` | pins the legacy command strings while the Rust aliases exist |
-    | `features/stores/` directory name, `multi-store.ftl` filename, remaining `store`-worded FTL keys and copy | route/nav already renamed (`nav-locations` keys); file/dir and FTL renames remain |
+    | `ui/src/api/stores.ts` shim | ~~kept solely for its contract test; retires together with 1c/1d~~ **retired `07c7b0f0`** |
+    | `api-stores-contract.test.ts` | ~~pins the legacy command strings while the Rust aliases exist~~ **deleted with the shim `07c7b0f0`** |
+    | `features/stores/` directory name, `multi-store.ftl` filename, remaining `store`-worded FTL keys and copy | route/nav already renamed (`nav-locations` keys); file/dir and FTL renames remain — **the only 1e work still open** |
+
+    **Update 2026-09-07:** the first two rows are done — the alias retirement
+    (`07c7b0f0`) deleted the shim and its contract test outright (see the
+    "Next slice" box and item 1d above). What keeps 1e checked-no is exactly
+    row three: the `features/stores/` directory name, the `multi-store.ftl`
+    filename, and the remaining `store`-worded FTL keys and copy.
 
     The journal's earlier "cheapest high-value move" advice — migrate the five
     report/analytics screens' `getPrimaryStoreScoped` imports first since the
@@ -532,7 +538,8 @@ Scope findings from the pre-implementation investigation, in execution order:
     silently loses its coverage. **Update 2026-09-06:** the type import and the
     two component-driven mocks have since moved with their components
     (`a18a6134`); only `api-stores-contract.test.ts` still imports the shim, by
-    design.
+    design. **Update 2026-09-07:** superseded — `07c7b0f0` deleted the shim and
+    the contract test together, so nothing imports the deprecated path at all.
   - [x] **2026-09-06 — Canonical location IPC slice completed.** Renamed the
         desktop command module path to `commands::locations`, added canonical
         scoped DTOs and handlers (`list_locations_scoped`,
