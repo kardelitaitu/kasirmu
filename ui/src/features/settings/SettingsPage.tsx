@@ -48,7 +48,7 @@ import { requiredLocalized } from '@/frontend/shared';
 import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
-import { TopologyScreen } from '@/features/stores';
+import { TopologyScreen } from '@/features/locations';
 import LicenseSettings from './LicenseSettings';
 import EmailReportSettings from './EmailReportSettings';
 const GeneralSection = lazy(() => import('./sections/GeneralSection'));
