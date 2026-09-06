@@ -4,18 +4,22 @@ import { Localized, useLocalization } from '@fluent/react';
 import Tooltip from '@/frontend/shell/Tooltip';
 import Fuse from 'fuse.js';
 
+import { SettingsScopeTag, type SettingsScopeLevel } from './SettingsScopeTag';
+
 // ── Sidebar nav item type ─────────────────────────────────────────
 
-interface SettingsNavItem {
+export interface SettingsNavItem {
   key: string;
   label: string;
   icon: React.ReactNode;
+  scope: SettingsScopeLevel;
 }
 
 const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'general',
     label: 'General',
+    scope: 'organization',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="3" y="3" width="7" height="7" />
@@ -28,6 +32,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'appearance',
     label: 'Appearance',
+    scope: 'workspace',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="3" />
@@ -38,6 +43,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'receipt',
     label: 'Receipt',
+    scope: 'workspace',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -50,6 +56,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'sync',
     label: 'Cloud Sync',
+    scope: 'organization',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -59,6 +66,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'local-api',
     label: 'Local API',
+    scope: 'terminal',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polyline points="16 18 22 12 16 6" />
@@ -69,6 +77,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'about',
     label: 'About',
+    scope: 'terminal',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="10" />
@@ -81,6 +90,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'license',
     label: 'License',
+    scope: 'organization',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
@@ -90,6 +100,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'email',
     label: 'Email Reports',
+    scope: 'organization',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -100,6 +111,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'topology',
     label: 'Topology',
+    scope: 'organization',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="6" cy="6" r="3" />
@@ -113,6 +125,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'store-pos',
     label: 'Store POS',
+    scope: 'workspace',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="9" cy="21" r="1" />
@@ -124,6 +137,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'restaurant-pos',
     label: 'Restaurant POS',
+    scope: 'workspace',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
@@ -135,6 +149,7 @@ const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'inventory',
     label: 'Inventory',
+    scope: 'location',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -685,6 +700,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
                       <span className="settings-nav-label">
                         <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
                       </span>
+                      <SettingsScopeTag scope={item.scope} />
                     </button>
                     <button
                       type="button"
@@ -793,6 +809,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
                                     <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
                                   )}
                                 </span>
+                                {!sidebarCollapsed && <SettingsScopeTag scope={item.scope} />}
                               </button>
                               {!sidebarCollapsed && (
                                 <button

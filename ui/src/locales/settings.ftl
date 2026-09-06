@@ -894,3 +894,11 @@ settings-local-api-rotate-confirm = Confirm rotate
 settings-local-api-rotate-cancel = Cancel
 settings-local-api-rotate-done = Signing secret rotated — mint a new token for your scripts.
 settings-local-api-rotate-failed = Could not rotate the signing secret.
+
+# Settings section scope badges (todo-global-saas-1.md §H)
+settings-scope-organization = Organization
+settings-scope-legal-entity = Legal Entity
+settings-scope-location = Location
+settings-scope-workspace = Workspace
+settings-scope-terminal = Terminal
+

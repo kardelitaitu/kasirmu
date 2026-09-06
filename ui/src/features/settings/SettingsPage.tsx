@@ -58,6 +58,7 @@ const SyncSection = lazy(() => import('./sections/SyncSection'));
 const LocalApiSection = lazy(() => import('./sections/LocalApiSection'));
 const AboutSection = lazy(() => import('./sections/AboutSection'));
 import { useContextMenu, ContextMenu } from '@/frontend/shared';
+import { SettingsScopeTag } from './SettingsScopeTag';
 import SettingsNavTree, {
   NAV_ITEMS as NAV_ITEMS_REF,
   NAV_L10N_KEYS as NAV_L10N_KEYS_REF,
@@ -1025,7 +1026,14 @@ function SettingsPageContent() {
         {/* ── Main content ──────────────────────────────── */}
         <form id="settings-form" className="settings-content" onSubmit={(e) => { e.preventDefault(); handleSave(); }} ref={settingsKeyboardRef as unknown as React.Ref<HTMLFormElement>}>
           <button type="submit" hidden aria-hidden="true" tabIndex={-1}>Save</button>
-          <div className={`settings-section-content${activeSection === 'topology' ? ' settings-section-content--full' : ''}`} key={activeSection}><div key={activeSection}>
+          <div className={`settings-section-content${activeSection === 'topology' ? ' settings-section-content--full' : ''}`} key={activeSection}>
+            <div className="settings-active-section-scope" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {(() => {
+                const item = NAV_ITEMS_REF.find((n) => n.key === activeSection);
+                return item ? <SettingsScopeTag scope={item.scope} /> : null;
+              })()}
+            </div>
+            <div key={activeSection}>
               <Suspense fallback={<Localized id="settings-section-loading"><div className="section-loading">Loading...</div></Localized>}>
                 {renderSection(activeSection)}
               </Suspense>

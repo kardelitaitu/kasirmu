@@ -876,3 +876,11 @@ settings-local-api-rotate-confirm = Konfirmasi penggantian
 settings-local-api-rotate-cancel = Batal
 settings-local-api-rotate-done = Rahasia penanda tangan diganti — buat token baru untuk skrip Anda.
 settings-local-api-rotate-failed = Gagal mengganti rahasia penanda tangan.
+
+# Settings section scope badges (todo-global-saas-1.md §H)
+settings-scope-organization = Organisasi
+settings-scope-legal-entity = Badan Hukum
+settings-scope-location = Lokasi
+settings-scope-workspace = Ruang Kerja
+settings-scope-terminal = Perangkat Terminal
+
