@@ -794,7 +794,62 @@ Scope findings from the pre-implementation investigation, in execution order:
         rows with nullable scope pairs; one scoped choke point;
         downward-only inheritance; custom roles share the registry; backfill
         existing rows to org-wide. Awaiting sole-maintainer ruling — do not
-        implement until ruled.
+        implement until ruled. *(Ruled 2026-09-07: ADR #47 ACCEPTED, all
+        five recommendations adopted — see the supervisor log, Round 66.)*
+      - **[x] ADR #47 slice 1 — the scope axis, schema + model
+        (2026-09-07, `94e8a100`).** The first implementation slice per the
+        accepted ruling, deliberately behavior-preserving:
+        - **Migration `20260916_role_assignment_scopes.sql`**: adds
+          `scope_type` (`organization | legal_entity | location`, NOT NULL
+          DEFAULT 'organization' + CHECK) and nullable `scope_id` to the
+          EXISTING `assignments` table — not the ADR sketch's separate
+          `role_assignments` table, because spec 0048 already ships one
+          assignments model (single row per user, branch/workspace
+          dimensions) with four live writer paths and a UI; replacing it
+          would churn all of them for zero immediate capability. The ADR's
+          org-wide row IS spec 0048's assignment plus the new axis; the
+          ADR's per-user-single-row was already the shipped shape. The
+          backfill is the DEFAULT: every existing row reads as
+          `organization` with no data rewrite (ruling 5, bit-for-bit).
+          Pair validity (scope_id NULL exactly when organization) is
+          enforced by insert+update RAISE triggers (SQLite) with plpgsql
+          ports in the generator's `TRIGGER_MAP` (parity gate enforced
+          both ways); `idx_assignments_scope` indexes the axis.
+        - **Model** (`assignments.rs`): `ScopeType` enum (parse is
+          fail-closed — an unparsable value denies, mirroring the
+          `scope_mode` precedent), `Assignment.scope_type`/`scope_id`,
+          and `covers_resource(scope_type, scope_id)` implementing
+          ruling 3's downward-only inheritance at the model layer
+          (Organization covers everything; LegalEntity/Location match
+          only their own kind + id; an unparsable pair denies).
+          `write_assignment_scope` writes the org-wide pair — per-location
+          assignment CREATION is a later slice, so today's writers cannot
+          accidentally narrow a user.
+        - **Deliberately NOT in this slice:** the scoped choke point wiring
+          (`covers_resource` into `require_permission_scoped`), the
+          legal-entity→locations downward walk (needs a location lookup
+          the model layer shouldn't assume), assignment-editing UI, and
+          multi-row-per-user (the ADR sketch allows several rows; the
+          shipped model is one effective assignment — reconciling that is
+          the choke-point slice's design work, noted here so it isn't
+          silently dropped).
+        - Verification: `cargo test -p oz-core --lib` **2566 passed, 0
+          failed**; new pins: backfill resolves legacy rows org-wide with
+          the gate still authorizing (`migration_backfills_existing_assignments_to_organization`),
+          org-wide covers every resource kind, location-scoped denies
+          Location B + refuses upward authority (`covers_resource_location_scoped_denies_other_locations` —
+          the P0 sentence pinned at the model layer), legal-entity is
+          entity-scoped, unparsable pairs deny, and both pair triggers
+          fire on insert AND update. `--check` green at 111 tables / 138
+          indexes; oz-core compiled clean for tablet/api/desktop; the
+          pinned surface counts (159 indexes, 6 triggers) updated with
+          their derivation comments.
+        - Commit-note: the first commit attempt failed bundle-parity
+          because the topology agent's `TopologyRevisionBrowser.tsx`
+          (in-flight, 14 unlocalized keys) made the hook's staged-file
+          scan non-empty mid-commit; landed clean after its concurrency-
+          test commit (`d8ffa281`) landed — the hook was seeing THEIR
+          staged file, not mine.
 - [x] **Define the tenant hierarchy.** The canonical design now includes
       Organization/Tenant → Legal Entity → Location, with Workspace Instances
       scoped to Locations and Terminals owned by the Organization and assigned
@@ -2096,6 +2151,106 @@ Phase-2 agent be paused until it is done — the interleaving incentive is
 the reason the gate keeps losing to newer work, and pausing removes the
 incentive.
 
+
+---
+
+## Supervisor log — 2026-09-07 (Round 60) — STOP: the tooltip "fix" regresses
+
+**Directive: do NOT commit the current Tooltip.tsx direction.**
+
+The in-flight change REMOVES the `disabled` prop instead of fixing the
+flip-path teardown. Verified consequences:
+
+1. `SettingsNavTree.tsx` now renders nav tooltips UNCONDITIONALLY — the
+   expanded sidebar regains the "double tooltip" (bubble repeating a
+   visible label) that `6a0e1e55` fixed for the user. This is a
+   user-visible regression, not a fix.
+2. The landed regression pins go red: 4 tests in `Tooltip.test.tsx`
+   (the disabled-prop block) fail; 4x TS2353 confirm the API removal
+   contradicts the pinned contract.
+3. The repro STILL fails (2 tests) — the flip-path defect itself was
+   never fixed; the prop removal merely makes the flip unreachable.
+
+**The required fix (unchanged from Round 56):** KEEP `disabled`; make the
+portal-bubble cleanup idempotent (a `parentNode` guard or `node.remove()`)
+and reset timers on the flip without touching a detached node. The repro
+must pass WITH the prop intact; then the 4 landed tests must still pass;
+then convert the repro into the permanent flip-path test and delete the
+`zz-` scratch file. Fix the component, not the test — and not the feature.
+
+---
+
+
+---
+
+## Supervisor log — 2026-09-07 (Round 61) — R60 stop partially lifted, two gates remain
+
+**The investigation went deeper than my R60 prescription — new evidence
+changes the picture, and credit is due:**
+
+1. The agent found the historical "double tooltip" report may have been
+   MISATTRIBUTED: `SettingsScopeTag` carried a native `title=` that stacked
+   an OS-rendered tooltip on the React bubble (now removed, unlocalized
+   English eliminated), and the old CSS suppression rule was DEAD since the
+   portal move (`68a8af71`) — so it never reached portal bubbles at all.
+   `nativeTooltipCompliance.test.ts` pins the corrected state.
+2. The prop removal is now internally consistent: `Tooltip.test.tsx` was
+   updated WITH the API (31/31 pass, tsc clean — the R60 4x TS2353s and 4
+   red pins are resolved).
+3. **Two gates remain before commit:**
+   - **Reconcile the two accounts.** `6a0e1e55`'s test comment records the
+     user report as "bubble repeating a visible nav label"; the new
+     ScopeTag note says it was title stacking. Both may be true (reported
+     instance vs latent case), but the expanded-sidebar label-repetition
+     behavior is now UNSUPPRESSED and unpinned — pin it (expanded sidebar,
+     hover a nav item, bubble either suppressed or accepted-with-reason)
+     before the prop removal commits.
+   - **Explain the repro mystery.** The repro still fails 2/2 with
+     NotFoundError DURING event dispatch, while the real suite uses the
+     same manual `document.body.innerHTML = ''` pattern and passes 31/31.
+     Either the repro harness differs in a way that matters (diff it), or
+     there is a real defect the suite does not cover. The flip crash may
+     be a harness artifact — or not. Determine which; do not commit with
+     this open.
+
+R60's "fix the component, not the feature" stands amended by the evidence:
+if the feature's original justification was misattributed, removing it is
+legitimate — but only with the reconciliation and the pinned test above.
+
+---
+
+
+---
+
+## Supervisor log — 2026-09-07 (Round 62) — repro mystery RESOLVED by experiment
+
+The supervisor reproduced the flip crash under controlled probes:
+
+- Probe 1 (hover -> prop flip -> rerender -> unmount, NO manual body
+  clear): PASSES. The flip itself is harmless.
+- Probe 2 (same shape, but `document.body.innerHTML = ''` runs while a
+  portal bubble is mounted): FAILS with the exact
+  `NotFoundError: The node to be removed is not a child of this node`.
+
+**Conclusion: the "disabled-flip defect" was a test-harness artifact, not
+a production bug.** The crash needs document.body wiped under a mounted
+portal; no production path does that. React cannot remove portal children
+from a container that no longer exists. The agent's deletion of the zz-
+repro was therefore correct, and R56's "convert the repro into a
+regression test" is WITHDRAWN — there is nothing to pin in the component.
+
+**Remaining gate (narrowed):** the expanded-sidebar reconciliation. With
+`disabled` removed, hovering a nav item in the EXPANDED sidebar shows a
+bubble over the visible label. The agent's evidence (ScopeTag native
+`title` stacking, now removed and pinned by nativeTooltipCompliance)
+supports treating the label bubble as acceptable; 6a0e1e55's comment
+recorded label repetition as the report. One of the two accounts needs a
+written disposition — a comment in SettingsNavTree at the Tooltip call
+saying which is authoritative and why — then this stream is commit-ready
+(31/31 + 38/38 pass; tsc clean).
+
+---
+
 ---
 
 ## Supervisor log — 2026-09-07 (Round 63) — tooltip stream closed; 3 stale-red files need triage
@@ -2258,6 +2413,127 @@ The next sweep-in becomes a revert.
 Extraction status: net landed (as a side effect); editor still 6,146
 lines; the move itself has not started.
 
+
+---
+
+## Supervisor log — 2026-09-07 (Round 73) — the sweep-in was REPAIRED, properly
+
+The reflog tells it straight: `c0f8d4f4` (the sweep-in commit) was reset
+away and re-landed as TWO clean commits — the tooltip slice returned to the
+maintainer's staged index (preserved, not destroyed), and the
+characterization net committed on its own as `b99fceb5
+test(topology): characterize the Apply dialog before extracting it` — by
+pathspec, with the reason in the message: "the maintainer has Tooltip work
+staged in the index, and a normal commit would have swept it into this
+message." The R72 rule was not just honored — it was *applied immediately*
+by the very agent it was addressed to, using `git reset --soft` + pathspec
+recommit rather than a rebase (correct: the maintainer may be committing).
+
+`b99fceb5`'s message also models the discipline: three failed assumptions
+documented and corrected by fixing the HARNESS, never loosening the tests
+(empty-diff fixture now makes a real edit first; dev-mock route +
+SettingsContext mocks added; onSave type derived from the component's own
+props). 8/8 green at HEAD.
+
+**Net state: the characterization net is properly landed as its own commit;
+the extraction (the move itself) is the next commit; the waiver's
+net-remove condition is the verification target.** The tooltip slice sits
+staged, awaiting the maintainer's own commit — exactly where R72's ruling
+wants it.
+
+---
+
+
+---
+
+## Supervisor log — 2026-09-07 (Round 77) — THE EXTRACTION IS HAPPENING, mid-move
+
+**`b708283d`** — the maintainer's tooltip slice landed (its staged copy,
+unchanged, now with its own commit). Tooltip stream fully closed.
+
+**The extraction is in-flight in the working tree:**
+- `TopologyApplyConfirm.tsx` (299 lines) + `TopologyApplyConfirm.css`
+  (266 lines) exist as new modules.
+- The module header does the waiver's thinking in public: it cites the
+  one-time Rule-3 waiver, pins the **unmount-survival rationale** (dialog
+  closes before verification, re-opens on rejection — so the editor
+  renders it unconditionally and `open` only controls null), and states
+  what deliberately did NOT move (confirmApply, entangled with
+  beginApply/failApply, nodes/wires, undo stacks, id-map rewrite — the
+  Apply stays the editor's job; the component owns presentation + PIN
+  interaction and calls back).
+- Editor CSS: 38 dialog rule-lines removed, 0 added — clean CSS move
+  (268 deletions).
+- **Characterization net: 10/10 green against the NEW module already.**
+- **Editor TSX still 6,146 lines — the net-remove of JSX/state has NOT
+  happened yet.** The move is half-done: new modules exist, old dialog
+  still in place (68 CSS-class references in the editor).
+
+**Verification targets when the move completes (next commit):** editor
+TSX well below 6,146 (waiver: growing it voids the waiver), the 10
+characterization tests unchanged-green, and the old dialog JSX/state gone
+(not merely wrapped).
+
+---
+
+
+---
+
+## Supervisor log — 2026-09-07 (Round 78) — the move completed, mid-verification
+
+**Editor: 6,146 → 5,963 (−183); dialog class refs: 68 → 1** (the survivor
+is the click-outside dismissal guard — the overlay is still real DOM the
+editor's outside-click handler must respect; legitimate). Editor diff:
++44/−227. The split of responsibilities is written into the code: the
+editor keeps ONLY whether the dialog is open and what it is confirming
+(`applyConfirmData`); PIN entry, error, verifying spinner, remember-flag
+all moved. `verifyApplyPin` resolves FALSE only on PIN rejection — the
+re-open signal — with "already saving" and backend rejection deliberately
+NOT reported as PIN problems. That distinction preserves the
+unmount-survival semantics the characterization net pinned.
+
+**10/10 characterization tests green against the moved module.**
+Tooltip suites 43/43 (the maintainer's landed slice unaffected).
+
+**Three tsc errors remain, all in the editor** (unused `Button`/`CheckIcon`
+imports left over from the move, one missing return in a function whose
+signature the move narrowed) — these are the loose ends of the move, not
+design problems. They must be fixed before the commit: the waiver's
+verification is editor-below-6,146 AND tsc clean AND tests unchanged-green.
+
+Also noted: the memory-safety issue the tests caught is real — the
+"Remember PIN for this session" flag stays in the editor because
+`confirmApply` reads it to decide whether to verify at all. Coherent
+split.
+
+---
+
+
+---
+
+## Supervisor log — 2026-09-07 (Round 79) — extraction verification PASSING; test-drift 2/3 fixed in the same working tree
+
+**tsc is CLEAN.** Editor at 5,965. The three R78 loose-ends are resolved.
+Full pre-commit panel at the working tree:
+- Characterization net: **10/10** against the moved module.
+- Tooltip + compliance: **53/53** across the three suites.
+- `dynamicFluentFamilies`: **12/12** — the R63 stale-red
+  (`topology-new-store` ids dropped by f5e191aa) is fixed in this tree by
+  RE-ADDING the keys under the warehouse/hardware naming the editor now
+  uses (`topology-new-warehouse`, `topology-new-hardware`, both localized).
+  The pin and the source agree again — the correct fix direction.
+- `themeTokenCompliance`: **2/2** — all 15 SettingsScopeTag.css violations
+  tokenized (`--color-*` in tokens.css), closing the second R63 stale-red.
+- `screenExtraction`: still 1 red (MultiStoreDashboardScreen expectation)
+  — the last stale-red, still to be dispositioned (restore file or update
+  pin).
+
+**The extraction commit can land on this evidence.** What remains before
+Phase-1 declaration: the commit itself (with the concurrency test owed per
+the R36 directive), and the screenExtraction disposition.
+
+---
+
 ---
 
 ## Supervisor log — 2026-09-07 (Round 80) — third stale-red re-diagnosed: it was never the file
@@ -2408,3 +2684,374 @@ change-note/concurrency commit: add a `@media (prefers-reduced-motion:
 reduce)` block that sets `animation: none` for `.topology-apply-confirm-
 overlay`, `.topology-apply-confirm`, and `.topology-apply-confirm-pin--
 error`.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 84) — UI SUITE FULLY GREEN; three slices landed in the R80 order
+
+Verified landing sequence, pathspec-clean, exactly as ruled:
+
+1. `34111cfa fix(ui): lock screen shows real version + copyright pair`
+   (session-lock footer + dev-mock pkg-import).
+2. `5be84622 chore(ui): repair Round-63 test-drift, 3 stale-red suites`
+   (screenExtraction rename pin + scope-pill rule + tokens + topology-new
+   l10n re-adds).
+3. `0fce9b59 fix(topology): gate the apply-confirm entrances for reduced
+   motion` (the split-exposed a11y gap, fixed in the new module's CSS).
+
+**Independently re-run: 504 files / 8,892 tests passed, 0 failed (2
+skipped) — the UI suite is fully green for the first time in this
+feature's history.** The R63 directive ("the suite must be green so the
+next real regression is visible") is fulfilled.
+
+Remaining for Phase-1 declaration (unchanged): the change-note input
+wiring and the racing-publishes concurrency test.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 86) — journal integrity restored (second stray-file incident)
+
+`ui/todo-global-saas-1.md` (222 lines) reappeared — created 09:39:34, one
+minute after `56c966d1`: an agent appended its supervisor-log copies while
+its shell cwd was `ui/`. EIGHT entries (Rounds 60, 61, 62, 73, 77, 78, 79,
+84) existed only in the stray file; the real journal had none of them.
+Merged back at correct chronological positions by script (40 entries now),
+stray deleted, UTF-8 validated.
+
+**Standing mechanical rule, now for agents too: every journal append must
+use the absolute repo-root path — `todo-global-saas-1.md` from the repo
+root, never a cwd-relative path.** This is the second occurrence of the
+same failure class (the supervisor's own Round-32 incident was the first).
+The drift-guard skill's dead-check would not catch this; consider adding a
+journal-location assertion to it.
+
+NOTE for the topology agent: your `ui/` copy may ALSO have received your
+own entries — check `git log` of your session outputs. The stray contained
+only supervisor-log copies this time.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 88) — the change-note chain is wired end-to-end; one tsc error to fix
+
+The waiver's step 2 is executed in-tree, full chain:
+- **Module**: `onConfirm(pin, rememberPin, changeNote)`; `CHANGE_NOTE_MAX =
+  500` mirrors the backend constant and counts characters (matching the
+  Rust chars-based check); empty string = un-noted deploy, deliberately
+  distinguishable from a noted one.
+- **Editor**: `confirmApply` threads the note through `onSave` — "an empty
+  string means no note, which the history shows as such."
+- **Screen**: TopologyScreen owns the IPC mapping (it owns the call) per
+  ADR #46 §6.
+- **IPC**: `change_note` has been in the command since f8e4dd6f.
+
+**One tsc error remains** (TopologyScreen :520 —
+`exactOptionalPropertyTypes` rejects `changeNote: string | undefined`
+against `changeNote?: string`; needs `... : undefined` → conditional
+spread or `changeNote ?? ''`). Trivial, must be fixed pre-commit.
+
+**Gap to close before the commit: characterization.** The note flow has
+ZERO test coverage in the net (0 refs). Two pins are needed: note text
+reaches onConfirm; >500 chars is blocked client-side (the mirror's
+courtesy). Then suites: 45/45 pass so far.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 97) — RETURN-TO-WORK BRIEFING (supersedes scattered directives)
+
+Agents idle since 09:38. This entry consolidates the operative picture;
+where earlier entries conflict with this one, THIS ONE WINS.
+
+**Done and verified (do not redo):**
+- Extraction: `ec46e6b7`, waiver honored (editor 6,146→5,965; net-remove
+  verified; characterization 10/10 unchanged-green; tsc was clean at HEAD).
+- Read path + pin/unpin: `f774fe60`, `02f3f142` — committed, accepted.
+- Full UI suite green at HEAD: 504 files / 8,892 tests / 0 failed.
+- ADR #47: ACCEPTED (1A–5A). ADR #46 Rule-3 waiver: granted AND executed.
+- Journals: 41 supervisor entries, all present after the R86 repair.
+
+**The current frontier (one slice, one commit — the change-note chain is
+fully wired in-tree but UNVERIFIED):**
+1. Fix the one tsc error: TopologyScreen:520 — `exactOptionalPropertyTypes`
+   rejects `changeNote: string | undefined` against `changeNote?: string`.
+   Pass `changeNote ?? ''` (the dialog already normalizes empty to "").
+2. Add the two missing characterization pins: (a) note text reaches
+   `onConfirm`; (b) >500 chars blocked client-side via CHANGE_NOTE_MAX.
+3. Commit the chain by PATHSPEC (module + editor + screen + l10n keys +
+   characterization): message cites waiver step 2 and the 500-char mirror.
+4. Land the racing-publishes test: two concurrent publish_topology calls on
+   one branch must yield two ORDERED revisions, not a clobbered row. Rust
+   side, in topology_stress_tests.rs.
+5. THEN ADR #46 Phase 1 is declared complete; P1 "Version and publish
+   topology changes" is re-triaged; the differ-committed browser UI
+   unblocks (overlay may START, subject to normal review).
+
+**Also open, unprioritized:** scoped-auth first slice (ADR #47 accepted,
+nothing started); drift-guard journal-location assertion (R86 note).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 100) — briefing step 1 EXECUTED (tsc clean, via a better fix)
+
+The tsc error is GONE — resolved not by the suggested `changeNote ?? ''`
+band-aid but by extracting `TopologyScreen.handleTopologySave`'s body into
+a dedicated helper, `topologyApply.ts` (session validation → graph
+normalization → validation → diff → diagram remap → atomic IPC → toast +
+refresh). Its context type carries `changeNote?: string | undefined`
+explicitly — the `exactOptionalPropertyTypes`-correct shape, and the
+extraction buys unit-testability for the whole Apply pipeline. The
+changeNote thread runs through it (line 147: `ctx.changeNote`).
+
+**Briefing step 1: DONE. tsc clean. Suites on touched files: 45/45.**
+Remaining: step 2 (the two note pins in the characterization net), step 3
+(pathspec commit of the chain), step 4 (racing-publishes test). Then
+Phase-1 declaration.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 101) — briefing step 2 DONE: four note pins, 14/14
+
+The characterization net grew from 10 to **14 tests — all green** (the
+earlier 2-red read was mid-edit; the final run passes). The four new pins:
+1. typed note reaches `onConfirm`;
+2. empty note sends "" rather than blocking (§6: optional — "forcing one
+   on every Apply trains operators to type noise");
+3. note capped at 500 CHARACTERS client-side, mirroring
+   `TOPOLOGY_CHANGE_NOTE_MAX_CHARS` (server rejects, never truncates);
+4. note survives a PIN rejection and clears on fresh open — the
+   unmount-survival semantics, now pinned for the note too.
+
+**Briefing steps 1-2 complete, 14/14 green. Remaining: step 3 (pathspec
+commit of the chain) and step 4 (racing-publishes test), then Phase-1
+declaration.**
+
+---
+
+## Supervisor log — 2026-09-07 (Round 106) — step-2 net DEEPENED: a fifth, full-integration pin
+
+The characterization net grew to **15 tests, all green**, with a fifth pin
+that closes the gap the other four left open: **"lands the note in the
+revision history through the real IPC chain."** The bridge-onSave design
+is the reason it works — the test's onSave forwards its arguments to
+`applyTopologyDiff` exactly as TopologyScreen's real handler does, so the
+string in the revision row "can only have come from the textarea.
+Hardcoding it here would have tested the dev-mock and looked like it
+tested the dialog." That comment is the whole §6 proof in one sentence.
+
+Also in tree: the SyncSection confirm-pull slice gained its l10n keys
+(settings-sync-confirm-pull-*) — the SYNC-03 slice is commit-ready too.
+
+Remaining: step 3 (pathspec commit) and step 4 (racing-publishes test),
+then Phase-1 declaration.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 107) — ADR #47 slice 1 in tree: role_assignment_scopes migration
+
+The scoped-authorization implementation has begun, exactly per the accepted
+design: `20260916_role_assignment_scopes.sql` + registration in
+`migrations.rs`.
+
+Verified against the ruling:
+- Scope axis `scope_type` ∈ {organization, legal_entity, location} — the
+  three scope pairs from ruling 1A; CHECK-constrained.
+- Backfill per ruling 5: `NOT NULL DEFAULT 'organization'` — every existing
+  row becomes org-wide, preserving behavior bit-for-bit ("no capability is
+  revoked by this migration").
+- NULL-resource rule enforced by CHECK + trigger (org-wide has no single
+  resource; entity/location rows must name theirs), mirroring the
+  tender-currency migration's pattern.
+- ADR #35 D5 boundary respected in the header: branch/workspace dimensions
+  stay as they are; this adds only the hierarchical axis.
+- Downstream slices correctly deferred in the header: fail-closed
+  resolution waits for the choke-point slice; per-location creation waits
+  for its IPC/UI slice. No scope creep.
+
+Note: the migration lands alongside the uncommitted note chain — when
+committing, keep streams separate (this is a `feat(db)` slice, the note
+chain is `refactor(topology)`/`feat(topology)`).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 109) — ADR amended to "Phase 1 complete"; ONE GATE CONDITION REMAINS UNMET
+
+The in-tree ADR amendment declares **"Phase 1 IS NOW COMPLETE (1a–1e),
+including 1e's input control"** — the extraction numbers are verified
+honest (6146→5963, 3327→3059, net-remove confirmed; characterization-first
+documented with its two findings). The change-note chain is wired, tested
+(15/15), and the migration tests were extended (159 pinned index count,
+`idx_assignments_scope`).
+
+**BUT the declaration is premature by one item: the concurrency
+Verification test (the R36 directive's step 4 — two racing publishes to
+one branch must yield two ORDERED revisions) is NOT in the tree.** The
+R36 ruling and three subsequent supervisor entries made it an explicit
+part of Phase-1 closure. The ADR amendment does not mention it.
+
+**Ruling:**
+1. The extraction, note wiring, and tests are all verified — the WORK is
+   excellent and none of it is in question.
+2. Phase-1 declaration is WITHHELD until the racing-publishes test lands.
+   This is the last open item; the R36 directive remains binding until it
+   is met, and a declaration written before its own gate condition is met
+   is the same pattern the Phase-2 gate caught in Round 33.
+3. The ADR amendment may stand as amended ONLY after the test lands —
+   amend it again then with the test's hash, or the declaration text stays
+   unratified.
+
+Everything else in the amendment is accurate and the landing is otherwise
+ready: note chain (15/15), migration slice (159-index pin), SyncSection,
+l10n — all commit-ready in tree.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 110) — a fourth compliance gate: native dialogs
+
+`nativeDialogCompliance.test.ts` joined the tree: zero-tolerance ban on
+`window.alert/confirm/prompt` (the codebase is clean, nothing to
+grandfather), AST-based detection (comments/strings can't trip it), 8
+tests. The SYNC-03 slice keeps producing institutional memory — same
+class as the native-title guard, and the header names the lineage. This
+is the compliance-gate pattern now self-replicating across defect
+classes. No supervisor action needed; it lands with the SyncSection
+commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 111) — ADR #47 slice 1 widened correctly: PG mirror + parse-fail-closed
+
+The scope slice now spans both sides, as slice 1 should:
+- `ScopeType` in `assignments.rs` with `parse()` returning `None` for
+  anything unrecognized — fail-closed: "an unparsable scope_type row must
+  not silently become org-wide." (The choke-point `covers_location`
+  resolution is correctly deferred to its own slice, per the ADR header.)
+- The PG generator ported the SQLite WHEN-clause RAISE triggers as
+  plpgsql functions with the same predicate (scope_id NULL iff
+  scope_type='organization'), and the regenerated init carries the
+  CHECK-constrained columns. The fail-closed-in-both-directions coverage
+  gate will require the new index count in migrations_tests — which is
+  already pinned at 159 in this tree.
+
+Slice discipline intact: resolution/creation explicitly deferred to later
+slices; nothing here pretends to be the choke point.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 112) — the note chain LANDED (8ce2c805); the unratified declaration is now committed? NO — still pending
+
+`8ce2c805 feat(topology): the change-note input, completing ADR #46 Phase 1`
+landed with the full gate panel re-verified by me: **15/15 dialog tests
+(5 new), tsc clean, full UI suite green (504 files / 8,898 tests / 0
+failed), bundle-parity 0 missing keys.** The message is exemplary on the
+protocol: the reset-on-dismissal decision (PIN resets on open because it's
+a credential; the note resets on Cancel/accepted-Apply because that's
+where it's abandoned or consumed — "throwing away the paragraph the
+operator just wrote because they fat-fingered four digits" is the bug the
+naive fix would ship), the maxLength=500 chars mirror, and TWO tests
+written-then-rejected with the reason (the hardcoded-note version "tested
+the dev-mock and merely looked like it tested the dialog" — rewritten as
+the bridge), including mutation-verifying the rewrite can fail.
+
+The exactOptionalPropertyTypes fix chose `| undefined` on ApplyContext —
+the honest signature for a genuinely optional parameter.
+
+**Declaration status: the ADR text saying "Phase 1 IS NOW COMPLETE" is
+still UNCOMMITTED in tree, and the racing-publishes test (R36 step 4) is
+STILL absent — the commit message does not mention it. Per the Round-109
+ruling, Phase-1 remains WITHHELD and the declaration text unratified until
+that test lands and the ADR is re-amended with its hash.** The landed
+commit's title ("completing ADR #46 Phase 1") overstates by one test; the
+work itself is complete and exemplary.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 113) — CORRECTION to Round 112: the unratified declaration IS committed
+
+R112 recorded the "Phase 1 IS NOW COMPLETE" ADR text as uncommitted; that
+was wrong — it landed inside `8ce2c805` (the doc rode with the note
+chain). Corrected state: **the ADR in history now declares Phase 1
+complete while the R36 racing-publishes test remains absent.** The
+commit-message title overstated; the ADR text now does too, in committed
+form.
+
+**Ruling stands, mechanism updated:** the Round-109 withholding is no
+longer preventive — it is remedial. The declaration in the ADR is
+UNRATIFIED by the supervisor and remains so until the racing-publishes
+test lands and a follow-up amendment (or journal entry) records the test
+and its hash. The correction to the history is additive, not a rewrite:
+one journal entry + one ADR paragraph referencing the test commit. No
+revert, no force-push, no amend — the same annotation-over-rewrite rule
+the incident log (2682af9e) established.
+
+Remaining tree is clean for the next slices: ADR-47 migration (db + PG +
+tests), native-dialog gate. Racing test: still owed, now formally the
+ONLY blocker between "work complete" and "declaration ratified".
+
+---
+
+## Supervisor log — 2026-09-07 (Round 118) — THE OWED RACING TEST IS WRITTEN AND PASSING (supervisor-authored)
+
+After several idle rounds, the supervisor executed the R113 remedial path
+directly (R62 probe precedent — verification instruments are supervision
+work): the R36-owed concurrency Verification test now exists in
+`topology_stress_tests.rs`, appended to the Thread safety section with the
+lineage in its header. **Both tests pass (2/2, cargo test -p oz-pos-app
+racing).**
+
+What they pin:
+1. `racing_publishes_to_one_branch_yield_two_ordered_revisions` — two
+   threads publish concurrently with `expected: None`; BOTH succeed (the
+   IMMEDIATE transaction serializes; the blocked writer re-reads the
+   fresh revision and takes revision 2); final state is rows [1, 2] with
+   both change notes present. The "clobbered row" failure mode is
+   asserted impossible.
+2. `racing_publishes_with_the_same_expected_revision_cas_reject_one` —
+   both threads send `expected: Some(0)`; exactly one wins, the loser is
+   rejected with "topology revision conflict", one row remains. The CAS
+   admits one, never double-increments.
+
+**Remaining to ratify the Phase-1 declaration (agent/maintainer work):**
+1. Commit the test (pathspec: the stress-tests file only). It is
+   supervisor-authored and attributed in its header.
+2. Re-amend the ADR §"The waiver, executed" (additive paragraph) with the
+   test's hash and its two-line summary.
+3. Then the Round-109 withholding lifts: Phase 1 is declared, the P1
+   item is re-triaged, and the differ-committed browser work unblocks.
+
+Also in tree, commit-ready and previously verified: the ADR-47
+role_assignment_scopes slice (db + PG mirror + 159-index pin) and the
+nativeDialogCompliance gate. Pathspec discipline applies to all of it.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 118, second entry) — native-dialog gate landed; slice 1 tests matured
+
+- `04e607f2 test(ui): forbid native alert/confirm/prompt in app code`
+  landed — the 148-line AST-based gate exactly as verified in R110. The
+  compliance-gate family is now four strong (title ratchet, forced-colors,
+  fluent families, native dialogs), each with lineage documented.
+- ADR-47 slice 1 matured: `assignments_tests.rs` now carries the org-wide
+  backfill expectations (`scope_type: Some(Organization)` rows), so the
+  migration's ruling-5 guarantee is tested, not just declared. Generator
+  still green (111 tables / 138 indexes).
+- The supervisor-authored racing test is intact in tree, unmodified by
+  any other stream (+166, exactly my append). Awaiting pathspec commit
+  + ADR re-amendment per Round-118's ratification path.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 123) — new stream: desktop close semantics (Tauri beforeunload is inert)
+
+A UX-audit finding produced a new slice in tree:
+`useUnsavedChangesGuard` (+ its test). The defect it names is real and
+desktop-specific: SettingsPage's `beforeunload` listener never fires on
+the OS close button inside a Tauri webview — the webview is torn down
+when the Rust event loop accepts the close — so unsaved-work protection
+was inert in production and only worked in browser dev preview. The
+supported seam is `getCurrentWindow().onCloseRequested()` +
+`event.preventDefault()`. The test mocks the Tauri window API and drives
+the handler through it.
+
+No supervisor action needed: the slice is well-formed, desktop-correct,
+and lands as its own commit when ready. Watch item: confirm the hook is
+adopted by the screens that had `beforeunload` (otherwise the guard is
+written but never mounted).
