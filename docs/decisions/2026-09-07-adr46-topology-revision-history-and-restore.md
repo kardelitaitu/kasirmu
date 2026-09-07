@@ -472,7 +472,7 @@ the implementer's to reinterpret.
 
 Landed so far: the **graph↔graph differ** (§10, `topologyRevisionDiff.ts`,
 25 tests), the **read path** (`list_topology_revisions`,
-`load_topology_revision`), and **pin/unpin** (`pin_topology_revision`).
+`load_topology_revision`), **pin/unpin** (`pin_topology_revision`), and the **overlay/browser module** (`TopologyRevisionBrowser.tsx` + `canViewTopologyHistory` read gate — a385440a).
 
 Pin deserves its own note, because Phase 1 left §4's central protection
 *inert*. The deflation logic honoured `pinned` and was tested — by setting the
@@ -481,8 +481,7 @@ graph stays restorable however busy the branch gets after it" described a
 guarantee no merchant could actually claim. Wiring the command is what makes
 §4 real rather than merely correct in principle.
 
-Remaining: the overlay module itself, restore-to-draft, and the pruned-snapshot
-messaging.
+Remaining: restore-to-draft and the pruned-snapshot messaging (the overlay/browser module landed in a385440a).
 
 ### The Phase-1 gate, closed (supervisor ratification, 2026-09-07)
 
