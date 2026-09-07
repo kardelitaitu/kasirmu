@@ -258,16 +258,39 @@ actual relationship mutation.
       path below to matter); (b) the KDS/tablet cloud-read data path —
       memos authored on desktop must reach the cloud DB and the tablet read
       a tenant-scoped endpoint (§"The tablet's Memo surface").
+      **SUPERVISOR UPDATE 2026-09-07, HEAD `15c40cec`: (b) is HALF
+      delivered.** The desktop PUSH side landed - `a009d3cf` (daemon push +
+      `collect_memo_sync_snapshot` + `push_memos_to_server`, behind the
+      `sync-http` feature) onto the serve layer from `eb71d071`/`9d125484`
+      (endpoint now correctly JWT-protected). The tablet/KDS READ side has
+      NOT landed - the commit touches no tablet files; the read half is
+      written but uncommitted in the working tree
+      (`fetch_active_memos_from_server`, wire-shape tests, local-fallback
+      test). Remaining for (b): land that, plus the tenant-semantics
+      resolution demanded in the Round-5 supervisor log below.
 - [ ] **Wire `revise_memo_scoped` (corrections).** The store path is fixed and
       TOCTOU-guarded (`e7b47b83`); this slice is the desktop IPC — gated
       `memo:write`, published-only, tenant-scoped — plus a revise control in
       `MemosScreen`. Ruled in scope 2026-09-07 (§"Separate, smaller point").
+      **DONE, supervisor-verified 2026-09-07 at HEAD `315c1e6f`:** command
+      registered in desktop `generate_handler!` (`lib.rs:1017`), wired in
+      `ui/src/api/memos.ts` + dev-mock, `MemosScreen` revise control landed in
+      `9062a7c1`. The checkbox had lagged the code; the journal below was
+      already correct.
 - [ ] **Add the Locations-to-Topology entry point.** Keep Locations
       status-oriented, but route location creation/details into the relevant
       scoped Topology Editor graph.
 - [ ] **Version and publish topology changes.** Preserve validation, optimistic
       concurrency, diff review, rollback/recovery, and an explicit Apply/publish
       boundary for location/workspace/device relationships.
+      **SUPERVISOR NOTE 2026-09-07: this item is partially unblocked and
+      partially delivered by ADR #46** (accepted, see
+      `docs/decisions/2026-09-07-adr46-topology-revision-history-and-restore.md`):
+      revision history (`315c1e6f`) + the revision INSERT in Apply's
+      transaction satisfy the history/rollback half; validation, optimistic
+      concurrency and the publish boundary already exist in Apply. Remaining
+      when ADR #46 lands: browse/restore UI (Phase 2) and re-Apply rollback
+      (Phase 3, own ADR).
 - [x] **Scale navigation.** Preserve Operations, Insights, and Configuration;
       add search, stable page registration, favorites, or recent pages before the
       home screen becomes an unstructured card grid. — **verified complete
@@ -1502,8 +1525,13 @@ were subsequently unblocked — see the ruling journal below)
 - ~~**Early stop (`stop_memo`)**~~ — **ruled and built**: option A2 landed
   (`a23d81bd`, see the RULING section and the journal below).
 - ~~**Revise UI**~~ — **ruled in scope and built** (`9062a7c1`).
-- **Tablet/KDS data path** — **ruled 2026-09-07: cloud read**; the slice is
-  designed and pending (see the ruling journal below).
+- ~~**Tablet/KDS data path**~~ — **ruled 2026-09-07: cloud read; built and
+  verified.** The serving layer (`eb71d071` + the route-placement fix
+  `9d125484`), the desktop push (`a009d3cf`), the tablet cloud-first read
+  with local fallback (landed entangled in `2c5dde8a`, journal entry below),
+  and the spec documentation (`f2dbb745`). PG integration test
+  `pg_integration_memo_sync_and_active_read` pins push → read →
+  delete-by-omission → RLS cross-tenant invisibility.
 - ~~**Retention sweep + stale-draft expiry**~~ — **ruled and built**:
   fixed 30-day window via `archived_at` (`c8d2a54f`); the draft-expiry rule
   was dropped per ruling.
@@ -1549,12 +1577,11 @@ file carries the decision inline), three implementation slices landed:
    mode). Dev-mock handler, en+id keys, contract + screen tests; the
    allowlist comment now covers five desktop-only management commands.
 
-**Remaining after the rulings: the cloud-read data path** (KDS/tablet reads
-memos through the shared cloud-server Postgres — needs a desktop→cloud write
-path for `memos`/`memo_recipients` and a tenant-scoped read endpoint;
-design-first slice, see §"The tablet's Memo surface"), and the display work
-is already complete (lock screen + all KDS branches mount the banner with
-server-issued cadence, per `796f1c7a` + `10bfb9ff`).
+**Remaining after the rulings: the cloud-read data path** — CLOSED 2026-09-07
+(the ruling journal below records the four landing commits and the open
+acknowledgement-path gap; the display work is already complete — lock screen
++ all KDS branches mount the banner with server-issued cadence, per
+`796f1c7a` + `10bfb9ff`).
 
 **Verification at commit time:** `npm run typecheck` clean; `npx eslint` clean
 on touched files; UI suite 500 files / 8815 passed (including the new
@@ -1562,6 +1589,91 @@ on touched files; UI suite 500 files / 8815 passed (including the new
 `cargo test -p oz-pos-app memo` 7/7; `scripts/lint-i18n.sh` clean;
 `verify-ipc-parity.py` OK. All ten pre-commit gates ran green on `3fb745cf`
 (bundle parity: 35 new keys, 0 missing; FTL orphans: OK).
+
+## Memo implementation journal — the cloud-read data path (2026-09-07)
+
+The ruled cloud-read slice landed as five pathspec-scoped commits plus one
+cleanup; each is recorded with its gates. Design source: §"Cloud-read design
+(2026-09-07)".
+
+1. **`eb71d071` — serving layer (`feat(api)`).** `crates/oz-api/src/pg.rs`
+   gains `sync_memos` (reconciling upsert + delete-by-omission under one RLS
+   transaction) and `list_active_memos_for_terminal` (the PG twin of
+   `list_active_for_terminal`), plus `routes/memos.rs` with both endpoints.
+   Two defects in this commit were caught and fixed in `9d125484`: the active
+   read was registered on the PUBLIC router where its
+   `Extension<ApiTokenClaims>` extract would 500 every request (moved to the
+   protected router; the read gate passes it through — no READ_KEY_MAP entry,
+   memo reads are authenticated-only like the local command), and
+   `ActiveMemoPg` lacked `created_at`, which the tablet display DTO requires
+   (wire had no consumers yet — added before any shipped).
+
+2. **`a009d3cf` — desktop push (`feat(core,desktop)`).**
+   `Store::collect_memo_sync_snapshot` reads the DATABASE's complete
+   non-deleted memo state — all tenants, deliberately unfiltered; the desktop
+   global DB is the single authoring authority and the cloud keys tenant
+   isolation off the authenticated token's tenant_id, never the payload
+   (`MemoSyncRow` carries no tenant_id). The doc comment was corrected to
+   say this in `49de4fc3` after the supervisor's Round-2 flag. The 5-minute
+   memo daemon now runs sweeps → snapshot → HTTP push per tick, best-effort
+   (failure logs; next tick re-pushes; delete-by-omission makes retention
+   deletes propagate). `push_memos_to_server` mirrors `request_token`'s
+   `OZ_ADMIN_KEY` passthrough so a desktop provisioned via the fallback
+   (admin-minted) path keeps pushing on gated deployments; the
+   client-credentials path (terminal_id claim) needs no admin key by design.
+   The daemon block confines the connection guard to a scoped block with no
+   awaits inside — the `Store` borrow is not `Send` (drop() alone did not
+   convince the generator analysis; the guard itself had to die lexically
+   before the await).
+
+3. **The tablet read half — landed entangled in `2c5dde8a`, whose message
+   says `docs(topology)`.** Recorded here rather than hidden: the commit
+   carries `fetch_active_memos_from_server` (oz-core), the
+   `ActiveMemoCloud → ActiveMemoDto` mapping (cloud query only returns
+   published and echoes no tenant, so status/tenant are filled from the
+   read's own invariants), the cloud-first `list_active_memos_scoped` with
+   local fallback on unconfigured/unreachable, and three tests: the
+   wire-shape decode (snake_case in from `ActiveMemoPg`, camelCase out like
+   the local command), the unconfigured path serving a seeded local memo, and
+   the unreachable-cloud path (port 1) degrading to the local read instead of
+   erroring. `cargo test -p oz-pos-tablet commands::memo` 6/6. No code defect;
+   the misattribution is a pathspec-discipline failure on a shared tree —
+   `git log -- apps/tablet-client/src/commands/memo.rs` points at a topology
+   commit, and this entry is the durable record of the true contents.
+
+4. **`f2dbb745` — spec documentation (`docs(api)`).** Both memo routes are
+   now in the OpenAPI base spec (Memos tag + six schemas), closing the
+   router↔spec drift `every_registered_route_is_documented` had been catching
+   since `eb71d071`; the active read is exempted from the READ_KEY_MAP
+   coverage guard the same way `/api/sync/*` is — device-facing poll,
+   audience already terminal-scoped by the recipient join plus the claims, no
+   read-tier key in the registry. oz-api 277/277; cloud-server openapi 16/16.
+
+5. **`49de4fc3` — doc-comment correction** for the snapshot semantics (see
+   item 2); the supervisor's Round-5 write-side question is answered by
+   `sync_memos`'s own shape: every INSERT stamps `$2 = tenant_id` from the
+   JWT claims and the reconciliation DELETE is `tenant_id = $1`, so the body
+   cannot write across tenants even in principle (the row structs carry no
+   tenant field to spoof).
+
+**Verification of the whole path:** `pg_integration_memo_sync_and_active_read`
+(`pg_tests.rs`, throwaway-DB pattern, skips clean without the dev PG
+container) drives push → terminal read (fields incl. `created_at` and
+`delivery_status`) → stranger terminal sees nothing → delete-by-omission →
+RLS cross-tenant invisibility. `cargo test -p oz-core --lib sync_client`
+35/35; `db::memos` 39/39; `cargo check -p oz-pos-app` clean.
+
+**Deliberately NOT built here — the acknowledgement upstream path.**
+`acknowledge_memo_scoped` (tablet) still writes the LOCAL memo_recipients
+row, which is structurally empty on a terminal: the command can only return
+`NotFound` on a cloud-fed tablet, and nothing marks `delivered` upstream
+either (`mark_recipient_delivered` has no production caller — delivery state
+in the cloud is whatever the desktop last pushed). Today's UI degrades
+correctly (ack is optimistic, failure non-fatal, the memo returns next poll),
+but durable acks need a cloud write (a `POST /api/v1/memos/ack` gated to the
+terminal's own claims, folded into the desktop push, or a `memo.acknowledge`
+outbox item). No UI, IPC, or parity surface changes until that is ruled —
+recorded as the workstream's remaining open item.
 
 ## RULING — `stop_memo` early-stop authorization (2026-09-07) — approved: option A2, fallback A1
 
@@ -1650,3 +1762,215 @@ and the live expiry sweep is the only path by which a wrong memo ever ends.
   file keeps catching.
 - Update the `commands/memo.rs` module doc, which records the deferral.
 - Flip open item (b) in the P1 Memo checkbox above.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 1, senior-agents supervision)
+
+Observed state at HEAD `315c1e6f`, working tree dirty (~1,100 insertions,
+two concurrent uncommitted streams: ADR #46 Phase 1 Step 1b in
+`commands/topology/*`, memo cloud-read slice in `memos.rs`/`sync_client.rs`
+/ tablet `memo.rs`). Actions taken this round:
+
+1. **Re-ran the dependency triage (§"Phase 2 execution plan") against HEAD.**
+   Its two "blocked" verdicts are stale:
+   - **Downgrade behavior** — blocked on "centralized quotas"; that gate
+     CLOSED with `73e77c5f` (terminal/warehouse) and `de6d2df2`
+     (product/KDS-screen). **Startable now.** Owner: Phase 2 agent.
+   - **Entitlements beyond tiers (§B)** — blocked on "entitlement plumbing";
+     the fail-closed subscription lifecycle (`9896dac4`, `4acaeea9`,
+     `1176730a`), grace policy, and admin-vs-operational split (`ed3731b2`,
+     `cc5d6c71`) have landed on the Phase 1 side. **Partially startable —
+     re-verify the remaining §B clause list against current IPC before
+     writing code.**
+   - Still blocked: audit baseline (waits on §B plumbing), regional
+     configuration (§G default-entity migration, Phase 1 side), tax
+     separation, Locations→Topology entry.
+2. **Fixed a stale checkbox:** `Wire revise_memo_scoped` was checked above —
+   it was built in `9062a7c1` but never flipped. Lesson for both agents, the
+   file's own recurring one: **flip the checkbox in the same commit that
+   lands the capability.**
+3. **Interleaved-working-tree caution:** both uncommitted streams share this
+   checkout. The journals show pathspec-scoped commits working — keep doing
+   exactly that; never `git add -A` / `git stash` across streams; run
+   `git status --short` before every commit and stage explicitly.
+4. **No agent should start ADR #46 Phase 1c–1e until Step 1b's tests are
+   committed green** (`topology_command_tests.rs`, `topology_tests.rs` are
+   mid-edit right now). The ADR's Solo Implementation Protocol governs that
+   work, not this file.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 2)
+
+Observed at HEAD `315c1e6f` (unchanged since Round 1); working tree grew to
+27 modified files / +1,345 insertions — both streams still uncommitted, both
+actively progressing. No new IPC surface, no handler registrations, dev-mock
+untouched (parity-gate risk low this round), and the migration-file edits in
+both streams are **cosmetic column alignment only**, applied in lockstep to
+the SQLite and PG copies — consistent with the PG-drift gate.
+
+**PRE-COMMIT REVIEW FLAG — `collect_memo_sync_snapshot` tenant scoping.**
+The in-flight function's doc comment promises "the tenant's COMPLETE
+non-deleted memo state", but its query is `SELECT ... FROM memos m ORDER BY
+created_at` with **no `WHERE tenant_id` filter** (crates/oz-core/src/db/
+memos.rs, uncommitted). Today this is latent — the desktop global DB is
+effectively single-tenant and the cloud reconciles by upsert +
+delete-by-omission — but it is the same bug class as `7ed4412b` (unfiltered
+fan-out) and the same contract gap that `56653839` (tenant_id backfill)
+existed to close. Ask before landing: (a) does the caller hold a tenant_id to
+filter by, and is there a multi-tenant row in this DB at all; (b) if the
+whole-DB read is deliberate, the doc comment and the push envelope should say
+"all tenants, desktop-is-authoritative" explicitly, and the cloud side must
+not key its reconciliation on `tenant_id`; (c) either way, add a test pinning
+the chosen semantics. Resolve this in the same commit that lands the slice —
+do not defer to a follow-up.
+
+Also noted: `pg_integration_memo_sync_and_active_read` is being added to
+`crates/oz-api/src/pg_tests.rs` — good, that is the right surface for the
+cloud-read slice; make sure it asserts the tenant-scoping semantics decided
+in the flag above, and that it is skipped cleanly when the PG DSN is absent
+so local gates stay green.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 5)
+
+New commits since Round 4: `a009d3cf` (desktop memo push), `9d125484` (memo
+active-read moved behind auth — good self-catch: it was on the public router,
+where its handler's `Extension<ApiTokenClaims>` would 500 every request),
+`15c40cec` (splash polish, unrelated). State of this file's work:
+
+**1. The Round-2 pre-commit flag was NOT resolved before the commit landed.**
+`collect_memo_sync_snapshot` committed with the unfiltered
+`SELECT ... FROM memos ORDER BY created_at` and the "the tenant's COMPLETE
+memo state" doc comment — now in permanent history — and no test pins the
+push semantics. The `9d125484` message does say "Tenant scope rides the JWT,
+never the body", which reads like option (b) from the Round-2 flag was chosen
+implicitly: whole-DB push, cloud keys reads by token tenant. That design can
+be sound — but "implicitly chosen and undocumented" is precisely what the
+flag said not to do. **Resolution now demanded (post-commit):**
+   - (i) Fix the doc comment and future commit messages: say "the DATABASE's
+     complete memo state; the cloud keys tenant isolation off the
+     authenticated token, not the payload" — the current wording is wrong
+     and will mislead the next reader.
+   - (ii) Pin the semantics with one test: seed two tenants' memos in the
+     desktop DB, assert the snapshot includes both (whole-DB push), and
+     assert the cloud-side ack. If instead the call site is supposed to
+     filter, filter it — but then say which tenant_id and where it comes
+     from.
+   - (iii) Answer the write-side question explicitly in the journal: does
+     `sync_memos_handler`'s upsert trust body `tenant_id` per row? If yes,
+     what stops a tenant's sync token from writing rows stamped with another
+     tenant_id? The read side is JWT-scoped (verified); the write side needs
+     one sentence of design or one guard.
+   - (iv) Journal this slice in this file — nothing here records `a009d3cf`
+     yet, and the §"Memo implementation journal" pattern (slice → gates →
+     tests) is the file's own standard.
+
+**2. Worktree state:** the tablet READ half of the cloud-read path is
+written and uncommitted (`fetch_active_memos_from_server`, DTO conversions,
+`cloud_wire_shape_decodes_into_display_dto`,
+`local_read_serves_seeded_memo_when_sync_unconfigured` — the local fallback
+test is good design, keep it). Land it with its tests; it completes open
+item (b)'s remaining half.
+
+**3. Checkbox discipline again:** the P1 Memo item's open-list and the
+ruling journal's "designed and pending" line both lagged the landed push
+commit; supervisor updated them this round (see the SUPERVISOR UPDATE note
+at the P1 checkbox). Same lesson as Round 1, third occurrence: **flip the
+checkbox in the same commit that lands the capability.**
+
+---
+
+## Supervisor incident note (2026-09-07, Round 5) — journal integrity
+
+During Round 5 the supervisor corrupted this file twice in the working tree:
+first a botched shell heredoc wrote an invalid UTF-8 byte (mangled emoji),
+then a careless binary-level "repair" deleted a large span of sections
+between the execution-plan section and the file tail. Both mistakes are the
+supervisor's, not any agent's. The file was rebuilt from HEAD
+(`git show HEAD:todo-global-saas-2.md`, which contains all agent content as
+committed) plus re-applied supervisor additions (Rounds 1, 2, 5 and the
+three in-place status notes). A pre-repair copy is preserved at
+`/tmp/saas2-corrupted-backup.md` for diffing. **Agents: re-read this file
+before your next edit; if anything you wrote after your last commit appears
+missing, it is supervisor damage — restore from your last commit and
+re-apply, or flag it in the next supervisor round.** Rule adopted for the
+supervisor going forward: journal edits go through byte-safe, anchor-asserted
+inserts only — never binary patching, never unvalidated heredoc content with
+multi-byte characters.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 6)
+
+**1. Open item (b) is now FULLY delivered** — the tablet read half landed
+(`fetch_active_memos_from_server`, DTO mapping, wire-shape tests, and the
+local-fallback test) — but it landed inside `2c5dde8a`, whose title says
+`docs(topology): correct ADR #46's retention-sweep anchor`. **That commit
+carries 226 lines of tablet product code under a docs-only message.**
+Consequences and required action:
+   - Git history now misattributes the tablet read slice; `git log -- <tablet
+     path>` points at a topology-docs commit.
+   - This is the file's own pathspec-discipline failing (Round 1 rule 3, R5
+     log item 3). Since the branch is unmerged, a rebase to split/split-name
+     the commit is cheap NOW and expensive after PR. Either split it, or at
+     minimum journal the true contents against `2c5dde8a` in this file.
+   - No code defect was found in the landed tablet read itself; the local
+     fallback test is good design.
+
+**2. Round-5 demand status (tenant semantics on the memo push):**
+   - (i) STILL OPEN and now worse: the committed module doc
+     (`crates/oz-core/src/db/memos.rs` line 5) claims "Every read/write is
+     tenant-scoped (`WHERE tenant_id = ?`)" while
+     `collect_memo_sync_snapshot` in the SAME FILE is the one unfiltered
+     read. The doc is factually false at HEAD. Fix the doc or add the filter.
+   - (ii) STILL OPEN: no test pins whole-DB push semantics.
+   - (iii) STILL OPEN: write-side answer for `sync_memos_handler` upsert and
+     body `tenant_id`.
+   - (iv) STILL OPEN: no journal entry for the push slice (`a009d3cf`) in
+     this file.
+
+**3. Progress on the Round-1 unblock calls:** `776af581` gated Memo and
+Data Management screens behind the §B admin gate with dedicated UI tests —
+the first slice of the "partially startable" §B entitlements work. The
+triage's remaining §B clause list should be re-verified against current IPC
+before the next slice, per Round 1.
+
+**4. Five commits landed this session without journal entries in this file**
+(`a009d3cf`, `9d125484`, `776af581`, `33b5789b`, `15c40cec` + the entangled
+`2c5dde8a`). The Memo implementation journal (§"Memo implementation journal")
+is the file's standard — backfill at least the push slice and the §B gate.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 12)
+
+**Round-5 demand status after `49de4fc3`:**
+
+- **(i) RESOLVED.** The doc fix is thorough and honest: "the DATABASE's
+  complete non-deleted memo state — all tenants, deliberately unfiltered",
+  with the isolation model stated ("the cloud keys tenant isolation off the
+  authenticated token's tenant_id, never the payload — MemoSyncRow carries
+  no tenant_id"). Commit message does the same. Supervisor verified against
+  the committed code.
+- **(iii) ANSWERED by code review (supervisor-verified at HEAD `49de4fc3`):**
+  the write side is safe by construction — `sync_memos` binds `&tenant_id`
+  derived from `require_tenant_write` (the token), never the payload, for
+  the `memos` INSERT *and* the `memo_locations`/`memo_recipients` rows;
+  delete-by-omission is `WHERE tenant_id = $1 AND NOT (id = ANY($2))` with
+  `$1` = token tenant. There is no payload forgery vector for tenant
+  attribution. One caveat: see the RLS gap in saas-1's Round-12 note — the
+  memo tables are NOT RLS-covered, so the "RLS: scope to the tenant"
+  comment in `pg.rs` is aspirational on this path (defense-in-depth absent,
+  code-level isolation present).
+- **(ii) STILL OPEN:** no test pins whole-DB push semantics (two tenants
+  seeded in the desktop DB, snapshot includes both; cloud ack asserted).
+- **(iv) STILL OPEN:** this file still has no journal entry for the push
+  slice (`a009d3cf`) — the commit message of `49de4fc3` is a paper record,
+  but the Memo implementation journal is this file's standard. Backfill.
+
+No other movement: Step 1c (topology) still awaiting commit with its cleared
+tests; the §B read-only slice is mid-flight and compile-green as of this
+round.
