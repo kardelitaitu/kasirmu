@@ -13,14 +13,15 @@
  * ============================================================ */
 
 /* Fixed positioning is shrink-to-fit, so the bubble adapts to its
-   content up to the 480px cap (owner direction, 2026-09-08). The
-   close chip is absolutely positioned against this box. */
+   content up to the 400px cap (owner direction, 2026-09-08: reduced
+   from 480px). The close chip is absolutely positioned against this
+   box. */
 .memo-banner {
   position: fixed;
   left: var(--space-6);
   bottom: var(--space-6);
   z-index: var(--z-overlay);
-  max-width: 480px;
+  max-width: 400px;
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-popover);
   border: 1px solid var(--color-border);
