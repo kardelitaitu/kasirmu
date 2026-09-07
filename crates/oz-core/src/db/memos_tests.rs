@@ -1096,3 +1096,38 @@ fn location_memo_still_sorts_above_organization() {
     );
     assert_eq!(active[1].memo.id, org.id);
 }
+
+// ── Cloud push snapshot (2026-09-07 cloud-read ruling) ──────────────
+
+#[test]
+fn sync_snapshot_spans_tenants_whole_database_by_design() {
+    // Pins the whole-database push semantics the supervisor demanded: the
+    // desktop global DB is the single authoring authority, so the snapshot
+    // deliberately carries EVERY tenant's memos (no WHERE tenant_id). The
+    // cloud keys tenant isolation off the authenticated token's tenant_id,
+    // never the payload. If someone later "fixes" the unfiltered query by
+    // adding a tenant filter without changing the push contract, this test
+    // fails loudly and forces the decision to be re-made consciously.
+    let store = store();
+    seed_terminal_with_tenant(&store, "t-a", None, "tenant-a");
+    seed_terminal_with_tenant(&store, "t-b", None, "tenant-b");
+
+    let memo_a = store.create_memo_draft(&new_memo("tenant-a", &[])).unwrap();
+    store.publish_memo("tenant-a", &memo_a.id).unwrap();
+    let memo_b = store.create_memo_draft(&new_memo("tenant-b", &[])).unwrap();
+    store.publish_memo("tenant-b", &memo_b.id).unwrap();
+
+    let snapshot = store.collect_memo_sync_snapshot().unwrap();
+    let ids: Vec<&str> = snapshot.iter().map(|m| m.id.as_str()).collect();
+    assert!(
+        ids.contains(&memo_a.id.as_str()) && ids.contains(&memo_b.id.as_str()),
+        "the snapshot must include every tenant's memos (whole-database push): {ids:?}"
+    );
+    // Each pushed memo carries its own recipients from the fan-out.
+    let pushed_a = snapshot
+        .iter()
+        .find(|m| m.id == memo_a.id)
+        .expect("tenant-a memo in snapshot");
+    assert_eq!(pushed_a.recipients.len(), 1);
+    assert_eq!(pushed_a.recipients[0].terminal_id, "t-a");
+}
