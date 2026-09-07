@@ -20,6 +20,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
+import { applyTopologyDiff, listTopologyRevisions } from '@/api/topology';
 import type { ComponentProps } from 'react';
 import multiStoreFtl from '@/locales/multi-location.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -273,6 +274,123 @@ describe('Apply confirmation dialog — characterization (pre-extraction net)', 
     // No 'Verifying…' label appears; the dialog is gone while the PIN check runs.
     expect(screen.queryByText('Verifying…')).toBeNull();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
+  });
+
+  // ── Change note (ADR #46 §6) ───────────────────────────────────
+  // Added AFTER the extraction, under the same waiver that authorised it.
+  // These are new-behaviour tests, not characterization.
+
+  it('carries the typed change note through to the save call', async () => {
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    await openDialog();
+
+    const note = document.getElementById('topology-apply-note') as HTMLTextAreaElement;
+    expect(note).not.toBeNull();
+    fireEvent.change(note, { target: { value: 'Opened the Pos Kota counter' } });
+
+    const pin = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: '1234' } });
+    fireEvent.click(screen.getByText('Apply').closest('button') as HTMLButtonElement);
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    // 5th positional argument, after resolvedIssueKeys.
+    expect(onSave.mock.calls[0]?.[4]).toBe('Opened the Pos Kota counter');
+  });
+
+  it('sends an empty note rather than blocking the Apply when left blank', async () => {
+    // §6 is explicit that a note is optional: forcing one on every Apply
+    // trains operators to type noise, and the whole point of the field is to
+    // be worth reading.
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    await openDialog();
+
+    const pin = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: '1234' } });
+    fireEvent.click(screen.getByText('Apply').closest('button') as HTMLButtonElement);
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[4]).toBe('');
+  });
+
+  it('caps the note at the backend limit, counted in characters', async () => {
+    // Mirrors TOPOLOGY_CHANGE_NOTE_MAX_CHARS. The server REJECTS an over-long
+    // note rather than truncating it, so the field must not let one through.
+    renderEditor(vi.fn().mockResolvedValue({ revision: 1 }));
+    await openDialog();
+    const note = document.getElementById('topology-apply-note') as HTMLTextAreaElement;
+    expect(note.maxLength).toBe(500);
+  });
+
+  it('keeps the note when the PIN is rejected, and clears it on a fresh open', async () => {
+    // Both halves of the deliberate reset semantics: a wrong PIN must not
+    // cost the operator a paragraph they already wrote (it is not a
+    // credential), but a NEW Apply must not inherit the last one's note.
+    pinGate.accept = false;
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    await openDialog();
+
+    const noteEl = () => document.getElementById('topology-apply-note') as HTMLTextAreaElement;
+    fireEvent.change(noteEl(), { target: { value: 'Moved Gudang to back-room routing' } });
+    const pin = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: '1234' } });
+    fireEvent.click(screen.getByText('Apply').closest('button') as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(document.querySelector('.topology-apply-confirm-pin-error')).not.toBeNull());
+    expect(noteEl().value).toBe('Moved Gudang to back-room routing');
+    // The PIN is still cleared — that one IS a credential.
+    expect((document.getElementById('topology-apply-pin') as HTMLInputElement).value).toBe('');
+
+    // Cancel and re-open: the note must not carry over into a new Apply.
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => expect(document.querySelector('.topology-apply-confirm-overlay')).toBeNull());
+    fireEvent.click(screen.getByText('Apply Topology'));
+    await waitFor(() => expect(document.querySelector('.topology-apply-confirm-overlay')).not.toBeNull());
+    expect(noteEl().value).toBe('');
+  });
+
+  it('lands the note in the revision history through the real IPC chain', async () => {
+    // THE point of §6. The earlier tests prove the dialog hands the note to
+    // onSave; this proves it survives from there to the record a merchant
+    // reads days later.
+    //
+    // The onSave below is a BRIDGE, not a stub: it does what TopologyScreen's
+    // real handler does — forward its own arguments to applyTopologyDiff. So
+    // the string that ends up in the revision row can only have come from the
+    // textarea. Hardcoding it here would have tested the dev-mock and looked
+    // like it tested the dialog.
+    const bridgedSave: OnSave = (_nodes, _wires, baseRevision, resolvedIssueKeys, changeNote) =>
+      applyTopologyDiff(
+        'test-session-token', [], [], [],
+        // Empty diagram on purpose: the editor's TopologyNodeData is not the
+        // payload shape applyTopologyDiff takes (TopologyScreen converts it via
+        // buildDiagramPayloads), and this test is about the NOTE's journey, not
+        // the graph's. The note still travels the whole real path.
+        [], [], undefined, baseRevision ?? 0,
+        undefined, resolvedIssueKeys, changeNote,
+      );
+
+    renderEditor(bridgedSave);
+    await openDialog();
+
+    const typed = 'Opened Pos Kota counter';
+    fireEvent.change(
+      document.getElementById('topology-apply-note') as HTMLTextAreaElement,
+      { target: { value: typed } },
+    );
+    fireEvent.change(
+      document.getElementById('topology-apply-pin') as HTMLInputElement,
+      { target: { value: '1234' } },
+    );
+    fireEvent.click(screen.getByText('Apply').closest('button') as HTMLButtonElement);
+
+    await waitFor(async () => {
+      const history = await listTopologyRevisions('test-session-token');
+      expect(history[0]?.changeNote).toBe(typed);
+    });
   });
 
   it('keeps the remember-PIN option out of the way once the session is verified', async () => {

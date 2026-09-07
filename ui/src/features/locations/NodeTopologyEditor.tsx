@@ -242,6 +242,9 @@ export interface NodeTopologyEditorProps {
     wires: TopologyWireData[],
     baseRevision?: number,
     resolvedIssueKeys?: string[],
+    /** ADR #46 §6: the operator's "why", typed in the Apply dialog. Empty
+     *  string means no note, which the history shows as such. */
+    changeNote?: string,
   ) => Promise<(TopologyApplyResult & { idMap?: Record<string, string> }) | Record<string, string> | void>;
   /**
    * Real workspace instances to seed the canvas with. When provided, the
@@ -2060,7 +2063,11 @@ export default function NodeTopologyEditor({
    * touched here; TopologyApplyConfirm owns it. What stays is the close/reopen
    * sequencing, because this function is the one that knows when to do it.
    */
-  const confirmApply = useCallback(async (pin: string, remember: boolean): Promise<boolean> => {
+  const confirmApply = useCallback(async (
+    pin: string,
+    remember: boolean,
+    changeNote: string,
+  ): Promise<boolean> => {
     if (!beginApply()) return true;
     setApplyConfirmOpen(false);
     try {
@@ -2094,7 +2101,7 @@ export default function NodeTopologyEditor({
     let savedWires = wires;
     let nextRevision: number | undefined;
     try {
-      const result = await onSave?.(nodes, wires, topologyRevision, [...resolvedIssues]);
+      const result = await onSave?.(nodes, wires, topologyRevision, [...resolvedIssues], changeNote);
       const idMap: Record<string, string> | undefined = result && typeof result === 'object' && 'idMap' in result
         ? (result.idMap && typeof result.idMap === 'object'
           ? result.idMap as Record<string, string>

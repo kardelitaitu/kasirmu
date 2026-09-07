@@ -42,8 +42,13 @@ export interface ApplyContext {
    * audit entry. Optional — an Apply is never blocked on writing a note.
    * Capped server-side at 500 characters, where an over-long note is
    * REJECTED before any mutation rather than silently truncated.
+   *
+   * `| undefined` is required by exactOptionalPropertyTypes: TopologyScreen
+   * forwards the editor's optional `changeNote` parameter, which is genuinely
+   * `string | undefined` rather than absent, and `?: string` alone would
+   * refuse it.
    */
-  changeNote?: string;
+  changeNote?: string | undefined;
 }
 
 export interface ApplyResult extends TopologyApplyResult {

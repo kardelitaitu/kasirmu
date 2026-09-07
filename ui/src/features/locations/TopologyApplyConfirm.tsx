@@ -55,15 +55,28 @@ export interface TopologyApplyConfirmProps {
   /** Dismiss without applying. */
   onClose: () => void;
   /**
-   * Verify `pin` and, if it holds, perform the Apply. Resolves false when the
-   * PIN was rejected, in which case the caller is expected to re-open the
-   * dialog (it closes first, so the operator is not staring at a dead canvas).
+   * Verify `pin` and, if it holds, perform the Apply carrying `changeNote`.
+   * Resolves false when the PIN was rejected, in which case the caller is
+   * expected to re-open the dialog (it closes first, so the operator is not
+   * staring at a dead canvas).
+   *
+   * `changeNote` is "" when the operator left the field empty — the backend
+   * stores that as an empty note, which is what makes an un-noted deploy
+   * distinguishable from a noted one in the history.
    */
-  onConfirm: (pin: string, rememberPin: boolean) => Promise<boolean>;
+  onConfirm: (pin: string, rememberPin: boolean, changeNote: string) => Promise<boolean>;
 }
 
 /** Re-focus the PIN input after the dialog is re-opened on a rejection. */
 const FOCUS_DELAY_MS = 50;
+
+/** Mirrors `TOPOLOGY_CHANGE_NOTE_MAX_CHARS` in
+ *  apps/desktop-client/src/commands/topology/revisions.rs. Truncating here is
+ *  a courtesy; the backend REJECTS a longer note with
+ *  `topology-change-note-too-long`, and it counts CHARACTERS, not bytes — so
+ *  maxLength on the textarea (which also counts UTF-16 code units) is the
+ *  right control, and the counter below must not be the only guard. */
+const CHANGE_NOTE_MAX = 500;
 
 export default function TopologyApplyConfirm({
   open,
@@ -78,6 +91,7 @@ export default function TopologyApplyConfirm({
   const [pinError, setPinError] = useState(false);
   const [pinVerifying, setPinVerifying] = useState(false);
   const [rememberPin, setRememberPin] = useState(false);
+  const [changeNote, setChangeNote] = useState('');
   const pinRef = useRef<HTMLInputElement>(null);
 
   /** Fresh credentials every time the dialog is opened: a leftover PIN from a
@@ -86,18 +100,37 @@ export default function TopologyApplyConfirm({
     if (!open) return;
     setPin('');
     setPinError(false);
+    // `changeNote` is deliberately NOT reset here. A PIN rejection closes and
+    // then re-opens the dialog, and from inside this effect a re-open is
+    // indistinguishable from a fresh open — resetting on open therefore throws
+    // away the paragraph the operator just wrote because they fat-fingered a
+    // PIN. It is reset on DISMISSAL instead (see `dismiss` and the accepted
+    // branch of `submit`), which is the moment the note has actually been
+    // consumed or abandoned. The PIN keeps its reset here because it is a
+    // credential and is cleared explicitly on rejection anyway.
     const timer = setTimeout(() => pinRef.current?.focus(), FOCUS_DELAY_MS);
     return () => clearTimeout(timer);
   }, [open]);
+
+  /** Cancel: the note is abandoned along with the Apply, so clear it. */
+  const dismiss = useCallback(() => {
+    setChangeNote('');
+    onClose();
+  }, [onClose]);
 
   const submit = useCallback(async () => {
     if (pin.length < 4 || pinVerifying) return;
     setPinVerifying(true);
     let accepted = false;
     try {
-      accepted = await onConfirm(pin, rememberPin);
+      accepted = await onConfirm(pin, rememberPin, changeNote);
     } finally {
       setPinVerifying(false);
+    }
+    if (accepted) {
+      // The Apply went through: the note has been consumed.
+      setChangeNote('');
+      return;
     }
     if (!accepted) {
       // The caller re-opened the dialog; clear the rejected PIN so the
@@ -106,7 +139,7 @@ export default function TopologyApplyConfirm({
       setPin('');
       setTimeout(() => pinRef.current?.focus(), FOCUS_DELAY_MS);
     }
-  }, [pin, pinVerifying, rememberPin, onConfirm]);
+  }, [pin, pinVerifying, rememberPin, changeNote, onConfirm]);
 
   if (!open || !data) return null;
 
@@ -244,6 +277,34 @@ export default function TopologyApplyConfirm({
           )}
         </div>
 
+        {/* Change note (ADR #46 §6) — the "why" that the revision row and the
+            audit entry both carry. Optional by design: forcing one on every
+            Apply trains operators to type noise. */}
+        <label className="topology-apply-confirm-note-label" htmlFor="topology-apply-note">
+          <Localized id="topology-apply-confirm-note-label">What changed?</Localized>
+          <span className="topology-apply-confirm-note-optional">
+            <Localized id="topology-apply-confirm-note-optional">optional</Localized>
+          </span>
+        </label>
+        <textarea
+          id="topology-apply-note"
+          className="topology-apply-confirm-note"
+          placeholder={l10n.getString('topology-apply-confirm-note-placeholder')}
+          value={changeNote}
+          onChange={(e) => setChangeNote(e.target.value)}
+          maxLength={CHANGE_NOTE_MAX}
+          rows={2}
+          disabled={pinVerifying}
+        />
+        {changeNote.length > 0 && (
+          <span className="topology-apply-confirm-note-count">
+            {l10n.getString('topology-apply-confirm-note-count', {
+              count: changeNote.length,
+              max: CHANGE_NOTE_MAX,
+            })}
+          </span>
+        )}
+
         {/* PIN confirmation */}
         <label className="topology-apply-confirm-pin-label" htmlFor="topology-apply-pin">
           <Localized id="topology-apply-confirm-pin-label">Enter your PIN to confirm</Localized>
@@ -285,7 +346,7 @@ export default function TopologyApplyConfirm({
 
         {/* Actions */}
         <div className="topology-apply-confirm-actions">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={dismiss}>
             <Localized id="topology-apply-confirm-cancel">Cancel</Localized>
           </Button>
           <Button

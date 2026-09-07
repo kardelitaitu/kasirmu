@@ -425,10 +425,12 @@ Phases 1 and 2 are independently shippable and independently revertible.
 
 Recorded per Rule 6 (parked items get a paper trail, not a branch).
 
-Steps **1a–1d are complete**. **1e is complete except for its input control**:
-`change_note` is accepted over IPC, validated, trimmed, stored on the revision
-row, and written to the audit record — but nothing in the editor can type into
-it yet, so every Apply currently records an empty note.
+**Phase 1 IS NOW COMPLETE (1a–1e), including 1e's input control.** The
+change-note textarea landed with the extraction that the waiver below
+authorised, so the conflict it describes no longer exists — see
+§"The waiver, executed". `change_note` is accepted over IPC, validated,
+trimmed, stored on the revision row, written to the audit record, AND typed by
+a real control in the Apply dialog.
 
 1e's UI half is blocked by two rules that jointly forbid it:
 
@@ -481,6 +483,34 @@ guarantee no merchant could actually claim. Wiring the command is what makes
 
 Remaining: the overlay module itself, restore-to-draft, and the pruned-snapshot
 messaging.
+
+### The waiver, executed
+
+`TopologyApplyConfirm.tsx` now owns the dialog: 187 lines of JSX and 268 lines
+of CSS moved out, and the editor's `applyPin` / `applyPinError` /
+`applyPinVerifying` / `rememberPin` / `applyPinRef` state relocated with it.
+`NodeTopologyEditor.tsx` went 6146 → 5963 and its stylesheet 3327 → 3059, so
+the move NET-REMOVED as the ruling required rather than merely relocating.
+
+The condition was behaviour preservation, and it was tested rather than
+asserted: ten characterization tests were written FIRST, against observable
+behaviour rather than file layout, and pass unchanged on both sides of the
+move. Two findings came out of doing it that way:
+
+- The dialog closes BEFORE verifying the PIN and re-opens on rejection, so the
+  error and the cleared input survive an unmount. A component that unmounted on
+  close would silently drop the error. It therefore stays mounted while closed.
+- Splitting the stylesheet exposed that the dialog's three animations were
+  never reduced-motion gated. `animationCompliance`'s Pattern B exempts a whole
+  file that contains any `reduce` block, and the editor's seven had been
+  covering them for their entire life.
+
+The change-note input then went in under the same waiver, with the note
+traveling dialog → `confirmApply` → `onSave` → `TopologyScreen` →
+`topologyApply` → `applyTopologyDiff` → revision row. It is reset on
+DISMISSAL, not on open: a re-open after a rejected PIN is indistinguishable
+from a fresh open inside the effect, so resetting on open would discard a
+paragraph the operator just wrote because they fat-fingered four digits.
 
 ### Incident worth recording, because the parallel-work hazard is live
 

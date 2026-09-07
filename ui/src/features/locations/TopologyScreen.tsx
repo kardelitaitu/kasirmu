@@ -505,6 +505,9 @@ function TopologyScreenContent() {
       wires: TopologyWireData[],
       baseRevision = 0,
       resolvedIssueKeys: string[] = [],
+      // ADR #46 §6: threaded straight to the Apply IPC. The editor's dialog
+      // collects it; this screen owns the IPC call, so it owns the mapping.
+      changeNote?: string,
     ): Promise<TopologyApplyResult & { idMap?: Record<string, string> }> => {
       if (!sessionToken) {
         const error = new Error(l10n.getString('topology-toast-no-session'));
@@ -522,6 +525,7 @@ function TopologyScreenContent() {
           branchId: selectedBranchId ?? undefined,
           baseRevision,
           resolvedIssueKeys,
+          changeNote,
         },
         (msg, type) => addToast({ message: msg, type }),
         l10n,
