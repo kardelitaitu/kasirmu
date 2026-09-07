@@ -24,7 +24,7 @@ vi.mock('@/api/memos', () => ({
   acknowledgeMemoScoped: vi.fn(() => Promise.resolve()),
 }));
 
-// ── Render-count boundary on the host screen ──────────────────────
+// ── Render-count boundary on the host screen ──────────────────
 
 let posScreenRenders = 0;
 vi.mock('@/features/retail/RetailPosScreen', () => ({
@@ -33,6 +33,25 @@ vi.mock('@/features/retail/RetailPosScreen', () => ({
     return <div data-testid="retail-pos-screen">Retail POS</div>;
   },
 }));
+
+// Homescreen variant: the owner's observation is on the workspace PICKER
+// surface, whose host is WorkspaceHome — a DIFFERENT consumer set than the
+// POS screen (it also reads useSubscription/useAuth/useFullscreen). The
+// stub SUBSCRIBES to the same contexts so a context-value churn per spawn
+// moves the counter — an inert stub would only catch parent-driven
+// re-renders.
+let homeRenders = 0;
+vi.mock('@/features/workspaces/WorkspaceHome', async () => {
+  const { useSubscription } = await import('@/contexts/SubscriptionContext');
+  // Named (uppercase) so the rules-of-hooks lint sees a component.
+  function CountingHome() {
+    homeRenders += 1;
+    useWorkspace();
+    useSubscription();
+    return <div data-testid="workspace-home">Workspace Home</div>;
+  }
+  return { default: CountingHome };
+});
 
 // ── Auth context: a live session so the shell reaches store-pos ───
 
@@ -69,9 +88,6 @@ vi.mock('@/features/setup/SetupWizard', () => ({
 }));
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen">Login</div>,
-}));
-vi.mock('@/features/workspaces/WorkspaceHome', () => ({
-  default: () => <div data-testid="workspace-home">Workspace Home</div>,
 }));
 vi.mock('@/features/sales/PosScreen', () => ({
   default: () => <div data-testid="pos-screen">POS</div>,
@@ -193,6 +209,7 @@ beforeEach(() => {
   mockList.mockResolvedValue(emptyEnvelope);
   mockSession();
   posScreenRenders = 0;
+  homeRenders = 0;
   vi.mocked(useWorkspace).mockImplementation(() =>
     workspaceValue({ activeWorkspace: 'store-pos' }),
   );
@@ -282,5 +299,44 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     // BOTH stages must leave the host screen untouched.
     expect(afterFirst).toBe(baseline);
     expect(posScreenRenders).toBe(baseline);
+  });
+
+  it('HOMESCREEN: first and second spawn are both host-screen-stable', async () => {
+    // The owner narrowed the observation: the re-render happens on the
+    // workspace PICKER surface specifically. WorkspaceHome consumes a
+    // different set of contexts (useSubscription, useAuth, useFullscreen)
+    // than the POS screen, so this stage pair measures THAT surface.
+    vi.mocked(useWorkspace).mockImplementation(() => workspaceValue());
+    await renderWithProviders(<AppShell />, staffFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+    });
+    const baseline = homeRenders;
+    expect(baseline).toBeGreaterThan(0);
+
+    // First spawn.
+    mockList.mockResolvedValue(memoEnvelope);
+    await act(async () => {
+      window.dispatchEvent(new Event('memos:refresh'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
+    });
+    const afterFirst = homeRenders;
+
+    // Second spawn (stacks).
+    mockList.mockResolvedValue({
+      memos: [secondMemo, memo],
+      cadence: { baseIntervalSecs: 900, kdsIntervalSecs: 1800 },
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event('memos:refresh'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Restock aisle 4')).toBeInTheDocument();
+    });
+
+    expect(afterFirst).toBe(baseline);
+    expect(homeRenders).toBe(baseline);
   });
 });
