@@ -56,7 +56,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.36"          # locked — do not bump without an explicit order
+version = "0.0.37"          # locked — do not bump without an explicit order
 edition = "2024"
 rust-version = "1.88"       # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"   # proprietary — NOT open source
@@ -182,7 +182,7 @@ subdirectory is a Cargo crate.
 
 ### Branch naming
 
-> **Repo policy (AGENTS.md): never create new branches, never switch branches.** Always work directly on the currently active branch — the version branch, e.g. `0.0.36` — and let the user manage branching. The table below applies only when the user explicitly requests a named branch.
+> **Repo policy (AGENTS.md): never create new branches, never switch branches.** Always work directly on the currently active branch — the version branch, e.g. `0.0.37` — and let the user manage branching. The table below applies only when the user explicitly requests a named branch.
 
 | Prefix | When to use | Example |
 |--------|-------------|---------|
@@ -383,4 +383,4 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 07-09-26 by skill-drift-guard
