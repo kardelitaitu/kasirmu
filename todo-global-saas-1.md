@@ -3736,3 +3736,30 @@ re-render the page; the second (stacking) did not. Investigated
   commit's component list (or a coincidental StatusBar/sync poll);
   the probe rules the shell itself out either way.
 
+### CLOSED — live-app instrumentation: the homescreen never re-renders on spawns
+
+The owner narrowed the observation to the homescreen and reported
+per-spawn re-renders. Investigation chain (`40b8de14` probe upgrade,
+then live instrumentation):
+
+- The probe gained a homescreen stage-pair whose WorkspaceHome stub
+  SUBSCRIBES to useWorkspace + useSubscription (an inert stub only
+  catches parent-driven re-renders, not context churn) — both stages
+  stable. Also fixed a duplicate vi.mock registration that silently
+  replaced the counting factory (last registration wins), and named
+  the mock component for the rules-of-hooks lint.
+- With the harness clean but the owner still observing churn, a TEMP
+  diagnostic (uncommitted) logged context-identity changes on every
+  real WorkspaceHome render. The owner's live console answered
+  decisively: **exactly one `[WSH render]` line, at boot, marked
+  "contexts stable (parent-driven)"** — the terminal-profile write
+  landing — followed by 2 acknowledges + 3 spawns with ZERO further
+  renders. The homescreen does not re-render on memo activity, proven
+  in the live app with the real provider stack and dev-mock.
+- **Verdict:** the earlier sightings were (a) boot-time parent-driven
+  renders landing near the first interaction, and/or (b) browser-level
+  paint of the new fixed layer. React-wise the surface is isolated by
+  construction: banner state is local, workspace/auth context values
+  are memoized, and the probe + live log both pin it. Diagnostic
+  removed; WorkspaceHome.tsx back to clean.
+
