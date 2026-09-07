@@ -244,3 +244,117 @@ async fn falls_back_to_local_read_when_cloud_unreachable() {
     assert_eq!(dto.memos.len(), 1, "the local memo is still served");
     assert_eq!(dto.memos[0].delivery_status, "pending");
 }
+
+// ── Acknowledgement upstream (2026-09-07 cloud-read ruling) ────────
+
+#[tokio::test]
+async fn ack_goes_to_the_cloud_and_carries_the_wire_contract() {
+    // Sync is configured and the "cloud" is a local TCP listener that
+    // captures the request and answers the ack contract — pinning the
+    // wire: POST /api/v1/memos/{id}/ack, Bearer token, acknowledged_by
+    // body, MemoAckCloud JSON response.
+    use std::sync::Arc as StdArc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let captured: StdArc<tokio::sync::Mutex<Option<String>>> =
+        StdArc::new(tokio::sync::Mutex::new(None));
+    let captured_server = captured.clone();
+    let task = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return;
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let n = socket.read(&mut buffer).await.unwrap_or(0);
+        let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
+        *captured_server.lock().await = Some(request);
+        // Snake_case: the server's MemoAckResult has no serde rename, so
+        // its wire body is snake_case — the same shape MemoAckCloud parses.
+        let body = r#"{"memo_id":"m-1","terminal_id":"terminal-1","delivery_status":"acknowledged","acknowledged_at":"2026-09-07T09:00:00.000Z","changed":true}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+    });
+
+    let conn = oz_core::migrations::fresh_db();
+    oz_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
+    oz_core::settings::Settings::set_sync_server_url(&conn, &server_url).unwrap();
+    oz_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), tablet_session("terminal-1"));
+
+    acknowledge_memo_scoped("m-1".into(), "tok".into(), app.state())
+        .await
+        .expect("cloud ack must succeed");
+    task.await.unwrap();
+
+    let request = captured.lock().await.clone().unwrap();
+    assert!(request.starts_with("POST /api/v1/memos/m-1/ack "));
+    assert!(
+        request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer jwt-test"),
+        "ack request did not carry the bearer token: {request}"
+    );
+    assert!(
+        request.contains("acknowledged_by"),
+        "ack request did not carry the acking user: {request}"
+    );
+}
+
+#[tokio::test]
+async fn ack_falls_back_to_local_write_with_seeded_recipient() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_terminal(&conn, "terminal-1");
+    let memo_id = seed_published_memo(&conn);
+    {
+        oz_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
+        oz_core::settings::Settings::set_sync_server_url(&conn, "http://127.0.0.1:1").unwrap();
+        oz_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
+    }
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), tablet_session("terminal-1"));
+
+    acknowledge_memo_scoped(memo_id.clone(), "tok".into(), app.state())
+        .await
+        .expect("fallback ack must succeed via the local write");
+
+    // The local recipient row must now be acknowledged.
+    let app_state = app.state::<AppState>();
+    let db = app_state.db.lock().await;
+    let (status, acked_by): (String, Option<String>) = {
+        use rusqlite::params;
+        let store = Store::new(&db);
+        store
+            .conn()
+            .query_row(
+                "SELECT delivery_status, acknowledged_by FROM memo_recipients
+                 WHERE memo_id = ?1 AND terminal_id = 'terminal-1'",
+                params![memo_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+    };
+    assert_eq!(status, "acknowledged");
+    assert_eq!(acked_by.as_deref(), Some("user-staff"));
+    drop(db);
+}

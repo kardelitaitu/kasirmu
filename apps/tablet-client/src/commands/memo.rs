@@ -217,6 +217,15 @@ pub async fn list_active_memos_scoped(
 }
 
 /// Acknowledge a memo on the caller's terminal. Authenticated-only.
+///
+/// Cloud-first (2026-09-07 cloud-read ruling): the memo reached this
+/// tablet through the cloud, so the durable ack flows back through it —
+/// the local `memo_recipients` table is structurally empty on a
+/// terminal, and the cloud merge keeps the ack alive against the
+/// desktop's next (stale) push. When sync is unconfigured or the cloud
+/// is unreachable the local write is the fallback. The ack carries the
+/// session's user id as informational metadata (terminal tokens have no
+/// user identity of their own).
 #[tauri::command]
 pub async fn acknowledge_memo_scoped(
     memo_id: String,
@@ -224,6 +233,29 @@ pub async fn acknowledge_memo_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = state.resolve_session(&session_token)?;
+
+    // Scoped block: the connection guard must never be held across the
+    // HTTP await below (it is not `Send`).
+    let config = {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        SyncConfig::from_settings(&store)?
+    };
+
+    if let Some(config) = config.as_ref() {
+        match sync_client::ack_memo_on_server(config, &memo_id, Some(&session.user_id)).await {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    memo = %memo_id,
+                    terminal = %session.terminal_id,
+                    "memo ack through the cloud failed; falling back to local write"
+                );
+            }
+        }
+    }
+
     let db = state.db.lock().await;
     let store = Store::new(&db);
     store.acknowledge_memo(

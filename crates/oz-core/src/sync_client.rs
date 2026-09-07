@@ -589,6 +589,81 @@ pub struct MemoSyncAck {
     pub deleted: i64,
 }
 
+/// Server result of a terminal memo acknowledgement.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoAckCloud {
+    /// The memo that was acknowledged.
+    pub memo_id: String,
+    /// The terminal whose recipient row moved (server reads it from the
+    /// token claim).
+    pub terminal_id: String,
+    /// Always `acknowledged` after the call.
+    pub delivery_status: String,
+    /// When the acknowledgement landed.
+    pub acknowledged_at: String,
+    /// True when THIS call moved the row; false on an idempotent re-ack.
+    pub changed: bool,
+}
+
+/// Acknowledge a memo from this terminal through the cloud
+/// (`POST /api/v1/memos/{memo_id}/ack`, async). The terminal identity
+/// rides the token's `terminal_id` claim — the server rejects a token
+/// with none — so the request cannot name another terminal. `user_id`
+/// is informational (who at the terminal acknowledged).
+#[cfg(feature = "sync-http")]
+pub async fn ack_memo_on_server(
+    config: &SyncConfig,
+    memo_id: &str,
+    user_id: Option<&str>,
+) -> Result<MemoAckCloud, SyncHttpError> {
+    let url = format!(
+        "{}/api/v1/memos/{}/ack",
+        config.server_url.trim_end_matches('/'),
+        memo_id
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .post(&url)
+        .header("Content-Type", "application/json");
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .json(&serde_json::json!({ "acknowledged_by": user_id }))
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<MemoAckCloud>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub used when `sync-http` feature is disabled — always fails so the
+/// caller's local-write fallback applies (a durable ack has no honest
+/// pretend-success).
+#[cfg(not(feature = "sync-http"))]
+pub async fn ack_memo_on_server(
+    config: &SyncConfig,
+    _memo_id: &str,
+    _user_id: Option<&str>,
+) -> Result<MemoAckCloud, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
 /// Push the tenant's complete memo state to the cloud via
 /// `POST /api/v1/memos/sync` (async). The snapshot IS the truth — the
 /// server upserts and deletes by omission, so a failed push self-corrects
