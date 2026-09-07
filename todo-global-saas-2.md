@@ -276,7 +276,7 @@ actual relationship mutation.
       the terminal ack half landed as `b9278fb0` (tablet cloud-first ack
       + local fallback, wire contract pinned), completing the loop's last
       open slice; offline delivery remains the recorded future-work item.
-- [ ] **Wire `revise_memo_scoped` (corrections).** The store path is fixed and
+- [x] **Wire `revise_memo_scoped` (corrections).** The store path is fixed and
       TOCTOU-guarded (`e7b47b83`); this slice is the desktop IPC — gated
       `memo:write`, published-only, tenant-scoped — plus a revise control in
       `MemosScreen`. Ruled in scope 2026-09-07 (§"Separate, smaller point").
@@ -285,6 +285,8 @@ actual relationship mutation.
       `ui/src/api/memos.ts` + dev-mock, `MemosScreen` revise control landed in
       `9062a7c1`. The checkbox had lagged the code; the journal below was
       already correct.
+      **FLIPPED 2026-09-07 (journal pass):** closed on that verification —
+      no code change; the box had simply lagged its landed work.
 - [ ] **Add the Locations-to-Topology entry point.** Keep Locations
       status-oriented, but route location creation/details into the relevant
       scoped Topology Editor graph.
