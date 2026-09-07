@@ -25,7 +25,7 @@ const COMPONENTS_CSS = resolve(UI_SRC, 'frontend/themes/components.css');
 // When a new shadow-using component is added, its CSS class selector
 // must be added to the ::after list in components.css AND to this set.
 //
-// Current count: 40 selectors (6 core + 1 utility + 33 feature-specific).
+// Current count: 42 selectors (6 core + 1 utility + 35 feature-specific).
 // Increment when adding new selectors; decrement when cleaning up legacy.
 const KNOWN_NOISE_SELECTORS = [
   // Core pattern classes (always covered)
@@ -45,6 +45,12 @@ const KNOWN_NOISE_SELECTORS = [
   // Topology deploy-history browser (ADR #46 §2) — also carries the
   // .noise-dither utility; listed explicitly for the shadow-coverage check.
   '.topology-rev-browser',
+  // Memo chat-bubble stack and its enlarged reading card — the two elevated
+  // memo surfaces. Both are wired to ::after in components.css (main list +
+  // both @media parity blocks). The close chips are NOT here: they are
+  // exempt below as small circular controls.
+  '.memo-banner',
+  '.memo-expanded-card',
   // DEPRECATED LEGACY SELECTORS (feature-specific classes)
   '.retail-shift-modal',
   '.retail-held-carts-modal',
@@ -196,6 +202,14 @@ const EXEMPT_SELECTOR_PREFIXES = [
   // themeTokenCompliance.test.ts; the two gates are coupled, so a shadow token here is
   // read as a new elevated surface.
   '.kds-slider-knob',
+  // Memo close chips: a 24px and a 44px circle (border-radius: --radius-full),
+  // each absolutely positioned over a parent that IS dithered above. Same
+  // reasoning as '.kds-slider-knob' and '.btn' — banding needs a large, soft
+  // gradient to be visible — plus the '.modal-close-btn' precedent for a
+  // control inheriting its parent's treatment. Texturing a small disc reads
+  // as dirt, not depth.
+  '.memo-banner-close',
+  '.memo-expanded-close',
 ];
 
 /* ── Helpers ─────────────────────────────────────────────────── */

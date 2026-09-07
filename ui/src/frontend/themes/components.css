@@ -307,6 +307,12 @@
 /* ADR #46 §2 deploy-history browser — explicit ::after path so the
    shadow-coverage check sees it (the element also carries .noise-dither). */
 .topology-rev-browser::after,
+/* Memo chat-bubble stack + enlarged reading card — the two genuinely
+   elevated memo surfaces (shadow-xl / shadow-2xl). Their close chips are
+   exempt in noiseDitherCompliance.test.ts: small circular controls inherit
+   the dither from the dithered parent, exactly as .modal-close-btn does. */
+.memo-banner::after,
+.memo-expanded-card::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -449,6 +455,8 @@
   .noise-dither::after,
   .error-boundary__card::after,
   .topology-rev-browser::after,
+  .memo-banner::after,
+  .memo-expanded-card::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -569,6 +577,8 @@
   .noise-dither::after,
   .error-boundary__card::after,
   .topology-rev-browser::after,
+  .memo-banner::after,
+  .memo-expanded-card::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,

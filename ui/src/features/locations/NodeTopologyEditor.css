@@ -1473,7 +1473,10 @@
 .node-action-btn .node-btn-label {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 11px;
+  /* Matches the parent .node-action-btn's own --text-xs (line 1449).
+     Previously 11px — an off-scale value 1px above the button it sits in,
+     which is what themeTokenCompliance's zero baseline rejects. */
+  font-size: var(--text-xs);
 }
 
 .node-action-btn--toggle.is-active {
