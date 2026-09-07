@@ -67,6 +67,8 @@ pub mod loyalty;
 pub mod memo;
 /// Offline-mode commands.
 pub mod offline;
+/// Accounts Payable (Hutang) commands — desktop-only authoring.
+pub mod payables;
 /// Pre-session picker-ticket signing / verification.
 pub mod picker_ticket;
 /// Plugin management commands.

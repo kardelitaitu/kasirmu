@@ -183,6 +183,7 @@
   ],
   "scoped_orphans": [
     "check_license_status_scoped",
+    "create_payable_scoped",
     "currency_info_scoped",
     "edc_terminal_status_scoped",
     "enqueue_offline_scoped",
@@ -194,19 +195,22 @@
     "get_local_ip_scoped",
     "get_machine_id_scoped",
     "list_active_carts_scoped",
+    "list_payables_scoped",
     "list_pending_offline_scoped",
     "list_scale_devices_scoped",
     "list_warehouse_products_scoped",
     "pending_sync_count_scoped",
     "ping_scoped",
+    "record_payable_payment_scoped",
     "recover_workspace_instances_scoped",
     "renew_license_scoped",
     "rotate_encryption_key_scoped",
     "settings_changed_sink_scoped",
     "suspend_surplus_workspace_instances_scoped",
-    "test_auth_connection_scoped"
+    "test_auth_connection_scoped",
+    "write_off_payable_scoped"
   ],
-  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The memo authoring entries (create/publish/list_authored) are NOT host-only orphans \u2014 the authoring screen now invokes all three from the shared api (3fb745cf), so they left this list and moved to the tablet allowlist with a recorded product choice: authoring is desktop-only, following the legal-entity precedent. They return here only if tablet registration would leave them caller-less again.",
+  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The memo authoring entries (create/publish/list_authored) are NOT host-only orphans \u2014 the authoring screen now invokes all three from the shared api (3fb745cf), so they left this list and moved to the tablet allowlist with a recorded product choice: authoring is desktop-only, following the legal-entity precedent. They return here only if tablet registration would leave them caller-less again. The four payables entries (create/list/record_payment/write_off) are the desktop-only AP authoring surface landed ahead of its UI: the Hutang screen is a later slice, so these commands currently have no caller at all (unlike memo authoring, which already has one). They leave this list when the payables UI wires them, exactly as the memo entries did.",
   "dev_mock": [
     "delete_topology_template",
     "gateway_status",
