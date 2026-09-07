@@ -1318,3 +1318,150 @@ fn resource_covered_by_fails_closed_on_rows_the_schema_cannot_store() {
         "with no locations row the walk fails closed"
     );
 }
+
+// ── The session composite: Store::assignment_covers_session ──────────
+//
+// e4c8ab56 collapsed the desktop and tablet verdict commands onto this
+// helper. Its only coverage is indirect, and that coverage is thinner
+// than it looks: every client test seeds an assignment with no
+// scope_type/scope_id pair, so the column default makes the row
+// `organization`, whose resource axis is unconditionally true. The
+// client tests therefore exercise the spec-0048 axis only and never the
+// ADR #47 axis they were written to share. Both gaps below are on that
+// untested half.
+
+/// The composite is an AND, and the resource half of it still owes the
+/// legal_entity downward walk. A scoped row whose resource axis is a
+/// legal entity reaches neither half in any existing test: the 0048
+/// tests use an org-wide row, and the coverage tests use global mode.
+#[test]
+fn assignment_covers_session_requires_both_axes_and_walks_for_the_resource_one() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+    store
+        .set_assignment(
+            "u1",
+            "role-staff",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Scoped,
+                branches_all: false,
+                branches: vec!["store-a".into()],
+                workspaces_all: false,
+                workspaces: vec!["retail-pos".into()],
+                scope_type: ScopeType::LegalEntity,
+                scope_id: Some("ent-1".into()),
+            },
+        )
+        .unwrap();
+
+    let session = |resource_type: ScopeType, resource_id: &str, branch: &str, workspace: &str| {
+        store
+            .assignment_covers_session("u1", resource_type, resource_id, branch, workspace)
+            .unwrap()
+    };
+
+    // Both axes pass: the 0048 dimension names this branch/workspace, and
+    // the resource is a location the assignment's entity owns. The second
+    // half is the walk, so this is the composite's only true row.
+    assert_eq!(
+        session(ScopeType::Location, "loc-ent1", "store-a", "retail-pos"),
+        Some(true),
+        "0048 axis and the ADR #47 walk both clear"
+    );
+    // The entity itself, matched directly rather than walked down to.
+    assert_eq!(
+        session(ScopeType::LegalEntity, "ent-1", "store-a", "retail-pos"),
+        Some(true)
+    );
+
+    // 0048 axis denies while the resource is covered: the branch the
+    // session stands in is not in the list.
+    assert_eq!(
+        session(ScopeType::Location, "loc-ent1", "store-b", "retail-pos"),
+        Some(false),
+        "a covered resource cannot rescue an out-of-scope branch"
+    );
+    // Same for the workspace dimension alone.
+    assert_eq!(
+        session(ScopeType::Location, "loc-ent1", "store-a", "warehouse"),
+        Some(false),
+        "a covered resource cannot rescue an out-of-scope workspace"
+    );
+
+    // 0048 axis passes while the resource axis denies: a sibling entity's
+    // location, reached from a branch the assignment does name.
+    assert_eq!(
+        session(ScopeType::Location, "loc-ent2", "store-a", "retail-pos"),
+        Some(false),
+        "standing in an allowed branch does not cover a sibling location"
+    );
+    // And a NULL-entity location: the walk cannot prove ownership.
+    assert_eq!(
+        session(ScopeType::Location, "loc-orphan", "store-a", "retail-pos"),
+        Some(false)
+    );
+
+    // Ruling 5 through the composite: no row is no answer, not a denial.
+    assert_eq!(
+        Store::new(&migrations::fresh_db())
+            .assignment_covers_session(
+                "u-ghost",
+                ScopeType::Location,
+                "loc-ent1",
+                "store-a",
+                "retail-pos",
+            )
+            .unwrap(),
+        None
+    );
+}
+
+/// Every caller today passes the session location twice: the current
+/// location is both the 0048 branch and the ADR #47 resource. That
+/// coincidence is a trap. If the composite ever answers the resource
+/// question about `branch` instead of `resource_id`, no existing caller
+/// can notice, and the first one to ask about a different resource gets
+/// a verdict computed from the wrong id. These two calls are the only
+/// place the two parameters differ, and they disagree in opposite
+/// directions, so a swap fails whichever way it is made.
+#[test]
+fn assignment_covers_session_asks_about_the_resource_not_the_branch() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "legal_entity", Some("ent-1"));
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+
+    // Global mode, so the 0048 axis is out of the way and the answer is
+    // purely the resource axis. `store-a` is not a location at all.
+    assert_eq!(
+        store
+            .assignment_covers_session(
+                "u1",
+                ScopeType::Location,
+                "loc-ent1",
+                "store-a",
+                "retail-pos",
+            )
+            .unwrap(),
+        Some(true),
+        "the covered resource must win over an unrelated branch id"
+    );
+    // The mirror case: an uncovered resource named alongside a branch id
+    // that would have been covered. A swap reports true here.
+    assert_eq!(
+        store
+            .assignment_covers_session(
+                "u1",
+                ScopeType::Location,
+                "loc-ent2",
+                "loc-ent1",
+                "retail-pos",
+            )
+            .unwrap(),
+        Some(false),
+        "the branch id is not the resource being asked about"
+    );
+}
