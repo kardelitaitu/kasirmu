@@ -206,3 +206,171 @@ fn capabilities_report_paused_state() {
         "pause flags the state; entitlements unchanged here"
     );
 }
+
+// ── Feature-availability verdicts (Phase 3 observability) ────────────
+
+/// An owner user: `role-owner`'s `*` grant holds every gate permission,
+/// so the role axis never fires and the other axes stand alone.
+fn verdict_with_owner(conn: &rusqlite::Connection, feature: &str) -> FeatureVerdict {
+    conn.execute(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-owner', 'Owner', '', '[\"*\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')
+         ON CONFLICT(id) DO NOTHING",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')
+         ON CONFLICT(id) DO NOTHING",
+        [],
+    )
+    .unwrap();
+    load_feature_verdict(conn, "user-owner", feature).unwrap()
+}
+
+#[test]
+fn verdict_names_tier_when_the_flag_is_missing() {
+    let conn = fresh_db();
+    seed_tier(&conn, "plus");
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(!v.available);
+    assert_eq!(v.reason_code(), Some("tier"));
+    assert_eq!(v.feature, "supports_analytics");
+    assert_eq!(v.detail.permission.as_deref(), Some("analytics:view"));
+    assert_eq!(v.detail.state, "active");
+}
+
+#[test]
+fn verdict_names_quota_at_the_cap_and_clears_one_below() {
+    let conn = fresh_db();
+    seed_tier(&conn, "pro");
+    // Pro caps locations at 2; the fresh DB seeds the primary store, so
+    // one more reaches the cap.
+    conn.execute(
+        "INSERT INTO locations (id, name) VALUES ('loc-2', 'Second')",
+        [],
+    )
+    .unwrap();
+    let v = verdict_with_owner(&conn, "locations");
+    assert!(!v.available, "pro at its 2-location cap must deny");
+    assert_eq!(v.reason_code(), Some("quota"));
+    assert_eq!(v.detail.limit, Some(2));
+    assert_eq!(v.detail.usage, Some(2));
+
+    conn.execute("DELETE FROM locations WHERE id = 'loc-2'", [])
+        .unwrap();
+    let v = load_feature_verdict(&conn, "user-owner", "locations").unwrap();
+    assert!(v.available, "one below the cap must clear");
+    assert_eq!(v.reason_code(), None);
+}
+
+#[test]
+fn verdict_names_server_policy_when_the_tier_withholds_the_workspace_type() {
+    let conn = fresh_db();
+    seed_tier(&conn, "plus");
+    let v = verdict_with_owner(&conn, "supports_qris");
+    assert!(v.available, "plus supports qris");
+
+    // The bootstrap Free row's allowed workspace types exclude
+    // `warehouse` — the same `allows_workspace_type` answer the
+    // workspace-creation gate enforces, so the verdict is server_policy
+    // whatever the effective tier's flags say.
+    let conn = fresh_db();
+    let v = verdict_with_owner(&conn, "warehouses");
+    assert!(!v.available);
+    assert_eq!(v.reason_code(), Some("server_policy"));
+
+    // The gate permission still echoes for diagnostics.
+    assert_eq!(
+        v.detail.permission.as_deref(),
+        Some("inventory:locations_manage")
+    );
+}
+
+#[test]
+fn verdict_names_role_for_a_role_without_the_gate_permission() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-lite', 'Lite', 'No analytics', '[\"loyalty:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-lite', 'lite', 'hash', 'Lite', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let v = load_feature_verdict(&conn, "user-lite", "supports_analytics").unwrap();
+    // Premium grants analytics on the tier; the caller's role is the
+    // missing axis.
+    assert!(!v.available);
+    assert_eq!(v.reason_code(), Some("role"));
+
+    let v = load_feature_verdict(&conn, "user-lite", "supports_loyalty").unwrap();
+    assert!(v.available, "loyalty:view holds the loyalty gate");
+}
+
+#[test]
+fn verdict_names_lifecycle_for_an_expired_subscription() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    // Long past both expiry and the 60-day enterprise/premium grace —
+    // hard-expired.
+    conn.execute(
+        "UPDATE tenant_subscription SET status = 'active', expires_at = '2025-01-01T00:00:00Z'
+         WHERE tenant_id = 'default'",
+        [],
+    )
+    .unwrap();
+    let v = verdict_with_owner(&conn, "supports_loyalty");
+    assert!(!v.available);
+    assert_eq!(v.reason_code(), Some("lifecycle"));
+    assert_eq!(v.detail.state, "expired");
+    assert_eq!(v.detail.expires_at.as_deref(), Some("2025-01-01T00:00:00Z"));
+}
+
+#[test]
+fn verdict_in_grace_stays_available_and_carries_the_deadline() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    // Expired 3 days ago: inside premium's 60-day grace window.
+    let three_days_ago = (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        [three_days_ago],
+    )
+    .unwrap();
+    let v = verdict_with_owner(&conn, "supports_loyalty");
+    assert!(v.available, "grace passes operational entitlements (§B)");
+    assert_eq!(v.reason_code(), None);
+    assert_eq!(v.detail.state, "grace");
+    assert!(v.detail.grace_until.is_some(), "UI renders the deadline");
+}
+
+#[test]
+fn verdict_addon_grant_clears_the_tier_denial_for_analytics() {
+    let conn = fresh_db();
+    seed_tier(&conn, "plus");
+    // Signed payload carrying the advanced_analytics add-on (C4.3).
+    conn.execute(
+        "UPDATE tenant_subscription SET signed_payload = ?1 WHERE tenant_id = 'default'",
+        [r#"{"addons":["advanced_analytics"]}"#],
+    )
+    .unwrap();
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(v.available, "the add-on answers the tier question");
+    assert_eq!(v.reason_code(), None);
+}
+
+#[test]
+fn verdict_rejects_unknown_keys_fail_closed() {
+    let conn = fresh_db();
+    assert!(matches!(
+        load_feature_verdict(&conn, "nobody", "analytics"),
+        Err(AppError::Invalid(_))
+    ));
+    assert!(matches!(
+        load_feature_verdict(&conn, "nobody", "max_stores"),
+        Err(AppError::Invalid(_))
+    ));
+}

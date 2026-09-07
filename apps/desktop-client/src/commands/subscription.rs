@@ -14,9 +14,12 @@
 use serde::Serialize;
 use tauri::State;
 
+use oz_core::availability::{AvailabilityFacts, AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
+use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -162,6 +165,190 @@ fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabiliti
     })
 }
 
+// ── Feature-availability verdicts (Phase 3 observability) ───────────
+
+/// The registry permission whose holding decides the verdict's `role`
+/// axis, per feature. Permissions are the vocabulary (ADR #47 stop_memo
+/// ruling A2): no rank map is invented, and a custom role holding the
+/// gate permission passes the same way a preset would.
+fn gate_permission(feature: AvailabilityFeature) -> &'static str {
+    match feature {
+        AvailabilityFeature::Qris => permissions::SALES_PROCESS,
+        AvailabilityFeature::Analytics => permissions::ANALYTICS_VIEW,
+        AvailabilityFeature::Loyalty => permissions::LOYALTY_VIEW,
+        AvailabilityFeature::DailyDashboard => permissions::REPORTS_VIEW,
+        AvailabilityFeature::CloudSync => permissions::SYNC_MANAGE,
+        AvailabilityFeature::SalesHistoryDays => permissions::SALES_VIEW,
+        AvailabilityFeature::Locations | AvailabilityFeature::PosInstances => {
+            permissions::TOPOLOGY_WRITE
+        }
+        AvailabilityFeature::StaffUsers => permissions::STAFF_CREATE,
+        AvailabilityFeature::Warehouses => permissions::INVENTORY_LOCATIONS_MANAGE,
+    }
+}
+
+/// The server-policy question per feature: `Some(false)` when the signed
+/// server payload withholds a workspace type the feature needs — the same
+/// [`TenantSubscription::allows_workspace_type`] answer the workspace
+/// creation path enforces, so a verdict can never disagree with the gate
+/// it explains. `None` for features with no server-side withholding in v1.
+fn server_grant_for(
+    feature: AvailabilityFeature,
+    loaded: Option<&TenantSubscription>,
+) -> Option<bool> {
+    let sub = loaded?;
+    let allowed = |type_key: &str| sub.allows_workspace_type(type_key);
+    match feature {
+        // A warehouse workspace is an inventory-location surface; Free
+        // tiers and withheld payload types both deny it server-side.
+        AvailabilityFeature::Warehouses => Some(allowed("warehouse")),
+        AvailabilityFeature::PosInstances => {
+            Some(allowed("store-pos") || allowed("restaurant-pos"))
+        }
+        _ => None,
+    }
+}
+
+/// Load the subscription row with the exact fail-closed semantics of
+/// [`load_capabilities`]: missing/tampered/unreadable yields `None`, which
+/// every axis then treats as Free + `unavailable` rather than an error.
+fn load_subscription_for_verdict(db: &rusqlite::Connection) -> Option<TenantSubscription> {
+    match TenantSubscription::load(db, "default") {
+        Ok(Some(sub)) => match sub.verify_signature() {
+            Ok(()) => Some(sub),
+            Err(e) => {
+                tracing::warn!("subscription signature verification failed — failing closed: {e}");
+                None
+            }
+        },
+        Ok(None) => {
+            tracing::warn!("no tenant_subscription row for 'default' — failing closed");
+            None
+        }
+        Err(e) => {
+            tracing::warn!("tenant_subscription read failed — failing closed: {e}");
+            None
+        }
+    }
+}
+
+/// End of the grace window for the loaded subscription, when the verdict's
+/// lifecycle state is `Grace` and the row carries a parseable expiry.
+/// Same per-tier window [`crate::commands::license::grace_deadline_for`]
+/// uses, so the two diagnostics surfaces agree.
+fn grace_until_for(
+    loaded: Option<&TenantSubscription>,
+    tier: &SubscriptionTier,
+    state: &SubscriptionLifecycleState,
+) -> Option<String> {
+    if *state != SubscriptionLifecycleState::Grace {
+        return None;
+    }
+    let sub = loaded?;
+    let expiry = chrono::DateTime::parse_from_rfc3339(sub.expires_at.as_ref()?).ok()?;
+    let deadline = expiry + chrono::Duration::days(tier.offline_grace_days());
+    Some(deadline.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+}
+
+/// Resolve why `feature` is (un)available for `user_id`, from the same
+/// local signed row and the same count/permission primitives the real
+/// gates use. Pure read; no server round-trip; every gate question is
+/// answered by the gate's own implementation so a verdict cannot drift
+/// from enforcement.
+fn load_feature_verdict(
+    db: &rusqlite::Connection,
+    user_id: &str,
+    feature_key: &str,
+) -> Result<FeatureVerdict, AppError> {
+    // Fail closed on unknown keys: never resolve to "available".
+    let feature = AvailabilityFeature::parse(feature_key).ok_or_else(|| {
+        AppError::Invalid(format!(
+            "unknown feature key {feature_key:?} — see oz_core::availability::AvailabilityFeature"
+        ))
+    })?;
+
+    let loaded = load_subscription_for_verdict(db);
+    let state = loaded
+        .as_ref()
+        .map(|sub| sub.lifecycle_state())
+        .unwrap_or(SubscriptionLifecycleState::Unavailable);
+    // Mirror load_capabilities' dev upgrade so the verdict can never
+    // contradict the capabilities payload in the same session.
+    #[cfg(debug_assertions)]
+    let tier = {
+        let upgraded = loaded
+            .as_ref()
+            .map(|sub| sub.effective_tier())
+            .unwrap_or(SubscriptionTier::Free);
+        if state == SubscriptionLifecycleState::Active && upgraded == SubscriptionTier::Free {
+            SubscriptionTier::Premium
+        } else {
+            upgraded
+        }
+    };
+    #[cfg(not(debug_assertions))]
+    let tier = loaded
+        .as_ref()
+        .map(|sub| sub.effective_tier())
+        .unwrap_or(SubscriptionTier::Free);
+
+    // Usage counts come from the SAME `count_*` methods the creation-time
+    // `enforce_*_quota` gates consult, so a quota denial here is exactly
+    // the gate's next-rejection condition.
+    let store = Store::new(db);
+    let usage = UsageCounts {
+        locations: store.count_locations().unwrap_or(0),
+        staff_users: store.count_staff_users().unwrap_or(0),
+        pos_instances: store.count_terminals().unwrap_or(0),
+        warehouses: store.count_warehouse_locations().unwrap_or(0),
+    };
+
+    // Soft role check through the same authorize path the hard gates use —
+    // a denial here is DIAGNOSED (reason `role`), not thrown.
+    let role_granted = store
+        .require_permission(user_id, gate_permission(feature))
+        .is_ok();
+
+    let server_grant = server_grant_for(feature, loaded.as_ref());
+    let permission = gate_permission(feature);
+
+    // Add-on grant (C4.3): `advanced_analytics` answers the tier question
+    // for analytics on Plus — the resolver suppresses only the tier check
+    // for it, which is exactly the addon semantics.
+    let server_grant = if feature == AvailabilityFeature::Analytics
+        && matches!(
+            state,
+            SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
+        )
+        && loaded
+            .as_ref()
+            .is_some_and(|sub| sub.addons().iter().any(|a| a == "advanced_analytics"))
+    {
+        Some(true)
+    } else {
+        server_grant
+    };
+
+    let expires_at_owned = loaded.as_ref().and_then(|sub| sub.expires_at.clone());
+    let grace_until_owned = grace_until_for(loaded.as_ref(), &tier, &state);
+
+    let facts = AvailabilityFacts {
+        feature,
+        tier: &tier,
+        state,
+        usage,
+        server_grant,
+        role_granted,
+        // v1 features are organization-global: no per-resource target
+        // exists, so the scope axis stays silent rather than guessing.
+        scope_granted: None,
+        permission: Some(permission),
+        expires_at: expires_at_owned.as_deref(),
+        grace_until: grace_until_owned.as_deref(),
+    };
+    Ok(oz_core::availability::explain_availability(&facts))
+}
+
 /// Read the tenant's subscription capabilities and current usage.
 ///
 /// Like [`crate::commands::license::get_license_status`], this is a local
@@ -175,6 +362,27 @@ pub async fn get_subscription_capabilities(
     let dto = load_capabilities(&db);
     drop(db);
     dto
+}
+
+/// Explain WHY a feature is (un)available for the session user — the
+/// diagnostics surface behind support's "why can't I use X" question
+/// (todo-global-saas-3.md, feature-flag observability).
+///
+/// Gated on `settings:read`: the verdict is a diagnostics read, but it
+/// echoes quota numbers and permission keys, so it is not staff-ephemeral
+/// data. Reads only the local signed subscription row and the global
+/// identity DB — no network round-trip — so it is honest offline, where
+/// "why" questions are most often asked.
+#[tauri::command]
+pub async fn explain_feature_availability_scoped(
+    session_token: String,
+    feature: String,
+    state: State<'_, AppState>,
+) -> Result<FeatureVerdict, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let db = state.db.lock().await;
+    load_feature_verdict(&db, &session.user_id, &feature)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
