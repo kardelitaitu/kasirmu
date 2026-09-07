@@ -44,9 +44,20 @@ workflow, not a silent setting change.
       **unblocked 2026-09-07:** ADR #47 accepted (sole-maintainer ruling,
       all five recommendations adopted — Q4 rules custom roles are named
       key-set rows in the same registry, assignments referencing keys
-      only). The `role_assignments` model is now buildable; note the
+      only). **Amended same day — the model has since LANDED**, not merely
+      become buildable: scope axis `94e8a100`, choke point `453c629f`,
+      scoped pairs `8c0ae0b4`, staff-UI scope picker `7f7d4ec4`, org-wide
+      backfill `20260917_assignment_backfill_org_wide.sql`. Two naming
+      corrections that matter to anyone implementing from here: the table
+      is `assignments` (widened from ADR #35 / spec 0048 at
+      `20260813_init.sql:27`) — **`role_assignments` exists nowhere in the
+      schema**, so grepping that name returns zero hits and reads as
+      "not built"; and the key-set home already exists as
+      `roles.permissions` (JSON array, `20260813_init.sql:575`). What
+      remains is authoring custom roles through it plus IPC; the
       assignment-editing UI is explicitly a separate slice per the ADR's
-      non-goals.
+      non-goals (and `7f7d4ec4` already shipped scope editing for
+      existing roles).
 - [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
 - [x] **Define data residency and retention policy.** Document where tenant data,
@@ -80,12 +91,13 @@ workflow, not a silent setting change.
       (`explain_feature_availability_scoped`, `settings:read`) with a
       deterministic reason-code precedence (server_policy > lifecycle > tier
       > quota > role > scope) derived from the capabilities surface the
-      supervisor's Round-1 watch-item told us to re-check first. Execution
-      gate: the subscription agent's in-flight §B slices commit first (their
-      `max_stores` deprecation renames fields under this surface); `scope`
-      wiring waits on the `role_assignments` model landing — **ADR #47 is
-      accepted (2026-09-07), so the model is buildable**; implementation,
-      not the ruling, is the remaining gate.
+      supervisor's Round-1 watch-item told us to re-check first.
+      **Execution gates: both cleared 2026-09-07.** The §B
+      `max_stores` → `max_locations` rename landed (`54470e27`; see the
+      execution-order note), and the scoped-assignment model landed
+      (`94e8a100` axis + `453c629f` choke point), which promotes `scope`
+      from a deferred extension to a **v1** reason code. Nothing blocks
+      this slice — implementation is the only remaining step.
 - [ ] **Add multi-Organization user switching.** One human identity may hold
       memberships in several Organizations; switching between them is a later
       capability built on scoped assignments, not a second hierarchy layer.
@@ -165,7 +177,7 @@ Claim-drift risk is handled the way the repo handles it: the doc ends with an
 explicit re-verify-on-update instruction, and the docs-auditor can stamp it
 in its next pass.
 
-## Feature-flag observability — diagnostics design (2026-09-07, DSH) — ready-to-execute, one coordination gate
+## Feature-flag observability — diagnostics design (2026-09-07, DSH) — ready to execute, no open gates
 
 First slice of the §"Make feature flags and entitlements observable" item,
 designed per the supervisor's Round-1 watch-item: "Re-check what
@@ -233,7 +245,7 @@ Reason codes, each with its resolution source:
 | `tier` | tier feature-flag resolution (`Tier::supports_*`) | landed |
 | `quota` | limit − usage ≤ 0 against the quota columns | columns + counts landed; comparisons live per-site |
 | `role` | caller's preset/role vs the feature's minimum role | resolvable today from the session (`isManager`/`isOwner` shape); custom-role source arrives with ADR #47 |
-| `scope` | location-scoped assignment denies this location | **blocked on ADR #47** (Proposed, awaiting ruling) — v1 returns `scope` only when the scoped-assignment table exists, else omits the code |
+| `scope` | location-scoped assignment denies this location | **unblocked — in v1.** ADR #47 accepted *and landed* (`94e8a100` axis, `453c629f` choke point). Resolution reads `assignments.scope_type`/`scope_id` through `Store::require_permission_scoped` (`crates/oz-core/src/db/assignments.rs`). The old omit-if-absent clause is void: the table exists. |
 
 **Precedence (deterministic, mirrors the §B test's ruling):**
 `server_policy` > `lifecycle` > `tier` > `quota` > `role` > `scope`.
@@ -272,9 +284,11 @@ per-quota families (`locations`, `staff_users`, `pos_instances`,
 3. IPC in both clients + dev-mock + `ui/src/api/` client fn; parity + i18n
    gates; registry-key note in `verify-scoped-coverage.sh` if needed.
 4. UI surface (Settings → Diagnostics section) — separate slice.
-5. When the `role_assignments` model (ADR #47 — **accepted 2026-09-07**, all
-   five recommendations adopted) lands: extend the resolver with the `scope`
-   source and add the scoped-assignment denial tests.
+5. ~~When the `role_assignments` model lands: extend the resolver with the
+   `scope` source later.~~ **Superseded 2026-09-07 — the model landed**
+   (`94e8a100`, `453c629f`; and the table is `assignments`, not
+   `role_assignments`). The `scope` source and its scoped-assignment denial
+   tests move **into step 2** as v1 work, not a follow-up slice.
 
 Open question for the ruling (one line): should the verdict also expose
 `expires_at`/`grace_until` (added to the caps DTO by the subscription agent's
@@ -329,3 +343,38 @@ journaled above. Two watch-items for when this phase unblocks:
    landed Phase 1-side (`9896dac4`, `4acaeea9`, `1176730a`); its
    *diagnostics* surface is the natural first slice of this item. Re-check
    what `capabilities` IPC already exposes before designing.
+
+---
+
+## Amendment — gate-status resync (2026-09-07, DSH)
+
+Round 1's "correctly parked" reading was true when written and is now
+out of date, because three slices landed later the same day. Corrected in
+place above (custom-roles item, item-level gate note, design heading,
+`scope` table row, execution-order step 5). The Round-1 log is left
+untouched — it records what was observed at `315c1e6f`, and rewriting a
+supervisor entry to match a later HEAD destroys the audit trail.
+
+Verified against HEAD `edfcd645` (branch `0.0.37`), by inspection rather
+than recall:
+
+| Claim | Method | Result |
+|---|---|---|
+| §B caps rename landed | read `SubscriptionCapabilitiesDto` | `max_locations` at `commands/subscription.rs:36`; `max_stores` survives **only** as the legacy signed-payload alias (`license_verification.rs:246`) — correctly not "fixed" |
+| Scoped-assignment model landed | `git cat-file` on cited SHAs + migration files | `94e8a100` and `453c629f` both real commits; `20260916_role_assignment_scopes.sql` and `20260917_assignment_backfill_org_wide.sql` on disk; `require_permission_scoped` live in both clients' `authz.rs` |
+| Table name | grep `role_assignments` across the tree | **10 hits, all documentation — zero in schema or Rust.** Real table is `assignments` (`20260813_init.sql:27`) |
+| Verdict command built? | grep `explain_feature_availability`, `FeatureVerdictDto` | Both appear **only** in this file — design-only, nothing implemented |
+| Caps timestamps | read the full DTO | Still **no** `expires_at`/`grace_until`, so the "ruled yes" detail fields remain blocked on the subscription agent's DTO slice |
+| Custom-role home | read `roles` table | `permissions TEXT NOT NULL DEFAULT '[]'` (`init.sql:575`) — ADR #47 rec-4's key-set row already exists |
+
+**Net effect on the plan:** the observability slice is the only Phase-3
+item with no open gate and a finished design, so it is the next thing to
+build. Its `scope` reason code is v1 work now. The one dependency that
+remains genuinely blocked is narrower than the doc implies: not the
+command, only the two `detail` timestamp fields.
+
+**Trap worth recording,** because it is the kind that produces a confident
+wrong answer: a reader who greps `role_assignments` — the name this file
+used in five places — gets zero hits and reasonably concludes the gate is
+unmet. The name was never in the schema. Same failure shape as the
+`git grep` false-negative documented in AGENTS.md §UI Standards.
