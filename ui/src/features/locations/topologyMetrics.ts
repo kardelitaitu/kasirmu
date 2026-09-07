@@ -21,8 +21,7 @@ import { socketSemanticIds } from './topologyCard';
 /** Fixed card header height (CSS `.node-header`). */
 export const NODE_HEADER_H = 48;
 /** Height of one stacked port row in the footer.
- *  CSS `.node-port-row` uses `padding: 4px 0` (no explicit height):
- *  4px top + 12px marker + 4px bottom = 20px effective height. */
+ *  CSS `.node-port-row` uses `height: 20px`. */
 export const PORT_ROW_H = 20;
 /** Height of one main-content row (subtitle / status / config). */
 export const MAIN_ROW_H = 24;
@@ -75,9 +74,6 @@ export function portRowCount(node: TopologyNodeData): number {
   return Math.max(leftPortRowCount(node), rightPortRowCount(node));
 }
 
-/** Border-top of `.node-footer` in px — must stay in sync with the CSS. */
-export const NODE_FOOTER_BORDER = 1;
-
 /** Height of the card's footer region (stacked port rows). */
 export function footerHeight(node: TopologyNodeData): number {
   return portRowCount(node) * PORT_ROW_H;
@@ -85,15 +81,14 @@ export function footerHeight(node: TopologyNodeData): number {
 
 /** Total adaptive height of a node card, in canvas units. */
 export function nodeHeight(node: TopologyNodeData): number {
-  return NODE_HEADER_H + mainHeight(node) + NODE_FOOTER_BORDER + footerHeight(node);
+  return NODE_HEADER_H + mainHeight(node) + footerHeight(node);
 }
 
 /** Canvas-space Y of a port row's CENTER, relative to the card's top.
- *  Each row is PORT_ROW_H tall (8px pad + 12px marker + 8px pad = 28px);
- *  the center sits at PORT_ROW_H/2 into the first row, then +PORT_ROW_H
- *  per subsequent row. */
+ *  Left and right columns are both top-aligned; a column's row i sits at
+ *  header + main + i*PORT_ROW_H, centered in its PORT_ROW_H band. */
 export function portRowCenterY(node: TopologyNodeData, rowIndex: number): number {
-  return NODE_HEADER_H + mainHeight(node) + NODE_FOOTER_BORDER + PORT_ROW_H / 2 + rowIndex * PORT_ROW_H;
+  return NODE_HEADER_H + mainHeight(node) + PORT_ROW_H / 2 + rowIndex * PORT_ROW_H;
 }
 
 /** Row index of a specific semantic within a node's port column. Used to

@@ -987,11 +987,10 @@
   user-select: none;
   height: 240px;
   box-sizing: border-box;
-  /* flex column — header / body / rail. The rail stays an absolutely
-     positioned strip at the bottom (its geometry is the wire-endpoint
-     contract); overflow hidden clips the header tint and the rail to
-     the card's rounded corners. */
-  overflow: hidden;
+  /* flex column — header / body / footer. Header and footer manage
+     their own border-radius; overflow: visible allows the port sockets
+     to straddle the card boundary as full circles (half in / half out). */
+  overflow: visible;
   cursor: move;
   display: flex;
   flex-direction: column;
@@ -1855,11 +1854,9 @@
   flex-shrink: 0;
   box-sizing: border-box;
   border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   background: var(--color-bg-subtle);
   position: relative;
-  /* Circles protrude half outside the card edge — overflow must be visible
-     so they are not clipped by the card's rounded corners. The card itself
-     keeps overflow: hidden for header/body chrome; only the footer opts out. */
   overflow: visible;
 }
 
@@ -1873,31 +1870,32 @@
 
 /* One semantic port row: a full-band button (transparent chrome — the
    circle marker is the affordance, the label names the port).
-   4px top/bottom padding → compact multi-port stacks.
-   PORT_ROW_H in topologyMetrics mirrors this: 4 + 12 (marker) + 4 = 20px. */
+   20px height → compact multi-port stacks.
+   PORT_ROW_H in topologyMetrics mirrors this: 20px. */
 .node-port-row {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 4px 0;
+  height: 20px;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
+  padding: 0;
   font: inherit;
 }
 
-/* Left rows: marker shifts -6px (= marker-width/2) so the circle is
+/* Left rows: marker shifts -4px (= marker-width/2) so the 8px circle is
    half inside / half outside the card's left edge. */
 .node-port-row--left {
   justify-content: flex-start;
 }
 .node-port-row--left .node-port-marker {
-  left: -6px;
+  left: -4px;
 }
 .node-port-row--left .node-port-label {
-  padding-left: var(--space-3);
+  padding-left: var(--space-2);
   text-align: left;
 }
 
@@ -1906,21 +1904,21 @@
   justify-content: flex-end;
 }
 .node-port-row--right .node-port-marker {
-  right: -6px;
+  right: -4px;
 }
 .node-port-row--right .node-port-label {
-  padding-right: var(--space-3);
+  padding-right: var(--space-2);
   text-align: right;
 }
 
-/* The connector circle — straddles the card edge (half in / half out).
-   Center aligns exactly with the SVG wire endpoint (portRowCenterY). */
+/* The connector circle — 8px diameter, straddles the card edge
+   (4px in / 4px out). Center aligns with the SVG wire endpoint. */
 .node-port-marker {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: var(--radius-full);
   background: var(--color-bg-surface);
   border: 2px solid var(--color-accent);
@@ -1932,15 +1930,15 @@
 
 .node-port-row:hover .node-port-marker,
 .node-port-row:focus-visible .node-port-marker {
-  transform: translateY(-50%) scale(1.4);
+  transform: translateY(-50%) scale(1.3);
   background-color: var(--color-accent);
-  box-shadow: 0 0 8px var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent);
 }
 
 .node-port-row.port-active .node-port-marker {
-  transform: translateY(-50%) scale(1.6);
+  transform: translateY(-50%) scale(1.5);
   background-color: var(--color-accent);
-  box-shadow: 0 0 12px var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent);
 }
 
 /* The rule carries nothing but the animation, so gating it drops the whole
