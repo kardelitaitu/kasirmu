@@ -64,6 +64,8 @@ pub mod cart;
 pub mod cash_payouts;
 /// Customer CRUD and lookups.
 pub mod customers;
+/// Downgrade assessment gatherer — reads live per-dimension counts.
+pub mod downgrade;
 /// Gift cards — issue, redeem, top-up, freeze, balance checks.
 pub mod gift_cards;
 /// Inventory management CRUD (locations, shifts, thresholds, transaction logs).

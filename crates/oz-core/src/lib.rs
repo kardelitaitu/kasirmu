@@ -28,6 +28,8 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 pub mod audit;
 /// Authentication and session management.
 pub mod auth;
+/// Feature-availability verdicts — *why* a feature is unavailable.
+pub mod availability;
 /// In-memory and Redis-backed caching.
 pub mod cache;
 /// Open cart and checkout session.
@@ -44,6 +46,8 @@ pub mod crypto;
 pub mod customer;
 /// SQLite data access layer — one module per domain aggregate.
 pub mod db;
+/// Downgrade assessment — which existing resources exceed a lower tier's quotas.
+pub mod downgrade;
 /// Domain error types.
 pub mod error;
 /// Domain event types for cross-crate communication.
