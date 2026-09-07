@@ -25,18 +25,20 @@ const SAMPLE_ROLES = [
   { id: 'role-custom', name: 'custom', description: 'Custom', permissions: [] },
 ];
 
-/** Global fallback assignment (ADR #35 D5) carried by the staff DTO. */
+/** Global fallback assignment (ADR #35 D5 + #47) carried by the staff DTO. */
 const GLOBAL_ASSIGNMENT = {
   scope_mode: 'global',
   branches_all: true,
   branch_ids: [],
   workspaces_all: true,
   workspace_keys: [],
+  scope_type: 'organization',
+  scope_id: null,
 };
 
 const SAMPLE_STAFF = [
   { id: 'staff-1', username: 'jane', display_name: 'Jane Smith', role_id: 'role-owner', role_name: 'owner', is_active: true, national_id_masked: '*****6789', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT },
-  { id: 'staff-2', username: 'john', display_name: 'John Doe', role_id: 'role-staff', role_name: 'staff', is_active: false, national_id_masked: '****', is_profile_complete: false, assignment: { scope_mode: 'scoped', branches_all: true, branch_ids: [], workspaces_all: false, workspace_keys: ['restaurant'] } },
+  { id: 'staff-2', username: 'john', display_name: 'John Doe', role_id: 'role-staff', role_name: 'staff', is_active: false, national_id_masked: '****', is_profile_complete: false, assignment: { scope_mode: 'scoped', branches_all: true, branch_ids: [], workspaces_all: false, workspace_keys: ['restaurant'], scope_type: 'organization', scope_id: null } },
 ];
 
 /** Store profiles = the branch ids the assignment scopes on. */
@@ -104,6 +106,21 @@ beforeEach(() => {
       { key: 'store', name: 'Retail Store', description: 'Retail counter', icon: 'store' },
     ]);
     if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+    if (cmd === 'list_legal_entities_scoped') {
+      return Promise.resolve([
+        {
+          id: 'default:default-legal-entity',
+          tenantId: 'default',
+          name: 'Default Legal Entity',
+          legalName: 'Default Legal Entity',
+          registrationNumber: '',
+          taxId: '',
+          status: 'active',
+          createdAt: '',
+          updatedAt: '',
+        },
+      ]);
+    }
     // Reached via the app shell's branding provider, not the screen itself.
     // Without it every test below rendered the error branch -- 23 of 26.
     // Shape matches the other suites that mock this (CloudSyncSettings.test.tsx).
@@ -563,6 +580,8 @@ describe('StaffManagementScreen', () => {
             branch_ids: ['store-b'],
             workspaces_all: false,
             workspace_keys: ['store'],
+            // The org-wide axis default rides along (ADR #47).
+            scope_type: 'organization',
           },
         }),
       }));
@@ -586,7 +605,44 @@ describe('StaffManagementScreen', () => {
     expect(within(dialog).getByRole('button', { name: /update/i })).toBeDisabled();
   });
 
-  // ── C2.2: Pro→Premium approaching-limit banner (16+ staff) ──
+  it('binds a manager to one location via the ADR #47 resource scope', async () => {
+    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    await waitForTable();
+
+    // Jane is org-wide — scope her to the Bandung location. The wire must
+    // carry scope_type=location + scope_id=store-b, and the save button
+    // must stay disabled until a resource is chosen.
+    fireEvent.click(screen.getByRole('button', { name: /edit.*jane smith/i }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Date of Birth *')).toHaveValue('1990-05-14');
+    }, FAST_WAIT);
+
+    const scopeSelect = within(dialog).getByLabelText(/resource scope/i);
+    fireEvent.change(scopeSelect, { target: { value: 'location' } });
+
+    // No location chosen yet — the pair is invalid, save is blocked.
+    expect(within(dialog).getByRole('button', { name: /update/i })).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText(/choose a location/i), {
+      target: { value: 'store-b' },
+    });
+    expect(within(dialog).getByRole('button', { name: /update/i })).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /update/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('update_staff_scoped', expect.objectContaining({
+        sessionToken: 'session-1',
+        args: expect.objectContaining({
+          id: 'staff-1',
+          assignment: expect.objectContaining({
+            scope_type: 'location',
+            scope_id: 'store-b',
+          }),
+        }),
+      }));
+    }, FAST_WAIT);
+  });
 
   it('shows the approaching-limit banner at 16+ staff on Pro (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({

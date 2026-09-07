@@ -84,6 +84,16 @@ staff-assignment-all-branches = All branches
 staff-assignment-all-workspaces = All workspaces
 staff-assignment-all-workspaces-short = All
 
+# ── Assignment Resource Scope (ADR #47 ruling 1A) ──────────────────────
+staff-assignment-resource-label = Resource scope
+staff-assignment-resource-organization = Organization-wide (all locations)
+staff-assignment-resource-legal-entity = Legal entity
+staff-assignment-resource-location = Location
+staff-assignment-resource-location-select = Choose a location
+staff-assignment-resource-entity-select = Choose a legal entity
+staff-assignment-resource-empty-hint = No matching resources available.
+staff-assignment-resource-required-hint = Choose a resource to scope this assignment.
+
 # ── Staff Login ──────────────────────────────────────────────────────────
 staff-login-step-username = Enter your username
 staff-login-progress-aria = Login progress

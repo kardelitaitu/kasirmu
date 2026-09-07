@@ -105,10 +105,11 @@ export const bootstrapOwner = (args: BootstrapOwnerArgs): Promise<BootstrapOwner
 // ── Staff Management ──────────────────────────────────────────────
 
 /**
- * A user's single effective assignment (ADR #35 D5 / spec 0048): scope mode
- * plus the per-dimension explicit-all flag and list. Empty lists never mean
- * "all" — the `*_all` flags are the explicit marker, so `list` with no ids
- * is a deny. Legacy users without an assignment row resolve as global all/all.
+ * A user's single effective assignment (ADR #35 D5 / spec 0048 + ADR #47):
+ * scope mode, the per-dimension explicit-all flags and lists, and the
+ * resource axis. Empty lists never mean "all" — the `*_all` flags are the
+ * explicit marker, so `list` with no ids is a deny. Legacy users without an
+ * assignment row resolve as global all/all organization.
  */
 export interface AssignmentDto {
   scope_mode: 'global' | 'scoped';
@@ -120,11 +121,16 @@ export interface AssignmentDto {
   workspaces_all: boolean;
   /** Workspace keys in scope when `workspaces_all` is false. */
   workspace_keys: string[];
+  /** ADR #47 resource axis: which resource kind the assignment covers. */
+  scope_type: 'organization' | 'legal_entity' | 'location';
+  /** The resource id when the axis is not `organization`. */
+  scope_id: string | null;
 }
 
 /**
  * The assignment scope carried by the staff create/edit IPC args (ADR #35
- * D5 / spec 0048). Mirrors `AssignmentDto`.
+ * D5 / spec 0048 + ADR #47). Mirrors `AssignmentDto`; `scope_type`/`scope_id`
+ * are optional — omitting them keeps the org-wide default.
  */
 export interface AssignmentArgs {
   scope_mode: 'global' | 'scoped';
@@ -132,6 +138,10 @@ export interface AssignmentArgs {
   branch_ids: string[];
   workspaces_all: boolean;
   workspace_keys: string[];
+  /** ADR #47 resource axis; omit (or `organization`) for org-wide. */
+  scope_type?: 'organization' | 'legal_entity' | 'location';
+  /** Required when `scope_type` is `legal_entity` or `location`. */
+  scope_id?: string;
 }
 
 /** A staff member record. */

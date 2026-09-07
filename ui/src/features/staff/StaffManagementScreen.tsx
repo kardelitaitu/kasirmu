@@ -14,6 +14,7 @@ import {
 } from '@/api/staff';
 import { listAllWorkspacesScoped, type WorkspaceTypeDto } from '@/api/workspaces';
 import { listLocationsScoped, type LocationProfile } from '@/api/locations';
+import { listLegalEntitiesScoped, type LegalEntity } from '@/api/legalEntities';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { parseMinorUnits } from '@/types/domain';
 import { LocaleContext } from '@/i18n/LocaleContext';
@@ -99,6 +100,11 @@ interface FormData {
   workspacesAll: boolean;
   /** Only used when editing — workspace keys in scope when not all. */
   workspaceKeys: string[];
+  /** Only used when editing — ADR #47 resource axis (ruling 1A). */
+  resourceScope: 'organization' | 'legal_entity' | 'location';
+  /** Only used when editing — the resource id when the axis is not
+   * organization; empty there. */
+  resourceId: string;
   // ── ADR #35 D6 profile fields ────────────────────────────────
   dateOfBirth: string;
   phone: string;
@@ -132,6 +138,8 @@ const EMPTY_FORM: FormData = {
   branchIds: [],
   workspacesAll: true,
   workspaceKeys: [],
+  resourceScope: 'organization',
+  resourceId: '',
   dateOfBirth: '',
   phone: '',
   nationalIdType: '',
@@ -258,6 +266,7 @@ export default function StaffManagementScreen() {
   /** Branch picker source — `store_profiles` rows are the branch ids the
    * assignment model scopes on (ADR #35 D5). */
   const [branches, setBranches] = useState<LocationProfile[]>([]);
+  const [entities, setEntities] = useState<LegalEntity[]>([]);
   const [loading, setLoading] = useState(true);
   /** STAFF-08: primary staff/roles load failed — show error + retry. */
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -357,6 +366,8 @@ export default function StaffManagementScreen() {
       branchIds: member.assignment.branch_ids,
       workspacesAll: member.assignment.workspaces_all,
       workspaceKeys: member.assignment.workspace_keys,
+      resourceScope: member.assignment.scope_type ?? 'organization',
+      resourceId: member.assignment.scope_id ?? '',
       dateOfBirth: '',
       phone: '',
       nationalIdType: '',
@@ -390,10 +401,11 @@ export default function StaffManagementScreen() {
       if (!sessionToken) {
         return;
       }
-      const [profile, workspaces, storeProfiles] = await Promise.all([
+      const [profile, workspaces, storeProfiles, legalEntities] = await Promise.all([
         getStaffProfileScoped(sessionToken, member.id),
         listAllWorkspacesScoped(sessionToken),
         listLocationsScoped(sessionToken),
+        listLegalEntitiesScoped(sessionToken),
       ]);
       setForm((prev) => ({
         ...prev,
@@ -419,9 +431,11 @@ export default function StaffManagementScreen() {
       }));
       setAllWorkspaces(workspaces);
       setBranches(storeProfiles);
+      setEntities(legalEntities.filter((e) => e.status === 'active'));
     } catch {
       addToast({ message: requiredLocalized(l10n, 'staff-error-workspaces-failed'), type: 'error' });
       setAllWorkspaces([]);
+      setEntities([]);
     }
   }, [sessionToken, addToast, l10n]);
 
@@ -456,13 +470,18 @@ export default function StaffManagementScreen() {
   }, []);
 
   /** Assignment args derived from the form — `global` ignores both
-   * dimensions; `scoped` keeps the explicit all/list per dimension. */
+   * dimensions; `scoped` keeps the explicit all/list per dimension. The
+   * ADR #47 resource axis rides along: organization omits the id, a
+   * narrowed kind carries it (the backend rejects an id-less narrow pair
+   * with a typed error, mirrored by the save-disabled guard below). */
   const assignmentArgsFromForm = (): AssignmentArgs => ({
     scope_mode: form.scopeMode,
     branches_all: form.scopeMode === 'global' ? true : form.branchesAll,
     branch_ids: form.scopeMode === 'global' ? [] : form.branchIds,
     workspaces_all: form.scopeMode === 'global' ? true : form.workspacesAll,
     workspace_keys: form.scopeMode === 'global' ? [] : form.workspaceKeys,
+    scope_type: form.resourceScope,
+    ...(form.resourceScope === 'organization' ? {} : { scope_id: form.resourceId.trim() }),
   });
 
   // ── Save / Update ──────────────────────────────────────────────
@@ -843,7 +862,11 @@ export default function StaffManagementScreen() {
           (isEditing &&
             form.scopeMode === 'scoped' &&
             ((!form.branchesAll && branches.length > 0 && form.branchIds.length === 0) ||
-              (!form.workspacesAll && allWorkspaces.length > 0 && form.workspaceKeys.length === 0)))
+              (!form.workspacesAll && allWorkspaces.length > 0 && form.workspaceKeys.length === 0))) ||
+          // ADR #47: a narrowed resource scope without its id is an
+          // invalid pair — the backend would reject it; disable save and
+          // let the inline hint explain.
+          (isEditing && form.resourceScope !== 'organization' && !form.resourceId.trim())
         }
         cancelLabel={l10n.getString('staff-btn-cancel')}
       >
@@ -1300,6 +1323,79 @@ export default function StaffManagementScreen() {
                 </div>
               </>
             )}
+
+            {/* ── Resource scope (ADR #47 ruling 1A) ── the axis is
+                orthogonal to the branch/workspace dimensions above: it
+                names WHICH location or entity the assignment covers, and
+                the choke-point gate enforces it on every location
+                mutation. */}
+            <div className="staff-mgmt-dimension">
+              <Localized id="staff-assignment-resource-label">
+                <span className="staff-mgmt-dimension-label">Resource scope</span>
+              </Localized>
+              <select
+                id="staff-assignment-resource-scope"
+                className="staff-mgmt-input"
+                value={form.resourceScope}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    resourceScope: e.target.value as FormData['resourceScope'],
+                    resourceId: '',
+                  }))
+                }
+                aria-label={l10n.getString('staff-assignment-resource-label')}
+              >
+                <option value="organization">{l10n.getString('staff-assignment-resource-organization')}</option>
+                <option value="legal_entity">{l10n.getString('staff-assignment-resource-legal-entity')}</option>
+                <option value="location">{l10n.getString('staff-assignment-resource-location')}</option>
+              </select>
+              {form.resourceScope === 'location' && (
+                <select
+                  id="staff-assignment-resource-location"
+                  className="staff-mgmt-input"
+                  value={form.resourceId}
+                  onChange={(e) => setForm((prev) => ({ ...prev, resourceId: e.target.value }))}
+                  aria-label={l10n.getString('staff-assignment-resource-location-select')}
+                >
+                  <option value="">{l10n.getString('staff-assignment-resource-location-select')}</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              )}
+              {form.resourceScope === 'legal_entity' && (
+                <select
+                  id="staff-assignment-resource-entity"
+                  className="staff-mgmt-input"
+                  value={form.resourceId}
+                  onChange={(e) => setForm((prev) => ({ ...prev, resourceId: e.target.value }))}
+                  aria-label={l10n.getString('staff-assignment-resource-entity-select')}
+                >
+                  <option value="">{l10n.getString('staff-assignment-resource-entity-select')}</option>
+                  {entities.map((e) => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </select>
+              )}
+              {(form.resourceScope === 'location' && branches.length === 0) && (
+                <Localized id="staff-assignment-resource-empty-hint">
+                  <span className="staff-mgmt-ws-desc">No locations available.</span>
+                </Localized>
+              )}
+              {(form.resourceScope === 'legal_entity' && entities.length === 0) && (
+                <Localized id="staff-assignment-resource-empty-hint">
+                  <span className="staff-mgmt-ws-desc">No legal entities available.</span>
+                </Localized>
+              )}
+              {form.resourceScope !== 'organization' &&
+                !form.resourceId.trim() &&
+                (form.resourceScope === 'location' ? branches.length : entities.length) > 0 && (
+                <Localized id="staff-assignment-resource-required-hint">
+                  <span className="staff-mgmt-ws-desc">Choose a resource to scope this assignment.</span>
+                </Localized>
+              )}
+            </div>
           </fieldset>
         )}
       </SettingsPopup>

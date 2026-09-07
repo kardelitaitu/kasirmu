@@ -138,6 +138,16 @@ staff-assignment-all-branches = Semua cabang
 staff-assignment-all-workspaces = Semua ruang kerja
 staff-assignment-all-workspaces-short = Semua
 
+# ── Assignment Resource Scope (ADR #47 ruling 1A) ──
+staff-assignment-resource-label = Cakupan sumber daya
+staff-assignment-resource-organization = Seluruh organisasi (semua lokasi)
+staff-assignment-resource-legal-entity = Badan hukum
+staff-assignment-resource-location = Lokasi
+staff-assignment-resource-location-select = Pilih lokasi
+staff-assignment-resource-entity-select = Pilih badan hukum
+staff-assignment-resource-empty-hint = Tidak ada sumber daya yang tersedia.
+staff-assignment-resource-required-hint = Pilih sumber daya untuk membatasi penugasan ini.
+
 # ── Fast User Switching (ADR #6) ──────────────────────────────────────────
 
 staff-login-close-aria = Tutup
