@@ -428,8 +428,24 @@ silent rather than guessing." That argument is sound and it contradicts the
 ruling, so it should be ruled on rather than resolved by whichever agent
 commits second. The resolver and its tests already support `scope` fully —
 the gap is not the resolver, it is that the command takes no resource
-argument. Wiring it means adding one (the session store id is the obvious
-target), which changes the command signature both clients must share.
+argument.
+
+Against that rationale, one fact worth putting in front of the ruling: a
+per-resource target **does** exist, and the codebase already uses it. The
+session gate `require_permission_for_session` passes `Some(&session.store_id)`
+as the branch into `require_permission_scoped` (`authz.rs:99-105`), and
+`require_permission_for_session_resource` layers
+`require_permission_for_resource(..., ScopeType::Location, &session.store_id)`
+on top of it (`authz.rs:125-144`). So "organization-global, no target"
+describes the *feature keys*, not the session — the caller's location is
+already in hand at the point the verdict is built, and `scope_granted` could
+be computed from it without changing the command signature at all.
+
+That leaves a narrower question for the ruling: is a verdict about the
+caller's *current* location the useful diagnostic, or should the command take
+an explicit location argument so support can ask about a location the caller
+is not standing in? The first needs no signature change; the second is more
+useful for the support case that motivated the item.
 
 **Still true from the table above:** the caps DTO carries no
 `expires_at`/`grace_until`. The desktop command works around it by reading
