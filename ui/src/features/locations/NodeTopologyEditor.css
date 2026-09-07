@@ -1857,9 +1857,6 @@
   border-top: 1px solid var(--color-border);
   background: var(--color-bg-subtle);
   position: relative;
-  /* 4px top/bottom padding — mirrored in topologyMetrics.NODE_FOOTER_PAD_V
-     so portRowCenterY and footerHeight stay in sync with the DOM. */
-  padding: 4px 0;
 }
 
 .node-port-column {
@@ -1871,18 +1868,20 @@
 }
 
 /* One semantic port row: a full-band button (transparent chrome — the
-   circle marker is the affordance, the label names the port). */
+   circle marker is the affordance, the label names the port).
+   8px top/bottom padding wraps each row — no fixed height, so the marker
+   centers in the padded band via top: 50% / translateY(-50%).
+   PORT_ROW_H in topologyMetrics mirrors this: 8 + 12 (marker) + 8 = 28px. */
 .node-port-row {
   position: relative;
   display: flex;
   align-items: center;
-  height: 20px;
+  padding: 8px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 0;
   font: inherit;
 }
 
