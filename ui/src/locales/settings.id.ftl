@@ -572,6 +572,7 @@ settings-sync-token-hint = Disimpan dengan aman di database — tidak pernah di 
 settings-sync-last = Sinkronisasi terakhir
 settings-sync-pending = Perubahan tertunda
 settings-sync-confirm-overwrite = Timpa data lokal dengan snapshot server?
+settings-sync-confirm-pull-title = Tarik dari server?
 settings-sync-toast-success = Sinkronisasi berhasil
 settings-sync-toast-fail = Sinkronisasi gagal — periksa URL server dan token
 settings-sync-toast-test-success = Uji koneksi berhasil

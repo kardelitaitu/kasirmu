@@ -662,6 +662,7 @@ settings-sync-toast-fail = Sync failed — check server URL and token
 settings-sync-toast-test-success = Connection test passed
 settings-sync-toast-test-fail = Could not reach server
 settings-sync-confirm-overwrite = Overwrite local data with the server snapshot?
+settings-sync-confirm-pull-title = Pull from server?
 settings-sync-pull-toast-success = Pulled { $products } products, { $tax_rates } tax rates, { $users } users from server
 settings-sync-pull-toast-empty = Server snapshot was empty — nothing to pull
 settings-sync-pull-toast-fail = Pull failed — check server URL and token

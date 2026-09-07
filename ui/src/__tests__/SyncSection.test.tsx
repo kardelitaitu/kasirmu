@@ -8,7 +8,7 @@
 // ADR #22 Phase 1 testing gate (§9).
 
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { LocalizationProvider } from '@fluent/react';
 import type { ReactNode, ReactElement } from 'react';
 import SyncSection from '@/features/settings/sections/SyncSection';
@@ -61,6 +61,9 @@ const testL10n = {
       'settings-sync-error': 'Sync failed',
       'settings-sync-plan-required': 'Cloud sync requires a paid plan',
       'settings-sync-plan-required-hint': 'Your local sales keep working — upgrade to sync them to the cloud.',
+      'settings-sync-confirm-overwrite': 'Overwrite local data with the server snapshot?',
+      'settings-sync-confirm-pull-title': 'Pull from server?',
+      'cancel': 'Cancel',
       'settings-sync-request-token': 'Request Token',
       'settings-sync-requesting': 'Requesting…',
       'settings-sync-token-hint': 'Enter a JWT token.',
@@ -559,54 +562,67 @@ describe('SyncSection', () => {
   });
 
   // ── Pull from Server button ──────────────────────────────────
+  //
+  // SYNC-03 requires explicit consent before a destructive pull. That consent
+  // is the app's designed ConfirmDialog — NOT window.confirm(), which renders
+  // an off-design, unlocalized OS dialog and blocks the event loop.
 
-  it('calls syncPull with destructive consent when Pull is clicked and confirmed', async () => {
+  const SYNCED = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true };
+  const PULL_OK = { productsPulled: 5, taxRatesPulled: 0, usersPulled: 0, error: undefined };
+
+  it('asks for consent in the designed dialog, never via window.confirm', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const syncPull = vi.fn().mockResolvedValue({ productsPulled: 5, taxRatesPulled: 0, usersPulled: 0, error: undefined });
-    renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
-      syncPull,
-    });
+    const syncPull = vi.fn().mockResolvedValue(PULL_OK);
+    renderSection({ sync: SYNCED, syncPull });
 
     fireEvent.click(screen.getByText('Pull from Server'));
-    await waitFor(() => {
-      // SYNC-03: the confirmation dialog and the IPC payload are one flow.
-      expect(syncPull).toHaveBeenCalledWith({ confirmDestructive: true });
-    });
-    confirmSpy.mockRestore();
-  });
 
-  it('does not call syncPull when the user declines the confirmation', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const syncPull = vi.fn().mockResolvedValue({ productsPulled: 5, taxRatesPulled: 0, usersPulled: 0, error: undefined });
-    renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
-      syncPull,
-    });
-
-    fireEvent.click(screen.getByText('Pull from Server'));
-    await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
-    });
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('Overwrite local data with the server snapshot?')).toBeInTheDocument();
+    // Consent has not been given yet — the destructive call must not have fired.
     expect(syncPull).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 
-  it('shows success toast on successful pull', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const syncPull = vi.fn().mockResolvedValue({ productsPulled: 5, taxRatesPulled: 1, usersPulled: 0, error: undefined });
-    const addToast = vi.fn();
-    renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
-      syncPull,
-      addToast,
-    });
+  it('calls syncPull with destructive consent once the dialog is confirmed', async () => {
+    const syncPull = vi.fn().mockResolvedValue(PULL_OK);
+    renderSection({ sync: SYNCED, syncPull });
 
     fireEvent.click(screen.getByText('Pull from Server'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Pull from Server' }));
+
+    await waitFor(() => {
+      // SYNC-03: the confirmation dialog and the IPC payload are one flow.
+      expect(syncPull).toHaveBeenCalledWith({ confirmDestructive: true });
+    });
+  });
+
+  it('does not pull when the dialog is cancelled', async () => {
+    const syncPull = vi.fn().mockResolvedValue(PULL_OK);
+    renderSection({ sync: SYNCED, syncPull });
+
+    fireEvent.click(screen.getByText('Pull from Server'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(syncPull).not.toHaveBeenCalled();
+  });
+
+  it('shows success toast on successful pull', async () => {
+    const syncPull = vi.fn().mockResolvedValue({ productsPulled: 5, taxRatesPulled: 1, usersPulled: 0, error: undefined });
+    const addToast = vi.fn();
+    renderSection({ sync: SYNCED, syncPull, addToast });
+
+    fireEvent.click(screen.getByText('Pull from Server'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Pull from Server' }));
+
     await waitFor(() => {
       expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
     });
-    confirmSpy.mockRestore();
   });
 
   // ── Request Token button ─────────────────────────────────────
