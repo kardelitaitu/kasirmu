@@ -37,6 +37,8 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::error::AppError;
 
+use super::semantics::topology_validation;
+
 /// Tenant default, following the per-command-module convention in
 /// `commands/memo.rs:33` and `commands/legal_entities.rs:17`.
 ///
@@ -66,6 +68,41 @@ pub(crate) struct TopologyRevisionContext<'a> {
     pub workspace_creations: usize,
     pub workspace_updates: usize,
     pub workspace_archives: usize,
+}
+
+/// Longest accepted Apply change note, in characters (ADR #46 §6).
+///
+/// Counted in `char`s, not bytes: a note is merchant-facing free text and will
+/// contain non-ASCII, and a byte limit would let the same sentence pass in
+/// English and fail in Thai.
+pub(crate) const TOPOLOGY_CHANGE_NOTE_MAX_CHARS: usize = 500;
+
+/// Validate and normalise a merchant-supplied change note (ADR #46 §6).
+///
+/// Returns the trimmed note, or `""` when none was given — the field is
+/// optional, and an Apply is never blocked on a merchant writing a comment.
+///
+/// Over-length is REJECTED rather than truncated. Truncation would silently
+/// destroy the reason a deploy happened, which is the entire point of the
+/// field, and would do so asymmetrically: the merchant's own note would read
+/// differently from the one history kept. Rejecting is cheap here because this
+/// runs at the top of the command, before the recovery journal or the store
+/// transaction, so a too-long note costs a retry rather than a deploy.
+pub(crate) fn normalize_topology_change_note(raw: Option<&str>) -> Result<String, AppError> {
+    let note = raw.unwrap_or("").trim();
+    let chars = note.chars().count();
+    if chars > TOPOLOGY_CHANGE_NOTE_MAX_CHARS {
+        return Err(topology_validation(
+            "topology-change-note-too-long",
+            None,
+            None,
+            None,
+            format!(
+                "change note must be {TOPOLOGY_CHANGE_NOTE_MAX_CHARS} characters or fewer (got {chars})"
+            ),
+        ));
+    }
+    Ok(note.to_owned())
 }
 
 /// How many revisions per branch stay restorable before deflation begins

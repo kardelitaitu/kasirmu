@@ -154,6 +154,10 @@ export interface TopologyApplyResult {
  * `baseRevision` prevents stale editors from overwriting a newer branch
  * diagram. `requestId` makes retries and accidental double-submits safe to
  * deduplicate on the backend.
+ *
+ * `changeNote` (ADR #46 §6) is recorded on the immutable revision row and the
+ * audit entry. Optional; the backend trims it and rejects it above 500
+ * characters before touching anything.
  */
 export const applyTopologyDiff = (
   sessionToken: string,
@@ -166,6 +170,7 @@ export const applyTopologyDiff = (
   baseRevision = 0,
   requestId: `${string}-${string}-${string}-${string}-${string}` = crypto.randomUUID(),
   resolvedIssueKeys: string[] = [],
+  changeNote?: string,
 ): Promise<TopologyApplyResult> =>
   loggedInvoke<TopologyApplyResult>('apply_topology_diff', {
     sessionToken,
@@ -181,4 +186,8 @@ export const applyTopologyDiff = (
     // dismissal must overwrite the branch document instead of leaving a
     // previously persisted key behind on the backend.
     resolvedIssueKeys,
+    // Omitted when absent, unlike resolvedIssueKeys: an empty note and no
+    // note mean the same thing to the backend, so there is nothing to clear
+    // and no stale value a subsequent Apply could inherit.
+    ...(changeNote !== undefined ? { changeNote } : {}),
   });

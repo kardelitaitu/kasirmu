@@ -237,6 +237,26 @@ describe('topology.ts IPC contract', () => {
     }));
   });
 
+  it('applyTopologyDiff sends changeNote only when the merchant wrote one', async () => {
+    // ADR #46 §6: the note is the commit-message equivalent, so it must reach
+    // the backend — and it must be ABSENT rather than `changeNote: undefined`
+    // when unwritten, which is what the exact-payload assertions above rely on.
+    mockInvoke.mockResolvedValue({ revision: 9 });
+    await applyTopologyDiff(
+      'tok', [], [], [], [], [], 'branch-a', 8, '00000000-0000-4000-8000-000000000004',
+      [], 'opened the second register',
+    );
+    expect(mockInvoke).toHaveBeenCalledWith('apply_topology_diff', expect.objectContaining({
+      changeNote: 'opened the second register',
+    }));
+
+    await applyTopologyDiff(
+      'tok', [], [], [], [], [], 'branch-a', 9, '00000000-0000-4000-8000-000000000005',
+    );
+    const payload = mockInvoke.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect('changeNote' in payload).toBe(false);
+  });
+
   it('applyTopologyDiff includes the active branch id and revision controls', async () => {
     mockInvoke.mockResolvedValue(undefined);
     await applyTopologyDiff('tok', [], [], [], [], [], 'branch-a', 3, '00000000-0000-4000-8000-000000000002');

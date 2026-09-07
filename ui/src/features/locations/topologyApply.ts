@@ -37,6 +37,13 @@ export interface ApplyContext {
   baseRevision: number | undefined;
   /** Issue keys the user has dismissed (e.g. intentionally empty warehouse). */
   resolvedIssueKeys: string[];
+  /**
+   * ADR #46 §6: "what changed and why", recorded on the revision row and the
+   * audit entry. Optional — an Apply is never blocked on writing a note.
+   * Capped server-side at 500 characters, where an over-long note is
+   * REJECTED before any mutation rather than silently truncated.
+   */
+  changeNote?: string;
 }
 
 export interface ApplyResult extends TopologyApplyResult {
@@ -132,6 +139,7 @@ export async function applyTopologyWithDiagram(
     ctx.baseRevision ?? 0,
     crypto.randomUUID(),
     ctx.resolvedIssueKeys ?? [],
+    ctx.changeNote,
   );
 
   if (!result || !Number.isSafeInteger(result.revision) || result.revision < 0) {

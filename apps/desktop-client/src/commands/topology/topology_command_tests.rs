@@ -1354,6 +1354,9 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         0,
         "request-e2e-1".into(),
         None,
+        // ADR #46 §6: a real note, to prove the field survives the whole
+        // command -> save -> row -> audit path rather than being dropped.
+        Some("opened the second register".into()),
         app.state(),
     )
     .await
@@ -1373,6 +1376,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         None,
         0,
         "request-e2e-2".into(),
+        None,
         None,
         app.state(),
     )
@@ -1419,6 +1423,17 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         "only the successful Apply may have a revision row"
     );
 
+    // ADR #46 §6 end-to-end: the note the merchant typed reached the revision
+    // row through the real command, not just the audit record.
+    let stored_note: String = db
+        .query_row(
+            "SELECT change_note FROM topology_revisions WHERE branch_id = '' AND revision = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored_note, "opened the second register");
+
     // ADR #46 §6: the audit record is written on the success path only, and
     // into the EFFECTIVE store's database (audit_log is per-store), not the
     // global one the revision row lives in.
@@ -1440,6 +1455,9 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     let details: serde_json::Value = serde_json::from_str(&topology_events[0]).unwrap();
     assert_eq!(details["revision"], 1);
     assert_eq!(details["branch_id"], "");
+
+    // The two records describe one event and must not disagree about it.
+    assert_eq!(details["change_note"], "opened the second register");
 }
 
 #[tokio::test]

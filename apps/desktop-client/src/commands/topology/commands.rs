@@ -262,8 +262,21 @@ pub async fn apply_topology_diff(
     base_revision: u64,
     request_id: String,
     resolved_issue_keys: Option<Vec<String>>,
+    // ADR #46 §6: "what changed and why", the commit-message equivalent.
+    // Optional — an Apply is never blocked on a merchant writing a note.
+    //
+    // A plain comment, not `///`: doc comments are not permitted on function
+    // parameters (only the built-in attributes are), and `model.rs:283-285`
+    // records that this same mistake was already caught here once by
+    // `clippy -D warnings`.
+    change_note: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TopologyApplyResult, AppError> {
+    // Validated FIRST, before the session lookup and long before the recovery
+    // journal or the store transaction, so an over-long note costs a retry
+    // rather than a deploy. See `normalize_topology_change_note` for why this
+    // rejects instead of truncating.
+    let change_note = normalize_topology_change_note(change_note.as_deref())?;
     let session = state.resolve_session(&session_token)?;
     tracing::info!(
         user_id = %session.user_id,
@@ -780,8 +793,7 @@ pub async fn apply_topology_diff(
     // the §6 audit record; the two records describe one event and must not be
     // free to disagree about it.
     let revision_ctx = TopologyRevisionContext {
-        // Empty until step 1e threads the merchant's note through IPC.
-        change_note: "",
+        change_note: &change_note,
         published_by: &session.user_id,
         workspace_creations: created,
         workspace_updates: updated,

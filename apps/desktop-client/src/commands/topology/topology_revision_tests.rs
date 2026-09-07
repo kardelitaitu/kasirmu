@@ -525,3 +525,59 @@ fn the_unscoped_graph_is_audited_under_an_empty_target_id() {
     // which graph they describe.
     assert_eq!(audit_rows(&store_db)[0].2.as_deref(), Some(""));
 }
+
+// ── ADR #46 §6: change-note validation ─────────────────────────
+
+#[test]
+fn an_absent_or_blank_change_note_normalises_to_empty() {
+    // The field is optional: an Apply must never be blocked on a merchant
+    // writing a comment, so "nothing given" and "nothing but spaces" are both
+    // a valid empty note rather than errors.
+    assert_eq!(normalize_topology_change_note(None).unwrap(), "");
+    assert_eq!(normalize_topology_change_note(Some("")).unwrap(), "");
+    assert_eq!(
+        normalize_topology_change_note(Some("   \n\t ")).unwrap(),
+        "",
+        "whitespace-only must not consume budget or land as padding in history"
+    );
+}
+
+#[test]
+fn a_change_note_is_trimmed_but_not_otherwise_rewritten() {
+    assert_eq!(
+        normalize_topology_change_note(Some("  moved the grill station  ")).unwrap(),
+        "moved the grill station"
+    );
+}
+
+#[test]
+fn the_change_note_limit_is_counted_in_characters_not_bytes() {
+    let at_limit = "a".repeat(TOPOLOGY_CHANGE_NOTE_MAX_CHARS);
+    assert_eq!(
+        normalize_topology_change_note(Some(&at_limit)).unwrap(),
+        at_limit,
+        "exactly at the limit must pass"
+    );
+
+    let over = "a".repeat(TOPOLOGY_CHANGE_NOTE_MAX_CHARS + 1);
+    let err = normalize_topology_change_note(Some(&over)).unwrap_err();
+    assert!(
+        matches!(&err, AppError::TopologyValidation { code, .. }
+            if code == "topology-change-note-too-long"),
+        "one over the limit must be rejected, not truncated: {err:?}"
+    );
+
+    // The reason for `chars()` over `len()`: a Thai note of the same visible
+    // length is several times the BYTES. A byte limit would let the sentence
+    // through in English and reject it in Thai.
+    // 32 chars / 96 bytes per copy, so ten copies are 320 characters but 960
+    // bytes: under the limit counted as characters, over it counted as bytes.
+    let thai = "เปิดเครื่องเก็บเงินเครื่องที่สอง".repeat(10);
+    assert!(thai.chars().count() < TOPOLOGY_CHANGE_NOTE_MAX_CHARS);
+    assert!(thai.len() > TOPOLOGY_CHANGE_NOTE_MAX_CHARS);
+    assert_eq!(
+        normalize_topology_change_note(Some(&thai)).unwrap(),
+        thai,
+        "a multi-byte note within the CHARACTER limit must be accepted"
+    );
+}
