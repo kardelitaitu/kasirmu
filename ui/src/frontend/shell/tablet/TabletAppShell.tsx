@@ -145,6 +145,7 @@ export default function TabletAppShell() {
   if (!activeWorkspace) {
     return (
       <div className="workspace-home-wrapper">
+        <MemoBanner />
         <LazyBoundary>
           <WorkspaceHome />
         </LazyBoundary>
@@ -156,6 +157,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'restaurant-pos') {
     return (
       <div className="workspace-fullscreen">
+        <MemoBanner />
         <LazyBoundary>
           <PosScreen onNavigate={handleNavigate} />
         </LazyBoundary>
@@ -166,6 +168,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'store-pos') {
     return (
       <div className="workspace-fullscreen">
+        <MemoBanner />
         <LazyBoundary>
           <RetailPosScreen onNavigate={handleNavigate} />
         </LazyBoundary>

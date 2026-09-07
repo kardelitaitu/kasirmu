@@ -364,15 +364,12 @@ export default function AppShell() {
   }, [userRole, userPermissions]);
 
   // P12-4: Session lock screen takes precedence over all other views.
-  // Memo surface (spec): locking keeps the session alive, so the
-  // session-scoped memo read still answers here.
+  // Memo surface (owner ruling 2026-09-08): the banner is app-wide EXCEPT the
+  // login and lock screens — a locked terminal must not display ops memos to
+  // anyone standing at it. (This mount previously cited the memo spec's
+  // session-alive reasoning; the ruling supersedes it.)
   if (isLocked && session) {
-    return (
-      <>
-        <MemoBanner />
-        <SessionLockScreen onUnlock={handleUnlock} />
-      </>
-    );
+    return <SessionLockScreen onUnlock={handleUnlock} />;
   }
 
   if (loading) {
@@ -443,6 +440,7 @@ export default function AppShell() {
   if (!activeWorkspace) {
     return (
       <div className="workspace-home-wrapper">
+        <MemoBanner />
         <LazyBoundary>
           <WorkspaceHome />
         </LazyBoundary>
@@ -486,6 +484,7 @@ export default function AppShell() {
     }
     return (
       <>
+        <MemoBanner />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <PosScreen onNavigate={handleNavigate} />
@@ -527,6 +526,7 @@ export default function AppShell() {
     }
     return (
       <>
+        <MemoBanner />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <RetailPosScreen onNavigate={handleNavigate} />
@@ -552,18 +552,28 @@ export default function AppShell() {
     );
   }
 
-  // Fullscreen pages (e.g. Kiosk mode) render without AppLayout wrapper.
+  // Fullscreen pages render without the AppLayout wrapper. The memo banner
+  // follows them — EXCEPT the customer-facing kiosk, where memos are internal
+  // staff communication that must not display to customers (owner ruling
+  // 2026-09-08: banner everywhere except login + lock + kiosk).
   if (pageRegistration?.fullscreen) {
-    return pageDenied ? (
-      <PermissionDenied
-        action={pageRegistration!.label}
-        requiredRole={pageRegistration!.requiredRole!}
-        requiredPermission={pageRegistration!.requiredPermission}
-      />
-    ) : PageComponent ? (
-      <LazyBoundary>
-        <PageComponent />
-      </LazyBoundary>
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration!.label}
+          requiredRole={pageRegistration!.requiredRole!}
+          requiredPermission={pageRegistration!.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        <LazyBoundary>
+          <PageComponent />
+        </LazyBoundary>
+      </>
     ) : null;
   }
 
