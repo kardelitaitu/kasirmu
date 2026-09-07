@@ -1768,3 +1768,169 @@ fn five_thousand_nodes_with_five_thousand_wires_combined_db() {
         assert_eq!(w.to_node_id, format!("combo-n-{next:04}"));
     }
 }
+
+// ── Racing publishes (ADR #46 Phase 1 gate) ─────────────────────
+//
+// Supervisor-authored (Round 118): the R36 directive's concurrency
+// Verification test — the last item gating the ADR #46 Phase-1
+// declaration (see todo-global-saas-1.md, Rounds 109/112/113). Two
+// racing publishes to ONE branch must yield two ORDERED revisions, not
+// a clobbered row; and the CAS path must reject the loser with
+// `topology-revision-conflict` rather than silently double-increment.
+//
+// The persistence layer's IMMEDIATE transaction is what makes both
+// guarantees hold: writers serialize at BEGIN, so a blocked writer
+// re-reads the fresh revision after the peer commits.
+
+fn race_node(id: &str) -> serde_json::Value {
+    serde_json::json!({ "id": id, "type": "store", "name": "Store", "x": 0.0, "y": 0.0 })
+}
+
+#[test]
+fn racing_publishes_to_one_branch_yield_two_ordered_revisions() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("racing.db");
+    {
+        let mut setup = Connection::open(&db_path).unwrap();
+        migrations::run(&mut setup).unwrap();
+    }
+
+    let path_str = db_path.to_string_lossy().to_string();
+    let threads: Vec<_> = (0..2)
+        .map(|i| {
+            let p = path_str.clone();
+            let note = format!("race {i}");
+            std::thread::spawn(move || {
+                let conn = Connection::open(&p).unwrap();
+                let context = TopologyRevisionContext {
+                    change_note: &note,
+                    published_by: "user-racer",
+                    workspace_creations: 1,
+                    workspace_updates: 0,
+                    workspace_archives: 0,
+                };
+                // expected = None: both publishers believe they are current.
+                // The IMMEDIATE transaction must serialize them.
+                save_topology_json_at_key_with_revision(
+                    &conn,
+                    vec![race_node(&format!("racer-{i}"))],
+                    vec![],
+                    TOPOLOGY_SETTING_KEY,
+                    &[],
+                    None,
+                    None,
+                    None,
+                    Some(&context),
+                )
+                .map_err(|e| e.to_string())
+            })
+        })
+        .collect();
+
+    let outcomes: Vec<Result<u64, String>> = threads
+        .into_iter()
+        .map(|t| t.join().expect("thread panicked"))
+        .collect();
+
+    // BOTH must succeed: the second re-reads the fresh revision after the
+    // first commits and takes revision 2. A lost update here is the exact
+    // "clobbered row" failure the gate forbids.
+    assert!(
+        outcomes.iter().all(|o| o.is_ok()),
+        "a racing publisher was lost: {outcomes:?}"
+    );
+
+    let conn = Connection::open(&db_path).unwrap();
+    let rows: Vec<(i64, String)> = conn
+        .prepare(
+            "SELECT revision, change_note FROM topology_revisions
+             WHERE branch_id = '' ORDER BY revision",
+        )
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+
+    assert_eq!(rows.len(), 2, "two publishes, two rows: {rows:?}");
+    assert_eq!(
+        rows.iter().map(|(rev, _)| *rev).collect::<Vec<_>>(),
+        vec![1, 2],
+        "ordered, no gaps"
+    );
+    let notes: Vec<&str> = rows.iter().map(|(_, n)| n.as_str()).collect();
+    assert!(notes.contains(&"race 0") && notes.contains(&"race 1"));
+}
+
+#[test]
+fn racing_publishes_with_the_same_expected_revision_cas_reject_one() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("racing-cas.db");
+    {
+        let mut setup = Connection::open(&db_path).unwrap();
+        migrations::run(&mut setup).unwrap();
+    }
+
+    let path_str = db_path.to_string_lossy().to_string();
+    let threads: Vec<_> = (0..2)
+        .map(|i| {
+            let p = path_str.clone();
+            let note = format!("cas race {i}");
+            std::thread::spawn(move || {
+                let conn = Connection::open(&p).unwrap();
+                let context = TopologyRevisionContext {
+                    change_note: &note,
+                    published_by: "user-racer",
+                    workspace_creations: 0,
+                    workspace_updates: 1,
+                    workspace_archives: 0,
+                };
+                // Both publishers read current=0 and send expected=0.
+                // Exactly one may win.
+                save_topology_json_at_key_with_revision(
+                    &conn,
+                    vec![race_node(&format!("cas-racer-{i}"))],
+                    vec![],
+                    TOPOLOGY_SETTING_KEY,
+                    &[],
+                    Some(0),
+                    None,
+                    None,
+                    Some(&context),
+                )
+                .map_err(|e| e.to_string())
+            })
+        })
+        .collect();
+
+    let outcomes: Vec<Result<u64, String>> = threads
+        .into_iter()
+        .map(|t| t.join().expect("thread panicked"))
+        .collect();
+
+    let winners = outcomes.iter().filter(|o| o.is_ok()).count();
+    let losers = outcomes
+        .iter()
+        .filter_map(|o| o.as_ref().err())
+        .collect::<Vec<_>>();
+    assert_eq!(winners, 1, "CAS admits exactly one: {outcomes:?}");
+    assert_eq!(
+        losers.len(),
+        1,
+        "the loser must be rejected, not queued: {outcomes:?}"
+    );
+    assert!(
+        losers[0].contains("topology revision conflict"),
+        "rejection is the revision-conflict error: {losers:?}"
+    );
+
+    let conn = Connection::open(&db_path).unwrap();
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM topology_revisions WHERE branch_id = ''",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "one winner, one row");
+}
