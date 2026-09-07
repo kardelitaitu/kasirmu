@@ -452,3 +452,54 @@ useful for the support case that motivated the item.
 the signed row directly for the expiry and deriving the grace deadline, so
 the "ruled yes" detail fields are satisfied without touching the caps
 surface — which the design had explicitly put out of scope.
+---
+
+## Amendment 3 — slice landed, and two defects worth the lesson (2026-09-07, DSH)
+
+The observability slice is now built end to end except the screen:
+
+| Surface | Commits | State |
+|---|---|---|
+| Core resolver + 13 tests | `869de0ce`, `2e86fb9b` | in HEAD |
+| Desktop IPC command | uncommitted (another agent) | written, not landed |
+| Tablet IPC command | `e17a4e32`, `dfbc41b2` | in HEAD, 4 tests |
+| `ui/src/api` + dev-mock | `9c9b6f53`, `987d5698` | in HEAD |
+| Settings → Diagnostics screen | — | separate slice, per the design |
+| `scope` reason code | — | **awaiting ruling**, see above |
+
+**Defect 1 — a wire key typechecking cannot see.** The UI client fn shipped
+in `9c9b6f53` passed the session as `session_token`. Tauri binds command
+arguments by the camelCase form of the Rust parameter, and every other scoped
+call in `ui/src/api` uses `sessionToken`. The call would have failed at
+runtime with a missing-argument error while `npm run typecheck` stayed green,
+because the invoke args object is an untyped literal. Fixed in `987d5698`.
+
+The report that delivered it listed "typecheck passed" as evidence of health
+in the same breath as the key name. Those two facts were in tension; the
+typecheck was the weaker one. A green type system over an untyped boundary
+proves nothing about that boundary.
+
+**Defect 2 — the wrong parity invariant.** The tablet command mirrored
+desktop's debug Free→Premium tier upgrade into the tablet verdict, with a
+comment saying this stops the tablet verdict contradicting the *desktop*
+verdict. It stopped the wrong pair. The tablet's `get_subscription_capabilities
+applies no such upgrade (`subscription.rs:105-108`), so in a debug tablet
+build the verdict reported `premium` while the caps payload beside it
+reported `free` — the diagnostics surface telling support a feature was
+available on a register whose tier gates were locked. Desktop's own comment
+states the real rule: mirror *this client's* caps so a verdict can never
+contradict the payload the gates actually read. Fixed in `dfbc41b2`, which
+also adds `verdict_resolves_fail_closed_like_the_tablet_caps_command` across
+all ten keys.
+
+That test was verified to bite, not merely written: restoring the upgrade
+fails it with `left: "premium" / right: "free"`. The `fresh_db()` fixture
+seeds a validly-signed **active** Free row, which is exactly the input the
+upgrade promotes — so the branch is reachable in tests after all.
+
+**Unowned finding:** the tablet's capabilities command lacks the debug
+Free→Premium upgrade that desktop's has. Every tablet dev-mode tier gate
+therefore locks where the equivalent desktop gate opens. Pre-existing,
+unrelated to this slice, and deliberately *not* fixed from here — the verdict
+now agrees with caps as shipped, and closing the caps gap is that command's
+owner's call. Recorded rather than papered over.
