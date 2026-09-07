@@ -3687,3 +3687,27 @@ Analyzed and MEASURED rather than assumed (`9201e909`):
   the value in useMemo and auditing the callback deps — its own
   careful slice, not a memo-stream drive-by.
 
+### Follow-up slice EXECUTED — WorkspaceContext value memoized
+
+The follow-up above is done (`bdd12854`):
+
+- The provider value is now `useMemo`'d on its 15 fields; every
+  captured callback was already `useCallback`-stable (handleSetActive /
+  handleSetActiveInstance `[]`, retry / switchStore / fetchWorkspaces
+  chained, swapSessionToken `[updatePickerTicketFn]` — stable per its
+  comment), so the memo holds across provider re-renders that change
+  no field (auth churn, picker-ticket refreshes, parent re-renders).
+- **New probe `workspaceContextValueStability.test.tsx`:** renders the
+  REAL provider (the global test-setup stub keeps real exports but
+  stubs the hooks — opted out with the documented
+  `vi.unmock('@/contexts/WorkspaceContext')`; without it test 1 passes
+  vacuously because the stubbed hook never subscribes). The harness
+  memoizes `children` so only a context VALUE change can re-render the
+  consumer, then forces 5 provider re-renders → **0 consumer
+  re-renders**; a real field change (terminalId resolution) still
+  propagates. Guarding against over-memoizing is half the test.
+- `WorkspaceContext.test.tsx` (25 tests, the real-provider suite)
+  passes unchanged; typecheck + lint 0 errors; all ten gates green.
+  Render-count mutation uses a `vi.hoisted` record (property mutation)
+  to stay inside the render-purity lint.
+
