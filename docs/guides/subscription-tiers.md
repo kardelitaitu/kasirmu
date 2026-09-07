@@ -4,6 +4,14 @@
 > pricing, quotas, and feature gates. Supersedes the tier/pricing sections of
 > `docs/guides/BUSINESS_PLAN.md` §2, ADR #5, and the older pricing content until
 > those are updated to match.
+>
+> **R36-14 ruling, 2026-09-07 (sole maintainer):** this file is the single
+> authority; the duplicate `docs/records/` copy is removed. Entitlements
+> ruled on the two disputed rows — full audit logging (`audit:view`):
+> **Premium + Enterprise** (consistent with the Phase 2 audit-baseline
+> item in `todo-global-saas-2.md`); white-label branding:
+> **Enterprise-only** (the only deliberate edit on record, 2026-08-19 —
+> rebranding stays the top-tier differentiator).
 
 ## 1. Lineup
 
@@ -188,7 +196,7 @@ runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
 | Priority support | ✗ | ✗ | ✗ | ✓ | ✓ |
 | Support response SLA | — | 24h | 8h | 1h (24/7) | account manager |
 | Software updates | minor + major | minor + major | minor + major | minor + major | minor + major |
-| White-label branding | ✗ | ✗ | ✗ | ✓ | ✓ |
+| White-label branding | ✗ | ✗ | ✗ | ✗ | ✓ |
 | Offline grace period | 7 days | 14 days | 14 days | 30 days | 60 days (contract overrides available) |
 | Enterprise services (dedicated hosting, ERP adaptors, account manager) | ✗ | ✗ | ✗ | ✗ | ✓ |
 

@@ -454,8 +454,9 @@
     {
       "id": "doc-uniqueness",
       "label": "Doc uniqueness",
-      "status": "advisory",
-      "_note": "Added in 0.0.36 after f3d9cca6 moved the repo-root subscription-tiers.md into docs/records/ without noticing docs/guides/ already had a copy from 28147fe4, leaving two tracked files both stamped 'single source of truth' for pricing with disagreeing entitlement rows. No gate compared documents to each other, so nothing saw it. Local-only for now: it carries a pair-specific baseline for that one unresolved finding (R36-14, needs a product decision because white-label has no runtime entitlement check to adjudicate against), and a gate with a live baseline should earn CI-blocking status after the baseline is empty, the same condition R36-10 set for ci-docs-drift. --self-test and the 5-case harness both pass.",
+      "status": "required",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "_note": "Added in 0.0.36 after f3d9cca6 moved the repo-root subscription-tiers.md into docs/records/ without noticing docs/guides/ already had a copy from 28147fe4, leaving two tracked files both stamped 'single source of truth' for pricing with disagreeing entitlement rows. Carried a pair-specific baseline until the R36-14 product ruling (2026-09-07: docs/guides/ is the single authority; audit Premium+Enterprise, white-label Enterprise-only) removed the losing copy and emptied the baseline -- the promotion condition R36-10 set. Promoted to required with a ci block in the same ruling.",
       "runners": { "check.sh": ["doc uniqueness"] }
     },
     {

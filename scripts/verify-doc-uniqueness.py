@@ -107,19 +107,12 @@ CONVENTIONAL = {
 # whatever it currently reports and move on -- which is precisely how
 # "77 pre-existing drift items" became an unread alarm. So each entry must carry
 # why it cannot be fixed now and what would resolve it.
-BASELINE: dict[tuple[str, ...], str] = {
-    ("subscription-tiers.md",
-     "docs/guides/subscription-tiers.md",
-     "docs/records/subscription-tiers.md"):
-        "Created by f3d9cca6, which moved the repo-root copy into docs/records/ "
-        "without noticing 28147fe4 had already created docs/guides/. The two "
-        "disagree on entitlements (audit:view present only in guides; "
-        "white-label Pro+Enterprise in guides, Enterprise-only in records) and "
-        "neither is marked superseded. NOT RESOLVABLE FROM THE REPO: white-label "
-        "is applied by scripts/whitelabel.ps1 at build time and has no runtime "
-        "entitlement check, so no code path says which row is correct. Needs a "
-        "product decision -- tracked as R36-14.",
-}
+#
+# R36-14's entry was deleted 2026-09-07 when the product ruling resolved the
+# pair (docs/guides/ is the single authority; audit Premium+Enterprise,
+# white-label Enterprise-only) and the losing copy was removed. The gate is
+# live with an empty baseline.
+BASELINE: dict[tuple[str, ...], str] = {}
 
 
 def tracked_files() -> list[str]:
