@@ -175,6 +175,28 @@ actual relationship mutation.
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise
       contracts.
+      — **⚠️ Read `todo-global-saas-3.md` §"Feature-flag observability" before
+      starting — much of this vocabulary already exists, and a second model
+      would sit beside it.** `oz_core::availability` (landed `869de0ce`)
+      already names and resolves six of the axes listed above —
+      `server_policy`, `lifecycle` (billing state), `tier` (plan), `quota`,
+      `role`, `scope` — under a fixed precedence with 13 tests, and both
+      clients' `explain_feature_availability_scoped` returns a verdict
+      carrying `expiresAt`/`graceUntil`. But it models *explanation*, not
+      *enforcement*: the gates still read the caps DTO independently. So this
+      item's real remaining work is consolidating enforcement onto one
+      entitlement source, not re-deriving a reason taxonomy.
+
+      Genuine gaps the resolver does NOT close: **trial state** exists only
+      server-side (`license_keys.is_trial`) and the client collapses it away
+      (`SubscriptionTier::from_db("trial") => Free`, `subscription.rs:98`), so
+      there is no client-visible trial flag and no trial end date anywhere in
+      the local model; **custom Enterprise contracts** depend on ADR #47's
+      key-set roles, where the `assignments` scope model has landed
+      (`94e8a100`, `453c629f`) but custom-role authoring has not; and
+      `server_policy` has exactly one denial producer today
+      (`TenantSubscription::allows_workspace_type`), so most server-issued
+      entitlements remain unrepresented.
 - [x] **Publish the numeric plan limits.** ~~Put the real quota numbers~~
       — **premise was stale**: the pricing page has carried the full §3
       numeric matrix since 2026-08-17. What was actually missing was the §E
