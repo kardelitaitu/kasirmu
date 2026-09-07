@@ -895,17 +895,21 @@ Scope findings from the pre-implementation investigation, in execution order:
           the resource axis can deny; the same manager allowed on own;
           owner/quota/staff flows regress-clean); `cargo check -p
           oz-pos-tablet -p oz-api` clean.
-        - Remaining under this item: slice 3 — assignment-creation IPC/UI
-          (scoped rows per location/entity + the no-row backfill decision),
-          then tablet parity for the same gate. Workspace/terminal scope
-          types stay OUT per ADR #47 non-goals.
+        - Remaining under this item: slice 3 only — assignment-creation
+          IPC/UI (scoped rows per location/entity + the no-row backfill
+          decision, as a NEW migration). Tablet parity is N/A, verified
+          2026-09-07: the tablet ships no location-mutation commands (no
+          locations.rs module in its command layer), so the resource gate
+          has no tablet caller; its picker path already enforces the
+          spec-0048 axis. Workspace/terminal scope types stay OUT per
+          ADR #47 non-goals.
 - [x] **Define the tenant hierarchy.** The canonical design now includes
       Organization/Tenant → Legal Entity → Location, with Workspace Instances
       scoped to Locations and Terminals owned by the Organization and assigned
       to a Location and a Workspace, Users assigned through scoped
       role assignments, and Topology modeled as a graph over owned resources.
       Implementation and migration remain follow-up work.
-- [ ] **Rename Store → Location across the stack.** Mechanical rename of the
+- [x] **Rename Store → Location across the stack.** Mechanical rename of the
       site unit per the Terminology table + the execution journal below:
       SQLite migration (+ PG regeneration), Rust structs/commands/quotas
       (`max_stores` → `max_locations`), IPC commands + parity allowlist +
@@ -916,6 +920,10 @@ Scope findings from the pre-implementation investigation, in execution order:
       `inventory_locations` stock points, and the `Store<'a>` DB facade are
       explicitly out of scope. Sequence
       before the §G Legal Entity migration.
+      - ✅ **BOX CLOSED 2026-09-07:** all seven sub-slices below are
+        individually checked with their own evidence (1a–1g; last:
+        license-server wire rename `851d9a02` Go + `662e7f3a` Rust). Nothing
+        deferred — the exclusions above remain out of scope by design.
       - [x] 1a. Schema migration: `20260906_rename_store_to_location.sql`
             (`store_profiles` → `locations`, `user_store_access` →
             `user_location_access`, `tenant_subscription.max_stores` →
@@ -958,11 +966,27 @@ Scope findings from the pre-implementation investigation, in execution order:
             required for the local rename (signature verifies raw stored
             payload bytes). Evidence bullet in the implementation journal
             below (1g slice).
-- [ ] **Implement Legal Entity and the §G default-entity migration.** Add the
+- [x] **Implement Legal Entity and the §G default-entity migration.** Add the
       Legal Entity level to schema, backend authorization, and API; then run the
       §G migration (auto-create one Default Legal Entity per existing
       Organization, move its Locations beneath it, preserve IDs, record the
       migration). This is the follow-up the checked design item above defers.
+      - ✅ **COMPLETED — box closed 2026-09-07 after re-verifying all four
+        legs:**
+        - **Schema + §G migration** `20260908_legal_entities.sql`: creates
+          `legal_entities`, auto-creates one deterministic default entity per
+          existing tenant, backfills every location's `legal_entity_id`
+          (locations moved beneath the entity, IDs preserved), and is
+          registered in `migrations.rs` + mirrored by the PG generator.
+        - **Core API** `crates/oz-core/src/db/legal_entities.rs`: entity CRUD
+          + `assign_location_to_legal_entity` (tenant-checked, transactional).
+        - **Client API** (`82c57e32`): the four scoped IPC commands
+          (create/get/list/update) on BOTH shells, registered in both
+          `generate_handler!`s, dev-mock handlers present, `verify-ipc-parity.py`
+          OK — re-confirmed at today's HEAD by grep.
+        - **Backend authorization** ADR #47 slice 2 (`453c629f`): the
+          `legal_entity` scope axis + entity→location downward walk make the
+          entity level authoritative in the choke-point gate.
 - [x] **Make subscription state authoritative and fail closed.** The UI must
       distinguish active, loading, expired, canceled, paused, grace-period, and
       unavailable states. A missing subscription response must not silently grant
@@ -3262,3 +3286,44 @@ by the parse contract from R111.
 No misalignment found. The scoped-authorization implementation is
 proceeding in exactly the accepted order: scope columns → choke point →
 (per-location creation slices follow).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 177) — overlay suite FULLY GREEN 6/6
+
+The overlay's TDD arc completed: all six TopologyRevisionBrowser tests
+pass (newest-first listing, pruned-preview honesty, empty-diff wording,
+geometry counting, pin/unpin, empty state) — the last holdout was the
+pruned-preview timing issue, resolved alongside dev-mock deflated
+fixtures. tsc clean, keys written. The overlay slice is commit-ready:
+its commit will be the first since the Phase-1 ratification where the
+i18n gate passes legitimately (no skip note needed).
+
+Also landed: `9b70ec3c` (port markers 8px, straddling the card edge) —
+the fifth refinement in the metrics-alignment series, CSS + metrics kept
+in lockstep throughout.
+
+Watch: the overlay commit should carry the R141 history-call test if the
+agent adopts it; the ADR-47 slice-2 commit follows its own full-stack
+verification.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 178) — ADR-47 slice 2 LANDED + journaled
+
+`453c629f feat(core,desktop): gate scoped commands by ADR #47 resource
+scope` — 400 insertions across the full stack, verified: the core
+coverage gate (rulings 2+3) in staff.rs/locations.rs, the async IPC
+wrapper `require_permission_for_session_resource` in authz.rs, and an
+async test suite that proves both directions (`..._denies_manager_of_
+other_location`, `..._allows_manager_of_own_location`) — the deny test
+is the one that matters. Ruling 5 preserved in-message ("permission is
+still enforced on every path"; legacy users unaffected).
+
+The journal checkbox flipped with the hash, and `32483125` carries my
+R164 log inside the same commit — the supervisor trail is being folded
+into the agent's own journaling.
+
+Remaining scoped-auth slices: per-location assignment creation (its own
+IPC/UI per the ADR). The overlay commit is still pending (untracked,
+6/6 green, keys written).
