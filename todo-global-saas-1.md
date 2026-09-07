@@ -3476,3 +3476,43 @@ time:
   license-server Go stream's per-tier grace work was in flight in the
   same tree, untouched by that commit.
 
+---
+
+## Implementation journal — memo bubble redesign, round 2 (2026-09-07)
+
+Owner-directed refinement of the MemoBanner bubble, following round 1
+(`1559407f`). Committed as `5dd7dc7a` (branch `0.0.37`, 5 files),
+directly on top of the round-1 dialog slice:
+
+- **Adaptive width, 480px cap:** `.memo-banner` dropped its flex row
+  (`display/align-items/gap`) — fixed positioning is shrink-to-fit, so
+  the bubble now hugs its content up to `max-width: 480px` (was 360px).
+  The bubble wraps only the open button.
+- **The (x) floats OUTSIDE the bubble:** `.memo-banner-close` is now a
+  24px circular chip absolutely positioned at `top/right: -8px`, popover
+  background + border + `--shadow-sm`, anchored to the fixed-position
+  bubble (no overflow clipping on the banner keeps it visible). Click
+  the bubble → enlarge; click the chip → durable ack. Hover/focus/
+  disabled rules and the transition block are unchanged.
+- **Optional titles, no timestamp:** a blank/whitespace title renders a
+  text-only bubble with the plain open-aria label — new FTL key
+  `memo-banner-open-aria-plain` (en: "Read the full memo", id: "Baca
+  memo lengkap") — and the dialog opens without a heading (the shared
+  `Modal` omits the h2 + `aria-labelledby` when the `title` prop is
+  omitted). No timestamp is rendered in bubble or dialog.
+- **exactOptionalPropertyTypes trap:** `title={displayTitle || undefined}`
+  fails tsc (TS2375) against `title?: string`. Fixed with a conditional
+  spread (`{...(displayTitle ? { title: displayTitle } : {})}`) so the
+  prop is omitted, not explicitly undefined — the omission is exactly
+  what suppresses the dialog heading. `Modal.tsx` itself is untouched.
+- **CSS hygiene:** `overflow-wrap: anywhere` on `.memo-banner-text`
+  (long unbroken strings must wrap, not stretch the adaptive bubble);
+  dead `.memo-banner-body` block removed; header/component doc comments
+  updated to describe the new layout.
+- **Verification:** new blank-title test (aria-label = plain variant, no
+  `.memo-banner-title` node, dialog opens heading-less) — MemoBanner
+  suite 10/10; 6 memo suites 38 passed; `npm run typecheck` clean;
+  `npm run lint` 0 errors; full-tree bundle parity 0 missing; pre-commit
+  ran all ten gates (i18n lint OK, staged parity OK, ui typecheck OK,
+  FTL orphans: 1 key added, 0 stranded).
+
