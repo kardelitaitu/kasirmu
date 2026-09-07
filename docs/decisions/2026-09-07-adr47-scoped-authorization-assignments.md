@@ -8,7 +8,7 @@ status: Accepted — ruled 2026-09-07 (all five recommendations adopted)
 
 **Status:** Accepted — ruled 2026-09-07 by the sole maintainer; **all five
 recommended answers adopted** (1A–5A). Implementation proceeds in slices per
-§Consequences; the assignment model itself is not yet built.
+§Consequences; the assignment model is built across slices (scope axis 94e8a100, scoped pairs via staff IPC 8c0ae0b4, staff UI 7f7d4ec4, choke-point gate 453c629f).
 **Date:** 2026-09-07
 **Author:** Supervisor draft, for sole-maintainer ruling
 **Tags:** authorization, rbac, scope-assignments, tenancy, multi-location

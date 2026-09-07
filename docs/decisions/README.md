@@ -53,8 +53,8 @@ implementation-status walkthrough.
 | 42 | [Website Admin Dashboard & User Dashboard (Subdomain Architecture)](./2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented (2026-08-28) |
 | 43 | [Cloud Sync Performance & Scale-Out Roadmap](./2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) |
 | 45 | [Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](./2026-09-02-adr45-topology-semantic-contract-v2.md) | §1–§3, §4.1, §5, §4.2 backend + storage + migration fn (not yet invoked), §4.3 ordering rule Implemented (2026-09-02) · §4.2 UI swap, §4.3 checklist UI Proposed |
-| 46 | [Topology Revision History, Change Notes, and Draft Restore](./2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted (2026-09-07) — Phase 1 next, per its Solo Implementation Protocol |
-| 47 | [Scoped Authorization — Role Assignments with Explicit Scopes](./2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted (2026-09-07, sole-maintainer ruling — all five recommendations adopted: `role_assignments` table, single scoped choke point, downward-only inheritance, key-set custom roles, org-wide backfill) — assignment model not yet built; gates §B entitlements, audit baseline, Phase 3 roles |
+| 46 | [Topology Revision History, Change Notes, and Draft Restore](./2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted (2026-09-07) — Phase 1 complete (racing-publishes gate met), Phase 2 in progress (graph differ 51ad987f) |
+| 47 | [Scoped Authorization — Role Assignments with Explicit Scopes](./2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted (2026-09-07, sole-maintainer ruling — all five recommendations adopted: `role_assignments` table, single scoped choke point, downward-only inheritance, key-set custom roles, org-wide backfill) — assignment model built across slices (scope axis 94e8a100, scoped pairs 8c0ae0b4, staff UI 7f7d4ec4, choke-point gate 453c629f); gates §B entitlements, audit baseline, Phase 3 roles |
 
 ## Research notes
 

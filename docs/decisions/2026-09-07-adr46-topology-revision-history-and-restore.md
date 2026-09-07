@@ -2,11 +2,11 @@
 num: 46
 area: topology
 title: ADR #46: Topology Revision History, Change Notes, and Draft Restore
-status: Accepted — phased; Phase 1 is the next committed unit of work (see §Solo Implementation Protocol)
+status: Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), Phase 2 in progress (graph differ 51ad987f)
 ---
 # ADR #46: Topology Revision History, Change Notes, and Draft Restore
 
-**Status:** Accepted — phased; Phase 1 is the next committed unit of work (see §Solo Implementation Protocol)
+**Status:** Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), Phase 2 in progress (graph differ 51ad987f)
 **Date:** 2026-09-07
 **Reviewed & accepted:** 2026-09-07, sole-maintainer review. Every code citation in this document was verified against the working tree before acceptance: `save_topology_json_at_key_with_revision` at `persistence.rs:247`, `cleanup_old_kds_orders(30)` at `lib.rs:394`, `log_audit` at `audit.rs:125`, `NodeTopologyEditor.tsx` at 6,146 lines, `topologyBranchCompare.ts` at 488 lines, and no pre-existing `topology_revisions` table. Two known topology debts were reviewed and deliberately parked, not attached to this ADR: the localStorage templates in `topologyExport.ts` (criticised by ADR #45 §4.2) and the unfinished ADR #45 §4.2/§4.3 UI. Both are recorded as candidates for their own ADRs.
 **Author:** Architecture Team & OZ-POS Contributors
