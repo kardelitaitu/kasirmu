@@ -2003,7 +2003,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'plugin:updater|check': () => null,
 
   'get_license_status': () => ({ isActive: true, status: 'valid', tier: 'pro', payload: null, message: null }),
-  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxStores: 5 }),
+  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
   'test_auth_connection': () => ({ ok: true, status: 'Connected (12ms)', latencyMs: 12 }),
   'get_machine_id': () => 'mock-machine-id-001',
   'get_hardware_fingerprint': () => 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -2023,7 +2023,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'get_subscription_capabilities': () => ({
     tier: 'premium',
     state: 'active',
-    maxStores: null,
+    maxLocations: null,
     maxPosInstances: null,
     maxWarehouses: null,
     maxStaffUsers: null,
