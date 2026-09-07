@@ -166,9 +166,7 @@ update-banner-rollback-aria = Unduh versi sebelumnya dari GitHub
 # Memo Banner
 memo-banner-scope-location = Pemberitahuan Lokasi
 memo-banner-scope-organization = Pemberitahuan Organisasi
-memo-banner-acknowledge = Konfirmasi
 memo-banner-acknowledge-aria = Konfirmasi memo ini
-memo-banner-dismiss-aria = Tutup memo
 
 # Memos (authoring)
 memos-title = Memo

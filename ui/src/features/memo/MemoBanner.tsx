@@ -5,28 +5,31 @@ import { useMemos } from './useMemos';
 import './MemoBanner.css';
 
 /**
- * The Memo display surface (Phase 2 P1, step 4): a dismissible top-left
- * notification showing the highest-priority active memo for this terminal.
+ * The Memo display surface (Phase 2 P1, step 4): a chat-bubble overlay
+ * pinned to the bottom-left of the screen showing the highest-priority
+ * active memo for this terminal (owner-directed redesign, 2026-09-07 —
+ * replaced the top sliding banner).
  *
- * The read path already stacks Location Memos above Organization Memos, so the
- * banner renders `memos[0]` and advances as each is acknowledged or dismissed.
- * Acknowledge writes the durable recipient ack (the memo stops reappearing);
- * dismiss hides it for this session only. Both run through the shared
- * exit-animation fade (see the exit-animation-pattern skill); the content is
- * keyed by memo id so the next memo plays its entry animation on swap.
+ * The read path already stacks Location Memos above Organization Memos, so
+ * the bubble renders `memos[0]` and advances as each is acknowledged. The
+ * single (x) button acknowledges durably — the memo never reappears on this
+ * terminal (chat-bubble semantics: read it, done); the session-only dismiss
+ * path remains on the useMemos hook for other consumers. The close routes
+ * through the shared exit-animation fade (see the exit-animation-pattern
+ * skill); the content is keyed by memo id so the next memo plays its entry
+ * animation on swap.
  *
  * Renders nothing when there are no active memos, no session, or the fetch is
  * still cold — it never occupies space when empty.
  */
 export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   const { l10n } = useLocalization();
-  const { memos, acknowledge, dismiss } = useMemos({ kds });
+  const { memos, acknowledge } = useMemos({ kds });
   const top = memos[0];
   const open = top !== undefined;
 
-  // Acknowledge and dismiss differ only in the durable side effect, so both
-  // route through the same exit fade; the pending action is captured at click
-  // time (with the memo id snapshotted) and run when the fade completes.
+  // The close action is captured at click time (with the memo id
+  // snapshotted) and run when the exit fade completes.
   const pendingRef = useRef<(() => void) | null>(null);
   const exit = useExitAnimation(open, () => {
     pendingRef.current?.();
@@ -40,12 +43,8 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   const memoId = top.memo.id;
   const isLocation = top.memo.locationIds.length > 0;
 
-  const handleAcknowledge = () => {
+  const handleClose = () => {
     pendingRef.current = () => acknowledge(memoId);
-    exit.requestClose();
-  };
-  const handleDismiss = () => {
-    pendingRef.current = () => dismiss(memoId);
     exit.requestClose();
   };
 
@@ -71,37 +70,26 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
         <strong className="memo-banner-title">{top.memo.title}</strong>
         <p className="memo-banner-text">{top.memo.body}</p>
       </div>
-      <div className="memo-banner-actions">
-        <button
-          type="button"
-          className="memo-banner-btn memo-banner-btn--acknowledge"
-          onClick={handleAcknowledge}
-          disabled={exit.exiting}
-          aria-label={l10n.getString('memo-banner-acknowledge-aria')}
+      <button
+        type="button"
+        className="memo-banner-close"
+        onClick={handleClose}
+        disabled={exit.exiting}
+        aria-label={l10n.getString('memo-banner-acknowledge-aria')}
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
         >
-          <Localized id="memo-banner-acknowledge">Acknowledge</Localized>
-        </button>
-        <button
-          type="button"
-          className="memo-banner-btn memo-banner-btn--dismiss"
-          onClick={handleDismiss}
-          disabled={exit.exiting}
-          aria-label={l10n.getString('memo-banner-dismiss-aria')}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
-          >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
     </div>
   );
 }

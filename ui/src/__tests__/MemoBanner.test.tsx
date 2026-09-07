@@ -29,9 +29,7 @@ vi.mock('@/hooks/useExitAnimation', () => ({
 const MEMO_FTL = `
 memo-banner-scope-location = Location notice
 memo-banner-scope-organization = Organization notice
-memo-banner-acknowledge = Acknowledge
 memo-banner-acknowledge-aria = Acknowledge this memo
-memo-banner-dismiss-aria = Dismiss memo
 `;
 
 function renderWithL10n(ui: ReactNode) {
@@ -110,18 +108,14 @@ describe('MemoBanner', () => {
     expect(screen.getByText('Location notice')).toBeInTheDocument();
   });
 
-  it('acknowledge runs the durable ack action', () => {
+  it('the close button runs the durable ack action', () => {
+    // The single (x) acknowledges durably (chat-bubble semantics: read it,
+    // done) — the memo never returns on this terminal. The session-only
+    // dismiss path stays on the useMemos hook; the bubble must not touch it.
     renderWithL10n(<MemoBanner />);
     fireEvent.click(screen.getByRole('button', { name: 'Acknowledge this memo' }));
     expect(mockAcknowledge).toHaveBeenCalledWith('m1');
     expect(mockDismiss).not.toHaveBeenCalled();
-  });
-
-  it('dismiss runs the local-hide action', () => {
-    renderWithL10n(<MemoBanner />);
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss memo' }));
-    expect(mockDismiss).toHaveBeenCalledWith('m1');
-    expect(mockAcknowledge).not.toHaveBeenCalled();
   });
 
   it('renders nothing when there are no active memos', () => {

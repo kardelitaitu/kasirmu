@@ -1,36 +1,57 @@
 /* ============================================================
- * OZ-POS Memo Notification Banner
+ * OZ-POS Memo Notification Bubble
  *
- * A dismissible top-left notification for the highest-priority
- * active memo addressed to this terminal. Styling mirrors the
- * UpdateBanner; the exit animation follows the exit-animation-pattern
- * skill (exact reverse of entry, fill-mode both, pointer-events none,
- * all inside prefers-reduced-motion: no-preference).
+ * The Memo display surface: a chat-bubble overlay pinned to the
+ * bottom-left of the screen for the highest-priority active memo
+ * addressed to this terminal (owner-directed redesign, 2026-09-07 —
+ * replaced the top sliding banner). Solid popover background so the
+ * rotated tail seam stays opaque; tokens carry dark mode. The exit
+ * animation follows the exit-animation-pattern skill (exact reverse
+ * of entry, fill-mode both, pointer-events none, all inside
+ * prefers-reduced-motion: no-preference).
  * ============================================================ */
 
 .memo-banner {
+  position: fixed;
+  left: var(--space-6);
+  bottom: var(--space-6);
+  z-index: var(--z-overlay);
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2_5) var(--space-4);
-  background: linear-gradient(
-    135deg,
-    var(--color-accent-subtle),
-    color-mix(in srgb, var(--color-accent-subtle) 85%, var(--color-accent) 15%)
-  );
-  border-bottom: 1px solid var(--color-accent);
+  max-width: 360px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-popover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+/* Speech-bubble tail: a rotated square peeking from the bubble's
+   bottom edge. Shares the bubble's solid background and border on
+   the two faces that face outward. */
+.memo-banner::after {
+  content: '';
+  position: absolute;
+  bottom: -6.5px;
+  left: var(--space-6);
+  width: 12px;
+  height: 12px;
+  background: var(--color-bg-popover);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  transform: rotate(45deg);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .memo-banner {
-    animation: memo-banner-slide-in var(--duration-200) var(--ease-out);
+    animation: memo-banner-rise-in var(--duration-200) var(--ease-out);
   }
 
-  @keyframes memo-banner-slide-in {
+  @keyframes memo-banner-rise-in {
     from {
       opacity: 0;
-      transform: translateY(-100%);
+      transform: translateY(16px);
     }
     to {
       opacity: 1;
@@ -38,23 +59,23 @@
     }
   }
 
-  /* ── Exit: exact mirror of slide-in (down → up + fade out) ─── */
+  /* ── Exit: exact mirror of rise-in (sink down + fade out) ─── */
   /* Source order: entry rule → entry keyframe → exit keyframe →
      exit rule. fill-mode: both holds the TO-frame across React
      unmount (no opacity flash); pointer-events: none blocks stale
      clicks during the fade. */
-  @keyframes memo-banner-slide-out {
+  @keyframes memo-banner-sink-out {
     from {
       opacity: 1;
       transform: translateY(0);
     }
     to {
       opacity: 0;
-      transform: translateY(-100%);
+      transform: translateY(16px);
     }
   }
   .memo-banner--exiting {
-    animation: memo-banner-slide-out var(--duration-200) var(--ease-out) both;
+    animation: memo-banner-sink-out var(--duration-200) var(--ease-out) both;
     pointer-events: none;
   }
 }
@@ -104,75 +125,37 @@
   line-height: var(--leading-normal);
 }
 
-.memo-banner-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.memo-banner-btn {
+.memo-banner-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1_5);
-  padding: var(--space-1_5) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-tight);
-  cursor: pointer;
+  flex-shrink: 0;
+  padding: var(--space-1);
   border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-tertiary);
+  cursor: pointer;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .memo-banner-btn {
+  .memo-banner-close {
     transition: background-color var(--duration-150) var(--ease-out),
-      opacity var(--duration-150) var(--ease-out);
+      color var(--duration-150) var(--ease-out);
   }
 }
 
-.memo-banner-btn--acknowledge {
-  background: var(--color-accent);
-  color: var(--color-bg);
-}
-
-.memo-banner-btn--acknowledge:hover {
-  opacity: 0.9;
-}
-
-.memo-banner-btn--acknowledge:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
-}
-
-.memo-banner-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.memo-banner-btn--dismiss {
-  background: transparent;
-  color: var(--color-fg-tertiary);
-  padding: var(--space-1);
-  border-radius: var(--radius-sm);
-}
-
-.memo-banner-btn--dismiss:hover {
+.memo-banner-close:hover {
   background: var(--color-bg-surface);
   color: var(--color-fg-secondary);
 }
 
-.memo-banner-btn--dismiss:focus-visible {
+.memo-banner-close:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
 
-/* Dark mode adjustments */
-[data-theme='dark'] .memo-banner {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-accent) 15%, transparent),
-    color-mix(in srgb, var(--color-accent) 8%, transparent)
-  );
+.memo-banner-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
