@@ -311,19 +311,12 @@ fn load_feature_verdict(
     // the session location, evaluated with the same primitives the hard
     // gates use. Legacy users without an assignment row are not
     // scope-restricted (ruling 5).
-    let assignment = store.assignment_for_user(user_id)?;
-    let scope_granted = match &assignment {
-        Some(a) if a.matches_scope(Some(branch), Some(workspace)) => {
-            let covered = a.covers_resource(ScopeType::Location, branch)
-                || match store.location_legal_entity_id(branch)? {
-                    Some(entity) => a.covers_resource(ScopeType::LegalEntity, &entity),
-                    None => false,
-                };
-            Some(covered)
-        }
-        Some(_) => Some(false),
-        None => None,
-    };
+    // Both axes, one implementation: `Store::assignment_covers_session` is
+    // the same composite the scoped session gates enforce, so the verdict
+    // cannot drift from the gate it explains. This replaces a byte-identical
+    // copy of ruling 3's inheritance that lived in each client command.
+    let scope_granted =
+        store.assignment_covers_session(user_id, ScopeType::Location, branch, branch, workspace)?;
 
     // Add-on grant (C4.3): `advanced_analytics` answers the tier question
     // for analytics on Plus — the resolver suppresses only the tier check

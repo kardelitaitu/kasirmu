@@ -330,27 +330,12 @@ fn load_feature_verdict(
     // check (require_permission_scoped runs it) AND the hierarchical
     // resource-coverage check on the session location
     // (require_permission_for_session_resource layers it).
-    let assignment = store.assignment_for_user(user_id)?;
-    let scope_granted = match &assignment {
-        // The 0048 layer: a scoped assignment must cover this branch and
-        // workspace request context. Global assignments are unrestricted.
-        Some(a) if a.matches_scope(Some(branch), Some(workspace)) => {
-            // The ADR #47 layer: the assignment must also COVER the
-            // caller's location. Organization covers every resource kind;
-            // a legal_entity row covers the location through ruling 3's
-            // downward walk via the entity id.
-            let covered = a.covers_resource(ScopeType::Location, branch)
-                || match store.location_legal_entity_id(branch)? {
-                    Some(entity) => a.covers_resource(ScopeType::LegalEntity, &entity),
-                    None => false,
-                };
-            Some(covered)
-        }
-        Some(_) => Some(false),
-        // Ruling 5: no assignment row, not scope-restricted — the axis
-        // stays silent rather than guessing.
-        None => None,
-    };
+    // Both axes, one implementation: `Store::assignment_covers_session` is
+    // the same composite the scoped session gates enforce, so the verdict
+    // cannot drift from the gate it explains. This replaces a byte-identical
+    // copy of ruling 3's inheritance that lived in each client command.
+    let scope_granted =
+        store.assignment_covers_session(user_id, ScopeType::Location, branch, branch, workspace)?;
 
     // Add-on grant (C4.3): `advanced_analytics` answers the tier question
     // for analytics on Plus — the resolver suppresses only the tier check

@@ -351,6 +351,43 @@ impl Store<'_> {
             .map(Some)
     }
 
+    /// The scope answer for a caller standing in a specific session context,
+    /// across both axes the scoped gates enforce, or `None` when the user has
+    /// no assignment row at all.
+    ///
+    /// This is the non-throwing mirror of what the session gates end up
+    /// enforcing: spec 0048's branch/workspace dimension
+    /// ([`Assignment::matches_scope`], run by
+    /// [`crate::db::Store::require_permission_scoped`]) AND the ADR #47
+    /// resource axis ([`Store::resource_covered_by`], downward walk
+    /// included). Keeping the composite in one place is the point — the
+    /// desktop and tablet verdict commands each carried a byte-identical
+    /// copy of it, which is three implementations of one rule free to drift.
+    ///
+    /// For a current-location verdict the resource asked about is the
+    /// session's own location, which is also the branch dimension, so
+    /// callers pass that id twice.
+    ///
+    /// `None` is not a denial — ruling 5 leaves a row-less legacy user outside
+    /// the scope contest entirely.
+    pub fn assignment_covers_session(
+        &self,
+        user_id: &str,
+        resource_type: ScopeType,
+        resource_id: &str,
+        branch: &str,
+        workspace: &str,
+    ) -> Result<Option<bool>, CoreError> {
+        let Some(assignment) = self.assignment_for_user(user_id)? else {
+            return Ok(None);
+        };
+        if !assignment.matches_scope(Some(branch), Some(workspace)) {
+            return Ok(Some(false));
+        }
+        self.resource_covered_by(&assignment, resource_type, resource_id)
+            .map(Some)
+    }
+
     /// Write a user's assignment scope (ADR #35 D5 / spec 0048) inside an
     /// open transaction: upserts the `assignments` row and replaces the
     /// dimension rows. Safe to call inside an existing transaction — the
