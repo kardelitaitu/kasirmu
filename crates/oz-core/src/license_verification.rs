@@ -230,11 +230,38 @@ pub struct LicenseStatusResponse {
     /// When the grace period ends (RFC 3339).
     #[serde(default)]
     pub grace_until: Option<String>,
-    /// Tier location quota. Wire field keeps the historical `max_stores`
-    /// name until the license-server payload rename (todo-global-saas-1.md
-    /// item 1g, versioned migration with dual-read).
-    #[serde(default)]
-    pub max_stores: i64,
+    /// Tier location quota, primary wire name. The 1g rename made this
+    /// the license-server wire name; the server dual-emits both names at
+    /// the same value during the client rotation window, and pre-rename
+    /// servers send only `max_stores`. Resolve with
+    /// [`Self::effective_max_locations`] — a bare `serde(alias)` cannot
+    /// be used here because serde rejects a document carrying BOTH
+    /// names (duplicate field), which is exactly the dual-emit shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_locations: Option<i64>,
+    /// Legacy pre-rename wire name (`max_stores`), kept so payloads from
+    /// un-upgraded servers keep parsing; the server sends it alongside
+    /// `max_locations` with the same value during the rotation window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_stores: Option<i64>,
+}
+
+impl SignedSubscriptionPayload {
+    /// The location quota regardless of which wire name carried it.
+    /// 0 when neither name is present — the pre-1g `#[serde(default)]`
+    /// behavior (0 reads as unlimited server-side).
+    pub fn effective_max_locations(&self) -> i64 {
+        self.max_locations.or(self.max_stores).unwrap_or(0)
+    }
+}
+
+impl LicenseStatusResponse {
+    /// The location quota regardless of which wire name carried it.
+    /// 0 when neither name is present — the pre-1g `#[serde(default)]`
+    /// behavior (0 reads as unlimited server-side).
+    pub fn effective_max_locations(&self) -> i64 {
+        self.max_locations.or(self.max_stores).unwrap_or(0)
+    }
 }
 
 /// The subscription payload structure signed by the license server.
@@ -247,12 +274,17 @@ pub struct SignedSubscriptionPayload {
     pub tier_key: String,
     /// The subscription status.
     pub status: String,
-    /// Maximum number of stores allowed. Wire field keeps the historical
-    /// `max_stores` name (Go `SubscriptionPayload`) until the license-server
-    /// payload rename (todo-global-saas-1.md item 1g, versioned, dual-read);
-    /// it persists into the local `max_locations` column.
-    #[serde(default)]
-    pub max_stores: i64,
+    /// Tier location quota, primary 1g wire name
+    /// (Go `SubscriptionPayload.MaxLocations`). See the field docs on
+    /// [`LicenseStatusResponse`] for the dual-name compat shape; resolve
+    /// with [`Self::effective_max_locations`] and persist into the local
+    /// `max_locations` column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_locations: Option<i64>,
+    /// Legacy pre-rename wire name, dual-emitted by the Go side with the
+    /// same value during the rotation window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_stores: Option<i64>,
     /// Maximum POS register instances allowed.
     #[serde(default)]
     pub max_pos_instances: i64,
@@ -490,10 +522,10 @@ pub fn store_subscription(
     signature: &str,
     api_key: &str,
 ) -> Result<(), CoreError> {
-    // Parse the payload to extract tier info. The wire field is
-    // `max_stores` (Go `SubscriptionPayload`), persisted into the local
-    // `max_locations` column — the mapping is the 1c "activation mapping"
-    // step; the wire rename itself is item 1g (versioned, dual-read).
+    // Parse the payload to extract tier info. The 1g primary wire name
+    // is `max_locations`, with the legacy `max_stores` still accepted
+    // from pre-rename servers; either lands in the local
+    // `max_locations` column.
     let payload: SignedSubscriptionPayload = serde_json::from_str(signed_payload)
         .map_err(|e| CoreError::Internal(format!("failed to parse signed payload: {e}")))?;
 
@@ -511,7 +543,7 @@ pub fn store_subscription(
             payload.tier_key,
             payload.status,
             payload.expires_at,
-            payload.max_stores,
+            payload.effective_max_locations(),
             payload.max_pos_instances,
             allowed_types_json,
             signature,

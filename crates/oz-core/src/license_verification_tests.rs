@@ -237,6 +237,82 @@ fn store_subscription_handles_all_tier_keys() {
 // We need to import TenantSubscription for the test above.
 use crate::subscription::TenantSubscription;
 
+#[test]
+fn store_subscription_reads_renamed_wire_field() {
+    // 1g: the license server now emits `max_locations` as the primary
+    // wire name. A payload carrying ONLY the new name must parse and
+    // land in the local max_locations column.
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+
+    let payload = r#"{
+        "tenant_id": "test-tenant",
+        "tier_key": "pro",
+        "status": "active",
+        "max_locations": 4,
+        "max_pos_instances": 3,
+        "allowed_types": ["restaurant-pos", "store-pos"],
+        "starts_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2027-01-01T00:00:00Z",
+        "grace_until": "2027-01-15T00:00:00Z",
+        "issued_at": "2026-01-01T00:00:00Z"
+    }"#;
+
+    store_subscription(
+        &conn,
+        "test-tenant",
+        payload,
+        "TESTSIG",
+        "oz_test_api_key_123",
+    )
+    .expect("store_subscription should accept the new wire name");
+
+    let stored = TenantSubscription::load(&conn, "test-tenant")
+        .expect("load")
+        .expect("should exist");
+    assert_eq!(stored.max_stores, 4);
+}
+
+#[test]
+fn store_subscription_dual_emitted_payload_prefers_consistent_value() {
+    // 1g dual-emit: during the client rotation window the server sends
+    // BOTH wire names with the same value. The payload must parse and
+    // the quota must come through unchanged.
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+
+    let payload = r#"{
+        "tenant_id": "test-tenant",
+        "tier_key": "plus",
+        "status": "active",
+        "max_locations": 1,
+        "max_stores": 1,
+        "max_pos_instances": 2,
+        "allowed_types": ["restaurant-pos", "store-pos"],
+        "starts_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2027-01-01T00:00:00Z",
+        "grace_until": "2027-01-15T00:00:00Z",
+        "issued_at": "2026-01-01T00:00:00Z"
+    }"#;
+
+    store_subscription(
+        &conn,
+        "test-tenant",
+        payload,
+        "TESTSIG",
+        "oz_test_api_key_123",
+    )
+    .expect("store_subscription should accept the dual-emitted payload");
+
+    let stored = TenantSubscription::load(&conn, "test-tenant")
+        .expect("load")
+        .expect("should exist");
+    assert_eq!(stored.max_stores, 1);
+    assert_eq!(stored.signed_payload, payload);
+}
+
 // ── trial_vertical serialization (C2.1) ────────────────────────
 
 #[test]

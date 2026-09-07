@@ -200,12 +200,14 @@ fn store_subscription_updates_tenant_subscription_default() {
     assert_eq!(sub.tier, oz_core::SubscriptionTier::Free);
 
     // Simulate a Pro activation — store_subscription should
-    // replace the bootstrap row with the activated tier.
+    // replace the bootstrap row with the activated tier. This payload
+    // uses the NEW 1g wire name (max_locations); the alias path for
+    // pre-rename payloads (max_stores) is covered by the oz-core tests.
     let payload = r#"{
         "tenant_id": "default",
         "tier_key": "pro",
         "status": "active",
-        "max_stores": 2,
+        "max_locations": 2,
         "max_pos_instances": 3,
         "allowed_types": ["restaurant-pos", "store-pos", "admin"],
         "starts_at": "2026-07-12T00:00:00Z",
