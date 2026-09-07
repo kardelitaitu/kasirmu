@@ -53,7 +53,7 @@
 --
 -- Or reverse a committed cutover with:
 --
---     ALTER TABLE ... NO FORCE ROW LEVEL SECURITY  (all 15 tables)
+--     ALTER TABLE ... NO FORCE ROW LEVEL SECURITY  (all 19 tables)
 --     DROP ROLE oz_app;
 --     DROP ROLE oz_webhook_resolver;
 
@@ -73,7 +73,8 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items','offline_queue','product_activity',
+    FOREACH t IN ARRAY ARRAY['bundle_items','memo_locations','memo_recipients',
+                            'memos','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
                             'sync_terminals','tax_rates','tenant_plans',
@@ -88,12 +89,14 @@ END $$;
 
 -- 2b. DML on the auxiliary (non-RLS) tables the REST layer also touches.
 --     These tables have NO tenant_id column — they are children of
---     tenant-scoped parents (sale_lines→sales, inventory / stock_movements /
+--     tenant-scoped parents (inventory / stock_movements /
 --     stock_summary→products) or shared catalogs (categories, roles) — so
 --     they are not RLS-enforced, but oz_app still needs full DML to serve
 --     create_sale / create_product / create_user / list_products. Without
 --     these grants the REST surface fails with permission denied the moment
---     FORCE RLS is switched on.
+--     FORCE RLS is switched on. (sale_lines left this list when it gained
+--     tenant_id + RLS coverage — it is granted and FORCEd with the main
+--     list above.)
 DO $$
 DECLARE
     t text;
@@ -175,7 +178,8 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items','offline_queue','product_activity',
+    FOREACH t IN ARRAY ARRAY['bundle_items','memo_locations','memo_recipients',
+                            'memos','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
                             'sync_terminals','tax_rates','tenant_plans',
@@ -185,13 +189,14 @@ BEGIN
     END LOOP;
 END $$;
 
--- 4. Verification (informational — expect 15 rows, all `t`/`t`):
+-- 4. Verification (informational — expect 19 rows, all `t`/`t`):
 --    SELECT tablename, rowsecurity, forcerowsecurity
 --      FROM pg_tables
 --     WHERE schemaname = 'public'
---       AND tablename IN ('bundle_items','offline_queue','product_activity',
+--       AND tablename IN ('bundle_items','memo_locations','memo_recipients',
+--                         'memos','offline_queue','product_activity',
 --                         'product_bundles','product_taxes','product_variants',
---                         'products','sales','sent_reports','stripe_customers',
+--                         'products','refunds','sales','sent_reports','stripe_customers',
 --                         'sync_terminals','tax_rates','tenant_plans',
 --                         'tenant_subscription','users')
 --     ORDER BY tablename;
