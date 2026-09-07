@@ -508,3 +508,149 @@ fn assignments_scope_pair_triggers_enforce_null_iff_organization() {
         "update to organization keeping scope_id must be rejected"
     );
 }
+
+// ── ADR #47 choke point: Store::require_permission_for_resource ──────
+//
+// The gate semantics tests live here (next to the Assignment model
+// tests) because the choke point is the DB-backed composition of
+// `covers_resource` + the entity→location walk + `authorize_with`.
+
+/// Seed the two-entity / three-location topology used by the walk tests:
+/// ent-1 owns loc-ent1, ent-2 owns loc-ent2, and loc-orphan carries no
+/// entity (the 20260908 backfill only touched pre-existing NULL rows, so a
+/// fresh NULL insert stays NULL).
+fn seed_entity_topology(conn: &rusqlite::Connection) {
+    conn.execute_batch(
+        "INSERT INTO legal_entities (id, tenant_id, name) VALUES
+             ('ent-1', 'default', 'Entity One'),
+             ('ent-2', 'default', 'Entity Two');
+         INSERT INTO locations (id, name, tenant_id, legal_entity_id) VALUES
+             ('loc-ent1', 'Location One', 'default', 'ent-1'),
+             ('loc-ent2', 'Location Two', 'default', 'ent-2'),
+             ('loc-orphan', 'Orphan', 'default', NULL);",
+    )
+    .unwrap();
+}
+
+/// Insert a `global`-mode assignment with an explicit ADR #47 scope pair.
+/// Global mode keeps the spec-0048 branch/workspace axis out of the way so
+/// each test exercises the resource axis in isolation.
+fn insert_scoped_assignment(conn: &rusqlite::Connection, scope_type: &str, scope_id: Option<&str>) {
+    conn.execute(
+        "INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id)
+         VALUES ('u1', 'role-staff', 'global', 'all', 'all', ?1, ?2)",
+        params![scope_type, scope_id],
+    )
+    .unwrap();
+}
+
+#[test]
+fn resource_gate_org_assignment_covers_every_resource_kind() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "organization", None);
+    let store = Store::new(&conn);
+
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-x")
+        .expect("org assignment covers any location");
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::LegalEntity, "ent-x")
+        .expect("org assignment covers any legal entity");
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Organization, "default")
+        .expect("org assignment covers org-level resources");
+}
+
+#[test]
+fn resource_gate_location_assignment_covers_only_own_location() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "location", Some("loc-1"));
+    let store = Store::new(&conn);
+
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-1")
+        .expect("own location is covered");
+
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-2")
+        .expect_err("another location must deny");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+
+    // Upward access denies: a location assignment never reaches its parent
+    // entity or the org level (ruling 3's downward-only inheritance).
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::LegalEntity, "ent-1")
+        .expect_err("location assignment must not reach its parent entity");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Organization, "default")
+        .expect_err("location assignment must not reach the org level");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+
+    // Coverage is not permission: role-staff lacks settings:edit even on
+    // its OWN location.
+    let err = store
+        .require_permission_for_resource("u1", "settings:edit", ScopeType::Location, "loc-1")
+        .expect_err("coverage does not replace the permission check");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+}
+
+#[test]
+fn resource_gate_legal_entity_assignment_walks_down_to_owned_locations() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "legal_entity", Some("ent-1"));
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::LegalEntity, "ent-1")
+        .expect("own entity id is covered directly");
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-ent1")
+        .expect("the downward walk covers locations owned by the entity");
+
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-ent2")
+        .expect_err("another entity's location is a sibling, not a child");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+
+    // Fail closed: an unknown location and a NULL-entity location both
+    // deny — the walk cannot prove ownership for either.
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-unknown")
+        .expect_err("unknown location must deny");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-orphan")
+        .expect_err("NULL-entity location must deny");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+
+    // Upward: an entity assignment never reaches the org level.
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Organization, "default")
+        .expect_err("entity assignment must not reach the org level");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+}
+
+#[test]
+fn resource_gate_no_assignment_row_keeps_legacy_unrestricted_scope() {
+    // Ruling 5 bit-for-bit: a user with NO assignments row (the legacy
+    // shape) is not scope-restricted — but the permission itself is still
+    // enforced. Tightening no-row users is deliberately deferred to the
+    // assignment-creation slice, not silently dropped.
+    let conn = migrations::fresh_db();
+    seed_user(&conn); // u1 + role-staff, deliberately NO assignment row
+    let store = Store::new(&conn);
+
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-any")
+        .expect("legacy no-row user is not scope-restricted");
+
+    let err = store
+        .require_permission_for_resource("u1", "settings:edit", ScopeType::Location, "loc-any")
+        .expect_err("no-row preserves scope freedom, not permission");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+}

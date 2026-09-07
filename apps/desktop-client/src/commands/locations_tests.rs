@@ -274,3 +274,100 @@ async fn create_location_profile_scoped_denies_staff_without_settings_edit() {
 
     assert!(matches!(result, Err(AppError::PermissionDenied(_))));
 }
+
+// ── ADR #47 resource-scope gating ───────────────────────────────────
+
+/// Seed a manager user whose assignment is location-scoped to
+/// `location_id`. `scope_mode` stays `global` so the spec-0048
+/// branch/workspace axis passes any session context and the ADR #47
+/// resource gate is exercised in isolation.
+fn seed_location_scoped_manager(conn: &rusqlite::Connection, location_id: &str) {
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-manager', 'Manager', 'Location manager', '[\"settings:edit\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-manager', 'manager', 'hash', 'Manager', 'role-manager', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id)
+         VALUES ('user-manager', 'role-manager', 'global', 'all', 'all', 'location', ?1)",
+        [location_id],
+    )
+    .unwrap();
+}
+
+fn manager_session(state: &AppState, token: &str) {
+    state.session_store.write().unwrap().insert(
+        token.to_string(),
+        SessionContext::new(
+            "user-manager".into(),
+            "role-manager".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+}
+
+/// ADR #47 ruling-3 pin: a manager assigned to location A cannot update
+/// location B. The branch/workspace axis deliberately passes (global
+/// scope_mode), so the typed denial can only come from the resource
+/// scope — the gate this slice added.
+#[tokio::test]
+async fn update_location_profile_scoped_denies_manager_of_other_location() {
+    let conn = migrations::fresh_db();
+    seed_location_scoped_manager(&conn, "loc-a");
+    let state = flow_state(conn);
+    manager_session(&state, "mgr-tok");
+    let app = mock_app(state);
+
+    let result = update_location_profile_scoped(
+        UpdateLocationArgs {
+            id: "loc-b".into(),
+            name: "Hostile Rename".into(),
+            address: "1 Elsewhere".into(),
+            tax_id: String::new(),
+            currency: "USD".into(),
+            timezone: "UTC".into(),
+        },
+        "mgr-tok".into(),
+        app.state(),
+    )
+    .await;
+
+    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+}
+
+/// The mirror pin: the SAME manager CAN update the location their
+/// assignment covers (here `default`, whose profile row exists in the
+/// session's migrated location db) — the gate narrows scoped roles, it
+/// does not blanket-deny them.
+#[tokio::test]
+async fn update_location_profile_scoped_allows_manager_of_own_location() {
+    let conn = migrations::fresh_db();
+    seed_location_scoped_manager(&conn, "default");
+    let state = flow_state(conn);
+    manager_session(&state, "mgr-tok");
+    let app = mock_app(state);
+
+    let result = update_location_profile_scoped(
+        UpdateLocationArgs {
+            id: "default".into(),
+            name: "Renamed Flagship".into(),
+            address: "1 Main St".into(),
+            tax_id: String::new(),
+            currency: "USD".into(),
+            timezone: "UTC".into(),
+        },
+        "mgr-tok".into(),
+        app.state(),
+    )
+    .await;
+
+    let updated = result.expect("own-location update must pass the resource gate");
+    assert_eq!(updated.name, "Renamed Flagship");
+}

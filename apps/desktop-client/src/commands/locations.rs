@@ -10,9 +10,12 @@ use oz_core::subscription::{SubscriptionTier, TenantSubscription};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::commands::authz::require_permission_for_session;
+use crate::commands::authz::{
+    require_permission_for_session, require_permission_for_session_resource,
+};
 use crate::error::AppError;
 use crate::state::AppState;
+use oz_core::db::assignments::ScopeType;
 use oz_core::permissions;
 
 // ── DTOs ───────────────────────────────────────────────────────────
@@ -210,6 +213,16 @@ pub async fn update_location_profile_scoped(
 ) -> Result<LocationProfileDto, AppError> {
     let (session, _conn) = state.resolve_scope(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    // ADR #47: the named location must be covered by the caller's
+    // assignment — manager-of-A cannot update location B.
+    require_permission_for_session_resource(
+        &state,
+        &session,
+        permissions::SETTINGS_EDIT,
+        ScopeType::Location,
+        &args.id,
+    )
+    .await?;
     let conn = _conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -234,6 +247,16 @@ pub async fn set_primary_location_scoped(
 ) -> Result<LocationProfileDto, AppError> {
     let (session, _conn) = state.resolve_scope(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    // ADR #47: the named location must be covered by the caller's
+    // assignment — manager-of-A cannot promote location B.
+    require_permission_for_session_resource(
+        &state,
+        &session,
+        permissions::SETTINGS_EDIT,
+        ScopeType::Location,
+        &id,
+    )
+    .await?;
     let conn = _conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -251,6 +274,16 @@ pub async fn delete_location_profile_scoped(
 ) -> Result<(), AppError> {
     let (session, _conn) = state.resolve_scope(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    // ADR #47: the named location must be covered by the caller's
+    // assignment — manager-of-A cannot delete location B.
+    require_permission_for_session_resource(
+        &state,
+        &session,
+        permissions::SETTINGS_EDIT,
+        ScopeType::Location,
+        &id,
+    )
+    .await?;
     let conn = _conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

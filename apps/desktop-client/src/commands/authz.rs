@@ -12,6 +12,7 @@ next: none | perf: one indexed user lookup + role fetch per gate — fine
 
 use oz_core::CoreError;
 use oz_core::db::Store;
+use oz_core::db::assignments::ScopeType;
 use oz_core::session::SessionContext;
 
 use crate::error::AppError;
@@ -102,6 +103,44 @@ pub async fn require_permission_for_session(
         Some(&session.store_id),
         Some(&session.type_key),
     )
+}
+
+/// The ADR #47 hierarchical-resource variant of the session gate (ruling
+/// 2's single scoped choke point): everything
+/// [`require_permission_for_session`] enforces, PLUS the caller's
+/// assignment must COVER the named resource.
+///
+/// Coverage follows ruling 3's downward-only inheritance: an
+/// `organization` assignment covers every resource kind, a `location`
+/// assignment only its own location id, and a `legal_entity` assignment
+/// its own entity id plus any location belonging to it (the walk reads
+/// the GLOBAL identity DB's `locations` copy — the same connection this
+/// gate already authorizes against, and the one boot resolution and the
+/// local API consult). Sibling and upward access deny, unknown locations
+/// deny fail-closed.
+///
+/// Legacy users without an assignment row are not scope-restricted
+/// (ruling 5, preserved bit-for-bit); the permission itself is still
+/// enforced on every path.
+pub async fn require_permission_for_session_resource(
+    state: &AppState,
+    session: &SessionContext,
+    required: &str,
+    scope_type: ScopeType,
+    scope_id: &str,
+) -> Result<(), AppError> {
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    require_permission_for_user_scoped(
+        &store,
+        &session.user_id,
+        required,
+        Some(&session.store_id),
+        Some(&session.type_key),
+    )?;
+    store
+        .require_permission_for_resource(&session.user_id, required, scope_type, scope_id)
+        .map_err(map_gate_error)
 }
 
 #[cfg(test)]

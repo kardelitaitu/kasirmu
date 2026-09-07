@@ -45,6 +45,26 @@ impl Store<'_> {
         }
     }
 
+    /// Get the `legal_entity_id` of the entity a location belongs to
+    /// (ADR #47 ruling 3's downward walk: a `legal_entity`-scoped
+    /// assignment must cover every location whose row points at the
+    /// assignment's entity).
+    ///
+    /// Returns `Ok(None)` when the location does not exist or carries no
+    /// entity — callers treat both as deny (fail closed).
+    pub fn location_legal_entity_id(&self, location_id: &str) -> Result<Option<String>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT legal_entity_id FROM locations WHERE id = ?1")?;
+        let mut rows =
+            stmt.query_map(params![location_id], |row| row.get::<_, Option<String>>(0))?;
+        match rows.next() {
+            Some(Ok(entity)) => Ok(entity),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
     /// Get the primary location profile.
     pub fn get_primary_location(&self) -> Result<Option<LocationProfile>, CoreError> {
         let mut stmt = self.conn.prepare(

@@ -291,6 +291,70 @@ impl Store<'_> {
         self.authorize_with(user_id, required, &assignment)
     }
 
+    /// The ADR #47 hierarchical-resource gate (ruling 2: the single scoped
+    /// choke point): same as [`Self::require_permission`], plus the caller's
+    /// assignment must COVER the named resource.
+    ///
+    /// Coverage follows ruling 3's downward-only inheritance:
+    /// - an `organization` assignment covers every resource kind;
+    /// - a `location` assignment covers only its own location id;
+    /// - a `legal_entity` assignment covers its own entity id AND any
+    ///   location belonging to it (resolved via the `locations` table's
+    ///   `legal_entity_id` — the downward walk);
+    /// - upward access (location → entity/org) and sibling access deny.
+    ///
+    /// Legacy users WITHOUT an assignment row keep spec 0048's
+    /// "not scope-restricted" semantics (ruling 5's bit-for-bit behavior
+    /// preservation): the permission itself is still enforced below, and
+    /// tightening no-row users is deliberately deferred to the
+    /// assignment-creation slice, not silently dropped.
+    ///
+    /// Must be called on the GLOBAL identity `Store` (users, roles, and
+    /// assignments live there; store DBs carry empty `users` tables by
+    /// design). The entity→location walk reads the same connection's
+    /// `locations` table — on the desktop that is the global DB's copy,
+    /// which is what boot resolution and the local API already consult.
+    pub fn require_permission_for_resource(
+        &self,
+        user_id: &str,
+        required: &str,
+        scope_type: crate::db::assignments::ScopeType,
+        scope_id: &str,
+    ) -> Result<(), CoreError> {
+        use crate::db::assignments::ScopeType;
+
+        let assignment = self.assignment_for_user(user_id)?;
+        if let Some(a) = &assignment {
+            let covered = match a.scope_type {
+                Some(ScopeType::Organization) => true,
+                Some(ScopeType::Location) => {
+                    scope_type == ScopeType::Location && a.scope_id.as_deref() == Some(scope_id)
+                }
+                Some(ScopeType::LegalEntity) => match scope_type {
+                    ScopeType::LegalEntity => a.scope_id.as_deref() == Some(scope_id),
+                    ScopeType::Location => {
+                        // Downward walk: the requested location must belong
+                        // to the assignment's entity. An unknown location or
+                        // one without an entity denies (fail closed).
+                        let entity = self.location_legal_entity_id(scope_id)?;
+                        entity.is_some() && entity.as_deref() == a.scope_id.as_deref()
+                    }
+                    ScopeType::Organization => false,
+                },
+                // An unparsable scope_type row failed the load and already
+                // resolved to `None` for the whole assignment; this arm is
+                // unreachable but stays fail-closed for the compiler.
+                None => false,
+            };
+            if !covered {
+                return Err(CoreError::PermissionDenied(format!(
+                    "resource {scope_id} out of scope for user {user_id}"
+                )));
+            }
+        }
+        self.authorize_with(user_id, required, &assignment)
+    }
+
     /// Shared gate body: registry deny-by-default, user resolution + active
     /// check, role resolution (assignment first, `users.role_id` fallback),
     /// then `role.authorize`.
