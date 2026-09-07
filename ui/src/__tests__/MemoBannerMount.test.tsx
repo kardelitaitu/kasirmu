@@ -235,7 +235,14 @@ async function expectBannerOnSurface(surfaceProbe: () => HTMLElement) {
     expect(surfaceProbe()).toBeInTheDocument();
   });
   expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
-  expect(screen.getByText('Location notice')).toBeInTheDocument();
+  // The scope badge was dropped (owner direction, 2026-09-08); the bubble
+  // now exposes the memo through the open trigger + the (x) ack. The app's
+  // bundles run with useIsolating: false, so no directional marks surround
+  // the substituted title.
+  expect(screen.getByTestId('memo-banner-open')).toHaveAttribute(
+    'aria-label',
+    'Read the full memo: Restock aisle 3',
+  );
   expect(
     screen.getByRole('button', { name: 'Acknowledge this memo' }),
   ).toBeInTheDocument();

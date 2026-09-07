@@ -164,9 +164,9 @@ update-banner-rollback = Pulihkan Versi Sebelumnya
 update-banner-rollback-aria = Unduh versi sebelumnya dari GitHub
 
 # Memo Banner
-memo-banner-scope-location = Pemberitahuan Lokasi
-memo-banner-scope-organization = Pemberitahuan Organisasi
+memo-banner-open-aria = Baca memo lengkap: { $title }
 memo-banner-acknowledge-aria = Konfirmasi memo ini
+memo-modal-acknowledge = Konfirmasi
 
 # Memos (authoring)
 memos-title = Memo

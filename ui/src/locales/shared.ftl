@@ -148,9 +148,9 @@ update-banner-rollback = Restore Previous Version
 update-banner-rollback-aria = Download previous version from GitHub
 
 # Memo Banner
-memo-banner-scope-location = Location notice
-memo-banner-scope-organization = Organization notice
+memo-banner-open-aria = Read the full memo: { $title }
 memo-banner-acknowledge-aria = Acknowledge this memo
+memo-modal-acknowledge = Acknowledge
 
 # Memos (authoring)
 memos-title = Memos

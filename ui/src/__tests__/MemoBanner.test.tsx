@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
@@ -27,19 +27,22 @@ vi.mock('@/hooks/useExitAnimation', () => ({
 }));
 
 const MEMO_FTL = `
-memo-banner-scope-location = Location notice
-memo-banner-scope-organization = Organization notice
+memo-banner-open-aria = Read the full memo: { $title }
 memo-banner-acknowledge-aria = Acknowledge this memo
+memo-modal-acknowledge = Acknowledge
+modal-close-aria = Close dialog
 `;
 
 function renderWithL10n(ui: ReactNode) {
-  const bundle = new FluentBundle('en-US');
+  // useIsolating: false mirrors the app's real bundle config
+  // (ui/src/i18n/index.ts) — substituted values carry no directional marks.
+  const bundle = new FluentBundle('en-US', { useIsolating: false });
   bundle.addResource(new FluentResource(MEMO_FTL));
   const l10n = new ReactLocalization([bundle]);
   return render(<LocalizationProvider l10n={l10n}>{ui}</LocalizationProvider>);
 }
 
-function activeMemo(id: string, locationIds: string[]): ActiveMemo {
+function activeMemo(id: string, locationIds: string[], body?: string): ActiveMemo {
   return {
     memo: {
       id,
@@ -48,7 +51,7 @@ function activeMemo(id: string, locationIds: string[]): ActiveMemo {
       authorUserId: 'user-1',
       authorRole: 'role-owner',
       title: `Title ${id}`,
-      body: `Body ${id}`,
+      body: body ?? `Body ${id}`,
       status: 'published',
       duration: '24h',
       revision: 1,
@@ -92,12 +95,19 @@ describe('MemoBanner', () => {
     expect(screen.getByText('Body m1')).toBeInTheDocument();
   });
 
-  it('shows the Organization badge for an org memo and Location for a location memo', () => {
-    const { unmount } = renderWithL10n(<MemoBanner />);
-    expect(screen.getByText('Organization notice')).toBeInTheDocument();
-    unmount();
+  it('does not render the scope type', () => {
+    // Owner direction (2026-09-08): the Location/Organization badge is
+    // visual noise on the bubble — the audience is the memo metadata, not
+    // something staff act on.
+    renderWithL10n(<MemoBanner />);
+    expect(screen.queryByText('Location notice')).not.toBeInTheDocument();
+    expect(screen.queryByText('Organization notice')).not.toBeInTheDocument();
+  });
+
+  it('opens the enlarged dialog with the full body on click', () => {
+    const longBody = Array.from({ length: 14 }, (_, i) => `Line ${i + 1}`).join('\n');
     vi.mocked(useMemos).mockReturnValue({
-      memos: [activeMemo('m2', ['loc-1'])],
+      memos: [activeMemo('m1', [], longBody)],
       loading: false,
       error: null,
       acknowledge: mockAcknowledge,
@@ -105,7 +115,43 @@ describe('MemoBanner', () => {
       refresh: vi.fn(),
     });
     renderWithL10n(<MemoBanner />);
-    expect(screen.getByText('Location notice')).toBeInTheDocument();
+
+    // The bubble button carries the dialog trigger semantics.
+    const open = screen.getByTestId('memo-banner-open');
+    expect(open).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(open).toHaveAttribute('aria-expanded', 'false');
+    expect(open).toHaveAttribute('aria-label', 'Read the full memo: Title m1');
+
+    fireEvent.click(open);
+
+    const dialog = screen.getByRole('dialog', { name: 'Title m1' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // The full text — all 14 lines — is readable in the dialog (scoped to
+    // it: the bubble's clamped preview also carries the text in the DOM).
+    // The body renders as one pre-wrap text node, so match on content.
+    expect(within(dialog).getByText(/Line 14/)).toBeInTheDocument();
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('the dialog acknowledge button runs the durable ack and closes the dialog', () => {
+    renderWithL10n(<MemoBanner />);
+    fireEvent.click(screen.getByTestId('memo-banner-open'));
+    fireEvent.click(screen.getByTestId('memo-modal-acknowledge'));
+
+    expect(mockAcknowledge).toHaveBeenCalledWith('m1');
+    expect(mockDismiss).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('closing the dialog returns to the bubble without acknowledging', () => {
+    renderWithL10n(<MemoBanner />);
+    fireEvent.click(screen.getByTestId('memo-banner-open'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+
+    expect(mockAcknowledge).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The bubble is still on-screen for the (x) durable ack.
+    expect(screen.getByTestId('memo-banner-open')).toBeInTheDocument();
   });
 
   it('the close button runs the durable ack action', () => {

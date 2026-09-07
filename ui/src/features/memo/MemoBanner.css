@@ -87,28 +87,39 @@
   min-width: 0;
 }
 
-.memo-banner-scope {
-  display: inline-flex;
+/* The whole title+body block is one button that opens the enlarged
+   dialog. Reset the button chrome so it reads as the bubble's body,
+   and keep the min-width:0 chain so long text clamps instead of
+   stretching the bubble. */
+.memo-banner-open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.memo-banner-badge {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: var(--space-0_5) var(--space-1_5);
+@media (prefers-reduced-motion: no-preference) {
+  .memo-banner-open {
+    transition: color var(--duration-150) var(--ease-out);
+  }
+}
+
+.memo-banner-open:hover .memo-banner-text {
+  color: var(--color-fg);
+}
+
+.memo-banner-open:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
   border-radius: var(--radius-sm);
-  line-height: var(--leading-tight);
-}
-
-.memo-banner-badge--location {
-  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
-  color: var(--color-accent-active);
-}
-
-.memo-banner-badge--organization {
-  background: color-mix(in srgb, var(--color-fg-secondary) 16%, transparent);
-  color: var(--color-fg-secondary);
 }
 
 .memo-banner-title {
@@ -118,11 +129,28 @@
   line-height: var(--leading-tight);
 }
 
+/* Owner-directed (2026-09-08): the bubble previews at most 10 lines;
+   the full text lives in the centered dialog behind the open button. */
 .memo-banner-text {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-fg-secondary);
   line-height: var(--leading-normal);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  overflow: hidden;
+}
+
+/* Full text inside the shared Modal — unclamped, and pre-wrap so the
+   author's line breaks from the composer textarea survive. */
+.memo-modal-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .memo-banner-close {

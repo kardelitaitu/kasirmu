@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { Modal } from '@/components/Modal';
+import { Button } from '@/components/Button';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useMemos } from './useMemos';
 import './MemoBanner.css';
@@ -8,16 +10,21 @@ import './MemoBanner.css';
  * The Memo display surface (Phase 2 P1, step 4): a chat-bubble overlay
  * pinned to the bottom-left of the screen showing the highest-priority
  * active memo for this terminal (owner-directed redesign, 2026-09-07 —
- * replaced the top sliding banner).
+ * replaced the top sliding banner; body clamped + expandable per the
+ * owner's follow-up, 2026-09-08).
  *
- * The read path already stacks Location Memos above Organization Memos, so
- * the bubble renders `memos[0]` and advances as each is acknowledged. The
- * single (x) button acknowledges durably — the memo never reappears on this
- * terminal (chat-bubble semantics: read it, done); the session-only dismiss
- * path remains on the useMemos hook for other consumers. The close routes
- * through the shared exit-animation fade (see the exit-animation-pattern
- * skill); the content is keyed by memo id so the next memo plays its entry
- * animation on swap.
+ * Layout: title + body only — the scope badge (Location/Organization) was
+ * dropped as visual noise. The body is clamped to 10 lines; the title+body
+ * block is one button that opens the shared centered `Modal` with the full
+ * text (the bubble stays behind the overlay until the dialog resolves).
+ *
+ * Acknowledge semantics are unchanged: the single (x) acknowledges durably —
+ * the memo never reappears on this terminal (chat-bubble semantics: read it,
+ * done). Inside the modal, the primary Acknowledge button runs the same
+ * durable ack, while closing the dialog (X / Escape / overlay) returns to
+ * the bubble without one. Both paths route through the shared exit-animation
+ * fade (see the exit-animation-pattern skill); the content is keyed by memo
+ * id so the next memo plays its entry animation on swap.
  *
  * Renders nothing when there are no active memos, no session, or the fetch is
  * still cold — it never occupies space when empty.
@@ -27,6 +34,7 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   const { memos, acknowledge } = useMemos({ kds });
   const top = memos[0];
   const open = top !== undefined;
+  const [expanded, setExpanded] = useState(false);
 
   // The close action is captured at click time (with the memo id
   // snapshotted) and run when the exit fade completes.
@@ -41,55 +49,82 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   }
 
   const memoId = top.memo.id;
-  const isLocation = top.memo.locationIds.length > 0;
 
   const handleClose = () => {
     pendingRef.current = () => acknowledge(memoId);
     exit.requestClose();
   };
 
+  // The dialog's primary action: close the dialog first, then run the
+  // same durable-ack fade the (x) button uses.
+  const handleAcknowledgeFromModal = () => {
+    setExpanded(false);
+    handleClose();
+  };
+
   return (
-    <div
-      key={memoId}
-      className={`memo-banner${exit.exiting ? ' memo-banner--exiting' : ''}`}
-      role="alert"
-      aria-live="polite"
-    >
-      <div className="memo-banner-body">
-        <span className="memo-banner-scope">
-          {isLocation ? (
-            <Localized id="memo-banner-scope-location">
-              <span className="memo-banner-badge memo-banner-badge--location" />
-            </Localized>
-          ) : (
-            <Localized id="memo-banner-scope-organization">
-              <span className="memo-banner-badge memo-banner-badge--organization" />
-            </Localized>
-          )}
-        </span>
-        <strong className="memo-banner-title">{top.memo.title}</strong>
-        <p className="memo-banner-text">{top.memo.body}</p>
-      </div>
-      <button
-        type="button"
-        className="memo-banner-close"
-        onClick={handleClose}
-        disabled={exit.exiting}
-        aria-label={l10n.getString('memo-banner-acknowledge-aria')}
+    <>
+      <div
+        key={memoId}
+        className={`memo-banner${exit.exiting ? ' memo-banner--exiting' : ''}`}
+        role="alert"
+        aria-live="polite"
       >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
+        <button
+          type="button"
+          className="memo-banner-open"
+          onClick={() => setExpanded(true)}
+          aria-haspopup="dialog"
+          aria-expanded={expanded}
+          aria-label={l10n.getString('memo-banner-open-aria', { title: top.memo.title })}
+          data-testid="memo-banner-open"
         >
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
-    </div>
+          <strong className="memo-banner-title">{top.memo.title}</strong>
+          <p className="memo-banner-text">{top.memo.body}</p>
+        </button>
+        <button
+          type="button"
+          className="memo-banner-close"
+          onClick={handleClose}
+          disabled={exit.exiting}
+          aria-label={l10n.getString('memo-banner-acknowledge-aria')}
+          data-testid="memo-banner-acknowledge"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      {expanded && (
+        <Modal
+          open
+          onClose={() => setExpanded(false)}
+          title={top.memo.title}
+          footer={
+            <Button
+              variant="primary"
+              onClick={handleAcknowledgeFromModal}
+              data-testid="memo-modal-acknowledge"
+            >
+              <Localized id="memo-modal-acknowledge">
+                <span>Acknowledge</span>
+              </Localized>
+            </Button>
+          }
+        >
+          <p className="memo-modal-text">{top.memo.body}</p>
+        </Modal>
+      )}
+    </>
   );
 }
