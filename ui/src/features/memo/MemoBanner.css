@@ -110,9 +110,8 @@
    stretching the bubble. */
 .memo-banner-open {
   display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
   width: 100%;
   padding: 0;
@@ -147,11 +146,6 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg);
   line-height: var(--leading-tight);
-  flex-shrink: 0;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The bubble previews at most 10 lines; the full text lives in the
