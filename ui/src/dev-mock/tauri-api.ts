@@ -2073,6 +2073,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
         limit: null,
         usage: null,
         permission: null,
+        scopeGranted: null,
         expiresAt: null,
         graceUntil: null,
       },

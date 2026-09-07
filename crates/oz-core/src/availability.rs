@@ -325,6 +325,12 @@ pub struct VerdictDetail {
     pub usage: Option<i64>,
     /// The permission key the gate consults, when one applies.
     pub permission: Option<String>,
+    /// The scope axis answer for the caller's own context (ADR #47 v1
+    /// scope ruling, current-location): Some(true) = the caller's
+    /// assignment covers the session location/context, Some(false) =
+    /// it excludes them, None = no assignment row (ruling 5: legacy
+    /// users are not scope-restricted) or the question had no target.
+    pub scope_granted: Option<bool>,
     /// Signed expiry, verbatim.
     pub expires_at: Option<String>,
     /// Grace-window end, verbatim.
@@ -407,6 +413,7 @@ pub fn explain_availability(facts: &AvailabilityFacts<'_>) -> FeatureVerdict {
             tier: facts.tier.tier_key(),
             state: facts.state.as_str(),
             limit,
+            scope_granted: facts.scope_granted,
             usage,
             permission: facts.permission.map(str::to_string),
             expires_at: facts.expires_at.map(str::to_string),

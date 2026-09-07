@@ -16,6 +16,7 @@ use tauri::State;
 
 use oz_core::availability::{AvailabilityFacts, AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
+use oz_core::db::assignments::ScopeType;
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
@@ -250,15 +251,26 @@ fn grace_until_for(
     Some(deadline.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
 }
 
-/// Resolve why `feature` is (un)available for `user_id`, from the same
+/// Resolve why `feature` is (un)available for `session`, from the same
 /// local signed row and the same count/permission primitives the real
 /// gates use. Pure read; no server round-trip; every gate question is
 /// answered by the gate's own implementation so a verdict cannot drift
 /// from enforcement.
+///
+/// The scope axis (ADR #47 v1 ruling, current-location): the verdict
+/// explains the gates that bind the caller where they stand, so the
+/// resource target is the session's own location and workspace — the same
+/// pair `require_permission_for_session` already scopes on. The answer
+/// is the composite the authorization model asks for: the spec-0048
+/// branch/workspace check AND the ADR #47 resource-coverage check on
+/// `session.store_id`. Legacy users without an assignment row are not
+/// scope-restricted (ruling 5), mirroring the gates bit-for-bit.
 fn load_feature_verdict(
     db: &rusqlite::Connection,
     user_id: &str,
     feature_key: &str,
+    branch: &str,
+    workspace: &str,
 ) -> Result<FeatureVerdict, AppError> {
     // Fail closed on unknown keys: never resolve to "available".
     let feature = AvailabilityFeature::parse(feature_key).ok_or_else(|| {
@@ -312,6 +324,34 @@ fn load_feature_verdict(
     let server_grant = server_grant_for(feature, loaded.as_ref());
     let permission = gate_permission(feature);
 
+    // Scope axis, evaluated with the same primitives the hard gates use so
+    // a scope denial here is exactly the gate's answer for the caller's own
+    // context. Composite per the ADR #47 model: the 0048 branch/workspace
+    // check (require_permission_scoped runs it) AND the hierarchical
+    // resource-coverage check on the session location
+    // (require_permission_for_session_resource layers it).
+    let assignment = store.assignment_for_user(user_id)?;
+    let scope_granted = match &assignment {
+        // The 0048 layer: a scoped assignment must cover this branch and
+        // workspace request context. Global assignments are unrestricted.
+        Some(a) if a.matches_scope(Some(branch), Some(workspace)) => {
+            // The ADR #47 layer: the assignment must also COVER the
+            // caller's location. Organization covers every resource kind;
+            // a legal_entity row covers the location through ruling 3's
+            // downward walk via the entity id.
+            let covered = a.covers_resource(ScopeType::Location, branch)
+                || match store.location_legal_entity_id(branch)? {
+                    Some(entity) => a.covers_resource(ScopeType::LegalEntity, &entity),
+                    None => false,
+                };
+            Some(covered)
+        }
+        Some(_) => Some(false),
+        // Ruling 5: no assignment row, not scope-restricted — the axis
+        // stays silent rather than guessing.
+        None => None,
+    };
+
     // Add-on grant (C4.3): `advanced_analytics` answers the tier question
     // for analytics on Plus — the resolver suppresses only the tier check
     // for it, which is exactly the addon semantics.
@@ -339,9 +379,11 @@ fn load_feature_verdict(
         usage,
         server_grant,
         role_granted,
-        // v1 features are organization-global: no per-resource target
-        // exists, so the scope axis stays silent rather than guessing.
-        scope_granted: None,
+        // ADR #47 v1 scope ruling (current-location): Some(true) = the
+        // caller's assignment covers where they stand, Some(false) = the
+        // assignment excludes the session's location/context, None = no
+        // assignment row (ruling 5: not scope-restricted).
+        scope_granted,
         permission: Some(permission),
         expires_at: expires_at_owned.as_deref(),
         grace_until: grace_until_owned.as_deref(),
@@ -382,7 +424,13 @@ pub async fn explain_feature_availability_scoped(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db = state.db.lock().await;
-    load_feature_verdict(&db, &session.user_id, &feature)
+    load_feature_verdict(
+        &db,
+        &session.user_id,
+        &feature,
+        &session.store_id,
+        &session.type_key,
+    )
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

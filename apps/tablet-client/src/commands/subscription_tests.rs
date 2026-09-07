@@ -31,7 +31,9 @@ fn verdict_with_owner(conn: &Connection, feature: &str) -> FeatureVerdict {
         [],
     )
     .unwrap();
-    load_feature_verdict(conn, "user-owner", feature).unwrap()
+    // Session context: the seeded primary location ("default") and a
+    // retail-pos workspace — the pair the session gate itself scopes on.
+    load_feature_verdict(conn, "user-owner", feature, "default", "retail-pos").unwrap()
 }
 
 #[test]
@@ -39,11 +41,11 @@ fn verdict_rejects_unknown_keys_fail_closed() {
     let conn = fresh_db();
     // An unrecognized key must never resolve to available.
     assert!(matches!(
-        load_feature_verdict(&conn, "nobody", "analytics"),
+        load_feature_verdict(&conn, "nobody", "analytics", "default", "retail-pos"),
         Err(AppError::Invalid(_))
     ));
     assert!(matches!(
-        load_feature_verdict(&conn, "nobody", "max_stores"),
+        load_feature_verdict(&conn, "nobody", "max_stores", "default", "retail-pos"),
         Err(AppError::Invalid(_))
     ));
 }
@@ -101,4 +103,92 @@ fn verdict_echoes_feature_key_in_verdict() {
 
     let v = verdict_with_owner(&conn, "warehouses");
     assert_eq!(v.feature, "warehouses");
+}
+
+// ── Scope axis (ADR #47 v1 ruling: current-location) ─────────────────
+
+/// A scoped, location-bound manager: assignment covers `loc-scoped` for
+/// `retail-pos` workspaces only, and that location exists with its entity.
+fn seed_scoped_manager(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-scoped', 'Scoped Manager', '', '[\"loyalty:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+            VALUES ('user-scoped', 'scoped', 'hash', 'Scoped', 'role-scoped', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope)
+            VALUES ('user-scoped', 'role-scoped', 'scoped', 'list', 'list');
+         INSERT INTO assignment_branches (assignment_user_id, branch_id)
+            VALUES ('user-scoped', 'loc-scoped');
+         INSERT INTO assignment_workspaces (assignment_user_id, workspace_key)
+            VALUES ('user-scoped', 'retail-pos');
+         INSERT INTO legal_entities (id, tenant_id, name)
+            VALUES ('ent-1', 'default', 'Entity One');
+         INSERT INTO locations (id, name, legal_entity_id)
+            VALUES ('loc-scoped', 'Scoped Location', 'ent-1');"
+    )
+    .unwrap();
+}
+
+/// The tablet verdict must agree with the desktop twin on the same
+/// assignment: the covered location clears, a foreign location denies
+/// with reason `scope`, and a legacy user without an assignment row
+/// keeps ruling 5's not-scope-restricted semantics (axis silent).
+/// Premium is seeded because the tablet applies no debug tier upgrade —
+/// on the seeded Free row the tier axis would outrank scope and the
+/// test would silently verify the wrong denial.
+#[test]
+fn verdict_scope_mirrors_the_desktop_verdict_on_the_same_assignment() {
+    let conn = fresh_db();
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = 'premium' WHERE tenant_id = 'default'",
+        [],
+    )
+    .unwrap();
+    seed_scoped_manager(&conn);
+
+    // Covered location + covered workspace type: available, axis true.
+    let v = load_feature_verdict(
+        &conn,
+        "user-scoped",
+        "supports_loyalty",
+        "loc-scoped",
+        "retail-pos",
+    )
+    .unwrap();
+    assert!(v.available, "in-scope session must clear on premium");
+    assert_eq!(v.detail.scope_granted, Some(true));
+
+    // Foreign location: scope denies, matching desktop's reason.
+    let v = load_feature_verdict(
+        &conn,
+        "user-scoped",
+        "supports_loyalty",
+        "default",
+        "retail-pos",
+    )
+    .unwrap();
+    assert!(!v.available, "out-of-scope session location must deny");
+    assert_eq!(v.reason_code(), Some("scope"));
+    assert_eq!(v.detail.scope_granted, Some(false));
+
+    // Legacy user (no assignment row): the axis stays silent (ruling 5).
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-owner', 'Owner', '', '[\"*\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+            VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');"
+    )
+    .unwrap();
+    let v = load_feature_verdict(
+        &conn,
+        "user-owner",
+        "supports_loyalty",
+        "default",
+        "retail-pos",
+    )
+    .unwrap();
+    assert_eq!(
+        v.detail.scope_granted, None,
+        "no assignment row, not scope-restricted"
+    );
 }

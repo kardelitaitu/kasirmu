@@ -97,6 +97,11 @@ export interface VerdictDetail {
   usage: number | null;
   /** Permission key the gate consults, when one applies. */
   permission: string | null;
+  /** Scope axis answer for the caller's own context (ADR #47 v1
+   * ruling, current-location): true = the caller's assignment covers the
+   * session location/context, false = it excludes them, null = no
+   * assignment row (legacy users are not scope-restricted). */
+  scopeGranted: boolean | null;
   /** Signed-row expiry, verbatim. */
   expiresAt: string | null;
   /** Grace-window end, verbatim. */

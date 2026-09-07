@@ -226,7 +226,9 @@ fn verdict_with_owner(conn: &rusqlite::Connection, feature: &str) -> FeatureVerd
         [],
     )
     .unwrap();
-    load_feature_verdict(conn, "user-owner", feature).unwrap()
+    // Session context: the seeded primary location ("default") and a
+    // retail-pos workspace — the pair the session gate itself scopes on.
+    load_feature_verdict(conn, "user-owner", feature, "default", "retail-pos").unwrap()
 }
 
 #[test]
@@ -260,7 +262,8 @@ fn verdict_names_quota_at_the_cap_and_clears_one_below() {
 
     conn.execute("DELETE FROM locations WHERE id = 'loc-2'", [])
         .unwrap();
-    let v = load_feature_verdict(&conn, "user-owner", "locations").unwrap();
+    let v =
+        load_feature_verdict(&conn, "user-owner", "locations", "default", "retail-pos").unwrap();
     assert!(v.available, "one below the cap must clear");
     assert_eq!(v.reason_code(), None);
 }
@@ -299,13 +302,27 @@ fn verdict_names_role_for_a_role_without_the_gate_permission() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let v = load_feature_verdict(&conn, "user-lite", "supports_analytics").unwrap();
+    let v = load_feature_verdict(
+        &conn,
+        "user-lite",
+        "supports_analytics",
+        "default",
+        "retail-pos",
+    )
+    .unwrap();
     // Premium grants analytics on the tier; the caller's role is the
     // missing axis.
     assert!(!v.available);
     assert_eq!(v.reason_code(), Some("role"));
 
-    let v = load_feature_verdict(&conn, "user-lite", "supports_loyalty").unwrap();
+    let v = load_feature_verdict(
+        &conn,
+        "user-lite",
+        "supports_loyalty",
+        "default",
+        "retail-pos",
+    )
+    .unwrap();
     assert!(v.available, "loyalty:view holds the loyalty gate");
 }
 
@@ -366,11 +383,106 @@ fn verdict_addon_grant_clears_the_tier_denial_for_analytics() {
 fn verdict_rejects_unknown_keys_fail_closed() {
     let conn = fresh_db();
     assert!(matches!(
-        load_feature_verdict(&conn, "nobody", "analytics"),
+        load_feature_verdict(&conn, "nobody", "analytics", "default", "retail-pos"),
         Err(AppError::Invalid(_))
     ));
     assert!(matches!(
-        load_feature_verdict(&conn, "nobody", "max_stores"),
+        load_feature_verdict(&conn, "nobody", "max_stores", "default", "retail-pos"),
         Err(AppError::Invalid(_))
     ));
+}
+
+// ── Scope axis (ADR #47 v1 ruling: current-location) ─────────────────
+
+/// A user whose assignment row is a scoped, location-bound manager.
+struct ScopedUser;
+
+impl ScopedUser {
+    const USER: &str = "user-scoped";
+    const LOCATION: &str = "loc-scoped";
+
+    /// Seed the role, user, assignment (scoped to [`Self::LOCATION`]
+    /// for the `retail-pos` workspace only), and that location itself.
+    fn seed(conn: &rusqlite::Connection) {
+        conn.execute_batch(
+            "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+                ('role-scoped', 'Scoped Manager', '', '[\"loyalty:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+             INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+                VALUES ('user-scoped', 'scoped', 'hash', 'Scoped', 'role-scoped', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+             INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope)
+                VALUES ('user-scoped', 'role-scoped', 'scoped', 'list', 'list');
+             INSERT INTO assignment_branches (assignment_user_id, branch_id)
+                VALUES ('user-scoped', 'loc-scoped');
+             INSERT INTO assignment_workspaces (assignment_user_id, workspace_key)
+                VALUES ('user-scoped', 'retail-pos');"
+        )
+        .unwrap();
+        // The location the assignment is bound to, with its entity.
+        conn.execute_batch(
+            "INSERT INTO legal_entities (id, tenant_id, name) VALUES
+                ('ent-1', 'default', 'Entity One');
+             INSERT INTO locations (id, name, legal_entity_id)
+                VALUES ('loc-scoped', 'Scoped Location', 'ent-1');",
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn verdict_scope_denies_when_the_assignment_excludes_the_session_location() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    ScopedUser::seed(&conn);
+    // Session stands in the seeded primary location ("default"), which
+    // the assignment does NOT cover — the 0048 branch dimension denies.
+    let v = load_feature_verdict(
+        &conn,
+        ScopedUser::USER,
+        "supports_loyalty",
+        "default",
+        "retail-pos",
+    )
+    .unwrap();
+    // Premium + the gate permission both clear; scope is the missing axis.
+    assert!(!v.available, "out-of-scope session location must deny");
+    assert_eq!(v.reason_code(), Some("scope"));
+    assert_eq!(v.detail.scope_granted, Some(false));
+}
+
+#[test]
+fn verdict_scope_clears_inside_the_assigned_location() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    ScopedUser::seed(&conn);
+    // Session stands in the location the assignment covers.
+    let v = load_feature_verdict(
+        &conn,
+        ScopedUser::USER,
+        "supports_loyalty",
+        ScopedUser::LOCATION,
+        "retail-pos",
+    )
+    .unwrap();
+    assert!(v.available, "in-scope session location must clear");
+    assert_eq!(v.reason_code(), None);
+    assert_eq!(v.detail.scope_granted, Some(true));
+}
+
+#[test]
+fn verdict_scope_denies_when_the_workspace_dimension_excludes_the_session_type() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    ScopedUser::seed(&conn);
+    // Right location, but the assignment only covers retail-pos workspaces.
+    let v = load_feature_verdict(
+        &conn,
+        ScopedUser::USER,
+        "supports_loyalty",
+        ScopedUser::LOCATION,
+        "warehouse",
+    )
+    .unwrap();
+    assert!(!v.available, "out-of-scope workspace type must deny");
+    assert_eq!(v.reason_code(), Some("scope"));
+    assert_eq!(v.detail.scope_granted, Some(false));
 }

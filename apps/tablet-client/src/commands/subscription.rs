@@ -15,6 +15,7 @@ use tauri::{State, command};
 
 use oz_core::availability::{AvailabilityFacts, AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
+use oz_core::db::assignments::ScopeType;
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
@@ -245,10 +246,15 @@ fn grace_until_for(
 /// gates use. Pure read; no server round-trip; every gate question is
 /// answered by the gate's own implementation so a verdict cannot drift
 /// from enforcement.
+/// `branch`/`workspace` carry the session's location and workspace type —
+/// the scope verdict explains the caller where they stand (ADR #47 v1
+/// scope ruling, current-location).
 fn load_feature_verdict(
     db: &rusqlite::Connection,
     user_id: &str,
     feature_key: &str,
+    branch: &str,
+    workspace: &str,
 ) -> Result<FeatureVerdict, AppError> {
     // Fail closed on unknown keys: never resolve to "available".
     let feature = AvailabilityFeature::parse(feature_key).ok_or_else(|| {
@@ -300,6 +306,25 @@ fn load_feature_verdict(
     let server_grant = server_grant_for(feature, loaded.as_ref());
     let permission = gate_permission(feature);
 
+    // Scope axis, identical to the desktop verdict: the 0048
+    // branch/workspace check AND the ADR #47 resource-coverage check on
+    // the session location, evaluated with the same primitives the hard
+    // gates use. Legacy users without an assignment row are not
+    // scope-restricted (ruling 5).
+    let assignment = store.assignment_for_user(user_id)?;
+    let scope_granted = match &assignment {
+        Some(a) if a.matches_scope(Some(branch), Some(workspace)) => {
+            let covered = a.covers_resource(ScopeType::Location, branch)
+                || match store.location_legal_entity_id(branch)? {
+                    Some(entity) => a.covers_resource(ScopeType::LegalEntity, &entity),
+                    None => false,
+                };
+            Some(covered)
+        }
+        Some(_) => Some(false),
+        None => None,
+    };
+
     // Add-on grant (C4.3): `advanced_analytics` answers the tier question
     // for analytics on Plus — the resolver suppresses only the tier check
     // for it, which is exactly the addon semantics.
@@ -327,9 +352,10 @@ fn load_feature_verdict(
         usage,
         server_grant,
         role_granted,
-        // v1 features are organization-global: no per-resource target
-        // exists, so the scope axis stays silent rather than guessing.
-        scope_granted: None,
+        // ADR #47 v1 scope ruling (current-location), mirrored from
+        // desktop so a tablet verdict can never disagree with its
+        // desktop twin on the same assignment.
+        scope_granted,
         permission: Some(permission),
         expires_at: expires_at_owned.as_deref(),
         grace_until: grace_until_owned.as_deref(),
@@ -355,7 +381,13 @@ pub async fn explain_feature_availability_scoped(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db = state.db.lock().await;
-    load_feature_verdict(&db, &session.user_id, &feature)
+    load_feature_verdict(
+        &db,
+        &session.user_id,
+        &feature,
+        &session.store_id,
+        &session.type_key,
+    )
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

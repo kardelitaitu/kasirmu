@@ -98,6 +98,12 @@ workflow, not a silent setting change.
       (`94e8a100` axis + `453c629f` choke point), which promotes `scope`
       from a deferred extension to a **v1** reason code. Nothing blocks
       this slice — implementation is the only remaining step.
+      **IPC + resolver landed 2026-09-07/08** (core `869de0ce`, tablet
+      `e17a4e32`/`dfbc41b2`, UI+dev-mock `9c9b6f53`/`987d5698`,
+      desktop `ff85e7be`; the `scope` axis ruling and its landing are
+      recorded in Amendment 5 below). **Remaining: the Settings →
+      Diagnostics screen** — a separate slice per the design's own
+      out-of-scope rule, tracked as the next journal step.
 - [ ] **Add multi-Organization user switching.** One human identity may hold
       memberships in several Organizations; switching between them is a later
       capability built on scoped assignments, not a second hierarchy layer.
@@ -566,3 +572,49 @@ named. If the ruling comes back "current-location, v1", the change is
 small: gather the assignment in `load_feature_verdict`, evaluate
 covers-resource on `session.store_id`, wire `scope_granted`, and extend
 the oracle test — the resolver side is already built and tested.
+
+---
+
+## Amendment 5 — scope ruling + landing (2026-09-08, DSH)
+
+**RULING (maintainer, this session): v1 = current-location, per
+Amendment 4's recommendation.** The verdict explains the gates that bind
+the caller where they stand; `session.store_id` is already the branch the
+session gate scopes on, so the verdict answers the scope check the caller
+is actually subject to. An explicit target argument ("why can't USER X
+use Y at LOCATION Z") stays deferred until support actually asks — it
+needs a different permission shape (diagnose-another-user) and is
+recorded here as future work, not silently dropped.
+
+**Landed, one commit:** both clients' `load_feature_verdict` now takes
+the session's `(store_id, type_key)` and computes `scope_granted` as the
+**composite the authorization model actually asks for** — the spec-0048
+branch/workspace check (`matches_scope`, what `require_permission_scoped`
+runs) AND the ADR #47 resource-coverage check on the session location
+(`covers_resource(Location, …)`, or the entity walk through
+`location_legal_entity_id` for `legal_entity` rows), with legacy users
+without an assignment row staying silent `None` (ruling 5, bit-for-bit).
+One design subtlety worth recording: the diagnostics gate itself
+(`require_permission_for_session` on `settings:read`) already applies
+the 0048 check, so mirroring only that check could never fire `scope` —
+the caller would get an error instead of a verdict. The composite makes
+the axis observable while still explaining the exact coverage question
+the choke point (`authz.rs:125-144`) layers on top. The desktop debug
+tier-upgrade mirror is preserved (per-client invariant, `dfbc41b2`'s
+rule), so a verdict can never contradict the caps payload beside it.
+
+`VerdictDetail` gains `scope_granted: Option<bool>` (wire
+`scopeGranted`, TS mirror + dev-mock updated) so the M2 diagnostics
+screen can render "you're scoped out of this location" without
+re-deriving it. Resolver detail population is centralized — the oracle
+tests stay valid (`cargo test -p oz-core --lib availability` 13/13).
+
+**Tests:** desktop adds three (out-of-scope location denies `scope`;
+in-scope clears `Some(true)`; out-of-scope workspace dimension denies
+`scope`), tablet mirrors the desktop verdict on the same assignment and
+pins ruling 5 (`None`) — 24/24 desktop, 5/5 tablet, all with the
+premium-seed caveat recorded in the tablet test (no debug upgrade there,
+so Free would let the tier axis outrank scope and the test would verify
+the wrong denial). UI `tsc --noEmit` clean. Ruling-5 semantics were
+already covered at the choke-point layer (`authz_tests.rs`); these pin
+the verdict's echo of them.
