@@ -3445,3 +3445,29 @@ carries `max_stores` with no deprecation note). When the shell recovers,
 the observability design's status line should be amended: implementation
 gate = §B rename only.
 
+---
+
+## Resync from an agent observation — 2026-09-07 (fulfilling the outage request)
+
+The outage entry asked for the current HEAD to be appended so the
+supervisor can resync without re-verifying blind. Observed at commit
+time:
+
+- **HEAD = `bd60ed2a`** (branch `0.0.37`), immediately preceded by
+  `7f7d4ec4` (feat ui), `ab410844` + `51b360dc` (home Tools rebuild +
+  journal), `8c0ae0b4` (feat staff), `2ff6b789` (topology).
+- **The blind-watched per-location slice has LANDED and journaled:**
+  the `assignments.rs` work R204 was counting lines on is ADR #47
+  slice 3 — assignment creation end to end (`8c0ae0b4` core+IPC +
+  `7f7d4ec4` UI picker, journal bullet + box flip `bd60ed2a`). The
+  "Add scoped authorization" P0 box is now `[x]` — the last open P0
+  box in this file. All eleven P0 items are checked with evidence.
+- `git log` and `git status` both work from this shell — the outage is
+  tool-specific, not repo-wide. Repository is healthy; concurrent
+  streams' files (topology overlay trio, dev-mock, skills) remain
+  uncommitted in the working tree exactly as R204 recorded them.
+- The 2-line dev-mock staff-row fields (`scope_type`/`scope_id` on
+  `mockStaffMember`) are in `tauri-api.ts`'s working tree and will ride
+  the topology stream's commit of that file (untyped mock, no gate
+  impact).
+
