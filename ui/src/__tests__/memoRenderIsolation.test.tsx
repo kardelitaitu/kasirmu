@@ -178,6 +178,16 @@ const memoEnvelope = {
   cadence: { baseIntervalSecs: 900, kdsIntervalSecs: 1800 },
 };
 
+const secondMemo: ActiveMemo = {
+  memo: {
+    ...memo.memo,
+    id: 'm2',
+    title: 'Restock aisle 4',
+    body: 'Second memo body.',
+  },
+  deliveryStatus: 'pending',
+};
+
 beforeEach(() => {
   mockList.mockReset();
   mockList.mockResolvedValue(emptyEnvelope);
@@ -232,6 +242,45 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
       expect(mockList).toHaveBeenCalledTimes(2);
     });
     expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
+    expect(posScreenRenders).toBe(baseline);
+  });
+
+  it('first spawn and second spawn (stacking) are both host-screen-stable', async () => {
+    // The owner observed (browser + React DevTools): the FIRST memo spawn
+    // appeared to re-render the page; the SECOND (stacking) did not. This
+    // reproduces that exact sequence against the real shell and measures
+    // each stage separately.
+    await renderWithProviders(<AppShell />, staffFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
+    });
+    const baseline = posScreenRenders;
+
+    // Stage 1 — first spawn (empty stack → 1 bubble; the .memo-stack
+    // container mounts for the first time).
+    mockList.mockResolvedValue(memoEnvelope);
+    await act(async () => {
+      window.dispatchEvent(new Event('memos:refresh'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
+    });
+    const afterFirst = posScreenRenders;
+
+    // Stage 2 — second spawn (stacks on top; container already mounted).
+    mockList.mockResolvedValue({
+      memos: [secondMemo, memo],
+      cadence: { baseIntervalSecs: 900, kdsIntervalSecs: 1800 },
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event('memos:refresh'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Restock aisle 4')).toBeInTheDocument();
+    });
+
+    // BOTH stages must leave the host screen untouched.
+    expect(afterFirst).toBe(baseline);
     expect(posScreenRenders).toBe(baseline);
   });
 });
