@@ -44,9 +44,22 @@ workflow, not a silent setting change.
       gated on the Phase 1 scoped-authorization decisions.
 - [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
-- [ ] **Define data residency and retention policy.** Document where tenant data,
+- [x] **Define data residency and retention policy.** Document where tenant data,
       backups, audit events, telemetry, and license records are stored and how
       deletion/export requests are handled.
+      — **documented 2026-09-07** (`docs/security/data-residency-and-retention.md`,
+      facts verified against HEAD `3c2fcdb8`): topology (Northflank PocketBase
+      SQLite + Postgres addon, device-local SQLite), what syncs vs stays local
+      (customer PII and PIN raws never sync; PIN *hashes* do — Argon2id),
+      telemetry = none, retention schedule (offline_queue 90d prune, memo
+      30d sweep, audit_log immutable-but-unbounded), deletion/export handling
+      with today's procedure. The policy is defined and three gaps are recorded
+      there as open work, not claimed done: **no sync-DB purge** (license-server
+      tenant delete never touches the Postgres rows), **no self-service**
+      deletion/export request path, and **backup windows outliving deletion**.
+      Residency-at-org-creation (§K) stays decided-not-implemented (no region
+      column on `legal_entities`) — unblocking it is schema+API work, a later
+      slice.
 - [ ] **Add support/operator tooling.** Enterprise support may require scoped
       impersonation, diagnostics, tenant health, deployment version, sync health,
       and safe incident access without bypassing tenant isolation.
@@ -95,3 +108,61 @@ workflow, not a silent setting change.
         before designing the join table — that FK needs reworking in the same
         migration, and a `memo_locations` table inherits the same question.
         (It did: `f5d6482f` picked RESTRICT, and the join table inherits it.)
+
+---
+
+## Implementation journal — data residency & retention doc (2026-09-07)
+
+First Phase-3 slice to land. Chosen because it is the one item with **zero
+collision surface**: pure documentation while the custom-roles gate (ADR #47,
+untracked at the time of writing) and the subscription agent's §B surfaces
+were mid-flight.
+
+Deliverable: `docs/security/data-residency-and-retention.md`. Every claim was
+verified by direct inspection, not recalled: the deployment topology comes
+from the docs-auditor-stamped runbook (`pb_data` SQLite + Postgres addon,
+PITR RPO ≤ 5 min), the cloud inventory from `crates/oz-api/src/pg.rs` INSERT
+columns, the "customers never sync" claim from the absence of any customers
+write path in `crates/oz-api`, the no-telemetry claim from package/config
+searches, the PIN claim from `platform/core/src/auth.rs` (`hash_pin`,
+Argon2id), and the gaps from negative searches (no per-tenant `DELETE` in
+`pg.rs`).
+
+Two findings deserve weight beyond the doc itself:
+
+1. **The sync-DB purge gap is real.** `handleAdminDeleteTenant` (license
+   server) deletes machines, subscriptions, sessions and the tenant record —
+   and deliberately keeps license keys as the financial audit trail — but
+   nothing reaches the Postgres sync DB. A deleted tenant's sales, catalog,
+   and staff-user rows (including PIN hashes) persist in the cloud store
+   indefinitely. §5 of the doc documents the manual RLS-scoped purge as the
+   interim operating procedure; the automated workflow is the follow-up.
+2. **Audit immutability is not retention.** The `audit_log` no-delete trigger
+   (both engines) is a correctness guarantee; with the P1 tier schedule still
+   unbuilt, the table grows unbounded. Stated in the doc so nobody reads the
+   trigger as a retention policy.
+
+Verification: docs-only slice — no code, no schema, no UI strings, so no
+crate/typecheck gates apply; the pre-commit EOL + i18n steps run as usual.
+Claim-drift risk is handled the way the repo handles it: the doc ends with an
+explicit re-verify-on-update instruction, and the docs-auditor can stamp it
+in its next pass.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 1, senior-agents supervision)
+
+Observed at HEAD `315c1e6f`. This phase is correctly parked — Phases 1 and 2
+gate all remaining items, and both are still mid-flight. No corrections
+required this round; the completed multi-Organization memo item is accurately
+journaled above. Two watch-items for when this phase unblocks:
+
+1. **Custom roles** — the safety half is verified above; when the feature
+   half starts, note that ADR #46's Solo Implementation Protocol (Phase 1
+   side) and the Phase 1 scoped-authorization migration are the gating
+   decisions. Do not invent a rank hierarchy; the registry is the vocabulary
+   (same ruling as `stop_memo` A2 in saas-2).
+2. **Feature-flag observability** — the fail-closed subscription lifecycle
+   landed Phase 1-side (`9896dac4`, `4acaeea9`, `1176730a`); its
+   *diagnostics* surface is the natural first slice of this item. Re-check
+   what `capabilities` IPC already exposes before designing.

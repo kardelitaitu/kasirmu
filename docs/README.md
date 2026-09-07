@@ -12,7 +12,7 @@
 | [`records/`](./records/) | Unified registry — generated index of all ADRs, audits, and observability reports | [`README.md`](./records/README.md) — generated; [`audit-open-findings.md`](./records/audit-open-findings.md) |
 | [`specs/`](./specs/) | Active and completed specs — workspace-settings phases, audit plans, module manifests | [`_active/`](./specs/_active/) — in-progress specs |
 | [`operations/`](./operations/) | Production runbook, deployment guides, platform build/test guides | [`runbook.md`](./operations/runbook.md) — unified Northflank deployment runbook |
-| [`security/`](./security/) | Security audits, checklists, hardening guides, incident response | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md) |
+| [`security/`](./security/) | Security audits, checklists, hardening guides, incident response, data-governance policy | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) |
 | [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`ARCHITECTURE.md`](./guides/ARCHITECTURE.md) |
 | [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
@@ -26,6 +26,7 @@
 - [Runbook (Northflank deployment)](./operations/runbook.md) — live config, env table, deploy
 - [CI Pipeline](./operations/ci-pipeline.md) — job matrix, gate policy, local verification
 - [PCI-DSS Checklist](./security/PCI-DSS_CHECKLIST.md) — compliance status
+- [Data Residency & Retention](./security/data-residency-and-retention.md) — where data lives, retention schedule, deletion/export handling
 - [Security Audit Completion](./security/security-audit-completion.md) — final report
 - [Architecture](./guides/ARCHITECTURE.md) — system overview
 - [Extending OZ-POS](./guides/EXTENDING.md) — scripting & integration surfaces (REST API, Lua plugins, CLI)
