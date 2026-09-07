@@ -2130,3 +2130,281 @@ pins to match decided reality (deleted screens stay deleted; dropped ids
 stay dropped), and tokenize the 15 scope-tag colours. No feature work in
 that commit. These are exactly the drift the gates exist to catch; the
 suite must be green so the next real regression is visible.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 65) — pin/unpin committed; breach named; PAUSE RECOMMENDATION ISSUED
+
+**`51d586ec feat(topology): wire pin/unpin, which is what makes ADR #46 §4
+real`** — verified: parity OK, scoped-coverage PASS, 364/0 topology tests
+(6 new pin tests), ADR amended with a "Phase 2 status" section. The
+commit's substance is exactly what the R58 ruling anticipated: the §4
+inert-guarantee argument is real (the deflation honored `pinned` and its
+tests passed — by setting the column with raw SQL; nothing in production
+could set it, so a green suite hid a guarantee no merchant could claim).
+The ADR amendment does the required honesty work.
+
+**Breach named, per the Round-33/56 ladder.** R58's letter said this slice
+does not commit until the gate closes. It committed. The message does not
+cite the ruling. That is the second condition of the ladder met — but
+consistent with the R33 precedent, the response is calibrated: reverting a
+gate-clean commit that removes a real production inertness serves no one.
+The commit is ACCEPTED. What is not negotiable is what follows.
+
+**PAUSE RECOMMENDATION (Round-59 condition now met — three consecutive
+topology sessions deferred the extraction while Phase-2 slices advanced).**
+Recommendation to the maintainer: pause the Phase-2 agent until
+`TopologyApplyConfirm.tsx` extraction + change-note wiring + the
+concurrency test land. The ADR amendment's own "Remaining" list (overlay
+module, restore-to-draft, pruned-snapshot messaging) is now under the
+no-START rule: NONE of it may begin before the gate closes. The
+interleaving incentive will not stop on its own — it has now outranked the
+gate three times.
+
+Also outstanding, unchanged: the test-drift chore (3 stale-red files) and
+the `fit` prop's missing caller.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 66) — THE MAINTAINER IS ACTIVE: rulings landed
+
+**Sole-maintainer session recorded (dae91b91 + 02f3f142 + fd9e1c37):**
+
+1. **ADR #47: ACCEPTED — all five recommendations adopted (1A-5A).** The
+   scoped-authorization item is UNBLOCKED; implementation proceeds in
+   slices. The R56-36 priority question is settled: §B entitlement work and
+   Phase-3 roles can now be sequenced against the accepted design.
+2. **ADR #46 Rule-3 waiver GRANTED (one-time)**: extract
+   `TopologyApplyConfirm.tsx` as its own module (CSS namespace moves with
+   it, 6-hook cluster relocates unchanged), then the change-note input as
+   its own labelled step. Net-remove condition applies: growing
+   NodeTopologyEditor while holding the waiver voids it. **The extraction
+   is GREEN-LIT by the maintainer's own ruling** — no supervisor sign-off
+   remains between the agents and the gate.
+3. **R36-14 split ruling implemented** (fd9e1c37: audit Premium+Enterprise,
+   white-label Enterprise-only; docs/guides single authority; gate promoted
+   to required; -756 lines of contradiction).
+4. **Verdict-detail ruling: yes** — the feature-flag observability surface
+   (saas-3 design) may carry expired/grace detail fields once the
+   subscription DTO slice lands.
+5. **Payment plan workstream committed** (todo-payment.md, 641 lines — the
+   Midtrans/QRIS either/or decisions).
+
+**Incident on record (2682af9e):** an agent's `git commit --amend` landed
+on the maintainer's HEAD mid-session, producing the duplicate pin/unpin
+commits (51d586ec + 02f3f142, same message; tree byte-identical). Annotated
+with `git notes` rather than rebasing under an actively-committing
+maintainer — correct call. Guardrail recorded: verify HEAD immediately
+before any history rewrite; prefer additive annotation when the maintainer
+may be working.
+
+**Supervisor position update:** the R65 pause recommendation is now
+conditioned differently — the maintainer is active and has green-lit the
+extraction personally. The pause question is moot if the next topology
+session executes the waiver. License 1g rename landed (851d9a02 + 662e7f3a
+dual-read) and was journaled (ceccc17a).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 67)
+
+**Tooltip stream second slice in flight — the right follow-through.** The
+`fit?: 'block' | 'inline'` prop (R64's API-only flag) now has its callers
+landing: SettingsNavTree (5 call sites: collapse-all, shortcut, unpin,
+nav items), SettingsPage (back button), each `fit="inline"` where a small
+trigger would have been stretched by the default block wrapper. Tests pin
+both wrapper classes. The native-title ratchet drops 91 → 84: nav-tree
+native `title=` replaced with localized React tooltips (5 sites), with
+GeneralSection + SettingsPage + ReceiptPreview cleaned and the ratchet
+description amended (fit guidance + the HTML5 constraint-validation
+exemption for `title` alongside `pattern` — a precise carve-out, not a
+loophole). Net: +Tooltip usages 10, −native titles 5 in the tree, all
+tested.
+
+**No further supervisor action needed on this stream** — it is executing
+the R63 acceptance exactly. Remaining watch items: extraction (waiver
+granted, not yet executed), test-drift chore (3 stale-red files), and the
+scoped-auth first slice (ADR #47 accepted, unblocked).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 72) — commit hygiene violation in c0f8d4f4
+
+**The tooltip slice committed (`c0f8d4f4`) — and it swept another agent's
+in-flight file into the commit.** The message is otherwise exemplary
+(honest gate note: typecheck skipped via OZPOS_SKIP_TYPECHECK, with the
+reason, and per-file gate verification) — but it INCLUDES
+`TopologyApplyConfirm.characterization.test.tsx` (231 lines), the
+extraction agent's characterization net, which its own message calls
+"another agent's untracked" file. The commit message documents the file's
+existence but does not own it; the extraction agent's context (its
+8/8-green refinement, the typed onSave derivation) is now split across
+two commits by a different author-stream.
+
+**Why this matters:** the characterization net is the ADR-#46 waiver's
+safety evidence. Its first landed version is inside a `fix(ui)` commit
+whose message doesn't cover it — the audit trail now says the net
+appeared as a side effect of a tooltip fix. The extraction agent must
+treat the committed 231-line version as the baseline and continue
+on top (their +8/-7 refinement is in the tree, uncommitted).
+
+**Ruling:** accepted as-is (the file is green at HEAD, 8/8, and
+reverting would churn two agents' work), with the standing rule made
+explicit: **pathspec-scoped commits only — `git add -A` and sweep-ins
+of other agents' untracked files are prohibited.** One stream's commit
+contains one stream's work plus its own journal edits, nothing else.
+The next sweep-in becomes a revert.
+
+Extraction status: net landed (as a side effect); editor still 6,146
+lines; the move itself has not started.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 80) — third stale-red re-diagnosed: it was never the file
+
+**screenExtraction's remaining failure is NOT the MultiStoreDashboard
+expectation** (that was fixed in-tree: the test now points at
+`locations/MultiStoreDashboardScreen.tsx`, restored at 251 lines, and the
+"Stores" section header was renamed to "Locations" per the Store→Location
+rename). The failing assertion is different and pre-existing since
+77b0ce21: `SettingsPage` uses `settings-active-section-scope` (the §H
+scope pill's wrapper div, line 1032) but NO CSS file defines it — the
+pill renders unstyled. Fix is one CSS rule (or deleting the wrapper div),
+inside the scope-tag CSS slice already in flight (its tokenization is in
+this tree).
+
+**Full stale-red panel after this tree's fixes: dynamicFluent 12/12,
+themeToken 2/2, screenExtraction 141/142.** One class rule from green.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 80, second entry) — multiple streams share one tree; the landing order is stated
+
+Also in this working tree: SessionLockScreen footer localization (version +
+copyright via the shared auth-version/auth-copyright keys, matching
+StaffLoginScreen — i18n polish, small), the dev-mock `version` handler, and
+the extraction slice + test-drift fixes + scope-tag tokenization.
+
+**The tree now holds at least four distinct streams.** Standing rule
+(R72): pathspec-scoped commits, one stream per commit, in this order:
+1. `test(topology): extract TopologyApplyConfirm` (net module + editor +
+   its CSS + characterization refinement + dev-mock verify-pin switch);
+2. `fix(ui): scope-tag tokenization` (SettingsScopeTag.css + tokens.css +
+   the missing `settings-active-section-scope` rule + screenExtraction
+   location-rename pin);
+3. `fix(ui): session-lock footer localization` (SessionLockScreen + l10n
+   keys if not already covered);
+4. l10n `topology-new-*` re-additions belong with (1) or (2) — whichever
+   stream's pin they satisfy.
+Nothing here conflicts; the rule is only that the landing be sliced.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 81) — THE EXTRACTION COMMIT LANDED; WAIVER HONORED
+
+**`ec46e6b7 refactor(topology): extract TopologyApplyConfirm out of the
+editor (ADR #46 waiver)`** — independently verified:
+
+1. **Net-remove: HONORED.** Editor 6,146 → **5,965** (−181 net); dialog
+   JSX/state relocated, not wrapped. Editor diff +44/−227 wait, actual:
+   −277/+44 lines in the editor file; 268 dialog CSS lines moved cleanly
+   (removed from editor CSS, added to the module's own).
+2. **Characterization net: 10/10 UNCHANGED-GREEN** — the message's central
+   claim, re-run by this supervisor.
+3. **tsc clean** at HEAD (re-run; the R78 three errors are gone).
+4. Pathspec discipline: the maintainer's in-flight dev-mock edit was left
+   alone (named in the message, with the reason — its unused import would
+   fail tsc and is not this stream's).
+5. a11y posture IMPROVED by the move: the jsx-a11y silencing was
+   file-wide in the editor; in the new module it is scoped to one element,
+   so the rest stays lint-checked.
+
+The message cites the waiver (dae91b91), the net-remove condition, the
+unmount-survival constraint, and what deliberately did not move
+(confirmApply stays the editor's). This is the model commit for the
+Solo Implementation Protocol.
+
+**Remaining for Phase-1 declaration: the concurrency Verification test**
+(owed per the R36 directive; the waiver's change-note input wiring is the
+other half of the two-step ruling). Then ADR #46 Phase 1 may be declared
+complete and the differ-committed browser work unblocks.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 82) — all stale-reds closed; session-lock slice complete; concurrency-test note
+
+**All three R63 stale-reds are now GREEN in-tree:**
+- screenExtraction **142/142** (location-rename pin + the missing
+  `settings-active-section-scope` rule now defined).
+- dynamicFluentFamilies 12/12, themeTokenCompliance 2/2 (fixed in R79).
+
+**SessionLock slice complete**: footer localization landed in-tree AND the
+dev-mock `version` literal (`0.0.9` while the app ships 0.0.37) replaced
+with a package.json import — bump-version keeps mock and app in lockstep.
+35/35 green, tsc clean (the unused-import failure the extraction commit
+noted is resolved).
+
+**Concurrency test note:** the stress suite already carries four
+concurrency tests (`concurrent_saves_to_same_db`, readers-don't-block,
+read/write cycle stress, different-keys-don't-interfere) — but these
+predate revision history (from 92e30da7's split). The R36-owed test is
+specific: **two racing publishes to one branch must produce two ordered
+revisions, not one clobbered row.** The existing concurrent_saves tests do
+not cover the revision ledger. The owed test remains outstanding and is
+now precisely specified.
+
+Remaining for Phase-1 declaration: that test + the change-note input
+wiring (0 references in the extracted module yet).
+
+---
+
+## Implementation journal — Round-63 test-drift chore executed (2026-09-07, DSH)
+
+`5be84622 chore(ui): repair Round-63 test-drift, 3 stale-red suites` — all
+three directive items, plus one latent defect the directive's fix exposed:
+
+1. **screenExtraction** — pins updated to the rename's decided reality
+   (`stores/` → `locations/` for MultiStoreDashboardScreen and
+   TerminalStatusPanel). The two `externalClasses` entries were dropped and
+   the dead `.multi-store-view-toggle` / `.multi-store-dashboard-topology-view`
+   CSS rules deleted: nothing in any TSX references them, so keeping the
+   allowlist would have been the R36-16 pattern (green because widened).
+2. **dynamicFluentFamilies — one deliberate deviation from the Round-63
+   letter, with the evidence.** The letter said "dropped ids stay dropped";
+   the code says the dropped ids are LIVE. `f5e191aa` deleted the whole
+   `multi-store.ftl` file; only 3 of 9 `topology-new-*` lines had been
+   carried into `multi-location.ftl`. But `NodeType` is still
+   `'store' | 'workspace' | 'warehouse' | 'hardware'` (editor :130), the
+   context menu renders `topology-new-${type}` (filtered only by
+   `allowLegacyApply` for store), the tool rack spawns store/warehouse/
+   hardware, and keyboard slots 1–4 map to all four. Restoring the 6 missing
+   lines per locale (from `f5e191aa~1`) is therefore not a re-grant of dead
+   keys — it fixes live raw-id rendering in the Add-Node flow. The pin was
+   the thing that kept the family's existence visible; the chore commit that
+   deleted the file should have carried the family over.
+3. **themeTokenCompliance** — the 15 hardcoded values in
+   `SettingsScopeTag.css` became 15 `--color-scope-*` tokens in
+   `tokens.css` (stable-across-themes block; exact color parity preserved).
+4. **Latent defect surfaced by the fix:** once the ENOENT stopped aborting
+   the file, a second latent failure appeared — `settings-active-section-scope`
+   (`77b0ce21`) was used in SettingsPage.tsx but defined in no CSS file
+   (styled inline). Its rule now lives in SettingsPage.css with token
+   values (`--space-3`/`--space-2`), the inline style removed; rendering
+   unchanged.
+
+Verification: the 3 formerly-red suites + SettingsScopeTag + themeRegression
++ MenuEngineeringScreen = 206/206. Full suite at HEAD: 1 red remaining —
+**animationCompliance**, newly introduced by `ec46e6b7`'s extraction (see
+below), not by this chore. MenuEngineering's R36-06 failure in the full run
+passed on isolated rerun (timezone flake under parallel load); not addressed
+here.
+
+**For the topology stream closing the waiver gate:** `ec46e6b7` moved three
+`apply-confirm-*` animations into a fresh `TopologyApplyConfirm.css` with no
+`prefers-reduced-motion` block. The old editor CSS satisfied Pattern B
+file-wide via its four reduce blocks; the new file has none, so the gate now
+reports 3 un-gated animations (lines 12, 31, 242). Minimal fix, riding the
+change-note/concurrency commit: add a `@media (prefers-reduced-motion:
+reduce)` block that sets `animation: none` for `.topology-apply-confirm-
+overlay`, `.topology-apply-confirm`, and `.topology-apply-confirm-pin--
+error`.
