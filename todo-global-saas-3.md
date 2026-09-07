@@ -272,8 +272,8 @@ per-quota families (`locations`, `staff_users`, `pos_instances`,
 
 Open question for the ruling (one line): should the verdict also expose
 `expires_at`/`grace_until` (added to the caps DTO by the subscription agent's
-slice) once they exist, as `detail` fields? Recommended yes — it turns
-"expired" into "expired 3 days ago, grace ends Friday".
+slice) once they exist, as `detail` fields? **Ruled 2026-09-07: yes** — it
+turns "expired" into "expired 3 days ago, grace ends Friday".
 
 ---
 
@@ -291,8 +291,19 @@ slice) once they exist, as `detail` fields? Recommended yes — it turns
 > non-goals) and, once the `role_assignments` model is built, the `scope`
 > reason code in the observability verdict design above. The observability
 > design's one open question (surface `expires_at`/`grace_until` in
-> verdict details) remains open — it rides the subscription agent's DTO
-> slice, not this ruling.
+> verdict details) is **ruled yes** — the verdict `detail` carries both
+> fields once the subscription agent's DTO slice lands them.
+
+Also ruled the same day (same session, recorded where each question lives):
+**R36-14** — the entitlement contradiction is resolved with a split ruling
+(audit Premium+Enterprise, white-label Enterprise-only; `docs/guides/` is
+the single authority, the gate is promoted to required, `fd9e1c37`);
+**ADR #46's Rule-3 conflict** — option 1 granted as a one-time waiver
+(extract `TopologyApplyConfirm.tsx`, then the note field; the extraction
+must net-shrink the editor); **payment plan** — the four either/or
+Midtrans/QRIS questions blessed as recommended (re-fetch webhook
+verification, webhook finalize + poll fallback, generic default acquirer,
+env-stored server key until the per-tenant store milestone).
 
 ---
 

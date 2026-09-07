@@ -458,6 +458,14 @@ because a change note that nobody can type is the least valuable half of §6 and
 the seam is genuinely clean. But Rule 3 is the document author's to waive, not
 the implementer's to reinterpret.
 
+> **✅ ADJUDICATED 2026-09-07, sole maintainer: option 1 granted.** The Rule 3
+> waiver is explicit and one-time — extract `TopologyApplyConfirm.tsx` (own
+> module, the `topology-apply-confirm-*` CSS namespace moves with it, the 6-hook
+> cluster relocates unchanged), then add the change-note input there, as a
+> separately-labelled step with its own commit. The extraction must net-remove
+> the dialog's JSX and state from `NodeTopologyEditor.tsx` — growing the editor
+> while holding the waiver voids it. Rules 3 and 5 otherwise stand as written.
+
 ### Phase 2 status
 
 Landed so far: the **graph↔graph differ** (§10, `topologyRevisionDiff.ts`,
