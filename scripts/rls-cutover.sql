@@ -87,16 +87,17 @@ BEGIN
     EXECUTE 'GRANT USAGE ON SCHEMA public TO oz_app';
 END $$;
 
--- 2b. DML on the auxiliary (non-RLS) tables the REST layer also touches.
---     These tables have NO tenant_id column — they are children of
---     tenant-scoped parents (inventory / stock_movements /
---     stock_summary→products) or shared catalogs (categories, roles) — so
---     they are not RLS-enforced, but oz_app still needs full DML to serve
---     create_sale / create_product / create_user / list_products. Without
---     these grants the REST surface fails with permission denied the moment
---     FORCE RLS is switched on. (sale_lines left this list when it gained
---     tenant_id + RLS coverage — it is granted and FORCEd with the main
---     list above.)
+-- 2b. DML on the tables the REST layer touches that the main list above
+--     does not yet FORCE. Two buckets: (a) tables with NO tenant_id column
+--     at all — children of tenant-scoped parents (inventory /
+--     stock_movements / stock_summary→products) or shared catalogs
+--     (categories, roles); (b) `sale_lines`, which DOES carry tenant_id and
+--     is RLS-ENABLEd in init, but whose FORCE (and main-list grant move) is
+--     deferred until live-PG verification proves every REST path touching
+--     it sets the GUC first — same deferral bucket as locations /
+--     media_assets / user_location_access. Without these grants the REST
+--     surface fails with permission denied the moment FORCE RLS is
+--     switched on for the main list.
 DO $$
 DECLARE
     t text;
