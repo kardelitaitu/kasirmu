@@ -54,3 +54,80 @@ export interface SubscriptionCapabilities {
 /** Read the tenant's subscription capabilities (local, no network). */
 export const getSubscriptionCapabilities = (): Promise<SubscriptionCapabilities> =>
   loggedInvoke<SubscriptionCapabilities>('get_subscription_capabilities');
+
+/** A feature the availability resolver can explain (the wire keys, snake_case). */
+export type AvailabilityFeatureKey =
+  | 'supports_qris'
+  | 'supports_analytics'
+  | 'supports_loyalty'
+  | 'supports_daily_dashboard'
+  | 'supports_cloud_sync'
+  | 'sales_history_days'
+  | 'locations'
+  | 'staff_users'
+  | 'pos_instances'
+  | 'warehouses';
+
+/**
+ * Why a feature is unavailable. `null` exactly when the feature is available.
+ * Mirrors the Rust `AvailabilityReason` wire codes.
+ */
+export type FeatureVerdictReason =
+  | 'server_policy'
+  | 'lifecycle'
+  | 'tier'
+  | 'quota'
+  | 'role'
+  | 'scope'
+  | null;
+
+/**
+ * Renderable detail fields the UI surfaces directly, so it never re-derives a
+ * message from the `reason` code. Every field is advisory — the verdict is
+ * `available` plus `reason`, never a re-read of these.
+ */
+export interface VerdictDetail {
+  /** Tier key: `free` | `plus` | `pro` | `premium` | `enterprise`. */
+  tier: string;
+  /** Lifecycle-state wire name. */
+  state: string;
+  /** Tier's limit for this feature; `null` = unlimited / not applicable. */
+  limit: number | null;
+  /** Current usage against `limit`. */
+  usage: number | null;
+  /** Permission key the gate consults, when one applies. */
+  permission: string | null;
+  /** Signed-row expiry, verbatim. */
+  expiresAt: string | null;
+  /** Grace-window end, verbatim. */
+  graceUntil: string | null;
+}
+
+/**
+ * The verdict for one feature — whether it is available and, if not, the
+ * highest-precedence reason why. Mirrors the Rust `FeatureVerdict`
+ * (`#[serde(rename_all = "camelCase")]`).
+ */
+export interface FeatureVerdict {
+  /** Wire key this verdict is about. */
+  feature: AvailabilityFeatureKey;
+  /** Whether the feature is available on these facts. */
+  available: boolean;
+  /** Highest-precedence denial; `null` exactly when `available`. */
+  reason: FeatureVerdictReason;
+  /** Renderable fields the UI surfaces directly. */
+  detail: VerdictDetail;
+}
+
+/**
+ * Explain why a feature is (un)available for the session. Session-gated on
+ * `permissions::SETTINGS_READ`; returns an error for an unknown feature key.
+ */
+export const explainFeatureAvailability = (
+  sessionToken: string,
+  feature: AvailabilityFeatureKey,
+): Promise<FeatureVerdict> =>
+  loggedInvoke<FeatureVerdict>('explain_feature_availability_scoped', {
+    session_token: sessionToken,
+    feature,
+  });

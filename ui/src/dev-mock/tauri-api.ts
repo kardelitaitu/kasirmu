@@ -2042,6 +2042,28 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     addons: [],
   }),
 
+  // Mock tenant is Premium + active with unlimited quotas, so every feature is
+  // available (reason null). Keeps the verdict consistent with the premium caps
+  // above and the fail-closed contract: an unknown feature key is still reported
+  // unavailable rather than silently invented.
+  'explain_feature_availability_scoped': (raw) => {
+    const { feature } = (raw as { feature?: string }) ?? {};
+    return {
+      feature: feature ?? 'supports_qris',
+      available: true,
+      reason: null,
+      detail: {
+        tier: 'premium',
+        state: 'active',
+        limit: null,
+        usage: null,
+        permission: null,
+        expiresAt: null,
+        graceUntil: null,
+      },
+    };
+  },
+
   // ═══════════════════════════════════════════════════════════════
   // LOCATIONS / DEPRECATED STORE PROFILE ALIASES
   // ═══════════════════════════════════════════════════════════════
