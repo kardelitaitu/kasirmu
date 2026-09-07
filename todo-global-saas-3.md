@@ -378,3 +378,61 @@ wrong answer: a reader who greps `role_assignments` — the name this file
 used in five places — gets zero hits and reasonably concludes the gate is
 unmet. The name was never in the schema. Same failure shape as the
 `git grep` false-negative documented in AGENTS.md §UI Standards.
+---
+
+## Amendment 2 — the slice starts landing, and one of my own calls was wrong
+
+The table above was accurate at HEAD `edfcd645`. It is now superseded by
+events, so they are recorded rather than quietly rewritten.
+
+**Core resolver landed** (`869de0ce`), as `crates/oz-core/src/availability.rs`
+plus a sibling `availability_tests.rs`: 13 tests, all green. The
+exhaustive-precedence test does not restate the resolver — it probes which
+sources can deny each (feature, tier) case, then asserts over every non-empty
+subset that the named reason is the precedence-minimum. An oracle that
+re-implemented the chain could agree with a broken chain, so it does not.
+
+**I removed a working feature and put it back.** `2e9b55cc` dropped the
+`warehouses` quota family on the finding that "nothing counts warehouses".
+`2e86fb9b` restored it. The finding was false: `Store::count_warehouse_locations
+` (`db/inventory.rs:36`) is exactly the usage source. The search that missed
+it looked for a `warehouses` table and for `max_warehouses` consumers, found
+neither, and stopped — it never looked for a *count method*, because the caps
+DTO carries no warehouse count and I had wrongly assumed a resolver caller
+must read the caps DTO.
+
+This is the same shape as the trap in the section above, and I walked into it
+while writing that section. Worth stating precisely, because the mistake was
+not "I grepped wrong" but "I grepped for one guessed shape and treated the
+null result as a fact about the world." Before deleting a capability on a
+negative search, search for the capability under every name it could plausibly
+have — `count_`, `list_`, the store method, the SQL — not just the shape the
+documentation implied.
+
+**Desktop IPC is written but not committed.** As of this entry,
+`explain_feature_availability_scoped` exists in the working tree at
+`apps/desktop-client/src/commands/subscription.rs` (+208 lines, +1
+registration in `lib.rs`) under another agent, uncommitted. It is better
+than the design above in two ways worth keeping: it maps each feature to a
+real registry permission (`gate_permission`, all nine keys verified to
+exist) instead of accepting one from the caller, and it derives
+`server_grant` from `TenantSubscription::allows_workspace_type`, which gives
+`server_policy` an actual producer for `Some(false)` — the design only ever
+had the add-on grant direction.
+
+**Open divergence — `scope`.** The ruling above says the `scope` reason code
+is v1 work now that the assignment model landed. The in-flight desktop
+command sets `scope_granted: None` with the rationale that "v1 features are
+organization-global: no per-resource target exists, so the scope axis stays
+silent rather than guessing." That argument is sound and it contradicts the
+ruling, so it should be ruled on rather than resolved by whichever agent
+commits second. The resolver and its tests already support `scope` fully —
+the gap is not the resolver, it is that the command takes no resource
+argument. Wiring it means adding one (the session store id is the obvious
+target), which changes the command signature both clients must share.
+
+**Still true from the table above:** the caps DTO carries no
+`expires_at`/`grace_until`. The desktop command works around it by reading
+the signed row directly for the expiry and deriving the grace deadline, so
+the "ruled yes" detail fields are satisfied without touching the caps
+surface — which the design had explicitly put out of scope.
