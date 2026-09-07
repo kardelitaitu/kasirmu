@@ -3516,3 +3516,16 @@ directly on top of the round-1 dialog slice:
   ran all ten gates (i18n lint OK, staged parity OK, ui typecheck OK,
   FTL orphans: 1 key added, 0 stranded).
 
+---
+
+## Implementation journal — memo bubble cap 480px → 400px (2026-09-08)
+
+Owner directive, follow-up to the round-2 slice. Committed `54c9c4d6`:
+`.memo-banner` max-width 400px (comment updated; nothing else
+references the old cap — verified by tree-wide grep). MemoBanner suite
+and the CSS token-compliance test run clean for memo files (the one
+compliance regression in the tree, NodeTopologyEditor.css:1476, is the
+topology stream's in-flight edit, not this slice). The round-3 stack
+redesign report now targets the 400px cap for every bubble in the
+stack; confirmation on its four open questions is still pending.
+
