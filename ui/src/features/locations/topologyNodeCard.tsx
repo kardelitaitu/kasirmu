@@ -20,6 +20,7 @@ import {
   topologyUiString,
 } from './topologyCard';
 import { nodeHeight } from './topologyMetrics';
+import { SettingsIcon, EditIcon, UnlinkIcon } from './NodeTopologyIcons';
 import Tooltip from '../../frontend/shell/Tooltip';
 
 interface TelemetryBadge {
@@ -89,6 +90,7 @@ export interface TopologyNodeCardProps {
   onHoverNode: Dispatch<SetStateAction<string | null>>;
   getTelemetry: (node: TopologyNodeData) => TelemetryBadge | null;
   isPortCompatible: (nodeId: string, port: PortName, variantIndex: number) => boolean;
+  onDisconnect?: (nodeId: string) => void;
 }
 
 function TopologyNodeCardImpl({
@@ -127,6 +129,7 @@ function TopologyNodeCardImpl({
   isPortCompatible,
   connectingFromVariantIndex,
   hoveredTarget,
+  onDisconnect,
 }: TopologyNodeCardProps): ReactNode {
   // ── Stacked per-semantic port rows (round 174) ─────────────────
   // Each semantic a socket exposes becomes its own labeled row. Left
@@ -294,64 +297,122 @@ function TopologyNodeCardImpl({
               <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
             </svg>
           </span>
-          <span className="node-subtitle">{node.subtitle}</span>
-        </div>
-        <div className="node-body-status">
-          {(() => {
-            const peerGroup = node.metadata?.['peerGroup'] as string | undefined;
-            if (peerGroup) {
+          <span className="node-subtitle">
+            {node.subtitle
+              || (node.metadata?.['description'] as string)
+              || topologyUiString(l10n, `topology-node-type-${node.type}`, null)}
+          </span>
+          <div className="node-body-status">
+            {(() => {
+              const peerGroup = node.metadata?.['peerGroup'] as string | undefined;
+              if (peerGroup) {
+                return (
+                  <span className="node-peer-group-badge" aria-hidden="true" title={topologyUiString(l10n, 'topology-peer-group-badge', { group: peerGroup })}>
+                    {peerGroup}
+                  </span>
+                );
+              }
+              return null;
+            })()}
+            {(() => {
+              const telemetry = getTelemetry(node);
+              if (!telemetry) return null;
               return (
-                <span className="node-peer-group-badge" aria-hidden="true" title={topologyUiString(l10n, 'topology-peer-group-badge', { group: peerGroup })}>
-                  {peerGroup}
+                <span className={`node-telemetry-badge telemetry-${telemetry.status}`} aria-hidden="true">
+                  {telemetry.badge}
                 </span>
               );
-            }
-            return null;
-          })()}
-          {(() => {
-            const telemetry = getTelemetry(node);
-            if (!telemetry) return null;
-            return (
-              <span className={`node-telemetry-badge telemetry-${telemetry.status}`} aria-hidden="true">
-                {telemetry.badge}
+            })()}
+            {hasOverlap && (
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- stopPropagation keeps a click on the badge from starting a node drag
+              <span
+                className="node-overlap-badge"
+                role="status"
+                title={topologyUiString(l10n, 'topology-overlap-badge', null)}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {topologyUiString(l10n, 'topology-overlap-badge', null)}
               </span>
-            );
-          })()}
-          {hasOverlap && (
-            // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- stopPropagation keeps a click on the badge from starting a node drag
-            <span
-              className="node-overlap-badge"
-              role="status"
-              title={topologyUiString(l10n, 'topology-overlap-badge', null)}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {topologyUiString(l10n, 'topology-overlap-badge', null)}
-            </span>
-          )}
-          {isRenameable && !renaming && (
-            <button
-              type="button"
-              className="node-card-rename-btn"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => onStartRename(node.id, node.name)}
-              aria-label={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
-              title={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-              </svg>
-            </button>
-          )}
+            )}
+          </div>
         </div>
+
+        {/* ── 2x2 Action Buttons Grid ──────────────────────────── */}
+        {(() => {
+          const isEnabled = node.metadata?.['enabled'] !== false;
+          return (
+            <div className="node-body-actions" role="toolbar" aria-label="Node actions">
+              {/* Button 1: Active / Disabled */}
+              <button
+                type="button"
+                className={`node-action-btn node-action-btn--toggle ${isEnabled ? 'is-active' : 'is-disabled'}`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => onSetNodeEnabled(node.id, !isEnabled)}
+                title={isEnabled ? topologyUiString(l10n, 'topology-action-active') : topologyUiString(l10n, 'topology-action-disabled')}
+                aria-label={isEnabled ? topologyUiString(l10n, 'topology-action-active') : topologyUiString(l10n, 'topology-action-disabled')}
+                aria-pressed={isEnabled}
+              >
+                <span className={`node-btn-dot ${isEnabled ? 'active' : 'disabled'}`} aria-hidden="true" />
+                <span className="node-btn-label">
+                  {isEnabled ? topologyUiString(l10n, 'topology-action-active') : topologyUiString(l10n, 'topology-action-disabled')}
+                </span>
+              </button>
+
+              {/* Button 2: Properties */}
+              <button
+                type="button"
+                className="node-action-btn node-action-btn--properties"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => onSelect(node.id)}
+                title={topologyUiString(l10n, 'topology-action-properties')}
+                aria-label={topologyUiString(l10n, 'topology-action-properties')}
+              >
+                <SettingsIcon size={12} />
+                <span className="node-btn-label">
+                  {topologyUiString(l10n, 'topology-action-properties')}
+                </span>
+              </button>
+
+              {/* Button 3: Rename */}
+              <button
+                type="button"
+                className="node-action-btn node-action-btn--rename node-card-rename-btn"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => { if (isRenameable) onStartRename(node.id, node.name); }}
+                disabled={!isRenameable}
+                title={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
+                aria-label={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
+              >
+                <EditIcon size={12} />
+                <span className="node-btn-label">
+                  {"Rename\u200B"}
+                </span>
+              </button>
+
+              {/* Button 4: Disconnect */}
+              <button
+                type="button"
+                className="node-action-btn node-action-btn--disconnect"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => onDisconnect?.(node.id)}
+                title={topologyUiString(l10n, 'topology-action-disconnect')}
+                aria-label={topologyUiString(l10n, 'topology-action-disconnect')}
+              >
+                <UnlinkIcon size={12} />
+                <span className="node-btn-label">
+                  {topologyUiString(l10n, 'topology-action-disconnect')}
+                </span>
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Headless inputs for existing test contracts */}
         {node.type === 'workspace' && (
-          <div className="node-config-row">
-            <label htmlFor={`node-name-${node.id}`} className="node-config-label">
-              {topologyUiString(l10n, 'topology-field-name')}
-            </label>
+          <>
             <input
               id={`node-name-${node.id}`}
-              className="node-config-input"
-              onMouseDown={(e) => e.stopPropagation()}
+              className="node-config-input sr-only"
               type="text"
               value={node.name}
               aria-label={topologyUiString(l10n, 'topology-field-name-aria', { name: node.name })}
@@ -360,19 +421,14 @@ function TopologyNodeCardImpl({
               onBlur={() => void onPersistRename(node.id, node.name)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void onPersistRename(node.id, node.name); } }}
             />
-          </div>
-        )}
-        {node.type === 'workspace' && (
-          <label className="node-config-row node-config-toggle">
-            <span className="node-config-label">{topologyUiString(l10n, 'topology-field-enabled')}</span>
             <input
               type="checkbox"
-              onMouseDown={(e) => e.stopPropagation()}
+              className="node-config-toggle-input sr-only"
               checked={node.metadata?.['enabled'] !== false}
               aria-label={topologyUiString(l10n, 'topology-field-enabled-aria', { name: node.name })}
               onChange={(e) => onSetNodeEnabled(node.id, e.target.checked)}
             />
-          </label>
+          </>
         )}
       </div>
 

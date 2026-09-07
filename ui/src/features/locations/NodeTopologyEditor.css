@@ -1378,13 +1378,14 @@
 
 .node-body {
   /* flex-driven: the body fills the space between the fixed header and
-     the adaptive footer (no more absolute rail clearance hack). */
+     the adaptive footer. */
   flex: 1 1 auto;
   min-height: 0;
   box-sizing: border-box;
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: var(--space-2);
   overflow: hidden;
 }
@@ -1394,8 +1395,8 @@
    stable and easy to scan. */
 .node-body-meta {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -1403,77 +1404,111 @@
   position: static;
   align-self: stretch;
   width: 3px;
-  min-height: 2.4em;
+  min-height: 1.4em;
   flex: 0 0 3px;
   border-radius: var(--radius-full); /* refined pill accent */
 }
 
-.node-body-meta .node-grip {
-  margin-top: 2px;
-}
-
 .node-body-meta .node-subtitle {
   flex: 1 1 auto;
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .node-body-status {
   display: flex;
   align-items: center;
-  /* badges wrap onto their own line instead of colliding with the
-     rename button on narrow content */
   flex-wrap: wrap;
-  justify-content: flex-start;
-  min-height: 24px;
-  gap: var(--space-2);
-}
-/* pin the rename action to the right edge; wrapped badges flow left */
-.node-body-status .node-card-rename-btn {
-  margin-left: auto;
+  justify-content: flex-end;
+  gap: var(--space-1);
 }
 
-/* Compact, frontend-only configuration controls. These are intentionally
-   limited to low-risk canvas settings; advanced workspace settings stay in
-   the inspector drawer until the backend contract is designed. */
-.node-config-row {
-  display: flex;
+/* 2x2 Action Buttons Grid */
+.node-body-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1_5);
+  margin-top: auto;
+}
+
+.node-action-btn {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  min-height: 28px;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: var(--color-fg-secondary);
   font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-.node-config-label {
-  flex: 0 0 auto;
+.node-action-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+  border-color: var(--color-border-strong);
+}
+
+.node-action-btn:active {
+  transform: scale(0.98);
+}
+
+.node-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.node-action-btn .node-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+
+.node-action-btn--toggle.is-active {
+  color: var(--color-fg);
+}
+
+.node-action-btn--toggle.is-disabled {
   color: var(--color-fg-muted);
-  font-weight: var(--font-weight-bold);
+  background: var(--color-bg-subtle);
+}
+
+.node-btn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.node-btn-dot.active {
+  background: var(--color-success);
+  box-shadow: 0 0 4px var(--color-success);
+}
+
+.node-btn-dot.disabled {
+  background: var(--color-fg-muted);
+}
+
+.node-action-btn--disconnect:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 .node-config-input {
-  min-width: 0;
-  width: 100%;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: var(--color-fg);
-  font: inherit;
-}
-
-.node-config-input:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 1px;
-}
-
-.node-config-toggle {
-  justify-content: space-between;
-  cursor: pointer;
-}
-
-.node-config-toggle input {
-  accent-color: var(--color-accent);
-  width: 1rem;
-  height: 1rem;
+  border: 0;
+  outline: none;
 }
 
 .node-titlebar {

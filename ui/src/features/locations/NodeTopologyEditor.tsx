@@ -4823,6 +4823,17 @@ export default function NodeTopologyEditor({
       : n)));
   }, [beginInspectorEdit, setNodes]);
 
+  const handleDisconnectNode = useCallback((nodeId: string) => {
+    setWires((prev) => {
+      const remaining = prev.filter((w) => w.fromNodeId !== nodeId && w.toNodeId !== nodeId);
+      if (remaining.length !== prev.length) {
+        pushHistory();
+        return remaining;
+      }
+      return prev;
+    });
+  }, [pushHistory, setWires]);
+
   const handleDeleteRequest = () => {
     if (selectedNodeIds.size > 0) {
       // Filter out Branch Location nodes — they are permanent anchors.
@@ -5576,6 +5587,7 @@ export default function NodeTopologyEditor({
                 getTelemetry={getTelemetry}
                 isPortCompatible={isPortCompatible}
                 overlayMarker={overlayMarkerById.get(node.id) ?? null}
+                onDisconnect={handleDisconnectNode}
               />
               );
             })}
