@@ -3711,3 +3711,28 @@ The follow-up above is done (`bdd12854`):
   Render-count mutation uses a `vi.hoisted` record (property mutation)
   to stay inside the render-purity lint.
 
+### Owner observation chased — first spawn "re-renders the page", second doesn't
+
+Owner observed in the browser: the FIRST memo spawn appeared to
+re-render the page; the second (stacking) did not. Investigated
+(`491f4882`):
+
+- **React level: clean on both stages.** The isolation probe gained
+  the exact two-stage sequence (empty stack → 1 bubble, the
+  `.memo-stack` container's first mount; then stacking to 2). Host
+  screen render count is untouched at BOTH stages. The spawn path was
+  also audited end to end: DevToolbar `spawnMemo` (its own
+  `setSpawning` churns only the toolbar overlay) → `memos:refresh` →
+  `useMemos.load()` → local state. Nothing above the banner renders.
+- **Best explanation — browser-level, not React:** the first spawn
+  INSERTS a new fixed-position animated subtree into the document, so
+  Chromium runs a document-wide style recalc, allocates a new
+  compositing layer, and repaints; DevTools "Paint flashing" flashes
+  the whole page (reads exactly like a re-render), while the React
+  Profiler flame graph shows only MemoBanner components in the commit.
+  On the second spawn the layer and subtree already exist, so only the
+  stack region invalidates. If the owner watched the React Profiler
+  and saw an app-wide commit instead, the next diagnostic is the
+  commit's component list (or a coincidental StatusBar/sync poll);
+  the probe rules the shell itself out either way.
+
