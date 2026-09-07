@@ -236,7 +236,7 @@ actual relationship mutation.
       contract override. Free has no tenant-facing audit logs. Premium and
       Enterprise also receive full business audit logging, filtering, export,
       and compliance views.
-- [ ] **Implement the Memo lifecycle.** Ship both Memo types — Organization
+- [x] **Implement the Memo lifecycle.** Ship both Memo types — Organization
       Memo (owner/admin, all registered terminals) and Location Memo
       (owner/admin/manager, one selected location — since widened to multiple
       locations, `4df091d3`) — with author-chosen
@@ -258,16 +258,20 @@ actual relationship mutation.
       path below to matter); (b) the KDS/tablet cloud-read data path —
       memos authored on desktop must reach the cloud DB and the tablet read
       a tenant-scoped endpoint (§"The tablet's Memo surface").
-      **SUPERVISOR UPDATE 2026-09-07, HEAD `15c40cec`: (b) is HALF
-      delivered.** The desktop PUSH side landed - `a009d3cf` (daemon push +
-      `collect_memo_sync_snapshot` + `push_memos_to_server`, behind the
-      `sync-http` feature) onto the serve layer from `eb71d071`/`9d125484`
-      (endpoint now correctly JWT-protected). The tablet/KDS READ side has
-      NOT landed - the commit touches no tablet files; the read half is
-      written but uncommitted in the working tree
-      (`fetch_active_memos_from_server`, wire-shape tests, local-fallback
-      test). Remaining for (b): land that, plus the tenant-semantics
-      resolution demanded in the Round-5 supervisor log below.
+      **SUPERVISOR UPDATE 2026-09-07, HEAD `52af7f9b`: (b) is now COMPLETE
+      - the item is functionally done end-to-end.** The full loop is
+      committed: publish on desktop -> daemon push (`a009d3cf`) -> cloud
+      serving (`eb71d071`/`9d125484`) -> tablet cloud-first read with local
+      fallback (`2c5dde8a`) -> upstream ack with monotonic stale-push merge
+      (`52af7f9b`, rank-merge integration test pins the downgrade scenario)
+      -> retention, early stop, revisions, spec docs all previously landed.
+      The only ruled-future sub-item is (a) offline delivery riding the
+      outbox - future work, not an open defect. Supervisor recommends
+      flipping this checkbox in the next journal pass.
+      **FLIPPED 2026-09-07 (journal pass):** closed on that recommendation —
+      the terminal ack half landed as `b9278fb0` (tablet cloud-first ack
+      + local fallback, wire contract pinned), completing the loop's last
+      open slice; offline delivery remains the recorded future-work item.
 - [ ] **Wire `revise_memo_scoped` (corrections).** The store path is fixed and
       TOCTOU-guarded (`e7b47b83`); this slice is the desktop IPC — gated
       `memo:write`, published-only, tenant-scoped — plus a revise control in
@@ -1531,7 +1535,9 @@ were subsequently unblocked — see the ruling journal below)
   with local fallback (landed entangled in `2c5dde8a`, journal entry below),
   and the spec documentation (`f2dbb745`). PG integration test
   `pg_integration_memo_sync_and_active_read` pins push → read →
-  delete-by-omission → RLS cross-tenant invisibility.
+  delete-by-omission → code-level cross-tenant isolation (token-stamped
+  inserts + tenant-filtered reads — see the Round-14 wording correction
+  in the acknowledgement journal below).
 - ~~**Retention sweep + stale-draft expiry**~~ — **ruled and built**:
   fixed 30-day window via `archived_at` (`c8d2a54f`); the draft-expiry rule
   was dropped per ruling.
@@ -1660,7 +1666,9 @@ cleanup; each is recorded with its gates. Design source: §"Cloud-read design
 (`pg_tests.rs`, throwaway-DB pattern, skips clean without the dev PG
 container) drives push → terminal read (fields incl. `created_at` and
 `delivery_status`) → stranger terminal sees nothing → delete-by-omission →
-RLS cross-tenant invisibility. `cargo test -p oz-core --lib sync_client`
+code-level cross-tenant isolation (token-stamped inserts + tenant-filtered
+reads — the Round-14 wording correction below explains why "RLS" was
+wrong here). `cargo test -p oz-core --lib sync_client`
 35/35; `db::memos` 39/39; `cargo check -p oz-pos-app` clean.
 
 **Deliberately NOT built here — the acknowledgement upstream path.**
@@ -1674,6 +1682,72 @@ but durable acks need a cloud write (a `POST /api/v1/memos/ack` gated to the
 terminal's own claims, folded into the desktop push, or a `memo.acknowledge`
 outbox item). No UI, IPC, or parity surface changes until that is ruled —
 recorded as the workstream's remaining open item.
+  **RESOLVED since (2026-09-07):** the cloud ack route landed (`52af7f9b`)
+  and the tablet cloud-first ack with local fallback in `b9278fb0` — see
+  the acknowledgement journal below.
+
+## Memo implementation journal — acknowledgement upstream (2026-09-07)
+
+The cloud-read journal above ended by recording the acknowledgement
+upstream path as the workstream's remaining open item ("Deliberately NOT
+built here"). Two commits close it:
+
+1. **`52af7f9b` — cloud ack route (`feat(api)`).**
+   `POST /api/v1/memos/{memo_id}/ack` (`ack_memo` in `pg.rs`,
+   `ack_memo_handler` in `routes/memos.rs`): terminal-scoped tokens only
+   (403 `not_terminal_token` when the claims carry no `terminal_id`), the
+   caller cannot name another terminal (the UPDATE keys on the claim),
+   tenant comes from the claims (RLS GUC), unknown recipient is 404, and
+   the state machine `WHERE delivery_status IN ('pending','delivered')`
+   with `delivered_at = COALESCE(delivered_at, now)` backfills delivery
+   when an ack lands on a `pending` row — double-ack is a no-op
+   `changed: false`. Spec'd in the OpenAPI (`MemoAckRequest` /
+   `MemoAckResult`). The same commit made `sync_memos`'s recipient merge
+   MONOTONIC (rank pending=0 < delivered=1 < acknowledged=2, desktop wins
+   ties): without it, every desktop push would downgrade cloud-side
+   acks, because the desktop snapshot still carries the older delivery
+   state — the "snapshot delivery state is the newest fact" premise died
+   the moment acks started landing in the cloud. **Ack lands between a
+   snapshot collect and the next push?** Benign by that merge: the stale
+   push cannot regress the rank, and existence reconciliation only
+   deletes rows the desktop no longer fans out to.
+
+2. **`b9278fb0` — terminal ack client (`feat(tablet,core)`).**
+   `ack_memo_on_server` in `oz-core`'s `sync_client` (`sync-http`
+   feature; the disabled-feature stub returns Err so the fallback
+   applies — a durable ack has no honest pretend-success) POSTs
+   `{ "acknowledged_by": ... }` and parses the snake_case `MemoAckCloud`
+   (the server's `MemoAckResult` carries no serde rename). `user_id` is
+   informational only — terminal tokens have no user identity, and it
+   must never become an authorization input. `acknowledge_memo_scoped`
+   is now cloud-first with the local write as fallback; the config read
+   happens in a scoped block so the connection guard never spans the
+   HTTP await (it is not `Send`).
+
+**Tests:** `ack_goes_to_the_cloud_and_carries_the_wire_contract` drives a
+live TCP stub and pins the POST path, bearer token, and `acknowledged_by`
+body; `ack_falls_back_to_local_write_with_seeded_recipient` pins the
+fallback write (`delivery_status` acknowledged, `acknowledged_by` =
+session user). oz-core sync_client 35/35, oz-api 279/279, cloud-server
+openapi 16/16, tablet memo 8/8, `verify-ipc-parity.py` OK.
+
+**Round-14 wording correction (owed since the push slice):** the PG test
+pins CODE-level cross-tenant isolation — token-stamped inserts +
+tenant-filtered reads — not "RLS cross-tenant invisibility". The test
+connects as the table owner (superuser-scoped dev pool), and RLS on an
+owner connection is bypassed without `FORCE ROW LEVEL SECURITY`, so the
+two occurrences above now say what the test actually proves. The memo
+tables ARE RLS-enabled (`memos`, `memo_locations`, `memo_recipients` in
+`RLS_TABLES`; the generated init carries the DO-block policies) — that
+is the second layer, enforced for non-owner connections; the exemption
+gate (`07197574`) keeps that coverage honest going forward.
+
+**Known limit, accepted:** the cloud merge reconciles existence by
+omission against the pushing desktop snapshot, so a desktop restored
+from a backup (rewound memo state) would omit memos/rows that still
+carry newer cloud acks — and the push would delete them. Acks ride the
+desktop's authority over fan-out membership; a tombstone or merge-window
+design is the future fix if this ever bites in practice.
 
 ## RULING — `stop_memo` early-stop authorization (2026-09-07) — approved: option A2, fallback A1
 
@@ -1974,3 +2048,157 @@ is the file's standard — backfill at least the push slice and the §B gate.
 No other movement: Step 1c (topology) still awaiting commit with its cleared
 tests; the §B read-only slice is mid-flight and compile-green as of this
 round.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 13)
+
+`f2dbb745` documents the memo serving routes (`/api/v1/memos/sync`,
+`/api/v1/memos/active`) in the OpenAPI spec — the cloud-read slice's API
+surface is now formally recorded. Noted toward the still-open demands:
+- (ii) two-tenant push-semantics test — still open (unchanged).
+- (iv) journal backfill for the push slice — `49de4fc3` + `f2dbb745` are
+  paper records now, but the Memo implementation journal entry is still
+  owed. Two commits is enough history to write it from; write it before the
+  slice's context leaves working memory.
+Round-12's RLS finding (memo tables uncovered) also stands — see saas-1.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 14)
+
+**Demand (iv) RESOLVED** (`3770847b`): the push slice is journaled at the
+file's standard — including the entangled `2c5dde8a` tablet code, recorded
+"here rather than hidden." The split-or-journal decision from Rounds 6–13 is
+resolved as journal; accepted.
+
+**One precision correction to the new journal text:** it says the PG test
+pins "RLS cross-tenant invisibility." The test is real and valuable, but the
+mechanism it proves is CODE-level isolation (token-stamped inserts +
+tenant-filtered reads) — the memo tables are NOT RLS-enabled (verified again
+at HEAD `3770847b`; see saas-1's Round-14 note). Saying "RLS" overstates the
+defense layer and will mislead the next reader into assuming a protection
+that does not exist. Either fix the wording, or — better — close the RLS gap
+and make the wording true.
+
+**Demand (ii) still open:** `collect_memo_sync_snapshot` has zero tests in
+`memos_tests.rs`. The PG test seeds two tenants in the CLOUD db; the demand
+was for the DESKTOP-side snapshot (seed two tenants in the desktop DB,
+assert the snapshot includes both — the whole-DB push semantics). Still owed.
+
+Watch item: Step 1d (`log_audit` on topology Apply) is in flight in the
+working tree with correct redaction reasoning about the change note.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 23)
+
+**Demand (ii) refinement (interacts with the RLS closure now in flight —
+see saas-1 Round 23):** the memo tables are entering RLS with WITH CHECK on
+the tenant GUC. When the demand (ii) test is written, its cloud-side
+assertion changes shape: seed two tenants in the desktop DB -> snapshot
+includes both -> the push under one token ACCEPTS the token tenant's rows
+and REJECTS the foreign-tenant rows (WITH CHECK) — decide and pin whether
+that rejection skips the row or aborts the batch (per-row resilience fits
+the best-effort push design; a silent whole-batch loss does not). The test
+that proves the rejection is the defense-in-depth proof this file has been
+asking for since Round 2.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 28)
+
+**Demand (ii) RESOLVED** (`e09ccde6 test(core): pin whole-database memo
+snapshot semantics`): two tenants seeded in the desktop DB, the snapshot
+asserted to include both, recipients per fan-out asserted, and the test
+comment carries the contract: "If someone later fixes the unfiltered query
+by adding a tenant filter without changing the push contract, this test
+fails loudly and forces the decision to be re-made consciously." The
+test-as-contract pattern, exactly as demanded in Rounds 2 and 23.
+
+**Correction to my Round-23 refinement** (per-row-skip vs batch-abort): the
+question is MOOT, and I should have seen it then. The sync INSERT binds the
+token-derived tenant_id for every row at bind time (`pg.rs` sync_memos), so
+the RLS WITH CHECK (tenant_id = GUC) never triggers a rejection — rows are
+re-stamped with the pushing token's tenant, not rejected. The real residual
+is a deployment constraint, not a code path: one desktop global DB maps to
+one authority token, and a multi-tenant desktop DB would attribute every
+tenant's memos to the pushing token's tenant in the cloud. That constraint
+is already implied by "single authoring authority" (memos.rs doc) — if it
+ever needs to become an explicit validation (warn on push when the local DB
+holds >1 distinct tenant_id), that is a small follow-up slice, not a defect.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 29)
+
+**Design decision worth its record before it commits:** the memo sync path
+is gaining a MONOTONIC delivery-state merge in `pg.rs` (uncommitted). Why it
+matters: the cloud-read ruling made terminal acks land in the CLOUD
+(`ack_memo`) while the desktop snapshot still holds older delivery state —
+so the original wholesale recipient-row replace would DOWNGRADE cloud-side
+acks on every push. The fix merges by rank (`pending < delivered <
+acknowledged`), desktop wins ties (authoring authority; equal ranks cannot
+regress), existence still reconciles by omission. This is a real
+distributed-state decision — convergent merging with a monotonic field —
+and it is the first piece of state in the codebase with this shape. When it
+commits: (a) the commit message should carry the downgrade scenario as the
+rationale; (b) a test must pin rank-merge semantics explicitly
+(pending-then-acknowledged survives a stale push; delivered-then-pending
+cannot happen but the tie rule should be pinned anyway); (c) `ack_memo`'s
+interaction with the push (ack lands between snapshot collect and push)
+deserves one sentence in the journal — the merge makes it benign, say so
+where the next reader will look.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 34)
+
+**Cloud-read loop completing in-tree (uncommitted): the upstream ack half.**
+`POST /api/v1/memos/{memo_id}/ack` — a terminal acknowledges a memo it
+received. Pre-commit review verdict: sound by construction.
+- Auth: JWT required (new `memo_ack_requires_auth` test), terminal-scoped
+  tokens only.
+- Self-scoping: the caller CANNOT name another terminal — the UPDATE keys
+  on `claims.terminal_id`; tenant comes from claims (RLS GUC set); unknown
+  recipient is 404.
+- State machine: `WHERE delivery_status IN ('pending','delivered')` with
+  `delivered_at = COALESCE(delivered_at, now)` — acking from `pending`
+  backfills delivery; double-ack is a no-op `changed: false`. All pinned in
+  the OpenAPI description (spec/paths.rs + schemas.rs updated too).
+- Convergence: the spec text explicitly states the ack survives stale
+  pushes via the monotonic merge — the two halves of the design now
+  reference each other in the docs.
+- `acknowledged_by` is correctly documented as a display fact (terminal
+  tokens carry no user identity) — keep it that way; it must never become
+  an authorization input.
+
+With this landed, the memo cloud-read path is end-to-end: publish on
+desktop -> push -> terminal read (cloud-first, local fallback) -> ack ->
+monotonic merge back. Remaining owed on this stream: the rank-merge TEST
+conditions from Round 29 (still absent), and the slice journal entry.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 35)
+
+**Memo cloud-read loop: COMMITTED END-TO-END** (`52af7f9b`). All three
+Round-29 conditions verified in the commit:
+1. Rank-merge test: ack -> stale re-push with older `pending` -> cloud-side
+   `acknowledged` survives (the exact downgrade scenario, pinned as an
+   integration test through the real REST functions under RLS).
+2. Downgrade rationale carries in the commit message with the invariant
+   named.
+3. Delivered-backfill + double-ack-no-op semantics pinned in the same test.
+The OpenAPI spec documents the whole route. **The Memo lifecycle P1 item is
+now functionally complete across the stack**: authoring (desktop, multi-
+location), fan-out, delivery, cloud-first tablet/KDS read with local
+fallback, upstream ack, monotonic reconciliation, retention sweep, early
+stop, revisions. Remaining for the checkbox: nothing functional — flip it
+with a summary line when the next journal pass runs (the offline-delivery
+sub-item was ruled to ride the outbox and remains future work, recorded
+that way).
+
+Still open on this file: RLS closure commit (order step 1), ADR #46
+Phase-1 gate (1e UI + concurrency, order step 4), ADR #47 ruling
+(order step 5).
