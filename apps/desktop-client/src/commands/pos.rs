@@ -1047,6 +1047,13 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
     let stock_target_instance_id = {
         let global_db = state.db.lock().await;
+        // §B: when the offline grace window has fully lapsed, the register
+        // is read-only — new sales are rejected until the subscription is
+        // verified online. Active/in-grace registers pass untouched.
+        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.enforce_pos_writable()?;
         resolve_runtime_stock_target(&global_db, &session.store_id, &session.instance_id)?
     };
     let deduction_instance_id = stock_target_instance_id
@@ -1229,6 +1236,11 @@ pub async fn complete_sale_scoped(
     require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
     let stock_target_instance_ids = {
         let global_db = state.db.lock().await;
+        // §B read-only lock (see complete_sale_with_resolved_shortfalls_scoped).
+        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.enforce_pos_writable()?;
         resolve_runtime_stock_targets(&global_db, &session.store_id, &session.instance_id)?
     };
     let deduction_instance_id = stock_target_instance_ids

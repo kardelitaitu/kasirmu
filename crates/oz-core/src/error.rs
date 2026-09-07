@@ -42,6 +42,9 @@ pub enum CoreErrorKind {
     InvalidSubscriptionSignature,
     /// Workspace type requires a higher subscription tier (ADR #5).
     SubscriptionUpgradeRequired,
+    /// The subscription's offline grace has lapsed — POS runtime is
+    /// read-only (todo-global-saas-1.md §B).
+    SubscriptionReadOnly,
     /// System clock tampering detected (ADR #5).
     SystemClockTampered,
     /// Authorization denied for the requested permission (ADR #35 D3).
@@ -119,6 +122,14 @@ pub enum CoreError {
     /// The workspace type requires a higher subscription tier (ADR #5).
     #[error("subscription upgrade required: {0}")]
     SubscriptionUpgradeRequired(String),
+
+    /// The subscription's offline grace has lapsed while still offline —
+    /// POS runtime is read-only: no new sales, order mutations, or sync
+    /// queueing (todo-global-saas-1.md §B). Viewing, data export, and
+    /// sign-out remain available; the register reopens automatically once
+    /// connectivity returns and a valid subscription is verified.
+    #[error("subscription read-only: {0}")]
+    SubscriptionReadOnly(String),
 
     /// System clock rollback detected — possible tampering (ADR #5).
     #[error("system clock tampered: {0}")]
@@ -206,6 +217,7 @@ impl CoreError {
                 CoreErrorKind::InvalidSubscriptionSignature
             }
             CoreError::SubscriptionUpgradeRequired(_) => CoreErrorKind::SubscriptionUpgradeRequired,
+            CoreError::SubscriptionReadOnly(_) => CoreErrorKind::SubscriptionReadOnly,
             CoreError::SystemClockTampered(_) => CoreErrorKind::SystemClockTampered,
             CoreError::PermissionDenied(_) => CoreErrorKind::PermissionDenied,
             CoreError::TopologyValidation { .. } => CoreErrorKind::Validation,

@@ -640,6 +640,37 @@ impl TenantSubscription {
         }
         SubscriptionLifecycleState::Expired
     }
+
+    /// Whether POS runtime is locked to a read-only state (§B).
+    ///
+    /// True ONLY when the offline grace window has fully lapsed
+    /// ([`SubscriptionLifecycleState::Expired`]): no new sales, order
+    /// mutations, or sync queueing — viewing, data export, and sign-out
+    /// remain available, and the register reopens automatically once
+    /// connectivity returns and a valid subscription is verified.
+    ///
+    /// Deliberately narrow: `Canceled`/`Paused` revert entitlements to
+    /// Free (Free can still sell), and missing/tampered data degrades to
+    /// Free-tier operations rather than bricking a register — the §B
+    /// fail-closed rule targets administrative features, not the
+    /// operational sale path. Data-integrity responses live in the
+    /// capabilities command and the admin gate.
+    pub fn pos_read_only(&self) -> bool {
+        self.lifecycle_state() == SubscriptionLifecycleState::Expired
+    }
+
+    /// Enforce [`Self::pos_read_only`] — returns
+    /// [`CoreError::SubscriptionReadOnly`] when the register is locked.
+    pub fn enforce_pos_writable(&self) -> Result<(), CoreError> {
+        if self.pos_read_only() {
+            return Err(CoreError::SubscriptionReadOnly(
+                "The offline grace window has expired. This register is read-only: ".to_string()
+                    + "sales and order changes are locked until the subscription is verified online. "
+                    + "Data export and viewing remain available.",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Normalized subscription lifecycle state shared by the license server,

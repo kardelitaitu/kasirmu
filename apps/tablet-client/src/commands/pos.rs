@@ -727,6 +727,12 @@ pub async fn complete_sale(
 
         require_permission_for_user(&store, &args.user_id, oz_core::permissions::SALES_PROCESS)?;
 
+        // §B read-only lock: a lapsed grace window rejects new sales.
+        let sub = oz_core::TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.enforce_pos_writable()?;
+
         let cart = store
             .load_active_cart(&args.cart_id)?
             .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
@@ -1091,7 +1097,7 @@ pub async fn complete_sale_scoped(
 ) -> Result<CompleteSaleResult, AppError> {
     let session = state.resolve_session(&session_token)?;
 
-    // ── Lock 1: Load and remove the cart ──────────────────────────
+    // ── Lock 1: Load and remove the cart ──────────────────────
     let cart = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
@@ -1101,6 +1107,12 @@ pub async fn complete_sale_scoped(
             &session.user_id,
             oz_core::permissions::SALES_PROCESS,
         )?;
+
+        // §B read-only lock: a lapsed grace window rejects new sales.
+        let sub = oz_core::TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.enforce_pos_writable()?;
 
         let cart = store
             .load_active_cart(&args.cart_id)?
@@ -1355,6 +1367,15 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
     let session = state.resolve_session(&session_token)?;
+
+    // §B read-only lock: a lapsed grace window rejects new sales.
+    {
+        let db = state.db.lock().await;
+        let sub = oz_core::TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.enforce_pos_writable()?;
+    }
 
     // ── Reconstruct the Cart from front-end line data ─────────────
     let currency: oz_core::Currency = args

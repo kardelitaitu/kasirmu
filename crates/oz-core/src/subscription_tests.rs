@@ -1501,3 +1501,52 @@ fn tier_key_roundtrip_for_all_tiers() {
         }
     }
 }
+
+// ── POS read-only lock (§B) ───────────────────────────────────────────
+
+#[test]
+fn pos_read_only_only_when_grace_fully_lapsed() {
+    // Active (future expiry) → writable.
+    let future = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    assert!(!state_sub(SubscriptionTier::Plus, "active", Some(future.clone())).pos_read_only());
+    // In grace → operational runtime continues (the whole point of grace).
+    let recent = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+    assert!(!state_sub(SubscriptionTier::Plus, "active", Some(recent)).pos_read_only());
+    // Past grace → read-only.
+    let old = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    assert!(state_sub(SubscriptionTier::Plus, "active", Some(old)).pos_read_only());
+}
+
+#[test]
+fn pos_read_only_free_never_locks() {
+    // Free is active forever (mirrors is_within_grace_period) — a Free
+    // register never locks, even with an ancient expiry on the row.
+    let ancient = (chrono::Utc::now() - chrono::Duration::days(400)).to_rfc3339();
+    assert!(!state_sub(SubscriptionTier::Free, "active", Some(ancient)).pos_read_only());
+}
+
+#[test]
+fn pos_read_only_canceled_sells_as_free_instead_of_locking() {
+    // Canceled reverts entitlements to Free immediately (core contract),
+    // but the §B read-only lock is about grace lapse, not cancellation —
+    // a canceled merchant keeps selling on the Free tier.
+    let future = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    assert!(!state_sub(SubscriptionTier::Pro, "canceled", Some(future.clone())).pos_read_only());
+    assert!(!state_sub(SubscriptionTier::Pro, "revoked", Some(future)).pos_read_only());
+}
+
+#[test]
+fn pos_read_only_unknown_status_does_not_brick_the_register() {
+    // Missing/tampered data degrades to Free-tier operations; the §B
+    // fail-closed rule targets admin features, not the sale path.
+    assert!(!state_sub(SubscriptionTier::Pro, "garbage", None).pos_read_only());
+}
+
+#[test]
+fn enforce_pos_writable_error_is_actionable() {
+    let old = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    let sub = state_sub(SubscriptionTier::Plus, "active", Some(old));
+    let err = sub.enforce_pos_writable().unwrap_err().to_string();
+    assert!(err.contains("read-only"), "got: {err}");
+    assert!(err.contains("grace"), "got: {err}");
+}

@@ -155,6 +155,12 @@ pub async fn enqueue_offline(
 
     let db = state.db.lock().await;
     let store = Store::new(&db);
+    // §B read-only lock: sync queueing is an order mutation — a register
+    // whose grace window has lapsed may not enqueue new offline work.
+    let sub = oz_core::TenantSubscription::load(&db, "default")?
+        .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+    sub.verify_signature()?;
+    sub.enforce_pos_writable()?;
     let item = store.enqueue_offline_scoped(&args.action, &args.payload, tenant_id, priority)?;
     drop(db);
 

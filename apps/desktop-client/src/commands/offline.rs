@@ -213,6 +213,18 @@ pub async fn enqueue_offline_scoped(
         .unwrap_or(SyncPriority::Normal);
 
     let (_session, conn) = state.resolve_scope(&session_token)?;
+    // §B read-only lock: sync queueing is an order mutation — a register
+    // whose grace window has lapsed may not enqueue new offline work. The
+    // tier is resolved from the global identity DB. This must run BEFORE
+    // the store-db lock is taken: the MutexGuard is not Send and may not
+    // be held across the global-db .await.
+    {
+        let global_db = state.db.lock().await;
+        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.enforce_pos_writable()?;
+    }
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
