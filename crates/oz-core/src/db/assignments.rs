@@ -296,6 +296,61 @@ impl Store<'_> {
         }))
     }
 
+    /// The ADR #47 coverage decision for one already-loaded assignment,
+    /// including the `legal_entity` → `location` downward walk that the
+    /// model-layer [`Assignment::covers_resource`] cannot do alone.
+    ///
+    /// This is the single implementation of ruling 3's inheritance rule.
+    /// [`Store::require_permission_for_resource`] enforces it and
+    /// [`Store::assignment_covers_resource`] only diagnoses it, so the two
+    /// can never disagree — the same "a verdict cannot drift from
+    /// enforcement" invariant the availability resolver documents.
+    ///
+    /// Every case except the entity→location pair delegates to
+    /// [`Assignment::covers_resource`]; that arm is the only one needing the
+    /// `locations` table. An unknown location, or one with no entity, denies
+    /// (fail closed).
+    pub(crate) fn resource_covered_by(
+        &self,
+        assignment: &Assignment,
+        scope_type: ScopeType,
+        scope_id: &str,
+    ) -> Result<bool, CoreError> {
+        let entity_walk = scope_type == ScopeType::Location
+            && assignment.scope_type == Some(ScopeType::LegalEntity);
+        if entity_walk {
+            let entity = self.location_legal_entity_id(scope_id)?;
+            return Ok(entity.is_some() && entity.as_deref() == assignment.scope_id.as_deref());
+        }
+        Ok(assignment.covers_resource(scope_type, scope_id))
+    }
+
+    /// Whether `user_id`'s assignment covers the named resource, or `None`
+    /// when the user has no assignment row at all.
+    ///
+    /// `None` is not a denial: ruling 5 preserves spec 0048's "a legacy user
+    /// without an assignment is not scope-restricted", so a caller must not
+    /// report a scope answer for someone who has no scope to report on. The
+    /// availability resolver takes exactly this `Option<bool>` and leaves
+    /// `scope` out of the precedence contest when it is `None`.
+    ///
+    /// Read-only and non-authoritative — it never consults the permission
+    /// registry. Enforcement stays in
+    /// [`Store::require_permission_for_resource`], which layers
+    /// `authorize_with` on top of the same coverage decision.
+    pub fn assignment_covers_resource(
+        &self,
+        user_id: &str,
+        scope_type: ScopeType,
+        scope_id: &str,
+    ) -> Result<Option<bool>, CoreError> {
+        let Some(assignment) = self.assignment_for_user(user_id)? else {
+            return Ok(None);
+        };
+        self.resource_covered_by(&assignment, scope_type, scope_id)
+            .map(Some)
+    }
+
     /// Write a user's assignment scope (ADR #35 D5 / spec 0048) inside an
     /// open transaction: upserts the `assignments` row and replaces the
     /// dimension rows. Safe to call inside an existing transaction — the

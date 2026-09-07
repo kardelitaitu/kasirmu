@@ -849,3 +849,162 @@ fn set_assignment_rejects_invalid_resource_pairs() {
     // Nothing was written: the raw-SQL-seeded user still has no row.
     assert!(store.assignment_for_user("u1").unwrap().is_none());
 }
+
+// ── Diagnostics mirror: Store::assignment_covers_resource ────────────
+//
+// The availability resolver's `scope` reason code reads this helper
+// rather than calling the gate, because a gate denial throws and a
+// diagnostic must not. Two properties keep that honest: it never reports
+// a denial the gate would not throw, and never a clearance the gate would
+// not grant. Both are asserted against the gate itself, so a future edit
+// to either side fails here instead of shipping a diagnostic that lies.
+
+#[test]
+fn coverage_diagnostic_agrees_with_the_resource_gate() {
+    let assignments = [
+        ("organization", None),
+        ("legal_entity", Some("ent-1")),
+        ("location", Some("loc-ent1")),
+        ("location", Some("loc-other")),
+    ];
+    let resources = [
+        (ScopeType::Location, "loc-ent1"),
+        (ScopeType::Location, "loc-ent2"),
+        (ScopeType::Location, "loc-orphan"),
+        (ScopeType::Location, "loc-unknown"),
+        (ScopeType::LegalEntity, "ent-1"),
+        (ScopeType::LegalEntity, "ent-2"),
+        (ScopeType::Organization, "default"),
+    ];
+
+    for (scope_type, scope_id) in assignments {
+        for (res_type, res_id) in resources {
+            let conn = migrations::fresh_db();
+            seed_user(&conn);
+            insert_scoped_assignment(&conn, scope_type, scope_id);
+            seed_entity_topology(&conn);
+            let store = Store::new(&conn);
+
+            let covered = store
+                .assignment_covers_resource("u1", res_type, res_id)
+                .unwrap();
+            // `sales:view` is the permission role-staff holds, so any gate
+            // denial here is a scope denial and nothing else.
+            let gate_allows = store
+                .require_permission_for_resource("u1", "sales:view", res_type, res_id)
+                .is_ok();
+
+            assert_eq!(
+                covered != Some(false),
+                gate_allows,
+                "diagnostic {covered:?} disagrees with the gate for assignment \
+                 ({scope_type}, {scope_id:?}) over {res_type:?} {res_id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn coverage_diagnostic_is_silent_for_a_user_with_no_assignment_row() {
+    // Ruling 5's `None` is not a denial. A legacy user with no row has no
+    // scope to report, and the resolver must leave `scope` out of the
+    // precedence contest rather than answer "not covered".
+    let conn = migrations::fresh_db();
+    seed_user(&conn); // deliberately no assignment row
+    let store = Store::new(&conn);
+
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-any")
+            .unwrap(),
+        None,
+        "no assignment row means no scope answer, not a denial"
+    );
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-any")
+        .expect("the gate agrees: a no-row user is not scope-restricted");
+}
+
+#[test]
+fn coverage_diagnostic_walks_down_to_entity_owned_locations() {
+    // The trap this pins: `Assignment::covers_resource` returns false for a
+    // (legal_entity assignment, location resource) pair on purpose — the
+    // walk needs the `locations` table, which the model layer must not
+    // assume. A diagnostic calling the model method directly would report
+    // `scope` for a manager standing in a location their own entity owns:
+    // a false denial about enforcement, which is worse than no diagnostic.
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "legal_entity", Some("ent-1"));
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-ent1")
+            .unwrap(),
+        Some(true),
+        "the entity's own location is covered by the walk"
+    );
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-ent2")
+            .unwrap(),
+        Some(false),
+        "a sibling entity's location is not"
+    );
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-orphan")
+            .unwrap(),
+        Some(false),
+        "a NULL-entity location cannot prove ownership — fail closed"
+    );
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-unknown")
+            .unwrap(),
+        Some(false),
+        "an unknown location fails closed"
+    );
+}
+
+#[test]
+fn resource_axis_answers_where_the_branch_axis_clears() {
+    // Why the verdict reads the ADR #47 axis and not spec 0048's
+    // `matches_scope`. This pair is creatable from the staff UI today: the
+    // resource-scope picker renders outside the `scoped` conditional, so
+    // `global` mode and a narrowed resource coexist. For it,
+    // `matches_scope` is unconditionally true — a diagnostic built on that
+    // axis could never report a denial, because the session gate already
+    // enforced it before the command body ran.
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "location", Some("loc-ent1"));
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+
+    let a = store
+        .assignment_for_user("u1")
+        .unwrap()
+        .expect("assignment");
+    assert_eq!(a.scope_mode, ScopeMode::Global);
+    assert!(
+        a.matches_scope(Some("loc-ent2"), Some("retail-pos")),
+        "global mode ignores both branch dimensions — the dead axis"
+    );
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-ent2")
+            .unwrap(),
+        Some(false),
+        "the resource axis is the one that can actually answer"
+    );
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-ent1")
+            .unwrap(),
+        Some(true),
+        "and it clears the caller's own location"
+    );
+}

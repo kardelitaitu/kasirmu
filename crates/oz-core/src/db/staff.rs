@@ -321,32 +321,15 @@ impl Store<'_> {
         scope_type: crate::db::assignments::ScopeType,
         scope_id: &str,
     ) -> Result<(), CoreError> {
-        use crate::db::assignments::ScopeType;
-
         let assignment = self.assignment_for_user(user_id)?;
         if let Some(a) = &assignment {
-            let covered = match a.scope_type {
-                Some(ScopeType::Organization) => true,
-                Some(ScopeType::Location) => {
-                    scope_type == ScopeType::Location && a.scope_id.as_deref() == Some(scope_id)
-                }
-                Some(ScopeType::LegalEntity) => match scope_type {
-                    ScopeType::LegalEntity => a.scope_id.as_deref() == Some(scope_id),
-                    ScopeType::Location => {
-                        // Downward walk: the requested location must belong
-                        // to the assignment's entity. An unknown location or
-                        // one without an entity denies (fail closed).
-                        let entity = self.location_legal_entity_id(scope_id)?;
-                        entity.is_some() && entity.as_deref() == a.scope_id.as_deref()
-                    }
-                    ScopeType::Organization => false,
-                },
-                // An unparsable scope_type row failed the load and already
-                // resolved to `None` for the whole assignment; this arm is
-                // unreachable but stays fail-closed for the compiler.
-                None => false,
-            };
-            if !covered {
+            // One implementation of ruling 3's inheritance, shared with the
+            // diagnostics surface (`assignment_covers_resource`) and with the
+            // model-layer pair rule (`Assignment::covers_resource`). An
+            // unparsable scope_type row failed the load and already resolved
+            // to `None` for the whole assignment, which the pair rule reads
+            // as a deny — fail closed on every unreachable arm too.
+            if !self.resource_covered_by(a, scope_type, scope_id)? {
                 return Err(CoreError::PermissionDenied(format!(
                     "resource {scope_id} out of scope for user {user_id}"
                 )));
