@@ -147,6 +147,65 @@ pub(crate) fn cleanup_old_topology_revisions(
     Ok(deflated)
 }
 
+/// Write the operator-facing audit record for a SUCCESSFUL Apply (ADR #46 §6).
+///
+/// # Why audit at all, when the revision row already exists
+///
+/// The revision row is the durable history; this is the one the audit screen
+/// shows, and topology Apply wrote no audit record whatsoever before §6. Both
+/// are kept because they answer different audiences and live in different
+/// databases: `audit_log` is PER-STORE (`resolve_scope` -> `open_store`,
+/// `state.rs:601`) and the audit screen reads the store its viewer is scoped
+/// to, while `topology_revisions` is in the GLOBAL database keyed by branch.
+/// Writing here means an operator looking at a branch's audit log finds its
+/// topology changes without knowing the revision table exists.
+///
+/// # Redaction: what `SENSITIVE_DETAIL_KEYS` does and does not do
+///
+/// `log_audit` sanitises `details` by matching KEY NAMES case-insensitively
+/// against a fixed list (`db/audit.rs:16-37`), which includes `pin`, `token`,
+/// `secret`, and `password`. None of the keys below collide, so nothing here is
+/// redacted — worth stating because topology has PIN-pad hardware nodes and a
+/// key literally named `pin` would be silently blanked.
+///
+/// The corollary is the real limit: matching is by key, never by VALUE. A
+/// merchant who types "reset the back register's password to hunter2" into the
+/// change note has that stored verbatim, because `change_note` is not a
+/// sensitive key name. §6 accepts that — the note exists so history is
+/// readable, and it is written by staff who can already see the things they
+/// describe. Truncation to `MAX_DETAIL_LEN` still applies.
+pub(crate) fn audit_topology_apply(
+    store_conn: &Connection,
+    branch_id: &str,
+    revision: u64,
+    node_count: usize,
+    wire_count: usize,
+    ctx: &TopologyRevisionContext<'_>,
+) -> Result<(), AppError> {
+    let details = serde_json::json!({
+        "branch_id": branch_id,
+        "revision": revision,
+        "change_note": ctx.change_note,
+        "nodes": node_count,
+        "wires": wire_count,
+        "workspace_creations": ctx.workspace_creations,
+        "workspace_updates": ctx.workspace_updates,
+        "workspace_archives": ctx.workspace_archives,
+    });
+    oz_core::Store::new(store_conn).log_audit(&oz_core::AuditEntry::new(
+        ctx.published_by,
+        "topology.apply",
+        Some("topology"),
+        // target_id is the branch, so the audit screen's entity filter can
+        // find every change to one branch's graph. `""` is the unscoped
+        // legacy graph, matching the revision row's own convention.
+        Some(branch_id),
+        Some(details.to_string()),
+        "success",
+    ))?;
+    Ok(())
+}
+
 /// Insert one immutable revision row, inside the caller's transaction.
 ///
 /// `branch_id` is `""` for the unscoped legacy graph, NOT null — `UNIQUE`

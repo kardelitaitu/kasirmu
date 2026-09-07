@@ -772,6 +772,21 @@ pub async fn apply_topology_diff(
     // rusqlite Connection is !Send, so it must not be held across the
     // error-path awaits below (lexical scope, not explicit drop, is what
     // the async generator liveness analysis respects here).
+    // ADR #46 §1-§3: this Apply becomes an immutable revision row, written
+    // inside the same transaction as the envelope. The counts are the ones
+    // captured above, before the workspace block moved the request vectors.
+    //
+    // Declared OUTSIDE the save block because the success path reuses it for
+    // the §6 audit record; the two records describe one event and must not be
+    // free to disagree about it.
+    let revision_ctx = TopologyRevisionContext {
+        // Empty until step 1e threads the merchant's note through IPC.
+        change_note: "",
+        published_by: &session.user_id,
+        workspace_creations: created,
+        workspace_updates: updated,
+        workspace_archives: archived,
+    };
     let save_result = {
         let branch_conn = state
             .db_manager
@@ -780,17 +795,6 @@ pub async fn apply_topology_diff(
         let branch_db = branch_conn
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        // ADR #46 §1-§3: this Apply becomes an immutable revision row, written
-        // inside the same transaction as the envelope. The counts are the ones
-        // captured above, before the workspace block moved the request vectors.
-        let revision_ctx = TopologyRevisionContext {
-            // Empty until the change-note field lands (ADR #46 §6).
-            change_note: "",
-            published_by: &session.user_id,
-            workspace_creations: created,
-            workspace_updates: updated,
-            workspace_archives: archived,
-        };
         save_topology_json_at_key_with_revision(
             &global_db,
             diagram_nodes,
@@ -853,6 +857,42 @@ pub async fn apply_topology_diff(
         revision = result.revision,
         "topology diff applied"
     );
+
+    // ADR #46 §6: topology Apply has never written an audit record, so "who
+    // changed this branch's topology, and why" had no answer at all.
+    //
+    // Deliberately NOT fatal. The Apply succeeded and its revision row is
+    // already committed; returning an error here would tell a merchant their
+    // deploy did not happen when it did, and the command's caller would treat
+    // a real deploy as a failure. A missing audit row is the lesser error, and
+    // it is logged loudly enough to find.
+    //
+    // Written to the EFFECTIVE store's database, not the session's: audit_log
+    // is per-store, and this is the branch whose topology changed.
+    let audit_result = (|| -> Result<(), AppError> {
+        let store_conn = state
+            .db_manager
+            .open_store(&effective_store_id)
+            .map_err(|e| AppError::Internal(format!("opening store db for topology audit: {e}")))?;
+        let db = store_conn
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        audit_topology_apply(
+            &db,
+            branch_id.as_deref().unwrap_or(""),
+            result.revision,
+            node_count,
+            wire_count,
+            &revision_ctx,
+        )
+    })();
+    if let Err(error) = audit_result {
+        tracing::warn!(
+            error = %error,
+            revision = result.revision,
+            "topology Apply: audit record failed to write; revision row still authoritative"
+        );
+    }
 
     Ok(result)
 }

@@ -1400,6 +1400,46 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         oz_core::Settings::get(&db, &request_key).unwrap().is_none(),
         "the failed Apply must not leave a request ledger"
     );
+
+    // ADR #46 Verification: "a test forcing Apply compensation asserts no
+    // revision row survives it." This test already forces exactly that path —
+    // the stale Apply fails AFTER the store transaction commits, so it is
+    // compensated — which makes it the right place to pin the §3 claim that
+    // the revision INSERT lives inside the committing transaction. A row here
+    // would mean history recorded a deploy that was rolled back.
+    let revisions: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM topology_revisions WHERE branch_id = ''",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        revisions, 1,
+        "only the successful Apply may have a revision row"
+    );
+
+    // ADR #46 §6: the audit record is written on the success path only, and
+    // into the EFFECTIVE store's database (audit_log is per-store), not the
+    // global one the revision row lives in.
+    drop(db);
+    let store_conn = app_state.db_manager.open_store(store_id).unwrap();
+    let store_db = store_conn.lock().unwrap();
+    let topology_events: Vec<String> = oz_core::Store::new(&*store_db)
+        .list_audit_entries(50, 0)
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.action == "topology.apply")
+        .map(|e| e.details)
+        .collect();
+    assert_eq!(
+        topology_events.len(),
+        1,
+        "a rejected Apply must write no audit record"
+    );
+    let details: serde_json::Value = serde_json::from_str(&topology_events[0]).unwrap();
+    assert_eq!(details["revision"], 1);
+    assert_eq!(details["branch_id"], "");
 }
 
 #[tokio::test]

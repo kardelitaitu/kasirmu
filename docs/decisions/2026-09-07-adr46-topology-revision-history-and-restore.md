@@ -244,9 +244,39 @@ the difference between a list of timestamps and an actual history, and it is the
 single cheapest thing in this ADR.
 
 Also call `log_audit` on Apply. §4's deflated rows already give a readable
-history, so this is not strictly required — but audit is where the existing
-retention, redaction (`SENSITIVE_DETAIL_KEYS`), and export machinery live, and
-topology currently has no answer to "who changed production" at all.
+history, so this is not strictly required — but `audit_log` is what the audit
+screen reads, and topology currently has no answer to "who changed production"
+at all.
+
+Both records are kept because they live in different databases and serve
+different readers: `audit_log` is **per-store** (`resolve_scope` →
+`open_store`), while `topology_revisions` is in the **global** database keyed by
+branch. The audit row goes to the *effective* store's database — the branch
+whose graph changed — so an operator browsing that branch finds the change
+without knowing the revision table exists.
+
+Two findings from reading `db/audit.rs` before writing this, both now pinned by
+tests rather than left as assumptions:
+
+- **Redaction matches key NAMES, never values.** `SENSITIVE_DETAIL_KEYS`
+  (`audit.rs:16-37`) is compared with `eq_ignore_ascii_case` against JSON keys.
+  The list contains `pin`, and topology has PIN-pad hardware nodes — so a
+  future detail key named `pin` would be silently blanked forever.
+  `no_audit_detail_key_collides_with_the_redaction_list` asserts every key in
+  the payload survives, which turns that from a trap into a failing test.
+- **A free-text change note is therefore NOT protected.** A merchant who types
+  "reset the back register's password to hunter2" has it stored verbatim,
+  because `change_note` is not a sensitive key name. §6 accepts this: the note
+  exists so history is readable, and it is written by staff who can already see
+  what they describe. Truncation to `MAX_DETAIL_LEN` still applies.
+
+One correction to this section as first written: it claimed audit holds
+"retention" machinery. **It does not.** There is no purge or retention sweep
+for `audit_log` anywhere in the crate — `MAX_AUDIT_EXPORT_ROWS` bounds an
+export, not the table. That is a pre-existing gap, unrelated to this ADR, and
+not fixed here (Rule 3); it is recorded because §4's "keep the metadata row
+forever" argument is stronger than it looked if audit rows already accumulate
+without bound.
 
 ### 7. Old revisions are shown, never migrated
 

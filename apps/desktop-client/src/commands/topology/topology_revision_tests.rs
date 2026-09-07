@@ -430,3 +430,98 @@ fn the_sweep_prunes_each_branch_against_its_own_budget() {
     assert_eq!(restorable_count(&conn, "branch-a"), 20);
     assert_eq!(restorable_count(&conn, "branch-b"), 20);
 }
+
+// ── ADR #46 §6: the audit record ───────────────────────────────
+
+fn audit_rows(conn: &rusqlite::Connection) -> Vec<(String, String, Option<String>, String)> {
+    oz_core::Store::new(conn)
+        .list_audit_entries(50, 0)
+        .unwrap()
+        .into_iter()
+        .map(|e| (e.action, e.user_id, e.target_id, e.details))
+        .collect()
+}
+
+#[test]
+fn the_audit_record_describes_the_apply() {
+    let store_db = oz_core::migrations::fresh_db();
+    let context = ctx("wired the second kitchen screen", "user-rina");
+
+    audit_topology_apply(&store_db, "branch-a", 7, 12, 9, &context).unwrap();
+
+    let rows = audit_rows(&store_db);
+    assert_eq!(rows.len(), 1);
+    let (action, who, target, details) = &rows[0];
+    // `domain.action`, matching "sale.completed" / "system.export".
+    assert_eq!(action, "topology.apply");
+    assert_eq!(who, "user-rina");
+    // target_id is the BRANCH, so the audit screen's entity filter can find
+    // every change to one branch's graph.
+    assert_eq!(target.as_deref(), Some("branch-a"));
+
+    let parsed: Value = serde_json::from_str(details).unwrap();
+    assert_eq!(parsed["revision"], 7);
+    assert_eq!(parsed["change_note"], "wired the second kitchen screen");
+    assert_eq!(parsed["nodes"], 12);
+    assert_eq!(parsed["wires"], 9);
+    assert_eq!(parsed["workspace_creations"], 1);
+    assert_eq!(parsed["workspace_updates"], 2);
+    assert_eq!(parsed["workspace_archives"], 3);
+}
+
+#[test]
+fn no_audit_detail_key_collides_with_the_redaction_list() {
+    let store_db = oz_core::migrations::fresh_db();
+    // log_audit sanitises `details` by matching KEY NAMES against
+    // SENSITIVE_DETAIL_KEYS (db/audit.rs:16-37), which contains `pin`,
+    // `token`, `secret`, `password`. Topology has PIN-pad hardware nodes, so
+    // a key named `pin` here would be silently blanked forever.
+    //
+    // This pins the whole payload: every key must come back non-null. If a
+    // future field is added under a sensitive name, this fails instead of
+    // quietly losing data.
+    let context = ctx("note", "user-a");
+    audit_topology_apply(&store_db, "", 1, 3, 2, &context).unwrap();
+
+    let details = &audit_rows(&store_db)[0].3;
+    let parsed: Value = serde_json::from_str(details).unwrap();
+    for key in [
+        "branch_id",
+        "revision",
+        "change_note",
+        "nodes",
+        "wires",
+        "workspace_creations",
+        "workspace_updates",
+        "workspace_archives",
+    ] {
+        assert!(
+            parsed.get(key).is_some_and(|v| !v.is_null()),
+            "`{key}` was redacted or dropped — its name collides with \
+             SENSITIVE_DETAIL_KEYS, or the payload shape changed"
+        );
+    }
+
+    // The complementary limit, recorded as a test because it is a decision
+    // rather than an accident: redaction matches KEYS, never VALUES, so a
+    // merchant who types a secret into the free-text note stores it verbatim.
+    let leaky = ctx("reset the back register password to hunter2", "user-a");
+    audit_topology_apply(&store_db, "", 2, 3, 2, &leaky).unwrap();
+    let details = &audit_rows(&store_db)[0].3;
+    assert!(
+        details.contains("hunter2"),
+        "change_note is free text and is NOT value-scanned by design (ADR #46 §6)"
+    );
+}
+
+#[test]
+fn the_unscoped_graph_is_audited_under_an_empty_target_id() {
+    let store_db = oz_core::migrations::fresh_db();
+    let context = ctx("", "user-a");
+
+    audit_topology_apply(&store_db, "", 1, 1, 0, &context).unwrap();
+
+    // Same "" convention as the revision row, so the two records agree about
+    // which graph they describe.
+    assert_eq!(audit_rows(&store_db)[0].2.as_deref(), Some(""));
+}
