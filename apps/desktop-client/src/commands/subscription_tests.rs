@@ -29,7 +29,7 @@ fn capabilities_reflect_free_tier_and_zero_usage() {
             dto.tier, "premium",
             "debug builds upgrade Free tier to Premium"
         );
-        assert_eq!(dto.max_stores, Some(5));
+        assert_eq!(dto.max_locations, Some(5));
         assert_eq!(dto.max_staff_users, Some(50));
         assert_eq!(dto.sales_history_days, None, "Premium = unlimited history");
         assert!(dto.supports_qris);
@@ -39,7 +39,7 @@ fn capabilities_reflect_free_tier_and_zero_usage() {
     #[cfg(not(debug_assertions))]
     {
         assert_eq!(dto.tier, "free");
-        assert_eq!(dto.max_stores, Some(1));
+        assert_eq!(dto.max_locations, Some(1));
         assert_eq!(dto.max_staff_users, Some(1));
         assert_eq!(dto.sales_history_days, Some(90));
         assert!(!dto.supports_qris);
@@ -57,7 +57,7 @@ fn capabilities_reflect_plus_and_pro_tiers() {
     seed_tier(&conn, "plus");
     let dto = caps(&conn);
     assert_eq!(dto.tier, "plus");
-    assert_eq!(dto.max_stores, Some(1));
+    assert_eq!(dto.max_locations, Some(1));
     assert_eq!(dto.max_pos_instances, Some(2));
     assert_eq!(dto.max_staff_users, Some(5));
     assert_eq!(dto.sales_history_days, Some(365));
@@ -68,7 +68,7 @@ fn capabilities_reflect_plus_and_pro_tiers() {
     seed_tier(&conn, "pro");
     let dto = caps(&conn);
     assert_eq!(dto.tier, "pro");
-    assert_eq!(dto.max_stores, Some(2));
+    assert_eq!(dto.max_locations, Some(2));
     assert_eq!(dto.max_pos_instances, Some(5));
     assert_eq!(dto.max_staff_users, Some(20));
     assert!(dto.supports_analytics);
@@ -82,7 +82,7 @@ fn capabilities_reflect_premium_tier() {
     let dto = caps(&conn);
     assert_eq!(dto.tier, "premium");
     // C4.2: Premium allows up to 5 stores self-serve
-    assert_eq!(dto.max_stores, Some(5));
+    assert_eq!(dto.max_locations, Some(5));
     assert_eq!(dto.max_pos_instances, None);
     assert_eq!(dto.max_staff_users, Some(50));
     assert_eq!(dto.sales_history_days, None); // unlimited

@@ -387,10 +387,10 @@ topology-wire-label-connected = Terhubung
 topology-wire-label-stock-deduct = Potong Stok (P{ $priority })
 topology-wire-label-fallback = Cadangan (P{ $priority })
 
-# C2.2: gerbang toko kedua (Plus→Pro) + ajakan batas 2 toko Pro (Pro→Premium).
-store-limit-upgrade-pro = Paket Anda mengizinkan { $max } toko. Tingkatkan ke Pro untuk menambah toko.
-store-limit-upgrade-cta = Tingkatkan ke Pro
-store-limit-upgrade-premium = Buka toko ke-3? Tingkatkan ke Premium untuk hingga 5 toko.
-store-limit-upgrade-premium-cta = Tingkatkan ke Premium
+# C2.2: gerbang lokasi kedua (Plus→Pro) + ajakan batas 2 lokasi Pro (Pro→Premium).
+location-limit-upgrade-pro = Paket Anda mengizinkan { $max } lokasi. Tingkatkan ke Pro untuk menambah lokasi.
+location-limit-upgrade-cta = Tingkatkan ke Pro
+location-limit-upgrade-premium = Buka lokasi ke-3? Tingkatkan ke Premium untuk hingga 5 lokasi.
+location-limit-upgrade-premium-cta = Tingkatkan ke Premium
 
 # ── Offline Queue ──

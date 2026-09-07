@@ -138,7 +138,7 @@ const SERVER_STATUS = {
   active: true,
   expiresAt: '2026-01-01T00:00:00Z',
   graceUntil: '2026-02-01T00:00:00Z',
-  maxStores: 5,
+  maxLocations: 5,
 };
 
 describe('LicenseSettings', () => {

@@ -17,7 +17,7 @@ import type { SubscriptionCapabilities } from '@/api/subscription';
 // the screen's Apply gate must agree with the editor's live gate. The screen
 // reads the tier from `caps` (the same local source the backend quota gate
 // uses), so `mockLicenseTier` now flows through the default caps rather than a
-// separate `checkLicenseStatus` probe. `maxStores: null` keeps the store-limit
+// separate `checkLicenseStatus` probe. `maxLocations: null` keeps the store-limit
 // gate inactive by default, matching the previous `caps === null` behaviour;
 // tests that want the limit set caps explicitly.
 let mockLicenseTier: string = 'plus';
@@ -71,7 +71,7 @@ const { mockUseSubscriptionCaps } = vi.hoisted(() => ({
 vi.mock('@/contexts/SubscriptionContext', () => ({
   useSubscription: () => ({
     caps:
-      mockUseSubscriptionCaps(null) ?? makeSubscriptionCaps({ tier: mockLicenseTier, maxStores: null }),
+      mockUseSubscriptionCaps(null) ?? makeSubscriptionCaps({ tier: mockLicenseTier, maxLocations: null }),
     loading: false,
     refresh: vi.fn(),
   }),
@@ -1451,23 +1451,23 @@ describe('TopologyScreen', () => {
   // ── C2.2: second-store gate (Plus→Pro trigger) ───────────────
 
   it('shows the store-limit upgrade banner at the tier cap and blocks creation (C2.2)', async () => {
-    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 1, locationCount: 1 }));
+    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxLocations: 1, locationCount: 1 }));
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
     // Opening the branch-add form surfaces the inline upgrade banner.
     fireEvent.click(screen.getByRole('button', { name: 'topology-branch-add' }));
-    expect(screen.getByText('store-limit-upgrade-pro')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'store-limit-upgrade-cta' })).toBeInTheDocument();
+    expect(screen.getByText('location-limit-upgrade-pro')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'location-limit-upgrade-cta' })).toBeInTheDocument();
   });
 
   it('hides the store-limit banner when under the cap (C2.2)', async () => {
-    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 2, locationCount: 1 }));
+    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxLocations: 2, locationCount: 1 }));
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
     fireEvent.click(screen.getByRole('button', { name: 'topology-branch-add' }));
-    expect(screen.queryByText('store-limit-upgrade-pro')).not.toBeInTheDocument();
+    expect(screen.queryByText('location-limit-upgrade-pro')).not.toBeInTheDocument();
   });
 
   // ── Tier badge must agree with the quota gate ──────────────────
@@ -1481,7 +1481,7 @@ describe('TopologyScreen', () => {
     // the wrong one. It now reads `caps`, which is the gate's own source, so the
     // debug override is inherited rather than duplicated.
     mockUseSubscriptionCaps.mockReturnValue(
-      makeSubscriptionCaps({ tier: 'Premium', maxStores: null }),
+      makeSubscriptionCaps({ tier: 'Premium', maxLocations: null }),
     );
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());

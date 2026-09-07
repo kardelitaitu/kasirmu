@@ -121,7 +121,7 @@ const { invokeMock, defaultImpl, failCommands, lastCallArgs } = vi.hoisted(() =>
       return Promise.resolve({ ok: true, status: 'Connected (12ms)', latencyMs: 12 });
     }
     if (cmd === 'check_license_status') {
-      return Promise.resolve({ tier: 'pro', tenantId: 'tenant-1', status: 'active', active: true, expiresAt: null, maxStores: 5 });
+      return Promise.resolve({ tier: 'pro', tenantId: 'tenant-1', status: 'active', active: true, expiresAt: null, maxLocations: 5 });
     }
     if (cmd === 'offline_queue_status_summary_scoped') {
       return Promise.resolve({

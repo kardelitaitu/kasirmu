@@ -160,13 +160,14 @@ fn server_license_status_dto_camel_case() {
         active: true,
         expires_at: Some("2027-01-01T00:00:00Z".into()),
         grace_until: Some("2027-01-15T00:00:00Z".into()),
-        max_stores: 2,
+        max_locations: 2,
     };
     let json = serde_json::to_string(&dto).unwrap();
     assert!(json.contains("\"tenantId\""));
     assert!(json.contains("\"expiresAt\""));
     assert!(json.contains("\"graceUntil\""));
-    assert!(json.contains("\"maxStores\""));
+    // The §B staged-migration rename: the wire field is now maxLocations.
+    assert!(json.contains("\"maxLocations\""));
     assert!(json.contains("\"active\":true"));
 }
 
@@ -179,7 +180,7 @@ fn server_license_status_dto_null_optionals() {
         active: false,
         expires_at: None,
         grace_until: None,
-        max_stores: 1,
+        max_locations: 1,
     };
     let json = serde_json::to_string(&dto).unwrap();
     assert!(json.contains("\"expiresAt\":null"));
@@ -202,7 +203,7 @@ fn store_subscription_updates_tenant_subscription_default() {
     // Simulate a Pro activation — store_subscription should
     // replace the bootstrap row with the activated tier. This payload
     // uses the NEW 1g wire name (max_locations); the alias path for
-    // pre-rename payloads (max_stores) is covered by the oz-core tests.
+    // pre-rename payloads (max_locations) is covered by the oz-core tests.
     let payload = r#"{
         "tenant_id": "default",
         "tier_key": "pro",
@@ -223,7 +224,7 @@ fn store_subscription_updates_tenant_subscription_default() {
         .expect("load")
         .expect("row should exist after update");
     assert_eq!(updated.tier, oz_core::SubscriptionTier::Pro);
-    assert_eq!(updated.max_stores, 2);
+    assert_eq!(updated.max_locations, 2);
     assert_eq!(updated.max_pos_instances, 3);
     assert_eq!(updated.signature, "SIG_PRO");
     assert_eq!(updated.api_key, "oz_apikey_pro");

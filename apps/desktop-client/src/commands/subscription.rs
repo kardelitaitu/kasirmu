@@ -30,8 +30,10 @@ pub struct SubscriptionCapabilitiesDto {
     /// `expired`, `canceled`, `paused`, or `unavailable`. Anything other
     /// than `active`/`grace` carries Free-tier entitlements below.
     pub state: String,
-    /// Maximum stores allowed (`None` = unlimited).
-    pub max_stores: Option<i64>,
+    /// Maximum locations allowed (`None` = unlimited). Wire name renamed
+    /// from `maxStores` — the §B gate the Phase-3 observability slice was
+    /// waiting on (UI consumers renamed in the same commit).
+    pub max_locations: Option<i64>,
     /// Maximum POS registers per store (`None` = unlimited).
     pub max_pos_instances: Option<i64>,
     /// Maximum inventory warehouses (`None` = unlimited).
@@ -130,9 +132,9 @@ fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabiliti
     Ok(SubscriptionCapabilitiesDto {
         tier: tier.tier_key().to_string(),
         state: state.as_str().to_string(),
-        // Wire field keeps the historical `max_stores` name (the UI reads it);
-        // the canonical quota method is max_locations.
-        max_stores: tier.max_locations(),
+        // Canonical wire name (the 1b staged migration completes here):
+        // the field is `max_locations`, the quota method always was.
+        max_locations: tier.max_locations(),
         max_pos_instances: tier.max_pos_instances(),
         max_warehouses: tier.max_warehouses(),
         max_staff_users: tier.max_staff_users(),

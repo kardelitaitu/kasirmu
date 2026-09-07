@@ -26,7 +26,7 @@ fn sub_for_tier(tier: SubscriptionTier) -> TenantSubscription {
         tier,
         status: "active".into(),
         expires_at: None,
-        max_stores: 1,
+        max_locations: 1,
         max_pos_instances: 1,
         allowed_types_json: "[]".into(),
         signature: "BOOTSTRAP_FREE".into(),
@@ -45,7 +45,7 @@ fn plus_bundle_sub() -> TenantSubscription {
         tier: SubscriptionTier::Plus,
         status: "active".into(),
         expires_at: None,
-        max_stores: 1,
+        max_locations: 1,
         max_pos_instances: 2,
         allowed_types_json:
             r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),

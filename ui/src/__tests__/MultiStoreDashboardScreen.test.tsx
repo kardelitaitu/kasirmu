@@ -176,13 +176,13 @@ describe('MultiStoreDashboardScreen', () => {
     });
     render(<MultiStoreDashboardScreen />);
     await waitFor(() => {
-      expect(screen.getByText('store-limit-upgrade-premium')).toBeInTheDocument();
+      expect(screen.getByText('location-limit-upgrade-premium')).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 
   it('hides the store-cap banner on Premium below its 5-store cap (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
-      caps: makeSubscriptionCaps({ tier: 'premium', maxStores: 5, locationCount: 2 }),
+      caps: makeSubscriptionCaps({ tier: 'premium', maxLocations: 5, locationCount: 2 }),
       state: 'active',
       loading: false,
       refresh: vi.fn(),
@@ -191,6 +191,6 @@ describe('MultiStoreDashboardScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('Main Street')).toBeInTheDocument();
     }, { timeout: 3000 });
-    expect(screen.queryByText('store-limit-upgrade-premium')).not.toBeInTheDocument();
+    expect(screen.queryByText('location-limit-upgrade-premium')).not.toBeInTheDocument();
   });
 });

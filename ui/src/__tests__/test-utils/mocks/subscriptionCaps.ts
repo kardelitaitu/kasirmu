@@ -9,7 +9,7 @@ export function makeSubscriptionCaps(
   return {
     tier: 'free',
     state: 'active',
-    maxStores: 1,
+    maxLocations: 1,
     maxPosInstances: 1,
     maxWarehouses: 1,
     maxStaffUsers: 1,

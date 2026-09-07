@@ -13,7 +13,7 @@ use oz_core::license_verification::{
     pause_subscription as core_pause_subscription, renew_license as core_renew_license,
     resume_subscription as core_resume_subscription, store_subscription, verify_license_signature,
 };
-use oz_core::subscription::TenantSubscription;
+use oz_core::subscription::{SubscriptionTier, TenantSubscription};
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
@@ -435,10 +435,10 @@ pub struct ServerLicenseStatusDto {
     /// When the grace period ends (RFC 3339).
     pub grace_until: Option<String>,
     /// Tier location quota. The license-server wire is now `max_locations`
-    /// (1g done); this IPC DTO keeps the historical `max_stores` name
-    /// because the settings UI consumes it — renaming it is a UI slice,
-    /// not part of the license-server wire contract.
-    pub max_stores: i64,
+    /// (1g done); this IPC DTO carried the historical `max_stores` name
+    /// until the settings UI consumed it — renamed in the same lockstep
+    /// commit as its UI consumer (the §B staged-migration completion).
+    pub max_locations: i64,
 }
 
 /// Checks the license status against the PocketBase license server.
@@ -477,7 +477,7 @@ pub async fn check_license_status(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let max_stores = resp.effective_max_locations();
+    let max_locations = resp.effective_max_locations();
 
     Ok(ServerLicenseStatusDto {
         tenant_id: resp.tenant_id,
@@ -486,7 +486,7 @@ pub async fn check_license_status(
         active: resp.active,
         expires_at: resp.expires_at,
         grace_until: resp.grace_until,
-        max_stores,
+        max_locations,
     })
 }
 
@@ -520,6 +520,18 @@ pub async fn test_auth_connection() -> Result<AuthPingResult, AppError> {
         status: result.status,
         latency_ms: result.latency_ms,
     })
+}
+
+/// Grace deadline for the local license verdict: expires_at + the tier's
+/// published offline-grace window (§B: 7/14/14/30/60 —
+/// [`SubscriptionTier::offline_grace_days`]). Deliberately NOT derived
+/// from the payload's `grace_until`, which servers before the per-tier
+/// fix signed as a flat 14 days; this keeps the license-status verdict
+/// aligned with `TenantSubscription::lifecycle_state()` (the
+/// capabilities path) even for stale payloads. Unknown tier keys parse
+/// as Free (7 days) — fail-closed, never over-credit.
+fn grace_deadline_for(tier_key: &str, expires_at: DateTime<Utc>) -> DateTime<Utc> {
+    expires_at + chrono::Duration::days(SubscriptionTier::from_db(tier_key).offline_grace_days())
 }
 
 /// Analyzes the local license state and returns a comprehensive status response.
@@ -580,6 +592,16 @@ pub async fn get_license_status(state: State<'_, AppState>) -> Result<LicenseSta
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or(now);
 
+        // The grace verdict uses the published per-tier contract (§B,
+        // `offline_grace_days`: 7/14/14/30/60) — the SAME table
+        // `TenantSubscription::lifecycle_state()` applies on the
+        // capabilities path — NOT the payload's grace_until, which
+        // servers before the per-tier fix signed as a flat 14 days.
+        // Keeping both desktop verdicts on the tier table makes them
+        // agree even for stale payloads.
+        let grace_deadline = grace_deadline_for(&payload.tier_key, expires_at);
+        let _ = &grace_until; // display data only (see above)
+
         if now < expires_at {
             Ok(LicenseStatusDto {
                 is_active: true,
@@ -588,7 +610,7 @@ pub async fn get_license_status(state: State<'_, AppState>) -> Result<LicenseSta
                 payload: Some(p),
                 message: None,
             })
-        } else if now < grace_until {
+        } else if now < grace_deadline {
             Ok(LicenseStatusDto {
                 is_active: true,
                 status: LicenseVerificationStatus::GracePeriod,
@@ -597,7 +619,7 @@ pub async fn get_license_status(state: State<'_, AppState>) -> Result<LicenseSta
                 message: Some(format!(
                     "License expired on {}. You are in the grace period until {}.",
                     expires_at.format("%Y-%m-%d"),
-                    grace_until.format("%Y-%m-%d")
+                    grace_deadline.format("%Y-%m-%d")
                 )),
             })
         } else {
@@ -622,7 +644,7 @@ pub async fn get_license_status(state: State<'_, AppState>) -> Result<LicenseSta
                     message: Some(format!(
                         "License expired on {}. Grace period ended on {}.",
                         expires_at.format("%Y-%m-%d"),
-                        grace_until.format("%Y-%m-%d")
+                        grace_deadline.format("%Y-%m-%d")
                     )),
                 });
             }

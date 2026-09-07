@@ -389,8 +389,8 @@ topology-wire-label-connected = Connected
 topology-wire-label-stock-deduct = Stock Deduct (P{ $priority })
 topology-wire-label-fallback = Fallback (P{ $priority })
 
-# C2.2: second-store gate (Plus→Pro) + Pro 2-store cap nudge (Pro→Premium).
-store-limit-upgrade-pro = Your plan allows { $max } store(s). Upgrade to Pro to add more stores.
-store-limit-upgrade-cta = Upgrade to Pro
-store-limit-upgrade-premium = Opening a 3rd store? Upgrade to Premium for up to 5 stores.
-store-limit-upgrade-premium-cta = Upgrade to Premium
+# C2.2: second-location gate (Plus→Pro) + Pro 2-location cap nudge (Pro→Premium).
+location-limit-upgrade-pro = Your plan allows { $max } location(s). Upgrade to Pro to add more locations.
+location-limit-upgrade-cta = Upgrade to Pro
+location-limit-upgrade-premium = Opening a 3rd location? Upgrade to Premium for up to 5 locations.
+location-limit-upgrade-premium-cta = Upgrade to Premium

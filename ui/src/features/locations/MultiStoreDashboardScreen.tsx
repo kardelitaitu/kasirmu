@@ -97,9 +97,9 @@ export default function MultiStoreDashboardScreen() {
       {/* C2.2: Pro tier at its 2-store cap — "Buka toko ke-3? Upgrade ke Premium". */}
       {atProLocationCap && (
         <div className="multi-store-limit-banner" role="note">
-          <span>{l10n.getString('store-limit-upgrade-premium')}</span>
+          <span>{l10n.getString('location-limit-upgrade-premium')}</span>
           <Button variant="primary" size="sm" onClick={() => openUpgradePricing(locale, 'premium')}>
-            {l10n.getString('store-limit-upgrade-premium-cta')}
+            {l10n.getString('location-limit-upgrade-premium-cta')}
           </Button>
         </div>
       )}

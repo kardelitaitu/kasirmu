@@ -25,8 +25,8 @@ export interface ServerLicenseStatus {
   active: boolean;
   expiresAt: string | null;
   graceUntil: string | null;
-  /** Tier location quota — wire field keeps the historical `maxStores` name (1g wire rename pending). */
-  maxStores: number;
+  /** Tier location quota — wire field keeps the historical `maxLocations` name (1g wire rename pending). */
+  maxLocations: number;
 }
 
 /** Get the current license activation and verification status. */

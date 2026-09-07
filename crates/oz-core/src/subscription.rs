@@ -143,7 +143,9 @@ impl SubscriptionTier {
         }
     }
 
-    /// Deprecated compatibility alias for [`max_locations`](Self::max_locations).
+    /// Deprecated compatibility alias, retained through the staged
+    /// migration; the last caller is gone — use
+    /// [`max_locations`](Self::max_locations).
     #[deprecated(note = "use max_locations")]
     pub fn max_stores(&self) -> Option<i64> {
         self.max_locations()
@@ -332,8 +334,10 @@ pub struct TenantSubscription {
     pub status: String,
     /// The optional expiration timestamp in RFC 3339 format.
     pub expires_at: Option<String>,
-    /// The maximum number of stores allowed for this tenant.
-    pub max_stores: i64,
+    /// The maximum number of locations allowed for this tenant. Rust field
+    /// aligned with the `max_locations` column (renamed from `max_stores`
+    /// by migration 20260906); the SIGNED payload keeps its own wire names.
+    pub max_locations: i64,
     /// The maximum number of POS instances allowed for this tenant.
     pub max_pos_instances: i64,
     /// A JSON string listing the workspace types allowed on this tier.
@@ -365,7 +369,7 @@ impl TenantSubscription {
                 tier: SubscriptionTier::from_db(&row.get::<_, String>(1)?),
                 status: row.get(2)?,
                 expires_at: row.get(3)?,
-                max_stores: row.get(4)?,
+                max_locations: row.get(4)?,
                 max_pos_instances: row.get(5)?,
                 allowed_types_json: row.get(6)?,
                 signature: row.get(7)?,
@@ -510,7 +514,7 @@ impl TenantSubscription {
             tier: SubscriptionTier::Free,
             status: "active".into(),
             expires_at: None,
-            max_stores: 1,
+            max_locations: 1,
             max_pos_instances: 1,
             allowed_types_json: "[]".into(),
             signature: String::new(),

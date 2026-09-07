@@ -29,8 +29,8 @@ export interface SubscriptionCapabilities {
    *  capability flags below are the Free-tier (fail-closed) values. */
   state: SubscriptionLifecycleState;
   // ── Quota limits (`null` = unlimited) ─────────────────────
-  /** Location quota — wire field keeps the historical `maxStores` name (1g wire rename pending). */
-  maxStores: number | null;
+  /** Location quota — wire field keeps the historical `maxLocations` name (1g wire rename pending). */
+  maxLocations: number | null;
   maxPosInstances: number | null;
   maxWarehouses: number | null;
   maxStaffUsers: number | null;

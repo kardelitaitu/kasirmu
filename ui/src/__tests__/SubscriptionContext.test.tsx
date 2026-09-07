@@ -45,7 +45,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 const caps: SubscriptionCapabilities = {
   tier: 'pro',
   state: 'active',
-  maxStores: 10,
+  maxLocations: 10,
   maxPosInstances: 5,
   maxWarehouses: 3,
   maxStaffUsers: 20,

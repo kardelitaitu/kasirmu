@@ -173,7 +173,7 @@ fn store_subscription_inserts_row() {
         .expect("should exist");
     assert_eq!(stored.tenant_id, "test-tenant");
     assert_eq!(stored.tier, crate::subscription::SubscriptionTier::Pro);
-    assert_eq!(stored.max_stores, 2);
+    assert_eq!(stored.max_locations, 2);
     assert_eq!(stored.max_pos_instances, 3);
     assert_eq!(stored.signature, "TESTSIG");
     assert_eq!(stored.signed_payload, payload);
@@ -229,7 +229,7 @@ fn store_subscription_handles_all_tier_keys() {
             .unwrap()
             .unwrap();
         assert_eq!(stored.tier, expected_tier);
-        assert_eq!(stored.max_stores, stores);
+        assert_eq!(stored.max_locations, stores);
         assert_eq!(stored.max_pos_instances, pos);
     }
 }
@@ -271,7 +271,7 @@ fn store_subscription_reads_renamed_wire_field() {
     let stored = TenantSubscription::load(&conn, "test-tenant")
         .expect("load")
         .expect("should exist");
-    assert_eq!(stored.max_stores, 4);
+    assert_eq!(stored.max_locations, 4);
 }
 
 #[test]
@@ -309,7 +309,7 @@ fn store_subscription_dual_emitted_payload_prefers_consistent_value() {
     let stored = TenantSubscription::load(&conn, "test-tenant")
         .expect("load")
         .expect("should exist");
-    assert_eq!(stored.max_stores, 1);
+    assert_eq!(stored.max_locations, 1);
     assert_eq!(stored.signed_payload, payload);
 }
 

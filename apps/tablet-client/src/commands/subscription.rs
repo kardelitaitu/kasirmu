@@ -28,8 +28,10 @@ pub struct SubscriptionCapabilitiesDto {
     /// `expired`, `canceled`, `paused`, or `unavailable`. Anything other
     /// than `active`/`grace` carries Free-tier entitlements below.
     pub state: String,
-    /// Maximum stores allowed (`None` = unlimited).
-    pub max_stores: Option<i64>,
+    /// Maximum locations allowed (`None` = unlimited). Wire name renamed
+    /// from `maxStores` — the §B gate the Phase-3 observability slice was
+    /// waiting on (UI consumers renamed in the same commit).
+    pub max_locations: Option<i64>,
     /// Maximum POS registers per store (`None` = unlimited).
     pub max_pos_instances: Option<i64>,
     /// Maximum inventory warehouses (`None` = unlimited).
@@ -122,7 +124,7 @@ pub async fn get_subscription_capabilities(
     Ok(SubscriptionCapabilitiesDto {
         tier: tier.tier_key().to_string(),
         state: lifecycle.as_str().to_string(),
-        max_stores: tier.max_stores(),
+        max_locations: tier.max_locations(),
         max_pos_instances: tier.max_pos_instances(),
         max_warehouses: tier.max_warehouses(),
         max_staff_users: tier.max_staff_users(),

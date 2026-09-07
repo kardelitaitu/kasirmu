@@ -519,8 +519,6 @@ fn assignments_scope_pair_triggers_enforce_null_iff_organization() {
 
 #[test]
 fn migration_backfills_rowless_users_org_wide() {
-    use crate::migrations;
-
     // Build the genuine pre-backfill state: run everything up to (but not
     // including) the backfill on an EMPTY connection — fresh_db() would
     // pre-apply all migrations and make the split a no-op. Then seed one

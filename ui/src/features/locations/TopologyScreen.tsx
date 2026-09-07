@@ -10,8 +10,10 @@ import {
 import {
   loadTopology,
   type TopologyApplyResult,
+  type TopologyData,
 } from '@/api/topology';
 import { isTopologyInstance } from './topologyContract';
+import TopologyRevisionBrowser from './TopologyRevisionBrowser';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
@@ -86,6 +88,24 @@ function TopologyScreenContent() {
     if (perms.includes('*')) return true;
     return perms.includes('staff:update');
   }, [session]);
+  // ADR #46 §8: the same client-side rule as canSaveTopology, but for the
+  // READ gate. The commands themselves check `audit:view` server-side; this
+  // only decides whether to offer the button, so a user without the
+  // permission is not shown a control that would fail on click.
+  const canViewTopologyHistory = useMemo(() => {
+    if (!session) return false;
+    const perms = session.permissions ?? [];
+    if (perms.includes('*')) return true;
+    return perms.includes('audit:view');
+  }, [session]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  /** The branch's SAVED diagram, fetched when the browser opens. Deliberately
+   *  not the canvas: `loadCompare` above makes the same choice — "comparing
+   *  the saved states, not the possibly-unsaved canvas in front of the user".
+   *  A revision diffed against unsaved edits would report changes the operator
+   *  made locally and never deployed. */
+  const [historyCurrent, setHistoryCurrent] = useState<TopologyData | null>(null);
+
   /** Real workspace instances loaded from the backend, used to seed the editor. */
   const [workspaceInstances, setWorkspaceInstances] = useState<WorkspaceDto[]>([]);
   const [stores, setStores] = useState<LocationProfile[]>([]);
@@ -334,8 +354,8 @@ function TopologyScreenContent() {
     [workspaceInstances, selectedBranchId],
   );
 
-  // C2.2: second-store gate (Plus→Pro trigger) — the tier's `max_stores()`
-  // quota caps how many store profiles can exist.
+  // C2.2: second-location gate (Plus→Pro trigger) — the tier's
+  // `max_locations()` quota caps how many location profiles can exist.
   const { caps, refresh: refreshCaps } = useSubscription();
   // The header tier is derived, not fetched. It used to call `checkLicenseStatus`,
   // which is a network probe to the license server: with no activated license it
@@ -348,13 +368,13 @@ function TopologyScreenContent() {
   // FREE rather than advertising a tier nothing has confirmed.
   const licenseTier = caps?.tier?.toLowerCase() ?? 'free';
   const locale = useContext(LocaleContext)?.locale ?? 'en';
-  const atStoreLimit =
-    caps !== null && caps.maxStores !== null && caps.locationCount >= caps.maxStores;
+  const atLocationLimit =
+    caps !== null && caps.maxLocations !== null && caps.locationCount >= caps.maxLocations;
 
   const handleAddBranch = async () => {
     const name = newBranchName.trim();
     if (!name) return;
-    if (atStoreLimit) return; // the inline banner explains why
+    if (atLocationLimit) return; // the inline banner explains why
     if (!sessionToken) {
       // Session not minted yet (admin-shell fallback race) — fail honestly
       // instead of sending a null token that yields the generic toast.
@@ -611,11 +631,11 @@ function TopologyScreenContent() {
                 disabled={deletingBranch || stores.length === 0}
               />
             </div>
-            {addingBranch && atStoreLimit && (
+            {addingBranch && atLocationLimit && (
               <div className="topology-store-limit-banner" role="note">
-                <span>{l10n.getString('store-limit-upgrade-pro', { max: caps?.maxStores ?? 0 })}</span>
+                <span>{l10n.getString('location-limit-upgrade-pro', { max: caps?.maxLocations ?? 0 })}</span>
                 <Button variant="primary" size="sm" onClick={() => openUpgradePricing(locale, 'pro')}>
-                  {l10n.getString('store-limit-upgrade-cta')}
+                  {l10n.getString('location-limit-upgrade-cta')}
                 </Button>
               </div>
             )}
@@ -667,9 +687,50 @@ function TopologyScreenContent() {
                 {l10n.getString('topology-compare-open')}
               </Button>
             ) : null}
+            {canViewTopologyHistory && selectedBranchId ? (
+              <Button
+                variant="secondary"
+                disabled={historyOpen}
+                onClick={() => {
+                  // Fetch the saved diagram first so the very first revision
+                  // the operator selects can be diffed without a second round
+                  // trip.
+                  void loadTopology(selectedBranchId)
+                    .then((data) => {
+                      setHistoryCurrent(data);
+                      setHistoryOpen(true);
+                    })
+                    .catch(() => setHistoryOpen(true));
+                }}
+              >
+                {l10n.getString('topology-history-open')}
+              </Button>
+            ) : null}
           </div>
         )}
       />
+
+      {/* ── ADR #46 §2: deploy history browser ──────────────────────
+          Sibling of the compare panel, not inside it — the two are
+          independent affordances that happen to share the editor's single
+          overlay slot. */}
+      {historyOpen && sessionToken && selectedBranchId && (
+        <TopologyRevisionBrowser
+          sessionToken={sessionToken}
+          branchId={selectedBranchId}
+          currentGraph={historyCurrent}
+          onClose={() => setHistoryOpen(false)}
+          // Preview reuses the branch-compare overlay: the editor draws
+          // whatever second graph it is handed and does not care that this one
+          // came from the past. One slot means one preview at a time, so
+          // previewing a revision replaces any live branch compare.
+          onPreview={(graph) => {
+            setCompareOverlay(
+              historyCurrent && graph ? buildTopologyOverlay(historyCurrent, graph) : null,
+            );
+          }}
+        />
+      )}
 
       {/* ── Branch-to-branch comparison panel ───────────────────────
           Summarises how the selected branch's saved topology differs

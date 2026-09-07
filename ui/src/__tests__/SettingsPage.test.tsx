@@ -150,7 +150,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
         active: true,
         expiresAt: '2027-01-01T00:00:00Z',
         graceUntil: '2027-02-01T00:00:00Z',
-        maxStores: 5,
+        maxLocations: 5,
       });
     }
     if (cmd === 'get_machine_id') {
