@@ -550,6 +550,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260914_memo_retention.sql".to_string(),
             "20260915_topology_revisions.sql".to_string(),
             "20260916_role_assignment_scopes.sql".to_string(),
+            "20260917_assignment_backfill_org_wide.sql".to_string(),
         ]
     );
 
