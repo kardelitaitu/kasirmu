@@ -84,6 +84,15 @@ vi.mock('@/contexts/SettingsContext', () => ({
 // layer, which has its own coverage): pass the editor's base revision
 // through so the dev-mock gate sees exactly what the backend would.
 
+// The dev-mock's verify_pin accepts ANY PIN on purpose (so the real Apply
+// chain stays reachable in integration tests), which makes PIN rejection
+// untestable through it. The editor imports verifyPin dynamically, so mock the
+// module with a switch this file can flip.
+const pinGate = { accept: true };
+vi.mock('@/api/staff', () => ({
+  verifyPin: async () => pinGate.accept,
+}));
+
 // The editor's own prop type, not a hand-rolled signature: the real onSave
 // takes (nodes, wires, baseRevision, resolvedIssueKeys) and resolves to a
 // union, and `(payload: unknown) => Promise<unknown>` type-checked nothing
@@ -107,6 +116,7 @@ const openDialog = async () => {
 };
 
 beforeEach(() => {
+  pinGate.accept = true;
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -216,6 +226,53 @@ describe('Apply confirmation dialog — characterization (pre-extraction net)', 
     for (const c of counts) {
       expect(c.textContent?.trim()).toMatch(/^\d+$/);
     }
+  });
+
+  it('survives a rejected PIN: reopens, cleared, with the error shown', async () => {
+    // THE reason the extraction cannot simply move state into the component.
+    // Today the dialog CLOSES before verification and RE-OPENS on rejection,
+    // so the error and the cleared PIN live across an unmount. A component
+    // that owns that state would lose it on remount and silently drop the
+    // error. Pinned here so the refactor has to keep it.
+    pinGate.accept = false;
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    await openDialog();
+
+    const pin = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: '0000' } }); // wrong PIN
+    fireEvent.click(screen.getByText('Apply').closest('button') as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('.topology-apply-confirm-pin-error'),
+      ).not.toBeNull(),
+    );
+    expect(
+      document.querySelector('.topology-apply-confirm-pin-error')?.textContent,
+    ).toContain('Incorrect PIN');
+    // Cleared, so the operator retypes rather than resubmitting blind.
+    expect((document.getElementById('topology-apply-pin') as HTMLInputElement).value).toBe('');
+    // And the canvas was never written.
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('shows the verifying state rather than a dead canvas mid-PIN-check', async () => {
+    // The dialog closes BEFORE verification and only reopens on failure, so on
+    // a SUCCESSFUL verify the operator sees nothing at all between the click
+    // and the save. This asserts the current, weaker behaviour so the
+    // extraction is judged against what the code does today, not what it
+    // should do. If the refactor makes 'Verifying…' actually reachable, this
+    // test must be updated deliberately rather than quietly.
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    await openDialog();
+    const pin = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: '1234' } });
+    fireEvent.click(screen.getByText('Apply').closest('button') as HTMLButtonElement);
+    // No 'Verifying…' label appears; the dialog is gone while the PIN check runs.
+    expect(screen.queryByText('Verifying…')).toBeNull();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
   });
 
   it('keeps the remember-PIN option out of the way once the session is verified', async () => {
