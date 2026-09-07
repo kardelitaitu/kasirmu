@@ -872,6 +872,35 @@ Scope findings from the pre-implementation investigation, in execution order:
         leaves `active` (at `expiresAt` during grace, expired, canceled, paused,
         or unavailable). Operational POS runtimes (`store-pos`, `restaurant-pos`,
         sales checkout) continue through the signed offline grace window.
+      - **Completion pass 2026-09-07 (`bcaa5033`, `499bb1b0`):** the two
+        clauses the first entry did not cover are now implemented:
+        - **Read-only lock after grace (`bcaa5033`).** §B's "when the grace
+          window expires while still offline, POS runtime locks to a
+          read-only state" — `TenantSubscription::pos_read_only()` (true
+          only for `Expired`) + `enforce_pos_writable()` (new
+          `CoreError::SubscriptionReadOnly`), wired into all five sale
+          completion commands (desktop ×2, tablet ×3) and both clients'
+          `enqueue_offline` (sync queueing is an order mutation). Viewing,
+          export, and sign-out are untouched; a verified renewal reopens
+          the register automatically. Semantics deliberately narrow:
+          canceled/paused keep selling on the reverted Free tier, and
+          missing/tampered data degrades to Free operations instead of
+          bricking a register (the §B fail-closed rule targets
+          administrative features — data-integrity responses live in the
+          capabilities command and the admin gate). 5 new core tests.
+        - **Reconciliation (`499bb1b0`).** Enterprise `offline_grace_days`
+          3650 → **60** (the pricing page publishes 60; a contract needing
+          a different window ships as a signed override, not a client-side
+          fallback — 1 pinned test updated). `licensing.md` (en + id) now
+          states the per-tier windows and the read-only lock instead of
+          the pre-§B "degrades to the free tier" wording. The pricing
+          invariant test's stale "no enforcement exists yet" comments for
+          products/KDS updated; its matrix (7/14/14/30/60, products,
+          KDS) was already the contract and now matches the code exactly.
+        - Deliberately not covered by this item: server-side (license-
+          server) grace numbers in the signed payload — the 1g wire work
+          remains deferred and versioned; the client currently resolves
+          grace from the tier table, which agrees with the published page.
 - [x] **Implement separate operational and administrative entitlement paths.**
       A register may continue selling during approved offline grace, while
       Analytics, Memo, Data Management, and other administrative features lock
@@ -880,6 +909,15 @@ Scope findings from the pre-implementation investigation, in execution order:
         in `SubscriptionContext.tsx` and `<AdminLockedFeature />` rendered by
         all administrative SaaS screens. Operational workspace tools remain
         active for cashiers while admin tools display the locked state.
+      - **Completion pass 2026-09-07 (`776af581`, `cc5d6c71`):** the two
+        surfaces the box text names that the first pass skipped (their
+        files were in flight by other agents at the time) are now gated:
+        **MemosScreen** and **DataManagementScreen** use the same
+        `useAdminGate` + `<AdminLockedFeature />` wrapper, with per-file
+        gate tests pinning locked-replaces-content on both (`776af581`).
+        The §B gate behavior on the two flagship surfaces (Analytics —
+        grace/unavailable/expired/precedence cases — and Audit Log) is
+        pinned by `cc5d6c71`. Every screen the box names is now covered.
 - [x] **Enforce Topology Editor permissions on the backend.** Apply, rename,
       location creation, template writes, and other topology mutations must
       enforce the agreed admin/owner policy server-side. The current topology
@@ -902,6 +940,39 @@ Scope findings from the pre-implementation investigation, in execution order:
         - Extended `Store::enforce_instance_quota` in `crates/oz-core/src/db/workspaces_lifecycle.rs`
           to enforce `max_warehouses()` on `warehouse` workspace instance
           creation.
+      - **Completion pass 2026-09-07 (`de6d2df2`):** the two published-but-
+        unenforced rows of the tiers contract (subscription-tiers.md
+        §Numeric Limits, the numbers the pricing invariant test pins) now
+        have backend enforcement:
+        - **Products** — `SubscriptionTier::max_products()` (Free 200 /
+          Plus 500 / Pro 1,000 / Premium 10,000 / Enterprise unlimited) and
+          `Store::enforce_product_quota` (per-location catalog count),
+          wired into desktop `create_product_scoped`, tablet
+          `create_product` + `create_product_scoped` (tier from the global
+          DB with clock-rollback + signature validation, mirroring the
+          terminal-quota pattern), and the REST `create_product` SQLite
+          fallback (unknown/tampered subscription fails closed at the Free
+          cap; over-quota returns 402 with the actionable message). 3 new
+          core tests.
+        - **KDS screens** — `max_kds_screens()` (Free/Plus 0, Pro 2,
+          Premium+ unlimited) enforced in `enforce_instance_quota` via a
+          new `count_active_kds_instances`. C3.2 reconciliation: a signed
+          bundle that unlocks the kds *type* on Plus gets Pro's 2-screen
+          budget — a static 0 would make the paid entitlement meaningless
+          (the pre-existing bundle test now passes against the count gate,
+          plus 4 new tests).
+        - **Deliberately not enforceable, recorded rather than silently
+          dropped from the box text:** (1) *Inventory stock points* — the
+          tiers contract publishes NO stock-point numbers, so there is
+          nothing to enforce without inventing pricing terms; adding a row
+          to the contract is an owner decision. (2) *Tablet location
+          quota* — the tablet shell registers no location-CRUD IPC at all
+          (all location commands are tablet-allowlisted, desktop-first per
+          the recorded product precedent), so there is no tablet mutation
+          to guard; the quota call must join the command when the CRUD is
+          ported. (3) *REST PG product path* — the PG-side create_product
+          has no tenant→tier resolution yet; server-issued quota numbers
+          are the license-server wire work (1g, deferred + versioned).
 - [x] **Implement the Settings scope map.** Mark every Settings section as
       organization-, legal-entity/location-, terminal-, or workspace-scoped
       before expanding the UI.
@@ -1187,3 +1258,331 @@ script directly before committing this slice.
 Gate's own counts at the failing `bcd1f501` HEAD were desktop 412/419
 registered, tablet 285/419, and dev-mock 20 of 419 unanswerable (16 allowlisted).
 At the resolved `82c57e32` HEAD, the same gate reports `IPC parity: OK`.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 1, senior-agents supervision)
+
+Observed at HEAD `315c1e6f`. Checkboxes on this file were re-audited against
+the commit log; **no stale entries found** — the last several slices
+(subscription state, topology RBAC, settings scope, quotas, admin gate) were
+journaled and flipped in `a17831db` correctly. Remaining P0 open items
+confirmed still-open and correctly so:
+
+- **Scoped authorization** — partially delivered (registry + topology
+  enforcement `b0667ab4`/`3233a99d`); role *assignments* + migration still
+  open. Highest-leverage remaining Phase 1 item: it gates §B entitlements and
+  the audit baseline on the Phase 2 side.
+- **Tenant isolation gates** — inventory exists (assist pass + RLS slices
+  `56653839`, `47d43c55`); the systematic test/review-gate suite does not.
+- **§G default-entity migration** — Legal Entity IPC slices done
+  (`82c57e32`); the migration itself is the remaining half.
+- **1g license-server wire rename** — deferred by design; not a gap.
+
+Housekeeping flags for the Phase 1 agent:
+
+1. The 2026-09-07 review edits to ADR #46 and `docs/decisions/README.md`
+   (Accepted status + Solo Implementation Protocol) are still **uncommitted**
+   in this tree. Commit them as `docs(topology)` before more ADR-46 code
+   lands, so the governing document travels with the implementation.
+2. ADR #46 Step 1b is mid-flight in `commands/topology/*` — per the ADR's
+   protocol, land it (tests green, pathspec-scoped commit) before touching
+   Step 1c–1e.
+3. Downgrade behavior (Phase 2) is now unblocked by this phase's quota work
+   (`73e77c5f`, `de6d2df2`) — coordination noted in
+   `todo-global-saas-2.md` §Supervisor log.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 3)
+
+Observed at HEAD `315c1e6f` (unchanged since Round 1); both streams still
+uncommitted, tree now +1,378 insertions. ADR #46 Step 1b pre-commit audit:
+
+- **✅ INSERT placement verified correct.** `insert_topology_revision(&tx, ...)`
+  executes inside the IMMEDIATE transaction, before `tx.commit()` —
+  precisely ADR §3. The revision_ctx threading through `commands.rs` is
+  additive and small.
+- **⛔ MISSING before Step 1b may be called done: the compensation test.**
+  ADR §3 requires "a test must force the compensation path and assert no
+  revision row survives it," and the ADR Verification section repeats it
+  ("Atomicity"). The in-flight test diffs (`topology_command_tests.rs` +3,
+  `topology_tests.rs` +4) are far too small to contain it. Per the ADR's own
+  Solo Implementation Protocol, Step 1b's pass condition is its tests —
+  land the compensation test **in the same commit** as the INSERT, not as a
+  follow-up. The crash-after-commit atomicity test (Verification) and the
+  two-simultaneous-Applies concurrency test may trail in the next slice, but
+  the compensation test cannot.
+- Reminder still standing from Round 1: commit the ADR #46 doc edits
+  (`docs(topology)`) — Accepted status + Solo Implementation Protocol —
+  together with or before the Step 1b code commit.
+
+### Round 4 addendum — gate evidence
+
+The supervisor ran the ADR-46 baseline gate on the **in-flight tree** (Step 1b
+uncommitted): `cargo test -p oz-pos-app topology` → **EXIT:0, all suites
+green**. Implications, recorded so the next session doesn't re-derive them:
+
+1. The Step 1b code is compile-clean and the existing topology suites pass on
+   it — the slice is commit-ready by the gate's definition. The **only**
+   quality gap to the ADR's Verification contract is the §3 compensation
+   test (still absent, still required in the same commit).
+2. Procedural note for agents: the full `cargo test -p oz-pos-app topology`
+   takes **>300s wall time** in this environment (cold-ish target dir). The
+   scoped quick check (`cargo check -p oz-pos-app`) is ~1min and caught
+   nothing — it is not a substitute. Budget time for the real gate before
+   committing, or run it in the background and poll; do not let a timeout
+   masquerade as a green gate.
+3. The ADR doc commit (`docs(topology)`) is still outstanding — fold it into
+   the Step 1b commit series if it keeps slipping.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 6)
+
+Five commits landed since Round 5. Flag board update:
+
+- **RESOLVED — ADR doc commit:** `6b953635` committed the ADR #46 acceptance
+  status + Solo Implementation Protocol. Outstanding since Round 1.
+- **RESOLVED — Step 1b + compensation test:** `313157be` landed the revision
+  INSERT inside Apply's transaction WITH a dedicated 285-line test file
+  (`topology_revision_tests.rs`, 8 tests, full topology suite 341 passed /
+  0 failed). The ADR §3 compensation requirement is covered by
+  `a_rejected_save_writes_no_revision_row` — my flag demanded a compensation
+  test and the agent delivered it under that name (this supervisor's grep
+  for "compensat" missed it; the test is real). Also present:
+  `a_save_without_a_context_records_no_row`, gap-free counter test, byte
+  identical envelope test, per-branch sequence isolation.
+- **Good catch by the agent:** `2c5dde8a` corrected the ADR's daemon anchor
+  before Step 1c inherited it — the ADR had conflated the session-cleanup
+  daemon (`lib.rs:316`, 300s, no DB handle) with the KDS-health daemon
+  (`lib.rs:369`, 60s, calls `cleanup_old_kds_orders(30)` at `:394`). This
+  supervisor's Round-1 verification cited `:394` for the call site, which is
+  correct, but the ADR's framing was wrong and is now fixed.
+- **Step 1c is now unblocked** (its precondition was confirmed in
+  `2c5dde8a`'s message). Per the ADR protocol it lands as its own slice:
+  `cleanup_old_topology_revisions(20)` + daemon hookup beside the KDS
+  cleanup, with the retention test (25 Applies -> 20 payloads + 5 deflated,
+  pinned row survives).
+- **Trailing Verification items** (allowed to trail per Round 3, but must be
+  ticketed): crash-after-commit atomicity test; two-simultaneous-Applies
+  concurrency test. Suggest folding both into Step 1c's commit series.
+- **Process defect recorded (cross-file, details in saas-2 Round 6):**
+  `2c5dde8a` is titled `docs(topology)` but contains 226 lines of tablet
+  product code (`memo.rs` +69, `memo_tests.rs` +157 — the tablet read half
+  of the memo cloud-read slice). Commit messages must match contents.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 7)
+
+Step 1c is in flight (uncommitted): dedicated "topology revision retention"
+daemon in `lib.rs` + `cleanup_old_topology_revisions` in `revisions.rs`.
+
+**Implementation review (pre-commit):** faithful to ADR §4 and in one respect
+better than the ADR's own text:
+- Deflate-only mutation (`diagram = NULL`), rows survive with who/when/why;
+- `TOPOLOGY_REVISION_RESTORABLE_KEEP = 20`, named constant, single site;
+- Pinned rows excluded from ranking, so a pin does NOT consume a keep slot
+  ("20 unpinned + 3 pinned keeps 23 restorable") — a deliberate
+  interpretation of "pinned exempts from pruning", documented inline. If
+  this reading is the intended one, add the sentence to ADR §4 when the
+  slice lands so the ADR and code stay congruent.
+- The daemon deviation (own 300s loop instead of riding the kds-health
+  daemon) is justified inline: topology_revisions lives in the GLOBAL db,
+  and the kds loop's open_store_ids() walks per-store DBs — the wrong
+  handle. This is the corrected-anchor reasoning from `2c5dde8a` applied
+  correctly. ADR §4's "runs in the existing interval loop" wording is now
+  inaccurate; amend it in the same commit series.
+
+**REQUIRED before Step 1c may commit (same rule as Step 1b):** the ADR
+Verification retention test — 25 Applies leave 20 with payloads and 5
+deflated; a pinned row outside the window survives intact. The in-flight
+diff has implementation only, no test yet. Land them together.
+
+**Stream watch:** `crates/oz-core/src/error.rs` now carries uncommitted
+`SubscriptionReadOnly` variants (§B offline-grace work) in the same working
+tree as Step 1c. Two different streams, one tree: commit with explicit
+pathspecs, never together. If the §B variants need a topology file's compile
+to pass, that is a coupling to break, not to paper over.
+
+### Round 8 addendum — shared-dependency gate state
+
+`oz-core` is currently red mid-edit (`subscription.rs:870`, unterminated
+string — the §B stream's in-flight edit). Consequence both agents need:
+**no stream's gate can pass while a dependency crate is broken** — a
+pathspec-scoped topology commit would still fail `cargo test -p oz-pos-app
+topology` because it compiles oz-core first. Sequence matters: the §B edit
+finishes (or is stashed by its owner), THEN either stream commits. Step 1c's
+retention-test requirement stands (still absent from the diff).
+
+### Round 9 addendum — Step 1c retention tests: CLEARED
+
+The in-flight retention tests in `topology_revision_tests.rs` (+135 lines)
+were reviewed against ADR #46 Verification and they cover the contract:
+25 Applies -> 5 deflated + 20 restorable (`the_sweep_deflates_beyond_the_
+budget_but_keeps_the_record`), deflated rows keep who/when/why with
+`diagram IS NULL` asserted, inside-budget branches untouched
+(`a_branch_inside_its_budget_is_untouched`), and the additive-pin
+interpretation is pinned by `pinned_revisions_survive_and_do_not_consume_
+the_budget`. Supervisor verdict: **commit-ready**. On landing, please also
+amend ADR §4 (dedicated daemon, not "the existing interval loop"; pins are
+additive) — one paragraph, same commit series. The two trailing tests
+(crash-after-commit, concurrent Applies) remain open tickets, fold into the
+next slice or ticket them in this file.
+
+### Round 10 addendum — §B stream mid-edit: the Send-future trap again
+
+`oz-pos-app` is red mid-edit (3x "future cannot be sent between threads
+safely") because the new §B read-only enforcement in desktop `pos.rs` calls
+`TenantSubscription::load(&global_db, ...)` — sync rusqlite under a lock —
+inside async tauri commands. This is the same trap the memo push slice
+already solved (`a009d3cf`): the DB guard must die LEXICALLY before any
+await (scoped block, load-then-await), because tauri command futures must be
+Send. Pattern exists in-repo at `apps/desktop-client/src/lib.rs` (memo push
+daemon: "guard must die here, lexically, before the HTTP"). Also worth a
+thought while here: loading the subscription on EVERY sale adds a lock
+acquire per checkout — consider a cached grace-state (the fail-closed
+subscription context from `9896dac4`/`1176730a` already exists; does POS
+enforcement need to re-read, or can it consult the cached state?).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 12)
+
+**Finding for the "Protect tenant isolation" P0 item (verified at HEAD
+`49de4fc3`):** the memo tables (`memos`, `memo_locations`, `memo_recipients`)
+are NOT in the PG init's RLS enable array and carry no RLS policies, while
+`crates/oz-api/src/pg.rs` comments say "RLS: scope to the tenant" on the memo
+sync path. The actual isolation there is CODE-level and was verified sound
+(inserts and deletes stamp/scope by the token-derived tenant_id — see
+saas-2's Round-12 log), so this is a defense-in-depth gap plus a misleading
+comment, not an exploitable hole. Two closures, either is acceptable:
+add the three tables to the RLS migration series (they are served
+cross-device, unlike local-only tables deliberately left uncovered), or
+document the exclusion in the RLS inventory AND fix the `pg.rs` comment to
+say "tenant-scoped in code; table not RLS-covered". Until one lands, the
+"Protect tenant isolation" review-gate work should treat the memo sync path
+as uncovered by RLS.
+
+Also: `49de4fc3` resolved the memo snapshot doc demand (i) — details in
+saas-2's Round-12 log. Step 1c still awaiting commit (tests cleared Round 9).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 13)
+
+**Step 1c RESOLVED and verified** (`93e519cd`): implementation + 4 retention
+tests landed in one commit (the supervisor's Round-9 clearance honored), and
+the ADR §4 amendment landed IN THE SAME COMMIT — pin-additive semantics
+settled ("a pin is additive, not a substitution"), daemon question closed
+("a third daemon, shaped like the memo sweep"). Message contents match
+contents (the `2c5dde8a` lesson applied). Bonus: `the_sweep_is_idempotent`
+exceeds the ADR's Verification list. This is the Solo Implementation
+Protocol working as designed — three slices (1a, 1b, 1c), three clean
+commits.
+
+**Remaining ADR #46 Phase 1 work, with current state at HEAD `f2dbb745`:**
+- **Step 1d — `log_audit` on Apply: OPEN** (zero `log_audit` references in
+  `commands/topology/*`). This is the next slice per the protocol.
+- **Step 1e — change-note field: HALF DONE.** `TopologyRevisionContext` is
+  threaded through IPC to the INSERT, but `change_note: ""` is hardcoded at
+  the call site — the Apply dialog field and its wiring do not exist yet.
+  The protocol's understanding checkpoint for 1e: trace dialog -> command ->
+  context -> row.
+- **Trailing Verification tests still open** (crash-after-commit atomicity;
+  two-simultaneous-Applies concurrency). Suggested: land both with Step 1d's
+  commit series so the Atomicity/Concurrency items close with the audit
+  slice.
+- After 1d + 1e: Phase 1 of ADR #46 is COMPLETE, and the "Version and
+  publish topology changes" P1 item (saas-2) is delivered except
+  browse/restore UI (ADR Phase 2) — re-triage that item then.
+
+Also noted: `f2dbb745` documents the memo serving routes in the OpenAPI
+spec (cloud-read slice follow-through, saas-2's workstream).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 14)
+
+**RLS finding upgraded in priority.** Round-12's gap (memo tables not
+RLS-covered) is now propagated into a committed test doc and a journal entry
+that both say "RLS cross-tenant invisibility" — the wording is wrong (the
+isolation those tests prove is code-level: token-stamped inserts +
+tenant-filtered queries; verified again at HEAD `3770847b`, no RLS on
+`memos`/`memo_locations`/`memo_recipients`). The misstatement now lives in
+three places. **Recommended closure (small, makes the wording true):** add
+the three memo tables to the RLS enable array + policies keyed on the
+`oz.tenant_id` GUC the code already sets on every memo query path. This adds
+the missing defense-in-depth layer AND aligns the committed wording with
+reality. Until then, the "Protect tenant isolation" review-gate work treats
+the memo sync/read path as RLS-uncovered (Round-12 rule stands).
+
+Also in flight: Step 1d (`log_audit` on topology Apply) — the in-flight
+diff wires the audit entry with deliberate redaction reasoning (change_note
+is stored verbatim because it matches no SENSITIVE_DETAIL_KEYS pattern).
+Looks correct so far; the two trailing Verification tests (crash-after-
+commit, concurrency) should land with it per Round 13's suggestion.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 15)
+
+**§B read-only register lock RESOLVED** (`bcaa5033`): desktop + tablet
+`pos.rs`/`offline.rs` gate `complete_sale`/enqueue behind
+`verify_signature()` + `enforce_pos_writable()`, with the Send-safe scoped
+pattern (guard dies lexically) in the committed code. Test coverage pins the
+right edge semantics: `pos_read_only_only_when_grace_fully_lapsed`,
+`pos_read_only_free_never_locks`,
+`pos_read_only_canceled_sells_as_free_instead_of_locking` (a real business
+ruling — canceled subscriptions sell as Free rather than brick the
+register), `pos_read_only_unknown_status_does_not_brick_the_register`
+(fail-safe for unknown tier states), `enforce_pos_writable_error_is_
+actionable`. Message matches contents. This closes the enforcement half of
+the §B offline-grace policy that began with `9896dac4`.
+
+Accepted trade-off to record: the check loads the subscription from the
+global DB once per checkout (Round-10 perf question). At POS traffic that
+is one indexed read per sale — acceptable for now; revisit only if the
+lock step shows contention. Cached-state alternative remains an option,
+not a demand.
+
+In flight: Step 1d (audit entry now carries the change note in details;
+test asserts `parsed["change_note"]` flows through) + Step 1e still
+hardcoded-empty. Also noted: an unrelated small UI stream (Tooltip unmount
+timer fix) shares the tree — UI-only, no Rust coupling; commit separately.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 17)
+
+**Step 1d RESOLVED** (`ced19ffa feat(desktop): audit every topology Apply`):
+- 3 new tests: the audit record describes the Apply; no audit detail key
+  collides with the redaction list; unscoped graph audited under empty
+  target id.
+- **The Atomicity trailing item is now covered**: the existing compensation
+  harness was extended to pin that a compensated Apply leaves NEITHER a
+  revision row NOR an audit record — the commit message states this is the
+  exact path ADR Verification asks to be tested. Supervisor accepts this as
+  closing the crash/compensation requirement (the audit requirement was the
+  last open half of it).
+- Gate evidence: 16/16 revision tests, full topology gate 349 passed /
+  0 failed, zero test attributes removed (they counted).
+- ADR amendment again landed in-commit (audit placement reasoning, two
+  findings from db/audit.rs pinned by tests).
+- **Still open from Verification: the CONCURRENCY item** (two simultaneous
+  Applies, consecutive revisions no gap no duplicate) — one test remaining
+  before the Verification section is fully green. Land it with Step 1e.
+
+**Phase 1 countdown: 1e (change-note dialog field) is the only protocol
+step left.** After it: Phase 1 complete -> re-triage the P1 "Version and
+publish topology changes" item (browse/restore UI becomes ADR Phase 2).
+
+**Tree watch:** the remaining uncommitted work is a cohesive §B
+constants+docs slice — `offline_grace_days()` per tier (7/14/30/60) with a
+recorded ruling that non-standard Enterprise windows ship as signed custom
+overrides, NOT client-side fallbacks; website licensing docs + pricing
+invariants updated to the same numbers (cross-consistency with the
+`883386f4` numeric-limits workstream held). Plus the Tooltip stream now has
+its own test file. Commit these as: (1) §B grace constants + docs, (2)
+Tooltip fix — two pathspec-scoped commits, not one.
