@@ -331,6 +331,39 @@ workspaceInstances)` and `computeTopologyDiff` compare *canvas against live
 backend instances*. Revision comparison is *graph against graph*. A new pure
 function is required; it is small, but it is not reuse.
 
+Landed as `topologyRevisionDiff.ts::diffTopologyGraphs` — 25 tests, importing
+nothing from `NodeTopologyEditor.tsx` (not even a type), so it cannot drag the
+forbidden component into its dependency graph.
+
+§10 did not anticipate the one design decision that actually determines
+whether the browser is usable: **which fields count as a change.** Stored
+envelopes mix three kinds, and treating them alike produces a history nobody
+reads:
+
+| Class | Fields | Treatment |
+|---|---|---|
+| **Semantic** | node `type`/`name`/`subtitle`/`store_profile_id`/`tier_requirement`/`metadata`; wire endpoints, `direction`, `relationship_type`, `*_port_id`, `label` | Listed field by field, with from/to |
+| **Geometry** | node `x`/`y`; wire `bends`, `from_port`, `to_port` | **Counted, never listed** |
+| **Volatile** | `telemetry_status`, `telemetry_badge` | **Excluded entirely** |
+
+Geometry is counted because dragging three nodes is not three business
+changes; itemising it buries the one rename that mattered. The repo already
+draws this exact line — `TopologyWireData` documents `from_port_id` as the
+"semantic source port" while `from_port` is "geometry [that] remains
+presentation-only".
+
+Volatile fields are excluded rather than counted, which is the sharper call.
+`telemetry_*` is persisted by `buildDiagramPayloads`, so a terminal that went
+offline between two Applies would otherwise appear as a change nobody made.
+Counting it would be nearly as misleading as listing it: it would tell the
+merchant the graphs differed when the business logic did not.
+
+Two smaller rules, each pinned by a test: metadata is compared with
+order-insensitive deep equality, because the payload is re-serialised every
+Apply and key order would otherwise read as an edit; and an unrecognised field
+is ignored rather than guessed at, because guessing wrong in the noisy
+direction is what makes history unreadable.
+
 ---
 
 ## Non-goals
