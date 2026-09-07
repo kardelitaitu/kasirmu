@@ -185,7 +185,10 @@ actual relationship mutation.
       carrying `expiresAt`/`graceUntil`. But it models *explanation*, not
       *enforcement*: the gates still read the caps DTO independently. So this
       item's real remaining work is consolidating enforcement onto one
-      entitlement source, not re-deriving a reason taxonomy.
+      entitlement source, not re-deriving a reason taxonomy. — **Design
+      written 2026-09-08:** see §"Entitlement enforcement consolidation"
+      below (four phases: one read model, one limit table, trial state,
+      server-issued per-feature grants).
 
       Genuine gaps the resolver does NOT close: **trial state** exists only
       server-side (`license_keys.is_trial`) and the client collapses it away
@@ -357,6 +360,78 @@ actual relationship mutation.
         becomes the "unstructured card grid" the clause guards against; a search
         box over 6-8 pinned/recency-sorted cards is gold-plating. Revisit only
         if the picker is ever changed to one-card-per-location-instance.
+
+## Entitlement enforcement consolidation — design (2026-09-08, DSH)
+
+The design for the "Implement entitlements beyond tier comparison" item,
+written against HEAD `98cd2b62` and building on the warning recorded on
+that item. The resolver (`oz_core::availability`) and the down-grade
+detection layer (`oz_core::downgrade` + `Store::assess_downgrade`)
+already *explain* and *detect*; this plan makes them the same source the
+*enforcement* reads, so a verdict, a gate, and a remediation report
+cannot disagree. Nothing here re-derives the reason taxonomy — it exists,
+it is tested, and it wins.
+
+**The drift this design closes, measured today:** the tier limit for a
+quota family is resolved in three independent places — the creation gates
+call `tier.max_*` inline (`enforce_location_quota` at
+`db/locations.rs:97`, `enforce_product_quota` at `db/products_crud.rs:212`,
+and their three siblings), `QuotaDimension::limit_for` resolves it for
+`downgrade::evaluate`, and `AvailabilityFeature::tier_limit` resolves it
+for verdicts. All three agree today because they all delegate to the same
+`SubscriptionTier::max_*` methods — but "three callers agree by calling
+the same four functions" is convention, not structure. The caps DTO adds
+a fourth surface: desktop's applies the debug Free→Premium upgrade while
+tablet's does not (the gap `dfbc41b2` recorded as unowned), so the two
+clients' caps payloads already diverge by construction in dev builds.
+
+**Phase A — one read model per client (`Entitlements`).** New
+`oz_core::entitlements`: `Entitlements::from_subscription(&TenantSubscription,
+usage: UsageCounts)` builds the session's entitlement facts once — tier
+(effective), lifecycle state, add-ons, allowed workspace types, quota
+limits, usage counts. Each client's `load_capabilities` becomes a
+projection of that struct into its DTO, and `load_feature_verdict`
+gathers its `AvailabilityFacts` from the same instance. The per-client
+divergence is preserved deliberately: desktop's builder applies the dev
+upgrade, tablet's does not (until tablet's caps owner closes that gap),
+because the invariant is per-client agreement, not cross-client equality.
+Deliverable: caps and verdict share one gather; a new entitlement axis
+lands in one place, not four.
+
+**Phase B — one limit table.** `QuotaDimension::limit_for` becomes the
+single limit lookup; the five `enforce_*_quota` gates take their limit
+from it instead of calling `tier.max_*` inline (signature unchanged —
+they already receive the tier). The mapping is verified by a
+correspondence test asserting `limit_for(d) ==` the gate's current
+lookup for every dimension, so consolidation cannot silently change a
+limit. After this, a tier-limit change surfaces identically in a gate
+rejection, an `OverQuotaReport` row, and a `quota` verdict.
+
+**Phase C — trial state, client-visible.** The server adds `is_trial` and
+`trial_ends_at` to the signed payload (JSON — no schema migration; the
+signature covers the payload). The client parses them into
+`Entitlements`; `SubscriptionTier::from_db("trial") => Free` remains the
+quota answer, with trial-ness carried as a flag and an end date instead
+of collapsed away. This unblocks trial-specific UI ("N days left") and
+trial-specific policy without a new wire surface.
+
+**Phase D — server-issued per-feature grants.** `server_policy` has one
+producer today (`allows_workspace_type`). The signed payload gains an
+optional `features` block (`{"analytics": false}` for withhold, true for
+grant-beyond-tier), consumed as additional `server_grant` producers in
+the verdict path — the resolver's `Some(false)`/`Some(true)` semantics
+already cover both directions and their precedence. Enterprise custom
+contracts then become payload authoring rather than tier proliferation,
+and depend only on custom-role authoring (todo-global-saas-3.md) for the
+role half.
+
+**Sequencing and gates.** A and B are client-core-only (no migration, no
+wire change) and can land independently; C and D each need a
+license-server change to author the payload fields and belong behind a
+supervisor go. UI consumers are untouched throughout: the caps DTO keeps
+its wire shape, so the parity gate and FTL surfaces stay quiet. The
+`scope` axis joins through the same `Entitlements` instance once the
+ruling recorded in todo-global-saas-3.md Amendment 4 lands.
 
 ## Phase 2 execution plan (2026-09-06)
 
