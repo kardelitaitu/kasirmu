@@ -206,3 +206,9 @@ __pycache__/
 .tox/
 .coverage
 htmlcov/
+
+# ── Vendored OSS references (research only, NOT build deps) ──
+# Third-party source cloned locally to study API shapes. Never imported by
+# ui/ or any Rust crate; intentionally untracked so it is never shipped.
+/references/midtrans-nodejs-client/
+/references/midtrans-php/
