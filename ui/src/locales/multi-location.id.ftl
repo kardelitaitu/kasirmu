@@ -51,6 +51,7 @@ topology-history-open = Riwayat deploy
 topology-rev-browser-title = Riwayat Deploy
 topology-rev-browser-close = Tutup riwayat deploy
 topology-rev-browser-loading = Memuat riwayat…
+topology-rev-browser-loading-one = Memuat 1 revisi…
 topology-rev-browser-empty = Belum ada yang diterapkan ke cabang ini.
 topology-rev-browser-no-note = Tanpa catatan
 topology-rev-browser-counts = { $nodes } node · { $wires } kabel

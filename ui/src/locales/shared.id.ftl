@@ -528,6 +528,24 @@ workspace-home-data-management-title = Data
 workspace-home-data-management-desc = Cadangkan, ekspor, dan impor data
 workspace-home-workspaces-section = Workspace
 workspace-home-tools-section = Alat
+# Header grup Tools — arsitektur informasi yang disepakati
+# (todo-tools.md): Operasional / Wawasan / Konfigurasi.
+workspace-home-tools-group-operations = Operasional
+workspace-home-tools-group-insights = Wawasan
+workspace-home-tools-group-configuration = Konfigurasi
+# Kartu tool terkunci: kartu di bawah tier minimum tetap terlihat
+# (redup, tidak dapat diklik) dengan badge tier minimum; kartu dengan
+# langganan tidak aktif atau di bawah peran minimum punya alasan sendiri.
+workspace-home-tools-requires-tier-plus = Perlu paket Plus
+workspace-home-tools-requires-tier-pro = Perlu paket Pro
+workspace-home-tools-requires-tier-premium = Perlu paket Premium
+workspace-home-tools-requires-tier-enterprise = Perlu paket Enterprise
+workspace-home-tools-subscription-inactive = Langganan tidak aktif
+workspace-home-tools-requires-role = Butuh akses Admin
+workspace-home-topology-title = Editor Topologi
+workspace-home-topology-desc = Rancang lokasi, workspace, dan tautan perangkat
+workspace-home-memo-title = Memo
+workspace-home-memo-desc = Tulis pemberitahuan untuk terminal dan lokasi
 workspace-home-add-workspace = Tambah Workspace
 workspace-home-add-workspace-desc = Konfigurasi workspace di editor topologi
 workspace-home-add-workspace-aria = Tambah workspace melalui editor topologi

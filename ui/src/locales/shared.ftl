@@ -535,6 +535,24 @@ workspace-home-data-management-title = Data
 workspace-home-data-management-desc = Back up, export, and import data
 workspace-home-workspaces-section = Workspaces
 workspace-home-tools-section = Tools
+# Tools group headers — the agreed information architecture
+# (todo-tools.md): Operations / Insights / Configuration.
+workspace-home-tools-group-operations = Operations
+workspace-home-tools-group-insights = Insights
+workspace-home-tools-group-configuration = Configuration
+# Locked tool cards: tier-ineligible cards stay visible (greyed,
+# non-clickable) with a minimum-tier badge; subscription-invalid and
+# role-locked cards show their own reason.
+workspace-home-tools-requires-tier-plus = Requires Plus plan
+workspace-home-tools-requires-tier-pro = Requires Pro plan
+workspace-home-tools-requires-tier-premium = Requires Premium plan
+workspace-home-tools-requires-tier-enterprise = Requires Enterprise plan
+workspace-home-tools-subscription-inactive = Subscription inactive
+workspace-home-tools-requires-role = Admin access required
+workspace-home-topology-title = Topology Editor
+workspace-home-topology-desc = Design locations, workspaces, and device links
+workspace-home-memo-title = Memos
+workspace-home-memo-desc = Write notices for terminals and locations
 workspace-home-add-workspace = Add Workspace
 workspace-home-add-workspace-desc = Configure workspaces in the topology editor
 workspace-home-add-workspace-aria = Add workspace via topology editor

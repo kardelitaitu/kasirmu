@@ -9,6 +9,8 @@ import { screen, waitFor, fireEvent, within, configure } from '@testing-library/
 import userEvent from '@testing-library/user-event';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import WorkspaceHome from '@/features/workspaces/WorkspaceHome';
+import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
+import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 
 // WorkspaceHome renders a heavy multi-section screen driven by async
 // context mocks; under parallel CI load a full render can exceed the
@@ -793,6 +795,116 @@ describe('WorkspaceHome', () => {
         expect(screen.getAllByText('Restaurant POS').length).toBeGreaterThanOrEqual(1);
       });
       expect(screen.queryByTestId('workspace-card-add')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Tools access matrix (todo-tools.md) ───────────────
+  //
+  // The tools render tests below drive the subscription mocks directly
+  // (the global test-setup stub serves `caps: null` + `state: 'active'`,
+  // which locks every tier-gated card under the fail-closed gate).
+
+  describe('tools access matrix', () => {
+    function mockSubscription(
+      tier: 'free' | 'plus' | 'pro' | 'premium' | 'enterprise',
+      state: 'active' | 'grace' | 'expired' | 'canceled' | 'paused' | 'unavailable' = 'active',
+    ) {
+      vi.mocked(useSubscription).mockReturnValue({
+        caps: makeSubscriptionCaps({ tier, state }),
+        state,
+        loading: false,
+        refresh: vi.fn(),
+      });
+      // Production derives the admin gate from the same state; keep the
+      // mock faithful — §B locks administrative tools unless `active`.
+      vi.mocked(useAdminGate).mockReturnValue({
+        locked: state !== 'active',
+        state,
+      });
+    }
+
+    async function renderHomeWithTools(role: 'owner' | 'admin' | 'manager' = 'owner') {
+      if (role === 'manager') mockManagerUser();
+      else if (role === 'admin') mockAdminUser();
+      else mockDefaultUser();
+      mockWorkspaceValue.mockReturnValue({
+        availableWorkspaces: sampleWorkspaces,
+        loading: false,
+        error: null,
+        retry: vi.fn(),
+        setActiveWorkspace: mockSetActiveWorkspace,
+        activeWorkspace: null,
+        workspaceScreens: [],
+        lastWorkspace: null,
+      });
+      await renderWithFluent(<WorkspaceHome />);
+      await waitFor(() => {
+        expect(screen.getAllByText('Restaurant POS').length).toBeGreaterThanOrEqual(1);
+      });
+    }
+
+    it('renders the three IA group headers (Operations / Insights / Configuration)', async () => {
+      mockSubscription('enterprise');
+      await renderHomeWithTools();
+      expect(screen.getByText('Operations')).toBeInTheDocument();
+      expect(screen.getByText('Insights')).toBeInTheDocument();
+      expect(screen.getByText('Configuration')).toBeInTheDocument();
+    });
+
+    it('renders the new Memo and Topology Editor cards for an entitled owner', async () => {
+      mockSubscription('enterprise');
+      await renderHomeWithTools();
+      expect(screen.getByText('Memos')).toBeInTheDocument();
+      expect(screen.getByText('Topology Editor')).toBeInTheDocument();
+    });
+
+    it('locks tier-gated tools below their minimum tier (visible, non-clickable)', async () => {
+      mockSubscription('plus');
+      await renderHomeWithTools();
+      // Pro+ (memo, reports, analytics) and Premium+ (audit, promotions)
+      // are locked on Plus; role-only tools stay clickable.
+      const locked = screen.getAllByTestId('workspace-tool-card-locked');
+      expect(locked.length).toBeGreaterThanOrEqual(5);
+      expect(locked.every((el) => el.getAttribute('aria-disabled') === 'true')).toBe(true);
+      // Locked-card count on Plus for an owner: analytics, reports, audit,
+      // memo, promotions (pro/premium tiers). Cloud Sync is admin-gated on
+      // the ROLE axis (hidden for non-admins), so it adds nothing here.
+      // Staff stays clickable (role-only, free tier).
+      expect(screen.getByText('Staff Management')).toBeInTheDocument();
+      expect(screen.getByText('Staff Management').closest('[data-testid="workspace-tool-card-locked"]')).toBeNull();
+    });
+
+    it('shows Settings as a locked card for managers (lockBelowRole), hides owner-only Features', async () => {
+      mockSubscription('enterprise');
+      await renderHomeWithTools('manager');
+      expect(screen.getByText('Admin access required')).toBeInTheDocument();
+      const locked = screen.getAllByTestId('workspace-tool-card-locked');
+      expect(locked.length).toBe(1);
+      // Owner-only Features card is hidden from managers entirely.
+      expect(screen.queryByText('Features')).not.toBeInTheDocument();
+    });
+
+    it('grace keeps role-only tools open but locks Pro tools (§B admin gate)', async () => {
+      mockSubscription('enterprise', 'grace');
+      await renderHomeWithTools();
+      // Staff is role-only: operational continuity through the grace window.
+      expect(screen.getByText('Staff Management')).toBeInTheDocument();
+      expect(screen.getByText('Staff Management').closest('[data-testid="workspace-tool-card-locked"]')).toBeNull();
+      // Memo is Pro+: the admin gate locks it the moment the subscription
+      // leaves active — grace never re-opens administrative features. ALL
+      // tier-gated cards carry the badge (owner has several); the point is
+      // that role-only Staff did not (asserted above).
+      expect(screen.getAllByText('Subscription inactive').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('an expired subscription locks role-only tools too', async () => {
+      mockSubscription('enterprise', 'expired');
+      await renderHomeWithTools();
+      const locked = screen.getAllByTestId('workspace-tool-card-locked');
+      expect(locked.length).toBeGreaterThanOrEqual(1);
+      const staffCard = screen.getByText('Staff Management').closest('[data-testid="workspace-tool-card-locked"]');
+      expect(staffCard).not.toBeNull();
+      expect(screen.getAllByText('Subscription inactive').length).toBeGreaterThanOrEqual(1);
     });
   });
 
