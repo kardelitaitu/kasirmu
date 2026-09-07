@@ -18,6 +18,25 @@ next: none — campaign closed for this file | perf: n/a — compile-time consta
 use super::RolePreset;
 use super::builtin_roles;
 use super::permissions;
+/// Whether `id` names a preset role rather than an authored one.
+///
+/// The preset table is the authority, so this cannot disagree with what
+/// seeding writes: the [`RolePreset`] ids are exactly the rows
+/// `Store::seed_default_roles` upserts, re-syncing name, description and
+/// permissions from the preset on every run. A hand-edited grant list on
+/// one of those ids is therefore destroyed the next time seeding runs —
+/// which is reachable from the UI (`seed_default_roles_scoped`), not only
+/// from first-run bootstrap. Custom-role authoring refuses these ids so
+/// that no user-authored state can sit under a row the seeder owns.
+///
+/// Note `role-custom` is itself a preset (the empty-grant placeholder the
+/// role picker offers), so "custom" in a role's *name* does not make the
+/// row authored. Only ids outside this table are.
+#[must_use]
+pub fn is_builtin_role_id(id: &str) -> bool {
+    ROLE_PRESETS.iter().any(|preset| preset.id == id)
+}
+
 /// All built-in role presets bundled together for bulk seeding.
 pub const ROLE_PRESETS: &[RolePreset] = &[
     RolePreset {

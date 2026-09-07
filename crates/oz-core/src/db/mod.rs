@@ -116,6 +116,8 @@ pub mod recipes;
 pub mod refunds;
 /// Report generation queries.
 pub mod reports;
+/// Role authoring — update / delete for custom roles (ADR #47 ruling 4).
+pub mod roles;
 /// Sale CRUD (transactions, lines, taxes).
 pub mod sales;
 /// Settings key/value CRUD.
