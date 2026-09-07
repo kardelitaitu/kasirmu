@@ -8,6 +8,7 @@ settings-nav-receipt = Nota
 settings-nav-sync = Sinkronisasi Cloud
 settings-nav-about = Tentang
 settings-nav-license = Lisensi
+settings-nav-diagnostics = Diagnostik
 settings-nav-topology = Topologi
 settings-nav-email = Laporan Email
 settings-category-operations = Operasional
@@ -888,4 +889,38 @@ settings-scope-legal-entity = Badan Hukum
 settings-scope-location = Lokasi
 settings-scope-workspace = Ruang Kerja
 settings-scope-terminal = Perangkat Terminal
+
+
+# ── Diagnostik (hasil ketersediaan fitur) ──
+settings-diagnostics-title = Diagnostik
+settings-diagnostics-intro = Mengapa setiap fitur tersedia atau terkunci untuk Anda saat ini — gerbang yang sama yang diterapkan aplikasi, dengan alasannya disebutkan. Hanya baca, bekerja offline.
+settings-diagnostics-refresh = Segarkan
+settings-diagnostics-load-failed = Tidak dapat memuat hasil pemeriksaan. Coba lagi.
+settings-diagnostics-list-aria = Hasil pemeriksaan ketersediaan fitur
+settings-diagnostics-status-available = Tersedia
+settings-diagnostics-loading = …
+settings-diagnostics-reason-server-policy = Diblokir kebijakan server
+settings-diagnostics-reason-lifecycle = Langganan berakhir
+settings-diagnostics-reason-tier = Tidak termasuk paket ini
+settings-diagnostics-reason-quota = Kuota tercapai
+settings-diagnostics-reason-role = Peran tidak memiliki izin
+settings-diagnostics-reason-scope = Di luar cakupan lokasi
+settings-diagnostics-feature-supports-qris = Pembayaran QRIS
+settings-diagnostics-feature-supports-analytics = Analitik
+settings-diagnostics-feature-supports-loyalty = Loyalitas
+settings-diagnostics-feature-supports-daily-dashboard = Dasbor harian
+settings-diagnostics-feature-supports-cloud-sync = Sinkronisasi awan
+settings-diagnostics-feature-sales-history-days = Masa simpan riwayat penjualan
+settings-diagnostics-feature-locations = Kuota lokasi
+settings-diagnostics-feature-staff-users = Kuota akun staf
+settings-diagnostics-feature-pos-instances = Kuota terminal POS
+settings-diagnostics-feature-warehouses = Kuota titik stok gudang
+settings-diagnostics-detail-tier = Paket: { $tier }
+settings-diagnostics-detail-state = Status: { $state }
+settings-diagnostics-detail-quota = Pemakaian: { $usage } / { $limit }
+settings-diagnostics-detail-permission = Izin: { $permission }
+settings-diagnostics-detail-scope-covered = Mencakup lokasi ini
+settings-diagnostics-detail-scope-not-covered = Tidak mencakup lokasi ini
+settings-diagnostics-detail-expires = Kedaluwarsa: { $expiresAt }
+settings-diagnostics-detail-grace = Tenggang hingga: { $graceUntil }
 

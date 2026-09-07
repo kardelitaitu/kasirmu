@@ -200,6 +200,7 @@ settings-nav-receipt = Receipt
 settings-nav-sync = Cloud Sync
 settings-nav-about = About
 settings-nav-license = License
+settings-nav-diagnostics = Diagnostics
 settings-nav-topology = Topology
 settings-nav-email = Email Reports
 settings-category-operations = Operations
@@ -906,4 +907,38 @@ settings-scope-legal-entity = Legal Entity
 settings-scope-location = Location
 settings-scope-workspace = Workspace
 settings-scope-terminal = Terminal
+
+
+# ── Diagnostics (feature-availability verdicts) ──
+settings-diagnostics-title = Diagnostics
+settings-diagnostics-intro = Why each feature is available or locked for you right now — the same gates the app enforces, with the reason named. Read-only, works offline.
+settings-diagnostics-refresh = Refresh
+settings-diagnostics-load-failed = Could not load the verdicts. Try again.
+settings-diagnostics-list-aria = Feature availability verdicts
+settings-diagnostics-status-available = Available
+settings-diagnostics-loading = …
+settings-diagnostics-reason-server-policy = Blocked by server policy
+settings-diagnostics-reason-lifecycle = Subscription ended
+settings-diagnostics-reason-tier = Not in this tier
+settings-diagnostics-reason-quota = Quota reached
+settings-diagnostics-reason-role = Role lacks permission
+settings-diagnostics-reason-scope = Out of location scope
+settings-diagnostics-feature-supports-qris = QRIS payments
+settings-diagnostics-feature-supports-analytics = Analytics
+settings-diagnostics-feature-supports-loyalty = Loyalty
+settings-diagnostics-feature-supports-daily-dashboard = Daily dashboard
+settings-diagnostics-feature-supports-cloud-sync = Cloud sync
+settings-diagnostics-feature-sales-history-days = Sales history retention
+settings-diagnostics-feature-locations = Location quota
+settings-diagnostics-feature-staff-users = Staff accounts quota
+settings-diagnostics-feature-pos-instances = POS terminals quota
+settings-diagnostics-feature-warehouses = Warehouse stock points quota
+settings-diagnostics-detail-tier = Tier: { $tier }
+settings-diagnostics-detail-state = State: { $state }
+settings-diagnostics-detail-quota = Usage: { $usage } / { $limit }
+settings-diagnostics-detail-permission = Permission: { $permission }
+settings-diagnostics-detail-scope-covered = Covers this location
+settings-diagnostics-detail-scope-not-covered = Does not cover this location
+settings-diagnostics-detail-expires = Expires: { $expiresAt }
+settings-diagnostics-detail-grace = Grace until: { $graceUntil }
 

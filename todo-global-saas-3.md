@@ -82,7 +82,7 @@ workflow, not a silent setting change.
 - [ ] **Define service health contracts.** Add user-visible status for license
       server, sync service, payment service, and device connectivity, with clear
       retry and degraded-mode behavior.
-- [ ] **Make feature flags and entitlements observable.** Support diagnostics
+- [x] **Make feature flags and entitlements observable.** Support diagnostics
       should show why a feature is unavailable: role, scope, tier, quota, expiry,
       or server policy.
       — **designed 2026-09-07, not yet implemented** (§"Feature-flag
@@ -101,9 +101,13 @@ workflow, not a silent setting change.
       **IPC + resolver landed 2026-09-07/08** (core `869de0ce`, tablet
       `e17a4e32`/`dfbc41b2`, UI+dev-mock `9c9b6f53`/`987d5698`,
       desktop `ff85e7be`; the `scope` axis ruling and its landing are
-      recorded in Amendment 5 below). **Remaining: the Settings →
-      Diagnostics screen** — a separate slice per the design's own
-      out-of-scope rule, tracked as the next journal step.
+      recorded in Amendment 5 below; `e4c8ab56` then consolidated the
+      composite into `Store::assignment_covers_session`, behavior-
+      preserving across both clients' scope tests). **The Settings →
+      Diagnostics screen landed 2026-09-08** (Amendment 6) — the item is
+      complete: every v1 feature row renders its live verdict with the
+      named reason, quota usage/limit, permission key, scope coverage,
+      and expiry/grace details. Checkbox flipped.
 - [ ] **Add multi-Organization user switching.** One human identity may hold
       memberships in several Organizations; switching between them is a later
       capability built on scoped assignments, not a second hierarchy layer.
@@ -675,4 +679,42 @@ rather than trusting the pathspec alone.
 **Item status:** observability is core + both IPC surfaces + UI client +
 dev-mock + the `scope` reason code. Only the screen remains, and it is
 owned elsewhere.
+
+---
+
+## Amendment 6 — the Diagnostics screen landed (2026-09-08, DSH)
+
+The observability item's last open slice is done — the "owned elsewhere"
+line above is now closed by this entry:
+**Settings → System → Diagnostics** (`sections/DiagnosticsSection.tsx`,
+registered in `SettingsNavTree` under the System category after License,
+scope tag `organization`, KEPT_SECTIONS deep-link allowed). Read-only:
+on mount it asks `explain_feature_availability_scoped` for all ten v1
+feature keys and renders one row each — feature label, an
+available/reason badge, and the resolver's detail line verbatim (tier,
+lifecycle state, usage/limit for quota-kind features, the gate
+permission, the scope coverage phrasing from the M1
+`scopeGranted` detail field, and `expiresAt`/`graceUntil` when
+present). No mutation, no server round-trip — offline-honest like the
+command it reads. A failed batch renders a `role="alert"` hint with a
+Refresh retry; a missing session token fires nothing.
+
+FTL: 33 new keys × both locales (`settings-diagnostics-*`), every one
+referenced by a literal in the component so bundle parity and the orphan
+gate see them live — the reason labels are a literal
+`Record<NonNullable<FeatureVerdictReason>, string>` map, deliberately
+not dynamic composition. Indonesian strings are real translations, not
+id-identical copies.
+
+Tests: `DiagnosticsSection.test.tsx` (7) — all-ten-rows render with the
+session token carried on every call, the reason badge for a tier denial,
+the quota usage/limit line, the scope not-covered phrasing, expiry/grace
+details, the failure alert, and the token-less no-call invariant. Suite
+green 7/7; i18nBundle + SettingsPage suites 69/69; `tsc --noEmit`
+clean; `lint-i18n.sh` clean; the refactored scope tests above still
+pass (24/24 desktop, 5/5 tablet). One testing note worth keeping: the
+global `test-setup.ts` stub owns `useWorkspace`, so per-test overrides
+must go through `vi.mocked(useWorkspace).mockReturnValue(...)` per its
+documented pattern — a local `WorkspaceContext.Provider` is silently
+ignored by the stub, which cost one false-red round here.
 

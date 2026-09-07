@@ -98,6 +98,16 @@ const NAV_ITEMS: SettingsNavItem[] = [
     ),
   },
   {
+    key: 'diagnostics',
+    label: 'Diagnostics',
+    scope: 'organization',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+      </svg>
+    ),
+  },
+  {
     key: 'email',
     label: 'Email Reports',
     scope: 'organization',
@@ -176,7 +186,7 @@ const CATEGORY_I18N_KEYS: Record<string, string> = {
 const CATEGORIES: SettingsCategory[] = [
   { label: 'Business', keys: ['general', 'appearance'] },
   { label: 'Operations', keys: ['receipt', 'sync', 'email', 'store-pos', 'restaurant-pos', 'inventory'] },
-  { label: 'System', keys: ['about', 'license', 'topology', 'local-api'] },
+  { label: 'System', keys: ['about', 'license', 'diagnostics', 'topology', 'local-api'] },
 ];
 
 const NAV_L10N_KEYS: Record<string, string> = {
@@ -187,6 +197,7 @@ const NAV_L10N_KEYS: Record<string, string> = {
   'local-api': 'settings-nav-local-api',
   about: 'settings-nav-about',
   license: 'settings-nav-license',
+  diagnostics: 'settings-nav-diagnostics',
   email: 'settings-nav-email',
   topology: 'settings-nav-topology',
   'store-pos': 'settings-nav-store-pos',

@@ -54,6 +54,7 @@ import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { TopologyScreen } from '@/features/locations';
 import LicenseSettings from './LicenseSettings';
 import EmailReportSettings from './EmailReportSettings';
+import DiagnosticsSection from './sections/DiagnosticsSection';
 const GeneralSection = lazy(() => import('./sections/GeneralSection'));
 const AppearanceSection = lazy(() => import('./sections/AppearanceSection'));
 const ReceiptSection = lazy(() => import('./sections/ReceiptSection'));
@@ -89,7 +90,7 @@ import './SettingsNavTree.css';
  */
 const KEPT_SECTIONS = new Set([
   'general', 'appearance', 'receipt', 'sync', 'email',
-  'about', 'license', 'topology', 'store-pos', 'restaurant-pos', 'inventory',
+  'about', 'license', 'diagnostics', 'topology', 'store-pos', 'restaurant-pos', 'inventory',
 ]);
 
 /** Snapshot of initial loaded values for the Revert-to-saved button. */
@@ -846,6 +847,9 @@ function SettingsPageContent() {
 
       case 'license':
         return <LicenseSettings />;
+
+      case 'diagnostics':
+        return <DiagnosticsSection />;
 
       case 'topology':
         return <TopologyScreen />;
