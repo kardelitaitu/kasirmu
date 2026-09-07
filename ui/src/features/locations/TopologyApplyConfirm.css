@@ -264,3 +264,20 @@
   padding-top: var(--space-3);
   border-top: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
 }
+
+/* ── Reduced motion ─────────────────────────────────────────────────
+   These three animations were never gated; they simply rode along in
+   NodeTopologyEditor.css, whose seven other reduce blocks satisfied
+   animationCompliance's file-granular Pattern B for the whole sheet.
+   Splitting the namespace into its own file exposed that.
+
+   The two ENTRANCES are decorative and are dropped. The PIN-error SHAKE is
+   kept: it is the only non-text signal that a wrong PIN was rejected, and the
+   repo already classifies exactly this kind of shake as essential feedback
+   (`login-card-shake`, `ws-shake` in animationCompliance's
+   ESSENTIAL_KEYFRAMES). Gating it would diverge from that precedent for a
+   dialog the operator is actively waiting on. */
+@media (prefers-reduced-motion: reduce) {
+  .topology-apply-confirm-overlay { animation: none; }
+  .topology-apply-confirm { animation: none; }
+}
