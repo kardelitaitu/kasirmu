@@ -3529,3 +3529,54 @@ topology stream's in-flight edit, not this slice). The round-3 stack
 redesign report now targets the 400px cap for every bubble in the
 stack; confirmation on its four open questions is still pending.
 
+---
+
+## Implementation journal — memo stack redesign, round 3 (2026-09-08)
+
+Owner confirmed the round-3 report with all four recommendations (big
+X = ack / Escape+backdrop = no-ack; silent queue; --text-md bubble /
+--text-lg card; 60ms spawn stagger). Committed `6c58b76e` (5 files):
+
+- **Stack, max 3:** `MemoBanner` renders `memos.slice(0, 3)` in backend
+  list order (`memo-stack` fixed bottom-left, flex column, left-aligned
+  adaptive bubbles); memos beyond the cap queue silently — nothing is
+  ever auto-acked to make room. Speech tail now lives on the bottom
+  bubble only (`.memo-stack-item:last-child`).
+- **Animated row flow:** each row is a grid wrapper transitioning
+  `grid-template-rows` 0fr↔1fr (+ opacity/transform) — a spawn expands
+  and pushes the stack down, a close collapses and lets the stack slide
+  up, all through layout flow with no FLIP measurement. Entry flips via
+  a double-rAF `is-mounted` state (a same-frame flip would paint the
+  final state with no transition); `transitionDelay` staggers
+  simultaneous spawns by 60ms/index and is forced to 0ms on exit.
+  Steady-state rows must NOT clip (the (x) chip and tail overflow the
+  bubble box), so `overflow: hidden` is scoped to animating rows only
+  (`:not(.is-mounted)`, `.is-exiting`). Unmount timing stays with
+  `useExitAnimation` (200ms; `animDuration` snaps to 0 under reduced
+  motion), and the ack remains deferred to animation end — `acknowledge`
+  is optimistic in the hook, so firing it early would yank the bubble
+  mid-fade.
+- **Enlarged reading card replaces the shared Modal:** a dedicated
+  portal overlay (`memo-expanded-overlay/card`) with `useFocusTrap`
+  owning Escape + Tab cycling + auto-focus + scroll lock — the same
+  a11y contract the shared Modal gives every other dialog. Reading
+  typography: title `--text-xl`, body `--text-lg` + `--leading-relaxed`
+  + `pre-wrap` + primary foreground colour. ONE control: a big 44px
+  (`--touch-target-min`) circular (x) floating outside the card's
+  top-right corner. No footer, no Acknowledge button.
+- **Dismiss semantics (owner-confirmed):** big (x) = durable ack of
+  that memo (same pendingRef deferred pattern); Escape and backdrop
+  clicks return to the stack WITHOUT acknowledging — a stray click can
+  never permanently dismiss an unread memo. A memo that leaves the
+  hook's list while expanded (expired/acked elsewhere) unmounts the
+  card directly.
+- **Key removal:** `memo-modal-acknowledge` deleted from shared.ftl +
+  shared.id.ftl in the same commit as its last code reference (FTL
+  orphan gate: 0 stranded); `modal-close-aria` stays (shared Modal
+  still owns it).
+- **Verification:** 6 memo suites 40 passed (2 net-new: ≤3-stack +
+  per-row ack targeting; Escape and backdrop no-ack paths covered);
+  `npm run typecheck` clean (one `noUncheckedIndexedAccess` fix in the
+  test); lint 0 errors; full-tree bundle parity 0 missing; pre-commit
+  ran all ten gates green.
+
