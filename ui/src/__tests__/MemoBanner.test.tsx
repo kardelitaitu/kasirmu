@@ -30,8 +30,6 @@ const MEMO_FTL = `
 memo-banner-open-aria = Read the full memo: { $title }
 memo-banner-open-aria-plain = Read the full memo
 memo-banner-acknowledge-aria = Acknowledge this memo
-memo-modal-acknowledge = Acknowledge
-modal-close-aria = Close dialog
 `;
 
 function renderWithL10n(ui: ReactNode) {
@@ -64,18 +62,26 @@ function activeMemo(id: string, locationIds: string[], body?: string): ActiveMem
   };
 }
 
-beforeEach(() => {
-  vi.mocked(useMemos).mockReset();
-  mockAcknowledge.mockReset();
-  mockDismiss.mockReset();
+function memoList(count: number): ActiveMemo[] {
+  return Array.from({ length: count }, (_, i) => activeMemo(`m${i + 1}`, []));
+}
+
+function mockMemos(memos: ActiveMemo[]) {
   vi.mocked(useMemos).mockReturnValue({
-    memos: [activeMemo('m1', [])],
+    memos,
     loading: false,
     error: null,
     acknowledge: mockAcknowledge,
     dismiss: mockDismiss,
     refresh: vi.fn(),
   });
+}
+
+beforeEach(() => {
+  vi.mocked(useMemos).mockReset();
+  mockAcknowledge.mockReset();
+  mockDismiss.mockReset();
+  mockMemos([activeMemo('m1', [])]);
 });
 
 describe('MemoBanner', () => {
@@ -105,16 +111,9 @@ describe('MemoBanner', () => {
     expect(screen.queryByText('Organization notice')).not.toBeInTheDocument();
   });
 
-  it('opens the enlarged dialog with the full body on click', () => {
+  it('opens the enlarged card with the full body on click', () => {
     const longBody = Array.from({ length: 14 }, (_, i) => `Line ${i + 1}`).join('\n');
-    vi.mocked(useMemos).mockReturnValue({
-      memos: [activeMemo('m1', [], longBody)],
-      loading: false,
-      error: null,
-      acknowledge: mockAcknowledge,
-      dismiss: mockDismiss,
-      refresh: vi.fn(),
-    });
+    mockMemos([activeMemo('m1', [], longBody)]);
     renderWithL10n(<MemoBanner />);
 
     // The bubble button carries the dialog trigger semantics.
@@ -127,28 +126,55 @@ describe('MemoBanner', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Title m1' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    // The full text — all 14 lines — is readable in the dialog (scoped to
+    // The full text — all 14 lines — is readable in the card (scoped to
     // it: the bubble's clamped preview also carries the text in the DOM).
     // The body renders as one pre-wrap text node, so match on content.
     expect(within(dialog).getByText(/Line 14/)).toBeInTheDocument();
     expect(open).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('renders a text-only bubble when the title is blank', () => {
+  it("the card's big (x) acknowledges durably and returns to the stack", () => {
+    // Owner direction (round 3): no acknowledge button in the card — the
+    // single big (x) outside the card IS the durable ack.
+    renderWithL10n(<MemoBanner />);
+    fireEvent.click(screen.getByTestId('memo-banner-open'));
+    fireEvent.click(screen.getByTestId('memo-expanded-acknowledge'));
+
+    expect(mockAcknowledge).toHaveBeenCalledWith('m1');
+    expect(mockDismiss).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Back on the stack (the mocked hook keeps the memo listed; the real
+    // hook drops it optimistically after the same ack call).
+    expect(screen.getByTestId('memo-banner-open')).toBeInTheDocument();
+  });
+
+  it('Escape on the card returns to the stack without acknowledging', () => {
+    renderWithL10n(<MemoBanner />);
+    fireEvent.click(screen.getByTestId('memo-banner-open'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(mockAcknowledge).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('memo-banner-open')).toBeInTheDocument();
+  });
+
+  it('clicking the overlay backdrop returns to the stack without acknowledging', () => {
+    renderWithL10n(<MemoBanner />);
+    fireEvent.click(screen.getByTestId('memo-banner-open'));
+    fireEvent.click(screen.getByTestId('memo-expanded-overlay'));
+
+    expect(mockAcknowledge).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('memo-banner-open')).toBeInTheDocument();
+  });
+
+  it('renders a text-only bubble and a heading-less card when the title is blank', () => {
     // Owner direction (2026-09-08): titles are optional — a blank title
     // renders a text-only bubble with the plain open-aria label, and the
-    // enlarged dialog opens without a heading (the shared Modal omits the
-    // h2 + aria-labelledby when the title is undefined).
+    // enlarged card opens without a heading (aria-labelledby is omitted).
     const blank = activeMemo('m1', []);
     blank.memo.title = '   ';
-    vi.mocked(useMemos).mockReturnValue({
-      memos: [blank],
-      loading: false,
-      error: null,
-      acknowledge: mockAcknowledge,
-      dismiss: mockDismiss,
-      refresh: vi.fn(),
-    });
+    mockMemos([blank]);
     const { container } = renderWithL10n(<MemoBanner />);
 
     const open = screen.getByTestId('memo-banner-open');
@@ -162,46 +188,39 @@ describe('MemoBanner', () => {
     expect(within(dialog).queryByRole('heading')).not.toBeInTheDocument();
   });
 
-  it('the dialog acknowledge button runs the durable ack and closes the dialog', () => {
+  it('stacks at most three bubbles and queues the rest silently', () => {
+    // Owner direction (round 3): max 3 visible; memos beyond the cap wait
+    // in the hook's list and surface when a slot frees — nothing is ever
+    // auto-acknowledged to make room.
+    mockMemos(memoList(5));
     renderWithL10n(<MemoBanner />);
-    fireEvent.click(screen.getByTestId('memo-banner-open'));
-    fireEvent.click(screen.getByTestId('memo-modal-acknowledge'));
 
-    expect(mockAcknowledge).toHaveBeenCalledWith('m1');
-    expect(mockDismiss).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('closing the dialog returns to the bubble without acknowledging', () => {
-    renderWithL10n(<MemoBanner />);
-    fireEvent.click(screen.getByTestId('memo-banner-open'));
-    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-
+    const bubbles = screen.getAllByTestId('memo-banner-open');
+    expect(bubbles).toHaveLength(3);
+    // Backend list order: index 0 is the top of the stack.
+    expect(bubbles[0]).toHaveAttribute('aria-label', 'Read the full memo: Title m1');
+    expect(bubbles[2]).toHaveAttribute('aria-label', 'Read the full memo: Title m3');
+    expect(screen.queryByText('Title m4')).not.toBeInTheDocument();
+    expect(screen.queryByText('Title m5')).not.toBeInTheDocument();
     expect(mockAcknowledge).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    // The bubble is still on-screen for the (x) durable ack.
-    expect(screen.getByTestId('memo-banner-open')).toBeInTheDocument();
   });
 
-  it('the close button runs the durable ack action', () => {
-    // The single (x) acknowledges durably (chat-bubble semantics: read it,
-    // done) — the memo never returns on this terminal. The session-only
-    // dismiss path stays on the useMemos hook; the bubble must not touch it.
+  it('each bubble (x) acknowledges its own memo', () => {
+    mockMemos(memoList(3));
     renderWithL10n(<MemoBanner />);
-    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge this memo' }));
-    expect(mockAcknowledge).toHaveBeenCalledWith('m1');
+
+    const closeButtons = screen.getAllByRole('button', { name: 'Acknowledge this memo' });
+    expect(closeButtons).toHaveLength(3);
+    // The length assertion above proves index 1 exists (noUncheckedIndexedAccess).
+    fireEvent.click(closeButtons[1]!);
+
+    expect(mockAcknowledge).toHaveBeenCalledTimes(1);
+    expect(mockAcknowledge).toHaveBeenCalledWith('m2');
     expect(mockDismiss).not.toHaveBeenCalled();
   });
 
   it('renders nothing when there are no active memos', () => {
-    vi.mocked(useMemos).mockReturnValue({
-      memos: [],
-      loading: false,
-      error: null,
-      acknowledge: mockAcknowledge,
-      dismiss: mockDismiss,
-      refresh: vi.fn(),
-    });
+    mockMemos([]);
     const { container } = renderWithL10n(<MemoBanner />);
     expect(container).toBeEmptyDOMElement();
   });

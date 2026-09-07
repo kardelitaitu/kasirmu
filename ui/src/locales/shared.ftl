@@ -151,7 +151,6 @@ update-banner-rollback-aria = Download previous version from GitHub
 memo-banner-open-aria = Read the full memo: { $title }
 memo-banner-open-aria-plain = Read the full memo
 memo-banner-acknowledge-aria = Acknowledge this memo
-memo-modal-acknowledge = Acknowledge
 
 # Memos (authoring)
 memos-title = Memos

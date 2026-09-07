@@ -1,26 +1,85 @@
 /* ============================================================
- * OZ-POS Memo Notification Bubble
+ * OZ-POS Memo Notification Stack
  *
- * The Memo display surface: a chat-bubble overlay pinned to the
- * bottom-left of the screen for the highest-priority active memo
- * addressed to this terminal (owner-directed redesign, 2026-09-07 —
- * replaced the top sliding banner). Solid popover background so the
- * rotated tail seam stays opaque; tokens carry dark mode. The bubble
- * wraps only the open button — the (x) floats outside its top-right
- * corner (owner direction, 2026-09-08). The exit animation follows the
- * exit-animation-pattern skill (exact reverse of entry, fill-mode both,
- * pointer-events none, all inside prefers-reduced-motion: no-preference).
+ * The Memo display surface: a chat-bubble stack pinned to the
+ * bottom-left of the screen for the highest-priority active memos
+ * addressed to this terminal (owner-directed redesign rounds 1–3,
+ * 2026-09-07/08 — replaced the top sliding banner). Solid popover
+ * background so the rotated tail seam stays opaque; tokens carry
+ * dark mode.
+ *
+ * Stack rows are grid wrappers transitioning grid-template-rows
+ * between 0fr and 1fr: a spawning bubble expands (pushing the stack
+ * down) and a closing one collapses (letting the stack slide up)
+ * purely through layout flow. Steady state must NOT clip — the (x)
+ * chip and the speech tail overflow the bubble's box — so clipping
+ * is enabled only on rows that are currently animating. Unmount
+ * timing is owned by useExitAnimation; the enlarged reading card is
+ * a dedicated overlay (no shared Modal) whose exit follows the
+ * exit-animation-pattern skill (exact reverse of entry, fill-mode
+ * both, pointer-events none, all inside
+ * prefers-reduced-motion: no-preference).
  * ============================================================ */
 
-/* Fixed positioning is shrink-to-fit, so the bubble adapts to its
-   content up to the 400px cap (owner direction, 2026-09-08: reduced
-   from 480px). The close chip is absolutely positioned against this
-   box. */
-.memo-banner {
+/* ── Stack (fixed, bottom-left) ─────────────────────────────── */
+
+.memo-stack {
   position: fixed;
   left: var(--space-6);
   bottom: var(--space-6);
   z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* Row wrapper: collapsed until mounted, collapsing when exiting.
+   Siblings ride the animating row's height, so the stack reflows
+   smoothly with no FLIP measurement. */
+.memo-stack-item {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-12px);
+}
+
+.memo-stack-item.is-mounted {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.memo-stack-item.is-exiting {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .memo-stack-item {
+    transition:
+      grid-template-rows var(--duration-200) var(--ease-out),
+      opacity var(--duration-200) var(--ease-out),
+      transform var(--duration-200) var(--ease-out);
+  }
+}
+
+/* Row clipping only while animating (see the header note): without
+   it the bubble's content would paint over the neighbouring rows
+   while the track is smaller than the content. */
+.memo-stack-item:not(.is-mounted) .memo-banner,
+.memo-stack-item.is-exiting .memo-banner {
+  overflow: hidden;
+}
+
+/* The bubble itself: adaptive width capped at 400px (owner direction,
+   2026-09-08: reduced from 480px). min-height: 0 lets the grid row
+   actually collapse below the content size. */
+.memo-banner {
+  position: relative;
+  min-height: 0;
   max-width: 400px;
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-popover);
@@ -29,10 +88,10 @@
   box-shadow: var(--shadow-xl);
 }
 
-/* Speech-bubble tail: a rotated square peeking from the bubble's
-   bottom edge. Shares the bubble's solid background and border on
-   the two faces that face outward. */
-.memo-banner::after {
+/* Speech-bubble tail on the bottom-most bubble only: a rotated square
+   peeking from the bubble's bottom edge. Shares the bubble's solid
+   background and border on the two faces that face outward. */
+.memo-stack-item:last-child .memo-banner::after {
   content: '';
   position: absolute;
   bottom: -6.5px;
@@ -45,45 +104,8 @@
   transform: rotate(45deg);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .memo-banner {
-    animation: memo-banner-rise-in var(--duration-200) var(--ease-out);
-  }
-
-  @keyframes memo-banner-rise-in {
-    from {
-      opacity: 0;
-      transform: translateY(16px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  /* ── Exit: exact mirror of rise-in (sink down + fade out) ─── */
-  /* Source order: entry rule → entry keyframe → exit keyframe →
-     exit rule. fill-mode: both holds the TO-frame across React
-     unmount (no opacity flash); pointer-events: none blocks stale
-     clicks during the fade. */
-  @keyframes memo-banner-sink-out {
-    from {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    to {
-      opacity: 0;
-      transform: translateY(16px);
-    }
-  }
-  .memo-banner--exiting {
-    animation: memo-banner-sink-out var(--duration-200) var(--ease-out) both;
-    pointer-events: none;
-  }
-}
-
 /* The whole title+body block is one button that opens the enlarged
-   dialog. Reset the button chrome so it reads as the bubble's body,
+   card. Reset the button chrome so it reads as the bubble's body,
    and keep the min-width:0 chain so long text clamps instead of
    stretching the bubble. */
 .memo-banner-open {
@@ -117,18 +139,20 @@
   border-radius: var(--radius-sm);
 }
 
+/* Owner direction (round 3): the bubble text reads at body size,
+   not caption size. */
 .memo-banner-title {
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg);
   line-height: var(--leading-tight);
 }
 
-/* Owner-directed (2026-09-08): the bubble previews at most 10 lines;
-   the full text lives in the centered dialog behind the open button. */
+/* The bubble previews at most 10 lines; the full text lives in the
+   enlarged card behind the open button. */
 .memo-banner-text {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   color: var(--color-fg-secondary);
   line-height: var(--leading-normal);
   display: -webkit-box;
@@ -140,22 +164,10 @@
   overflow-wrap: anywhere;
 }
 
-/* Full text inside the shared Modal — unclamped, and pre-wrap so the
-   author's line breaks from the composer textarea survive. */
-.memo-modal-text {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-fg-secondary);
-  line-height: var(--leading-normal);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* The (x) floats OUTSIDE the bubble (owner direction, 2026-09-08): a
-   small circular chip overlapping the top-right corner, so clicking
-   near the bubble never risks an accidental ack. Anchored to the
-   bubble (the fixed-position ancestor); no overflow clipping on the
-   bubble keeps the chip fully visible. */
+/* The (x) floats OUTSIDE the bubble (owner direction, 2026-09-08):
+   a small circular chip overlapping the top-right corner. Anchored
+   to the bubble (the positioned ancestor); the row's overflow
+   clipping is disabled in steady state so the chip stays visible. */
 .memo-banner-close {
   position: absolute;
   top: -8px;
@@ -194,4 +206,140 @@
 .memo-banner-close:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ── Enlarged reading card (dedicated portal overlay) ───────── */
+
+.memo-expanded-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: var(--color-bg-overlay);
+}
+
+.memo-expanded-card {
+  position: relative;
+  max-width: min(640px, 100%);
+  padding: var(--space-8);
+  background: var(--color-bg-popover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-2xl);
+}
+
+.memo-expanded-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+
+/* Full text at reading size — unclamped, pre-wrap so the author's
+   line breaks from the composer textarea survive, and the primary
+   foreground colour (this is the surface people actually read). */
+.memo-expanded-text {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--color-fg);
+  line-height: var(--leading-relaxed);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The single big (x) floats OUTSIDE the card's top-right corner —
+   no footer, no acknowledge button (owner direction, round 3).
+   Sized to the 44px touch-target floor like the other overlay
+   close buttons in the app. */
+.memo-expanded-close {
+  position: absolute;
+  top: calc(-1 * var(--space-4));
+  right: calc(-1 * var(--space-4));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-fg-tertiary);
+  cursor: pointer;
+}
+
+.memo-expanded-close:hover {
+  background: var(--color-bg-surface);
+  color: var(--color-fg-secondary);
+}
+
+.memo-expanded-close:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .memo-expanded-overlay {
+    animation: memo-overlay-fade-in var(--duration-200) var(--ease-out);
+  }
+
+  @keyframes memo-overlay-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* ── Exit: exact mirrors of the entries (fill-mode both holds the
+     TO-frame across React unmount; pointer-events: none blocks stale
+     clicks during the fade). ─────────────────────────────────── */
+  @keyframes memo-overlay-fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  .memo-expanded-overlay.is-exiting {
+    animation: memo-overlay-fade-out var(--duration-200) var(--ease-out) both;
+    pointer-events: none;
+  }
+
+  .memo-expanded-card {
+    animation: memo-card-pop-in var(--duration-200) var(--ease-out);
+  }
+
+  @keyframes memo-card-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes memo-card-pop-out {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(8px) scale(0.97);
+    }
+  }
+  .memo-expanded-card.is-exiting {
+    animation: memo-card-pop-out var(--duration-200) var(--ease-out) both;
+  }
 }
