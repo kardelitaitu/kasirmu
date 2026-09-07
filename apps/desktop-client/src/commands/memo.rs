@@ -139,9 +139,10 @@ pub struct CreateMemoArgs {
     /// normalized away by the store.
     #[serde(default)]
     pub location_ids: Vec<String>,
-    /// Memo title (non-blank).
+    /// Memo title (optional in the display contract — blank renders a
+    /// text-only bubble, owner direction 2026-09-08).
     pub title: String,
-    /// Memo body (non-blank).
+    /// Memo body (must be non-blank — content is the memo).
     pub body: String,
     /// Display duration; defaults to `24h` when omitted.
     #[serde(default)]
@@ -311,9 +312,10 @@ pub async fn stop_memo_scoped(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviseMemoArgs {
-    /// Corrected title (non-blank).
+    /// Corrected title (optional in the display contract; a correction may
+    /// blank it).
     pub title: String,
-    /// Corrected body (non-blank).
+    /// Corrected body (must be non-blank — content is the memo).
     pub body: String,
 }
 

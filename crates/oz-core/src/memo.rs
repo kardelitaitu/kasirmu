@@ -375,9 +375,10 @@ pub struct NewMemo {
     pub author_user_id: String,
     /// Author's role at creation (snapshotted again at publish).
     pub author_role: String,
-    /// Memo title (must be non-blank).
+    /// Memo title (optional in the display contract — blank renders a
+    /// text-only bubble, owner direction 2026-09-08).
     pub title: String,
-    /// Memo body (must be non-blank).
+    /// Memo body (must be non-blank — content is the memo).
     pub body: String,
     /// Display duration.
     pub duration: MemoDuration,

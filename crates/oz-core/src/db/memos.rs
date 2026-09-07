@@ -59,12 +59,10 @@ fn validate_new_memo(new: &NewMemo) -> Result<(), CoreError> {
             message: "must not be empty".into(),
         });
     }
-    if new.title.trim().is_empty() {
-        return Err(CoreError::Validation {
-            field: "title",
-            message: "must not be empty".into(),
-        });
-    }
+    // The title is OPTIONAL in the display contract (owner direction,
+    // 2026-09-08): a blank title renders a text-only bubble on every display
+    // surface, so blank is trimmed to the empty string and persisted like any
+    // other value. Only the schema NOT NULL applies — there is no CHECK.
     if new.body.trim().is_empty() {
         return Err(CoreError::Validation {
             field: "body",
@@ -254,7 +252,10 @@ impl Store<'_> {
     /// `expires_at` are left untouched — a correction fixes the text, it does
     /// not extend the memo's life. Authorization (author-or-higher) is the
     /// caller's gate; this enforces only that the memo is published and the
-    /// new content is non-blank.
+    /// new body is non-blank (the title is optional in the display contract,
+    /// owner direction 2026-09-08, so a correction may blank it). Both values
+    /// are trimmed like the create path, so a whitespace-only title persists
+    /// as the empty string.
     pub fn revise_memo(
         &self,
         tenant_id: &str,
@@ -263,18 +264,14 @@ impl Store<'_> {
         title: &str,
         body: &str,
     ) -> Result<Memo, CoreError> {
-        if title.trim().is_empty() {
-            return Err(CoreError::Validation {
-                field: "title",
-                message: "must not be empty".into(),
-            });
-        }
         if body.trim().is_empty() {
             return Err(CoreError::Validation {
                 field: "body",
                 message: "must not be empty".into(),
             });
         }
+        let title = title.trim();
+        let body = body.trim();
         let memo = self
             .get_memo(tenant_id, memo_id)?
             .ok_or_else(|| CoreError::NotFound {
@@ -356,12 +353,25 @@ impl Store<'_> {
             });
         }
         let now = now_iso();
-        self.conn.execute(
+        // The predicate inside the UPDATE is the race guard, mirroring
+        // `publish_memo`/`revise_memo`: the expiry sweep daemon can end the
+        // memo between the read above and this write. If the guard matched 0
+        // rows the memo is no longer published, so report the typed
+        // validation error — silently reporting success would drop the
+        // `stopped_by`/`stopped_at` audit record on a memo that in fact
+        // expired, and the caller would believe their stop landed.
+        let changed = self.conn.execute(
             "UPDATE memos
              SET status = 'stopped', stopped_at = ?2, stopped_by = ?3, updated_at = ?2
              WHERE tenant_id = ?1 AND id = ?4 AND status = 'published'",
             params![tenant_id, now, actor_user_id, memo_id],
         )?;
+        if changed == 0 {
+            return Err(CoreError::Validation {
+                field: "status",
+                message: "memo is no longer published (expired or stopped); cannot stop".into(),
+            });
+        }
         self.get_memo(tenant_id, memo_id)?
             .ok_or_else(|| CoreError::Internal("memo vanished after stop".into()))
     }
@@ -515,13 +525,26 @@ impl Store<'_> {
     /// rows still referenced by a `RESTRICT` FK (a location/terminal delete
     /// guard) cannot exist here, so the delete is unconditional once aged.
     /// Returns the number deleted; idempotent.
+    ///
+    /// The cutoff is computed HERE, in Rust, and passed as an RFC3339 string:
+    /// `archived_at` is RFC3339 (`…T…Z`) while SQLite's `datetime()` emits a
+    /// space-separated form, so the previous `archived_at <= datetime(...)`
+    /// compared two different formats. At character 10 `'T'` (0x54) sorts
+    /// ABOVE `' '` (0x20), so a row archived on the same calendar date as the
+    /// cutoff never compared `<=` and its deletion silently slipped by up to
+    /// a day. RFC3339-vs-RFC3339 keeps the comparison in one format, like the
+    /// `expires_at <= ?` sweep.
     pub fn sweep_expired_archives(&self, now: &str, window_days: i64) -> Result<usize, CoreError> {
+        let cutoff = chrono::DateTime::parse_from_rfc3339(now)
+            .map_err(|e| CoreError::Internal(format!("retention sweep: bad `now` timestamp: {e}")))?
+            .with_timezone(&chrono::Utc)
+            - chrono::Duration::days(window_days);
         let deleted = self.conn.execute(
             "DELETE FROM memos
              WHERE status = 'archived'
                AND archived_at IS NOT NULL
-               AND archived_at <= datetime(?1, ?2)",
-            params![now, format!("-{window_days} days")],
+               AND archived_at <= ?1",
+            params![cutoff.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)],
         )?;
         Ok(deleted)
     }
@@ -535,6 +558,14 @@ impl Store<'_> {
     /// (MemoSyncRow carries no tenant_id). The cloud reconciles by upsert +
     /// delete-by-omission, so absence from this snapshot IS the deletion
     /// signal.
+    ///
+    /// Deliberately NOT in the snapshot: `memo_revisions`. Revision history
+    /// is a desktop management/audit concern — the immutable rows live only
+    /// in the authoring DB, and no consumer surface (cloud or tablet) renders
+    /// historical revisions; the cloud stores each memo's current content and
+    /// revision NUMBER. If a tablet history view is ever specced, this
+    /// snapshot grows a revisions array and `sync_memos` an append-only
+    /// merge — deliberately not built ahead of that spec.
     pub fn collect_memo_sync_snapshot(&self) -> Result<Vec<MemoPushRow>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.tenant_id, m.author_user_id, m.author_role, m.title, m.body,

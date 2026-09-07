@@ -101,12 +101,36 @@ fn create_draft_sets_initial_state() {
 }
 
 #[test]
-fn create_rejects_blank_title() {
+fn create_persists_blank_title_as_empty_for_text_only_bubble() {
+    // The display contract renders a title-less memo as a text-only bubble
+    // (owner direction, 2026-09-08), so the store persists a blank title as
+    // the empty string instead of rejecting it — the column is NOT NULL but
+    // carries no CHECK.
     let store = store();
     let mut m = new_memo("default", &[]);
     m.title = "   ".into();
-    let err = store.create_memo_draft(&m).unwrap_err();
-    assert!(matches!(err, CoreError::Validation { field: "title", .. }));
+    let created = store.create_memo_draft(&m).unwrap();
+    assert_eq!(created.title, "");
+
+    // Publishing and the terminal display read treat it like any other memo.
+    seed_terminal(&store, "t1", None);
+    store.publish_memo("default", &created.id).unwrap();
+    let active = store
+        .list_active_for_terminal("default", "t1", &now())
+        .unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].memo.title, "");
+}
+
+#[test]
+fn create_trims_surrounding_whitespace_in_title_and_body() {
+    let store = store();
+    let mut m = new_memo("default", &[]);
+    m.title = "  Padded title  ".into();
+    m.body = "  Padded body  ".into();
+    let created = store.create_memo_draft(&m).unwrap();
+    assert_eq!(created.title, "Padded title");
+    assert_eq!(created.body, "Padded body");
 }
 
 #[test]
@@ -293,6 +317,45 @@ fn stop_draft_is_rejected() {
             ..
         }
     ));
+}
+
+#[test]
+fn stop_after_expiry_is_rejected_and_writes_no_stop_metadata() {
+    // The caller-visible contract for a stop that arrives after the memo
+    // ended: a typed validation error, never a success — success would imply
+    // a stop event that the audit trail cannot show. This pins the
+    // read-side rejection; the write-side `changed == 0` guard inside
+    // stop_memo covers the same outcome for a memo that ends between the
+    // read and the UPDATE (a daemon race no single-threaded test can
+    // interleave — the same comment-documented precedent revise_memo set).
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
+    // The sweep ends the memo before the stop arrives.
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET expires_at = ?1 WHERE id = ?2",
+            params![long_ago(), memo.id],
+        )
+        .unwrap();
+    store.sweep_expired("default", &now()).unwrap();
+
+    let err = store.stop_memo("default", &memo.id, "user-2").unwrap_err();
+    assert!(matches!(
+        err,
+        CoreError::Validation {
+            field: "status",
+            ..
+        }
+    ));
+    // The audit trail stays honest: no stop metadata was written.
+    let after = store.get_memo("default", &memo.id).unwrap().unwrap();
+    assert_eq!(after.status, MemoStatus::Expired);
+    assert_eq!(after.stopped_by, None);
+    assert_eq!(after.stopped_at, None);
 }
 
 #[test]
@@ -698,6 +761,68 @@ fn retention_sweep_deletes_archives_only_past_the_window() {
 }
 
 #[test]
+fn retention_boundary_deletes_exactly_when_the_window_closes() {
+    // The regression this pins: `archived_at` is RFC3339 (`…T…Z`) while the
+    // cutoff used to be SQLite `datetime()` output (`… …`), and at character
+    // 10 `'T'` (0x54) sorts ABOVE `' '` (0x20) — so a row archived on the
+    // SAME calendar date as the cutoff never compared `<=` and its deletion
+    // slipped by up to a day. The cutoff is now computed in Rust as RFC3339,
+    // so same-instant comparisons are exact.
+    let store = store();
+    seed_terminal(&store, "t1", None);
+
+    let archive_now = |store: &Store<'_>, memo_id: &str| {
+        store
+            .conn()
+            .execute(
+                "UPDATE memos SET expires_at = ?1 WHERE id = ?2",
+                params![long_ago(), memo_id],
+            )
+            .unwrap();
+        store.sweep_expired("default", &now()).unwrap();
+        store.sweep_ended_to_archived(&now()).unwrap();
+    };
+
+    // Memo A: archived at the exact cutoff instant (now - 30 days).
+    let memo_exact = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &memo_exact.id).unwrap();
+    archive_now(&store, &memo_exact.id);
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(30))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET archived_at = ?1 WHERE id = ?2",
+            params![cutoff, memo_exact.id],
+        )
+        .unwrap();
+
+    // Memo B: archived one hour inside the window (now - 29d23h).
+    let memo_inside = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &memo_inside.id).unwrap();
+    archive_now(&store, &memo_inside.id);
+    let inside = (chrono::Utc::now() - chrono::Duration::days(30) + chrono::Duration::hours(1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    store
+        .conn()
+        .execute(
+            "UPDATE memos SET archived_at = ?1 WHERE id = ?2",
+            params![inside, memo_inside.id],
+        )
+        .unwrap();
+
+    // One deleted (the exact-boundary row, `<=`), one survives.
+    assert_eq!(store.sweep_expired_archives(&now(), 30).unwrap(), 1);
+    assert!(store.get_memo("default", &memo_exact.id).unwrap().is_none());
+    assert!(
+        store
+            .get_memo("default", &memo_inside.id)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
 fn retention_window_is_thirty_days_per_the_ruling() {
     assert_eq!(crate::memo::RETENTION_WINDOW_DAYS, 30);
 }
@@ -889,16 +1014,18 @@ fn revise_rejects_draft_and_terminal_states() {
 }
 
 #[test]
-fn revise_rejects_blank_content_and_unknown_memo() {
+fn revise_rejects_blank_body_and_unknown_memo() {
     let store = store();
     seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
+    // The title is optional (owner direction 2026-09-08) but the body never
+    // is: a correction must always carry content.
     assert!(matches!(
         store
-            .revise_memo("default", &memo.id, "user-1", "  ", "body")
+            .revise_memo("default", &memo.id, "user-1", "title", "  ")
             .unwrap_err(),
-        CoreError::Validation { .. }
+        CoreError::Validation { field: "body", .. }
     ));
     assert!(matches!(
         store
@@ -906,6 +1033,30 @@ fn revise_rejects_blank_content_and_unknown_memo() {
             .unwrap_err(),
         CoreError::NotFound { .. }
     ));
+}
+
+#[test]
+fn revise_can_blank_the_title_and_trims_both_fields() {
+    let store = store();
+    seed_terminal(&store, "t1", None);
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+    store.publish_memo("default", &memo.id).unwrap();
+
+    let revised = store
+        .revise_memo("default", &memo.id, "user-1", "   ", "corrected body")
+        .unwrap();
+    assert_eq!(
+        revised.title, "",
+        "a whitespace-only title persists as empty"
+    );
+    assert_eq!(revised.body, "corrected body");
+    assert_eq!(revision_count(&store, &memo.id), 2);
+
+    let trimmed = store
+        .revise_memo("default", &memo.id, "user-1", "  New title  ", "  body  ")
+        .unwrap();
+    assert_eq!(trimmed.title, "New title");
+    assert_eq!(trimmed.body, "body");
 }
 
 // ── Management read: list_memos_authored_by ───────────────────────
