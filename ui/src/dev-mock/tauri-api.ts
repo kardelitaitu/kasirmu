@@ -76,6 +76,8 @@ function mockStaffMember(overrides: Partial<Record<string, unknown>> = {}): Reco
       branch_ids: [],
       workspaces_all: true,
       workspace_keys: [],
+      scope_type: 'organization',
+      scope_id: null,
     },
     ...overrides,
   };
