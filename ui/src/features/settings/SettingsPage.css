@@ -261,6 +261,16 @@
 .settings-section-content > .card:nth-child(4) { animation-delay: 180ms; }
 .settings-section-content > .card:nth-child(5) { animation-delay: 240ms; }
 
+/* Wrapper for the active section's §H scope tag (77b0ce21). The rule
+   replaces the div's inline style so the class is defined in CSS —
+   screenExtraction's used-but-not-defined check requires it. */
+.settings-active-section-scope {
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* ── Footer ─────────────────────────────────────────────────── */
 
 .settings-footer {

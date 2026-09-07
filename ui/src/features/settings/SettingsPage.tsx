@@ -1029,7 +1029,7 @@ function SettingsPageContent() {
         <form id="settings-form" className="settings-content" onSubmit={(e) => { e.preventDefault(); handleSave(); }} ref={settingsKeyboardRef as unknown as React.Ref<HTMLFormElement>}>
           <button type="submit" hidden aria-hidden="true" tabIndex={-1}>Save</button>
           <div className={`settings-section-content${activeSection === 'topology' ? ' settings-section-content--full' : ''}`} key={activeSection}>
-            <div className="settings-active-section-scope" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className="settings-active-section-scope">
               {(() => {
                 const item = NAV_ITEMS_REF.find((n) => n.key === activeSection);
                 return item ? <SettingsScopeTag scope={item.scope} /> : null;

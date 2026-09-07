@@ -25,16 +25,6 @@
   margin-bottom: var(--space-6);
 }
 
-.multi-store-view-toggle {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.multi-store-dashboard-topology-view {
-  flex: 1;
-  min-height: 600px;
-}
-
 .multi-store-dashboard-title {
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-bold);

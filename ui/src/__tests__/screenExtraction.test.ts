@@ -347,20 +347,16 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['shift-mgmt-status-badge--', 'shift-mgmt-close-info'],
   },
 
-  // ── Stores ────────────────────────────────────────────
+  // ── Locations (moved from stores/ in the Store→Location rename) ──
   {
     name: 'MultiStoreDashboardScreen',
-    tsx: 'stores/MultiStoreDashboardScreen.tsx',
-    css: ['stores/MultiStoreDashboardScreen.css'],
-    externalClasses: [
-      'multi-store-view-toggle',
-      'multi-store-dashboard-topology-view',
-    ],
+    tsx: 'locations/MultiStoreDashboardScreen.tsx',
+    css: ['locations/MultiStoreDashboardScreen.css'],
   },
   {
     name: 'TerminalStatusPanel',
-    tsx: 'stores/TerminalStatusPanel.tsx',
-    css: ['stores/TerminalStatusPanel.css'],
+    tsx: 'locations/TerminalStatusPanel.tsx',
+    css: ['locations/TerminalStatusPanel.css'],
   },
 
   // ── Tables ────────────────────────────────────────────

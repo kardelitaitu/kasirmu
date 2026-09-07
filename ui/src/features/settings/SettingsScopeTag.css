@@ -14,31 +14,31 @@
 }
 
 .settings-scope-tag--organization {
-  background: rgba(168, 85, 247, 0.12);
-  color: #c084fc;
-  border-color: rgba(168, 85, 247, 0.25);
+  background: var(--color-scope-organization-bg);
+  color: var(--color-scope-organization);
+  border-color: var(--color-scope-organization-border);
 }
 
 .settings-scope-tag--legal-entity {
-  background: rgba(59, 130, 246, 0.12);
-  color: #60a5fa;
-  border-color: rgba(59, 130, 246, 0.25);
+  background: var(--color-scope-legal-entity-bg);
+  color: var(--color-scope-legal-entity);
+  border-color: var(--color-scope-legal-entity-border);
 }
 
 .settings-scope-tag--location {
-  background: rgba(16, 185, 129, 0.12);
-  color: #34d399;
-  border-color: rgba(16, 185, 129, 0.25);
+  background: var(--color-scope-location-bg);
+  color: var(--color-scope-location);
+  border-color: var(--color-scope-location-border);
 }
 
 .settings-scope-tag--workspace {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fbbf24;
-  border-color: rgba(245, 158, 11, 0.25);
+  background: var(--color-scope-workspace-bg);
+  color: var(--color-scope-workspace);
+  border-color: var(--color-scope-workspace-border);
 }
 
 .settings-scope-tag--terminal {
-  background: rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
-  border-color: rgba(148, 163, 184, 0.25);
+  background: var(--color-scope-terminal-bg);
+  color: var(--color-scope-terminal);
+  border-color: var(--color-scope-terminal-border);
 }
