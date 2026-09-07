@@ -503,3 +503,66 @@ therefore locks where the equivalent desktop gate opens. Pre-existing,
 unrelated to this slice, and deliberately *not* fixed from here — the verdict
 now agrees with caps as shipped, and closing the caps gap is that command's
 owner's call. Recorded rather than papered over.
+
+---
+
+## Amendment 4 — the desktop command landed; scope answer; sweep ownership (2026-09-08, the desktop-command agent)
+
+**Amendment 3's open table row is closed.**
+`explain_feature_availability_scoped` landed desktop-side as `ff85e7be`
+(3 files, 377 insertions): the command, eight verdict tests in
+`subscription_tests.rs` (tier, quota at-cap/below, server_policy, role,
+lifecycle + `expires_at` echo, grace + `grace_until`, add-on grant,
+unknown-key fail-closed), and the `generate_handler!` registration.
+`commands::subscription` is 18/18 with the tablet re-add of `Warehouses`
+in the tree; the pre-commit fmt/i18n gates ran clean.
+
+The command keeps the two traits Amendment 2 singled out as worth keeping
+(`gate_permission` over real registry keys; `server_grant` produced from
+`TenantSubscription::allows_workspace_type`), keeps the desktop dev
+tier upgrade (desktop caps HAS it — the dfbc41b2 invariant is per-client,
+and the desktop verdict mirrors the desktop payload, exactly as that
+commit's message prescribes), and passes no `scope` target — which is the
+last open item below.
+
+**Sweep ownership, recorded from this side.** The `869de0ce` commit that
+Amendment "Downgrade detection slice" (todo-global-saas-2.md) flags for
+sweeping four untracked downgrade files under its message is mine. The
+pathspec was explicit, not whole-tree — but it was built from a wrong
+ownership premise: the files predated my session in the working tree and I
+attributed them to my own lane's prior work without checking the todo
+journals first, which is where their authorship was recorded. The lesson
+goes one step past the AGENTS.md pathspec rule: **an explicit pathspec
+only limits the damage to what you name — it does not tell you what the
+names are.** Untracked files carry no author trail; the journals do. I
+should have read them before committing anything I did not personally
+write in that session. The content landed byte-identical and green
+(verified independently by its author), so the cost is attribution only.
+
+**Scope — answer for the ruling, not a unilateral change.** The command
+still ships `scope_granted: None`. Amendment 2 is right that the session
+already carries a location (`session.store_id`) and the axis could light
+up without a signature change. My recommendation to whoever rules:
+
+- **v1 (now): compute `scope_granted` from the caller's current session
+  location.** The verdict's contract is "explain the gates that bind the
+caller where they stand" — and the session gate itself already scopes on
+`session.store_id` (`authz.rs:99-105`), so the verdict would explain the
+scope check the caller is actually subject to. Silent-`None` is honest
+about the features (organization-global) but under-sells the surface: for
+a scoped staff user, `scope` is a real denial reason for real features
+and today the verdict would name `role` or nothing instead.
+- **Later, on evidence: an explicit target argument.** Support asking
+"why can't USER X use Y at LOCATION Z" is a different query — it needs a
+different permission shape too (the caller must be allowed to diagnose
+another user, not just read settings). Building that spec before anyone
+asks for it is how speculative surface accumulates.
+
+This is a behavior change to a command that has been in HEAD for one
+day, in one client — the cheapest moment it will ever have. I have not
+implemented it: Amendment 2 explicitly asked for a ruling, and
+"resolved by whichever agent commits second" is the failure mode it
+named. If the ruling comes back "current-location, v1", the change is
+small: gather the assignment in `load_feature_verdict`, evaluate
+covers-resource on `session.store_id`, wire `scope_granted`, and extend
+the oracle test — the resolver side is already built and tested.
