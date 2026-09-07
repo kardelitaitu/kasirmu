@@ -26,6 +26,9 @@ fn is_expected_sensitive(key: &str) -> bool {
                 | permissions::GIFTCARDS_ISSUE
                 | permissions::SECURITY_MANAGE
                 | permissions::DATA_EXPORT
+                // AP write-off forgives a vendor debt (money destruction),
+                // so it is never wildcard-eligible — mirrors giftcards:issue.
+                | permissions::PAYABLES_WRITEOFF
     )
 }
 
@@ -713,6 +716,11 @@ fn every_enforced_key_is_granted_by_at_least_one_preset() {
         permissions::PLAN_READ,
         permissions::CATEGORIES_READ,
         permissions::DATA_EXPORT,
+        // AP write keys are Owner-only (payment-methods-plan §2c), mirroring
+        // purchasing's reality; owners hand them out via Custom roles.
+        permissions::PAYABLES_CREATE,
+        permissions::PAYABLES_SETTLE,
+        permissions::PAYABLES_WRITEOFF,
     ];
 
     // Collect all permissions granted by any preset.

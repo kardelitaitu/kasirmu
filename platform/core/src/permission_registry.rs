@@ -601,6 +601,31 @@ pub const REGISTRY: &[PermissionEntry] = &[
         sensitive: false,
         description: "Mutate the topology graph (Apply, location creation, rename, templates, property edits).",
     },
+    // ── payables (Phase 4 AP / Hutang — docs/plans/payment-methods-plan.md) ──
+    PermissionEntry {
+        key: "payables:view",
+        family: "payables",
+        sensitive: false,
+        description: "View vendor bills, due dates, and the payables aging report.",
+    },
+    PermissionEntry {
+        key: "payables:create",
+        family: "payables",
+        sensitive: false,
+        description: "Raise a payable — the 'On Account' option at purchasing stock-in.",
+    },
+    PermissionEntry {
+        key: "payables:settle",
+        family: "payables",
+        sensitive: false,
+        description: "Record a payment to the vendor against a payable (partial or full).",
+    },
+    PermissionEntry {
+        key: "payables:writeoff",
+        family: "payables",
+        sensitive: true,
+        description: "Forgive a vendor debt without payment (money destruction — audited).",
+    },
 ];
 
 /// Look up a registered key.

@@ -601,4 +601,22 @@ pub mod permissions {
     /// the broader `staff:update` gate the editor currently rides;
     /// admin/owner only (Owner holds it via the global wildcard).
     pub const TOPOLOGY_WRITE: &str = "topology:write";
+
+    // ── Payables (Hutang / Beli Tempo — AP) ───────────────────────
+    /// View vendor bills, due dates, and the payables aging report. Phase 4
+    /// (AP) of `docs/plans/payment-methods-plan.md`. Owner holds it via the
+    /// global wildcard; the Auditor preset grants read-only visibility.
+    pub const PAYABLES_VIEW: &str = "payables:view";
+
+    /// Raise a payable — the "On Account" option at purchasing stock-in
+    /// (create a supplier debt). Owner-only, mirroring purchasing's reality.
+    pub const PAYABLES_CREATE: &str = "payables:create";
+
+    /// Record a payment to the vendor against a payable (partial or full).
+    /// Owner-only.
+    pub const PAYABLES_SETTLE: &str = "payables:settle";
+
+    /// Forgive a vendor debt without payment (money destruction — audited).
+    /// Owner-only.
+    pub const PAYABLES_WRITEOFF: &str = "payables:writeoff";
 }

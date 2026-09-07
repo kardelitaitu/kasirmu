@@ -249,6 +249,9 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::CUSTOMERS_VIEW,
             permissions::LOYALTY_VIEW,
             permissions::KDS_VIEW,
+            // AP read-only visibility for audit (payment-methods-plan §2c:
+            // payables is Owner-only except view, which the Auditor holds).
+            permissions::PAYABLES_VIEW,
         ],
     },
     RolePreset {
@@ -355,4 +358,8 @@ pub const ALL_ENFORCED: &[&str] = &[
     permissions::MEMO_WRITE,
     permissions::MEMO_STOP,
     permissions::TOPOLOGY_WRITE,
+    permissions::PAYABLES_VIEW,
+    permissions::PAYABLES_CREATE,
+    permissions::PAYABLES_SETTLE,
+    permissions::PAYABLES_WRITEOFF,
 ];
