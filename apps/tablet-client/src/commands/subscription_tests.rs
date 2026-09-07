@@ -48,6 +48,48 @@ fn verdict_rejects_unknown_keys_fail_closed() {
     ));
 }
 
+/// The tablet verdict resolves to the same fail-closed Free + `unavailable`
+/// the tablet capabilities command reports for the same empty subscription
+/// row, on every key.
+///
+/// Why this is pinned rather than assumed: the tablet's `get_subscription_
+/// capabilities` applies no debug Free→Premium upgrade, while desktop's does.
+/// An earlier revision of this command mirrored *desktop's* upgrade into the
+/// tablet verdict, which would have a debug tablet report `premium` beside a
+/// caps payload saying `free` — a verdict claiming a feature is available on a
+/// register whose tier gates are locked, contradicting the one payload the
+/// gates actually read.
+///
+/// This fixture does reach the branch. `migrations::fresh_db()` seeds a
+/// validly-signed `active` Free subscription, which is precisely the input
+/// the desktop upgrade promotes to Premium. So in a `cfg(debug_assertions)`
+/// test build the removed branch would have reported `premium` here and the
+/// tier assertion below fails — a regression test that bites, not a
+/// decorative one.
+#[test]
+fn verdict_resolves_fail_closed_like_the_tablet_caps_command() {
+    let conn = fresh_db();
+    for key in [
+        "supports_qris",
+        "supports_analytics",
+        "supports_loyalty",
+        "supports_daily_dashboard",
+        "supports_cloud_sync",
+        "sales_history_days",
+        "locations",
+        "staff_users",
+        "pos_instances",
+        "warehouses",
+    ] {
+        let v = verdict_with_owner(&conn, key);
+        assert_eq!(v.detail.tier, "free", "{key}: tier must not be upgraded");
+        assert_eq!(
+            v.detail.state, "active",
+            "{key}: seeded row is signed and active"
+        );
+    }
+}
+
 #[test]
 fn verdict_echoes_feature_key_in_verdict() {
     let conn = fresh_db();

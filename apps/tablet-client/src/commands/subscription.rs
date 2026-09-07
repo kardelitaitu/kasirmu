@@ -262,21 +262,19 @@ fn load_feature_verdict(
         .as_ref()
         .map(|sub| sub.lifecycle_state())
         .unwrap_or(SubscriptionLifecycleState::Unavailable);
-    // Mirror the desktop verdict's dev upgrade so the tablet verdict can
-    // never contradict the desktop verdict for the same session.
-    #[cfg(debug_assertions)]
-    let tier = {
-        let upgraded = loaded
-            .as_ref()
-            .map(|sub| sub.effective_tier())
-            .unwrap_or(SubscriptionTier::Free);
-        if state == SubscriptionLifecycleState::Active && upgraded == SubscriptionTier::Free {
-            SubscriptionTier::Premium
-        } else {
-            upgraded
-        }
-    };
-    #[cfg(not(debug_assertions))]
+    // Mirror THIS client's `load_capabilities` exactly. The tablet's
+    // capabilities command applies no debug Free→Premium upgrade, so neither
+    // may the verdict. The invariant that matters is same-session agreement
+    // between a verdict and the gates it explains: a verdict reporting
+    // `premium` while this client's caps reports `free` would tell support a
+    // feature is available on a register whose tier gates are locked — the
+    // exact contradiction this command exists to prevent.
+    //
+    // Desktop's caps DOES apply that upgrade, so the two clients' verdicts
+    // legitimately differ in debug builds and converge in release. The
+    // missing upgrade in the tablet's capabilities command is a pre-existing
+    // gap owned by that command, not something the verdict should paper over
+    // by disagreeing with the payload beside it.
     let tier = loaded
         .as_ref()
         .map(|sub| sub.effective_tier())
