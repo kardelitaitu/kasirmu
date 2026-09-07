@@ -532,26 +532,53 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [activeInstance],
   );
 
+  // Memoized so a provider re-render that changes none of these fields
+  // (any state churn outside this list) hands consumers the SAME value
+  // object and skips their re-render. Every function captured here is
+  // useCallback-stable: handleSetActive/handleSetActiveInstance ([]),
+  // retry ([pickerTicket, resolvedStoreId, fetchWorkspaces]),
+  // switchStore ([fetchWorkspaces]), swapSessionToken
+  // ([updatePickerTicketFn] — stable per the comment at its deps).
+  const value = useMemo(
+    () => ({
+      activeWorkspace,
+      setActiveWorkspace: handleSetActive,
+      activeInstance,
+      setActiveInstance: handleSetActiveInstance,
+      availableWorkspaces,
+      workspaceScreens,
+      loading,
+      error,
+      retry,
+      lastWorkspace,
+      switchStore,
+      resolvedStoreId,
+      sessionToken,
+      swapSessionToken,
+      terminalId,
+    }),
+    [
+      activeWorkspace,
+      handleSetActive,
+      activeInstance,
+      handleSetActiveInstance,
+      availableWorkspaces,
+      workspaceScreens,
+      loading,
+      error,
+      retry,
+      lastWorkspace,
+      switchStore,
+      resolvedStoreId,
+      sessionToken,
+      swapSessionToken,
+      terminalId,
+    ],
+  );
+
   return (
-    <WorkspaceScopeContext.Provider value={scope}>        <WorkspaceContext.Provider
-        value={{
-          activeWorkspace,
-          setActiveWorkspace: handleSetActive,
-          activeInstance,
-          setActiveInstance: handleSetActiveInstance,
-          availableWorkspaces,
-          workspaceScreens,
-          loading,
-          error,
-          retry,
-          lastWorkspace,
-          switchStore,
-          resolvedStoreId,
-          sessionToken,
-          swapSessionToken,
-          terminalId,
-        }}
-      >
+    <WorkspaceScopeContext.Provider value={scope}>
+      <WorkspaceContext.Provider value={value}>
         {children}
       </WorkspaceContext.Provider>
     </WorkspaceScopeContext.Provider>
