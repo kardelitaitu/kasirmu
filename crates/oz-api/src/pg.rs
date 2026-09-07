@@ -1810,10 +1810,15 @@ pub struct MemoSyncResult {
 
 /// Reconcile the tenant's memo state in PG with the desktop's snapshot.
 ///
-/// The snapshot IS the truth: every memo in it is upserted (`ON CONFLICT
-/// (id)`), its targeting rows replaced, its recipients upserted, and any PG
-/// memo of this tenant NOT present in the snapshot is deleted (its children
-/// cascade) — the desktop-side retention delete propagates by omission.
+/// The snapshot IS the truth for memo CONTENT and row EXISTENCE: every memo
+/// in it is upserted (`ON CONFLICT (id)`), its targeting rows replaced, and
+/// any PG memo of this tenant NOT present in the snapshot is deleted (its
+/// children cascade) — the desktop-side retention delete propagates by
+/// omission. Recipient rows reconcile by EXISTENCE but their DELIVERY STATE
+/// merges monotonically (pending < delivered < acknowledged): memos reach
+/// terminals through the cloud, so acks land here (`ack_memo`) while the
+/// desktop still holds older state, and a wholesale replace would downgrade
+/// them on every push.
 /// Idempotent: pushing the same state twice is a no-op the second time.
 /// The memo's CHECK constraints on status/duration reject garbage payloads.
 pub async fn sync_memos(
@@ -1887,18 +1892,54 @@ pub async fn sync_memos(
             .map_err(|e| PgError::Db(e.to_string()))?;
         }
 
-        // Recipients are REPLACED too — but only the rows the desktop still
-        // has. Acknowledgement state lives here, so an upsert would be
-        // wrong in the stop/push race: the snapshot's recipient row (with
-        // its current delivery state) IS the newest fact the desktop holds.
-        tx.execute("DELETE FROM memo_recipients WHERE memo_id = $1", &[&m.id])
-            .await
-            .map_err(|e| PgError::Db(e.to_string()))?;
+        // Recipients are MERGED, not replaced: memos now reach terminals
+        // through the cloud (2026-09-07 cloud-read ruling), so a recipient
+        // row's delivery state can advance here (terminal acks land via
+        // `ack_memo`) while the desktop still holds the older state. A
+        // wholesale replace would downgrade cloud-side acks on every push;
+        // instead the higher-ranked state wins (pending < delivered <
+        // acknowledged), with the desktop winning ties (it is the
+        // authoring authority and equal ranks cannot regress). Existence
+        // still reconciles by omission below — a recipient the desktop no
+        // longer has is gone for good.
+        let existing: std::collections::HashMap<String, i32> = {
+            let rows = tx
+                .query(
+                    "SELECT terminal_id, CASE delivery_status
+                                        WHEN 'pending' THEN 0
+                                        WHEN 'delivered' THEN 1
+                                        ELSE 2 END AS rank
+                     FROM memo_recipients WHERE memo_id = $1",
+                    &[&m.id],
+                )
+                .await
+                .map_err(|e| PgError::Db(e.to_string()))?;
+            rows.iter()
+                .map(|r| (r.get::<_, String>(0), r.get::<_, i32>(1)))
+                .collect()
+        };
         for r in &m.recipients {
+            let incoming_rank = match r.delivery_status.as_str() {
+                "pending" => 0,
+                "delivered" => 1,
+                _ => 2,
+            };
+            let keep_existing = existing
+                .get(&r.terminal_id)
+                .is_some_and(|existing_rank| *existing_rank > incoming_rank);
+            if keep_existing {
+                continue;
+            }
             tx.execute(
                 "INSERT INTO memo_recipients (id, memo_id, terminal_id, delivery_status,
                                              delivered_at, acknowledged_at, acknowledged_by, tenant_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT (memo_id, terminal_id) DO UPDATE SET
+                    delivery_status = EXCLUDED.delivery_status,
+                    delivered_at = EXCLUDED.delivered_at,
+                    acknowledged_at = EXCLUDED.acknowledged_at,
+                    acknowledged_by = EXCLUDED.acknowledged_by,
+                    id = EXCLUDED.id",
                 &[
                     &r.id,
                     &m.id,
@@ -1913,6 +1954,16 @@ pub async fn sync_memos(
             .await
             .map_err(|e| PgError::Db(e.to_string()))?;
         }
+        // Existence reconcile: drop recipients the snapshot no longer
+        // carries (only possible when the memo itself is leaving, whose
+        // rows cascade, or a backup restore rewound the desktop).
+        let terminals: Vec<String> = m.recipients.iter().map(|r| r.terminal_id.clone()).collect();
+        tx.execute(
+            "DELETE FROM memo_recipients WHERE memo_id = $1 AND NOT (terminal_id = ANY($2))",
+            &[&m.id, &terminals],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
     }
 
     // Reconciliation: drop every tenant memo the desktop did not push. The
@@ -1931,6 +1982,115 @@ pub async fn sync_memos(
     Ok(MemoSyncResult {
         upserted: memos.len() as i64,
         deleted: deleted as i64,
+    })
+}
+
+/// Outcome of a terminal acknowledgement call.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MemoAckResult {
+    /// The memo that was acknowledged.
+    pub memo_id: String,
+    /// The terminal whose recipient row moved.
+    pub terminal_id: String,
+    /// The recipient's delivery state after the call (always
+    /// `acknowledged` — the call is a no-op if it already was).
+    pub delivery_status: String,
+    /// When the acknowledgement landed.
+    pub acknowledged_at: String,
+    /// True when THIS call moved the row (`pending`/`delivered` →
+    /// `acknowledged`); false when it was already acknowledged.
+    pub changed: bool,
+}
+
+/// Record a terminal's acknowledgement of a memo directly in PG.
+///
+/// This is the upstream half of the cloud-read path: memos reach a
+/// terminal through the cloud, so the ack must flow back through the
+/// cloud too — the tablet's local `memo_recipients` table is
+/// structurally empty and the desktop only learns ack state through the
+/// next push's monotonic merge (see `sync_memos`).
+///
+/// Semantics mirror `Store::acknowledge_memo`: an ack proves receipt, so
+/// `delivered_at` is backfilled when the row is still `pending`; a
+/// second ack is a no-op success (`changed: false`); an unknown
+/// recipient is `NotFound`. The terminal comes from the authenticated
+/// claims — the caller cannot name another terminal — and the row's
+/// tenant was stamped at push time from the same claim source.
+pub async fn ack_memo(
+    pool: &Pool,
+    tenant_id: &str,
+    memo_id: &str,
+    terminal_id: &str,
+    acknowledged_by: Option<&str>,
+) -> Result<MemoAckResult, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let changed = tx
+        .execute(
+            "UPDATE memo_recipients
+             SET delivery_status = 'acknowledged',
+                 delivered_at = COALESCE(delivered_at, $4),
+                 acknowledged_at = $4,
+                 acknowledged_by = COALESCE($5, acknowledged_by)
+             WHERE memo_id = $1 AND terminal_id = $2
+               AND delivery_status IN ('pending', 'delivered')",
+            &[&memo_id, &terminal_id, &now, &acknowledged_by],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    if changed == 0 {
+        // Either the recipient does not exist or it is already
+        // acknowledged — distinguish so an already-acked memo stays a
+        // no-op success (the UI's re-ack must not 404).
+        let existing: Option<String> = tx
+            .query_one(
+                "SELECT delivery_status FROM memo_recipients
+                 WHERE memo_id = $1 AND terminal_id = $2",
+                &[&memo_id, &terminal_id],
+            )
+            .await
+            .ok()
+            .and_then(|row| row.get(0));
+        match existing.as_deref() {
+            Some("acknowledged") => {
+                let acknowledged_at: String = tx
+                    .query_one(
+                        "SELECT COALESCE(acknowledged_at, $3) FROM memo_recipients
+                         WHERE memo_id = $1 AND terminal_id = $2",
+                        &[&memo_id, &terminal_id, &now],
+                    )
+                    .await
+                    .map_err(|e| PgError::Db(e.to_string()))?
+                    .get(0);
+                tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+                return Ok(MemoAckResult {
+                    memo_id: memo_id.to_string(),
+                    terminal_id: terminal_id.to_string(),
+                    delivery_status: "acknowledged".to_string(),
+                    acknowledged_at,
+                    changed: false,
+                });
+            }
+            _ => return Err(PgError::NotFound),
+        }
+    }
+
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(MemoAckResult {
+        memo_id: memo_id.to_string(),
+        terminal_id: terminal_id.to_string(),
+        delivery_status: "acknowledged".to_string(),
+        acknowledged_at: now,
+        changed: true,
     })
 }
 

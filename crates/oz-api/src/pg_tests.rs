@@ -465,8 +465,10 @@ async fn pg_integration_rest_roundtrip() {
 /// Integration test: the REST layer works under RLS as a NON-OWNER role
 /// because every tenant-scoped transaction sets `SET LOCAL oz.tenant_id`.
 ///
-/// The init schema enables RLS + the `tenant_isolation` policy on all 15
-/// tenant tables, but a non-owner connection sees nothing until the
+/// The init schema enables RLS + the `tenant_isolation` policy on every
+/// table in `RLS_TABLES` (`scripts/generate-pg-migration.py` — the source
+/// of truth; do not hardcode the count here), but a non-owner connection
+/// sees nothing until the
 /// `oz.tenant_id` GUC is set. Each REST function now opens a transaction
 /// and sets the GUC first; this test drives the real functions through a
 /// pool that connects as a restricted `oz_rest_probe` role (password
@@ -1680,6 +1682,56 @@ async fn pg_integration_memo_sync_and_active_read() {
             .expect("stranger read");
     assert!(stranger.is_empty());
 
+    // ── Acknowledgement upstream (2026-09-07 ruling): the terminal acks
+    // through the cloud, the desktop's stale push must not downgrade it.
+    // Ack from `pending` backfills `delivered_at` — an ack proves receipt.
+    let acked = crate::pg::ack_memo(&pool, &tenant, &memo.id, &terminal, Some("user-staff"))
+        .await
+        .expect("ack_memo");
+    assert!(acked.changed);
+    assert_eq!(acked.delivery_status, "acknowledged");
+    let (status, delivered, acked_by): (String, Option<String>, Option<String>) = {
+        let client = pool.get().await.unwrap();
+        let row = client
+            .query_one(
+                "SELECT delivery_status, delivered_at, acknowledged_by FROM memo_recipients
+                 WHERE memo_id = $1 AND terminal_id = $2",
+                &[&memo.id, &terminal],
+            )
+            .await
+            .expect("recipient row");
+        (row.get(0), row.get(1), row.get(2))
+    };
+    assert_eq!(status, "acknowledged");
+    assert!(delivered.is_some(), "delivered_at backfilled by the ack");
+    assert_eq!(acked_by.as_deref(), Some("user-staff"));
+
+    // A second ack is a no-op success, not a 404.
+    let again = crate::pg::ack_memo(&pool, &tenant, &memo.id, &terminal, None)
+        .await
+        .expect("re-ack");
+    assert!(!again.changed, "second ack must report changed=false");
+    // A terminal with no recipient row acking → NotFound.
+    assert!(matches!(
+        crate::pg::ack_memo(&pool, &tenant, &memo.id, "no-such-terminal", None).await,
+        Err(PgError::NotFound)
+    ));
+
+    // The desktop's next push still carries the stale `pending` row: the
+    // monotonic merge must keep the cloud-side acknowledgement.
+    let stale_push = crate::pg::sync_memos(&pool, &tenant, &[memo.clone()])
+        .await
+        .expect("stale re-push");
+    assert_eq!(stale_push.upserted, 1);
+    let after = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("read after stale re-push");
+    assert_eq!(after.len(), 1);
+    assert_eq!(
+        after[0].delivery_status, "acknowledged",
+        "the desktop's stale pending push must NOT downgrade the cloud-side ack"
+    );
+
     // ── Reconciliation: dropping the memo from the snapshot deletes it —
     // the path a desktop-side retention delete rides.
     let ack = crate::pg::sync_memos(&pool, &tenant, &[])
@@ -1713,7 +1765,7 @@ async fn pg_integration_memo_sync_and_active_read() {
         .expect("cross-tenant read");
     assert!(
         cross.is_empty(),
-        "RLS must hide another tenant's memo even when a recipient row names this terminal"
+        "code-level tenant isolation must hide another tenant's memo even when a recipient row names this terminal"
     );
 
     // Cleanup: drop the throwaway database.

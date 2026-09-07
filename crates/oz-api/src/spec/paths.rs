@@ -552,6 +552,30 @@ pub(super) fn build_base_paths() -> Value {
             }
         },
 
+        "/api/v1/memos/{memo_id}/ack": {
+            "post": {
+                "tags": ["Memos"],
+                "summary": "Acknowledge a memo (terminal)",
+                "description": "The upstream half of the cloud-read path: a terminal acknowledges a memo it received, moving its own recipient row (keyed by the token's terminal_id claim — the caller cannot name another terminal) to `acknowledged` directly in cloud Postgres. An ack proves receipt, so `delivered_at` is backfilled when the row was still `pending`; a second ack is a no-op success (`changed: false`); an unknown recipient is 404. The desktop's next push merges delivery state monotonically (pending < delivered < acknowledged), so the ack survives stale pushes. Terminal-scoped tokens only. Requires JWT auth.",
+                "operationId": "ackMemo",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "memo_id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Memo id (desktop-minted UUID v7)" }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoAckRequest" } } }
+                },
+                "responses": {
+                    "200": { "description": "Acknowledged (or already acknowledged)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoAckResult" } } } },
+                    "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "`not_terminal_token` — the token carries no terminal identity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "404": { "description": "`recipient_not_found` — no recipient row for this memo + terminal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "No Postgres backend (`pg_unavailable`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+
         // ── Docs ────────────────────────────────────────────────────
         "/api/openapi.json": {
             "get": {

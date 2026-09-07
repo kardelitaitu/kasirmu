@@ -15,7 +15,7 @@
 
 use axum::{
     Extension, Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::HeaderMap,
     response::{IntoResponse, Response},
 };
@@ -23,7 +23,7 @@ use serde::Deserialize;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;
-use crate::pg::{ActiveMemoPg, MemoSyncRow};
+use crate::pg::{ActiveMemoPg, MemoSyncRow, PgError};
 use crate::routes::tokens::admin_key_authorised;
 
 /// Body of `POST /api/v1/memos/sync`: the tenant's complete memo state.
@@ -111,6 +111,66 @@ pub struct CadenceDto {
     pub base_interval_secs: i64,
     /// KDS interval in seconds (2 × base, derived from the shared constant).
     pub kds_interval_secs: i64,
+}
+
+/// Optional body of `POST /api/v1/memos/{memo_id}/ack`.
+#[derive(Debug, Default, Deserialize)]
+pub struct MemoAckRequest {
+    /// The staff user at the terminal who acknowledged (informational —
+    /// terminal tokens carry no user identity; the cloud cannot verify it
+    /// and treats it as a display fact, not an authorization input).
+    #[serde(default)]
+    pub acknowledged_by: Option<String>,
+}
+
+/// `POST /api/v1/memos/{memo_id}/ack` — a terminal acknowledges a memo.
+///
+/// The upstream half of the cloud-read path: the ack moves the caller's
+/// own recipient row (`claims.terminal_id` — the caller cannot name
+/// another terminal) straight in PG, and the desktop's next push merges
+/// delivery state monotonically so the ack survives. Terminal-scoped
+/// tokens only: an admin-minted token has no terminal identity and acks
+/// nothing (desktop acks flow up through the push instead).
+pub async fn ack_memo_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<ApiTokenClaims>,
+    Path(memo_id): Path<String>,
+    body: Option<Json<MemoAckRequest>>,
+) -> Response {
+    let Some(terminal_id) = claims.terminal_id.clone() else {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "not_terminal_token"})),
+        )
+            .into_response();
+    };
+    let acknowledged_by = body
+        .as_ref()
+        .and_then(|Json(b)| b.acknowledged_by.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    match &state.pg {
+        Some(pool) => {
+            let tenant_id = claims.tenant_id.clone().unwrap_or_else(|| "default".into());
+            match crate::pg::ack_memo(pool, &tenant_id, &memo_id, &terminal_id, acknowledged_by)
+                .await
+            {
+                Ok(result) => Json(result).into_response(),
+                Err(PgError::NotFound) => (
+                    axum::http::StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "recipient_not_found"})),
+                )
+                    .into_response(),
+                Err(e) => e.into_response(),
+            }
+        }
+        None => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "pg_unavailable"})),
+        )
+            .into_response(),
+    }
 }
 
 /// `GET /api/v1/memos/active?terminal_id=` — a terminal's active memos.

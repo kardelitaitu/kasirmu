@@ -138,6 +138,23 @@ pub(super) fn build_base_schemas() -> Value {
                 "kds_interval_secs": { "type": "integer", "format": "int64", "description": "KDS interval — derived as 2 × base" }
             }
         },
+        "MemoAckRequest": {
+            "type": "object",
+            "properties": {
+                "acknowledged_by": { "type": ["string", "null"], "description": "The staff user at the terminal who acknowledged — informational only (terminal tokens carry no user identity)" }
+            }
+        },
+        "MemoAckResult": {
+            "type": "object",
+            "required": ["memo_id", "terminal_id", "delivery_status", "acknowledged_at", "changed"],
+            "properties": {
+                "memo_id": { "type": "string" },
+                "terminal_id": { "type": "string", "description": "The terminal whose recipient row moved (from the token claim)" },
+                "delivery_status": { "type": "string", "enum": ["acknowledged"] },
+                "acknowledged_at": { "type": "string", "format": "date-time" },
+                "changed": { "type": "boolean", "description": "True when THIS call moved the row; false on an idempotent re-ack" }
+            }
+        },
         "CreateTokenRequest": {
             "type": "object",
             "required": ["label"],

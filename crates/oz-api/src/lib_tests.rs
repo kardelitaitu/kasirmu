@@ -985,7 +985,35 @@ async fn update_sale_status_requires_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-// ── Edge cases ───────────────────────────────────────────────
+// ── Memo serving layer (2026-09-07 cloud-read ruling) ─────────────
+
+#[tokio::test]
+async fn memo_active_read_requires_auth() {
+    let req = Request::builder()
+        .uri("/api/v1/memos/active?terminal_id=t1")
+        .body(Body::empty())
+        .unwrap();
+    let resp = test_app().oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "the active read is JWT-protected — the original public-router placement would 500 here"
+    );
+}
+
+#[tokio::test]
+async fn memo_ack_requires_auth() {
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/memos/memo-1/ack")
+        .header("Content-Type", "application/json")
+        .body(Body::from(r#"{"acknowledged_by": "user-1"}"#))
+        .unwrap();
+    let resp = test_app().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── Edge cases ───────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn unknown_route_returns_401() {

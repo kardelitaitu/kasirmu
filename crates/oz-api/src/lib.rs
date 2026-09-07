@@ -362,6 +362,10 @@ pub fn router_with_openapi(
             "/api/v1/memos/active",
             get(routes::memos::list_active_memos_handler),
         )
+        .route(
+            "/api/v1/memos/{memo_id}/ack",
+            post(routes::memos::ack_memo_handler),
+        )
         .route("/api/v1/sales", post(routes::sales::create_sale))
         .route("/api/v1/sales/{id}", get(routes::sales::get_sale))
         .route(
