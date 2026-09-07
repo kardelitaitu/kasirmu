@@ -484,6 +484,29 @@ guarantee no merchant could actually claim. Wiring the command is what makes
 Remaining: the overlay module itself, restore-to-draft, and the pruned-snapshot
 messaging.
 
+### The Phase-1 gate, closed (supervisor ratification, 2026-09-07)
+
+The R36 directive made Phase-1 closure conditional on a concurrency
+Verification test; Round 109 withheld the declaration while that test was
+absent. It now exists — supervisor-authored in `topology_stress_tests.rs`
+and committed as `d8ffa281` ("test(topology): pin racing publishes under
+the ADR #46 Phase-1 gate"):
+
+- `racing_publishes_to_one_branch_yield_two_ordered_revisions` — two
+  concurrent publishers, both succeed via Apply's IMMEDIATE transaction
+  (the blocked writer re-reads the fresh revision after the peer commits);
+  rows land [1, 2], both change notes present, no gaps. The clobbered-row
+  failure mode is asserted impossible.
+- `racing_publishes_with_the_same_expected_revision_cas_reject_one` — with
+  equal `expected` revisions, CAS admits exactly one; the loser is
+  rejected with `topology-revision-conflict`; one row remains.
+
+With this test, every Phase-1 gate condition is met: the extraction
+(net-removed), the change-note input (`8ce2c805`), and concurrency
+verification (`d8ffa281`). **Phase 1 is RATIFIED complete by the
+supervisor.** The overlay/restore-to-draft/pruned-snapshot work listed
+above is Phase 2 and no longer blocked by this gate.
+
 ### The waiver, executed
 
 `TopologyApplyConfirm.tsx` now owns the dialog: 187 lines of JSX and 268 lines
