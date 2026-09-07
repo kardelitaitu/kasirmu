@@ -68,6 +68,49 @@ pub struct AssignmentSpec {
     pub workspaces: Vec<String>,
 }
 
+/// Assignment scope type (ADR #47 ruling 1A): where in the business
+/// hierarchy the assignment grants authority. `Organization` is the
+/// org-wide row (the only type the backfill migration creates and the
+/// only type today's callers write); `LegalEntity` and `Location` are
+/// representable from migration `20260916_role_assignment_scopes.sql`
+/// onward for the choke-point slice to resolve and later slices to
+/// create. Workspaces and terminals are deliberately NOT scope types —
+/// they sit below locations and inherit (ruling 1A).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeType {
+    /// Org-wide — covers every legal entity, location, workspace, and
+    /// terminal. Preserves the pre-ADR-47 behavior bit-for-bit.
+    Organization,
+    /// Covers only the named legal entity's locations (and, by downward
+    /// inheritance, their workspaces and terminals).
+    LegalEntity,
+    /// Covers only the named location (and, by downward inheritance, its
+    /// workspaces and terminals).
+    Location,
+}
+
+impl ScopeType {
+    /// Parse the SQL value; `None` for anything else (fail closed — an
+    /// unparsable scope_type row must not silently become org-wide).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "organization" => Some(ScopeType::Organization),
+            "legal_entity" => Some(ScopeType::LegalEntity),
+            "location" => Some(ScopeType::Location),
+            _ => None,
+        }
+    }
+
+    /// The SQL value for this type.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScopeType::Organization => "organization",
+            ScopeType::LegalEntity => "legal_entity",
+            ScopeType::Location => "location",
+        }
+    }
+}
+
 /// A user's single effective role assignment (ADR #35 D5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Assignment {
@@ -85,6 +128,16 @@ pub struct Assignment {
     pub workspaces_all: bool,
     /// Workspace keys in scope when `workspaces_all` is false.
     pub workspaces: Vec<String>,
+    /// Hierarchical scope axis (ADR #47 ruling 1A). The backfill makes
+    /// every row `Organization`, so legacy callers see unchanged behavior;
+    /// `None` only when the row predates the scope columns AND a load
+    /// path could not default it (unreachable via SQL — the column is
+    /// NOT NULL DEFAULT — kept for defense-in-depth symmetry with
+    /// `scope_mode` parsing).
+    pub scope_type: Option<ScopeType>,
+    /// The resource `scope_type` names. `None` exactly when the type is
+    /// `Organization` (enforced by the migration's pair triggers).
+    pub scope_id: Option<String>,
 }
 
 impl Assignment {
@@ -108,6 +161,31 @@ impl Assignment {
             }
         }
     }
+
+    /// Whether this assignment's ADR #47 hierarchical scope covers the
+    /// named resource (ruling 3, downward-only inheritance).
+    ///
+    /// - `Organization` covers everything (the backfill's bit-for-bit
+    ///   behavior preservation).
+    /// - `LegalEntity` covers only its own entity id; the entity→location
+    ///   downward walk needs the locations table, so location refs are
+    ///   resolved by the choke point (see `covers_location`), not here.
+    /// - `Location` covers only its own location id.
+    ///
+    /// A row whose `scope_type`/`scope_id` pair is unparsable or missing
+    /// denies (fail closed) — matching the `scope_mode` precedent.
+    pub fn covers_resource(&self, scope_type: ScopeType, scope_id: &str) -> bool {
+        match (self.scope_type, self.scope_id.as_deref()) {
+            (Some(ScopeType::Organization), _) => true,
+            (Some(ScopeType::LegalEntity), Some(id)) => {
+                scope_type == ScopeType::LegalEntity && id == scope_id
+            }
+            (Some(ScopeType::Location), Some(id)) => {
+                scope_type == ScopeType::Location && id == scope_id
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Store<'_> {
@@ -115,10 +193,10 @@ impl Store<'_> {
     /// none — legacy rows created before 0048, or a corrupt `scope_mode`
     /// (fail closed: no assignment means no grant).
     pub fn assignment_for_user(&self, user_id: &str) -> Result<Option<Assignment>, CoreError> {
-        let Some((role_id, scope_mode, branch_scope, workspace_scope)) = self
+        let Some((role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id)) = self
             .conn
             .query_row(
-                "SELECT role_id, scope_mode, branch_scope, workspace_scope
+                "SELECT role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id
                  FROM assignments WHERE user_id = ?1",
                 params![user_id],
                 |row| {
@@ -127,6 +205,8 @@ impl Store<'_> {
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, Option<String>>(5)?,
                     ))
                 },
             )
@@ -142,6 +222,17 @@ impl Store<'_> {
             return Ok(None);
         };
 
+        // Same fail-closed rule for the ADR #47 scope axis: an unparsable
+        // scope_type denies (the choke point's covers_resource would too,
+        // but a non-Organization row without a parsable type must not be
+        // silently re-interpreted as org-wide). The column is NOT NULL
+        // DEFAULT 'organization', so None here can only mean a hand-edited
+        // DB — exactly the case the fail-closed rule exists for.
+        let scope_type = match scope_type.as_deref().and_then(ScopeType::parse) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
         let branches = self.branch_ids_for(user_id)?;
         let workspaces = self.workspace_keys_for(user_id)?;
 
@@ -153,6 +244,8 @@ impl Store<'_> {
             branches,
             workspaces_all: workspace_scope != "list",
             workspaces,
+            scope_type: Some(scope_type),
+            scope_id,
         }))
     }
 
@@ -194,6 +287,11 @@ impl Store<'_> {
 
     /// The upsert + dimension-replacement statements, runnable on any
     /// connection (joins an open transaction when one exists).
+    ///
+    /// Writes the ADR #47 scope axis as `organization` (scope_id NULL):
+    /// every writer today grants org-wide, and per-location assignment
+    /// creation is a later slice (ruling 1A: only that slice may create
+    /// narrower rows). The pair triggers enforce the NULL/non-NULL rule.
     fn write_assignment_scope_on(
         conn: &Connection,
         user_id: &str,
@@ -206,13 +304,15 @@ impl Store<'_> {
 
         conn.execute(
             "INSERT INTO assignments
-                 (user_id, role_id, scope_mode, branch_scope, workspace_scope, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+                 (user_id, role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'organization', NULL, ?6, ?6)
              ON CONFLICT(user_id) DO UPDATE SET
                  role_id = excluded.role_id,
                  scope_mode = excluded.scope_mode,
                  branch_scope = excluded.branch_scope,
                  workspace_scope = excluded.workspace_scope,
+                 scope_type = 'organization',
+                 scope_id = NULL,
                  updated_at = excluded.updated_at",
             params![user_id, role_id, spec.scope_mode.as_str(), branch_scope, workspace_scope, now],
         )?;

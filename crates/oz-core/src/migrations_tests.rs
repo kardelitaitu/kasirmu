@@ -406,10 +406,12 @@ fn init_sql_creates_complete_schema_surface() {
         // `20260913_memo_locations.sql`, minus the dropped single-location
         // index `idx_memos_location`, plus the partial retention-sweep index
         // `idx_topology_revisions_unpinned` from
-        // `20260915_topology_revisions.sql`, on top of the previously pinned 155.
+        // `20260915_topology_revisions.sql`, plus the assignment-scope index
+        // `idx_assignments_scope` from `20260916_role_assignment_scopes.sql`,
+        // on top of the previously pinned 155.
         // (The table's UNIQUE constraint is NOT counted: SQLite names that
         // index `sqlite_autoindex_*` and the query excludes that prefix.)
-        158,
+        159,
         "index surface drifted"
     );
     assert_eq!(
@@ -417,7 +419,10 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'"
         ),
-        4,
+        // 2 trigger pairs (audit + per-tenant-unique) predate the pin; the
+        // assignment scope-id pair triggers (insert + update) arrive with
+        // `20260916_role_assignment_scopes.sql`.
+        6,
         "trigger surface drifted"
     );
 }
@@ -544,6 +549,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260913_memo_locations.sql".to_string(),
             "20260914_memo_retention.sql".to_string(),
             "20260915_topology_revisions.sql".to_string(),
+            "20260916_role_assignment_scopes.sql".to_string(),
         ]
     );
 

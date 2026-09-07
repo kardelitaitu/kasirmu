@@ -179,6 +179,10 @@ pub const ALL: &[Migration] = &[
         id: "20260915_topology_revisions.sql",
         sql: include_str!("../migrations/20260915_topology_revisions.sql"),
     },
+    Migration {
+        id: "20260916_role_assignment_scopes.sql",
+        sql: include_str!("../migrations/20260916_role_assignment_scopes.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

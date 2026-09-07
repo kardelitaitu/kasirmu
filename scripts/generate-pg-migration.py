@@ -144,6 +144,28 @@ CREATE OR REPLACE TRIGGER loyalty_tiers_validate_update
     BEFORE UPDATE OF name, min_points, points_per_unit, earn_multiplier_millionths, colour
     ON loyalty_tiers
     FOR EACH ROW EXECUTE FUNCTION loyalty_tiers_validate_fn();""",
+    # ADR #47 slice 1: scope_id must be NULL exactly when scope_type is
+    # 'organization' (the org-wide row has no single resource). SQLite
+    # enforces this with WHEN-clause RAISE triggers; the plpgsql ports are
+    # the same predicate as a CHECK-style guard.
+    "trg_assignments_scope_id_pair": """\
+CREATE OR REPLACE FUNCTION assignments_scope_id_pair_fn() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF (NEW.scope_type = 'organization') != (NEW.scope_id IS NULL) THEN
+        RAISE EXCEPTION 'assignments: scope_id must be NULL exactly when scope_type is organization';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair
+    AFTER INSERT ON assignments
+    FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();""",
+    "trg_assignments_scope_id_pair_update": """\
+CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair_update
+    AFTER UPDATE OF scope_type, scope_id ON assignments
+    FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();""",
 }
 
 # Seed timestamps younger than this are "now"-derived (the migration run

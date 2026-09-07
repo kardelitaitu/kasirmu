@@ -707,7 +707,9 @@ CREATE TABLE IF NOT EXISTS assignments (
     expires_at      TEXT,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
+, scope_type TEXT
+    NOT NULL DEFAULT 'organization'
+    CHECK (scope_type IN ('organization', 'legal_entity', 'location')), scope_id TEXT);
 
 CREATE TABLE IF NOT EXISTS gift_cards (
     id                      TEXT PRIMARY KEY,
@@ -1458,11 +1460,32 @@ CREATE OR REPLACE TRIGGER loyalty_tiers_validate_update
     ON loyalty_tiers
     FOR EACH ROW EXECUTE FUNCTION loyalty_tiers_validate_fn();
 
+CREATE OR REPLACE FUNCTION assignments_scope_id_pair_fn() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF (NEW.scope_type = 'organization') != (NEW.scope_id IS NULL) THEN
+        RAISE EXCEPTION 'assignments: scope_id must be NULL exactly when scope_type is organization';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair
+    AFTER INSERT ON assignments
+    FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();
+
+CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair_update
+    AFTER UPDATE OF scope_type, scope_id ON assignments
+    FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();
+
 CREATE INDEX IF NOT EXISTS idx_active_carts_updated_at ON active_carts(updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_assignment_branches_user ON assignment_branches(assignment_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_assignment_workspaces_user ON assignment_workspaces(assignment_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_scope
+    ON assignments (scope_type, scope_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
 
