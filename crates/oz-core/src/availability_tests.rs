@@ -42,7 +42,7 @@ fn cases() -> Vec<Case> {
         F::DailyDashboard,
         F::CloudSync,
     ];
-    let quota = [F::Locations, F::StaffUsers, F::PosInstances, F::Warehouses];
+    let quota = [F::Locations, F::StaffUsers, F::PosInstances];
     let mut out = Vec::new();
     for f in tier_flag {
         // Enterprise grants every flag; Free withholds most of them.
@@ -101,7 +101,6 @@ fn facts_with(case: &Case, deniers: &[AvailabilityReason]) -> AvailabilityFacts<
                 locations: i64::MAX,
                 staff_users: i64::MAX,
                 pos_instances: i64::MAX,
-                warehouses: i64::MAX,
             }
         } else {
             UsageCounts::default()
@@ -218,7 +217,7 @@ fn every_v1_key_round_trips_through_parse() {
     for feature in AvailabilityFeature::ALL {
         assert_eq!(AvailabilityFeature::parse(feature.as_str()), Some(feature));
     }
-    assert_eq!(AvailabilityFeature::ALL.len(), 10);
+    assert_eq!(AvailabilityFeature::ALL.len(), 9);
 }
 
 #[test]
@@ -230,6 +229,7 @@ fn parse_rejects_unknown_keys_rather_than_defaulting_open() {
         "Supports_Qris",
         "supports_qris ",
         "role_assignments",
+        "warehouses",
     ] {
         assert_eq!(
             AvailabilityFeature::parse(key),
@@ -237,6 +237,20 @@ fn parse_rejects_unknown_keys_rather_than_defaulting_open() {
             "{key} must not parse"
         );
     }
+}
+
+/// Pins a deliberate omission, not an oversight: `warehouses` is a real tier
+/// limit but has no usage source on the capabilities surface, so a resolver
+/// key for it could only ever answer from a made-up zero.
+#[test]
+fn warehouses_key_is_absent_until_a_warehouse_count_exists() {
+    assert_eq!(AvailabilityFeature::parse("warehouses"), None);
+    assert!(
+        !AvailabilityFeature::ALL
+            .iter()
+            .any(|f| f.as_str() == "warehouses"),
+        "warehouses must not be a v1 key while its usage is unobservable"
+    );
 }
 
 #[test]

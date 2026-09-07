@@ -58,9 +58,18 @@ pub enum AvailabilityFeature {
     StaffUsers,
     /// POS-instance quota family (`max_pos_instances` vs terminal count).
     PosInstances,
-    /// Warehouse quota family (`max_warehouses` vs warehouse count).
-    Warehouses,
 }
+
+// NOTE: the design's v1 list also named a `warehouses` quota family. It is
+// deliberately absent. `max_warehouses` is a real tier limit, but nothing on
+// the capabilities surface counts warehouses — the caps DTO carries
+// `location_count`, `staff_count` and `terminal_count` only — and
+// `validate_warehouse_capacity` in the topology commands is a different
+// concept entirely (physical stock vs node capacity, not instance count).
+// A caller forced to supply a usage number would have to pass 0, which makes
+// the resolver affirm "available" for a quota it cannot actually see.
+// An unanswerable key beats a confident wrong answer: `parse` returns None.
+// The family returns with a warehouse count.
 
 /// How a feature is gated, which decides which sources can deny it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +96,6 @@ impl AvailabilityFeature {
             Self::Locations => "locations",
             Self::StaffUsers => "staff_users",
             Self::PosInstances => "pos_instances",
-            Self::Warehouses => "warehouses",
         }
     }
 
@@ -105,13 +113,12 @@ impl AvailabilityFeature {
             "locations" => Some(Self::Locations),
             "staff_users" => Some(Self::StaffUsers),
             "pos_instances" => Some(Self::PosInstances),
-            "warehouses" => Some(Self::Warehouses),
             _ => None,
         }
     }
 
     /// Every v1 key, for enumeration by diagnostics and by the round-trip test.
-    pub const ALL: [AvailabilityFeature; 10] = [
+    pub const ALL: [AvailabilityFeature; 9] = [
         Self::Qris,
         Self::Analytics,
         Self::Loyalty,
@@ -121,7 +128,6 @@ impl AvailabilityFeature {
         Self::Locations,
         Self::StaffUsers,
         Self::PosInstances,
-        Self::Warehouses,
     ];
 
     /// How this feature is gated.
@@ -134,9 +140,7 @@ impl AvailabilityFeature {
             | Self::DailyDashboard
             | Self::CloudSync => FeatureKind::TierFlag,
             Self::SalesHistoryDays => FeatureKind::HistoryWindow,
-            Self::Locations | Self::StaffUsers | Self::PosInstances | Self::Warehouses => {
-                FeatureKind::Quota
-            }
+            Self::Locations | Self::StaffUsers | Self::PosInstances => FeatureKind::Quota,
         }
     }
 
@@ -155,7 +159,7 @@ impl AvailabilityFeature {
             Self::SalesHistoryDays => tier.sales_history_days() != Some(0),
             // Quota families are never denied by the tier alone: the tier
             // supplies a limit, and `quota` decides whether it is reached.
-            Self::Locations | Self::StaffUsers | Self::PosInstances | Self::Warehouses => true,
+            Self::Locations | Self::StaffUsers | Self::PosInstances => true,
         }
     }
 
@@ -170,7 +174,6 @@ impl AvailabilityFeature {
             Self::Locations => tier.max_locations(),
             Self::StaffUsers => tier.max_staff_users(),
             Self::PosInstances => tier.max_pos_instances(),
-            Self::Warehouses => tier.max_warehouses(),
             Self::SalesHistoryDays => tier.sales_history_days(),
             _ => None,
         }
@@ -183,7 +186,6 @@ impl AvailabilityFeature {
             Self::Locations => Some(counts.locations),
             Self::StaffUsers => Some(counts.staff_users),
             Self::PosInstances => Some(counts.pos_instances),
-            Self::Warehouses => Some(counts.warehouses),
             _ => None,
         }
     }
@@ -242,8 +244,6 @@ pub struct UsageCounts {
     pub staff_users: i64,
     /// Registered POS instances.
     pub pos_instances: i64,
-    /// Inventory warehouses.
-    pub warehouses: i64,
 }
 
 /// Everything the resolver reads, assembled by the caller from the same
