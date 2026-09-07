@@ -21,9 +21,9 @@ import { socketSemanticIds } from './topologyCard';
 /** Fixed card header height (CSS `.node-header`). */
 export const NODE_HEADER_H = 48;
 /** Height of one stacked port row in the footer.
- *  CSS `.node-port-row` uses `padding: 8px 0` (no explicit height):
- *  8px top + 12px marker + 8px bottom = 28px effective height. */
-export const PORT_ROW_H = 28;
+ *  CSS `.node-port-row` uses `padding: 4px 0` (no explicit height):
+ *  4px top + 12px marker + 4px bottom = 20px effective height. */
+export const PORT_ROW_H = 20;
 /** Height of one main-content row (subtitle / status / config). */
 export const MAIN_ROW_H = 24;
 /** Minimum main-body height so a content-light card never collapses. */

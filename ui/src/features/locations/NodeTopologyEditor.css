@@ -1857,6 +1857,10 @@
   border-top: 1px solid var(--color-border);
   background: var(--color-bg-subtle);
   position: relative;
+  /* Circles protrude half outside the card edge — overflow must be visible
+     so they are not clipped by the card's rounded corners. The card itself
+     keeps overflow: hidden for header/body chrome; only the footer opts out. */
+  overflow: visible;
 }
 
 .node-port-column {
@@ -1869,14 +1873,13 @@
 
 /* One semantic port row: a full-band button (transparent chrome — the
    circle marker is the affordance, the label names the port).
-   8px top/bottom padding wraps each row — no fixed height, so the marker
-   centers in the padded band via top: 50% / translateY(-50%).
-   PORT_ROW_H in topologyMetrics mirrors this: 8 + 12 (marker) + 8 = 28px. */
+   4px top/bottom padding → compact multi-port stacks.
+   PORT_ROW_H in topologyMetrics mirrors this: 4 + 12 (marker) + 4 = 20px. */
 .node-port-row {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 8px 0;
+  padding: 4px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1885,32 +1888,33 @@
   font: inherit;
 }
 
-/* Left rows: marker pinned to the card's left edge, label beside it. */
+/* Left rows: marker shifts -6px (= marker-width/2) so the circle is
+   half inside / half outside the card's left edge. */
 .node-port-row--left {
   justify-content: flex-start;
 }
 .node-port-row--left .node-port-marker {
-  left: 0;
+  left: -6px;
 }
 .node-port-row--left .node-port-label {
-  padding-left: calc(var(--space-4) + var(--space-0_5));
+  padding-left: var(--space-3);
   text-align: left;
 }
 
-/* Right rows: marker pinned to the card's right edge, label before it. */
+/* Right rows: same offset on the right edge. */
 .node-port-row--right {
   justify-content: flex-end;
 }
 .node-port-row--right .node-port-marker {
-  right: 0;
+  right: -6px;
 }
 .node-port-row--right .node-port-label {
-  padding-right: calc(var(--space-4) + var(--space-0_5));
+  padding-right: var(--space-3);
   text-align: right;
 }
 
-/* The connector circle — sits exactly on the card edge at the row's
-   vertical center (the wire endpoint). */
+/* The connector circle — straddles the card edge (half in / half out).
+   Center aligns exactly with the SVG wire endpoint (portRowCenterY). */
 .node-port-marker {
   position: absolute;
   top: 50%;
