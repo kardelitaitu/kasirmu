@@ -789,7 +789,6 @@ retail-product-add-aria = Tambah { $name } ke keranjang
 retail-product-edit-title = Edit Produk
 retail-product-edit-aria = Edit { $name }
 retail-product-weigh-aria = Timbang { $name }
-retail-price-volatility-hint = Harga baru saja berubah
 retail-edit-modal-close-aria =
     .aria-label = Tutup
 

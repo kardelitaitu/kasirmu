@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback, memo, useState } from 'react';
+import { useEffect, useRef, useCallback, memo, useState } from 'react';
 import { requiredLocalized } from '@/frontend/shared';
 import { useLocalization, Localized } from '@fluent/react';
 import { DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_HIGH_STOCK_THRESHOLD, formatMoney, type Money, type Sku } from '@/types/domain';
@@ -7,16 +7,6 @@ import { ProductThumb } from '@/components/ProductThumb';
 import { Grid, type CellComponentProps } from 'react-window';
 import type { RetailColumn, RetailViewMode } from './hooks/useRetailColumnPrefs';
 import ScaleIndicator from './ScaleIndicator';
-
-// ── Price volatility ───────────────────────────────────────────────
-
-const PRICE_VOLATILITY_MS = 24 * 60 * 60 * 1000; // 24 h
-
-function isPriceRecent(p: ProductDto): boolean {
-  if (!p.price_updated_at) return false;
-  const elapsed = Date.now() - new Date(p.price_updated_at).getTime();
-  return elapsed >= 0 && elapsed < PRICE_VOLATILITY_MS;
-}
 
 // ── Sort types ─────────────────────────────────────────────────────
 
@@ -179,7 +169,7 @@ export const RETAIL_COLUMN_ORDER: readonly RetailColumn[] = [
 // objects come from the memoized pagedProducts slice) so cards skip
 // re-renders when cart/totals change (P4).
 
-const ProductCard = memo(function ProductCard({ product, catHue, formatMoney, handleAdd, handleEdit, handleOpenQtyPicker, scaleEnabled, onSetWeighTarget, onRowContextMenu, visibleColumns, outOfStockLabel, addToCartTitle, addToCartAria, editProductTitle, editProductAria, weighProductAria, priceChangedHint }: {
+const ProductCard = memo(function ProductCard({ product, catHue, formatMoney, handleAdd, handleEdit, handleOpenQtyPicker, scaleEnabled, onSetWeighTarget, onRowContextMenu, visibleColumns, outOfStockLabel, addToCartTitle, addToCartAria, editProductTitle, editProductAria, weighProductAria }: {
   product: ProductDto;
   catHue: (catId: string | null) => number;
   formatMoney: (m: Money) => string;
@@ -196,10 +186,8 @@ const ProductCard = memo(function ProductCard({ product, catHue, formatMoney, ha
   editProductTitle: string;
   editProductAria: string;
   weighProductAria: string;
-  priceChangedHint: string;
 }) {
   const isOutOfStock = !product.in_stock || (product.stock_qty != null && product.stock_qty <= 0);
-  const priceRecent = useMemo(() => isPriceRecent(product), [product]);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPress = useRef(false);
   // Refs to avoid stale closures in the long-press timeout (P2-7).
@@ -303,7 +291,6 @@ const ProductCard = memo(function ProductCard({ product, catHue, formatMoney, ha
             disabled={isOutOfStock}
           >
             <span>{product.name}</span>
-            {priceRecent && <span className="retail-price-volatility-hint" title={priceChangedHint} />}
           </button>
         </td>
       )}
@@ -724,7 +711,6 @@ export default function RetailProductGrid({
                   editProductTitle={requiredLocalized(l10n, 'retail-product-edit-title')}
                   editProductAria={requiredLocalized(l10n, 'retail-product-edit-aria', { name: p.name })}
                   weighProductAria={requiredLocalized(l10n, 'retail-product-weigh-aria', { name: p.name })}
-                  priceChangedHint={requiredLocalized(l10n, 'retail-price-volatility-hint')}
                 />
               ))}
             </tbody>

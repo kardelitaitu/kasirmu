@@ -633,23 +633,6 @@
 .retail-stock-medium { background: var(--color-warning-pos); }
 .retail-stock-high { background: var(--color-success-pos-darker); }
 
-.retail-price-volatility-hint {
-  position: absolute;
-  top: var(--space-0_5);
-  left: var(--space-0_5);
-  width: var(--space-2);
-  height: var(--space-2);
-  border-radius: 50%;
-  background: var(--color-warning);
-  animation: retail-price-pulse var(--duration-2000) var(--ease-in-out) infinite;
-}
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes retail-price-pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-  }
-}
-
 .retail-product-name {
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);

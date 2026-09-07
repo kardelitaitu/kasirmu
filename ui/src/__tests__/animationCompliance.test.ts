@@ -46,7 +46,7 @@ const ESSENTIAL_KEYFRAMES = new Set([
   // Update banner (functional — must show/hide)
   'update-banner-slide-in', 'update-banner-slide-out',
   // Resize / breathing indicators
-  'retail-resize-pulse', 'retail-breathe', 'retail-price-pulse',
+  'retail-resize-pulse', 'retail-breathe',
   'scale-pulse', 'product-card-price-pulse', 'kiosk-price-pulse',
   'search-pulse', 'ws-bg-shift', 'ws-particle-float',
   'ws-card-hover-sway',
