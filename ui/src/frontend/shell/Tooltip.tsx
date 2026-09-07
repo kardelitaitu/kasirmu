@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useId, useLayoutEffect, type ReactNode, type ReactElement, cloneElement } from 'react';
+import { useState, useRef, useCallback, useId, useEffect, useLayoutEffect, type ReactNode, type ReactElement, cloneElement } from 'react';
 import { createPortal } from 'react-dom';
 import './Tooltip.css';
 
@@ -59,6 +59,19 @@ export default function Tooltip({
   const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+
+  // Clear pending show/hide timers on unmount. A Tooltip can disappear
+  // mid-interaction (nav search filtering a row, section switch, sidebar
+  // collapse) while an 800ms show timer is still armed; without this the
+  // timer fires setState against a dead component and any companion state
+  // (portal rect) can end up inconsistent for the next mount.
+  useEffect(
+    () => () => {
+      clearTimeout(showTimer.current);
+      clearTimeout(hideTimer.current);
+    },
+    [],
+  );
 
   const startShow = useCallback(() => {
     // Capture trigger position before showing (portal needs viewport coords)
@@ -176,6 +189,14 @@ export default function Tooltip({
       }
       role="tooltip"
       onMouseEnter={() => {
+        // Guard against the "stuck tooltip" bug: this handler must only
+        // count when the bubble is genuinely hoverable (visible). While
+        // hidden the bubble is opacity:0 + pointer-events:none (Tooltip.css),
+        // so in a real browser this only fires for a visible bubble — but a
+        // synthetic event (test, E2E, automation) can still reach a hidden
+        // one and would force-show a tooltip with no trigger under the
+        // cursor, and with the trigger far away no mouseleave ever arrives.
+        if (!visible) return;
         clearTimeout(hideTimer.current);
         clearTimeout(showTimer.current);
         setVisible(true);

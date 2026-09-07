@@ -7,7 +7,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import Tooltip from '@/frontend/shell/Tooltip';
+
+// Read the stylesheet so CSS contracts (pointer-events gating) can be
+// asserted without a real browser.
+const tooltipCss = readFileSync(
+  join(__dirname, '..', 'frontend', 'shell', 'Tooltip.css'),
+  'utf-8',
+);
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -410,6 +419,54 @@ describe('Tooltip', () => {
 
       // Unmount mid-delay — should not throw
       expect(() => unmount()).not.toThrow();
+    });
+  });
+
+  // ── Stuck-tooltip regression (settings sidebar) ────
+  //
+  // The bubble stays mounted at opacity:0 when hidden. If it can
+  // intercept the pointer while hidden, an invisible portal bubble
+  // hovering over the settings content pane force-shows its tooltip
+  // (bubble onMouseEnter → setVisible(true)) with no trigger under the
+  // cursor — and no mouseleave ever arrives to hide it. That is the
+  // "tooltip stuck after the cursor moves away" bug.
+  //
+  // NOTE on simulation limits: a real browser cannot even deliver a
+  // mouseenter to a pointer-events:none element, so the primary fix is
+  // the CSS contract pinned below. jsdom/React synthetic events bypass
+  // pointer-events, so the component-level test below pins the JS
+  // guard: entering a HIDDEN bubble must not make it visible
+  // immediately (the only path that did so pre-fix), even though the
+  // React enter-simulation legitimately arms the wrapper's delayed
+  // show timer.
+
+  describe('stuck-tooltip regression', () => {
+    it('hidden bubble CSS is pointer-events:none (inert) and visible bubble is interactive', () => {
+      // Hidden rule: the base .tooltip-content must be pointer-events:none…
+      const baseRule = /\.tooltip-content\s*\{[^}]*pointer-events:\s*none/.test(tooltipCss);
+      expect(baseRule).toBe(true);
+      // …and the visible rule must re-enable pointer interaction so the
+      // "hover the bubble to keep it open" affordance still works.
+      const visibleRule = /\.tooltip-content--visible\s*\{[^}]*pointer-events:\s*auto/.test(tooltipCss);
+      expect(visibleRule).toBe(true);
+    });
+
+    it('a mouseEnter on the HIDDEN bubble does not force it visible immediately', () => {
+      renderTooltip();
+      const tooltip = getTooltipContent()!;
+
+      // Synthetic event on the still-hidden bubble.
+      fireEvent.mouseEnter(tooltip);
+
+      // Pre-fix, the bubble's own onMouseEnter force-showed it with no
+      // delay. The guard must keep it hidden now. (React's enter
+      // simulation still arms the wrapper's 400ms show timer — that is
+      // the legitimate trigger path, not the bug.)
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(tooltip.classList.contains('tooltip-content--visible')).toBe(false);
+      expect(tooltip.getAttribute('aria-hidden')).toBe('true');
     });
   });
 });
