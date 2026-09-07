@@ -242,6 +242,9 @@ fn migrations_create_expected_tables() {
         // ── Spec 0046b cloud sync (migration 20260901_image_refs) ──
         "image_refs",
         "image_push_queue",
+        // ── Accounts Payable / Hutang (migration 20260918_payables) ──
+        "payables",
+        "payable_payments",
     ];
 
     for table in &expected_tables {
@@ -385,15 +388,16 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 111 tables,
+    // All migrations applied (init + incremental) yield 113 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
-    // (20260915_topology_revisions.sql added the 111th.)
+    // (20260918_payables.sql added the 112th and 113th: payables +
+    // payable_payments.)
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        111,
+        113,
         "table surface drifted"
     );
     assert_eq!(
@@ -408,10 +412,13 @@ fn init_sql_creates_complete_schema_surface() {
         // `idx_topology_revisions_unpinned` from
         // `20260915_topology_revisions.sql`, plus the assignment-scope index
         // `idx_assignments_scope` from `20260916_role_assignment_scopes.sql`,
-        // on top of the previously pinned 155.
+        // plus the 5 payables / payable-payments indexes from
+        // `20260918_payables.sql` (tenant+status, supplier, partial due-date,
+        // payments-by-payable, payments-by-tenant), on top of the previously
+        // pinned 155.
         // (The table's UNIQUE constraint is NOT counted: SQLite names that
         // index `sqlite_autoindex_*` and the query excludes that prefix.)
-        159,
+        164,
         "index surface drifted"
     );
     assert_eq!(
@@ -551,6 +558,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260915_topology_revisions.sql".to_string(),
             "20260916_role_assignment_scopes.sql".to_string(),
             "20260917_assignment_backfill_org_wide.sql".to_string(),
+            "20260918_payables.sql".to_string(),
         ]
     );
 
@@ -573,15 +581,14 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run (111 tables = the
-    // 109 the surface test pinned before 20260913 added memo_locations, plus
-    // memo_locations itself and 20260915's topology_revisions).
+    // Schema surface is unchanged after the no-op re-run (113 tables = the
+    // 111 pinned before 20260918, plus payables and payable_payments).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        111,
+        113,
         "table surface must be unchanged after upgrade"
     );
 }

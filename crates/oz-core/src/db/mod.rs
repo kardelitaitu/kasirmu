@@ -91,6 +91,8 @@ pub mod locations;
 pub mod media;
 /// Memo lifecycle repository — create/publish/stop, revisions, recipients.
 pub mod memos;
+/// Accounts Payable (Hutang) repository — create/settle/age supplier debts.
+pub mod payables;
 /// Payment gateway configuration CRUD — PLANNED (stubs).
 pub mod payment_gateways;
 /// Payment settlement ledger CRUD — PLANNED (stubs).

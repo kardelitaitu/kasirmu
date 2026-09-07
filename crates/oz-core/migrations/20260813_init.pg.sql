@@ -869,6 +869,33 @@ CREATE TABLE IF NOT EXISTS purchase_order_lines (
     line_total_minor  BIGINT NOT NULL DEFAULT 0
 , received_qty BIGINT NOT NULL DEFAULT 0, damaged_qty  BIGINT NOT NULL DEFAULT 0);
 
+CREATE TABLE IF NOT EXISTS payables (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    supplier_id     TEXT NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    -- Optional link to the originating purchase order. NULL for a payable
+    -- raised outside a PO (e.g. stock added directly at the register).
+    po_id           TEXT REFERENCES purchase_orders(id) ON DELETE SET NULL,
+    -- Free-text origin tag ('po_receive', 'stock_add', 'manual', …). Not an
+    -- enum: entry points are expected to grow, and this is a display/audit
+    -- label, not a state machine.
+    source          TEXT NOT NULL DEFAULT 'manual',
+    reference       TEXT NOT NULL DEFAULT '',   -- supplier's invoice / bill no.
+    amount_minor    BIGINT NOT NULL CHECK (amount_minor >= 0),
+    paid_minor      BIGINT NOT NULL DEFAULT 0 CHECK (paid_minor >= 0),
+    currency        TEXT NOT NULL DEFAULT 'IDR',
+    due_date        TEXT,                        -- ISO date (YYYY-MM-DD); NULL = open-ended
+    status          TEXT NOT NULL DEFAULT 'open'
+                    CHECK (status IN ('open','partial','paid','written_off')),
+    note            TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    settled_at      TEXT,
+    written_off_at  TEXT,
+    -- Never pay more than owed; the store rejects over-payment before here.
+    CHECK (paid_minor <= amount_minor)
+);
+
 CREATE TABLE IF NOT EXISTS loyalty_accounts (
     id          TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL UNIQUE REFERENCES customers(id),
@@ -1139,6 +1166,18 @@ CREATE TABLE IF NOT EXISTS product_images (
     position   BIGINT NOT NULL DEFAULT 0,   -- display order of alternatives
     updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     PRIMARY KEY (product_id, slot)
+);
+
+CREATE TABLE IF NOT EXISTS payable_payments (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    payable_id      TEXT NOT NULL REFERENCES payables(id) ON DELETE CASCADE,
+    amount_minor    BIGINT NOT NULL CHECK (amount_minor > 0),
+    currency        TEXT NOT NULL DEFAULT 'IDR',
+    method          TEXT NOT NULL DEFAULT 'cash',
+    paid_at         TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    recorded_by     TEXT,
+    note            TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS gift_card_transactions (
@@ -1653,6 +1692,21 @@ CREATE INDEX IF NOT EXISTS idx_offline_queue_tenant_status ON offline_queue(tena
 CREATE INDEX IF NOT EXISTS idx_outbox_due
     ON outbox(status, next_attempt_at, priority DESC);
 
+CREATE INDEX IF NOT EXISTS idx_payable_payments_payable
+    ON payable_payments(payable_id);
+
+CREATE INDEX IF NOT EXISTS idx_payable_payments_tenant
+    ON payable_payments(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_payables_due
+    ON payables(due_date) WHERE status IN ('open','partial');
+
+CREATE INDEX IF NOT EXISTS idx_payables_supplier
+    ON payables(supplier_id);
+
+CREATE INDEX IF NOT EXISTS idx_payables_tenant_status
+    ON payables(tenant_id, status);
+
 CREATE INDEX IF NOT EXISTS idx_payment_gateways_tenant
     ON payment_gateways(tenant_id, is_active);
 
@@ -1952,6 +2006,8 @@ ON CONFLICT DO NOTHING;
 --   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
 --   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
 --   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
+--   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
+--   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
 --   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive
 --   topology_revisions — ADR #46 desktop-side table; no PG write path yet

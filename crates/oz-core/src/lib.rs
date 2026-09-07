@@ -87,6 +87,8 @@ pub mod money;
 pub mod offline;
 /// OZ-POS package metadata reader (`.ozpkg` bundles).
 pub mod ozpkg;
+/// Accounts Payable (Hutang) domain model — status machine and row shapes.
+pub mod payable;
 /// Payment processing and split-tender allocation.
 pub mod payment;
 /// Product popularity scoring (ADR #37) — pure decayed/smoothed blend.

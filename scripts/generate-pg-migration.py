@@ -434,6 +434,14 @@ RLS_EXEMPT = {
         "append-only revision history with no PG write path at all "
         "(pg.rs never touches it) — nothing for a policy to gate"
     ),
+    "payable_payments": (
+        "no PG write path yet; desktop-local AP settlement history — "
+        "cover when payables cloud sync lands"
+    ),
+    "payables": (
+        "no PG write path yet; desktop-local AP ledger (Hutang) — "
+        "cover when payables cloud sync lands"
+    ),
     "snapshot_versions": (
         "no PG write path audited; cover when snapshot sync reaches PG"
     ),
