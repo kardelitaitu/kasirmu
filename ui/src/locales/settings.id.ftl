@@ -249,6 +249,10 @@ settings-toggle-show-currency = Tampilkan simbol mata uang
 settings-toggle-show-tax = Tampilkan baris pajak di nota
 settings-toggle-show-table-number = Tampilkan nomor meja di keranjang dan nota
 settings-btn-save = Simpan
+settings-close-unsaved-title = Keluar dengan perubahan yang belum disimpan?
+settings-close-unsaved-msg = Perubahan pengaturan Anda belum disimpan. Menutup sekarang akan membuangnya.
+settings-close-unsaved-discard = Buang & tutup
+settings-close-unsaved-keep = Lanjut mengedit
 settings-btn-revert = Kembalikan
 
 settings-btn-revert-aria =

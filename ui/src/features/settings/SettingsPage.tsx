@@ -47,6 +47,8 @@ import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
 import Tooltip from '@/frontend/shell/Tooltip';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { TopologyScreen } from '@/features/locations';
@@ -358,22 +360,17 @@ function SettingsPageContent() {
   const [isDirty, setIsDirty] = useState(false);
   const markDirty = useCallback(() => { setIsDirty(true); }, []);
 
-  // Warn before closing the tab / window when there are unsaved changes.
-  useEffect(() => {
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (isDirty) {
-        e.preventDefault();
-        // WebView2 (Windows) and Chromium require returnValue to be set
-        // to a non-empty string for the beforeunload dialog to appear.
-        // e.preventDefault() alone is insufficient on WebView2.
-        // The string value is never displayed — browsers show their own
-        // generic dialog regardless of the custom string.
-        e.returnValue = 'unsaved';
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
+  // Guard the window close against unsaved work. A `beforeunload` listener on
+  // its own never surfaces its prompt in a Tauri build: the Rust event loop
+  // decides whether the window goes away and the webview's handler is not
+  // consulted, so the previous effect only protected the browser preview. The
+  // hook wires both seams and hands back a flag that drives the app's own
+  // ConfirmDialog (a native dialog would be off-design and unlocalized).
+  const {
+    promptOpen: unsavedPromptOpen,
+    onKeepEditing,
+    onDiscardAndClose,
+  } = useUnsavedChangesGuard(isDirty);
 
   // ── Accordion state moved to SettingsNavTree.tsx ──────────────
 
@@ -1113,6 +1110,20 @@ function SettingsPageContent() {
           </span>
         </span>
       </footer>
+
+      {/* Close-request prompt. useUnsavedChangesGuard intercepts the Tauri
+          window close while settings are dirty; this dialog decides whether the
+          close proceeds. Designed dialog, not a native one. */}
+      <ConfirmDialog
+        open={unsavedPromptOpen}
+        onCancel={onKeepEditing}
+        onConfirm={onDiscardAndClose}
+        title={requiredLocalized(l10n, 'settings-close-unsaved-title')}
+        message={requiredLocalized(l10n, 'settings-close-unsaved-msg')}
+        variant="danger"
+        confirmLabel={requiredLocalized(l10n, 'settings-close-unsaved-discard')}
+        cancelLabel={requiredLocalized(l10n, 'settings-close-unsaved-keep')}
+      />
     </div>
   );
 }

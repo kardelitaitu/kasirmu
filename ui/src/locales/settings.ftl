@@ -259,6 +259,10 @@ settings-toggle-show-currency = Show currency symbol on amounts
 settings-toggle-show-tax = Show tax line on receipts
 settings-toggle-show-table-number = Show table number on cart and receipts
 settings-btn-save = Save
+settings-close-unsaved-title = Leave with unsaved changes?
+settings-close-unsaved-msg = Your settings changes have not been saved. Closing now discards them.
+settings-close-unsaved-discard = Discard & close
+settings-close-unsaved-keep = Keep editing
 settings-btn-revert = Revert
 
 settings-btn-revert-aria =
