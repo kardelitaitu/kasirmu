@@ -2,7 +2,7 @@
   "schema_version": 1,
   "description": "Grandfathered native browser `title=` tooltips (per-file counts) in ui/src, excluding __tests__. Enforced by ui/src/__tests__/nativeTooltipCompliance.test.ts as a ratchet: a file may never exceed its count, and the entry must be lowered when the code is cleaned. New UI must use the React <Tooltip> component from ui/src/frontend/shell/Tooltip.tsx instead (fit=\"inline\" for toolbar buttons/badges so the wrapper does not stretch them). `title` alongside `pattern` is exempt — that is HTML5 constraint-validation messaging, not a hover affordance. Do not add files to this list.",
   "generated": "2026-09-07",
-  "total": 84,
+  "total": 83,
   "counts": {
     "features/analytics/AnalyticsScreen.tsx": 15,
     "features/locations/topologyNodeCard.tsx": 9,
@@ -24,7 +24,7 @@
     "components/RoleBadge.tsx": 1,
     "features/analytics/AnalyticsCardContent.tsx": 1,
     "features/auth/StaffLoginScreen.tsx": 1,
-    "features/design/DevToolbar.tsx": 1,
+    "features/design/DevToolbar.tsx": 0,
     "features/kds/KdsScreen.tsx": 1,
     "features/kiosk/KioskScreen.tsx": 1,
     "features/locations/topologyToolRack.tsx": 1,

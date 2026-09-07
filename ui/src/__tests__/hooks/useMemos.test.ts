@@ -98,6 +98,20 @@ describe('useMemos', () => {
     await waitFor(() => expect(mockAck).toHaveBeenCalledWith(expect.any(String), 'm1'));
   });
 
+  it('the dev-toolbar memos:refresh event triggers an immediate reload', async () => {
+    mockList.mockResolvedValue(envelope([activeMemo('m1')]));
+    const { result } = renderHook(() => useMemos());
+    await waitFor(() => expect(result.current.memos).toHaveLength(1));
+    expect(mockList).toHaveBeenCalledTimes(1);
+
+    // The dev toolbar dispatches this after publishing a spawned memo —
+    // the point is an immediate refetch, not a poll-cadence wait.
+    act(() => {
+      window.dispatchEvent(new CustomEvent('memos:refresh'));
+    });
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+  });
+
   it('polls at the server-sent base interval', async () => {
     vi.useFakeTimers();
     mockList.mockResolvedValue(envelope([activeMemo('m1')]));

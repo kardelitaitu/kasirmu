@@ -107,6 +107,19 @@ export function useMemos(options: UseMemosOptions = {}): UseMemosResult {
     return () => clearInterval(id);
   }, [load, sessionToken, cadence, kds]);
 
+  // Dev-only bridge (same shape as AppShell's `app:lock` listener): the
+  // dev toolbar's "Spawn memo" buttons publish through the real IPC
+  // surface and then fire `memos:refresh`, so a freshly published memo
+  // appears without waiting out the (up to 15-minute) poll cadence.
+  // Gated to dev builds — production has no dispatcher and must not
+  // carry a listener for an event nothing sends.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const handler = () => void load();
+    window.addEventListener('memos:refresh', handler);
+    return () => window.removeEventListener('memos:refresh', handler);
+  }, [load]);
+
   const acknowledge = useCallback((memoId: string) => {
     // Optimistically drop it from view; the durable write follows.
     setMemos((prev) => prev.filter((m) => m.memo.id !== memoId));

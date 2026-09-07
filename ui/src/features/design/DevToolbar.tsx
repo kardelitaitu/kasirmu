@@ -1,6 +1,10 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useTheme, type Theme } from '@/frontend/shell/ThemeProvider';
 import { useLocalization } from '@fluent/react';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { createMemoScoped, publishMemoScoped, type MemoDuration } from '@/api/memos';
+import { listLocationsScoped } from '@/api/locations';
+import { devLog } from '@/utils/devLog';
 import './DevToolbar.css';
 
 // ── SVG icons ──────────────────────────────────────────────────────
@@ -42,6 +46,11 @@ const THEMES: ThemeOption[] = [
 ];
 
 const STORAGE_POS = 'oz-pos-dev-toolbar-pos';
+
+// Spawned memos cycle the display-duration ladder so one dev session can
+// exercise every expiry class without re-authoring by hand.
+const SPAWN_DURATIONS: MemoDuration[] = ['12h', '24h', '3d', '7d', '30d'];
+let spawnDurationIndex = 0;
 
 // ── Draggable hook ─────────────────────────────────────────────────
 
@@ -120,13 +129,57 @@ function useDragToolbar() {
 
 /**
  * DevToolbar — a draggable developer overlay providing realtime
- * theme switching. Always visible. Remove when no longer needed.
+ * theme switching and one-click memo spawning. Always visible. Remove
+ * when no longer needed.
  */
 export function DevToolbar() {
   const { l10n } = useLocalization();
   const { theme, setTheme } = useTheme();
   const { pos, onMouseDown } = useDragToolbar();
+  const { sessionToken } = useWorkspace();
   const currentTheme = THEMES.find((t) => t.key === theme);
+  const [spawning, setSpawning] = useState(false);
+
+  /**
+   * Draft + publish a memo through the REAL IPC surface (the same
+   * commands the authoring screen uses — in dev mode the dev-mock
+   * answers), then fire `memos:refresh` so every mounted memo banner
+   * picks it up immediately instead of waiting out the server-issued
+   * poll cadence (up to 15 minutes).
+   *
+   * `org` spawns an Organization Memo (empty targeting = everyone);
+   * `loc` targets the first location the environment serves.
+   */
+  const spawnMemo = useCallback(async (scope: 'org' | 'loc') => {
+    if (!sessionToken || spawning) return;
+    setSpawning(true);
+    try {
+      let locationIds: string[] = [];
+      if (scope === 'loc') {
+        const locations = await listLocationsScoped(sessionToken);
+        const first = locations[0]?.id;
+        if (!first) {
+          devLog.warn('dev-toolbar', 'no locations exist in this environment; spawn a Location memo after creating one');
+          return;
+        }
+        locationIds = [first];
+      }
+      const duration = SPAWN_DURATIONS[spawnDurationIndex % SPAWN_DURATIONS.length]!;
+      spawnDurationIndex += 1;
+      const memo = await createMemoScoped(sessionToken, {
+        locationIds,
+        title: `Dev ${scope === 'org' ? 'Organization' : 'Location'} memo · ${new Date().toLocaleTimeString()}`,
+        body: `Spawned by the dev toolbar to exercise the memo display surfaces. Duration: ${duration}.`,
+        duration,
+      });
+      await publishMemoScoped(sessionToken, memo.id);
+      window.dispatchEvent(new CustomEvent('memos:refresh'));
+    } catch (e) {
+      devLog.error('dev-toolbar', `memo spawn failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSpawning(false);
+    }
+  }, [sessionToken, spawning]);
 
   const style: React.CSSProperties | undefined =
     pos.x !== -1 || pos.y !== -1
@@ -178,9 +231,26 @@ export function DevToolbar() {
         <div className="dev-toolbar-actions">
           <button
             type="button"
-            className="dev-toolbar-lock-btn"
+            className="dev-toolbar-action-btn"
+            onClick={() => void spawnMemo('org')}
+            disabled={!sessionToken || spawning}
+            aria-label="Spawn an Organization memo (draft + publish)"
+          >
+            Spawn Org memo
+          </button>
+          <button
+            type="button"
+            className="dev-toolbar-action-btn"
+            onClick={() => void spawnMemo('loc')}
+            disabled={!sessionToken || spawning}
+            aria-label="Spawn a Location memo targeting the first location (draft + publish)"
+          >
+            Spawn Loc memo
+          </button>
+          <button
+            type="button"
+            className="dev-toolbar-action-btn"
             onClick={() => window.dispatchEvent(new CustomEvent('app:lock'))}
-            title="Lock screen (trigger SessionLockScreen)"
           >
             Lock
           </button>
