@@ -3598,3 +3598,58 @@ motion is allowed: row transitions `--duration-200` → `--duration-300`
 modal standard). Both timers still match their CSS; suites 12/12 +
 typecheck + all ten gates green.
 
+---
+
+## Implementation journal — memo motion round 4: the spring system (2026-09-08)
+
+Owner green-lit the macOS-grade motion spec (all six principles).
+Committed `303b2189` (4 files):
+
+- **The spring language:** `--memo-spring` is a CSS `linear()` easing
+  baked from a damped harmonic oscillator (ζ = 0.7, ω₀ = 12, 24
+  samples; generator one-liner in the session, parameters in the CSS
+  comment). Peak overshoot 4.598% at t ≈ 37%, settled by 83% — the
+  generator is reproducible, not hand-tuned. Opacity NEVER rides the
+  spring (plain `--ease-out`/`--ease-in`); alpha overshoot is the
+  amateur tell.
+- **Motion match:** rows own height only; the bubble owns every visible
+  transform — dealt in from the corner `translate(-24px, 8px)
+  scale(0.94)` and exiting back toward it (−24px, 12px, scale 0.9),
+  `transform-origin: 0 100%`. Row exit drops the old row-level
+  opacity/transform (double motion); stagger moved to a
+  `--memo-delay` custom property so one inline var drives both the row
+  and the bubble, forced to 0ms on exit.
+- **Zoom-from-origin (centerpiece):** the open button captures its
+  rect; the overlay mounts the card transformed onto it (FLIP-lite:
+  set from-style → forced reflow → clear, pre-paint via
+  `useLayoutEffect`) and the CSS spring plays to identity; exit
+  reapplies the from-transform so the card refolds into the bubble.
+  Guards: zero-size rects (jsdom) skip the zoom; the exit zoom is
+  skipped under `prefers-reduced-motion` (would flash a tiny card for
+  a frame before the zero-length unmount timer).
+- **Backdrop split:** the dim/blur layer is now a sibling of the card
+  (`memo-expanded-backdrop`), so its 240ms fade can end before the
+  card's 400ms reverse zoom without dimming the card through a parent
+  opacity. Blur follows the FastPIN/QrisQr convention
+  (`var(--modal-backdrop-blur, blur(2px))` + will-change), and
+  `.memo-expanded-backdrop` was added to `HardwareAccel.css` so the
+  hardware-accel toggle keeps killing it. Backdrop click = no-ack
+  close (testid `memo-expanded-backdrop`).
+- **Micro-interactions:** bubble press squish (`:active` scale 0.98),
+  both (x) chips rotate 90° on hover over `--ease-bounce` + press
+  scale 0.88.
+- **Timers:** `ROW_EXIT_MS = 450` (spring collapse) / `OVERLAY_EXIT_MS
+  = 400` (reverse zoom); CSS transitions are the clock, the hooks just
+  gate unmount.
+- **Stale mount test repaired (`b489ac4d`):** the first battery run
+  failed `MemoBannerMount` on the lock screen — NOT this slice. Root
+  cause: `c7294c28` landed the owner security ruling (banner app-wide
+  EXCEPT login/lock) by deleting the AppShell lock-branch mount, and
+  left the mount test asserting the old mount. Converted the lock
+  case into a negative test pinned to the ruling (store-pos banner
+  visible → lock → banner must be gone) and updated the header list.
+- **Verification:** 6 memo suites 40 passed; `npm run typecheck` clean;
+  lint 0 errors; bundle parity 0 missing; both commits ran all ten
+  gates. (`themeTokenCompliance` still carries the topology stream's
+  one baseline regression, NodeTopologyEditor.css:1476 — untouched.)
+
