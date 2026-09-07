@@ -47,14 +47,17 @@ one selected location; v1 rule — multi-location targeting has since landed,
   dropped the same day — a draft is visible only to its author (`memo.rs:61`),
   so a stale draft leaks nothing and no `Draft → Expired` arm is added;
 - active Memos display on the staff login screen and lock screen, plus a
-  dismissible top-left notification every 15 minutes (30s per cycle; on KDS
+  dismissible chat-bubble overlay pinned bottom-left every 15 minutes
+  (30s per cycle; on KDS
   the interval doubles to 30 minutes — kitchen traffic cannot afford a
   15-minute interruption — and the cadence must be implemented as 2× the
   shared base interval, never a second independently-tuned constant);
   when both types are active they stack with Location above Organization
   *(ruled 2026-09-07: "staff login screen" means once the staff PIN pad is
   up — after authentication, via the existing session-scoped read; no
-  pre-auth Memo read will exist)*;
+  pre-auth Memo read will exist; amended 2026-09-07, `eef79ebd`: the
+  notification surface was redesigned from a top-sliding bar to a
+  bottom-left chat bubble at the owner's direction)*;
 - stopping or expiry removes the Memo from every surface immediately;
 - the notification's visual design is TBD — the working candidate is the
   tooltip treatment with a close button revealed on hover or first click, so
@@ -243,7 +246,8 @@ actual relationship mutation.
       duration (12h/24h/3d/7d/30d, default 24h), early stop by author or
       higher role, immutable published revisions, delivery and acknowledgement
       states, offline delivery, and retention. Display: staff login screen,
-      lock screen, and a dismissible top-left notification every 15 minutes
+      lock screen, and a dismissible chat-bubble overlay pinned bottom-left
+      (redesigned from the top-sliding bar, `eef79ebd`) every 15 minutes
       (30s per cycle; KDS doubles the interval to 30 min, coded as 2× the
       base interval); Location stacks above Organization.
       — **complete except offline delivery and the cloud data path
@@ -517,7 +521,8 @@ states" are per-recipient, not per-memo — conflating them is the trap):
 base notification interval 15 min, 30 s per cycle; KDS = `2 × base` = 30 min
 (code the multiplier, not the literal 30, so the "2×" intent survives a base
 change); Location Memos stack above Organization Memos. Surfaces: staff login
-screen, lock screen, dismissible top-left notification.
+screen, lock screen, dismissible bottom-left chat-bubble overlay
+(amended 2026-09-07, `eef79ebd` — was "top-left notification").
 
 **Open decision to surface, not invent:** memo retention window — the spec says
 memos have "retention" but gives no schedule (unlike audit's tier ladder).
@@ -1748,6 +1753,40 @@ from a backup (rewound memo state) would omit memos/rows that still
 carry newer cloud acks — and the push would delete them. Acks ride the
 desktop's authority over fan-out membership; a tombstone or merge-window
 design is the future fix if this ever bites in practice.
+
+## Memo implementation journal — display surface redesigned as a chat bubble (2026-09-07)
+
+**`eef79ebd` (`feat(ui)`) — owner-directed redesign of the MemoBanner.**
+The notification was a full-width bar pinned across the top that slid in
+from the top edge; the owner asked for a chat bubble instead. The surface
+is now a `position: fixed` overlay at bottom-left (`--space-6` inset,
+`--z-overlay`) with a speech-bubble tail (a rotated 12px square sharing
+the bubble's solid `--color-bg-popover` background and border on its two
+outward faces — the tail trick needs a SOLID background; the old
+translucent gradient would have shown the seam). Entry rises from the
+bottom (`translateY(16px)` → 0); the exit mirrors it (sink + fade), both
+still inside `prefers-reduced-motion: no-preference` per the
+exit-animation-pattern skill. Solid tokens carry dark mode, so the
+`[data-theme='dark']` gradient override is gone.
+
+**Semantic change, deliberate:** the old surface had two buttons —
+Acknowledge (durable) and × (session-only dismiss). The bubble has ONE
+close button (×) and it maps to the DURABLE acknowledge — chat-bubble
+semantics: read it, done; the memo never returns on this terminal. The
+session-only `dismiss` path stays on `useMemos` (hook API unchanged, its
+tests unchanged); only the banner stops consuming it. The close keeps
+the `memo-banner-acknowledge-aria` label so the mount tests and screen
+readers still see "Acknowledge this memo". FTL keys
+`memo-banner-acknowledge` and `memo-banner-dismiss-aria` were dropped
+from both locales in the same commit (staged-scoped orphan gate).
+
+**Tests:** MemoBanner.test.tsx updated (dismiss test removed, close-
+button durability asserted); MemoBannerMount.test.tsx passed UNCHANGED —
+its assertions (title, Location notice badge, the acknowledge-aria
+button) were already surface-shape-agnostic. Compliance gates green:
+animation, themeToken, nativeTooltip, screenExtraction, useMemos,
+typecheck, eslint. The three "top-left" spec sentences in this file were
+amended in the docs commit that carries this entry.
 
 ## RULING — `stop_memo` early-stop authorization (2026-09-07) — approved: option A2, fallback A1
 
