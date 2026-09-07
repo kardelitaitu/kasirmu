@@ -850,6 +850,55 @@ Scope findings from the pre-implementation investigation, in execution order:
           scan non-empty mid-commit; landed clean after its concurrency-
           test commit (`d8ffa281`) landed — the hook was seeing THEIR
           staged file, not mine.
+      - **[x] ADR #47 slice 2 — the choke point, core gate + desktop wiring
+        (2026-09-07, `453c629f`).** Ruling 2's single scoped choke point is
+        now live:
+        - **Core gate** (`staff.rs`):
+          `Store::require_permission_for_resource(user_id, required,
+          scope_type, scope_id)` composes the assignment coverage check with
+          `authorize_with` — org-wide covers every kind; location covers
+          only its own id; legal-entity covers its own id AND any location
+          whose row points at it via the new
+          `Store::location_legal_entity_id` (`locations.rs`) — ruling 3's
+          downward walk, reading the SAME connection the gate authorizes on
+          (the GLOBAL identity DB's `locations` copy, which boot resolution
+          and the local API already consult). Unknown location, NULL-entity
+          location, upward and sibling access all deny fail-closed. The
+          permission itself is still enforced on every path — coverage
+          never replaces the registry check.
+        - **Named decision — no-row users stay legacy:** a user with NO
+          assignments row is not scope-restricted (ruling 5 bit-for-bit,
+          pinned by
+          `resource_gate_no_assignment_row_keeps_legacy_unrestricted_scope`).
+          Tightening no-row users would break every pre-0048 deployment the
+          day this ships; it is deliberately deferred to the
+          assignment-creation slice (which can backfill org-wide rows
+          first), NOT silently dropped.
+        - **Desktop wiring** (`authz.rs`):
+          `require_permission_for_session_resource` runs the spec-0048
+          branch/workspace gate AND the resource gate against the global
+          DB; the three location mutations
+          (`update_location_profile_scoped`, `set_primary_location_scoped`,
+          `delete_location_profile_scoped`) pass `ScopeType::Location` with
+          the target id — manager-of-A cannot update/promote/delete
+          location B. `create_location_profile_scoped` stays org-level (no
+          resource exists yet to cover; its `args.id` row lives only in
+          store DBs — the pre-existing locations dual-write oddity, noted
+          not fixed; a location absent from the global copy denies
+          entity-walk coverage fail-closed).
+        - Verification: oz-core `2570 passed, 0 failed` (new pins: org
+          covers every kind; location own-only + upward denies +
+          coverage-is-not-permission; legal-entity walk incl.
+          sibling/unknown/orphan denies; no-row legacy); desktop
+          `cargo test -p oz-pos-app --lib locations` `11 passed, 0 failed`
+          (manager-of-A denied on B with a global-mode assignment so ONLY
+          the resource axis can deny; the same manager allowed on own;
+          owner/quota/staff flows regress-clean); `cargo check -p
+          oz-pos-tablet -p oz-api` clean.
+        - Remaining under this item: slice 3 — assignment-creation IPC/UI
+          (scoped rows per location/entity + the no-row backfill decision),
+          then tablet parity for the same gate. Workspace/terminal scope
+          types stay OUT per ADR #47 non-goals.
 - [x] **Define the tenant hierarchy.** The canonical design now includes
       Organization/Tenant → Legal Entity → Location, with Workspace Instances
       scoped to Locations and Terminals owned by the Organization and assigned
@@ -3174,3 +3223,42 @@ work; nothing foreign was staged).
 Verified at HEAD: desktopCloseCompliance + useUnsavedChangesGuard suites
 pass. The overlay remains untracked WIP (tsc clean; keys written; its
 stream owes the commit + the history-call test per R141).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 153) — Phase 2 becomes real: the overlay is being adopted
+
+Two in-flight slices show the ratified Phase 1 immediately paying off:
+
+1. **TopologyScreen now imports `TopologyRevisionBrowser`** with the
+   client-side read gate (`canViewTopologyHistory` — mirrors the
+   server's `audit:view` check so a user without permission isn't shown
+   a control that would fail on click; the server check remains
+   authoritative). This is the browser overlay ADR #46 §8 points at —
+   the work that was hard-blocked through Rounds 29–129 and is now
+   unblocked, wired, and gated by the same permission the read path
+   enforces.
+2. **MemoBanner redesign** (memo stream): chat-bubble display surface,
+   Phase 2 P1 step 4 per an owner-directed redesign note.
+
+Both are coherent slices; the overlay's commit will be the first where
+the i18n gate passes legitimately (keys written since R129). Watch: the
+overlay commit should include the history-call characterization test
+suggested in R141.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 164) — ADR #47 slice 2 BEGUN: the choke-point gate
+
+`staff.rs` now carries the scoped choke point per ruling 2: a
+`require_permission_for_resource`-style gate that adds coverage to
+permission — implementing ruling 3's downward-only inheritance
+(organization covers everything; legal_entity covers itself + its
+locations via the `locations` table; location covers only its own id).
+The doc comment cites the rulings directly. Slice 1's `ScopeType` parse
+is the foundation. The fail-closed shape (unparsable = deny) is implied
+by the parse contract from R111.
+
+No misalignment found. The scoped-authorization implementation is
+proceeding in exactly the accepted order: scope columns → choke point →
+(per-location creation slices follow).
