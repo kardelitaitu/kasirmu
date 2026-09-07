@@ -41,7 +41,12 @@ workflow, not a silent setting change.
       todo-global-saas-2.md, which recommends permissions over ranks for the
       same reason). What remains is the feature itself: authoring custom
       roles as explicit permission-set rows with scopes, plus IPC + UI —
-      gated on the Phase 1 scoped-authorization decisions.
+      **unblocked 2026-09-07:** ADR #47 accepted (sole-maintainer ruling,
+      all five recommendations adopted — Q4 rules custom roles are named
+      key-set rows in the same registry, assignments referencing keys
+      only). The `role_assignments` model is now buildable; note the
+      assignment-editing UI is explicitly a separate slice per the ADR's
+      non-goals.
 - [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
 - [x] **Define data residency and retention policy.** Document where tenant data,
@@ -78,7 +83,9 @@ workflow, not a silent setting change.
       supervisor's Round-1 watch-item told us to re-check first. Execution
       gate: the subscription agent's in-flight §B slices commit first (their
       `max_stores` deprecation renames fields under this surface); `scope`
-      wiring additionally waits on ADR #47's ruling.
+      wiring waits on the `role_assignments` model landing — **ADR #47 is
+      accepted (2026-09-07), so the model is buildable**; implementation,
+      not the ruling, is the remaining gate.
 - [ ] **Add multi-Organization user switching.** One human identity may hold
       memberships in several Organizations; switching between them is a later
       capability built on scoped assignments, not a second hierarchy layer.
@@ -259,13 +266,33 @@ per-quota families (`locations`, `staff_users`, `pos_instances`,
 3. IPC in both clients + dev-mock + `ui/src/api/` client fn; parity + i18n
    gates; registry-key note in `verify-scoped-coverage.sh` if needed.
 4. UI surface (Settings → Diagnostics section) — separate slice.
-5. When ADR #47 lands: extend the resolver with the `scope` source and add
-   the scoped-assignment denial tests.
+5. When the `role_assignments` model (ADR #47 — **accepted 2026-09-07**, all
+   five recommendations adopted) lands: extend the resolver with the `scope`
+   source and add the scoped-assignment denial tests.
 
 Open question for the ruling (one line): should the verdict also expose
 `expires_at`/`grace_until` (added to the caps DTO by the subscription agent's
 slice) once they exist, as `detail` fields? Recommended yes — it turns
 "expired" into "expired 3 days ago, grace ends Friday".
+
+---
+
+## RULING — ADR #47 scoped authorization (2026-09-07) — accepted, all five recommended
+
+> **Ruled 2026-09-07 by the sole maintainer: 1A–5A adopted.** One
+> `role_assignments` table (organization / legal_entity / location scopes,
+> NULL = org-wide), a single `require_permission_scoped` choke point,
+> downward-only inheritance, custom roles as named key-set rows in the
+> ADR #35 registry, and an org-wide backfill migration that changes no
+> behavior until per-location assignments are deliberately created. The
+> ruling is recorded in the ADR itself; the decisions index is updated.
+> What this unblocks here: the custom-roles feature half (schema, store,
+> IPC — assignment-editing UI stays a separate slice per the ADR's
+> non-goals) and, once the `role_assignments` model is built, the `scope`
+> reason code in the observability verdict design above. The observability
+> design's one open question (surface `expires_at`/`grace_until` in
+> verdict details) remains open — it rides the subscription agent's DTO
+> slice, not this ruling.
 
 ---
 

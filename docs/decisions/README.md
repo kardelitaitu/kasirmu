@@ -54,6 +54,7 @@ implementation-status walkthrough.
 | 43 | [Cloud Sync Performance & Scale-Out Roadmap](./2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) |
 | 45 | [Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](./2026-09-02-adr45-topology-semantic-contract-v2.md) | §1–§3, §4.1, §5, §4.2 backend + storage + migration fn (not yet invoked), §4.3 ordering rule Implemented (2026-09-02) · §4.2 UI swap, §4.3 checklist UI Proposed |
 | 46 | [Topology Revision History, Change Notes, and Draft Restore](./2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted (2026-09-07) — Phase 1 next, per its Solo Implementation Protocol |
+| 47 | [Scoped Authorization — Role Assignments with Explicit Scopes](./2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted (2026-09-07, sole-maintainer ruling — all five recommendations adopted: `role_assignments` table, single scoped choke point, downward-only inheritance, key-set custom roles, org-wide backfill) — assignment model not yet built; gates §B entitlements, audit baseline, Phase 3 roles |
 
 ## Research notes
 
