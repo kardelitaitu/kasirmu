@@ -410,7 +410,17 @@
   width: 100%;
 }
 
-.settings-nav-item-wrapper > button[role="treeitem"] {
+/* The nav item's <Tooltip> wrapper is now the flex item (the button moved
+   inside it), so the wrapper must absorb the free width and the button must
+   fill the wrapper. The direct-child form is kept for the search-results
+   branch, where the item button is not tooltip-wrapped. */
+.settings-nav-item-wrapper > .tooltip-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-nav-item-wrapper > button[role="treeitem"],
+.settings-nav-item-wrapper > .tooltip-wrapper > button[role="treeitem"] {
   flex: 1;
   min-width: 0;
 }

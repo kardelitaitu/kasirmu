@@ -6,6 +6,14 @@
   width: 100%;
 }
 
+/* Shrink-to-fit variant: for triggers that must keep their own box (toolbar
+   buttons, badges, inline spans) so wrapping them does not stretch the
+   trigger or disturb the surrounding flex/grid layout. */
+.tooltip-wrapper--inline {
+  display: inline-flex;
+  width: auto;
+}
+
 /* ── Tooltip bubble ─────────────────────────────── */
 .tooltip-content {
   position: absolute;

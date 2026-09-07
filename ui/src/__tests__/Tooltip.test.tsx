@@ -407,6 +407,46 @@ describe('Tooltip', () => {
     });
   });
 
+  // ── fit prop (layout footprint) ────────────────────
+  //
+  // The default wrapper is a full-width flex row (correct for sidebar/nav
+  // rows). Converting native `title` tooltips on toolbar buttons and inline
+  // badges would stretch those triggers without a shrink-to-fit variant.
+
+  describe('fit prop', () => {
+    it('defaults to the full-width block wrapper', () => {
+      renderTooltip();
+      expect(getTooltipWrapper()).toHaveClass('tooltip-wrapper');
+      expect(getTooltipWrapper()).not.toHaveClass('tooltip-wrapper--inline');
+    });
+
+    it('applies the inline (shrink-to-fit) wrapper class', () => {
+      renderTooltip({ fit: 'inline' });
+      expect(getTooltipWrapper()).toHaveClass('tooltip-wrapper--inline');
+    });
+
+    it('still shows and hides normally when inline', () => {
+      renderTooltip({ fit: 'inline' });
+      const wrapper = getTooltipWrapper()!;
+
+      fireEvent.mouseEnter(wrapper);
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(getTooltipContent()?.classList.contains('tooltip-content--visible')).toBe(true);
+
+      fireEvent.mouseLeave(wrapper);
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(getTooltipContent()?.classList.contains('tooltip-content--visible')).toBe(false);
+    });
+
+    it('declares the inline variant in the stylesheet', () => {
+      expect(tooltipCss).toMatch(/\.tooltip-wrapper--inline\s*\{[^}]*display:\s*inline-flex/);
+    });
+  });
+
   // ── Cleanup ─────────────────────────────────────────
 
   describe('cleanup', () => {

@@ -24,6 +24,13 @@ export interface TooltipProps {
   portal?: boolean;
   /** Prevent the tooltip text from wrapping onto multiple lines. */
   nowrap?: boolean;
+  /** Layout footprint of the wrapper element.
+   *  'block' (default) — full-width flex row, correct for sidebar/nav rows.
+   *  'inline' — shrink-to-fit, for triggers that must keep their own box:
+   *  toolbar buttons, badges, inline spans. Without this, wrapping a small
+   *  button in the default full-width flex row stretches it and breaks the
+   *  surrounding layout. */
+  fit?: 'block' | 'inline';
   /** The element that triggers the tooltip on hover/focus. */
   children: ReactElement;
 }
@@ -49,6 +56,7 @@ export default function Tooltip({
   portal = false,
   nowrap = false,
   align = 'center',
+  fit = 'block',
   children,
 }: TooltipProps) {
   const [visible, setVisible] = useState(false);
@@ -210,7 +218,7 @@ export default function Tooltip({
 
   return (
     <div
-      className="tooltip-wrapper"
+      className={`tooltip-wrapper${fit === 'inline' ? ' tooltip-wrapper--inline' : ''}`}
       onMouseEnter={startShow}
       onMouseLeave={startHide}
       onFocus={startShow}

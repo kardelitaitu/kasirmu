@@ -69,6 +69,18 @@ function isNativeTitleTarget(tagName: string): boolean {
   return /^[a-z]/.test(tagName) && !tagName.includes('.');
 }
 
+/**
+ * Exception: `title` alongside `pattern` is HTML5 constraint-validation
+ * messaging — the spec makes `title` the validation failure text, so removing
+ * it degrades form validation rather than a hover affordance. Not a "tooltip"
+ * in the design sense.
+ */
+function hasPatternAttribute(node: ts.JsxOpeningElement | ts.JsxSelfClosingElement, sf: ts.SourceFile): boolean {
+  return node.attributes.properties.some(
+    (prop) => ts.isJsxAttribute(prop) && prop.name.getText(sf) === 'pattern',
+  );
+}
+
 /** Scan one source file for native `title` attributes. */
 export function findNativeTitles(absPath: string): NativeTitleHit[] {
   const source = readFileSync(absPath, 'utf8');
@@ -81,7 +93,7 @@ export function findNativeTitles(absPath: string): NativeTitleHit[] {
   const visit = (node: ts.Node): void => {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName.getText(sf);
-      if (isNativeTitleTarget(tag)) {
+      if (isNativeTitleTarget(tag) && !hasPatternAttribute(node, sf)) {
         for (const prop of node.attributes.properties) {
           if (ts.isJsxAttribute(prop) && prop.name.getText(sf) === 'title') {
             hits.push({
@@ -170,5 +182,14 @@ describe('native browser tooltip compliance (no title= on HTML elements)', () =>
     const src = readFileSync(join(UI_SRC, 'frontend', 'shell', 'AppLayout.tsx'), 'utf8');
     expect(src).toContain('document.title');
     expect(HITS.some((h) => h.file.endsWith('AppLayout.tsx'))).toBe(false);
+  });
+
+  it('exempts title alongside pattern (HTML5 constraint-validation message)', () => {
+    // GeneralSection's tax-ID field carries pattern + title: the spec makes
+    // `title` the validation failure text, so it is not a hover affordance.
+    const generalSection = HITS.filter((h) => h.file.endsWith('sections/GeneralSection.tsx'));
+    expect(generalSection).toEqual([]);
+    const src = readFileSync(join(UI_SRC, 'features', 'settings', 'sections', 'GeneralSection.tsx'), 'utf8');
+    expect(src).toMatch(/pattern="[^"]*"[\s\S]*?title=\{l10n\.getString\('settings-tax-id-pattern-hint'\)\}/);
   });
 });

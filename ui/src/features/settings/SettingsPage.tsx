@@ -46,6 +46,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
+import Tooltip from '@/frontend/shell/Tooltip';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { TopologyScreen } from '@/features/locations';
@@ -901,17 +902,18 @@ function SettingsPageContent() {
       <header className="settings-topbar">
         {/* COL 1: back button */}
         <div className="settings-topbar__col">
-          <button
-            type="button"
-            className="settings-back-btn"
-            onClick={() => goToWorkspacePicker()}
-            aria-label={l10n.getString('settings-back-aria')}
-            title={l10n.getString('settings-back-aria')}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="16 5 8 12 16 19" />
-            </svg>
-          </button>
+          <Tooltip content={l10n.getString('settings-back-aria')} fit="inline" portal>
+            <button
+              type="button"
+              className="settings-back-btn"
+              onClick={() => goToWorkspacePicker()}
+              aria-label={l10n.getString('settings-back-aria')}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="16 5 8 12 16 19" />
+              </svg>
+            </button>
+          </Tooltip>
         </div>
         {/* COL 2: branding */}
         <div className="settings-topbar__col settings-topbar__col--brand">
