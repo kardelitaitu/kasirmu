@@ -28,7 +28,7 @@ This skill defines the standardized, disciplined workflow for diagnosing, reprod
 | 2 | **Reproduce locally in isolation.** | Reproduce the failing test or check locally using the smallest possible command before writing fixes. |
 | 3 | **Minimal surgical fixes.** | Address the root cause. Never delete assertions, skip tests, widen tolerances, or suppress linters unless the test was demonstrably testing an obsolete specification. |
 | 4 | **Maintain architectural standards.** | Money values stay in `i64` minor units (`Money`), database writes in `rusqlite` transactions, UI text in `@fluent/react` via `<Localized>`, and Tauri IPC routed through `ui/src/api/`. |
-| 5 | **Version is locked at `0.0.36`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
+| 5 | **Version is locked at `0.0.37`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
 | 6 | **Scope verification to the affected area.** | Run targeted tests during iteration. Full `scripts/check.sh` is reserved for final pre-push or explicit requests. |
 | 7 | **Never kill running background processes.** | Do not kill `.exe` or background services that may belong to other agents or active dev servers. |
 | 8 | **Never `git push` without an explicit direct command.** | Always stop at local commit. Even after full verification, ask or wait for the user to explicitly tell you to push. |
