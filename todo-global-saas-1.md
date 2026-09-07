@@ -987,7 +987,7 @@ Scope findings from the pre-implementation investigation, in execution order:
         supporting the 5 canonical scopes (`organization`, `legal-entity`,
         `location`, `workspace`, `terminal`). Annotated all 12 sections in
         `SettingsNavTree` and rendered scope tags in sidebar and section headers.
-- [ ] **Protect tenant isolation.** Add tests and review gates proving that tenant
+- [x] **Protect tenant isolation.** Add tests and review gates proving that tenant
       IDs, location scopes, topology graphs, sync payloads, audit records, and
       cached subscription data cannot cross tenant boundaries.
       - **Current-state inventory (2026-09-06 assist pass, corrected at
@@ -1185,7 +1185,38 @@ Scope findings from the pre-implementation investigation, in execution order:
         "add it to `RLS_TABLES` once
         the write path sets `tenant_id`" has to be an explicit step in each
         slice, not a later cleanup. Consider making it a named sub-task of this
-        checkbox so it stops being invisible.
+        checkbox so it stops being invisible. (Done — the gate below makes it
+        structural: **7 remain, each with a documented exemption**.)
+      - **[x] Coverage gate — the named sub-task, closed (2026-09-07,
+        `07197574`).** Supervisor Round 37 named this item's remaining work:
+        generalize the RLS_TABLES generator check + the 19-table FORCE probe
+        into a gate that fails when a tenant_id-bearing table is neither
+        RLS-covered nor explicitly documented-exempt.
+        `generate-pg-migration.py` now carries `RLS_EXEMPT` (table → reason)
+        and `check_rls_coverage`, which fails closed in BOTH directions: a
+        migration that gives a new table `tenant_id` breaks generation until
+        the table joins `RLS_TABLES` or records its exemption reason, and an
+        exemption for a table that became covered or lost the column breaks
+        it too (stale-exemption discipline, same shape as the trigger map's).
+        The generator's to-do block now emits each exemption's reason inline,
+        so `init.pg.sql` self-documents every deliberate non-coverage.
+        Verification: `--self-test` exercises the pass case plus all three
+        fail cases; both fail directions were also triggered live against
+        the real tree (tamper: a `users` exemption → caught stale; a removed
+        `snapshot_versions` exemption → caught undocumented); `--check` green
+        at 111 tables / 137 indexes. The box closes on this gate: every
+        tenant_id-bearing table is now RLS-enforced (27) or documented-exempt
+        (7) under a check that cannot drift silently, alongside the
+        deployment-layer FORCE probe and the non-owner REST probe.
+        Structural limit, recorded and unchanged: the gate keys on
+        `tenant_id` presence, so a column-less tenant-scoped child table
+        stays invisible to it (the memo child-table lesson) — that class
+        needs review eyes, not a parser. Deferred, not open debt:
+        `terminals` RLS + tenant propagation (when cloud writes arrive),
+        Memo fan-out narrowing (Phase 2), `legal_entities` PG path (§G sync
+        decision) — all recorded as `RLS_EXEMPT` reasons. The live-PG caveat
+        carries over: the FORCE + non-owner probes self-skip until Docker
+        Desktop is up; re-run against `oz-pg-test-15432`.
 
 ## Review checkpoint
 
@@ -1860,3 +1891,35 @@ exempt. That generalization is the item's remaining work.
 Phase-1 gate (1e UI extraction + concurrency test): still open, extraction
 not started. Per the Round-36 priority directive, it is the next topology
 commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 32, restored in Round 44) — return-to-work briefing
+
+**Integrity note:** this briefing was originally written to a stray file
+(`ui/todo-global-saas-1.md`) because a supervisor `cat >>` ran while the
+shell cwd was `ui/`; discovered and fixed in Round 44 (stray deleted,
+content restored here). The verification results and commit-order
+recommendation below were accurate as of their writing; later events
+superseded parts of it, noted inline in the Rounds 33-37 logs.
+
+Agents idle since 07:27. The supervisor ran the full pre-verification pass
+on the parked working tree so the next session starts from evidence, not
+assumptions. **All slices green:**
+
+- Rust: `cargo check` clean for oz-pos-app, oz-core, oz-api (0 errors).
+- Phase-2 differ (parked per Round 29): 25/25 tests pass — healthy; it
+  later committed across the gate (see the Round-33 violation entry).
+- Tooltip + IPC contract: 84/84 tests pass — committed as `6a0e1e55`.
+- RLS closure (generator + init + cutover + 19-table FORCE test):
+  gate-green then; committed as `afbfe260` (Round 37 log).
+
+**Commit order recommendation when work resumes** (pathspec-scoped, one
+slice per commit): (1) RLS closure — DONE `afbfe260`; (2) Tooltip fix + nav
+adoption — DONE `6a0e1e55`; (3) monotonic merge — DONE, with its owed
+rank-merge tests, in `52af7f9b`; (4) Step 1e UI per the Round-24
+adjudication (extract `TopologyApplyConfirm.tsx` as its own commit, then
+the note input, then the concurrency test) — STILL OPEN, closes the
+Phase-1 gate and unblocks the differ-committed browser work; (5) ADR #47
+awaits the sole-maintainer ruling before any scoped-authorization
+implementation begins.
