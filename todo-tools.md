@@ -267,6 +267,13 @@ access: {
       server/local implementation still publishes and honors a grace period,
       and the pricing page advertises tier-specific grace days. Reconcile the
       authoritative policy before the gate is implemented.
+      — **RESOLVED 2026-09-07** (journal below): the §B split was already
+      ratified and shipped UI/Rust-side; this session aligned the last two
+      divergent paths — the license server's flat-14 grace_until
+      (`09d389a6`, all nine signing paths now per-tier) and the desktop's
+      payload-trusting license verdict (same commit). The `active` field on
+      `/status` stays raw-status by design: the client refines dates via
+      `lifecycle_state()`, which is authoritative.
 - [ ] **Expose authoritative subscription state to the UI.** Extend or replace
       the local-only `SubscriptionContext` flow so the Tools gate can distinguish
       active, expired, canceled/paused, loading, and unavailable states. Do not
@@ -324,8 +331,11 @@ access: {
       beyond role and tier with permission and scope (organization, location,
       workspace, or terminal), so a location-scoped manager cannot manage every
       tenant location.
-- [ ] **Define settings scope.** Mark each Settings section as organization-,
+- [x] **Define settings scope.** Mark each Settings section as organization-,
       location-, terminal-, or workspace-scoped before implementation.
+      — **DONE 2026-09-07** (the map is the "Settings scope map" section below;
+      the UI already renders §H scope tags per section — this ratifies them
+      and defines write-path/enforcement semantics per level).
 - [ ] **Add a Locations-to-Topology entry point.** Keep Locations status-only,
       but let users open the relevant topology editor from a location detail.
 - [ ] **Decide how custom roles map to the hierarchy.** Unknown role names
@@ -354,6 +364,82 @@ trail; the current catalogue lives in `ui/src/features/workspaces/tools.tsx` —
 grouped, declarative `access`, consumed by WorkspaceHome's gate stack.)*
 
 ---
+
+## Settings scope map (2026-09-07 — ratifies the §H tags, defines the contract)
+
+The Settings hub (`ui/src/features/settings/SettingsPage.tsx` +
+`SettingsNavTree.tsx`) already renders a §H scope tag per section
+(`SettingsScopeTag`, five levels: organization / legal-entity / location /
+workspace / terminal). The map below RATIFIES the shipped tags as the
+definition todo #10 asked for, and attaches the two things a tag alone does
+not carry: what the scope means for the WRITE PATH, and who may edit.
+
+| Section (key) | Scope | Write-path meaning | Edit access |
+|---|---|---|---|
+| General (`general`) | organization | Org-wide profile, brand store name, default currency | admin+ |
+| Appearance (`appearance`) | workspace | Display density/font for the workspace's surfaces | manager+ (scoped) |
+| Receipt (`receipt`) | workspace | Receipt format for the workspace's printers | manager+ (scoped) |
+| Cloud Sync (`sync`) | organization | Org-level sync server + cadence | admin+ |
+| Local API (`local-api`) | terminal | Device-local API surface, never syncs | device operator |
+| About (`about`) | terminal | Device info/version, read-only | device operator |
+| License (`license`) | organization | Org entitlement (matches ADR-47: License is org-scoped) | admin+ |
+| Email Reports (`email`) | organization | Org-level SMTP + recipients | admin+ |
+| Topology (`topology`) | organization | Org graph surface; individual Apply writes are location/resource-scoped | admin+ (`topology:write`) |
+| Store POS (`store-pos`) | workspace | Workspace-type behavior card | manager+ (scoped) |
+| Restaurant POS (`restaurant-pos`) | workspace | Workspace-type behavior card | manager+ (scoped) |
+| Inventory (`inventory`) | location | Stock-point behavior for the location | manager+ (scoped) |
+
+"manager+ (scoped)" means: unlocked for managers ONLY within the locations/
+workspaces their ADR #47 assignments cover — org-wide edits stay admin+.
+Until the scoped-assignment UI slice ships, these render admin+ in practice
+(consistent with the whole hub being admin-gated on the home screen).
+
+Pre-assigned scopes for the IA sections that do not exist in the hub yet
+(their standalone routes keep their own gates until the Settings-nesting
+slice, which this map unblocks): License & Subscription=organization · POS
+Behavior=workspace (the two cards) · Devices & Connectivity=terminal ·
+Business Defaults=organization · Features & Modules=organization · Security
+& Account=organization · Data & Sync=organization (Data Management and Sync
+Status plus-gated; Offline Queue readable by all active tiers) · Tax
+Configuration=location (§K: tax rules are location-aware) · Exchange Rates=
+organization · System Diagnostics=terminal.
+
+Open review item (not a correction): Appearance's tag says workspace, but
+display density/font are device-local preferences in practice. Confirm the
+storage key scoping when the enforcement pass lands; if they prove
+terminal-local, retag rather than re-scope the data.
+
+---
+
+## Grace-policy reconciliation (2026-09-07 — todo #1 resolved)
+
+The audit feared a product conflict: "tools not clickable after expiresAt"
+vs a published grace period. There is none — §B already reconciled it, and
+every layer but two already implemented the same reading:
+
+| Layer | State before this session |
+|---|---|
+| §B contract (saas-1) | Adopted: operational runtime continues through the tier's offline grace; ADMINISTRATIVE features lock at the expiry date itself. |
+| Pricing page + invariants test | Publishes the per-tier table (7/14/14/30/60) as "Offline grace period" — accurate for operational grace. |
+| licensing.md (en + id) | Already says "Administrative features … lock earlier, at the expiry date itself." |
+| Rust `lifecycle_state()` / `effective_tier()` | Correct: date-refined per the tier table, fail-closed. |
+| UI (SubscriptionContext, `useAdminGate`, the Tools gate) | Correct: tier-gated tools lock unless `state === 'active'`; role-only tools ride grace. |
+| **License server `calculateGraceUntil`** | **BUG: flat 14 days (ADR #5 relic) for every tier** — wrote wrong `grace_until` on all nine signing paths. |
+| **Desktop `get_license_status`** | **BUG: trusted the payload's grace_until**, disagreeing with `lifecycle_state()` on stale payloads. |
+
+`09d389a6` fixed both bugs: the server's grace deadline is now
+`expires_at + offlineGraceDays(tier)` (7/14/14/30/60, fail-closed default)
+across activation, Paddle provision/update/resume, Midtrans, renew, resume,
+and both admin paths; the desktop derives the verdict from the payload tier
+key via the same table, so the license-status toast and the capabilities
+gate agree even for payloads signed by pre-fix servers. Tests pin the table
+on both sides.
+
+Recorded, not changed: `/api/v1/license/status`'s `active` field remains the
+raw stored status. The client refines it with the signed expiry (the
+authoritative date source), and the server is not the clock authority for
+an offline-first device. A future server-side `state` field, if ever added,
+should mirror `lifecycle_state()` rather than invent a second vocabulary.
 
 ## Implementation journal — home Tools rebuilt (2026-09-07, `ab410844`)
 
