@@ -28,6 +28,7 @@ vi.mock('@/hooks/useExitAnimation', () => ({
 
 const MEMO_FTL = `
 memo-banner-open-aria = Read the full memo: { $title }
+memo-banner-open-aria-plain = Read the full memo
 memo-banner-acknowledge-aria = Acknowledge this memo
 memo-modal-acknowledge = Acknowledge
 modal-close-aria = Close dialog
@@ -131,6 +132,34 @@ describe('MemoBanner', () => {
     // The body renders as one pre-wrap text node, so match on content.
     expect(within(dialog).getByText(/Line 14/)).toBeInTheDocument();
     expect(open).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('renders a text-only bubble when the title is blank', () => {
+    // Owner direction (2026-09-08): titles are optional — a blank title
+    // renders a text-only bubble with the plain open-aria label, and the
+    // enlarged dialog opens without a heading (the shared Modal omits the
+    // h2 + aria-labelledby when the title is undefined).
+    const blank = activeMemo('m1', []);
+    blank.memo.title = '   ';
+    vi.mocked(useMemos).mockReturnValue({
+      memos: [blank],
+      loading: false,
+      error: null,
+      acknowledge: mockAcknowledge,
+      dismiss: mockDismiss,
+      refresh: vi.fn(),
+    });
+    const { container } = renderWithL10n(<MemoBanner />);
+
+    const open = screen.getByTestId('memo-banner-open');
+    expect(open).toHaveAttribute('aria-label', 'Read the full memo');
+    expect(container.querySelector('.memo-banner-title')).not.toBeInTheDocument();
+
+    fireEvent.click(open);
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Body m1/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('heading')).not.toBeInTheDocument();
   });
 
   it('the dialog acknowledge button runs the durable ack and closes the dialog', () => {

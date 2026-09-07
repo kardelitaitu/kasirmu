@@ -165,6 +165,7 @@ update-banner-rollback-aria = Unduh versi sebelumnya dari GitHub
 
 # Memo Banner
 memo-banner-open-aria = Baca memo lengkap: { $title }
+memo-banner-open-aria-plain = Baca memo lengkap
 memo-banner-acknowledge-aria = Konfirmasi memo ini
 memo-modal-acknowledge = Konfirmasi
 

@@ -5,21 +5,22 @@
  * bottom-left of the screen for the highest-priority active memo
  * addressed to this terminal (owner-directed redesign, 2026-09-07 —
  * replaced the top sliding banner). Solid popover background so the
- * rotated tail seam stays opaque; tokens carry dark mode. The exit
- * animation follows the exit-animation-pattern skill (exact reverse
- * of entry, fill-mode both, pointer-events none, all inside
- * prefers-reduced-motion: no-preference).
+ * rotated tail seam stays opaque; tokens carry dark mode. The bubble
+ * wraps only the open button — the (x) floats outside its top-right
+ * corner (owner direction, 2026-09-08). The exit animation follows the
+ * exit-animation-pattern skill (exact reverse of entry, fill-mode both,
+ * pointer-events none, all inside prefers-reduced-motion: no-preference).
  * ============================================================ */
 
+/* Fixed positioning is shrink-to-fit, so the bubble adapts to its
+   content up to the 480px cap (owner direction, 2026-09-08). The
+   close chip is absolutely positioned against this box. */
 .memo-banner {
   position: fixed;
   left: var(--space-6);
   bottom: var(--space-6);
   z-index: var(--z-overlay);
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  max-width: 360px;
+  max-width: 480px;
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-popover);
   border: 1px solid var(--color-border);
@@ -80,13 +81,6 @@
   }
 }
 
-.memo-banner-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
 /* The whole title+body block is one button that opens the enlarged
    dialog. Reset the button chrome so it reads as the bubble's body,
    and keep the min-width:0 chain so long text clamps instead of
@@ -140,6 +134,9 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 10;
   overflow: hidden;
+  /* Long unbroken strings (URLs, ids) must wrap, not stretch the
+     adaptive bubble past its cap. */
+  overflow-wrap: anywhere;
 }
 
 /* Full text inside the shared Modal — unclamped, and pre-wrap so the
@@ -153,15 +150,25 @@
   overflow-wrap: anywhere;
 }
 
+/* The (x) floats OUTSIDE the bubble (owner direction, 2026-09-08): a
+   small circular chip overlapping the top-right corner, so clicking
+   near the bubble never risks an accidental ack. Anchored to the
+   bubble (the fixed-position ancestor); no overflow clipping on the
+   bubble keeps the chip fully visible. */
 .memo-banner-close {
+  position: absolute;
+  top: -8px;
+  right: -8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  padding: var(--space-1);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-sm);
   color: var(--color-fg-tertiary);
   cursor: pointer;
 }

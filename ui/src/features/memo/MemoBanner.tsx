@@ -17,6 +17,9 @@ import './MemoBanner.css';
  * dropped as visual noise. The body is clamped to 10 lines; the title+body
  * block is one button that opens the shared centered `Modal` with the full
  * text (the bubble stays behind the overlay until the dialog resolves).
+ * Titles are optional — a blank title renders a text-only bubble and no
+ * timestamp is ever shown — and the (x) floats outside the bubble's
+ * top-right corner (owner direction, 2026-09-08).
  *
  * Acknowledge semantics are unchanged: the single (x) acknowledges durably —
  * the memo never reappears on this terminal (chat-bubble semantics: read it,
@@ -49,6 +52,13 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   }
 
   const memoId = top.memo.id;
+  // Titles are optional in the display contract: a blank title renders a
+  // text-only bubble, and no timestamp is ever shown (owner direction,
+  // 2026-09-08).
+  const displayTitle = top.memo.title.trim();
+  const openLabel = displayTitle
+    ? l10n.getString('memo-banner-open-aria', { title: displayTitle })
+    : l10n.getString('memo-banner-open-aria-plain');
 
   const handleClose = () => {
     pendingRef.current = () => acknowledge(memoId);
@@ -76,10 +86,10 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
           onClick={() => setExpanded(true)}
           aria-haspopup="dialog"
           aria-expanded={expanded}
-          aria-label={l10n.getString('memo-banner-open-aria', { title: top.memo.title })}
+          aria-label={openLabel}
           data-testid="memo-banner-open"
         >
-          <strong className="memo-banner-title">{top.memo.title}</strong>
+          {displayTitle && <strong className="memo-banner-title">{displayTitle}</strong>}
           <p className="memo-banner-text">{top.memo.body}</p>
         </button>
         <button
@@ -109,7 +119,11 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
         <Modal
           open
           onClose={() => setExpanded(false)}
-          title={top.memo.title}
+          // Conditional spread, not `title={displayTitle || undefined}`:
+          // exactOptionalPropertyTypes forbids passing explicit undefined
+          // to `title?: string`, and omitting the prop is what makes the
+          // shared Modal skip the h2 + aria-labelledby for blank titles.
+          {...(displayTitle ? { title: displayTitle } : {})}
           footer={
             <Button
               variant="primary"
