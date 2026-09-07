@@ -1922,15 +1922,17 @@ INSERT INTO workspace_instances (id, type_key, location_id, name, description, c
     ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general')
 ON CONFLICT DO NOTHING;
 
--- tenant_id tables NOT yet under RLS (write path must populate
--- tenant_id before each can be added to RLS_TABLES):
---   image_refs
---   legal_entities
---   memo_revisions
---   snapshot_versions
---   terminals
---   topology_revisions
---   webhook_endpoints
+-- tenant_id tables NOT yet under RLS — documented exemptions
+-- (RLS_EXEMPT in scripts/generate-pg-migration.py; the reason
+-- travels with the entry, and an undocumented table fails the
+-- generator):
+--   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
+--   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
+--   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
+--   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
+--   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive
+--   topology_revisions — ADR #46 desktop-side table; no PG write path yet
+--   webhook_endpoints — no PG write path audited; cover when the admin surface writes it on PG
 --
 -- ── Row-Level Security: tenant isolation (PG-only) ─────────────────────
 -- Curated coverage list (RLS_TABLES in scripts/generate-pg-migration.py);

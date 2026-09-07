@@ -31,7 +31,9 @@ migrations — the drift the loyalty work exposed):
    * RLS appendix → curated RLS_TABLES list (enabling RLS is a policy
      decision: the write path must populate tenant_id); the generator
      fails if an entry loses its table or column, and lists tenant_id
-     tables not yet covered as a visible comment
+     tables not yet covered as a visible comment — every uncovered
+     table must carry a documented reason in RLS_EXEMPT or generation
+     fails (coverage debt can neither appear nor vanish silently)
 
 5. Re-emit CREATE TABLE in **topological order** (Kahn over
    ``REFERENCES t(col)``): SQLite tolerates forward FK references,
@@ -291,6 +293,7 @@ def dump_rls(db: sqlite3.Connection) -> str:
             "error: RLS_TABLES entries are no longer tenant tables "
             f"(dropped or lost tenant_id): {', '.join(stale)}"
         )
+    check_rls_coverage(tenant_tables, set(RLS_TABLES), RLS_EXEMPT)
     uncovered = sorted(tenant_tables - set(RLS_TABLES))
     quoted = ",\n                            ".join(
         ", ".join(f"'{t}'" for t in chunk) for chunk in _chunks(sorted(RLS_TABLES), 6)
@@ -298,12 +301,61 @@ def dump_rls(db: sqlite3.Connection) -> str:
     gap_comment = ""
     if uncovered:
         gap_comment = (
-            "-- tenant_id tables NOT yet under RLS (write path must populate\n"
-            "-- tenant_id before each can be added to RLS_TABLES):\n"
-            + "".join(f"--   {t}\n" for t in uncovered)
+            "-- tenant_id tables NOT yet under RLS — documented exemptions\n"
+            "-- (RLS_EXEMPT in scripts/generate-pg-migration.py; the reason\n"
+            "-- travels with the entry, and an undocumented table fails the\n"
+            "-- generator):\n"
+            + "".join(f"--   {t} — {RLS_EXEMPT[t]}\n" for t in uncovered)
             + "--\n"
         )
     return gap_comment + RLS_TEMPLATE.replace("__TABLES__", quoted)
+
+
+def check_rls_coverage(
+    tenant_tables: set[str], covered: set[str], exempt: dict[str, str]
+) -> None:
+    """Fail closed in both directions (the generalized RLS coverage gate).
+
+    Every tenant_id-bearing table must be either RLS-covered or
+    documented-exempt with a reason (``exempt`` maps table → reason); a
+    table that is neither fails generation, so a migration can never
+    silently add tenant_id coverage debt. The mirror direction fails
+    too: an exemption for a table that is now covered or lost the
+    column/table is stale and must be deleted.
+    """
+    undocumented = sorted(tenant_tables - covered - set(exempt))
+    if undocumented:
+        raise SystemExit(
+            "error: tenant_id tables that are neither RLS-covered nor "
+            "documented-exempt (add to RLS_TABLES once every write path "
+            "stamps tenant_id, or record the reason in RLS_EXEMPT): "
+            + ", ".join(undocumented)
+        )
+    stale = sorted(set(exempt) - (tenant_tables - covered))
+    if stale:
+        raise SystemExit(
+            "error: stale RLS_EXEMPT entries (table is now covered or "
+            "lost tenant_id — delete the exemption): " + ", ".join(stale)
+        )
+
+
+def _self_test_rls_gate() -> None:
+    """Exercise the coverage gate's fail directions on synthetic sets."""
+    check_rls_coverage({"a", "b"}, {"a"}, {"b": "pending write path"})
+    failures = [
+        ({"a", "b", "c"}, {"a"}, {"b": "x"}, "undocumented uncovered table"),
+        ({"a", "b"}, {"a", "b"}, {"b": "x"}, "exempt table is covered"),
+        ({"a"}, {"a"}, {"ghost": "x"}, "exempt table does not exist"),
+    ]
+    for tenant_tables, covered, exempt, case in failures:
+        try:
+            check_rls_coverage(tenant_tables, covered, exempt)
+        except SystemExit:
+            continue
+        raise SystemExit(
+            f"error: RLS coverage gate self-test: {case} did not fail"
+        )
+    print("ok: RLS coverage gate self-test (fail-closed in both directions)")
 
 
 # Curated RLS coverage — carried over from the hand-ported init.pg.sql
@@ -340,6 +392,41 @@ RLS_TABLES = [
     "locations",
     "user_location_access",
 ]
+
+# Deliberate non-coverage: every tenant_id-bearing table that is NOT in
+# RLS_TABLES must appear here with the reason it cannot be enabled yet,
+# or the generator fails (the Round-37 gate: a table may neither silently
+# gain tenant_id nor silently become covered — check_rls_coverage fails
+# closed in both directions). Remove an entry the moment the table's
+# write path stamps tenant_id and it joins RLS_TABLES.
+RLS_EXEMPT = {
+    "image_refs": (
+        "no PG write path audited; desktop-local image references — "
+        "cover when its cloud sync path lands"
+    ),
+    "legal_entities": (
+        "§G slice pending the cloud-sync decision; local CRUD paths "
+        "exist but no PG write path is audited yet"
+    ),
+    "memo_revisions": (
+        "append-only revision history with no PG write path at all "
+        "(pg.rs never touches it) — nothing for a policy to gate"
+    ),
+    "snapshot_versions": (
+        "no PG write path audited; cover when snapshot sync reaches PG"
+    ),
+    "terminals": (
+        "tenant_id added schema-side (56653839) ahead of multi-tenant "
+        "writes; cover when create_terminal-class PG writes arrive"
+    ),
+    "topology_revisions": (
+        "ADR #46 desktop-side table; no PG write path yet"
+    ),
+    "webhook_endpoints": (
+        "no PG write path audited; cover when the admin surface "
+        "writes it on PG"
+    ),
+}
 
 
 def _chunks(items: list[str], size: int):
@@ -448,6 +535,9 @@ def render() -> tuple[str, int, int, int, list[str]]:
 
 def main(argv: list[str]) -> int:
     check = "--check" in argv
+    if "--self-test" in argv:
+        _self_test_rls_gate()
+        return 0
     body, n_tables, n_indexes, n_seeds, skipped = render()
 
     # Determinism self-proof: a second independent migration run must
