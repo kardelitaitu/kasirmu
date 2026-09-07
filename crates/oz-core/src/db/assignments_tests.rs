@@ -1008,3 +1008,313 @@ fn resource_axis_answers_where_the_branch_axis_clears() {
         "and it clears the caller's own location"
     );
 }
+// ── What the agreement matrix does NOT pin ───────────────────────────
+//
+// The four tests above compare the diagnostic against the gate on the
+// scope axis, always with a permission the role actually holds. That
+// leaves three ways the diagnostic can start lying without any of them
+// noticing: it can grow the gate's other denial paths (registry,
+// permission grant, user resolution), it can resolve the entity walk
+// from something other than the live locations row, and its fail-closed
+// guards can be dropped because no SQL-storable row reaches them. Each
+// test below kills one of those mutations.
+
+/// The gate's denial reasons other than scope. None of them may move
+/// the diagnostic's answer: assignment_covers_resource takes no
+/// permission key at all, so an availability verdict that reads it can
+/// never blame the scope axis for a missing grant, an unregistered key,
+/// or a dead account.
+#[test]
+fn coverage_diagnostic_answers_coverage_and_nothing_else() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "legal_entity", Some("ent-1"));
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+
+    let covers_own_entity = || {
+        store
+            .assignment_covers_resource("u1", ScopeType::LegalEntity, "ent-1")
+            .unwrap()
+    };
+
+    // Baseline: the resource IS covered, and the gate agrees.
+    assert_eq!(covers_own_entity(), Some(true));
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::LegalEntity, "ent-1")
+        .expect("held permission over a covered resource");
+
+    // 1. A registered permission the role lacks. The gate denies on the
+    //    grant; coverage is unchanged, so a verdict must not read it as
+    //    a scope denial.
+    let err = store
+        .require_permission_for_resource("u1", "settings:edit", ScopeType::LegalEntity, "ent-1")
+        .expect_err("coverage never replaces the permission check");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+    assert_eq!(
+        covers_own_entity(),
+        Some(true),
+        "a missing grant must not read as an uncovered resource"
+    );
+
+    // 2. An unregistered key: denied before the user is even looked at.
+    //    Same answer again, which is the point: the diagnostic never
+    //    sees the required permission at all.
+    let err = store
+        .require_permission_for_resource(
+            "u1",
+            "nope:not-registered",
+            ScopeType::LegalEntity,
+            "ent-1",
+        )
+        .expect_err("deny-by-default on an unregistered key");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+    assert_eq!(covers_own_entity(), Some(true));
+
+    // 3. A user the gate cannot resolve at all. The gate throws; the
+    //    diagnostic answers None — no row, no answer, and crucially no
+    //    error, which is the whole reason a verdict may call it.
+    let err = store
+        .require_permission_for_resource("ghost", "sales:view", ScopeType::Location, "loc-ent1")
+        .expect_err("the gate cannot authorize a user that does not exist");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+    assert_eq!(
+        store
+            .assignment_covers_resource("ghost", ScopeType::Location, "loc-ent1")
+            .unwrap(),
+        None,
+        "a user with no assignment row has no scope answer, and must not throw"
+    );
+
+    // 4. A deactivated account whose assignment still covers the
+    //    resource. The gate denies on the account; the diagnostic keeps
+    //    answering the scope question — Some(true) is a coverage verdict,
+    //    never an authorization one.
+    conn.execute("UPDATE users SET is_active = 0 WHERE id = 'u1'", params![])
+        .unwrap();
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::LegalEntity, "ent-1")
+        .expect_err("an inactive user is denied by the gate");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+    assert_eq!(
+        covers_own_entity(),
+        Some(true),
+        "the diagnostic does not resolve users, so it cannot report the account's state"
+    );
+}
+
+#[test]
+fn coverage_diagnostic_writes_nothing_for_a_user_with_no_row() {
+    // Ruling 5's None is only stable if reading it is a pure read. A
+    // backfill-on-read would silently promote a legacy user from None
+    // (no answer, so the resolver leaves scope out of the precedence
+    // contest) to Some(true) (org-wide) just because something asked.
+    let conn = migrations::fresh_db();
+    seed_user(&conn); // deliberately no assignment row
+    let store = Store::new(&conn);
+
+    assert_eq!(
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, "loc-any")
+            .unwrap(),
+        None
+    );
+    assert!(
+        store.assignment_for_user("u1").unwrap().is_none(),
+        "the diagnostic wrote an assignment row for a user that had none"
+    );
+}
+
+/// The walk reads the location's legal_entity_id at query time. Pinning
+/// the flip in both directions is what separates "resolved from the
+/// table" from "remembered from somewhere else": a cached or
+/// denormalized answer gets step 2 or step 3 wrong while every static
+/// matrix still passes.
+#[test]
+fn coverage_diagnostic_resolves_the_entity_walk_from_the_live_locations_row() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    insert_scoped_assignment(&conn, "legal_entity", Some("ent-1"));
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+
+    let covers = |location_id: &str| {
+        store
+            .assignment_covers_resource("u1", ScopeType::Location, location_id)
+            .unwrap()
+    };
+    let gate_allows = |location_id: &str| {
+        store
+            .require_permission_for_resource("u1", "sales:view", ScopeType::Location, location_id)
+            .is_ok()
+    };
+
+    // 1. Start state: loc-ent1 belongs to ent-1.
+    assert_eq!(covers("loc-ent1"), Some(true));
+    assert!(gate_allows("loc-ent1"));
+
+    // 2. Re-parent it to a sibling entity. The assignment row never
+    //    changed, yet gate and diagnostic must both flip to a denial:
+    //    coverage is a property of the location, not of the grant.
+    conn.execute(
+        "UPDATE locations SET legal_entity_id = 'ent-2' WHERE id = 'loc-ent1'",
+        params![],
+    )
+    .unwrap();
+    assert_eq!(
+        covers("loc-ent1"),
+        Some(false),
+        "a location moved out of the entity is no longer covered"
+    );
+    assert!(!gate_allows("loc-ent1"), "the gate agrees");
+
+    // 3. Adopt the orphan. The same row the static tests deny becomes
+    //    covered the moment it gains this entity, with no write to
+    //    assignments at all.
+    assert_eq!(covers("loc-orphan"), Some(false));
+    conn.execute(
+        "UPDATE locations SET legal_entity_id = 'ent-1' WHERE id = 'loc-orphan'",
+        params![],
+    )
+    .unwrap();
+    assert_eq!(
+        covers("loc-orphan"),
+        Some(true),
+        "the walk follows the current row, not the row as first read"
+    );
+    assert!(gate_allows("loc-orphan"), "the gate agrees");
+
+    // 4. And back again: moving loc-ent1 home restores coverage, so
+    //    nothing about the earlier denial was latched.
+    conn.execute(
+        "UPDATE locations SET legal_entity_id = 'ent-1' WHERE id = 'loc-ent1'",
+        params![],
+    )
+    .unwrap();
+    assert_eq!(covers("loc-ent1"), Some(true));
+    assert!(gate_allows("loc-ent1"));
+}
+
+/// Rows the assignments pair triggers refuse to store, so the DB-backed
+/// matrix above can never reach them — but resource_covered_by takes an
+/// already-loaded Assignment, and those arms are the fail-closed ones.
+/// Built by hand, which is also the only way to kill a dropped
+/// entity.is_some() guard: with a NULL assignment id, comparing the two
+/// Options alone reports an orphan location as covered.
+#[test]
+fn resource_covered_by_fails_closed_on_rows_the_schema_cannot_store() {
+    let row = |scope_type: Option<ScopeType>, scope_id: Option<&str>| Assignment {
+        user_id: "u1".into(),
+        role_id: "role-staff".into(),
+        scope_mode: ScopeMode::Global,
+        branches_all: true,
+        branches: vec![],
+        workspaces_all: true,
+        workspaces: vec![],
+        scope_type,
+        scope_id: scope_id.map(str::to_string),
+    };
+
+    let conn = migrations::fresh_db();
+    seed_entity_topology(&conn);
+    let store = Store::new(&conn);
+
+    // Positive control first: with a usable id the walk does cover, so
+    // every false below is the guard working and not a broken arm.
+    assert!(
+        store
+            .resource_covered_by(
+                &row(Some(ScopeType::LegalEntity), Some("ent-1")),
+                ScopeType::Location,
+                "loc-ent1"
+            )
+            .unwrap(),
+        "control: the entity walk covers its own location"
+    );
+
+    // The mutation this exists to kill: drop entity.is_some() and the
+    // NULL assignment id compares equal to the NULL entity of
+    // loc-orphan, granting an entity-less manager every orphan location.
+    assert!(
+        !store
+            .resource_covered_by(
+                &row(Some(ScopeType::LegalEntity), None),
+                ScopeType::Location,
+                "loc-orphan"
+            )
+            .unwrap(),
+        "a NULL assignment id must never match a NULL location entity"
+    );
+    // Same row against a location that does have an entity: no match.
+    assert!(
+        !store
+            .resource_covered_by(
+                &row(Some(ScopeType::LegalEntity), None),
+                ScopeType::Location,
+                "loc-ent1"
+            )
+            .unwrap()
+    );
+    // And it never reaches the entity level either.
+    assert!(
+        !store
+            .resource_covered_by(
+                &row(Some(ScopeType::LegalEntity), None),
+                ScopeType::LegalEntity,
+                "ent-1"
+            )
+            .unwrap()
+    );
+
+    // An unparsable or absent scope_type: the load path turns that into
+    // no assignment at all, and the model rule denies on its own too.
+    assert!(
+        !store
+            .resource_covered_by(&row(None, None), ScopeType::Location, "loc-ent1")
+            .unwrap()
+    );
+    assert!(
+        !store
+            .resource_covered_by(&row(None, Some("ent-1")), ScopeType::Location, "loc-ent1")
+            .unwrap()
+    );
+
+    // A location row with a NULL id matches nothing, not even the
+    // location its id would otherwise have named.
+    assert!(
+        !store
+            .resource_covered_by(
+                &row(Some(ScopeType::Location), None),
+                ScopeType::Location,
+                "loc-ent1"
+            )
+            .unwrap()
+    );
+
+    // The location arm must not consult the locations table at all: on a
+    // DB with no topology, an exact id match still covers. Broadening
+    // the walk's guard to "any location resource" breaks this and
+    // nothing else.
+    let bare = migrations::fresh_db();
+    let bare_store = Store::new(&bare);
+    assert!(
+        bare_store
+            .resource_covered_by(
+                &row(Some(ScopeType::Location), Some("loc-ghost")),
+                ScopeType::Location,
+                "loc-ghost"
+            )
+            .unwrap(),
+        "a location assignment's own id needs no locations row"
+    );
+    assert!(
+        !bare_store
+            .resource_covered_by(
+                &row(Some(ScopeType::LegalEntity), Some("ent-ghost")),
+                ScopeType::Location,
+                "loc-ghost"
+            )
+            .unwrap(),
+        "with no locations row the walk fails closed"
+    );
+}
