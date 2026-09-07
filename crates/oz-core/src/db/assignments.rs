@@ -66,6 +66,53 @@ pub struct AssignmentSpec {
     pub workspaces_all: bool,
     /// Workspace keys in scope when `workspaces_all` is false.
     pub workspaces: Vec<String>,
+    /// The ADR #47 resource axis (ruling 1A): which resource kind this
+    /// assignment covers. Every writer before the assignment-creation
+    /// slice granted only [`ScopeType::Organization`]; narrower kinds are
+    /// how a manager gets bound to one location or entity.
+    pub scope_type: ScopeType,
+    /// The resource id; `None` exactly when `scope_type` is `Organization`
+    /// (enforced by [`Self::validate_resource_pair`] and the SQL pair
+    /// triggers).
+    pub scope_id: Option<String>,
+}
+
+impl AssignmentSpec {
+    /// The pre-ADR-47 default: org-wide, unrestricted on both 0048
+    /// dimensions — the shape every default assignment has always had.
+    pub fn org_wide() -> Self {
+        Self {
+            scope_mode: ScopeMode::Global,
+            branches_all: true,
+            branches: vec![],
+            workspaces_all: true,
+            workspaces: vec![],
+            scope_type: ScopeType::Organization,
+            scope_id: None,
+        }
+    }
+
+    /// Reject an invalid (scope_type, scope_id) pair with a typed error
+    /// before the SQL pair triggers abort the statement: the id is
+    /// required for `legal_entity` / `location` and forbidden for
+    /// `organization`.
+    pub fn validate_resource_pair(&self) -> Result<(), CoreError> {
+        match (self.scope_type, self.scope_id.as_deref()) {
+            (ScopeType::Organization, None) => Ok(()),
+            (ScopeType::Organization, Some(_)) => Err(CoreError::Validation {
+                field: "scope_id",
+                message: "organization scope must not carry a scope_id".into(),
+            }),
+            (_, None) | (_, Some("")) => Err(CoreError::Validation {
+                field: "scope_id",
+                message: format!(
+                    "{} scope requires a non-empty scope_id",
+                    self.scope_type.as_str()
+                ),
+            }),
+            (_, Some(_)) => Ok(()),
+        }
+    }
 }
 
 /// Assignment scope type (ADR #47 ruling 1A): where in the business
@@ -288,16 +335,19 @@ impl Store<'_> {
     /// The upsert + dimension-replacement statements, runnable on any
     /// connection (joins an open transaction when one exists).
     ///
-    /// Writes the ADR #47 scope axis as `organization` (scope_id NULL):
-    /// every writer today grants org-wide, and per-location assignment
-    /// creation is a later slice (ruling 1A: only that slice may create
-    /// narrower rows). The pair triggers enforce the NULL/non-NULL rule.
+    /// Writes the ADR #47 scope axis from the spec: `organization` with a
+    /// NULL id for org-wide grants, `legal_entity` / `location` with their
+    /// resource id for narrowed ones (ruling 1A — the assignment-creation
+    /// slice's IPC layer is the only intended producer of narrow rows, but
+    /// the writer itself validates the pair so no caller can silently
+    /// write an invalid one). The pair triggers remain the SQL backstop.
     fn write_assignment_scope_on(
         conn: &Connection,
         user_id: &str,
         role_id: &str,
         spec: &AssignmentSpec,
     ) -> Result<(), CoreError> {
+        spec.validate_resource_pair()?;
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let branch_scope = if spec.branches_all { "all" } else { "list" };
         let workspace_scope = if spec.workspaces_all { "all" } else { "list" };
@@ -305,16 +355,25 @@ impl Store<'_> {
         conn.execute(
             "INSERT INTO assignments
                  (user_id, role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'organization', NULL, ?6, ?6)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
              ON CONFLICT(user_id) DO UPDATE SET
                  role_id = excluded.role_id,
                  scope_mode = excluded.scope_mode,
                  branch_scope = excluded.branch_scope,
                  workspace_scope = excluded.workspace_scope,
-                 scope_type = 'organization',
-                 scope_id = NULL,
+                 scope_type = excluded.scope_type,
+                 scope_id = excluded.scope_id,
                  updated_at = excluded.updated_at",
-            params![user_id, role_id, spec.scope_mode.as_str(), branch_scope, workspace_scope, now],
+            params![
+                user_id,
+                role_id,
+                spec.scope_mode.as_str(),
+                branch_scope,
+                workspace_scope,
+                spec.scope_type.as_str(),
+                spec.scope_id.as_deref(),
+                now
+            ],
         )?;
 
         // Replace the branch dimension rows: a stale row must never survive a

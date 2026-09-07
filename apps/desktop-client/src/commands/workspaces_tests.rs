@@ -130,7 +130,7 @@ fn boot_resolution_dto_debug() {
 // REAL role is resolved from the global identity DB.
 
 use oz_core::LocationProfile;
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
@@ -294,6 +294,8 @@ async fn scoped_assignment_filters_session_workspace_listing() {
                     branches: vec![],
                     workspaces_all: false,
                     workspaces: vec!["store-pos".into()],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();
@@ -341,6 +343,8 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store_for_sessio
                     branches: vec!["store-a".into()],
                     workspaces_all: true,
                     workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();
@@ -404,6 +408,8 @@ async fn scoped_assignment_workspace_dimension_filters_for_store_listing() {
                     branches: vec![],
                     workspaces_all: false,
                     workspaces: vec!["store-pos".into()],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();

@@ -900,6 +900,8 @@ async fn scoped_update_staff_writes_assignment_scope_atomically() {
                 branch_ids: vec!["store-a".into()],
                 workspaces_all: false,
                 workspace_keys: vec!["retail-pos".into()],
+                scope_type: None,
+                scope_id: None,
             }),
         },
         app.state(),
@@ -917,6 +919,96 @@ async fn scoped_update_staff_writes_assignment_scope_atomically() {
     assert!(!assignment.branches_all && !assignment.workspaces_all);
     assert_eq!(assignment.branches, vec!["store-a"]);
     assert_eq!(assignment.workspaces, vec!["retail-pos"]);
+}
+
+/// ADR #47 slice 3: the staff-update IPC now carries the resource axis, so
+/// an owner can bind a manager to a single location — and the gate slice 2
+/// installed then enforces it end to end (deny on the other location).
+#[tokio::test]
+async fn scoped_update_staff_writes_location_scoped_assignment() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_global_users(&conn);
+    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Cashier".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: Some(AssignmentArgs {
+                scope_mode: "global".into(),
+                branches_all: true,
+                branch_ids: vec![],
+                workspaces_all: true,
+                workspace_keys: vec![],
+                scope_type: Some("location".into()),
+                scope_id: Some("loc-a".into()),
+            }),
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let st = app.state::<AppState>();
+    let db = st.db.lock().await;
+    let assignment = Store::new(&db)
+        .assignment_for_user("user-cashier")
+        .unwrap()
+        .expect("assignment");
+    assert_eq!(assignment.scope_type, Some(ScopeType::Location));
+    assert_eq!(assignment.scope_id.as_deref(), Some("loc-a"));
+    assert_eq!(assignment.scope_mode, ScopeMode::Global);
+    // The 0048 axis was written alongside it (global mode = all/all).
+    assert!(assignment.branches_all && assignment.workspaces_all);
+}
+
+/// A narrowed assignment row without its resource id is rejected with a
+/// typed Invalid error before any write happens.
+#[tokio::test]
+async fn scoped_update_staff_rejects_location_scope_without_id() {
+    let conn = oz_core::migrations::fresh_db();
+    seed_global_users(&conn);
+    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Cashier".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: Some(AssignmentArgs {
+                scope_mode: "global".into(),
+                branches_all: true,
+                branch_ids: vec![],
+                workspaces_all: true,
+                workspace_keys: vec![],
+                scope_type: Some("location".into()),
+                scope_id: None,
+            }),
+        },
+        app.state(),
+    )
+    .await;
+
+    assert!(matches!(result, Err(AppError::Invalid(_))));
 }
 
 #[tokio::test]

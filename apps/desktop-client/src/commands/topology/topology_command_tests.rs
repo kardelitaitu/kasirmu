@@ -1626,6 +1626,8 @@ async fn authorize_topology_write_enforces_location_scope() {
                     branches: vec!["store-allowed".into()],
                     workspaces_all: true,
                     workspaces: vec![],
+                    scope_type: oz_core::db::assignments::ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();

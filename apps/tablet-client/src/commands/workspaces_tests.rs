@@ -1,7 +1,7 @@
 use super::*;
 
 use oz_core::LocationProfile;
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
@@ -174,6 +174,8 @@ async fn scoped_assignment_filters_picker_workspace_list() {
                     branches: vec![],
                     workspaces_all: false,
                     workspaces: vec!["store-pos".into()],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();
@@ -225,6 +227,8 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store() {
                     branches: vec!["store-a".into()],
                     workspaces_all: true,
                     workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();

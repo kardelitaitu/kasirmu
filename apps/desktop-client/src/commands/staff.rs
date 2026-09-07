@@ -13,7 +13,7 @@ use tauri::State;
 
 use oz_core::auth::hash_pin;
 use oz_core::db::Store;
-use oz_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode};
+use oz_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::db::profile::{UserProfile, mask_last4};
 use oz_core::permissions;
 use oz_core::subscription::TenantSubscription;
@@ -29,8 +29,9 @@ use crate::state::AppState;
 // ── Staff member DTO ────────────────────────────────────────────────
 
 /// A user's single effective assignment as seen by the front-end (ADR #35
-/// D5 / spec 0048): scope mode plus the per-dimension explicit-all flag and
-/// list. Legacy users without an assignment row resolve as global all/all.
+/// D5 / spec 0048 + ADR #47): scope mode, the per-dimension explicit-all
+/// flags and lists, and the resource axis. Legacy users without an
+/// assignment row resolve as global all/all organization.
 #[derive(Debug, Serialize)]
 pub struct AssignmentDto {
     /// `"global"` or `"scoped"`.
@@ -43,12 +44,19 @@ pub struct AssignmentDto {
     pub workspaces_all: bool,
     /// Workspace keys in scope when `workspaces_all` is false.
     pub workspace_keys: Vec<String>,
+    /// ADR #47 resource axis: `"organization"`, `"legal_entity"`, or
+    /// `"location"`.
+    pub scope_type: String,
+    /// The resource id when the axis is not organization.
+    pub scope_id: Option<String>,
 }
 
 /// The assignment scope carried by the staff create/edit IPC args (ADR #35
-/// D5 / spec 0048): `scope_mode` plus the per-dimension explicit-all flag
-/// and list. Empty lists never mean "all" — the `*_all` flags are the
-/// explicit marker, so `list` with no ids is a deny.
+/// D5 / spec 0048 + ADR #47): `scope_mode` plus the per-dimension
+/// explicit-all flag and list, and the optional resource axis. Empty lists
+/// never mean "all" — the `*_all` flags are the explicit marker, so `list`
+/// with no ids is a deny. A missing `scope_type` (or an empty string) is
+/// the org-wide default, keeping pre-ADR-47 callers unchanged.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct AssignmentArgs {
@@ -62,6 +70,11 @@ pub struct AssignmentArgs {
     pub workspaces_all: bool,
     /// Workspace keys in scope when `workspaces_all` is false.
     pub workspace_keys: Vec<String>,
+    /// ADR #47 resource axis: `"organization"` (default),
+    /// `"legal_entity"`, or `"location"`.
+    pub scope_type: Option<String>,
+    /// The resource id; required when `scope_type` is not organization.
+    pub scope_id: Option<String>,
 }
 
 /// Staff member as seen by the front-end (no pin_hash exposed).
@@ -275,6 +288,12 @@ fn assignment_dto(assignment: Option<&Assignment>) -> AssignmentDto {
             branch_ids: a.branches.clone(),
             workspaces_all: a.workspaces_all,
             workspace_keys: a.workspaces.clone(),
+            scope_type: a
+                .scope_type
+                .map(ScopeType::as_str)
+                .unwrap_or("organization")
+                .to_string(),
+            scope_id: a.scope_id.clone(),
         },
         None => AssignmentDto {
             scope_mode: ScopeMode::Global.as_str().to_string(),
@@ -282,6 +301,8 @@ fn assignment_dto(assignment: Option<&Assignment>) -> AssignmentDto {
             branch_ids: vec![],
             workspaces_all: true,
             workspace_keys: vec![],
+            scope_type: "organization".to_string(),
+            scope_id: None,
         },
     }
 }
@@ -293,12 +314,44 @@ fn parse_scope_mode(s: &str) -> Result<ScopeMode, AppError> {
 
 /// Map the wire args to an oz-core assignment spec.
 fn assignment_spec(args: &AssignmentArgs) -> Result<AssignmentSpec, AppError> {
+    // ADR #47 resource axis: absent/empty is the org-wide default so
+    // pre-ADR-47 callers are unchanged; anything else must parse and carry
+    // a valid (type, id) pair — the same rule the SQL pair triggers
+    // enforce, checked here for a typed error.
+    let scope_type = match args.scope_type.as_deref() {
+        None | Some("") => ScopeType::Organization,
+        Some(s) => ScopeType::parse(s)
+            .ok_or_else(|| AppError::Invalid(format!("invalid scope_type: {s}")))?,
+    };
+    let scope_id = args
+        .scope_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    match (scope_type, scope_id.as_deref()) {
+        (ScopeType::Organization, None) => {}
+        (ScopeType::Organization, Some(_)) => {
+            return Err(AppError::Invalid(
+                "organization scope must not carry a scope_id".into(),
+            ));
+        }
+        (_, None) => {
+            return Err(AppError::Invalid(format!(
+                "{} scope requires a scope_id",
+                scope_type.as_str()
+            )));
+        }
+        (_, Some(_)) => {}
+    }
     Ok(AssignmentSpec {
         scope_mode: parse_scope_mode(&args.scope_mode)?,
         branches_all: args.branches_all,
         branches: args.branch_ids.clone(),
         workspaces_all: args.workspaces_all,
         workspaces: args.workspace_keys.clone(),
+        scope_type,
+        scope_id,
     })
 }
 

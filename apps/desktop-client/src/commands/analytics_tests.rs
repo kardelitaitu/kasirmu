@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
@@ -173,6 +173,8 @@ async fn scoped_manager_session_out_of_scope_store_is_denied() {
                     branches: vec!["store-a".into()],
                     workspaces_all: true,
                     workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();

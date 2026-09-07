@@ -46,6 +46,8 @@ fn write_assignment_scope_joins_an_open_transaction() {
                 branches: vec!["store-a".into()],
                 workspaces_all: false,
                 workspaces: vec!["retail-pos".into()],
+                scope_type: ScopeType::Organization,
+                scope_id: None,
             },
         )
         .unwrap();
@@ -123,6 +125,8 @@ fn set_assignment_writes_scoped_dimensions() {
                 branches: vec!["store-a".into(), "store-b".into()],
                 workspaces_all: false,
                 workspaces: vec!["retail-pos".into()],
+                scope_type: ScopeType::Organization,
+                scope_id: None,
             },
         )
         .unwrap();
@@ -152,6 +156,8 @@ fn set_assignment_replaces_existing_scope_and_clears_stale_rows() {
                 branches: vec!["store-a".into()],
                 workspaces_all: false,
                 workspaces: vec!["retail-pos".into()],
+                scope_type: ScopeType::Organization,
+                scope_id: None,
             },
         )
         .unwrap();
@@ -169,6 +175,8 @@ fn set_assignment_replaces_existing_scope_and_clears_stale_rows() {
                 branches: vec![],
                 workspaces_all: true,
                 workspaces: vec![],
+                scope_type: ScopeType::Organization,
+                scope_id: None,
             },
         )
         .unwrap();
@@ -509,6 +517,73 @@ fn assignments_scope_pair_triggers_enforce_null_iff_organization() {
     );
 }
 
+#[test]
+fn migration_backfills_rowless_users_org_wide() {
+    use crate::migrations;
+
+    // Build the genuine pre-backfill state: run everything up to (but not
+    // including) the backfill on an EMPTY connection — fresh_db() would
+    // pre-apply all migrations and make the split a no-op. Then seed one
+    // user WITH a (location-scoped) row and two WITHOUT any row, apply the
+    // rest, and assert the backfill: the row-less users gain the org-wide
+    // pair (bit-for-bit the legacy "not scope-restricted" semantics) and
+    // the existing scoped row is untouched.
+    let split = crate::migrations::ALL
+        .iter()
+        .position(|m| m.id == "20260917_assignment_backfill_org_wide.sql")
+        .expect("backfill migration present in registry");
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    platform_core::database::run(&mut conn, &crate::migrations::ALL[..split]).unwrap();
+
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, permissions) VALUES
+             ('role-staff', 'staff', '[\"sales:view\"]');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
+             ('u-scoped', 'scoped', 'h', 'Scoped', 'role-staff', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+             ('u-rowless', 'rowless', 'h', 'Rowless', 'role-staff', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+             ('u-inactive', 'inactive', 'h', 'Inactive', 'role-staff', 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+         INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope, scope_type, scope_id) VALUES
+             ('u-scoped', 'role-staff', 'global', 'all', 'all', 'location', 'loc-keep');",
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &crate::migrations::ALL[split..]).unwrap();
+
+    let store = Store::new(&conn);
+
+    // The pre-existing scoped row is untouched by the backfill.
+    let scoped = store
+        .assignment_for_user("u-scoped")
+        .unwrap()
+        .expect("scoped row survives");
+    assert_eq!(scoped.scope_type, Some(ScopeType::Location));
+    assert_eq!(scoped.scope_id.as_deref(), Some("loc-keep"));
+
+    // The row-less user gains the org-wide pair — the same authorization
+    // the no-row fallback used to give, now as an explicit row.
+    let backfilled = store
+        .assignment_for_user("u-rowless")
+        .unwrap()
+        .expect("row-less user backfilled");
+    assert_eq!(backfilled.scope_type, Some(ScopeType::Organization));
+    assert_eq!(backfilled.scope_id, None);
+    assert_eq!(backfilled.scope_mode, ScopeMode::Global);
+
+    // Inactive users are backfilled too: reactivation must not silently
+    // resurrect the no-row fallback path.
+    let inactive = store
+        .assignment_for_user("u-inactive")
+        .unwrap()
+        .expect("inactive user backfilled");
+    assert_eq!(inactive.scope_type, Some(ScopeType::Organization));
+
+    // And the org-wide backfilled row authorizes exactly like the legacy
+    // fallback did.
+    store
+        .require_permission_for_resource("u-rowless", "sales:view", ScopeType::Location, "loc-any")
+        .expect("backfilled org-wide row covers any resource");
+}
+
 // ── ADR #47 choke point: Store::require_permission_for_resource ──────
 //
 // The gate semantics tests live here (next to the Assignment model
@@ -653,4 +728,126 @@ fn resource_gate_no_assignment_row_keeps_legacy_unrestricted_scope() {
         .require_permission_for_resource("u1", "settings:edit", ScopeType::Location, "loc-any")
         .expect_err("no-row preserves scope freedom, not permission");
     assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+}
+
+#[test]
+fn set_assignment_writes_location_scoped_resource_pair() {
+    // The assignment-creation slice (ruling 1A): the writer now grants
+    // narrower-than-org rows, and the loaded model round-trips the pair so
+    // the ADR #47 gate can enforce manager-of-A-cannot-touch-B.
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    let store = Store::new(&conn);
+
+    store
+        .set_assignment(
+            "u1",
+            "role-staff",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Global,
+                branches_all: true,
+                branches: vec![],
+                workspaces_all: true,
+                workspaces: vec![],
+                scope_type: ScopeType::Location,
+                scope_id: Some("loc-a".into()),
+            },
+        )
+        .expect("location-scoped assignment is a valid pair");
+
+    let a = store
+        .assignment_for_user("u1")
+        .unwrap()
+        .expect("assignment");
+    assert_eq!(a.scope_type, Some(ScopeType::Location));
+    assert_eq!(a.scope_id.as_deref(), Some("loc-a"));
+    assert!(a.covers_resource(ScopeType::Location, "loc-a"));
+    assert!(!a.covers_resource(ScopeType::Location, "loc-b"));
+    // End to end through the gate: own location passes, another denies.
+    store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-a")
+        .expect("own location is covered");
+    let err = store
+        .require_permission_for_resource("u1", "sales:view", ScopeType::Location, "loc-b")
+        .expect_err("another location must deny");
+    assert!(matches!(err, crate::CoreError::PermissionDenied(_)));
+}
+
+#[test]
+fn set_assignment_writes_legal_entity_resource_pair() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    let store = Store::new(&conn);
+
+    store
+        .set_assignment(
+            "u1",
+            "role-staff",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Global,
+                branches_all: true,
+                branches: vec![],
+                workspaces_all: true,
+                workspaces: vec![],
+                scope_type: ScopeType::LegalEntity,
+                scope_id: Some("ent-1".into()),
+            },
+        )
+        .expect("entity-scoped assignment is a valid pair");
+
+    let a = store
+        .assignment_for_user("u1")
+        .unwrap()
+        .expect("assignment");
+    assert_eq!(a.scope_type, Some(ScopeType::LegalEntity));
+    assert_eq!(a.scope_id.as_deref(), Some("ent-1"));
+    assert!(a.covers_resource(ScopeType::LegalEntity, "ent-1"));
+}
+
+#[test]
+fn set_assignment_rejects_invalid_resource_pairs() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    let store = Store::new(&conn);
+
+    // A narrowed kind without its id violates the pair triggers — the
+    // Rust-side validation must reject it with a typed error before SQL
+    // ever sees it.
+    let err = store
+        .set_assignment(
+            "u1",
+            "role-staff",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Global,
+                branches_all: true,
+                branches: vec![],
+                workspaces_all: true,
+                workspaces: vec![],
+                scope_type: ScopeType::Location,
+                scope_id: None,
+            },
+        )
+        .expect_err("location without scope_id must be rejected");
+    assert!(matches!(err, crate::CoreError::Validation { .. }));
+
+    // Organization with a stray id is the mirror-invalid pair.
+    let err = store
+        .set_assignment(
+            "u1",
+            "role-staff",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Global,
+                branches_all: true,
+                branches: vec![],
+                workspaces_all: true,
+                workspaces: vec![],
+                scope_type: ScopeType::Organization,
+                scope_id: Some("stray".into()),
+            },
+        )
+        .expect_err("organization with scope_id must be rejected");
+    assert!(matches!(err, crate::CoreError::Validation { .. }));
+
+    // Nothing was written: the raw-SQL-seeded user still has no row.
+    assert!(store.assignment_for_user("u1").unwrap().is_none());
 }
