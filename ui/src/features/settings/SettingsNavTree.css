@@ -22,11 +22,14 @@
   flex-shrink: 0;
 }
 
-/* (Historical note) Tooltips used to be suppressed in the expanded sidebar
-   via `.settings-sidebar:not(.collapsed) .tooltip-content { display:none }`.
-   Since the portal migration (bubbles render in document.body) that
-   descendant selector can no longer match; suppression is now done in the
-   component with <Tooltip disabled={!sidebarCollapsed}>. */
+/* (Historical note) Expanded-sidebar tooltips used to be suppressed via
+   `.settings-sidebar:not(.collapsed) .tooltip-content { display:none }`.
+   That rule has been dead ever since the nav tooltips moved to a portal
+   (68a8af71): portal bubbles render into document.body, so a descendant
+   selector can never match them. It was removed rather than left to
+   mislead. The real "double tooltip" here was a native `title` on the
+   scope pill stacking with the React bubble — see SettingsScopeTag and
+   `__tests__/nativeTooltipCompliance.test.ts`. */
 
 .settings-sidebar.collapsed {
   width: 3.5rem;
