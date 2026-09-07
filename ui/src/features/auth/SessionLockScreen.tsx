@@ -340,7 +340,7 @@ export default function SessionLockScreen({
         </div>
       </div>
 
-      {/* ── Footer: version + connection status pills (login-style) ── */}
+      {/* ── Footer: version + copyright + connection status pills (login-style) ── */}
       <div className="session-lock-footer">
         <div className="session-lock-footer-left">
           {appVersion && (
@@ -348,6 +348,14 @@ export default function SessionLockScreen({
               <span className="session-lock-footer-version">Version {appVersion}</span>
             </Localized>
           )}
+          {/* Same pair as StaffLoginScreen's footer (version + copyright). The
+              login screen hardcodes both as raw JSX; these use the localized
+              auth-version / auth-copyright keys already shared with
+              LicenseActivationScreen, so the id build reads "Versi …" /
+              "Hak Cipta Dilindungi". */}
+          <Localized id="auth-copyright" vars={{ year: String(new Date().getFullYear()) }}>
+            <span className="session-lock-footer-copyright">OZ-POS © {new Date().getFullYear()} All rights reserved.</span>
+          </Localized>
         </div>
         <div className="session-lock-footer-right">
           <StatusBar />

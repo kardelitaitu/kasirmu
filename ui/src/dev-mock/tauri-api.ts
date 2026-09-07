@@ -15,6 +15,13 @@
  */
 
 import { emit } from './tauri-event';
+// The real `version` command answers with `env!("CARGO_PKG_VERSION")`, so the
+// browser preview must not invent its own number: the literal here went stale
+// (still 0.0.9 while the app shipped 0.0.37) and made the lock-screen footer
+// look wrong in dev. ui/package.json is bumped by scripts/bump-version.ps1
+// alongside Cargo.toml/tauri.conf.json, so importing it keeps mock and app in
+// lockstep.
+import pkg from '../../package.json';
 
 // ── Mock staff data ────────────────────────────────────────────
 // Five-role taxonomy (ADR #35 D4 / spec 0048): owner, admin, manager,
@@ -1965,8 +1972,8 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // ═══════════════════════════════════════════════════════════════
 
   'ping': () => 'pong',
-  'version': () => ({ name: 'oz-pos', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' }),
-  'version_scoped': () => ({ name: 'oz-pos', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' }),
+  'version': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
+  'version_scoped': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
   'get_local_ip': () => '192.168.1.100',
 
   // ═══════════════════════════════════════════════════════════════
@@ -3572,7 +3579,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'get_backup_status': () => ({ lastBackup: null, lastBackupSize: null }),
   'create_backup': () => ({ path: '/backups/backup.db', sizeBytes: 1024 }),
   'export_data': () => ({ path: '/exports/data.ozpkg', sizeBytes: 512, types: ['products'] }),
-  'import_preview': () => ({ storeName: 'Test Store', appVersion: '0.0.9', exportedAt: new Date().toISOString(), types: ['products'], productCount: 10, categoryCount: 2, saleCount: null, customerCount: null, userCount: null, settingCount: null }),
+  'import_preview': () => ({ storeName: 'Test Store', appVersion: pkg.version, exportedAt: new Date().toISOString(), types: ['products'], productCount: 10, categoryCount: 2, saleCount: null, customerCount: null, userCount: null, settingCount: null }),
   'import_data': () => ({ productsImported: 10, categoriesImported: 2, salesImported: 0, customersImported: 0, usersImported: 0, settingsImported: 0 }),
 
   // ═══════════════════════════════════════════════════════════════

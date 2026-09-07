@@ -483,6 +483,14 @@
   letter-spacing: var(--tracking-tight);
 }
 
+/* Mirrors .staff-login-footer-copyright so the lock screen footer reads as the
+   same version + copyright pair as the login screen. */
+.session-lock-footer-copyright {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+  opacity: 0.7;
+}
+
 .session-lock-footer-right {
   display: flex;
   flex-direction: column;
