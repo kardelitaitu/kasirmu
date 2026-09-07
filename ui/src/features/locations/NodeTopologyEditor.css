@@ -1646,9 +1646,8 @@
 .canvas-hud {
   position: absolute;
   bottom: var(--space-3);
-  /* Sit to the right of the minimap (svg 176px + padding/border ~186px) on
-     the same bottom row, instead of centered where it overlapped. */
-  left: calc(var(--space-3) + 190px);
+  /* Aligned with the minimap — both anchored to the same left edge. */
+  left: var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -2998,7 +2997,9 @@
 .topology-minimap {
   position: absolute;
   left: var(--space-3);
-  bottom: var(--space-3);
+  /* Sit above the canvas-hud strip (~30px tall) with a 6px gap so the
+     two bottom-left elements stack cleanly: minimap on top, HUD below. */
+  bottom: calc(var(--space-3) + 36px);
   z-index: 6;
   padding: var(--space-1);
   border-radius: var(--radius-md);
