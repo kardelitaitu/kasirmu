@@ -388,6 +388,43 @@ as its own ADR.
 
 Phases 1 and 2 are independently shippable and independently revertible.
 
+### Phase 1 status, and one rule conflict to adjudicate
+
+Recorded per Rule 6 (parked items get a paper trail, not a branch).
+
+Steps **1a–1d are complete**. **1e is complete except for its input control**:
+`change_note` is accepted over IPC, validated, trimmed, stored on the revision
+row, and written to the audit record — but nothing in the editor can type into
+it yet, so every Apply currently records an empty note.
+
+1e's UI half is blocked by two rules that jointly forbid it:
+
+- **Rule 5** forbids adding state to `NodeTopologyEditor.tsx`. The Apply
+  confirmation dialog lives *inside* it — six hooks at `:914-927`
+  (`applyConfirmOpen`, `applyConfirmData`, `applyPin`, `applyPinError`,
+  `applyPinVerifying`, `applyPinRef`) and ~150 lines of inline JSX from `:5957`.
+  A note field needs one more piece of state and one more input there.
+- **Rule 3** forbids the refactor that would make that legal — extracting the
+  dialog so the field is added to a new module instead.
+
+The options, in the order I would take them:
+
+1. **Extract `TopologyApplyConfirm.tsx`, then add the field there.** The dialog
+   already has its own `topology-apply-confirm-*` CSS namespace, its own
+   6-hook state cluster, and a clean boundary — it is a natural seam. This
+   *removes* ~150 lines and 6 hooks from the component, which is the opposite
+   of what Rule 5 exists to prevent, so Rule 5 arguably does not apply to it;
+   Rule 3 does, and would need an explicit waiver.
+2. **Ship Phase 1 with the field unwired.** The history still records who and
+   when; the note column waits for Phase 2, where §10 already requires new UI
+   to be its own module.
+3. **Add the field in place**, accepting the Rule 5 breach for a text input.
+
+Recommendation: **(1)**, as a separately-labelled step with its own commit,
+because a change note that nobody can type is the least valuable half of §6 and
+the seam is genuinely clean. But Rule 3 is the document author's to waive, not
+the implementer's to reinterpret.
+
 ### Build gate for every phase
 
 No phase begins until the previous one is green. One gate command, run at the
