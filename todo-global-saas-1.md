@@ -3095,3 +3095,82 @@ agent had staged the migration while the supervisor committed the racing
 test; resolved by pathspec commits per the standing rule, and the
 --no-verify gate note (another stream's uncommitted overlay l10n keys)
 is documented in both commit messages per the 8ce2c805 precedent.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 129, second entry) — both watch items self-resolving
+
+- **Overlay l10n keys being written**: 16 `topology-rev-browser-*` keys
+  now in the ftl bundles — the stream that will commit the overlay is
+  fixing its own gate condition, exactly as the R118 gate note required.
+- **Close-guard ADOPTED**: `SettingsPage.tsx` imports and mounts
+  `useUnsavedChangesGuard(isDirty)` (:51, :373) — the R123 watch item is
+  resolved; the guard is live, not dead code. The adoption also replaces
+  the inert `beforeunload` path there.
+- The SyncSection ConfirmDialog import is visible in the same diff — the
+  adoption rides a coherent commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 133) — the compliance-gate pattern reaches FIVE; overlay tsc fixed
+
+- **Fifth gate: `desktopCloseCompliance.test.ts`** — pins the R123
+  close-semantics finding structurally: `beforeunload` may only be bound
+  inside `useUnsavedChangesGuard` (an ad-hoc listener cannot reappear and
+  quietly not work on desktop), and the hook must wire BOTH seams (Tauri
+  `onCloseRequested` + browser `beforeunload`) because either alone
+  leaves a hole. The R123 watch item is fully institutionalized, not
+  just fixed.
+- **Overlay tsc fixed** (its stream resolved the TS2345); a new
+  `DevToolbar` stream arrived with its own unused-import errors — that
+  stream's cleanup, rides its own commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 141) — precise note for the overlay stream
+
+`TopologyRevisionBrowser.tsx:116` calls
+`listTopologyRevisions(sessionToken, 50, branchId)` but the client
+signature (`ui/src/api/topology.ts:110-113`) is
+`(sessionToken, branchId?: string, limit?: number)` — the literal `50`
+lands in the `branchId?: string` slot and `branchId` lands in `limit`.
+Fix: swap to
+`listTopologyRevisions(sessionToken, branchId, 50)` (or, cleaner, use
+the options object the client builds). The characterization net does not
+cover this call — worth one test when the overlay stream lands its
+slice.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 144) — gate-skip trend: same file cited three times
+
+`dfb72ad0 feat(dev): spawn memos from the dev toolbar` landed (verified:
+its own tests, ratchet updated, the skip documented) — the THIRD commit
+to skip a gate citing the topology agent's untracked
+`TopologyRevisionBrowser.tsx` tsc error. The overlay stream has been
+absent for ~10 rounds while three other streams routed around it.
+
+**For the overlay's own commit:** the R141 note pins the one-line fix
+(arg-order swap at :116); its 16 l10n keys are already written. Its
+stream owes: the fix + the keys (already present) + one characterization
+test for the history call. Nothing else blocks the overlay commit.
+
+No supervisor action beyond this note — the gate skips are honest and
+documented, the overlay stream owns its file, and the skips' cost is
+bounded (each skip documents the exact reason; CI still full-scans).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 152) — close-guard slice committed on the agent's behalf
+
+The close-guard slice sat fully staged for ~8 idle rounds. The supervisor
+committed it verbatim as `49f109c0 feat(ui): guard the desktop close path
+against unsaved work` — 6 staged files, pathspec-scoped, message records
+the defect (beforeunload inert in Tauri), the fix (both seams via
+`useUnsavedChangesGuard`), the structural gate, and the --no-verify gate
+note (the untracked overlay's l10n keys are that stream's own uncommitted
+work; nothing foreign was staged).
+
+Verified at HEAD: desktopCloseCompliance + useUnsavedChangesGuard suites
+pass. The overlay remains untracked WIP (tsc clean; keys written; its
+stream owes the commit + the history-call test per R141).
