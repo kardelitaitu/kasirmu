@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocalization } from '@fluent/react';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
@@ -15,19 +15,31 @@ const SPAWN_STAGGER_MS = 60;
 
 /**
  * Exit-animation lengths, handed to `useExitAnimation` so its unmount timer
- * covers the matching CSS in `MemoBanner.css`. The row flow runs a touch
- * slower (300ms) than the app-standard 200ms so the collapse/expand reads
- * as deliberate (owner feedback, 2026-09-08).
+ * covers the matching CSS in `MemoBanner.css`: the row's spring collapse
+ * (450ms) and the reading card's reverse zoom (400ms).
  */
-const ROW_EXIT_MS = 300;
-const OVERLAY_EXIT_MS = 200;
+const ROW_EXIT_MS = 450;
+const OVERLAY_EXIT_MS = 400;
+
+/** Viewport geometry of the bubble a card was opened from. */
+interface MemoOrigin {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function rectOf(el: HTMLElement): MemoOrigin {
+  const rect = el.getBoundingClientRect();
+  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+}
 
 /**
  * The Memo display surface (Phase 2 P1, step 4): a chat-bubble stack pinned
  * to the bottom-left of the screen showing the highest-priority active
  * memos for this terminal.
  *
- * Owner-directed design (rounds 1–3, 2026-09-07/08):
+ * Owner-directed design (rounds 1–4, 2026-09-07/08):
  *  - The stack shows at most {@link MAX_STACK} bubbles in backend list
  *    order; further memos queue silently and surface — with the spawn
  *    animation — when a slot frees.
@@ -40,26 +52,31 @@ const OVERLAY_EXIT_MS = 200;
  *    card. The big (x) acknowledges durably (chat-bubble semantics: read
  *    it, done); Escape and overlay clicks return to the stack without one.
  *
- * Animation: stack rows are grid wrappers transitioning `grid-template-rows`
- * between 0fr and 1fr, so a spawning bubble expands (pushing the stack down)
- * and a closing one collapses (letting the stack slide up) purely through
- * layout flow — no FLIP measurement. Unmount timing stays with
- * `useExitAnimation` (exit-animation-pattern skill); under reduced motion
- * the CSS transitions are skipped and `animDuration` snaps timers to zero.
+ * Motion (macOS-grade, round 4): one damped spring (`--memo-spring`, a
+ * linear() easing baked from a ζ=0.7 oscillator) drives row height and
+ * transforms — bubbles are dealt in from and return to the stack's
+ * bottom-left corner; the reflow of the survivors is the star of a close.
+ * The reading card zooms from the clicked bubble's rect: the click stores
+ * the bubble's geometry, the overlay mounts transformed onto it
+ * (FLIP-lite: set from-style → forced reflow → clear, so the CSS spring
+ * transition plays to identity) and refolds back into it on dismiss.
+ * Opacity always runs on plain ease curves, never the spring. Unmount
+ * timing stays with `useExitAnimation` (exit-animation-pattern skill);
+ * under reduced motion the CSS transitions are skipped and `animDuration`
+ * snaps timers to zero.
  */
 export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   const { memos, acknowledge } = useMemos({ kds });
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<{ id: string; origin: MemoOrigin } | null>(null);
 
   const visible = memos.slice(0, MAX_STACK);
   // Look the expanded memo up in the FULL list: while the card is open the
   // memo could drift past the stack slice on a poll reorder. If it leaves
   // the list entirely (expired, or acknowledged elsewhere) the overlay
   // unmounts directly — acceptable for a state nothing can act on.
-  const expanded =
-    expandedId === null
-      ? undefined
-      : memos.find((active) => active.memo.id === expandedId);
+  const expandedActive = expanded
+    ? memos.find((active) => active.memo.id === expanded.id)
+    : undefined;
 
   return (
     <>
@@ -70,19 +87,20 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
               key={active.memo.id}
               active={active}
               index={index}
-              isExpanded={expandedId === active.memo.id}
+              isExpanded={expanded?.id === active.memo.id}
               onAck={acknowledge}
-              onExpand={(memoId) => setExpandedId(memoId)}
+              onExpand={(memoId, origin) => setExpanded({ id: memoId, origin })}
             />
           ))}
         </div>
       )}
-      {expanded && (
+      {expandedActive && expanded && (
         <MemoExpandedOverlay
-          key={expanded.memo.id}
-          active={expanded}
+          key={expandedActive.memo.id}
+          active={expandedActive}
+          origin={expanded.origin}
           onAck={acknowledge}
-          onDismiss={() => setExpandedId(null)}
+          onDismiss={() => setExpanded(null)}
         />
       )}
     </>
@@ -94,7 +112,9 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
  * captures the durable ack in `pendingRef` and only fires it after the row
  * has fully collapsed — `acknowledge` drops the memo from the hook
  * immediately (optimistic), so firing it early would yank the bubble out
- * mid-animation.
+ * mid-animation. All visible motion (dealt-in from the corner, spring
+ * reflow) lives in CSS; this component only stages the state classes and
+ * the per-index spawn delay.
  */
 function MemoStackItem({
   active,
@@ -107,15 +127,14 @@ function MemoStackItem({
   index: number;
   isExpanded: boolean;
   onAck: (memoId: string) => void;
-  onExpand: (memoId: string) => void;
+  onExpand: (memoId: string, origin: MemoOrigin) => void;
 }) {
   const { l10n } = useLocalization();
   const memoId = active.memo.id;
 
   // Spawn: the row mounts collapsed (0fr) and flips to expanded two frames
   // later so the grid-rows transition actually plays (a same-frame flip
-  // would paint the final state with no transition). The delay staggers
-  // simultaneous spawns; exit transitions must never be delayed.
+  // would paint the final state with no transition).
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     let raf2 = 0;
@@ -153,13 +172,13 @@ function MemoStackItem({
   return (
     <div
       className={itemClass}
-      style={{ transitionDelay: exit.exiting ? '0ms' : `${index * SPAWN_STAGGER_MS}ms` }}
+      style={{ '--memo-delay': `${index * SPAWN_STAGGER_MS}ms` } as CSSProperties}
     >
       <div className="memo-banner" role="alert" aria-live="polite">
         <button
           type="button"
           className="memo-banner-open"
-          onClick={() => onExpand(memoId)}
+          onClick={(e) => onExpand(memoId, rectOf(e.currentTarget))}
           aria-haspopup="dialog"
           aria-expanded={isExpanded}
           aria-label={openLabel}
@@ -196,27 +215,31 @@ function MemoStackItem({
 
 /**
  * The enlarged reading card: a portal overlay with the full memo text at
- * reading size and a single big (x) floating outside the card. The big (x)
- * runs the durable ack; Escape (via the focus trap) and overlay clicks
+ * reading size and a single big (x) floating outside the card. The card
+ * ZOOMS from the bubble it was opened from (FLIP-lite — see the zoom
+ * effects below) and refolds back into that rect on dismiss. The big (x)
+ * runs the durable ack; Escape (via the focus trap) and backdrop clicks
  * close without acknowledging, so a stray click can never permanently
  * dismiss a memo nobody read.
  */
 function MemoExpandedOverlay({
   active,
+  origin,
   onAck,
   onDismiss,
 }: {
   active: ActiveMemo;
+  origin: MemoOrigin;
   onAck: (memoId: string) => void;
   onDismiss: () => void;
 }) {
   const { l10n } = useLocalization();
-  const panelRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
   // Same pendingRef pattern as the bubble row: the action is captured at
-  // click time and runs when the exit fade completes. `onDismiss` always
-  // clears the expanded id; the pending action additionally acknowledges.
+  // click time and runs when the exit completes. `onDismiss` always clears
+  // the expanded state; the pending action additionally acknowledges.
   const pendingRef = useRef<(() => void) | null>(null);
   const exit = useExitAnimation(true, () => {
     pendingRef.current?.();
@@ -231,23 +254,65 @@ function MemoExpandedOverlay({
 
   // Focus trap owns Escape + Tab cycling + auto-focus + scroll lock, the
   // same contract the shared Modal gives every other dialog in the app.
-  useFocusTrap(panelRef, true, () => closeWith(null));
+  useFocusTrap(cardRef, true, () => closeWith(null));
+
+  // Zoom-from-origin (FLIP-lite): transform the card onto the source
+  // bubble's rect, commit the from-style with a forced reflow, then clear
+  // it so the CSS spring transition plays to identity. With `hide`, the
+  // transform is left in place so the same transition plays in reverse
+  // while the overlay is exiting. Skipped when geometry is unavailable
+  // (jsdom reports zero-size rects) — the card then simply fades.
+  const zoomToOrigin = (hide: boolean) => {
+    const card = cardRef.current;
+    if (!card || origin.width <= 0 || origin.height <= 0) return;
+    const rect = card.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const sx = origin.width / rect.width;
+    const sy = origin.height / rect.height;
+    const dx = origin.left + origin.width / 2 - (rect.left + rect.width / 2);
+    const dy = origin.top + origin.height / 2 - (rect.top + rect.height / 2);
+    card.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+    card.style.opacity = '0';
+    if (!hide) {
+      // Commit the from-style so the cleared style below transitions
+      // from the bubble's geometry instead of snapping.
+      void card.offsetHeight;
+      card.style.transform = '';
+      card.style.opacity = '';
+    }
+  };
+
+  useLayoutEffect(() => {
+    zoomToOrigin(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Under reduced motion the transitions are media-gated off; applying
+    // the from-transform anyway would flash a tiny card for a frame
+    // before the (zero-length) unmount timer fires.
+    if (exit.exiting && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      zoomToOrigin(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exit.exiting]);
 
   const displayTitle = active.memo.title.trim();
 
   return createPortal(
     <div
       className={`memo-expanded-overlay${exit.exiting ? ' is-exiting' : ''}`}
-      role="presentation"
       data-testid="memo-expanded-overlay"
-      onClick={(e) => {
-        // Only close when the overlay itself is clicked, not the card.
-        if (e.target === e.currentTarget) closeWith(null);
-      }}
     >
       <div
-        ref={panelRef}
-        className={`memo-expanded-card${exit.exiting ? ' is-exiting' : ''}`}
+        className="memo-expanded-backdrop"
+        role="presentation"
+        data-testid="memo-expanded-backdrop"
+        onClick={() => closeWith(null)}
+      />
+      <div
+        ref={cardRef}
+        className="memo-expanded-card"
         role="dialog"
         aria-modal="true"
         aria-labelledby={displayTitle ? titleId : undefined}

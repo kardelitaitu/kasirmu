@@ -158,10 +158,10 @@ describe('MemoBanner', () => {
     expect(screen.getByTestId('memo-banner-open')).toBeInTheDocument();
   });
 
-  it('clicking the overlay backdrop returns to the stack without acknowledging', () => {
+  it('clicking the backdrop returns to the stack without acknowledging', () => {
     renderWithL10n(<MemoBanner />);
     fireEvent.click(screen.getByTestId('memo-banner-open'));
-    fireEvent.click(screen.getByTestId('memo-expanded-overlay'));
+    fireEvent.click(screen.getByTestId('memo-expanded-backdrop'));
 
     expect(mockAcknowledge).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
