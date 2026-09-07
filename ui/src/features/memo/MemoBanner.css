@@ -41,7 +41,7 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transform: translateY(-12px);
+  transform: translateY(-16px);
 }
 
 .memo-stack-item.is-mounted {
@@ -60,9 +60,9 @@
 @media (prefers-reduced-motion: no-preference) {
   .memo-stack-item {
     transition:
-      grid-template-rows var(--duration-200) var(--ease-out),
-      opacity var(--duration-200) var(--ease-out),
-      transform var(--duration-200) var(--ease-out);
+      grid-template-rows var(--duration-300) var(--ease-out),
+      opacity var(--duration-300) var(--ease-out),
+      transform var(--duration-300) var(--ease-out);
   }
 }
 

@@ -14,10 +14,13 @@ const MAX_STACK = 3;
 const SPAWN_STAGGER_MS = 60;
 
 /**
- * Exit-animation length, handed to `useExitAnimation` so its unmount timer
- * covers the CSS row transition in `MemoBanner.css` (200ms).
+ * Exit-animation lengths, handed to `useExitAnimation` so its unmount timer
+ * covers the matching CSS in `MemoBanner.css`. The row flow runs a touch
+ * slower (300ms) than the app-standard 200ms so the collapse/expand reads
+ * as deliberate (owner feedback, 2026-09-08).
  */
-const EXIT_DURATION_MS = 200;
+const ROW_EXIT_MS = 300;
+const OVERLAY_EXIT_MS = 200;
 
 /**
  * The Memo display surface (Phase 2 P1, step 4): a chat-bubble stack pinned
@@ -129,7 +132,7 @@ function MemoStackItem({
   const exit = useExitAnimation(true, () => {
     pendingRef.current?.();
     pendingRef.current = null;
-  }, EXIT_DURATION_MS);
+  }, ROW_EXIT_MS);
 
   const handleClose = () => {
     pendingRef.current = () => onAck(memoId);
@@ -219,7 +222,7 @@ function MemoExpandedOverlay({
     pendingRef.current?.();
     pendingRef.current = null;
     onDismiss();
-  }, EXIT_DURATION_MS);
+  }, OVERLAY_EXIT_MS);
 
   const closeWith = (action: (() => void) | null) => {
     pendingRef.current = action;
