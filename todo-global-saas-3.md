@@ -618,3 +618,61 @@ so Free would let the tier axis outrank scope and the test would verify
 the wrong denial). UI `tsc --noEmit` clean. Ruling-5 semantics were
 already covered at the choke-point layer (`authz_tests.rs`); these pin
 the verdict's echo of them.
+
+---
+
+## Amendment 6 — the same ruling from the other side, and one dedup (2026-09-08)
+
+Two agents picked up Amendment 4's open `scope` question in the same
+window and reached the same ruling and the same load-bearing finding
+independently. That convergence is the useful signal, so both records
+stand rather than one being edited to match the other.
+
+- **Ruling: v1 = current-location**, as Amendment 4 recommended. Explicit
+  target argument stays deferred until support actually asks.
+- **The dead axis.** Amendment 4 justified computing `scope_granted` from
+  `matches_scope` on `session.store_id` (citing `authz.rs:99-105`). That axis
+  cannot fire: the verdict command's own session gate already runs
+  `require_permission_scoped` with those exact values, so every caller who
+  reaches the resolver has passed it — a diagnostic built on it is a
+  constant `Some(true)`. The axis that can answer is ADR #47's
+  `scope_type`/`scope_id`, which the session gate does **not** consult.
+  Amendment 5 found the same thing in its own words; the shipped composite
+  is the fix.
+
+**What this side contributed, in two commits:**
+
+1. `62003be9` — `Store::resource_covered_by` as the single implementation of
+   ruling 3's inheritance, with `assignment_covers_resource` exposing it as a
+   non-throwing `Option<bool>`. The trap it avoids is concrete, not
+   hypothetical: `Assignment::covers_resource` deliberately omits the
+   `legal_entity` → `location` downward walk (the walk needs the `locations`
+   table, which the model layer must not assume), so a diagnostic calling
+   it directly reports `scope` for a legal-entity manager standing in a
+   location their own entity owns — a false denial about enforcement, worse
+   than no diagnostic. Verified to bite by mutation: replacing the helper
+   with a direct `covers_resource` call fails
+   `coverage_diagnostic_agrees_with_the_resource_gate` with
+   `left: Some(false) / right: Some(true)`.
+2. `e4c8ab56` — Amendment 5 landed the composite correctly but wrote the rule
+   out again inside each client command, byte-identical in desktop and
+   tablet: three implementations of one authorization rule, free to drift.
+   `Store::assignment_covers_session` now holds it and each client is one
+   call. Behavior-preserving — desktop's three scope tests and the tablet's
+   mirror pass unchanged across the swap, which is the point of routing
+   them through shared code.
+
+**Collision note, because it is this branch's recurring hazard.** The M2
+diagnostics screen was picked up in the same window
+(`DiagnosticsSection.tsx`, `SettingsPage.tsx`, `SettingsNavTree.tsx`,
+`settings*.ftl`) and `assignments_tests.rs` was being extended live. Every
+commit here used an explicit pathspec and none of those files were
+touched. One trap worth recording: `cargo fmt -p oz-core` rewrites other
+agents' files in that package too, so it can silently widen a
+pathspec-limited commit's content — re-check `git diff` after running it
+rather than trusting the pathspec alone.
+
+**Item status:** observability is core + both IPC surfaces + UI client +
+dev-mock + the `scope` reason code. Only the screen remains, and it is
+owned elsewhere.
+
