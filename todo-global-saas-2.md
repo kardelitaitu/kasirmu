@@ -198,6 +198,18 @@ actual relationship mutation.
       terminals, staff, KDS screens, history, and topology nodes as
       readable/marked `over_quota`; block new creation and provide
       archive-or-upgrade remediation.
+      **PARTIAL (2026-09-08, `869de0ce`): the tenant-level detection layer
+      landed** — `oz_core::downgrade` (`evaluate` + `OverQuotaReport`) and
+      `Store::assess_downgrade` answer "which resources are above the
+      (downgraded) tier's quota, and by how much," reusing the exact
+      `count_*` the creation gates consult so over-quota ⟺ the next
+      creation is blocked. "Block new creation" was already true (the
+      `enforce_*_quota` gates + POS `suspend_surplus_instances`). Still
+      open, so the box stays unchecked: the owner-facing remediation view
+      ("show which, offer archive-or-upgrade"), a persisted per-resource
+      `over_quota` marker, and the per-location dimensions (KDS screens,
+      topology nodes) which `assess_downgrade` deliberately excludes.
+      See §"Downgrade detection slice".
 - [x] **Implement offline synchronization guarantees.** Add durable outbox
       states, retries, conflict handling, idempotency, ordering, clock handling,
       and visible failure states. — **verified complete 2026-09-06** across
@@ -2243,3 +2255,72 @@ that way).
 Still open on this file: RLS closure commit (order step 1), ADR #46
 Phase-1 gate (1e UI + concurrency, order step 4), ADR #47 ruling
 (order step 5).
+
+## Downgrade detection slice (2026-09-08, DSH) — the missing half of §J
+
+Supervisor Round 1 (2026-09-07) re-triaged "Implement downgrade behavior"
+from *blocked* to **startable now**: the centralized-quotas gate it waited
+on closed with `73e77c5f` (terminal/warehouse) and `de6d2df2`
+(product/KDS-screen). Re-verified against HEAD before writing: the
+creation-time half of §J is genuinely already in place — every
+globally-countable dimension has a live `enforce_*_quota` gate
+(`enforce_location_quota`, `enforce_terminal_quota`,
+`enforce_warehouse_quota`, `enforce_staff_quota`,
+`enforce_product_quota`) returning `QuotaError::*Limit` →
+`SubscriptionLimitExceeded`, and POS registers additionally have the
+suspend/restore path (`suspend_surplus_instances`, ADR #5 Phase 3c).
+What §J still lacked was the *complementary* question — after a downgrade,
+**which already-existing resources are above the new quota, and by how
+much** — the detection an owner-facing "archive or upgrade" view needs.
+`over_quota` appeared nowhere in code (only in these todo files).
+
+**Delivered:** a migration-free, purely additive detection layer.
+
+- `crates/oz-core/src/downgrade.rs` — pure domain: `QuotaDimension`
+  (Locations / PosRegisters / Warehouses / Staff / Products),
+  `QuotaCounts`, `QuotaUsage`, `OverQuotaReport`, and `evaluate(tier,
+  counts)`. Two thresholds are deliberately distinguished: **over quota**
+  (`current > limit`, §J's "above the new quota", needs remediation) vs
+  **at the cap** (`current == limit`, compliant but `blocks_creation`).
+  Unlimited tiers (`None`) are never over and never block.
+- `crates/oz-core/src/db/downgrade.rs` — `Store::assess_downgrade(tier)`,
+  a read-only gatherer that feeds `evaluate` the **same** `count_*`
+  methods the creation gates use (`count_locations`, `count_terminals`,
+  `count_warehouse_locations`, `count_staff_users`, and a new
+  `count_products` mirroring `enforce_product_quota`'s inline count).
+  That identity is the contract: a dimension reported over quota here is
+  exactly one whose next creation the gate rejects — assessment and
+  enforcement cannot drift.
+- 12 tests (8 pure in `downgrade_tests.rs`, 4 gatherer in
+  `db/downgrade_tests.rs`). The gatherer test seeds a deterministic
+  tenant and asserts both the wiring (report.current == the count method)
+  and the §J semantics (Free downgrade: registers/warehouses/staff over
+  by 1, the single default location at-cap-not-over, products under).
+  `cargo test -p oz-core --lib downgrade` 15/15; rustfmt clean;
+  `cargo check -p oz-core --all-targets` zero warnings.
+
+**Deliberately excluded, and why:** KDS screens and topology nodes are
+capped *per location* (`max_kds_screens` vs `count_active_kds_instances
+(store_id)`, checked during topology Apply), so they have no honest
+tenant-global row here — forcing one would invent a number the gates
+never compare. They belong to the workspace/topology path.
+
+**⚠️ Concurrency incident, recorded honestly (this file's own recurring
+lesson):** the four files and the two `pub mod downgrade;` wirings landed
+in `869de0ce` — a *concurrent agent's* whole-tree commit
+(`feat(core): availability verdicts and downgrade report`) that swept my
+untracked work in under **their** message, the exact `3b10ea3a` hazard
+AGENTS.md warns about. I verified the landed content is byte-identical to
+what I wrote (`git diff HEAD` empty on all four) and still green at HEAD,
+so nothing was lost or mangled — but the code carries the wrong author
+trail. **This journal entry is the durable record of the true authorship
+and rationale.** The lesson (flip the checkbox in the landing commit)
+could not be followed here because the landing commit was not mine; the
+detection layer is a partial step, so the §J box stays unchecked.
+
+**Next slice (not built here, each needs a decision or a hot file):**
+the owner-facing remediation surface (IPC command returning
+`OverQuotaReport` + a screen listing affected resources with
+archive-or-upgrade actions — touches the parity gate + dev-mock + FTL),
+and whether to persist a per-resource `over_quota` marker (a migration,
+which the rename/ADR agents keep hot).
