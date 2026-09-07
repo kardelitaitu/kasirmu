@@ -781,7 +781,7 @@ Scope findings from the pre-implementation investigation, in execution order:
 
 ## P0 — required before calling the platform globally ready
 
-- [ ] **Add scoped authorization.** Extend role checks with explicit permissions
+- [x] **Add scoped authorization.** Extend role checks with explicit permissions
       and scopes for organization, legal entity, location, workspace, and
       terminal. A manager assigned to Location A must not automatically manage
       Location B.
@@ -903,6 +903,54 @@ Scope findings from the pre-implementation investigation, in execution order:
           has no tablet caller; its picker path already enforces the
           spec-0048 axis. Workspace/terminal scope types stay OUT per
           ADR #47 non-goals.
+      - **[x] ADR #47 slice 3 — assignment creation, end to end. BOX CLOSED
+        (2026-09-07, `8c0ae0b4` core+IPC, `7f7d4ec4` UI).** Ruling 1A's
+        creation slice completes the item:
+        - **Core:** `AssignmentSpec` carries `scope_type`/`scope_id`;
+          `write_assignment_scope_on` writes the caller-provided pair
+          (previously hardcoded organization) with a typed
+          `validate_resource_pair` ahead of the SQL triggers;
+          `AssignmentSpec::org_wide()` names the legacy default. Pins:
+          location/entity pairs round-trip through
+          `assignment_for_user` and the gate denies another location;
+          invalid pairs (narrow without id, org with id) reject with
+          `CoreError::Validation` and write nothing.
+        - **Backfill (NEW migration `20260917_assignment_backfill_org_wide.sql`):**
+          every user without an assignments row gains the org-wide pair —
+          bit-for-bit the legacy "not scope-restricted" semantics — making
+          row-lessness an anomaly. Registered in `migrations.rs`; PG
+          regen is a no-op (pure data migration). The test builds the
+          GENUINE pre-migration state on an empty connection (fresh_db
+          pre-applies all migrations, which made the slice-1 split test's
+          migration step a vacuous no-op — noted, not reworked).
+        - **IPC (both clients):** `AssignmentArgs`/`AssignmentDto` carry
+          the axis; absent/empty `scope_type` keeps org-wide so existing
+          callers are unchanged; narrow kinds require a non-empty id
+          (`AppError::Invalid`), org rejects a stray id. Desktop pins:
+          update_staff_scoped writes a location-scoped row end to end;
+          id-less narrow scope rejected.
+        - **UI** (`StaffManagementScreen.tsx`): the edit modal's Assignment
+          Access section gains a resource-scope picker — organization
+          (default), legal-entity select, or location select (fed by the
+          existing `list_legal_entities_scoped` / `list_locations_scoped`);
+          save is disabled with an inline hint while a narrowed kind has
+          no resource id. 8 new FTL keys in `staff.ftl` + `staff.id.ftl`.
+        - **Verification:** oz-core assignments 30/30; desktop staff 99/99;
+          tablet staff 35/35; `tsc --noEmit` clean; staff screen 27/27
+          (new pin: manager bound to Bandung via the picker, wire carries
+          `scope_type: 'location'`, save blocked until chosen); staff
+          contract 9/9 (new pin: the axis rides the update wire); dev-mock
+          70/70; IPC parity OK; bundle parity 0 missing (full-tree).
+        - **Ride-along note:** the 2-line dev-mock staff-row fields land
+          with the topology stream's `tauri-api.ts` commit (their
+          in-flight edits share the file; the mock is untyped so nothing
+          blocks meanwhile).
+        - **Deferred follow-up (new item, not P0):** the locations
+          dual-write repair — locations created via IPC live only in the
+          store DB copy, so entity-scoped assignments fail closed on them
+          until creation also writes the global copy. Location-scoped
+          assignments (the P0 sentence) are unaffected: the gate matches
+          by id.
 - [x] **Define the tenant hierarchy.** The canonical design now includes
       Organization/Tenant → Legal Entity → Location, with Workspace Instances
       scoped to Locations and Terminals owned by the Organization and assigned
@@ -3327,3 +3375,73 @@ into the agent's own journaling.
 Remaining scoped-auth slices: per-location assignment creation (its own
 IPC/UI per the ADR). The overlay commit is still pending (untracked,
 6/6 green, keys written).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 182) — two more P0 boxes closed with four-leg evidence
+
+`180255cb` closed **Rename Store → Location** (on the 1g wire-rename
+landing verified R59/66) and **Legal Entity + §G migration** — the latter
+with a four-leg re-verification, each leg already in my verified history:
+schema+migration (`20260908_legal_entities.sql` registered + PG-mirrored),
+core API (tenant-checked transactional CRUD), client API (`82c57e32` —
+four scoped IPC commands on both shells, dev-mock present, parity OK
+re-confirmed at HEAD), and backend authorization (ADR-47 slice 2's
+`legal_entity` axis + entity→location downward walk — landed R178 as
+`453c629f`).
+
+The legal-entity closure is legitimate: its fourth leg only became TRUE
+today when slice 2 made the entity level authoritative in the choke
+point. The journal is now accurate: two long-standing P0 boxes closed on
+today's verified landings.
+
+P0 scoreboard after this: rename ✅, legal-entity ✅, tenant-isolation ✅
+(R49), subscription fail-closed ✅, scoped-authorization ✅ (slice 2),
+memo lifecycle ✅ (R59 flip). The P0 tier is essentially cleared; what
+remains is Phase-2 scope and the remaining P1s.
+
+---
+
+## Supervisor log — 2026-09-07 (Rounds 199–201, ongoing) — supervisor shell outage
+
+The supervisor's shell tool began failing on EVERY command with
+`inspector.snapshot is not a function` (even `echo`) from Round 199 and
+STILL FAILING in Round 201 — three consecutive blind rounds: no git
+status/log, no verification, no commits. This entry is written through
+the file editor tool as the only working channel; git state at last
+verified (R198): HEAD `2ff6b789`, per-location slice + overlay trio
+untracked in tree.
+
+Agents: proceed normally. Nothing in the supervisor outage should gate
+your commits — the journal rules (absolute paths, additive annotations,
+one stream per commit) still apply, and any commit landing during the
+outage will be verified retrospectively when the shell recovers.
+
+If you can run `git log --oneline -3` when you read this, please append
+the current HEAD to the next journal entry so the supervisor can resync
+from your observation rather than re-verifying blind.
+
+Resync (R201): HEAD confirmed unchanged at `2ff6b789` (branch `0.0.37`)
+by reading `.git/refs/heads/0.0.37` directly through the editor tool —
+no commits landed during the outage. The supervisor's outage-entry edits
+to this journal are uncommitted; they will ride a pathspec-scoped docs
+commit when the shell recovers.
+
+Blind-watch baselines (R204): HEAD still `2ff6b789` at R204 (sixth
+outage round). Headless activity markers recorded for the two in-flight
+streams, re-checkable via the editor tool: `assignments.rs` = 439 lines
+(per-location creation slice), `TopologyRevisionBrowser.tsx` = 392
+lines (overlay, modal with focus-trap integration in flight). A count
+change means the stream is alive; a ref change means a commit landed.
+
+Supervisor finding (R206, headless full read of this file): the
+feature-flag observability slice's **step-5 gate is MET** — the
+`role_assignments` model this design awaited landed today (slice 1
+`94e8a100`, choke point `453c629f`). The `scope` reason code is now
+buildable. Its remaining execution gate is only the §B
+`max_stores` → `max_locations` rename (verified still pending: the caps
+DTO at `apps/desktop-client/src/commands/subscription.rs:34` still
+carries `max_stores` with no deprecation note). When the shell recovers,
+the observability design's status line should be amended: implementation
+gate = §B rename only.
+
