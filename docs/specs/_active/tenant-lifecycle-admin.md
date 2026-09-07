@@ -1,11 +1,11 @@
-<!-- Spec: tenant lifecycle management (admin API + UI) · 2026-08-31 · status: SHIPPED (server 8197350d, UI c7bb6f55) · owner: Coding Agent 4 · grounded in apps/license-server/admin_dashboard.go @ 0.0.34, paddle_webhook.go upsert, web_dashboard.go device revoke -->
+<!-- Spec: tenant lifecycle management (admin API + UI) · 2026-08-31 · status: SHIPPED (server + UI, 2026-08-31) · owner: Coding Agent 4 · grounded in apps/license-server/admin_dashboard.go @ 0.0.34, paddle_webhook.go upsert, web_dashboard.go device revoke -->
 
 # Tenant Lifecycle Management — Admin API + UI
 
 > **Status: SHIPPED.** Server endpoints + admin UI live; end-to-end verified
 > 22/22 (boot gates, migrations on fresh volume, PATCH/409/no-op, grant with
 > real signing + grace, device revoke idempotency, cascade delete row-level).
-> Website deployed (c7bb6f55) behind a server-version capability gate
+> Website deployed (2026-08-31) behind a server-version capability gate
 > (`/admin/health` ≥ 0.0.34), re-probed on every detail-dialog open.
 > Remaining: user-run Northflank redeploy, then production smoke.
 
@@ -83,7 +83,7 @@ Body: `{"confirm_email": "..."}` — must equal the tenant email (case-insensiti
 
 ## Admin UI (website/public/admin)
 
-> Shipped in `c7bb6f55` (+ per-open version re-probe). The gate also keeps the
+> Shipped in `2026-08-31` (+ per-open version re-probe). The gate also keeps the
 > deploy-order guarantee: nothing new is offered until the server reports
 > 0.0.34, so an early website deploy is safe.
 
@@ -106,7 +106,7 @@ pin 0.0.34. **Beyond the suite:** fresh-volume boot E2E of the HEAD binary —
 
 ## Deployment order
 
-Superseded by the version gate: the website shipped first (`c7bb6f55`) and is
+Superseded by the version gate: the website shipped first (`2026-08-31`) and is
 safe against the old API — all new controls stay hidden until the server
 reports 0.0.34. Remaining steps:
 
