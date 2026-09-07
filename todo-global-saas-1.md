@@ -3580,3 +3580,21 @@ X = ack / Escape+backdrop = no-ack; silent queue; --text-md bubble /
   test); lint 0 errors; full-tree bundle parity 0 missing; pre-commit
   ran all ten gates green.
 
+### Addendum — "no animation" diagnosed; row flow slowed to 300ms
+
+Owner reported seeing no animation. Diagnosed via
+`SPI_GETCLIENTAREAANIMATION` (0x104A) on the dev machine:
+**clientAreaAnimation=False** → Windows reports client-area animations
+off → WebView2/Chromium sets `prefers-reduced-motion: reduce` → the
+media-gated row transitions are skipped exactly as the a11y convention
+demands. The mechanism was never broken; the OS switch was the cause.
+Session was Console (not RDP), so the fix on the owner side is
+Settings → Accessibility → Visual effects → **Animation effects = On**.
+
+Committed `2594d0d2` anyway so the flow reads as deliberate when
+motion is allowed: row transitions `--duration-200` → `--duration-300`
+(spawn drop deepened −12px → −16px), exit timer split into
+`ROW_EXIT_MS = 300` (rows) / `OVERLAY_EXIT_MS = 200` (card keeps the
+modal standard). Both timers still match their CSS; suites 12/12 +
+typecheck + all ten gates green.
+
