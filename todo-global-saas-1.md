@@ -3653,3 +3653,37 @@ Committed `303b2189` (4 files):
   gates. (`themeTokenCompliance` still carries the topology stream's
   one baseline regression, NodeTopologyEditor.css:1476 — untouched.)
 
+---
+
+## Implementation journal — memo render-isolation analysis (2026-09-08)
+
+Owner asked why a memo banner appearing "re-renders the whole app".
+Analyzed and MEASURED rather than assumed (`9201e909`):
+
+- **Architecture:** every piece of memo state (`memos`, `cadence`,
+  `loading`, per-item `mounted`, `expanded`) lives inside
+  `useMemos`/`MemoBanner`. `useMemos` is consumed only by the banner
+  (+ the management screen), so under React's contract a memo arriving
+  can only re-render the banner subtree — a child's state change never
+  re-renders its parent.
+- **Measurement:** new probe `memoRenderIsolation.test.tsx` (the
+  nodeTopologyMemo counting-boundary pattern) renders the REAL
+  `AppShell` with a render-counting `RetailPosScreen` and asserts the
+  count is stable across (a) a memo arriving via the dev
+  `memos:refresh` bridge and (b) an idempotent poll returning the same
+  list. Both PASS — the host screen renders zero additional times.
+- **Verdict:** memo arrivals do NOT re-render the app; the invariant
+  is now pinned so a future "lift the state up" refactor fails loudly
+  here. Banner-local churn (loading toggle + fresh array identity per
+  poll) still re-renders the banner ~3× per cadence tick — negligible
+  at a 15-minute poll; a shallow-compare bail-out in `load()` is
+  available if it ever matters.
+- **Adjacent finding (NOT memo-triggered, worth a follow-up slice):
+  `WorkspaceContext.tsx:535` passes the provider value as an inline
+  object literal (not memoized). Every WorkspaceProvider re-render
+  (workspace switches, loading churn) hands ALL consumers a fresh
+  value → app-wide consumer re-render. That is the one real
+  "whole app re-rendered" vector in the area; fixing it means wrapping
+  the value in useMemo and auditing the callback deps — its own
+  careful slice, not a memo-stream drive-by.
+
