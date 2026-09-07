@@ -941,10 +941,12 @@ Scope findings from the pre-implementation investigation, in execution order:
           `scope_type: 'location'`, save blocked until chosen); staff
           contract 9/9 (new pin: the axis rides the update wire); dev-mock
           70/70; IPC parity OK; bundle parity 0 missing (full-tree).
-        - **Ride-along note:** the 2-line dev-mock staff-row fields land
-          with the topology stream's `tauri-api.ts` commit (their
-          in-flight edits share the file; the mock is untyped so nothing
-          blocks meanwhile).
+        - **Ride-along note:** the 2-line dev-mock staff-row fields
+          (`scope_type`/`scope_id` on `mockStaffMember`) plus the renamed
+          dev-mock caps fields (`maxLocations` on the two quota handlers,
+          from `54470e27`) land with the topology stream's `tauri-api.ts`
+          commit (their in-flight edits share the file; the mock is
+          untyped so nothing blocks meanwhile).
         - **Deferred follow-up (new item, not P0):** the locations
           dual-write repair — locations created via IPC live only in the
           store DB copy, so entity-scoped assignments fail closed on them
@@ -3466,8 +3468,11 @@ time:
   tool-specific, not repo-wide. Repository is healthy; concurrent
   streams' files (topology overlay trio, dev-mock, skills) remain
   uncommitted in the working tree exactly as R204 recorded them.
-- The 2-line dev-mock staff-row fields (`scope_type`/`scope_id` on
-  `mockStaffMember`) are in `tauri-api.ts`'s working tree and will ride
-  the topology stream's commit of that file (untyped mock, no gate
-  impact).
+- **Gate-note follow-up:** the §B `max_stores` → `max_locations` caps rename
+  the R206 finding named as the observability slice's last execution gate
+  has landed (`54470e27`, one lockstep Rust+UI commit; details in
+  todo-global-saas-3.md's execution-order note). The observability slice
+  is now unblocked on both gates (`scope` model + field rename). The
+  license-server Go stream's per-tier grace work was in flight in the
+  same tree, untouched by that commit.
 

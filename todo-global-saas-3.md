@@ -257,10 +257,16 @@ per-quota families (`locations`, `staff_users`, `pos_instances`,
 
 ### Execution order & coordination gate
 
-1. **Wait for the subscription agent's in-flight §B slices to commit** — the
-   command reads their `TenantSubscription` state machine, and their
-   `max_stores` → `max_locations` deprecation (visible deprecation warning in
-   the tablet build) will rename fields under this surface. Do not collide.
+1. **~~Wait for the subscription agent's in-flight §B slices to commit~~ ✅
+   GATE CLEARED 2026-09-07 (`54470e27`):** the caps wire field is renamed
+   (`max_stores` → `max_locations`, wire `maxStores` → `maxLocations`) on
+   both clients + UI in one lockstep commit; the deprecated
+   `SubscriptionTier::max_stores` alias lost its last caller and was
+   removed; `TenantSubscription`'s Rust field now matches the
+   `max_locations` column. The capabilities surface this design reads is
+   name-stable. Signed-payload surfaces (LicenseStatusResponse,
+   LicenseSettings' parsed payload) intentionally keep the legacy
+   `max_stores` wire name — do not "fix" those.
 2. Core verdict resolver (pure fn over caps + session role + usage) in
    `oz-core` with the precedence table unit-tested exhaustively.
 3. IPC in both clients + dev-mock + `ui/src/api/` client fn; parity + i18n
