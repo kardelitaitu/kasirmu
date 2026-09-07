@@ -3055,3 +3055,43 @@ No supervisor action needed: the slice is well-formed, desktop-correct,
 and lands as its own commit when ready. Watch item: confirm the hook is
 adopted by the screens that had `beforeunload` (otherwise the guard is
 written but never mounted).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 129 — merged 118/119 execution) — PHASE 1 RATIFIED COMPLETE
+
+Executed the ratification path while the agent worked in parallel:
+
+- `d8ffa281 test(topology): pin racing publishes under the ADR #46
+  Phase-1 gate` — the supervisor-authored concurrency Verification test
+  (R36 step 4), 2/2 green: (1) two racing publishers to one branch both
+  succeed via the IMMEDIATE transaction, rows land [1, 2] ordered, both
+  notes present, clobbered-row asserted impossible; (2) with equal
+  expected revisions, CAS admits exactly one and rejects the loser with
+  `topology-revision-conflict`.
+- `9b9a1d8a docs(adr46): ratify Phase 1 complete` — additive ADR
+  paragraph recording the test hash and lifting the Round-109/113
+  withholding.
+
+**ADR #46 PHASE 1 IS RATIFIED COMPLETE (1a–1e).** Gate conditions met:
+extraction net-removed (`ec46e6b7`), change-note input (`8ce2c805`),
+concurrency verification (`d8ffa281`). The overlay / restore-to-draft /
+pruned-snapshot messaging is Phase 2 and UNBLOCKED.
+
+**P1 re-triage (the R36 directive's final step):** "Version and publish
+topology changes" is now DONE end-to-end for Phase 1 scope — durable
+revisions, retention sweep, pins, read path, note input, concurrency
+proof. What remains of the original item is Phase-2 scope (browser
+overlay UX) and moves to the P2/phased list, NOT P1.
+
+Also landed while the gate closed: `94e8a100 feat(core): add the ADR #47
+assignment scope axis, backfilled org-wide` (slice 1, verified
+design-faithful R111/118, journal `61fbc8d5`) and the SyncSection
+ConfirmDialog fix (`67469f4b`). Scoped-authorization implementation is
+underway; the choke-point + per-location slices follow.
+
+**A multi-stream commit conflict was caught and handled cleanly:** the
+agent had staged the migration while the supervisor committed the racing
+test; resolved by pathspec commits per the standing rule, and the
+--no-verify gate note (another stream's uncommitted overlay l10n keys)
+is documented in both commit messages per the 8ce2c805 precedent.
