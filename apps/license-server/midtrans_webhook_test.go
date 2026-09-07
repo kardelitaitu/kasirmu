@@ -708,7 +708,7 @@ func TestMidtransPlus_SnapToRenew_EndToEnd(t *testing.T) {
 		t.Fatal("expected api_key in activate response")
 	}
 	actPayload := signedPayloadFrom(t, actRec.Body.Bytes())
-	assertPlusQuotaBlock(t, actPayload.TierKey, actPayload.MaxStores, actPayload.MaxPOSInstances, actPayload.AllowedTypes)
+	assertPlusQuotaBlock(t, actPayload.TierKey, actPayload.MaxLocations, actPayload.MaxPOSInstances, actPayload.AllowedTypes)
 
 	keyAfterActivate, err := app.FindFirstRecordByData("license_keys", "key", key)
 	if err != nil || keyAfterActivate.GetString("status") != "activated" {

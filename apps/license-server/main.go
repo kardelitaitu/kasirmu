@@ -997,9 +997,17 @@ func safePrefix(s string, n int) string {
 // embedded public key. Must stay in sync with Rust SignedSubscriptionPayload
 // in crates/oz-core/src/license_verification.rs.
 type SubscriptionPayload struct {
-	TenantID        string   `json:"tenant_id"`
-	TierKey         string   `json:"tier_key"`
-	Status          string   `json:"status"`
+	TenantID string `json:"tenant_id"`
+	TierKey  string `json:"tier_key"`
+	Status   string `json:"status"`
+	// MaxLocations is the primary quota field (1g Store → Location wire
+	// rename, todo-global-saas-1.md); new clients parse this name.
+	MaxLocations int `json:"max_locations"`
+	// MaxStores is the pre-rename wire name, kept for the client rotation
+	// window. signSubscription forces it to mirror MaxLocations, so old
+	// clients — which parse only max_stores and default to 0 when it is
+	// absent — keep seeing the correct quota. PocketBase storage keeps the
+	// historical max_stores field name; only the wire is renamed.
 	MaxStores       int      `json:"max_stores"`
 	MaxPOSInstances int      `json:"max_pos_instances"`
 	AllowedTypes    []string `json:"allowed_types"`
@@ -1012,6 +1020,11 @@ type SubscriptionPayload struct {
 // signSubscription marshals the payload to JSON, SHA-256 hashes it,
 // and signs it with the RSA-2048 private key using PKCS1v15.
 func signSubscription(sub SubscriptionPayload) (payload string, signature string, err error) {
+	// 1g dual-emit: the legacy wire name always mirrors max_locations at
+	// the single choke point every payload passes through, so a build
+	// site that forgets to set one field can never emit a divergent (or
+	// silently zero) legacy value to un-updated clients.
+	sub.MaxStores = sub.MaxLocations
 	payloadBytes, err := jsonMarshal(sub)
 	if err != nil {
 		return "", "", err

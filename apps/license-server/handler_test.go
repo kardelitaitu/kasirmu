@@ -1049,6 +1049,15 @@ func TestStatusHandler_WithSubscription(t *testing.T) {
 	if _, ok := body["grace_until"]; !ok {
 		t.Error("expected grace_until in response")
 	}
+	// 1g dual-emit: the status endpoint serves both wire names with the
+	// same value until the client fleet has rotated. seedSubscription
+	// stores max_stores=5.
+	if body["max_locations"] != float64(5) {
+		t.Errorf("expected max_locations 5, got %v", body["max_locations"])
+	}
+	if body["max_stores"] != float64(5) {
+		t.Errorf("expected legacy max_stores 5, got %v", body["max_stores"])
+	}
 }
 
 // resetLimiterBuckets clears only the in-memory rate-limiter buckets,
@@ -1262,8 +1271,13 @@ func TestRenewHandler_WithSubscription(t *testing.T) {
 		if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
 			t.Errorf("failed to parse signed_payload: %v", err)
 		} else {
+			if sp.MaxLocations != 5 {
+				t.Errorf("expected max_locations=5 in renewal payload, got %d", sp.MaxLocations)
+			}
+			// 1g dual-emit: the legacy wire name must ride along at the same
+			// value so pre-rename clients keep parsing the quota.
 			if sp.MaxStores != 5 {
-				t.Errorf("expected max_stores=5 in renewal payload, got %d", sp.MaxStores)
+				t.Errorf("expected legacy max_stores=5 in renewal payload, got %d", sp.MaxStores)
 			}
 			if sp.MaxPOSInstances != 3 {
 				t.Errorf("expected max_pos_instances=3 in renewal payload, got %d", sp.MaxPOSInstances)
@@ -1346,8 +1360,8 @@ func TestRenewHandler_PlusTier(t *testing.T) {
 	if sp.TierKey != "plus" {
 		t.Errorf("expected tier_key=plus in renewal payload, got %q", sp.TierKey)
 	}
-	if sp.MaxStores != 1 {
-		t.Errorf("expected max_stores=1 in renewal payload, got %d", sp.MaxStores)
+	if sp.MaxLocations != 1 {
+		t.Errorf("expected max_locations=1 in renewal payload, got %d", sp.MaxLocations)
 	}
 	if sp.MaxPOSInstances != 2 {
 		t.Errorf("expected max_pos_instances=2 in renewal payload, got %d", sp.MaxPOSInstances)
@@ -1416,8 +1430,8 @@ func TestRenewHandler_TierChange_UsesNewKeyLimits(t *testing.T) {
 
 		// M5 audit assertion: quotas must come from the NEW Enterprise
 		// key, NOT from the OLD Pro subscription (which had 5/3/2).
-		if sp.MaxStores != 20 {
-			t.Errorf("Pro→Enterprise upgrade: expected max_stores=20 (from NEW key), got %d", sp.MaxStores)
+		if sp.MaxLocations != 20 {
+			t.Errorf("Pro→Enterprise upgrade: expected max_locations=20 (from NEW key), got %d", sp.MaxLocations)
 		}
 		if sp.MaxPOSInstances != 10 {
 			t.Errorf("Pro→Enterprise upgrade: expected max_pos_instances=10 (from NEW key), got %d", sp.MaxPOSInstances)
@@ -1463,8 +1477,8 @@ func TestRenewHandler_TierChange_UsesNewKeyLimits(t *testing.T) {
 
 		// M5 audit assertion: quotas must come from the NEW Pro key,
 		// NOT from the OLD Enterprise subscription (which had 20/10/3).
-		if sp.MaxStores != 5 {
-			t.Errorf("Enterprise→Pro downgrade: expected max_stores=5 (from NEW key), got %d", sp.MaxStores)
+		if sp.MaxLocations != 5 {
+			t.Errorf("Enterprise→Pro downgrade: expected max_locations=5 (from NEW key), got %d", sp.MaxLocations)
 		}
 		if sp.MaxPOSInstances != 3 {
 			t.Errorf("Enterprise→Pro downgrade: expected max_pos_instances=3 (from NEW key), got %d", sp.MaxPOSInstances)
@@ -1690,8 +1704,8 @@ func TestActivateHandler_Success(t *testing.T) {
 		if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
 			t.Errorf("failed to parse signed_payload: %v", err)
 		} else {
-			if sp.MaxStores != 5 {
-				t.Errorf("expected max_stores=5 in payload, got %d", sp.MaxStores)
+			if sp.MaxLocations != 5 {
+				t.Errorf("expected max_locations=5 in payload, got %d", sp.MaxLocations)
 			}
 			if sp.MaxPOSInstances != 3 {
 				t.Errorf("expected max_pos_instances=3 in payload, got %d", sp.MaxPOSInstances)
@@ -1832,8 +1846,8 @@ func TestTrialVerticalSegmentation(t *testing.T) {
 			// Quota block must come from the segmented tier, not the key's
 			// default (plus = 1 store / 2 registers, pro = unlimited + kds).
 			expectedStores, expectedPOS, expectedTypes := tierQuotas(tc.tier, "")
-			if sp.MaxStores != expectedStores {
-				t.Errorf("vertical %q: expected max_stores=%d, got %d", tc.vertical, expectedStores, sp.MaxStores)
+			if sp.MaxLocations != expectedStores {
+				t.Errorf("vertical %q: expected max_locations=%d, got %d", tc.vertical, expectedStores, sp.MaxLocations)
 			}
 			if sp.MaxPOSInstances != expectedPOS {
 				t.Errorf("vertical %q: expected max_pos_instances=%d, got %d", tc.vertical, expectedPOS, sp.MaxPOSInstances)
@@ -1928,8 +1942,8 @@ func TestTrialVerticalSegmentation_PaidKeyIgnored(t *testing.T) {
 	if sp.TierKey != "pro" {
 		t.Errorf("paid key must keep tier pro, got %q", sp.TierKey)
 	}
-	if sp.MaxStores != 5 {
-		t.Errorf("paid key must keep max_stores=5, got %d", sp.MaxStores)
+	if sp.MaxLocations != 5 {
+		t.Errorf("paid key must keep max_locations=5, got %d", sp.MaxLocations)
 	}
 	if sp.MaxPOSInstances != 3 {
 		t.Errorf("paid key must keep max_pos_instances=3, got %d", sp.MaxPOSInstances)

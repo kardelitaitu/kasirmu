@@ -119,7 +119,7 @@ func resumeSubscription(app core.App, sub *core.Record, now time.Time) (payloadS
 		TenantID:        sub.GetString("tenant_id"),
 		TierKey:         sub.GetString("tier_key"),
 		Status:          "active",
-		MaxStores:       sub.GetInt("max_stores"),
+		MaxLocations:    sub.GetInt("max_stores"),
 		MaxPOSInstances: sub.GetInt("max_pos_instances"),
 		AllowedTypes:    allowedTypes,
 		StartsAt:        sub.GetDateTime("starts_at").Time().Format(time.RFC3339),

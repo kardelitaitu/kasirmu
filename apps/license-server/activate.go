@@ -932,7 +932,7 @@ func handleActivate(app core.App) func(e *core.RequestEvent) error {
 			TenantID:        tenantID,
 			TierKey:         tierKey,
 			Status:          "active",
-			MaxStores:       maxStores,
+			MaxLocations:    maxStores,
 			MaxPOSInstances: maxPOSInstances,
 			AllowedTypes:    allowedTypes,
 			StartsAt:        time.Now().UTC().Format(time.RFC3339),
@@ -964,8 +964,9 @@ func handleActivate(app core.App) func(e *core.RequestEvent) error {
 		subRecord.Set("expires_at", sub.ExpiresAt)
 		subRecord.Set("grace_until", sub.GraceUntil)
 		// Persist the quota block on the subscription record so /status reads
-		// real values (mirrors renew.go's M5-audit fix).
-		subRecord.Set("max_stores", sub.MaxStores)
+		// real values (mirrors renew.go's M5-audit fix). Storage keeps the
+		// historical max_stores field name (1g renamed the wire only).
+		subRecord.Set("max_stores", sub.MaxLocations)
 		subRecord.Set("max_pos_instances", sub.MaxPOSInstances)
 		if b, err := json.Marshal(sub.AllowedTypes); err == nil {
 			subRecord.Set("allowed_types", string(b))

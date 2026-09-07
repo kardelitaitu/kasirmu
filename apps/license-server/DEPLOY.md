@@ -444,12 +444,18 @@ curl -X POST https://license.ozpos.my.id/api/v1/license/status \
   "tenant_id": "test-tenant-001",
   "tier_key": "pro",
   "status": "active",
+  "max_locations": 2,
   "max_stores": 2,
   "max_pos_instances": 3,
   "expires_at": "...",
   "grace_until": "..."
 }
 ```
+
+`max_locations` is the primary quota name (1g Store → Location wire
+rename). The legacy `max_stores` key rides along with the same value
+until the whole client fleet has rotated; storage (the `subscriptions`
+record) keeps the historical `max_stores` field name.
 
 ### 11.4 Test rate limiting
 
@@ -492,7 +498,7 @@ Run this in **sandbox first** (ADR #39 verification). Tick every box before cons
 4. [ ] The Snap overlay opens (QRIS / VA / e-wallet / card). Pay with the sandbox QRIS — scan the QRIS image with the Midtrans sandbox mobile app, or use the sandbox dashboard's simulate-payment flow; the transaction settles within seconds.
 5. [ ] `snap.pay`'s `onSuccess` fires; the webhook answers **200**. In the admin UI (`/_/`): a **tenant** was upserted by the checkout email, and a **license_keys** record exists with `key` = `OZ-PLUS-…`, `payment_provider=midtrans`, `midtrans_sub_id` set, and the plus quota block (max_stores=1, max_pos_instances=2, allowed_types without `kds`).
 6. [ ] The **receipt email** with the license key lands at the buyer address (requires SMTP from §7.1 step 5; failure is non-fatal and logged).
-7. [ ] **POS activation:** in the desktop app, activate with that key + email → the signed payload returns `tier_key=plus`, `max_stores=1`, `max_pos_instances=2`, and `payment_provider=midtrans` on the subscription record.
+7. [ ] **POS activation:** in the desktop app, activate with that key + email → the signed payload returns `tier_key=plus`, `max_locations=1` (legacy `max_stores` also present), `max_pos_instances=2`, and `payment_provider=midtrans` on the subscription record.
 8. [ ] **Bundle (C3.2, only if the bundle entry is in the map):** toggle Restaurant Starter on the Plus card → snap `amount` is the bundle amount and `custom_field4=restaurant_starter`; after payment the key's `allowed_types` **includes `kds`** and `bundle_id=restaurant_starter`.
 
 **Negative + lifecycle checks (curl against the webhook URL):**

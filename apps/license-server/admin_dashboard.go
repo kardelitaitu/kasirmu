@@ -310,7 +310,7 @@ func handleAdminRenew(app core.App) func(e *core.RequestEvent) error {
 			TenantID:        tenant.Id,
 			TierKey:         sub.GetString("tier_key"),
 			Status:          "active",
-			MaxStores:       sub.GetInt("max_stores"),
+			MaxLocations:    sub.GetInt("max_stores"),
 			MaxPOSInstances: sub.GetInt("max_pos_instances"),
 			AllowedTypes:    parseAllowedTypesJSON(sub.GetString("allowed_types")),
 			StartsAt:        formatDateField(sub, "starts_at"),

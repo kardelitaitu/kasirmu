@@ -180,7 +180,7 @@ func handleRenew(app core.App) func(e *core.RequestEvent) error {
 			// limits, which silently capped upgrades and over-provisioned
 			// downgrades. Quotas are now sourced from the same key the
 			// customer just paid for.
-			MaxStores:       keyRecord.GetInt("max_stores"),
+			MaxLocations:    keyRecord.GetInt("max_stores"),
 			MaxPOSInstances: keyRecord.GetInt("max_pos_instances"),
 			AllowedTypes:    allowedTypes,
 			StartsAt:        time.Now().UTC().Format(time.RFC3339),

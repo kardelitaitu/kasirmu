@@ -1313,7 +1313,7 @@ func TestPaddlePlus_WebhookToRenew_EndToEnd(t *testing.T) {
 		t.Fatal("expected api_key in activate response")
 	}
 	actPayload := signedPayloadFrom(t, actRec.Body.Bytes())
-	assertPlusQuotaBlock(t, actPayload.TierKey, actPayload.MaxStores, actPayload.MaxPOSInstances, actPayload.AllowedTypes)
+	assertPlusQuotaBlock(t, actPayload.TierKey, actPayload.MaxLocations, actPayload.MaxPOSInstances, actPayload.AllowedTypes)
 
 	keyAfterActivate, err := app.FindFirstRecordByData("license_keys", "key", keyA)
 	if err != nil || keyAfterActivate.GetString("status") != "activated" {
@@ -1351,7 +1351,7 @@ func TestPaddlePlus_WebhookToRenew_EndToEnd(t *testing.T) {
 	// Renewed payload keeps the plus quota block and appends +1y onto the
 	// second webhook subscription (already +1y) → ~2 years from now.
 	renPayload := signedPayloadFrom(t, renewRec.Body.Bytes())
-	assertPlusQuotaBlock(t, renPayload.TierKey, renPayload.MaxStores, renPayload.MaxPOSInstances, renPayload.AllowedTypes)
+	assertPlusQuotaBlock(t, renPayload.TierKey, renPayload.MaxLocations, renPayload.MaxPOSInstances, renPayload.AllowedTypes)
 	renExpiry, err := time.Parse(time.RFC3339, renPayload.ExpiresAt)
 	if err != nil {
 		t.Fatalf("failed to parse renewed expires_at: %v", err)

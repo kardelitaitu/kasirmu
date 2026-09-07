@@ -156,12 +156,17 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 		log.Printf("/status: tenant=%q tier=%s status=%s active=%v device_revoked=%v revoke_performed=%v",
 			tenantID, tierKey, subStatus, subStatus == "active", deviceRevoked, revokePerformed)
 		return e.JSON(http.StatusOK, map[string]any{
-			"tenant_id":        tenantID,
-			"status":           tenant.GetString("status"),
-			"tier":             tierKey,
-			"active":           subStatus == "active",
-			"expires_at":       sub.GetString("expires_at"),
-			"grace_until":      sub.GetString("grace_until"),
+			"tenant_id":   tenantID,
+			"status":      tenant.GetString("status"),
+			"tier":        tierKey,
+			"active":      subStatus == "active",
+			"expires_at":  sub.GetString("expires_at"),
+			"grace_until": sub.GetString("grace_until"),
+			// 1g dual-emit: max_locations is the primary name; max_stores
+			// is kept for pre-rename clients whose LicenseStatusResponse
+			// defaults the quota to 0 when the field is absent — dropping
+			// the legacy key would silently report quota 0 to them.
+			"max_locations":    sub.GetInt("max_stores"),
 			"max_stores":       sub.GetInt("max_stores"),
 			"device_revoked":   deviceRevoked,
 			"revoke_performed": revokePerformed,

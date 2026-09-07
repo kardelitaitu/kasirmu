@@ -96,12 +96,12 @@ func handleWebUsage(app core.App) func(e *core.RequestEvent) error {
 		subCount := len(subs)
 
 		// Pull entitlement limits from the latest subscription.
-		maxStores := int64(0)
+		maxLocations := int64(0)
 		maxPos := int64(0)
 		maxKDS := int64(0)
 		tierKey := ""
 		if len(subs) > 0 {
-			maxStores = int64(subs[0].GetInt("max_stores"))
+			maxLocations = int64(subs[0].GetInt("max_stores"))
 			maxPos = int64(subs[0].GetInt("max_pos_instances"))
 			tierKey = subs[0].GetString("tier_key")
 			// KDS is a workspace type entitlement: Free/Plus = 0, Pro = 2,
@@ -112,10 +112,11 @@ func handleWebUsage(app core.App) func(e *core.RequestEvent) error {
 		return e.JSON(http.StatusOK, map[string]any{
 			"device_count":       deviceCount,
 			"subscription_count": subCount,
-			"max_stores":         maxStores,
-			"max_pos_instances":  maxPos,
-			"max_kds":            maxKDS,
-			"tier_key":           tierKey,
+			// 1g wire rename; storage keeps the historical max_stores name.
+			"max_locations":     maxLocations,
+			"max_pos_instances": maxPos,
+			"max_kds":           maxKDS,
+			"tier_key":          tierKey,
 		})
 	}
 }

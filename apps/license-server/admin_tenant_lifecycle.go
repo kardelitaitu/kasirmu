@@ -248,7 +248,7 @@ func handleAdminGrantSubscription(app core.App) func(e *core.RequestEvent) error
 			TenantID:        tenant.Id,
 			TierKey:         req.TierKey,
 			Status:          "active",
-			MaxStores:       maxStores,
+			MaxLocations:    maxStores,
 			MaxPOSInstances: maxPOS,
 			AllowedTypes:    allowedTypes,
 			StartsAt:        startsAt,
