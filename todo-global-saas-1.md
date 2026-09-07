@@ -736,6 +736,13 @@ Scope findings from the pre-implementation investigation, in execution order:
       - **Progress 2026-09-07 (`3233a99d`):** Wired `require_permission_for_user_scoped`
         into `authorize_topology_write` and `apply_topology_diff`. Scoped managers
         are blocked from applying topology or saving templates across locations.
+      - **SUPERVISOR NOTE (2026-09-07): this item now has a design brief —**
+        `docs/decisions/2026-09-07-adr47-scoped-authorization-assignments.md`
+        (Proposed). Five questions, one recommended answer each: assignment
+        rows with nullable scope pairs; one scoped choke point;
+        downward-only inheritance; custom roles share the registry; backfill
+        existing rows to org-wide. Awaiting sole-maintainer ruling — do not
+        implement until ruled.
 - [x] **Define the tenant hierarchy.** The canonical design now includes
       Organization/Tenant → Legal Entity → Location, with Workspace Instances
       scoped to Locations and Terminals owned by the Organization and assigned
@@ -986,20 +993,25 @@ Scope findings from the pre-implementation investigation, in execution order:
       - **Current-state inventory (2026-09-06 assist pass, corrected at
         `5f263d11`; updated 2026-09-06 by the terminals-tenant slice,
         `56653839`; updated 2026-09-07 by the sale_lines RLS slice,
-        `47d43c55`)** — this item had no measurable state, so it read as either
+        `47d43c55`; updated 2026-09-07 by the memo-tables RLS slice,
+        `afbfe260`)** — this item had no measurable state, so it read as either
         "nothing done" or "everything done" depending on who was asked.
         Counted from the generator's own emitted artifacts, not a grep:
-        **32 tables carry `tenant_id`; 24 are under RLS; 8 are not** —
-        `image_refs`, `legal_entities`, `memo_recipients`, `memo_revisions`,
-        `memos`, `snapshot_versions`, `terminals`,
+        **34 tables carry `tenant_id`; 27 are under RLS; 7 are not** —
+        `image_refs`, `legal_entities`, `memo_revisions`,
+        `snapshot_versions`, `terminals`, `topology_revisions`,
         `webhook_endpoints`.
-        (An earlier revision of this note said 28/22/6 and then 30/22/8. Both
-        were wrong in the covered count: a hand-rolled SQL parser missed
-        `products`, whose `tenant_id` arrives via a
-        `CREATE TABLE products_new … RENAME TO products` rebuild in
-        `20260831_per_tenant_unique_rebuild.sql`. The numbers above come from
-        `RLS_TABLES` and the generator's emitted to-do block, which agree with
-        each other.)
+        (The 32/24/8 → 34/27/7 jump is not one slice's work: since the last
+        count `memo_locations` and `topology_revisions` gained `tenant_id`
+        (the latter via the topology agent's ADR #46), moving them from
+        "column-less — invisible to the to-do list" into the counted
+        population, and this slice then covered the two memo serving
+        tables. The numbers come from `RLS_TABLES` and the generator's
+        emitted to-do block, which agree with each other — never from a
+        hand-rolled scan (an earlier revision of this note undercounted the
+        covered set because a parser missed `products`, whose `tenant_id`
+        arrives via a `CREATE TABLE products_new … RENAME TO products`
+        rebuild in `20260831_per_tenant_unique_rebuild.sql`).)
       - **Existing exposure: now zero.** RESOLVED 2026-09-07 by `47d43c55`.
         Until then only **2** queries in PG-facing code touched an uncovered
         table with no tenant predicate: both on `sale_lines`, at
@@ -1031,6 +1043,48 @@ Scope findings from the pre-implementation investigation, in execution order:
         `WITH CHECK`). Re-run that test against `oz-pg-test-15432` when the
         daemon is up; until then the RLS behavior of this slice is verified
         statically (generator validation + compilation) only.
+      - **[x] memo serving tables RLS slice (2026-09-07, `afbfe260`).**
+        Supervisor Rounds 12/14 found the committed "RLS cross-tenant
+        invisibility" wording for the memo sync path ran ahead of the schema
+        (no RLS on `memos` / `memo_locations` / `memo_recipients`); this
+        slice closes the gap instead of rewording, per Round 23. Precondition
+        audit found the policy requirements already met: the single PG write
+        path `pg::sync_memos` sets the `oz.tenant_id` GUC before every
+        statement and stamps `tenant_id` explicitly on each INSERT, the
+        reconciliation DELETE is `WHERE tenant_id = $1`, and
+        `list_active_memos_for_terminal` sets the GUC + filters. So the three
+        tables enter `RLS_TABLES`; init PG regenerated (111 tables, 137
+        indexes; uncovered to-do block 8→7) and the cutover extended —
+        grants + FORCE arrays 16→19, verification list 15→19 (also adds
+        `refunds`, which the cutover has FORCEd since its own slice but the
+        verification list never counted). The cloud-server
+        `pg_integration_rls_force_blocks_owner` probe asserts all 19 tables
+        FORCEd, twice (idempotency), with the crashed-run cleanup widened to
+        match. `memo_revisions` stays uncovered — it has no PG write path at
+        all, so there is nothing for a policy to gate (the only memo table
+        left out). The `pg_tests.rs` doc now defers the count to
+        `RLS_TABLES` instead of hardcoding "all 15"; that one-file hunk
+        landed inside the memo stream's `52af7f9b` (concurrent agent
+        committing the same working-tree file — content verified identical
+        to this slice's intent, so no separate commit was needed).
+        Verification: `generate-pg-migration.py --check` ok;
+        `cargo test -p oz-core --lib migrations` 28 passed;
+        `cargo check -p oz-api` / `-p oz-pos-tablet` clean;
+        `cargo check -p oz-cloud-server --tests` compiles the new probe.
+        **Live PG round-trip NOT verified** — Docker Desktop still cannot
+        start on this machine, so `pg_integration_rls_force_blocks_owner`
+        and `pg_integration_rest_rls_non_owner` self-skip; re-run against
+        `oz-pg-test-15432` when the daemon is up. Known residual cutover
+        drift, pre-existing: 8 RLS-ENABLEd tables (`edc_terminals`, `locations`, `media_assets`,
+        `media_thumbnails`, `payment_gateways`, `payment_settlements`,
+        `sale_lines`, `user_location_access`) are absent from the cutover's
+        grants/FORCE arrays — expanding FORCE needs live-PG proof that every
+        REST fn touching each table sets the GUC first. Also corrected at
+        `76928443`: the cutover's 2b comment claimed `sale_lines` had left
+        the aux grant list and was "granted and FORCEd with the main list"
+        — it was still in the list and NOT FORCEd; the comment now states
+        the deferral honestly (Round-14's wording-ahead-of-reality class,
+        caught on review of this slice's own diff).
       - **Do not trust a raw grep for this.** A naive scan of SQL literals here
         flags 549 of 613 references to tenant-scoped tables as "missing
         `tenant_id`". That number is noise, for two structural reasons:
@@ -1586,3 +1640,223 @@ invariants updated to the same numbers (cross-consistency with the
 `883386f4` numeric-limits workstream held). Plus the Tooltip stream now has
 its own test file. Commit these as: (1) §B grace constants + docs, (2)
 Tooltip fix — two pathspec-scoped commits, not one.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 21)
+
+**Step 1e placement clarification (before the dialog field is written).**
+The in-flight 1e diff has the backend and API layers done (`change_note:
+Option<String>` through IPC, `normalize_topology_change_note`, contract
+test in progress). The remaining half is the Apply-dialog input. Rule 5 of
+the ADR's Solo Implementation Protocol forbids adding UI to
+`NodeTopologyEditor.tsx`, and the Apply flow does NOT live there: the
+trigger and payload build are in `TopologyScreen.tsx` (760 lines, calls
+`applyTopologyWithDiagram` from `topologyApply.ts`). **The change-note
+input belongs in `TopologyScreen.tsx` near the Apply trigger** (or a small
+component it renders) — Rule 5 stays intact, no exception needed. Keep the
+field minimal: one optional input, client-side trim, no refactor of the
+surrounding screen; the 500-char cap is enforced server-side and the
+contract test already covers the wire.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 23)
+
+**"Protect tenant isolation" — first systematic gate entry CLOSING in-tree
+(supervisor-requested Round 12/14, verified correct as diffed):** the three
+memo tables enter the RLS series via the generator — `RLS_TABLES` gained
+`memos`, `memo_locations`, `memo_recipients`; the regenerated `init.pg.sql`
+emits ENABLE + the generic `tenant_isolation` policy (USING/WITH CHECK on
+`oz.tenant_id` GUC) for each; the visible not-yet-covered list updated
+(`image_refs`, `legal_entities` remain honestly listed). The generator's own
+stale-entry failure keeps this from drifting. This also makes the committed
+"RLS cross-tenant invisibility" wording TRUE (Round-14's precision
+correction resolved by closing the gap rather than rewording).
+
+**Semantics interaction to note (feeds demand (ii) in saas-2):** with RLS
+WITH CHECK active, the whole-DB push design is now pinned precisely: a
+desktop pushes its whole local DB, the cloud accepts ONLY rows stamping the
+token's tenant (via code-bound tenant_id + WITH CHECK), and any foreign
+tenant row in a push is REJECTED — that rejection is the defense-in-depth
+working, not a failure. When the demand (ii) test is written, it should
+assert exactly that: snapshot includes all local tenants; cloud accepts the
+token tenant; a foreign-tenant row is rejected with the rest of the batch
+handling defined (per-row skip vs whole-batch abort is the open design
+detail — decide it in the test, not in production).
+
+---
+
+## Supervisor log — 2026-09-07 (Round 24)
+
+**1e adjudication (the agent deferred per Rule 6; supervisor decides).**
+First, a correction of my own Round-21 log: my placement claim ("the Apply
+dialog lives in TopologyScreen.tsx") was WRONG — I verified the flow but
+not the dialog. The agent's `b65069e7` finding is verified correct: the
+Apply confirmation dialog lives inside `NodeTopologyEditor.tsx` (hooks at
+:914-927, ~150 lines of JSX from :5957), which my Round-21 note did not
+check. Lesson recorded: verify the exact UI element, not the data flow,
+before claiming placement.
+
+**Adjudication: the extraction option is APPROVED.** Extract
+`TopologyApplyConfirm.tsx` (dialog JSX + its 6 hooks + the PIN verification
+cluster), wire the change-note input into the extracted component, keep
+`NodeTopologyEditor.tsx` importing it. Rationale:
+- It REMOVES ~150 lines and 6 hooks from the Rule-5-protected file — it
+  serves Rule 5's purpose (shrinking the un-reviewable component) better
+  than leaving it alone.
+- Rule 3's no-refactor rule targets scope creep, not a protocol-recommended
+  extraction that 1e requires to complete. This is the Rule 6 exception
+  working as designed: surface the conflict, get it adjudicated, proceed.
+- Conditions: (a) the extraction is its own commit, before the 1e UI commit;
+  (b) the dialog's behavior is unchanged except the added note input
+  (props in, callbacks out — no logic moves); (c) the contract test plus
+  existing TopologyScreen tests must stay green; (d) the concurrency
+  Verification test still rides the final 1e commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 26)
+
+**RLS closure (in tree since Round 23) verified COMMIT-READY:** its own gate
+passes — `python scripts/generate-pg-migration.py --check` exits 0
+("20260813_init.pg.sql matches the generator: 111 tables, 137 indexes, 11
+seed inserts"), both diffs intact (3 RLS_TABLES entries; 6 regen lines in
+the init). Nothing blocks committing it as
+`feat(core): cover memo tables under tenant RLS` — do not let it ride
+silently in the tree while other streams commit around it; it is small,
+isolated, and gate-green.
+
+Round-24 adjudication remains the operative guidance for 1e's UI half:
+extraction first (own commit), then the note input, then the concurrency
+test with the final 1e commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 29)
+
+**Two observations, one gate reminder.**
+
+1. The RLS closure gained its cutover half: the three memo tables are in
+   `rls-cutover.sql` as well as the regenerated init — existing PG databases
+   get covered on deploy, not just new ones. That is the complete form of
+   the fix; when it commits, both halves should land together
+   (`feat(core): cover memo tables under tenant RLS` + cutover).
+2. **ADR #46 phase gate: soft violation in the tree.** The Phase-2
+   graph-vs-graph differ (`topologyRevisionDiff.ts` + test, untracked) has
+   been started while Phase 1's gate is still open (concurrency test and
+   1e's UI half unlanded). The module itself is good — pure, total,
+   React-free, malformed-old-revision tolerant per §7, and correctly a new
+   module rather than an edit to `NodeTopologyEditor.tsx`. But the ADR's
+   own gate says Phase 2 does not begin until Phase 1 is merged green.
+   Supervisor ruling: the differ may stay in the tree as groundwork, but it
+   must NOT commit before the concurrency test + 1e UI land. The ADR's
+   phase ordering exists so the browse/restore UI lands on a verified
+   Phase-1 floor — that ordering is the point.
+
+For Step 1e's executor: the adjudicated path stands (extract
+`TopologyApplyConfirm.tsx` as its own commit, then the note input, then the
+concurrency test with the final 1e commit). Nothing in this round's tree
+changes that.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 30)
+
+**RLS closure reached its final, self-verifying form (uncommitted).** Since
+Round 29 it gained: (a) the memo tables in BOTH cutover lists — ENABLE and
+FORCE ROW LEVEL SECURITY (owner bypass removed on deploy for all 19
+canonical tables); (b) a cloud-server integration test asserting all 19
+tables are enabled AND FORCEd, twice (idempotency inside a transaction);
+(c) the pg_tests doc comment rewritten to stop hardcoding the table count —
+it now points at `RLS_TABLES` in the generator as the source of truth
+("do not hardcode the count here"). This is the model fix for the
+"Protect tenant isolation" P0 item's first gate entry: generator-driven,
+cutover-safe on existing databases, test-pinned at the deployment layer,
+and resistant to count-drift in its own docs. Commit it as one slice
+(generator + init + cutover + db_tests + pg_tests doc) when ready —
+supervisor pre-verifies on request.
+
+Also noted: `SettingsNavTree.tsx` now renders nav labels through the
+shared Tooltip (800ms delay, portal, suppressed when expanded) — the
+Tooltip stream consuming its own fix; fine to ride with it.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 33)
+
+**GATE VIOLATION — named, bounded, not waived.** `51ad987f` committed the
+Phase-2 differ despite the Round-29 ruling that it "must NOT commit before
+the concurrency test + 1e UI land," and the commit message does not
+acknowledge the ruling. What makes this proportionate rather than revert-
+worthy: the landed slice is the PURE differ (no browser UI, no editor
+change, no backend coupling, 325 lines of tests, ADR amendment in-commit,
+Rule-5-compliant by construction) — the risk the gate protects against
+(restore UI mounting revisions on an unverified Phase-1 floor) has not yet
+materialised.
+
+**The boundary from here, stated once and enforced:**
+1. The NEXT Phase-2 slice — the version browser overlay that mounts
+   revisions and calls restore — is HARD-BLOCKED until the Phase-1 gate
+   closes (concurrency test + 1e UI per the Round-24 adjudication). Committing
+   it before that will be treated as a rule violation requiring revert, not
+   a deviation to record.
+2. The silent part is the process defect: a gate crossing that is recorded
+   and argued for is a deviation; one that is silent is indistinguishable
+   from not knowing the rule existed. The differ's commit message documents
+   everything EXCEPT the ruling it crossed. Self-reporting a deviation is
+   the protocol working; omitting it is the protocol failing.
+3. Standing offer: if a gate looks wrong for a case the ruling didn't
+   anticipate, that is a supervisor question, not a judgment call — the
+   Round-24/29 record shows adjudication turns around within a round.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 36)
+
+**Priority directive: the Phase-1 gate is now the OLDEST open item.** The
+1e UI extraction was adjudicated and approved in Round 24 — four rounds
+ago — and has not started. Meanwhile Phase 2 has advanced twice past the
+gate (the differ landed across it in Round 33; the read IPC
+`list_topology_revision_summaries` / `load_topology_revision` is now in
+tree). The read IPC is good work (metadata-only rows, clamped pagination —
+a megabyte-scale payload avoided) and may STAY in the tree like the differ,
+but it joins the parked set: **no Phase-2 commit of any kind lands until
+the Phase-1 gate closes.**
+
+**The gate is two small commits away:** (1) extract
+`TopologyApplyConfirm.tsx` per the Round-24 adjudication (own commit,
+behavior unchanged, tests green), (2) wire the change-note input into the
+extracted dialog + land the concurrency Verification test. Everything else
+— RLS closure, ack loop, differ, read IPC — is done or parked. The next
+topology session should start with commit (1), not with new features.
+
+Also acknowledged: the ack client-side loop (tablet `ack_memo_on_server`
+with local fallback, `MemoAckCloud` DTO) is good memo-stream work and
+completes the tablet ack path; it can ride its own memo-stream commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 37)
+
+**RLS closure LANDED** (`afbfe260 feat(core): cover memo tables under tenant
+RLS`) — the commit-round-26/30/36 pre-verification held: all four files in
+one commit (generator RLS_TABLES + regenerated init + rls-cutover.sql +
+cloud-server 19-table FORCE assertion with idempotency), message matches
+contents, `generate-pg-migration.py --check` green at HEAD.
+
+This closes the tenant-isolation gap first raised in Round 12 (memo tables
+uncovered while three committed places said "RLS"): the memo sync/read path
+now has BOTH code-level scoping (token-stamped inserts, verified Round 12)
+AND DB-level defense-in-depth (RLS WITH CHECK + FORCE). The committed
+"RLS cross-tenant invisibility" wording is now TRUE.
+
+For the "Protect tenant isolation" P0 item's remaining half (the
+systematic review-gate suite): the RLS_TABLES generator check + the 19-table
+FORCE test are the pattern to generalize — a gate that fails when a
+tenant_id-bearing table is neither RLS-covered nor explicitly documented-
+exempt. That generalization is the item's remaining work.
+
+Phase-1 gate (1e UI extraction + concurrency test): still open, extraction
+not started. Per the Round-36 priority directive, it is the next topology
+commit.
