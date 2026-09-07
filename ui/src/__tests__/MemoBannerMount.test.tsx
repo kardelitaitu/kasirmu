@@ -10,9 +10,12 @@
 //! Surfaces covered here (session exists on all of them, so the session-scoped
 //! `list_active_memos_scoped` answers):
 //!   • tablet KDS workspace (TabletAppShell kds branch)
-//!   • desktop session lock screen (AppShell — locking keeps the session)
 //!   • desktop KDS kiosk lockdown (AppShell isKdsKiosk branch)
 //!   • desktop standalone KDS workspace (AppShell kds branch)
+//! The session lock screen is covered as a NEGATIVE test: owner ruling
+//! 2026-09-08 (`c7294c28`) — the banner is app-wide EXCEPT the login and
+//! lock screens, because a locked terminal must not display ops memos to
+//! anyone standing at it. Locking must REMOVE the retail-pos banner.
 //!
 //! The staff-login surface is intentionally absent: `list_active_memos_scoped`
 //! derives the terminal identity from the session, so it cannot answer before
@@ -258,7 +261,11 @@ describe('MemoBanner — mounted on the spec surfaces through the real shells', 
     await expectBannerOnSurface(() => screen.getByTestId('kds-screen'));
   });
 
-  it('desktop: mounts on the session lock screen', async () => {
+  it('desktop: the session lock screen shows NO memos (owner ruling)', async () => {
+    // Owner ruling 2026-09-08 (c7294c28): the banner is app-wide EXCEPT the
+    // login and lock screens. The store-pos surface itself carries the
+    // banner (base interval); driving the shell into the lock must remove
+    // it — a locked terminal never advertises ops memos to walk-ups.
     vi.mocked(useWorkspace).mockImplementation(() =>
       workspaceValue({ activeWorkspace: 'store-pos' }),
     );
@@ -266,13 +273,18 @@ describe('MemoBanner — mounted on the spec surfaces through the real shells', 
     await waitFor(() => {
       expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
     });
+    await waitFor(() => {
+      expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
+    });
 
     // Force the idle timeout → AppShell returns the lock screen branch.
     await act(async () => {
       idleCallback?.();
     });
 
-    await expectBannerOnSurface(() => screen.getByTestId('session-lock-screen'));
+    expect(screen.getByTestId('session-lock-screen')).toBeInTheDocument();
+    expect(screen.queryByTestId('memo-stack')).not.toBeInTheDocument();
+    expect(screen.queryByText('Restock aisle 3')).not.toBeInTheDocument();
   });
 
   it('desktop: mounts on the KDS kiosk lockdown', async () => {
