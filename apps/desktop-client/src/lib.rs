@@ -1013,6 +1013,9 @@ pub fn run() {
             // where topology_revisions lives beside the graph it describes.
             commands::topology::list_topology_revisions,
             commands::topology::load_topology_revision,
+            // ADR #46 §4: the pin that makes a revision a protected deploy.
+            // Gated on topology:write, unlike the two readers above.
+            commands::topology::pin_topology_revision,
             // ADR #45 §4.2 — diagram templates, persisted per branch in the
             // same settings namespace as the graph they seed.
             commands::topology::save_topology_template,

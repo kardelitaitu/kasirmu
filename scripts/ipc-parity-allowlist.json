@@ -60,6 +60,7 @@
     "delete_topology_template",
     "list_topology_revisions",
     "load_topology_revision",
+    "pin_topology_revision",
     "revise_memo_scoped",
     "stop_memo_scoped",
     "edc_refund",

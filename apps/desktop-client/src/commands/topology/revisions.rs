@@ -289,6 +289,120 @@ pub(crate) fn load_topology_revision_row(
 /// Rule 3 excludes.
 pub(crate) const TOPOLOGY_REVISION_RESTORABLE_KEEP: usize = 20;
 
+/// Outcome of a pin/unpin request (ADR #46 §4).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopologyRevisionPinResult {
+    /// `"updated"` | `"not-found"`.
+    pub status: &'static str,
+    /// The revision the request named, echoed for keyed rendering.
+    pub revision: i64,
+    /// The state the row is now in.
+    pub pinned: bool,
+    /// False when the snapshot was ALREADY deflated. Pinning preserves the
+    /// record; it cannot resurrect a graph the sweep dropped. The UI must not
+    /// promise a restore just because the pin succeeded.
+    pub restorable: bool,
+    /// True when unpinning leaves this row outside the retention budget, so
+    /// the next sweep will deflate it. Without this the UI says "unpinned"
+    /// and the row silently loses its snapshot minutes later.
+    pub pruned_by_next_sweep: bool,
+}
+
+/// The revision at which deflation begins for one branch, or `None` when the
+/// branch is inside its budget.
+///
+/// Extracted so the sweep and the pin result ask the SAME question. If they
+/// each re-derived the rule, a future change to one would let the UI promise
+/// retention the sweep then took back.
+fn unpinned_cutoff_revision(
+    conn: &Connection,
+    branch_id: &str,
+    keep_restorable: usize,
+) -> Result<Option<i64>, AppError> {
+    Ok(conn
+        .query_row(
+            "SELECT revision FROM topology_revisions
+             WHERE branch_id = ?1 AND pinned = 0
+             ORDER BY revision DESC
+             LIMIT 1 OFFSET ?2",
+            params![branch_id, keep_restorable as i64],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+/// Pin or unpin one revision (ADR #46 §4).
+///
+/// # Why this exists at all
+///
+/// §4 makes a pin what turns a revision table into a DEPLOY history: "a
+/// known-good graph stays restorable however busy the branch gets after it."
+/// Until this had a caller, `pinned` could only ever be 0 — the exemption
+/// logic was real and tested, but nothing in production could reach it, so the
+/// protection was inert.
+///
+/// # Pinning a deflated row succeeds
+///
+/// Marking the record is a legitimate thing to want, and the result reports
+/// `restorable: false`. Refusing would imply the snapshot could come back.
+///
+/// # The budget is recomputed, not assumed
+///
+/// Pins are additive (§4), so removing one re-ranks the branch and can push a
+/// DIFFERENT, older row out of the window. `pruned_by_next_sweep` answers only
+/// about the row named here.
+pub(crate) fn set_topology_revision_pinned(
+    conn: &Connection,
+    branch_id: &str,
+    revision: i64,
+    pinned: bool,
+) -> Result<TopologyRevisionPinResult, AppError> {
+    let changed = conn.execute(
+        "UPDATE topology_revisions SET pinned = ?1
+         WHERE branch_id = ?2 AND revision = ?3",
+        params![pinned as i64, branch_id, revision],
+    )?;
+    if changed == 0 {
+        return Ok(TopologyRevisionPinResult {
+            status: "not-found",
+            revision,
+            pinned,
+            restorable: false,
+            pruned_by_next_sweep: false,
+        });
+    }
+
+    let restorable: bool = conn.query_row(
+        "SELECT (diagram IS NOT NULL) FROM topology_revisions
+         WHERE branch_id = ?1 AND revision = ?2",
+        params![branch_id, revision],
+        |r| r.get::<_, i64>(0).map(|v| v != 0),
+    )?;
+
+    // Predict what the PRODUCTION sweep will do, so this must use the
+    // production budget rather than the parameter the tests pass to
+    // `cleanup_old_topology_revisions`.
+    //
+    // A row being PINNED is exempt from deflation by definition (§4), so it
+    // can never be pruned — asking the cutoff question anyway reported a
+    // successful pin as "this will be deleted", which is the opposite of what
+    // a pin is for. Caught by a_pin_protects_a_row_the_sweep_would_otherwise_deflate.
+    let pruned_by_next_sweep = !pinned
+        && matches!(
+            unpinned_cutoff_revision(conn, branch_id, TOPOLOGY_REVISION_RESTORABLE_KEEP)?,
+            Some(cutoff) if revision <= cutoff
+        );
+
+    Ok(TopologyRevisionPinResult {
+        status: "updated",
+        revision,
+        pinned,
+        restorable,
+        pruned_by_next_sweep,
+    })
+}
+
 /// Deflate revision snapshots older than the newest `keep_restorable` per
 /// branch (ADR #46 §4).
 ///
@@ -335,17 +449,9 @@ pub(crate) fn cleanup_old_topology_revisions(
         // The (keep+1)-th newest UNPINNED revision is the oldest one that must
         // survive; everything at or below it goes. `None` means the branch is
         // still inside its budget, which is the common case.
-        let cutoff: Option<i64> = conn
-            .query_row(
-                "SELECT revision FROM topology_revisions
-                 WHERE branch_id = ?1 AND pinned = 0
-                 ORDER BY revision DESC
-                 LIMIT 1 OFFSET ?2",
-                params![branch_id, keep_restorable as i64],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let Some(cutoff) = cutoff else { continue };
+        let Some(cutoff) = unpinned_cutoff_revision(conn, &branch_id, keep_restorable)? else {
+            continue;
+        };
 
         deflated += conn.execute(
             "UPDATE topology_revisions

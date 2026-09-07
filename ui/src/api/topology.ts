@@ -132,6 +132,38 @@ export const loadTopologyRevision = (
     ...(branchId !== undefined ? { branchId } : {}),
   });
 
+/** Outcome of a pin/unpin (ADR #46 §4). */
+export interface TopologyRevisionPinResult {
+  status: 'updated' | 'not-found';
+  revision: number;
+  /** The state the row is now in. */
+  pinned: boolean;
+  /** False when the snapshot was ALREADY deflated. The pin succeeded and the
+   *  record is protected, but there is no graph to restore — do not offer a
+   *  restore on the strength of a successful pin. */
+  restorable: boolean;
+  /** True when unpinning leaves this row outside the retention budget, so the
+   *  next sweep (within 300s) will deflate it. Without this the UI says
+   *  "unpinned" and the snapshot silently disappears minutes later. */
+  prunedByNextSweep: boolean;
+}
+
+/** Pin or unpin a revision, exempting it from deflation. Gated on
+ *  `topology:write` — pinning decides which deploys stay restorable, which is
+ *  the same authority Apply needs. */
+export const pinTopologyRevision = (
+  sessionToken: string,
+  revision: number,
+  pinned: boolean,
+  branchId?: string,
+): Promise<TopologyRevisionPinResult> =>
+  loggedInvoke<TopologyRevisionPinResult>('pin_topology_revision', {
+    sessionToken,
+    revision,
+    pinned,
+    ...(branchId !== undefined ? { branchId } : {}),
+  });
+
 // ── Diagram templates (ADR #45 §4.2) ─────────────────────────────
 
 /** Save a diagram template for a branch, replacing any template of that name.

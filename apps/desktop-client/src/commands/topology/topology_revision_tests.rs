@@ -742,3 +742,168 @@ fn the_listing_limit_is_clamped_not_trusted() {
     );
     assert_eq!(normalize_topology_revision_limit(Some(u32::MAX)), 200);
 }
+
+// ── ADR #46 §4: pinning ────────────────────────────────────────
+
+fn is_restorable(conn: &rusqlite::Connection, branch_id: &str, revision: i64) -> bool {
+    conn.query_row(
+        "SELECT (diagram IS NOT NULL) FROM topology_revisions
+         WHERE branch_id = ?1 AND revision = ?2",
+        rusqlite::params![branch_id, revision],
+        |r| r.get::<_, i64>(0).map(|v| v != 0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_pin_protects_a_row_the_sweep_would_otherwise_deflate() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+
+    // Pin the OLDEST — the one a sweep always reaches first.
+    let result = set_topology_revision_pinned(&conn, "", 1, true).unwrap();
+    assert_eq!(result.status, "updated");
+    assert!(result.pinned);
+    assert!(result.restorable, "the snapshot is still there to protect");
+    assert!(!result.pruned_by_next_sweep);
+
+    sweep(&conn, TOPOLOGY_REVISION_RESTORABLE_KEEP);
+    assert!(
+        is_restorable(&conn, "", 1),
+        "§4: a known-good graph stays restorable however busy the branch gets after it"
+    );
+    // The rows the sweep WOULD have taken are gone, so the pin did something.
+    for rev in 2..=5 {
+        assert!(
+            !is_restorable(&conn, "", rev),
+            "revision {rev} should have been deflated"
+        );
+    }
+    // Additive: 20 unpinned slots plus the one pin.
+    assert_eq!(restorable_count(&conn, ""), 21);
+}
+
+#[test]
+fn pinning_an_already_deflated_row_succeeds_but_is_not_restorable() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+    sweep(&conn, 20);
+    assert!(!is_restorable(&conn, "", 1));
+
+    // Marking the record is legitimate; refusing would imply the graph could
+    // come back. The result must say plainly that it cannot.
+    let result = set_topology_revision_pinned(&conn, "", 1, true).unwrap();
+    assert_eq!(result.status, "updated");
+    assert!(result.pinned);
+    assert!(
+        !result.restorable,
+        "a pin cannot resurrect a dropped snapshot"
+    );
+    // The invariant a real bug violated: a PINNED row is exempt from deflation
+    // by definition, so a successful pin must never report that the sweep will
+    // prune it — least of all for a row far outside the budget.
+    assert!(
+        !result.pruned_by_next_sweep,
+        "a pin that reports its own pruning is self-contradictory"
+    );
+}
+
+#[test]
+fn unpinning_past_the_budget_warns_that_the_next_sweep_prunes_it() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+    set_topology_revision_pinned(&conn, "", 1, true).unwrap();
+    sweep(&conn, TOPOLOGY_REVISION_RESTORABLE_KEEP);
+
+    // Rev 1 is now outside the 20-slot window and survives ONLY because of the
+    // pin. Unpinning must say so rather than let the UI report success and
+    // watch the snapshot vanish minutes later.
+    let result = set_topology_revision_pinned(&conn, "", 1, false).unwrap();
+    assert!(!result.pinned);
+    assert!(
+        result.pruned_by_next_sweep,
+        "§4's additive rule means this row is now past the budget"
+    );
+
+    // And the warning is accurate, not decorative.
+    sweep(&conn, TOPOLOGY_REVISION_RESTORABLE_KEEP);
+    assert!(!is_restorable(&conn, "", 1));
+}
+
+#[test]
+fn the_pin_result_and_the_sweep_agree_on_the_cutoff() {
+    // Both ask `unpinned_cutoff_revision`. If they drifted, the UI would
+    // promise retention the sweep then took back — the exact failure sharing
+    // the helper exists to prevent. Asserted as a real biconditional: warned
+    // <=> the next sweep drops it.
+    let cases = [
+        1i64, 4, 5, // at or below the cutoff
+        6, 12, 25, // inside the 20-slot window
+    ];
+    for revision in cases {
+        // Fresh database per case: pinning and sweeping mutate the branch, so
+        // a shared one would make each iteration test a different budget.
+        let conn = fresh_conn();
+        apply_n_times(&conn, 25);
+
+        let warned = set_topology_revision_pinned(&conn, "", revision, false)
+            .unwrap()
+            .pruned_by_next_sweep;
+        let was_restorable = is_restorable(&conn, "", revision);
+        sweep(&conn, TOPOLOGY_REVISION_RESTORABLE_KEEP);
+        let now_restorable = is_restorable(&conn, "", revision);
+        let dropped = was_restorable && !now_restorable;
+
+        assert_eq!(
+            warned, dropped,
+            "revision {revision}: pin result said pruned_by_next_sweep={warned} \
+             but the sweep dropped it={dropped}"
+        );
+    }
+}
+
+#[test]
+fn pinning_an_unknown_revision_reports_not_found_without_touching_history() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 3);
+
+    let result = set_topology_revision_pinned(&conn, "", 999, true).unwrap();
+    assert_eq!(result.status, "not-found");
+    assert!(!result.restorable);
+    assert_eq!(revision_count(&conn), 3, "no row may be created by a pin");
+}
+
+#[test]
+fn pins_are_scoped_to_one_branch() {
+    let conn = fresh_conn();
+    let context = ctx("", "user-a");
+    for branch in ["branch-a", "branch-b"] {
+        let key = format!("{TOPOLOGY_SETTING_KEY}/{branch}");
+        for expected in 0..3u64 {
+            save_topology_json_at_key_with_revision(
+                &conn,
+                vec![store_node("store-1")],
+                vec![],
+                &key,
+                &[],
+                Some(expected),
+                None,
+                None,
+                Some(&context),
+            )
+            .unwrap();
+        }
+    }
+
+    set_topology_revision_pinned(&conn, "branch-a", 1, true).unwrap();
+
+    let pinned_of = |b: &str| {
+        conn.query_row(
+            "SELECT COUNT(*) FROM topology_revisions WHERE branch_id = ?1 AND pinned = 1",
+            rusqlite::params![b],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+    };
+    assert_eq!((pinned_of("branch-a"), pinned_of("branch-b")), (1, 0));
+}

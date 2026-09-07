@@ -458,6 +458,22 @@ because a change note that nobody can type is the least valuable half of §6 and
 the seam is genuinely clean. But Rule 3 is the document author's to waive, not
 the implementer's to reinterpret.
 
+### Phase 2 status
+
+Landed so far: the **graph↔graph differ** (§10, `topologyRevisionDiff.ts`,
+25 tests), the **read path** (`list_topology_revisions`,
+`load_topology_revision`), and **pin/unpin** (`pin_topology_revision`).
+
+Pin deserves its own note, because Phase 1 left §4's central protection
+*inert*. The deflation logic honoured `pinned` and was tested — by setting the
+column with raw SQL. Nothing in production could ever set it, so "a known-good
+graph stays restorable however busy the branch gets after it" described a
+guarantee no merchant could actually claim. Wiring the command is what makes
+§4 real rather than merely correct in principle.
+
+Remaining: the overlay module itself, restore-to-draft, and the pruned-snapshot
+messaging.
+
 ### Build gate for every phase
 
 No phase begins until the previous one is green. One gate command, run at the

@@ -247,6 +247,35 @@ pub struct TopologyRevisionGraphResult {
     pub diagram: Option<Value>,
 }
 
+/// ADR #46 §4: pin or unpin one revision, exempting it from deflation.
+///
+/// Gated on `TOPOLOGY_WRITE`, deliberately unlike its two read siblings.
+/// Reading history answers an auditor's question, so it rides `AUDIT_VIEW`;
+/// pinning changes what stays RESTORABLE, which is an operational topology
+/// decision and the same gate Apply itself needs. A user who cannot deploy
+/// should not decide which deploys are protected.
+#[tauri::command]
+pub async fn pin_topology_revision(
+    session_token: String,
+    branch_id: Option<String>,
+    revision: i64,
+    pinned: bool,
+    state: State<'_, AppState>,
+) -> Result<TopologyRevisionPinResult, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let global_db = state.db.lock().await;
+    {
+        let global_store = Store::new(&global_db);
+        require_permission_for_user(&global_store, &session.user_id, permissions::TOPOLOGY_WRITE)?;
+    }
+    set_topology_revision_pinned(
+        &global_db,
+        branch_id.as_deref().unwrap_or(""),
+        revision,
+        pinned,
+    )
+}
+
 /// ADR #46 §1/§8: one branch's deploy history, newest first, metadata only.
 ///
 /// Gated on `AUDIT_VIEW`, not `TOPOLOGY_WRITE`. Revision history answers the

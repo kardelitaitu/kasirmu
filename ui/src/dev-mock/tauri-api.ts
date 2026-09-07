@@ -2263,6 +2263,40 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     return { revision: mockTopology.revision };
   },
 
+  // ADR #46 §4: pin/unpin. Mirrors the real command's three-way answer —
+  // a pin on an already-deflated row succeeds but is not restorable, and an
+  // unpin that leaves the row past the budget warns that the next tick prunes
+  // it. Keeping the dev-mock honest here is what lets the browser states be
+  // developed without a running desktop client.
+  'pin_topology_revision': (args) => {
+    const { revision, pinned } = (args as { revision?: number; pinned?: boolean }) ?? {};
+    const row = mockTopologyRevisions.find((r) => r.revision === revision);
+    if (!row || pinned === undefined) {
+      return {
+        status: 'not-found',
+        revision: revision ?? 0,
+        pinned: pinned ?? false,
+        restorable: false,
+        prunedByNextSweep: false,
+      };
+    }
+    row.pinned = pinned;
+    saveMockTopologyRevisions(mockTopologyRevisions);
+    const unpinned = mockTopologyRevisions
+      .filter((r) => !r.pinned)
+      .sort((a, b) => b.revision - a.revision);
+    const cutoff = unpinned.length > MOCK_TOPOLOGY_REVISION_KEEP
+      ? unpinned[MOCK_TOPOLOGY_REVISION_KEEP]!.revision
+      : null;
+    return {
+      status: 'updated',
+      revision: row.revision,
+      pinned: row.pinned,
+      restorable: row.diagram !== undefined,
+      prunedByNextSweep: cutoff !== null && row.pinned === false && row.revision <= cutoff,
+    };
+  },
+
   // ADR #46 §1/§8: metadata only, newest first — the diagram is fetched per
   // revision by `load_topology_revision`, mirroring the real payload bound.
   'list_topology_revisions': (args) => {
