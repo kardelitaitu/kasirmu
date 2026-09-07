@@ -271,26 +271,44 @@ access: {
       the local-only `SubscriptionContext` flow so the Tools gate can distinguish
       active, expired, canceled/paused, loading, and unavailable states. Do not
       retain the current `caps === null` fail-open behavior for clickability.
-- [ ] **Replace unused `cap` configuration with declarative access policy.** Each
+      — **STALE 2026-09-07: already delivered by the Phase 1 stream** —
+      `SubscriptionContext` now carries the §B lifecycle `state`
+      (active/grace/expired/canceled/paused/unavailable) with fail-closed
+      semantics, plus the `useAdminGate()` hook; this slice consumed it
+      (`ab410844`) rather than re-implementing it.
+- [x] **Replace unused `cap` configuration with declarative access policy.** Each
       top-level page should configure `minimumRole` and `minimumTier`; role
       hierarchy is inherited upward (`manager` includes admin/owner), and a
       tier-ineligible card remains visible, greyed out, and non-clickable with a
       localized badge. Audit Log is fixed at `minimumTier: 'premium'`.
-- [ ] **Define the canonical tier ordering and tier policy map.** Current keys are
+      — **DONE 2026-09-07, `ab410844`** (see the implementation journal below).
+- [x] **Define the canonical tier ordering and tier policy map.** Current keys are
       `free`, `plus`, `pro`, `premium`, and `enterprise`; minimum-tier checks
       require a single centrally owned ordering and localized display names.
       Product mapping is now Analytics/Reports=`pro`, Audit Log/Promotions=`premium`,
       and Settings > Data & Sync's Data Management/Cloud Sync=`plus`; basic
       Offline Queue visibility is available to all active tiers.
-- [ ] **Add subscription-state and locked-card tests.** Cover loading, active,
+      — **ordering DONE 2026-09-07, `ab410844`** (`ui/src/utils/tierLevel.ts`,
+      fail-closed on unknown tiers; display names are per-tier FTL badge keys).
+      The policy map rides the access matrix in `tools.tsx` — same commit.
+- [x] **Add subscription-state and locked-card tests.** Cover loading, active,
       insufficient tier, expired, canceled/paused, unavailable, and higher-role
       inheritance. Cover Audit Log at Premium/Enterprise, Memo at Pro+,
       and locked below their minimum tiers. Account for the desktop debug
       build's Free-to-Premium bootstrap.
+      — **DONE 2026-09-07, `ab410844`** (render suite in WorkspaceHome.test.tsx:
+      tier lock, role inheritance, manager-locked Settings, grace/expired
+      validity; matrix + parity pins in WorkspaceHomeTools.test.tsx). The
+      loading state is covered by the §B contract itself (SubscriptionContext
+      gates + this slice's `loading`-stays-open rule for role-only tools).
+      The debug-bootstrap caveat is documented in the journal below.
 - [ ] **Implement Memo lifecycle.** Start with one terminal per Memo,
       manager-scoped authorship, read-only terminal access, immutable published
       revisions, delivery/acknowledgement states, seven-day default expiry, and
       policy-defined retention. Add location-wide broadcast later.
+      — **STALE 2026-09-07: delivered by the Phase 2 memo stream** (rulings and
+      journal in `todo-global-saas-2.md`; multi-location targeting widened
+      further in `4df091d3`). The home Memo card rides `ab410844`.
 - [ ] **Add an information-architecture and gate parity test.** Verify every
       top-level page has a registered route, its role policy agrees with the
       route policy, and its tier policy (Analytics/Reports Pro+, Audit Log
@@ -320,7 +338,8 @@ access: {
 
 ## Mechanics reference (current implementation)
 
-- `TOOLS: ToolItem[]` — module-level array (line ~104): `id`, `route`, `labelKey`,
+- `TOOLS: ToolItem[]` — module-level array (line ~104): `id`, `route`,
+  `labelKey`,
   `descKey`, `minRole`, optional `cap`, inline SVG `icon`.
 - `ToolItem` interface (line ~77): `cap?: keyof SubscriptionCapabilities` — unused
   by current Tools entries and targeted for replacement by `access`.
@@ -328,4 +347,84 @@ access: {
 - Section renders only when `visibleTools.length > 0` — the redesigned section
   should preserve role hiding but keep subscription-ineligible cards visible.
 - Tests: `ui/src/__tests__/WorkspaceHome.test.tsx`.
+- i18n keys: `workspace-home-<id>-title/-desc` in the workspace FTL bundle.
+
+*(Mechanics above describe the pre-`ab410844` shape and are kept for audit
+trail; the current catalogue lives in `ui/src/features/workspaces/tools.tsx` —
+grouped, declarative `access`, consumed by WorkspaceHome's gate stack.)*
+
+---
+
+## Implementation journal — home Tools rebuilt (2026-09-07, `ab410844`)
+
+**Scope.** The agreed redesign of the home-screen Tools section, executed
+while the topology/a11y/ADR-47-slice-3 streams owned their files. Four
+pieces:
+
+1. **Catalogue module `ui/src/features/workspaces/tools.tsx`.** Every tool
+   (now 17: the 14 prior entries plus the IA's **Topology Editor** and
+   **Memo** cards) declares `access: { minimumRole, minimumTier,
+   lockBelowRole? }` and a `group`. Groups: Operations (topology, staff,
+   locations, terminals, shifts, memo, promotions), Insights (analytics,
+   reports, audit), Configuration (settings, cloud-sync, tax-config,
+   exchange-rates, offline-queue, features, data-management). The Matrix
+   pins are locked by tests, not prose.
+
+2. **Canonical tier ordering `ui/src/utils/tierLevel.ts`** — `TIER_LEVEL`
+   + `tierSatisfies`, fail-closed on unknown/absent current tiers
+   (matching the §B contract that a missing subscription never grants
+   tiered access).
+
+3. **Gate stack in WorkspaceHome** (lowest precedence first):
+   section visibility (manager+ only, unchanged) → role gate (below
+   minimum = hidden, except `lockBelowRole` = locked card — Settings is
+   the only one, per the matrix's "manager sees locked card") →
+   subscription validity (role-only tools stay open in `active`/`grace`
+   AND `loading` — the first fetch must not flash-lock the section — and
+   hard-lock on expired/canceled/paused/unavailable) → tier gate
+   (`tierSatisfies`) + the §B `useAdminGate()` for every `minimumTier !==
+   'free'` tool (locks the moment the subscription leaves `active`;
+   grace never re-opens administrative features). Locked cards are
+   visible, greyed (`aria-disabled`, non-interactive `div`), with a
+   localized reason badge — minimum-tier, "Subscription inactive", or
+   "Admin access required".
+
+4. **FTL**: 14 new keys × 2 locales (group headers, per-tier
+   `Requires … plan` badges — per-tier keys instead of a templated
+   `$tier` so the no-bundle test fallbacks stay clean —, subscription /
+   role reasons, topology + memo title/desc).
+
+**Tests (57 green).** New `WorkspaceHomeTools.test.tsx` is data-level:
+matrix pins, group membership/order, route parity — every tool route
+resolves to a registered page (`settings/*` deep links must resolve the
+settings hub), and the home `minimumRole` is never LOOSER than the
+route's `requiredRole` (home-stricter is the documented policy choice;
+Settings stays `manager` + authoritative `settings:read` at the route
+until the §H scope pass). WorkspaceHome.test.tsx render suite covers
+tier lock + badge, role inheritance, manager-locked Settings,
+grace-vs-expired validity split, and the new cards.
+
+**Deliberate non-changes.** Route registrations untouched (the §H
+settings-scope todo owns the route-level Settings role/permission
+rework; the matrix is enforced at the front door this slice owns).
+Config pages are NOT moved into the Settings master-detail yet — the IA
+nesting is gated on the settings-scope definition todo. Shifts stays
+role-only in Operations (matrix TBD). The debug build's
+Free→Premium bootstrap still means local dev looks fully entitled —
+unverified locally, by design.
+
+**Validation under contention.** Three other streams were mid-flight;
+the a11y stream's uncommitted `useFocusTrap.ts` edit broke whole-project
+tsc AND every vitest transform (transitively imported), so this slice
+was verified in an isolated `git worktree` of HEAD + the ten slice
+files (eslint clean, full `tsc --noEmit` clean, 57/57 tests), then the
+worktree was removed. The typecheck gate skip is documented in the
+commit body per the R144 precedent. The compliance suites flagged only
+pre-existing HEAD debt in topology-stream files (NodeTopologyEditor.css
+hardcoded font-size, topologyNodeCard titles above baseline,
+settings-active-section-scope dead class) — none from this slice. The
+staged-only bundle-parity gate reads untracked sources too, so it
+elected the one missing overlay key (`topology-rev-browser-loading-one`)
+into this commit's FTL bundles to unblock its own run — the topology
+stream's authoring UI may still be pending at their next read.
 - i18n keys: `workspace-home-tools-section`, `workspace-home-<id>-title/-desc` in the workspace FTL bundle.
