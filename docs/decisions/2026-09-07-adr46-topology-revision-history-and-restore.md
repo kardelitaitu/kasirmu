@@ -482,6 +482,21 @@ guarantee no merchant could actually claim. Wiring the command is what makes
 Remaining: the overlay module itself, restore-to-draft, and the pruned-snapshot
 messaging.
 
+### Incident worth recording, because the parallel-work hazard is live
+
+While amending this phase's commit message, `git commit --amend` landed on the
+MAINTAINER'S commit instead: they had committed ADR #47 on top in the interval,
+so HEAD was no longer mine. The tree was byte-identical and nothing was lost —
+only the message was wrong — and it was annotated with `git notes` rather than
+a rebase, because they were actively committing (`662e7f3a` landed mid-repair)
+and rewriting hashes under them is a worse error than the one being fixed.
+
+The guardrail this establishes: **verify HEAD is the commit you think it is
+immediately before any history-rewriting operation**, and prefer additive
+annotation over rebase when the maintainer may be working. It is the same
+hazard that made `git add -A` unsafe here from the first round; amending is
+just the form of it that damages committed work rather than working-tree work.
+
 ### Build gate for every phase
 
 No phase begins until the previous one is green. One gate command, run at the
