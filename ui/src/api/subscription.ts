@@ -128,6 +128,6 @@ export const explainFeatureAvailability = (
   feature: AvailabilityFeatureKey,
 ): Promise<FeatureVerdict> =>
   loggedInvoke<FeatureVerdict>('explain_feature_availability_scoped', {
-    session_token: sessionToken,
+    sessionToken,
     feature,
   });

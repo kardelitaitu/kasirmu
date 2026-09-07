@@ -2042,14 +2042,29 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     addons: [],
   }),
 
-  // Mock tenant is Premium + active with unlimited quotas, so every feature is
-  // available (reason null). Keeps the verdict consistent with the premium caps
-  // above and the fail-closed contract: an unknown feature key is still reported
-  // unavailable rather than silently invented.
+  // Mock tenant is Premium + active with unlimited quotas, so every known
+  // feature is available (reason null) — consistent with the premium caps
+  // above. An unknown key is rejected rather than echoed back as available,
+  // mirroring the real command's fail-closed AppError::Invalid.
   'explain_feature_availability_scoped': (raw) => {
     const { feature } = (raw as { feature?: string }) ?? {};
+    const known: string[] = [
+      'supports_qris',
+      'supports_analytics',
+      'supports_loyalty',
+      'supports_daily_dashboard',
+      'supports_cloud_sync',
+      'sales_history_days',
+      'locations',
+      'staff_users',
+      'pos_instances',
+      'warehouses',
+    ];
+    if (!feature || !known.includes(feature)) {
+      throw new Error(`unknown feature key ${JSON.stringify(feature)}`);
+    }
     return {
-      feature: feature ?? 'supports_qris',
+      feature,
       available: true,
       reason: null,
       detail: {
