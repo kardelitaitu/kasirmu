@@ -24,6 +24,13 @@ export interface TooltipProps {
   portal?: boolean;
   /** Prevent the tooltip text from wrapping onto multiple lines. */
   nowrap?: boolean;
+  /** Turn the tooltip off entirely: no hover/focus handling, no bubble,
+   *  no aria wiring — the trigger renders as if unwrapped. Use when the
+   *  trigger's context makes the tooltip redundant. E.g. the settings
+   *  sidebar suppresses nav tooltips while expanded (labels are visible).
+   *  This must be a prop, not CSS: portal bubbles live in document.body,
+   *  so descendant-selector suppression can never reach them. */
+  disabled?: boolean;
   /** The element that triggers the tooltip on hover/focus. */
   children: ReactElement;
 }
@@ -49,6 +56,7 @@ export default function Tooltip({
   portal = false,
   nowrap = false,
   align = 'center',
+  disabled = false,
   children,
 }: TooltipProps) {
   const [visible, setVisible] = useState(false);
@@ -74,18 +82,20 @@ export default function Tooltip({
   );
 
   const startShow = useCallback(() => {
+    if (disabled) return;
     // Capture trigger position before showing (portal needs viewport coords)
     if (portal && triggerRef.current) {
       setTriggerRect(triggerRef.current.getBoundingClientRect());
     }
     clearTimeout(hideTimer.current);
     showTimer.current = setTimeout(() => setVisible(true), showDelay);
-  }, [showDelay, portal]);
+  }, [showDelay, portal, disabled]);
 
   const startHide = useCallback(() => {
+    if (disabled) return;
     clearTimeout(showTimer.current);
     hideTimer.current = setTimeout(() => setVisible(false), hideDelay);
-  }, [hideDelay]);
+  }, [hideDelay, disabled]);
 
   const handleBlur = useCallback(
     (e: React.FocusEvent) => {
@@ -207,6 +217,13 @@ export default function Tooltip({
       {content}
     </div>
   );
+
+  // Disabled tooltips render the trigger only — no handlers, no bubble,
+  // no aria wiring. Keeping the .tooltip-wrapper div preserves the layout
+  // contract (display:flex; width:100%) for the trigger's parent.
+  if (disabled) {
+    return <div className="tooltip-wrapper">{children}</div>;
+  }
 
   return (
     <div

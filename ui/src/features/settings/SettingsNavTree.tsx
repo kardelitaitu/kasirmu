@@ -790,7 +790,18 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
                       {cat.keys.map((key, itemIdx) => {
                         const item = NAV_ITEMS.find((n) => n.key === key)!;
                         return (
-                          <Tooltip key={key} content={l10n.getString(NAV_L10N_KEYS[item.key] ?? '')} showDelay={800} portal>
+                          <Tooltip
+                            key={key}
+                            content={l10n.getString(NAV_L10N_KEYS[item.key] ?? '')}
+                            showDelay={800}
+                            portal
+                            // Suppressed while expanded: labels are already
+                            // visible, so a bubble repeating the label reads
+                            // as a double tooltip. Must be a prop, not CSS —
+                            // portal bubbles live in document.body, outside
+                            // the sidebar's descendant-selector reach.
+                            disabled={!sidebarCollapsed}
+                          >
                             <div className="settings-nav-item-wrapper">
                               <button
                                 type="button"

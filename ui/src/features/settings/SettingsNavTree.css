@@ -22,10 +22,11 @@
   flex-shrink: 0;
 }
 
-/* Suppress tooltips in expanded sidebar (labels are visible). */
-.settings-sidebar:not(.collapsed) .tooltip-content {
-  display: none;
-}
+/* (Historical note) Tooltips used to be suppressed in the expanded sidebar
+   via `.settings-sidebar:not(.collapsed) .tooltip-content { display:none }`.
+   Since the portal migration (bubbles render in document.body) that
+   descendant selector can no longer match; suppression is now done in the
+   component with <Tooltip disabled={!sidebarCollapsed}>. */
 
 .settings-sidebar.collapsed {
   width: 3.5rem;
@@ -504,19 +505,17 @@
   color: var(--color-accent);
 }
 
-/* Category header tooltip in collapsed mode — the header button itself
-   is display: none, but the title attribute on the wrapping div provides
-   a native tooltip when hovering over the collapsed section area. */
+/* Collapsed section area keeps position:relative for icon anchoring.
+   (The old comment about a native title tooltip on the wrapping div is
+   stale — the markup no longer sets one; nav items carry their labels
+   in the React tooltip, category headers expose aria-labels only.) */
 .settings-sidebar.collapsed .settings-sidebar-section {
   position: relative;
 }
 
-/* Ensure tooltips appear in collapsed sidebar (hidden in expanded mode
-   via .settings-sidebar:not(.collapsed) .tooltip-content).
-   Tooltips use a portal to document.body so they escape overflow clipping. */
-.settings-sidebar.collapsed .tooltip-content {
-  display: block !important;
-}
+/* (Historical note) `.settings-sidebar.collapsed .tooltip-content
+   { display:block !important }` was removed: portal bubbles live in
+   document.body, so descendant rules never reached them anyway. */
 
 .settings-nav-icon {
   width: 1.375rem;
