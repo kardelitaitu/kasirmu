@@ -347,7 +347,9 @@ Scope findings from the pre-implementation investigation, in execution order:
   the Go server keeps emitting `max_stores` until its own task renames the
   wire field with a versioned payload migration (license-server + admin
   dashboard + any server-side tests). Split: local rename now, wire rename
-  follows.
+  follows. (Wire rename has now landed — see the 1g entry below; the
+  dual-emit + dual-read it shipped is the "versioned payload migration"
+  resolved into a concrete compat design.)
 - **Quota enforcement path**: `store.enforce_store_quota(&tier)` in
   `store_profiles.rs:202`, `enforce_staff_quota` in `staff.rs`,
   `max_stores()` in `subscription.rs:137` (`Free/OneTime/Plus=1, Pro=2,
@@ -636,6 +638,56 @@ Scope findings from the pre-implementation investigation, in execution order:
         `MultiStoreDashboardScreen`, `TopologyScreen`: 63 tests) pass;
         `npm run typecheck`, `npm run lint -- --quiet`, `cargo fmt --all --
         --check`, and `git diff --check` pass.
+  - [x] **2026-09-07 — 1g license-server wire rename completed.**
+        `851d9a02` (Go server) + `662e7f3a` (Rust client). The signed
+        payload's primary quota field is now `max_locations`
+        (`SubscriptionPayload.MaxLocations`), and the plan's "versioned
+        payload migration" resolved into a concrete dual-emit / dual-read
+        compat design instead of a version bump:
+        - **Go (dual-emit):** every payload carries BOTH wire names.
+          `signSubscription` forces `MaxStores = MaxLocations` at the single
+          choke point all nine build sites pass through (activate, renew,
+          resume, admin extend, admin grant, Midtrans provision + grace,
+          Paddle provision/update + grace), so a missed site can never emit
+          a divergent or silently-zero legacy value. Dual-emit is required,
+          not cosmetic: a pre-rename client's `LicenseStatusResponse` had
+          `#[serde(default)]` on `max_stores`, so dropping the legacy key
+          would read quota 0 — which the server treats as unlimited
+          (fail-open). `/api/v1/license/status` dual-emits both keys for
+          the same reason; the admin `/api/v1/web/usage` endpoint renamed
+          outright (same binary serves it, no stale-client concern).
+        - **Storage unchanged on purpose:** PocketBase `license_keys` /
+          `subscriptions` keep the `max_stores` field name — a PB field
+          rename is a live-data migration the 1g scope never asked for;
+          SCHEMA.md now documents the storage↔wire mapping.
+        - **Rust (dual-read):** `SignedSubscriptionPayload` and
+          `LicenseStatusResponse` carry BOTH names as `Option<i64>` with
+          `effective_max_locations()` resolvers (prefer `max_locations`).
+          The two-Option shape is load-bearing: a `serde(alias)` was tried
+          first and REJECTED the dual-emit payload ("duplicate field
+          `max_locations`" — serde treats primary + alias as one field),
+          which is exactly the shape the compat window produces. Both
+          fields `#[serde(default)]` preserve the pre-1g behavior of a
+          missing quota (0) and `skip_serializing_if` keeps
+          re-serialization honest. `store_subscription` persists via the
+          resolver into the local `max_locations` column; the desktop
+          `ServerLicenseStatusDto` IPC field stays `max_stores` (the UI
+          consumes it — a UI slice, not this wire contract) and maps from
+          the resolver.
+        - **Docs:** DEPLOY.md sample payload + activation checklist updated
+          (max_locations with the legacy note); SCHEMA.md §3 documents that
+          `max_stores` is the storage name and the wire emits both.
+        - Verification: `gofmt -l` clean, `go vet ./...` clean,
+          `go test -short ./...` ok (full license-server suite, 114s);
+          `cargo test -p oz-core --lib license_verification` 21 passed
+          (three wire shapes pinned: legacy-only, new-only, dual-emit);
+          `cargo check -p oz-pos-tablet -p oz-api -p oz-pos-app` clean;
+          `cargo test -p oz-pos-app --lib license` 14 passed. The contract
+          test asserting the /web/usage shape now pins `max_locations`.
+        - Rotation note: the legacy keys may be dropped only when no
+          un-upgraded client can poll `/status` or parse a re-signed
+          payload — i.e. never silently; track it as its own slice with a
+          fleet-version check, not a cleanup.
   - [x] **2026-09-06 — Legal Entity schema foundation completed.** Added and
         registered `20260908_legal_entities.sql`. It creates the first-class
         `legal_entities` table, creates one deterministic `Default Legal Entity`
@@ -796,10 +848,12 @@ Scope findings from the pre-implementation investigation, in execution order:
             Indonesian pricing cards/comparison rows plus both mirrored
             subscription-tier records; warehouse copy remains separate
             workspace copy, not a hierarchy resource.
-      - [ ] 1g. License-server wire rename (deferred, versioned): Go payload
-            field `max_stores` → `max_locations` with dual-read for old
-            signed payloads; admin dashboard. Not required for the local
-            rename (signature verifies raw stored payload bytes).
+      - [x] 1g. License-server wire rename (2026-09-07, `851d9a02` Go +
+            `662e7f3a` Rust): Go payload field `max_stores` → `max_locations`
+            with dual-read for old signed payloads; admin dashboard. Not
+            required for the local rename (signature verifies raw stored
+            payload bytes). Evidence bullet in the implementation journal
+            below (1g slice).
 - [ ] **Implement Legal Entity and the §G default-entity migration.** Add the
       Legal Entity level to schema, backend authorization, and API; then run the
       §G migration (auto-create one Default Legal Entity per existing
@@ -1923,3 +1977,156 @@ the note input, then the concurrency test) — STILL OPEN, closes the
 Phase-1 gate and unblocks the differ-committed browser work; (5) ADR #47
 awaits the sole-maintainer ruling before any scoped-authorization
 implementation begins.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 56)
+
+**REAL DEFECT found by the tooltip agent (mid-debug, do not lose it).**
+`ui/src/__tests__/zz-repro-tooltip.test.tsx` (temporary repro, `zz-`
+prefixed, deliberately failing) pins a suspected Tooltip defect:
+the **disabled -> enabled flip path throws
+`NotFoundError: The node to be removed is not a child of this node`**.
+
+Trigger path is REAL PRODUCTION USAGE: `SettingsNavTree.tsx:803` passes
+`disabled={!sidebarCollapsed}`, so every sidebar collapse/expand flips the
+prop on every nav item's Tooltip. The landed `6a0e1e55` cleanup (which
+fixed the stuck-tooltip bug) tests `disabled` statically only — the dynamic
+flip detaches the portal bubble and the cleanup's DOM removal then fails.
+
+**Required disposition:**
+1. Fix the component, not the test: the cleanup must be idempotent-safe
+   (`node.remove()` or a parentNode guard) and the disabled-flip path must
+   reset timers/cleanup without touching a detached portal node.
+2. Then convert the repro into a permanent regression test inside
+   `Tooltip.test.tsx` (the flip path test) — and DELETE the `zz-` scratch
+   file. The scratch file sits in the default vitest glob and makes the UI
+   suite RED right now; it must never be committed as-is.
+3. Do not commit anything UI-side while the suite is red (this supervisor's
+   Round-4 lesson about gate color applies).
+
+Also noted: the real Tooltip suite passes 36/36 — the landed commit is not
+wholesale broken; the flip path is the specific gap.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 56, second entry)
+
+**Gate assessment — `f774fe60` (read path): crossed, but not a violation.**
+The commit message calls it "Phase 2's prerequisite" and argues its gates
+explicitly — but it did not seek the ruling my Round-33 boundary required
+for anything beyond the differ. Supervisory ruling now, made explicit so
+the boundary is unambiguous:
+
+- **Data/read plumbing is NOT Phase-2 UI.** The hard-block (Round 33) bars
+  the version browser overlay that MOUNTS revisions and calls restore. The
+  read path is Phase-1-adjacent infrastructure: it exposes rows Phase 1
+  already writes, changes no editor state, and its gates are green. It is
+  ACCEPTED, retroactively, as gate-adjacent — and the acceptance is this
+  supervisor's responsibility, not the agent's.
+- **The line for the future:** anything that RENDERs revisions (overlay,
+  panel, modal) remains hard-blocked until the extraction + note input +
+  concurrency test close Phase 1. Data plumbing must also stop advancing
+  beyond this point — read path exists now; building more of it before the
+  gate closes is accumulation, not groundwork.
+- **Process note, second occurrence:** both crossings were silent on the
+  ruling in their messages. The fix is cheap: one line — "crosses the
+  Round-N gate; justification below". The next silent crossing of ANY
+  standing supervisor ruling becomes a revert, per Round 33's escalation
+  ladder. Say the words.
+
+The tooltip disabled-flip defect (Round-56 first entry) remains the UI
+blocker; its repro is still red in the tree and the scratch file must not
+commit.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 58)
+
+**Pin/unpin slice assessment + the accumulation ruling, made sharper.**
+
+What's in tree: `set_topology_revision_pinned` (store), `pin_topology_revision`
+(IPC, gated `TOPOLOGY_WRITE` — correctly an operator verb, unlike the reads'
+`AUDIT_VIEW`), and six tests. Semantics are right: pin-on-deflated succeeds
+with `restorable: false` ("refusing would imply the snapshot could come
+back"); unpin warns `pruned_by_next_sweep` because removing a pin re-ranks
+the budget and can push a DIFFERENT older row out; pin result and sweep
+share one extracted cutoff.
+
+**Ruling.** The ADR's Rollout lists pin/unpin under Phase 2, and Phase 1's
+gate is still open — so per the Round-36 rule this slice does not commit
+yet. But it is ACCEPTED as in-tree work, on one reading: the pin COLUMN has
+been live in the retention sweep since 1c, and a mechanism no command can
+set is dead code — this slice completes §4's operability rather than
+starting new browser scope. What is NOT acceptable is a third advance:
+
+1. The pin/unpin slice does not commit until the Phase-1 gate closes (with
+   the extraction commit, per Round 24).
+2. **No further Phase-2 slices may START.** The next topology session is
+   the extraction. The tree already holds two uncommitted Phase-2 slices;
+   the gate has been open since Round 29 (adjudicated Round 24) while
+   higher-signal work kept outranking it. The extraction is two hours of
+   work with a written plan — there is no remaining justification for
+   deferral.
+3. The slice's eventual commit message must note the Rollout-list question
+   (ADR Phase 2 lists pin/unpin; the store half landed early as retention
+   completeness) — the same one-line honesty rule as the gate crossings.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 59)
+
+**Second session deferral of the extraction.** The topology session that
+ran after Round 58 completed the pin/unpin slice's IPC registrations
+(+4 in `lib.rs` — finishing already-approved work, not new scope — the
+Round-58 rule is formally honored) but did not start the extraction.
+Meanwhile two legitimate non-Phase-2 slices advanced: the tablet ack
+landing (`b9278fb0`, clean) and the **license-server 1g wire rename in
+flight** — the last deferred sub-item of the Store→Location rename, using
+the versioned dual-read the P0 item specified (`MaxLocations` primary;
+`MaxStores` kept for the client rotation window and forced to mirror at
+signature time; storage keeps the historical column name). When it lands,
+the rename P0 checkbox can close its final sub-item.
+
+**Standing consequence, restated once:** the browser overlay and all
+remaining Phase-2 UI stay hard-blocked until the extraction + note input +
+concurrency test land. If the next topology session again defers the
+extraction, the supervisor will recommend to the maintainer that the
+Phase-2 agent be paused until it is done — the interleaving incentive is
+the reason the gate keeps losing to newer work, and pausing removes the
+incentive.
+
+---
+
+## Supervisor log — 2026-09-07 (Round 63) — tooltip stream closed; 3 stale-red files need triage
+
+**`05cfdd02` resolved the tooltip stream exactly as the evidence demanded:**
+the message names the true root cause (SettingsScopeTag's native `title=`,
+from 77b0ce21), characterizes the earlier suppression attempt as wrong
+and reverts it — `Tooltip.tsx` verified byte-identical to `da7d43be` — and
+ships a 174-line compliance gate (`nativeTooltipCompliance.test.ts` +
+baseline JSON) that freezes the native-title count so it can only shrink.
+Both suites 38/38 at HEAD. R61's two gates: the message IS the written
+disposition (root cause named, wrong fix reverted), and the repro question
+was closed by the Round-62 probes. Stream accepted; no further tooltip
+work needed.
+
+**New finding — 3 red files in the full UI suite (8731 pass / 2 fail /
+2 skipped), all PRE-EXISTING at earlier HEADs, none caused by the tooltip
+commit:**
+1. `screenExtraction.test.ts` — expects `stores/MultiStoreDashboardScreen.tsx`,
+   deleted from the tree long ago (pinned expectation survived a rename
+   cleanup). Stale pin: update the expectation or restore the file.
+2. `dynamicFluentFamilies.test.ts` — expects `topology-new-store` l10n ids
+   that `f5e191aa chore(i18n): drop stale multi-store deletion entries`
+   deliberately removed while the pinning test stayed. Same class: pin and
+   source drifted; the chore commit should have updated the test.
+3. `themeTokenCompliance.test.ts` — 15 hardcoded-colour violations in
+   `SettingsScopeTag.css` (from 77b0ce21, sitting at/below a stale 0-baseline
+   until now surfaced). Token them per the compliance rule.
+
+Directive: fix all three as one small `test-drift` chore commit — update
+pins to match decided reality (deleted screens stay deleted; dropped ids
+stay dropped), and tokenize the 15 scope-tag colours. No feature work in
+that commit. These are exactly the drift the gates exist to catch; the
+suite must be green so the next real regression is visible.
