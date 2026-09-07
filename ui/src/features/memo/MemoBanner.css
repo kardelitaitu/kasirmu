@@ -204,6 +204,7 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg);
   line-height: var(--leading-tight);
+  text-align: left;
 }
 
 /* The bubble previews at most 10 lines; the full text lives in the
