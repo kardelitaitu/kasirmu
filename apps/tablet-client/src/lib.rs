@@ -431,6 +431,7 @@ pub fn run() {
                 commands::staff::get_staff_profile_scoped,
                 commands::staff::bootstrap_owner,
                 commands::subscription::get_subscription_capabilities,
+                commands::subscription::explain_feature_availability_scoped,
                 commands::categories::list_categories,
                 commands::categories::create_category_scoped,
                 commands::categories::update_category_scoped,
