@@ -224,13 +224,11 @@ describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
   //   SubscriptionTier::max_locations() in crates/oz-core/src/subscription.rs.
   // - terminals/location: tierQuotas max_pos_instances ↔ max_pos_instances().
   // - warehouse workspaces: max_warehouses() (client-side per the Go comment).
-  // - KDS screens: maxKDSForTier() in web_dashboard.go — type-gating is
-  //   enforced (allows_workspace_type), the Pro count of 2 is display-only
-  //   until Phase 1 "centralize quota enforcement" lands a server-issued
-  //   field; the number published here is the contract it must match.
-  // - products: published contract; no enforcement exists yet (the archived
-  //   plan-product-images.md max_products() never shipped). Same rule: this
-  //   row is what future enforcement must agree with.
+  // - KDS screens: max_kds_screens() + the kds branch of
+  //   enforce_instance_quota (Pro capped at 2; a C3.2 bundle-widened kds
+  //   gets the same 2-screen budget); type-gating via allows_workspace_type.
+  // - products: max_products() + enforce_product_quota, wired into both
+  //   shells' create-product commands and the REST create_product.
   // - staff: max_staff_users() + enforce_staff_quota.
   // - sales history: sales_history_days(), enforced in both shells' history.rs.
   // - grace: todo-global-saas-1.md §B (Free/OneTime 7, Plus 14, Pro 14,

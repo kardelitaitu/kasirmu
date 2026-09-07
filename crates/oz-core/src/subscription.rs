@@ -287,16 +287,18 @@ impl SubscriptionTier {
         )
     }
 
-    /// Offline grace period in days before quotas revert to Free
-    /// (subscription-tiers.md §3 Support table). Enterprise grace is
-    /// negotiated per contract — the fallback below is a generous client-side
-    /// default so a custom contract never locks a customer out client-side.
+    /// Offline grace period in days before POS runtime locks read-only
+    /// (subscription-tiers.md §Numeric Limits + todo-global-saas-1.md §B:
+    /// Free/OneTime 7, Plus 14, Pro 14, Premium 30, Enterprise 60 — the
+    /// same numbers the pricing page publishes). Standard Enterprise uses
+    /// 60; a contract requiring a different window ships as a signed
+    /// custom override, not a client-side fallback.
     pub fn offline_grace_days(&self) -> i64 {
         match self {
             Self::Free | Self::OneTime => 7,
             Self::Plus | Self::Pro => 14,
             Self::Premium => 30,
-            Self::Enterprise => 3650, // custom per contract; ~10-year fallback
+            Self::Enterprise => 60,
         }
     }
 

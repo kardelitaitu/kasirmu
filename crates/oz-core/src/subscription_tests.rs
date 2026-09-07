@@ -906,8 +906,10 @@ fn test_offline_grace_days_per_tier() {
     assert_eq!(SubscriptionTier::Plus.offline_grace_days(), 14);
     assert_eq!(SubscriptionTier::Pro.offline_grace_days(), 14);
     assert_eq!(SubscriptionTier::Premium.offline_grace_days(), 30);
-    // Enterprise grace is custom per contract — fallback must be generous.
-    assert!(SubscriptionTier::Enterprise.offline_grace_days() >= 3650);
+    // §B: standard Enterprise uses 60 days (the pricing page publishes the
+    // same number); a contract needing a different window ships as a
+    // signed custom override, not a client-side fallback.
+    assert_eq!(SubscriptionTier::Enterprise.offline_grace_days(), 60);
 }
 
 #[test]

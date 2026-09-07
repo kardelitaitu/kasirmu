@@ -46,8 +46,15 @@ the [pricing page](../../pricing/) for current prices.
 
 Subscriptions carry an expiry date and a grace period. When the subscription
 expires, the app enters the grace period and keeps working — including
-offline — until the grace date, then degrades to the free tier. Nothing is
-deleted; renewing restores your plan.
+offline — until the grace date. The window depends on your plan: Free and
+One-Time 7 days, Plus 14, Pro 14, Premium 30, Enterprise 60.
+
+After the grace window lapses, the register locks to a read-only state: no
+new sales, order changes, or sync queueing — viewing, data export, and
+sign-out remain available. Administrative features (Analytics, Reports,
+Memo, and similar) lock earlier, at the expiry date itself. Nothing is
+deleted; the register reopens automatically once connectivity returns and a
+valid subscription is verified, and renewing restores your plan.
 
 ## Machine limits
 

@@ -49,8 +49,16 @@ tanda terima tiba melalui email, lalu Anda tempel kunci ke
 
 Langganan memiliki tanggal kedaluwarsa dan masa tenggang. Saat langganan
 berakhir, aplikasi memasuki masa tenggang dan tetap berfungsi — termasuk
-offline — hingga tanggal tenggang, lalu turun ke paket gratis. Tidak ada
-yang dihapus; memperbarui akan memulihkan paket Anda.
+offline — hingga tanggal tenggang. Lamanya tenggang tergantung paket: Free
+dan One-Time 7 hari, Plus 14, Pro 14, Premium 30, Enterprise 60.
+
+Setelah masa tenggang berakhir, register terkunci menjadi hanya-baca: tidak
+ada penjualan baru, perubahan pesanan, atau antrean sinkronisasi — melihat,
+ekspor data, dan keluar tetap tersedia. Fitur administratif (Analitik,
+Laporan, Memo, dan sejenisnya) terkunci lebih awal, tepat pada tanggal
+kedaluwarsa. Tidak ada yang dihapus; register terbuka kembali secara
+otomatis begitu koneksi kembali dan langganan terverifikasi, serta
+memperbarui paket akan memulihkan paket Anda.
 
 ## Batas perangkat
 
