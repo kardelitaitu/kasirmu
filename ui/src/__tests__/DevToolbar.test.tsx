@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
 import { BrandProvider } from '@/contexts/BrandContext';
@@ -219,5 +219,43 @@ describe('DevToolbar', () => {
     await waitFor(() =>
       expect(getDevLog().some((entry) => entry.source === 'dev-toolbar' && entry.level === 'error')).toBe(true),
     );
+  });
+
+  // ── Drag position persistence ────────────────────────────────
+  // The saved position must never remount the toolbar off-screen: it is
+  // clamped into the CURRENT viewport (48px kept visible), so a stale
+  // position from a larger window still comes back. Key mirrors
+  // STORAGE_POS in DevToolbar.tsx.
+  describe('drag position persistence', () => {
+    const STORAGE_POS = 'oz-pos-dev-toolbar-pos';
+
+    afterEach(() => {
+      localStorage.removeItem(STORAGE_POS);
+    });
+
+    it('clamps a restored off-screen position back into the viewport', () => {
+      localStorage.setItem(STORAGE_POS, JSON.stringify({ x: 5000, y: 5000 }));
+      renderToolbar();
+      const toolbar = document.querySelector('.dev-toolbar') as HTMLElement;
+      expect(toolbar.style.left).toBe(`${window.innerWidth - 48}px`);
+      expect(toolbar.style.top).toBe(`${window.innerHeight - 48}px`);
+    });
+
+    it('keeps an in-viewport stored position untouched', () => {
+      localStorage.setItem(STORAGE_POS, JSON.stringify({ x: 100, y: 120 }));
+      renderToolbar();
+      const toolbar = document.querySelector('.dev-toolbar') as HTMLElement;
+      expect(toolbar.style.left).toBe('100px');
+      expect(toolbar.style.top).toBe('120px');
+    });
+
+    it('falls back to bottom-right on a corrupt stored position', () => {
+      localStorage.setItem(STORAGE_POS, JSON.stringify({ x: 'way-off', y: null }));
+      renderToolbar();
+      const toolbar = document.querySelector('.dev-toolbar') as HTMLElement;
+      // No inline left/top — the CSS default (bottom-right) applies.
+      expect(toolbar.style.left).toBe('');
+      expect(toolbar.style.top).toBe('');
+    });
   });
 });

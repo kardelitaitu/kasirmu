@@ -47,6 +47,20 @@ const THEMES: ThemeOption[] = [
 
 const STORAGE_POS = 'oz-pos-dev-toolbar-pos';
 
+// The toolbar is a fixed 256×256 panel (DevToolbar.css). Clamping keeps
+// at least the drag handle on-screen: without it, a position saved on a
+// larger window (or a drag to the viewport edge) remounts the toolbar
+// out of view on the next load, with no way to recover it.
+const TOOLBAR_SIZE = 256;
+const MIN_VISIBLE = 48;
+
+function clampToViewport(x: number, y: number): { x: number; y: number } {
+  return {
+    x: Math.min(Math.max(x, MIN_VISIBLE - TOOLBAR_SIZE), window.innerWidth - MIN_VISIBLE),
+    y: Math.min(Math.max(y, MIN_VISIBLE - TOOLBAR_SIZE), window.innerHeight - MIN_VISIBLE),
+  };
+}
+
 // Spawned memos cycle the display-duration ladder so one dev session can
 // exercise every expiry class without re-authoring by hand.
 const SPAWN_DURATIONS: MemoDuration[] = ['12h', '24h', '3d', '7d', '30d'];
@@ -60,16 +74,12 @@ function useDragToolbar() {
       const stored = localStorage.getItem(STORAGE_POS);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (
-          typeof parsed.x === 'number' &&
-          typeof parsed.y === 'number' &&
-          // Validate position is within reasonable viewport bounds
-          parsed.x >= -400 && parsed.x <= 5000 &&
-          parsed.y >= -400 && parsed.y <= 5000
-        ) {
-          return parsed;
+        if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+          // Clamp into the CURRENT viewport — the saved position may
+          // predate a window resize or monitor change.
+          return clampToViewport(parsed.x, parsed.y);
         }
-        // Invalid/off-screen position — clear and reset
+        // Corrupt stored position — clear and reset
         localStorage.removeItem(STORAGE_POS);
       }
     } catch { /* ignore */ }
@@ -94,10 +104,7 @@ function useDragToolbar() {
       if (!isDragging.current) return;
       const dx = e.clientX - startPos.current.x;
       const dy = e.clientY - startPos.current.y;
-      setPos({
-        x: offset.current.x + dx,
-        y: offset.current.y + dy,
-      });
+      setPos(clampToViewport(offset.current.x + dx, offset.current.y + dy));
     };
 
     const handleUp = () => {
