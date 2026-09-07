@@ -69,6 +69,16 @@ workflow, not a silent setting change.
 - [ ] **Make feature flags and entitlements observable.** Support diagnostics
       should show why a feature is unavailable: role, scope, tier, quota, expiry,
       or server policy.
+      — **designed 2026-09-07, not yet implemented** (§"Feature-flag
+      observability — diagnostics design" below, verified against HEAD
+      `3c2fcdb8`): one session-gated verdict command
+      (`explain_feature_availability_scoped`, `settings:read`) with a
+      deterministic reason-code precedence (server_policy > lifecycle > tier
+      > quota > role > scope) derived from the capabilities surface the
+      supervisor's Round-1 watch-item told us to re-check first. Execution
+      gate: the subscription agent's in-flight §B slices commit first (their
+      `max_stores` deprecation renames fields under this surface); `scope`
+      wiring additionally waits on ADR #47's ruling.
 - [ ] **Add multi-Organization user switching.** One human identity may hold
       memberships in several Organizations; switching between them is a later
       capability built on scoped assignments, not a second hierarchy layer.
@@ -147,6 +157,115 @@ crate/typecheck gates apply; the pre-commit EOL + i18n steps run as usual.
 Claim-drift risk is handled the way the repo handles it: the doc ends with an
 explicit re-verify-on-update instruction, and the docs-auditor can stamp it
 in its next pass.
+
+## Feature-flag observability — diagnostics design (2026-09-07, DSH) — ready-to-execute, one coordination gate
+
+First slice of the §"Make feature flags and entitlements observable" item,
+designed per the supervisor's Round-1 watch-item: "Re-check what
+`capabilities` IPC already exposes before designing." Done — findings below,
+verified against HEAD `3c2fcdb8`.
+
+### What the capabilities surface already answers (verified)
+
+`get_subscription_capabilities` (registered in both clients' `lib.rs`;
+unauthenticated band per `verify-scoped-coverage.sh` ALLOWLIST) returns
+`SubscriptionCapabilitiesDto` — desktop `commands/subscription.rs:26` and the
+tablet twin carry **field parity** with `ui/src/api/subscription.ts`,
+including the §B lifecycle state that already landed (`9896dac4` state
+machine, `4acaeea9` fail-closed IPC, `1176730a` UI context):
+
+- `tier` + `state` (`active|grace|expired|canceled|paused|unavailable`;
+  non-active/non-grace ⇒ Free-tier fail-closed flags),
+- quota limits (`max_stores`/`max_pos_instances`/`max_warehouses`/
+  `max_staff_users`/`sales_history_days`, `None` = unlimited),
+- feature flags (`supports_qris`/`supports_analytics`/`supports_loyalty`/
+  `supports_daily_dashboard`/`supports_cloud_sync`), add-ons, grace days,
+- usage counts (`location_count`/`staff_count`/`terminal_count`).
+
+What it does **not** carry: `expires_at`/`grace_until` timestamps (the
+2026-09-05 `todo-tools.md` note is half-stale — `state` landed, timestamps
+did not), and — the actual observability gap — **no reason codes**.
+
+### The gap: gates are boolean walls
+
+Every gate site re-derives availability from raw booleans and cannot say
+why: `AnalyticsScreen.tsx` renders its lock on `caps && !caps.supportsAnalytics`
+alone; `WorkspaceHome` TOOLS entries carry `minRole` **and** `cap` and
+resolve them per site; the store-limit banner (C2.2) hand-rolls a quota
+comparison. The §B tests already pin one precedence
+("prefers the admin lock over the tier upsell") — but only inside each
+gate's own code, unreusable. Support diagnostics (the item's driver) has no
+surface to ask any of them why.
+
+### Design — one read-only verdict command
+
+`explain_feature_availability_scoped(feature: String, session_token,
+state) -> FeatureVerdictDto`, registered in both clients, **session-gated
+with `settings:read`** ("View store and system settings" — a real registry
+key, `platform/core/src/rbac.rs:422`; deliberately NOT in the unauth band
+like caps, because the verdict names the caller's role/scope state).
+
+```rust
+pub struct FeatureVerdictDto {
+    pub feature: String,
+    pub available: bool,
+    /// Highest-precedence reason when unavailable:
+    /// server_policy | lifecycle | tier | quota | role | scope
+    pub reason: String,
+    /// Human-detail fields the UI renders directly (no re-derivation):
+    pub detail: FeatureVerdictDetailDto,
+}
+```
+
+Reason codes, each with its resolution source:
+
+| Code | Source | Status |
+|---|---|---|
+| `server_policy` | server-issued entitlement/add-on denial in the signed `tenant_subscription` payload | exists (payload parse), surfaced nowhere today |
+| `lifecycle` | §B state machine — `expired`/`canceled`/`paused`/`unavailable` (fail-closed) | **landed** (`9896dac4`) |
+| `tier` | tier feature-flag resolution (`Tier::supports_*`) | landed |
+| `quota` | limit − usage ≤ 0 against the quota columns | columns + counts landed; comparisons live per-site |
+| `role` | caller's preset/role vs the feature's minimum role | resolvable today from the session (`isManager`/`isOwner` shape); custom-role source arrives with ADR #47 |
+| `scope` | location-scoped assignment denies this location | **blocked on ADR #47** (Proposed, awaiting ruling) — v1 returns `scope` only when the scoped-assignment table exists, else omits the code |
+
+**Precedence (deterministic, mirrors the §B test's ruling):**
+`server_policy` > `lifecycle` > `tier` > `quota` > `role` > `scope`.
+Higher-precedence wins; `scope` before `role` would name a location the user
+cannot act on when the real answer is "you hold no such role at all" — role
+first, then scope.
+
+**Feature keys v1:** the five `supports_*` flags + `sales_history_days` +
+per-quota families (`locations`, `staff_users`, `pos_instances`,
+`warehouses`) — the exact set the existing gates consume. No new flags.
+
+### Deliberately out of scope
+
+- No change to `get_subscription_capabilities` itself (every existing gate
+  keeps its shape; the verdict command is additive).
+- No UI in the same slice as the IPC — the command lands with tests first,
+  a Settings/diagnostics screen section (i18n'd, ARIA-labelled) rides
+  separately.
+- No server round-trip: verdicts derive from the same local signed row the
+  caps read uses — offline-honest by construction.
+
+### Execution order & coordination gate
+
+1. **Wait for the subscription agent's in-flight §B slices to commit** — the
+   command reads their `TenantSubscription` state machine, and their
+   `max_stores` → `max_locations` deprecation (visible deprecation warning in
+   the tablet build) will rename fields under this surface. Do not collide.
+2. Core verdict resolver (pure fn over caps + session role + usage) in
+   `oz-core` with the precedence table unit-tested exhaustively.
+3. IPC in both clients + dev-mock + `ui/src/api/` client fn; parity + i18n
+   gates; registry-key note in `verify-scoped-coverage.sh` if needed.
+4. UI surface (Settings → Diagnostics section) — separate slice.
+5. When ADR #47 lands: extend the resolver with the `scope` source and add
+   the scoped-assignment denial tests.
+
+Open question for the ruling (one line): should the verdict also expose
+`expires_at`/`grace_until` (added to the caps DTO by the subscription agent's
+slice) once they exist, as `detail` fields? Recommended yes — it turns
+"expired" into "expired 3 days ago, grace ends Friday".
 
 ---
 
