@@ -676,4 +676,94 @@ describe('useFocusTrap', () => {
     // Should not crash on unmount
     expect(() => unmount()).not.toThrow();
   });
+
+  // ── Focusable-set accuracy (UX audit round 3) ──────────────
+  //
+  // The wrap conditions compare document.activeElement against the first/last
+  // of the focusable set. If that set contains an element the browser can
+  // never land focus on, the comparison can never become true and Tab walks
+  // straight out of the dialog into the page behind it. ConfirmDialog hits
+  // this for real: its confirm button is disabled while the form is invalid
+  // and while the action is in flight (`loading`).
+
+  describe('elements the browser cannot focus', () => {
+    const pressTab = (shiftKey = false) => {
+      const spy = vi.spyOn(KeyboardEvent.prototype, 'preventDefault');
+      act(() => {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, shiftKey }),
+        );
+      });
+      return spy;
+    };
+
+    it('wraps past a disabled last button', () => {
+      elements.last.disabled = true;
+      renderHook(() => useFocusTrap({ current: elements.panel }, true, onEscape));
+      elements.middle.focus();
+
+      expect(pressTab()).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(elements.first);
+    });
+
+    it('wraps past a hidden last button', () => {
+      elements.last.hidden = true;
+      renderHook(() => useFocusTrap({ current: elements.panel }, true, onEscape));
+      elements.middle.focus();
+
+      expect(pressTab()).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(elements.first);
+    });
+
+    it('wraps past an aria-hidden last button', () => {
+      elements.last.setAttribute('aria-hidden', 'true');
+      renderHook(() => useFocusTrap({ current: elements.panel }, true, onEscape));
+      elements.middle.focus();
+
+      expect(pressTab()).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(elements.first);
+    });
+
+    it('wraps Shift+Tab past a disabled first button', () => {
+      elements.first.disabled = true;
+      renderHook(() => useFocusTrap({ current: elements.panel }, true, onEscape));
+      elements.middle.focus();
+
+      expect(pressTab(true)).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(elements.last);
+    });
+  });
+
+  // A trap that only reacts when focus sits exactly on its first/last child
+  // has no answer for focus that is already elsewhere — an overlay click, or
+  // any programmatic focus outside the panel. Tab then continues through the
+  // page behind the dialog, which is the escape the trap exists to prevent.
+  describe('focus that is outside the panel', () => {
+    const pressTab = (shiftKey = false) => {
+      const spy = vi.spyOn(KeyboardEvent.prototype, 'preventDefault');
+      act(() => {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, shiftKey }),
+        );
+      });
+      return spy;
+    };
+
+    it('pulls Tab back into the panel', () => {
+      renderHook(() => useFocusTrap({ current: elements.panel }, true, onEscape));
+      elements.outside.focus();
+      expect(document.activeElement).toBe(elements.outside);
+
+      expect(pressTab()).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(elements.first);
+    });
+
+    it('sends Shift+Tab from outside to the last element', () => {
+      renderHook(() => useFocusTrap({ current: elements.panel }, true, onEscape));
+      elements.outside.focus();
+
+      expect(pressTab(true)).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(elements.last);
+    });
+  });
 });

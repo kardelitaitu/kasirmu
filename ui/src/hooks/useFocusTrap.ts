@@ -1,6 +1,40 @@
 import { useEffect, useCallback, useRef, type RefObject } from 'react';
 
 /**
+ * Elements the browser can actually move focus to by Tabbing.
+ *
+ * `:not([disabled])` matters: a disabled control is still matched by a bare
+ * `button`/`input` selector but can never receive focus, so treating it as the
+ * first/last of the cycle makes the wrap condition unreachable and lets Tab
+ * escape the dialog. ConfirmDialog triggers this for real — its confirm button
+ * is disabled while the form is invalid and while the action is in flight.
+ */
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"]):not([disabled])',
+].join(', ');
+
+/**
+ * Attribute-level invisibility. Layout probes (offsetParent, getClientRects)
+ * are deliberately not used: jsdom reports no layout, so they would filter out
+ * every element under test. `hidden` / `aria-hidden` are checked against the
+ * element and its ancestors, which covers the common "row collapsed but still
+ * in the DOM" case.
+ */
+function isReachable(el: HTMLElement): boolean {
+  if ((el as HTMLButtonElement).disabled === true) return false;
+  return !el.closest('[hidden], [aria-hidden="true"]');
+}
+
+function focusableWithin(panel: HTMLElement): HTMLElement[] {
+  return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(isReachable);
+}
+
+/**
  * Reusable focus-trap hook for modal dialogs.
  *
  * When `active` is true, the hook:
@@ -39,13 +73,22 @@ export function useFocusTrap(
       }
       if (e.key !== 'Tab' || !panelRef.current) return;
 
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
+      const focusable = focusableWithin(panelRef.current);
       if (focusable.length === 0) return;
 
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
+
+      // Focus is not inside the panel at all — an overlay click, a
+      // programmatic focus elsewhere, or a previous escape. Comparing against
+      // first/last would never match, so Tab would keep walking the page
+      // behind the dialog. Pull it back in instead.
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || !panelRef.current.contains(active)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+      }
 
       if (e.shiftKey) {
         if (document.activeElement === first) {
@@ -74,11 +117,12 @@ export function useFocusTrap(
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-    // Auto-focus the first focusable element inside the panel.
-    const focusable = panel.querySelector<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    focusable?.focus();
+    // Auto-focus the first element the browser can actually reach. Using the
+    // same filtered set as the Tab handler keeps the two in agreement — a
+    // disabled leading button must not be "focused" (it can't be) and must not
+    // become the cycle's anchor either.
+    const focusable = focusableWithin(panel);
+    focusable[0]?.focus();
 
     // Lock body scroll.
     const originalOverflow = document.body.style.overflow;
