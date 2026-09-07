@@ -937,7 +937,7 @@ func handleActivate(app core.App) func(e *core.RequestEvent) error {
 			AllowedTypes:    allowedTypes,
 			StartsAt:        time.Now().UTC().Format(time.RFC3339),
 			ExpiresAt:       expiresAt.Format(time.RFC3339),
-			GraceUntil:      calculateGraceUntil(expiresAt).Format(time.RFC3339),
+			GraceUntil:      calculateGraceUntil(tierKey, expiresAt).Format(time.RFC3339),
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
 

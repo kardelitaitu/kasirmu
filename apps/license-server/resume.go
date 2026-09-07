@@ -107,7 +107,7 @@ func resumeSubscription(app core.App, sub *core.Record, now time.Time) (payloadS
 		}
 	}
 	newExpiresAt = oldExpiresAt.Add(extension)
-	newGraceUntil := calculateGraceUntil(newExpiresAt)
+	newGraceUntil := calculateGraceUntil(sub.GetString("tier_key"), newExpiresAt)
 
 	// Quota fields come from the paused subscription row itself so the
 	// re-signed payload matches the DB exactly.

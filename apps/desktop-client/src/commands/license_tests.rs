@@ -261,3 +261,35 @@ fn renew_license_request_deserializes() {
     assert_eq!(req.api_key, "k1");
     assert_eq!(req.key, "OZ-KEY");
 }
+
+#[test]
+fn grace_deadline_uses_the_published_per_tier_table() {
+    // §B: Free 7, Plus 14, Pro 14, Premium 30, Enterprise 60 — the same
+    // table lifecycle_state() applies, so the license-status verdict and
+    // the capabilities gate can never disagree on stale payloads.
+    let expiry = Utc::now();
+    let cases = [
+        ("free", 7i64),
+        ("plus", 14),
+        ("pro", 14),
+        ("premium", 30),
+        ("enterprise", 60),
+    ];
+    for (tier_key, days) in cases {
+        let want = expiry + chrono::Duration::days(days);
+        assert_eq!(
+            grace_deadline_for(tier_key, expiry),
+            want,
+            "tier {tier_key} must get a {days}-day window"
+        );
+    }
+}
+
+#[test]
+fn grace_deadline_fails_closed_on_unknown_tiers() {
+    // Unknown tier keys parse as Free (the shortest window) — never
+    // over-credit an unrecognized payload.
+    let expiry = Utc::now();
+    let want = expiry + chrono::Duration::days(7);
+    assert_eq!(grace_deadline_for("mystery-tier", expiry), want);
+}

@@ -243,7 +243,7 @@ func handleAdminGrantSubscription(app core.App) func(e *core.RequestEvent) error
 		maxStores, maxPOS, allowedTypes := tierQuotas(req.TierKey, "")
 		startsAt := now.Format(time.RFC3339)
 		expires := expiresAt.Format(time.RFC3339)
-		grace := calculateGraceUntil(expiresAt).Format(time.RFC3339)
+		grace := calculateGraceUntil(req.TierKey, expiresAt).Format(time.RFC3339)
 		payload := SubscriptionPayload{
 			TenantID:        tenant.Id,
 			TierKey:         req.TierKey,

@@ -185,7 +185,7 @@ func handleRenew(app core.App) func(e *core.RequestEvent) error {
 			AllowedTypes:    allowedTypes,
 			StartsAt:        time.Now().UTC().Format(time.RFC3339),
 			ExpiresAt:       newExpiresAt.Format(time.RFC3339),
-			GraceUntil:      calculateGraceUntil(newExpiresAt).Format(time.RFC3339),
+			GraceUntil:      calculateGraceUntil(tierKey, newExpiresAt).Format(time.RFC3339),
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
 

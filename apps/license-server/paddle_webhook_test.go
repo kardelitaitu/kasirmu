@@ -609,7 +609,7 @@ func TestPaddleWebhook_SubscriptionUpdated_SyncsTierAndExpiry(t *testing.T) {
 	// re-signed payload already carries calculateGraceUntil(new expires_at),
 	// and /me (subscriptionSummary) reads the record — a stale value would
 	// make the dashboard's "Grace until" disagree with the signed payload.
-	wantGrace := calculateGraceUntil(subRec.GetDateTime("expires_at").Time())
+	wantGrace := calculateGraceUntil("premium", subRec.GetDateTime("expires_at").Time())
 	gotGrace := subRec.GetDateTime("grace_until").Time()
 	if !wantGrace.Equal(gotGrace) {
 		t.Errorf("expected grace_until refreshed to %s after period extension, got %s",
@@ -826,7 +826,7 @@ func TestPaddleWebhook_SubscriptionResumed_BackToActive(t *testing.T) {
 	// refreshed and the license key's expiry re-synced — otherwise /me shows
 	// a stale grace date and the key expires at the old date while the
 	// subscription says otherwise.
-	wantGrace := calculateGraceUntil(subRec.GetDateTime("expires_at").Time())
+	wantGrace := calculateGraceUntil("pro", subRec.GetDateTime("expires_at").Time())
 	gotGrace := subRec.GetDateTime("grace_until").Time()
 	if !wantGrace.Equal(gotGrace) {
 		t.Errorf("expected grace_until refreshed to %s after resume, got %s",
@@ -919,7 +919,7 @@ func TestWebhookLifecycle_MeTracksCancelAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription not found: %v", err)
 	}
-	wantGrace := calculateGraceUntil(newEnds)
+	wantGrace := calculateGraceUntil("premium", newEnds)
 	if got := subRec.GetDateTime("grace_until").Time(); !wantGrace.Equal(got) {
 		t.Errorf("after update: expected record grace_until %s, got %s",
 			wantGrace.Format(time.RFC3339), got.Format(time.RFC3339))
@@ -975,7 +975,7 @@ func TestWebhookLifecycle_MeTracksCancelAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription not found: %v", err)
 	}
-	wantGrace = calculateGraceUntil(subRec.GetDateTime("expires_at").Time())
+	wantGrace = calculateGraceUntil("premium", subRec.GetDateTime("expires_at").Time())
 	if got := subRec.GetDateTime("grace_until").Time(); !wantGrace.Equal(got) {
 		t.Errorf("after resume: expected record grace_until %s, got %s",
 			wantGrace.Format(time.RFC3339), got.Format(time.RFC3339))

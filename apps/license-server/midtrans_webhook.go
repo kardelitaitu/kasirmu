@@ -460,7 +460,7 @@ func midtransProvision(app core.App, n midtransNotification) error {
 	// POS trusts the same payload shape regardless of how the bundle got
 	// there (checkout webhook or trial activation).
 	maxStores, maxPOS, allowedTypes := tierQuotas(tier, bundle)
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(tier, mustParseTime(expiresAt)).Format(time.RFC3339)
 	payload := SubscriptionPayload{
 		TenantID:        tenant.Id,
 		TierKey:         tier,

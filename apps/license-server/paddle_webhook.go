@@ -1074,7 +1074,7 @@ func paddleProvision(app core.App, ev paddleEvent, sendReceipt bool) error {
 	// there (checkout webhook or trial activation).
 	maxStores, maxPOS, allowedTypes := tierQuotas(tier, bundle)
 	status := "active"
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(tier, mustParseTime(expiresAt)).Format(time.RFC3339)
 	payload := SubscriptionPayload{
 		TenantID:        tenant.Id,
 		TierKey:         tier,
@@ -1256,7 +1256,7 @@ func paddleUpdate(app core.App, ev paddleEvent) error {
 	// Persist the refreshed grace window too — the dashboard reads
 	// grace_until from this record, so a stale value would make the account
 	// page's "Grace until" disagree with the re-signed payload below.
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(subRecord.GetString("tier_key"), mustParseTime(expiresAt)).Format(time.RFC3339)
 	subRecord.Set("grace_until", graceUntil)
 	if keyRecord, err := app.FindFirstRecordByData("license_keys", "paddle_sub_id", sub.ID); err == nil {
 		keyRecord.Set("expires_at", expiresAt)
@@ -1359,7 +1359,7 @@ func paddleResume(app core.App, ev paddleEvent) error {
 	// window on the record AND re-sync the license key's expiry, or /me and
 	// the POS would keep the canceled-era dates while the signed payload
 	// says otherwise.
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(subRecord.GetString("tier_key"), mustParseTime(expiresAt)).Format(time.RFC3339)
 	subRecord.Set("grace_until", graceUntil)
 	if keyRecord, err := app.FindFirstRecordByData("license_keys", "paddle_sub_id", sub.ID); err == nil {
 		keyRecord.Set("expires_at", expiresAt)

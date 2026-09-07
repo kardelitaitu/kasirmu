@@ -303,7 +303,7 @@ func handleAdminRenew(app core.App) func(e *core.RequestEvent) error {
 		sub.Set("expires_at", newExpiryStr)
 		sub.Set("status", "active")
 		// Grace must move with the expiry so row and payload agree.
-		grace := calculateGraceUntil(newExpiry).Format(time.RFC3339)
+		grace := calculateGraceUntil(sub.GetString("tier_key"), newExpiry).Format(time.RFC3339)
 		sub.Set("grace_until", grace)
 		// Re-sign with the current tier/quotas and the new expiry.
 		payload := SubscriptionPayload{
