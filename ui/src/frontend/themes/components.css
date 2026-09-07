@@ -304,6 +304,9 @@
 .noise-dither::after,
 /* Emergency fallback card — elevated surface (ERR-02) */
 .error-boundary__card::after,
+/* ADR #46 §2 deploy-history browser — explicit ::after path so the
+   shadow-coverage check sees it (the element also carries .noise-dither). */
+.topology-rev-browser::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -445,6 +448,7 @@
   .wire-label-pill::after,
   .noise-dither::after,
   .error-boundary__card::after,
+  .topology-rev-browser::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -564,6 +568,7 @@
   .wire-label-pill::after,
   .noise-dither::after,
   .error-boundary__card::after,
+  .topology-rev-browser::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,

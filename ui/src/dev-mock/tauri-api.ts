@@ -1789,6 +1789,12 @@ const MOCK_TOPOLOGY_REVISIONS_KEY = 'oz-dev-mock:topology-revisions';
 const MOCK_TOPOLOGY_REVISION_KEEP = 20;
 
 interface MockTopologyRevision {
+  /** The branch scope the row belongs to. Mirrors the real table's
+   *  `branch_id` (empty string = the unscoped legacy graph, which is its own
+   *  scope, not a catch-all). Without it the mock listed every branch's
+   *  history for any query, so a UI that ignored branch scoping would pass in
+   *  the browser and fail against the backend. */
+  branchId: string;
   revision: number;
   changeNote: string;
   publishedAt: string;
@@ -1828,8 +1834,10 @@ const mockTopologyRevisions: MockTopologyRevision[] = loadMockTopologyRevisions(
  *  Deflation drops the diagram and keeps the record — never delete the row. */
 function recordMockTopologyRevision(row: MockTopologyRevision): void {
   mockTopologyRevisions.push(row);
+  // Ranked PER BRANCH: `cleanup_old_topology_revisions` gives each branch its
+  // own budget, so a busy branch must not prune a quiet one.
   const unpinned = mockTopologyRevisions
-    .filter((r) => !r.pinned)
+    .filter((r) => !r.pinned && r.branchId === row.branchId)
     .sort((a, b) => b.revision - a.revision);
   for (const stale of unpinned.slice(MOCK_TOPOLOGY_REVISION_KEEP)) {
     delete stale.diagram;
@@ -2194,7 +2202,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // persist the diagram (node positions included) so reloads keep both the
   // node layout and the workspace instances.
   'apply_topology_diff': (args) => {
-    const { workspaceCreations, workspaceUpdates, workspaceArchives, diagramNodes, diagramWires, resolvedIssueKeys, baseRevision } = (args as {
+    const { workspaceCreations, workspaceUpdates, workspaceArchives, diagramNodes, diagramWires, resolvedIssueKeys, baseRevision, branchId, changeNote } = (args as {
       workspaceCreations?: Array<{ id: string; type_key: string; store_id: string; name: string; description?: string; colour?: string }>;
       workspaceUpdates?: Array<{ id: string; name: string }>;
       workspaceArchives?: string[];
@@ -2202,6 +2210,8 @@ const handlers: Record<string, (args: unknown) => unknown> = {
       diagramWires?: MockTopologyWire[];
       resolvedIssueKeys?: string[];
       baseRevision?: number;
+      branchId?: string;
+      changeNote?: string;
     }) ?? {};
     // Mirror the backend's optimistic-concurrency gate (topology.rs, round
     // 133): a stale baseRevision can NEVER retry successfully, so reject
@@ -2254,8 +2264,9 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     // conflict throw above already mirrors that — control never reaches here
     // on a rejected Apply.
     recordMockTopologyRevision({
+      branchId: branchId ?? '',
       revision: mockTopology.revision,
-      changeNote: (args as { changeNote?: string }).changeNote ?? '',
+      changeNote: changeNote ?? '',
       publishedAt: new Date().toISOString(),
       publishedBy: 'dev-mock',
       pinned: false,
@@ -2276,8 +2287,12 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // it. Keeping the dev-mock honest here is what lets the browser states be
   // developed without a running desktop client.
   'pin_topology_revision': (args) => {
-    const { revision, pinned } = (args as { revision?: number; pinned?: boolean }) ?? {};
-    const row = mockTopologyRevisions.find((r) => r.revision === revision);
+    const { revision, pinned, branchId } = (args as {
+      revision?: number; pinned?: boolean; branchId?: string;
+    }) ?? {};
+    const row = mockTopologyRevisions.find(
+      (r) => r.revision === revision && r.branchId === (branchId ?? ''),
+    );
     if (!row || pinned === undefined) {
       return {
         status: 'not-found',
@@ -2290,7 +2305,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     row.pinned = pinned;
     saveMockTopologyRevisions(mockTopologyRevisions);
     const unpinned = mockTopologyRevisions
-      .filter((r) => !r.pinned)
+      .filter((r) => !r.pinned && r.branchId === row.branchId)
       .sort((a, b) => b.revision - a.revision);
     const cutoff = unpinned.length > MOCK_TOPOLOGY_REVISION_KEEP
       ? unpinned[MOCK_TOPOLOGY_REVISION_KEEP]!.revision
@@ -2307,9 +2322,10 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // ADR #46 §1/§8: metadata only, newest first — the diagram is fetched per
   // revision by `load_topology_revision`, mirroring the real payload bound.
   'list_topology_revisions': (args) => {
-    const { limit } = (args as { limit?: number }) ?? {};
+    const { limit, branchId } = (args as { limit?: number; branchId?: string }) ?? {};
     const budget = Math.min(Math.max(limit ?? 50, 1), 200);
     return mockTopologyRevisions
+      .filter((r) => r.branchId === (branchId ?? ''))
       .slice()
       .sort((a, b) => b.revision - a.revision)
       .slice(0, budget)
@@ -2319,8 +2335,10 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // `deflated` and `not-found` stay distinct (ADR #46 §4): a pruned deploy
   // still happened.
   'load_topology_revision': (args) => {
-    const { revision } = (args as { revision?: number }) ?? {};
-    const row = mockTopologyRevisions.find((r) => r.revision === revision);
+    const { revision, branchId } = (args as { revision?: number; branchId?: string }) ?? {};
+    const row = mockTopologyRevisions.find(
+      (r) => r.revision === revision && r.branchId === (branchId ?? ''),
+    );
     if (!row) {
       return { status: 'not-found', revision: revision ?? 0, changeNote: '', publishedAt: '', publishedBy: '' };
     }

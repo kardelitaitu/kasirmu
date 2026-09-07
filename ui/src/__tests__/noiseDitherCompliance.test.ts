@@ -42,6 +42,9 @@ const KNOWN_NOISE_SELECTORS = [
   // their anchoring, so they use the explicit ::after path).
   '.wire-rename-input',
   '.wire-label-pill',
+  // Topology deploy-history browser (ADR #46 §2) — also carries the
+  // .noise-dither utility; listed explicitly for the shadow-coverage check.
+  '.topology-rev-browser',
   // DEPRECATED LEGACY SELECTORS (feature-specific classes)
   '.retail-shift-modal',
   '.retail-held-carts-modal',
