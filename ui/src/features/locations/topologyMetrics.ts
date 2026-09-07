@@ -83,11 +83,16 @@ export function nodeHeight(node: TopologyNodeData): number {
   return NODE_HEADER_H + mainHeight(node) + footerHeight(node);
 }
 
+/** Border-top of `.node-footer` in px — must stay in sync with the CSS.
+ *  Without this offset portRowCenterY is 1px too high: the wire endpoint
+ *  lands above the DOM circle center. */
+export const NODE_FOOTER_BORDER = 1;
+
 /** Canvas-space Y of a port row's CENTER, relative to the card's top.
  *  Left and right columns are both top-aligned; a column's row i sits at
- *  header + main + i*PORT_ROW_H, centered in its PORT_ROW_H band. */
+ *  header + main + footer-border + i*PORT_ROW_H, centered in its PORT_ROW_H band. */
 export function portRowCenterY(node: TopologyNodeData, rowIndex: number): number {
-  return NODE_HEADER_H + mainHeight(node) + PORT_ROW_H / 2 + rowIndex * PORT_ROW_H;
+  return NODE_HEADER_H + mainHeight(node) + NODE_FOOTER_BORDER + PORT_ROW_H / 2 + rowIndex * PORT_ROW_H;
 }
 
 /** Row index of a specific semantic within a node's port column. Used to
