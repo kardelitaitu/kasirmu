@@ -217,6 +217,127 @@ pub async fn load_topology(
     Ok(Some(value))
 }
 
+/// One revision's graph, as returned to the browser.
+///
+/// `status` carries the three-way distinction rather than an error: a
+/// merchant browsing history who asks for a pruned deploy expects an answer,
+/// not an exception. Collapsing `deflated` into `not-found` would make a
+/// recorded deploy read as though it never happened — silently rewriting
+/// history at the moment someone is reconstructing an incident (ADR #46 §4).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopologyRevisionGraphResult {
+    /// `"restorable"` | `"deflated"` | `"not-found"`.
+    pub status: &'static str,
+    /// The revision that was asked for, echoed back for keyed rendering.
+    pub revision: i64,
+    /// Merchant-authored "what changed and why"; empty when not given.
+    pub change_note: String,
+    /// ISO-8601 commit time.
+    pub published_at: String,
+    /// Session user who Applied it.
+    pub published_by: String,
+    /// The contract the revision was authored under, so the browser can say
+    /// WHY an old graph may not validate (ADR #46 §7) instead of failing
+    /// opaquely. Absent for a deflated row, which has no graph to judge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract_schema_version: Option<i64>,
+    /// The stored envelope, present only when `status == "restorable"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagram: Option<Value>,
+}
+
+/// ADR #46 §1/§8: one branch's deploy history, newest first, metadata only.
+///
+/// Gated on `AUDIT_VIEW`, not `TOPOLOGY_WRITE`. Revision history answers the
+/// same question the audit screen answers — who changed this, when, and why —
+/// for the same audience, and `audit:view` already gates it. Gating on write
+/// would deny a manager who has every right to read the record; inventing a
+/// `topology:read` key would need role seeds and is out of scope (Rule 3).
+#[tauri::command]
+pub async fn list_topology_revisions(
+    session_token: String,
+    branch_id: Option<String>,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<TopologyRevisionSummary>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let global_db = state.db.lock().await;
+    {
+        let global_store = Store::new(&global_db);
+        require_permission_for_user(&global_store, &session.user_id, permissions::AUDIT_VIEW)?;
+    }
+    // `""` is the unscoped legacy graph, the same convention the write path
+    // and the retention sweep use.
+    list_topology_revision_summaries(
+        &global_db,
+        branch_id.as_deref().unwrap_or(""),
+        normalize_topology_revision_limit(limit),
+    )
+}
+
+/// ADR #46 §5/§7: fetch one revision's graph, to diff it or load it as a
+/// draft. Never mutates — restore-to-draft is a client-side action, and
+/// re-Applying a past revision is out of scope for v1 (§5).
+#[tauri::command]
+pub async fn load_topology_revision(
+    session_token: String,
+    branch_id: Option<String>,
+    revision: i64,
+    state: State<'_, AppState>,
+) -> Result<TopologyRevisionGraphResult, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let global_db = state.db.lock().await;
+    {
+        let global_store = Store::new(&global_db);
+        require_permission_for_user(&global_store, &session.user_id, permissions::AUDIT_VIEW)?;
+    }
+    let branch_id = branch_id.as_deref().unwrap_or("");
+    match load_topology_revision_row(&global_db, branch_id, revision)? {
+        TopologyRevisionLookup::NotFound => Ok(TopologyRevisionGraphResult {
+            status: "not-found",
+            revision,
+            change_note: String::new(),
+            published_at: String::new(),
+            published_by: String::new(),
+            contract_schema_version: None,
+            diagram: None,
+        }),
+        TopologyRevisionLookup::Deflated {
+            change_note,
+            published_at,
+            published_by,
+        } => Ok(TopologyRevisionGraphResult {
+            status: "deflated",
+            revision,
+            change_note,
+            published_at,
+            published_by,
+            contract_schema_version: None,
+            diagram: None,
+        }),
+        TopologyRevisionLookup::Restorable {
+            change_note,
+            published_at,
+            published_by,
+            contract_schema_version,
+            envelope,
+        } => {
+            let diagram: Value = serde_json::from_str(&envelope)
+                .map_err(|e| AppError::Internal(format!("invalid topology revision JSON: {e}")))?;
+            Ok(TopologyRevisionGraphResult {
+                status: "restorable",
+                revision,
+                change_note,
+                published_at,
+                published_by,
+                contract_schema_version: Some(contract_schema_version),
+                diagram: Some(diagram),
+            })
+        }
+    }
+}
+
 /// Result returned after a topology Apply commits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopologyApplyResult {

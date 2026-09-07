@@ -63,6 +63,75 @@ export const loadTopology = (branchId?: string): Promise<TopologyData | null> =>
     branchId !== undefined ? { branchId } : undefined,
   );
 
+// ── Deployed revision history (ADR #46) ─────────────────────────
+
+/** One row of a branch's deploy history. Metadata only — the diagram is not
+ *  included, because a listing of up to 200 rows of ~5 KB envelopes is a
+ *  megabyte-scale payload for a panel that renders one line each. Fetch the
+ *  graph with {@link loadTopologyRevision}. */
+export interface TopologyRevisionSummary {
+  revision: number;
+  /** Merchant-authored "what changed and why"; empty when not given. */
+  changeNote: string;
+  publishedAt: string;
+  publishedBy: string;
+  /** Exempt from pruning and deflation. */
+  pinned: boolean;
+  nodeCount: number;
+  wireCount: number;
+  workspaceCreations: number;
+  workspaceUpdates: number;
+  workspaceArchives: number;
+  /** Contract axis the revision was authored under (ADR #46 §7). */
+  contractSchemaVersion: number;
+  /** False once the retention sweep pruned the snapshot (ADR #46 §4).
+   *  Render "record only — snapshot pruned"; do NOT offer a restore. */
+  restorable: boolean;
+}
+
+/** One revision's graph, for diffing or loading as a draft.
+ *
+ *  `"deflated"` and `"not-found"` are distinct deliberately: a pruned deploy
+ *  still happened, and collapsing the two silently rewrites history at the
+ *  moment someone is reconstructing an incident. */
+export interface TopologyRevisionGraph {
+  status: 'restorable' | 'deflated' | 'not-found';
+  revision: number;
+  changeNote: string;
+  publishedAt: string;
+  publishedBy: string;
+  /** Absent for a deflated row — there is no graph to judge. */
+  contractSchemaVersion?: number;
+  /** Present only when `status === 'restorable'`. */
+  diagram?: TopologyData;
+}
+
+/** Read a branch's deploy history, newest first. Gated on `audit:view`. */
+export const listTopologyRevisions = (
+  sessionToken: string,
+  branchId?: string,
+  limit?: number,
+): Promise<TopologyRevisionSummary[]> =>
+  loggedInvoke<TopologyRevisionSummary[]>('list_topology_revisions', {
+    sessionToken,
+    ...(branchId !== undefined ? { branchId } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  });
+
+/** Fetch one revision's graph. Never mutates — restore-to-draft is
+ *  client-side, and re-Applying a past revision is out of scope for v1
+ *  (ADR #46 §5). */
+export const loadTopologyRevision = (
+  sessionToken: string,
+  revision: number,
+  branchId?: string,
+): Promise<TopologyRevisionGraph> =>
+  loggedInvoke<TopologyRevisionGraph>('load_topology_revision', {
+    sessionToken,
+    revision,
+    ...(branchId !== undefined ? { branchId } : {}),
+  });
+
 // ── Diagram templates (ADR #45 §4.2) ─────────────────────────────
 
 /** Save a diagram template for a branch, replacing any template of that name.

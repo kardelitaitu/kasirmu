@@ -581,3 +581,164 @@ fn the_change_note_limit_is_counted_in_characters_not_bytes() {
         "a multi-byte note within the CHARACTER limit must be accepted"
     );
 }
+
+// ── ADR #46 §1/§8: reading history back ────────────────────────
+
+#[test]
+fn the_listing_is_newest_first_and_carries_the_record() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 3);
+
+    let rows = list_topology_revision_summaries(&conn, "", 50).unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(
+        rows.iter().map(|r| r.revision).collect::<Vec<_>>(),
+        vec![3, 2, 1],
+        "history reads newest-first"
+    );
+    let first = &rows[0];
+    assert_eq!(first.change_note, "note");
+    assert_eq!(first.published_by, "user-sweep");
+    assert!(first.restorable, "inside the budget, so still restorable");
+    assert!(!first.pinned);
+    // The counts came from the Apply, not recomputed from the diagram.
+    assert_eq!(
+        (
+            first.workspace_creations,
+            first.workspace_updates,
+            first.workspace_archives
+        ),
+        (1, 2, 3)
+    );
+}
+
+#[test]
+fn the_listing_marks_pruned_rows_without_dropping_them() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+    sweep(&conn, 20);
+
+    let rows = list_topology_revision_summaries(&conn, "", 50).unwrap();
+    // 25 rows still listed — deflation prunes RESTORABILITY, never the record.
+    assert_eq!(rows.len(), 25);
+    let restorable: Vec<i64> = rows
+        .iter()
+        .filter(|r| r.restorable)
+        .map(|r| r.revision)
+        .collect();
+    assert_eq!(restorable.len(), 20);
+    assert_eq!(
+        rows.iter()
+            .find(|r| r.revision == 1)
+            .map(|r| (r.restorable, r.change_note.clone())),
+        Some((false, "note".to_string())),
+        "a deflated row must still say who, when, and why"
+    );
+}
+
+#[test]
+fn load_distinguishes_deflated_from_absent() {
+    // THE distinction §4's deflate-instead-of-delete buys. Collapsing these
+    // would make a pruned deploy read as though it never happened — rewriting
+    // history at the moment someone is reconstructing an incident.
+    let conn = fresh_conn();
+    apply_n_times(&conn, 25);
+    sweep(&conn, 20);
+
+    let deflated = load_topology_revision_row(&conn, "", 1).unwrap();
+    assert!(
+        matches!(&deflated, TopologyRevisionLookup::Deflated { change_note, .. }
+            if change_note == "note"),
+        "revision 1 was Applied, so it must not read as absent: {deflated:?}"
+    );
+
+    let absent = load_topology_revision_row(&conn, "", 999).unwrap();
+    assert!(matches!(absent, TopologyRevisionLookup::NotFound));
+}
+
+#[test]
+fn load_returns_the_envelope_byte_for_byte_when_it_can() {
+    let conn = fresh_conn();
+    apply_n_times(&conn, 1);
+
+    let found = load_topology_revision_row(&conn, "", 1).unwrap();
+    let TopologyRevisionLookup::Restorable {
+        envelope,
+        contract_schema_version,
+        change_note,
+        ..
+    } = found
+    else {
+        panic!("revision 1 is inside the budget and must be restorable: {found:?}");
+    };
+
+    assert_eq!(change_note, "note");
+    assert_eq!(
+        contract_schema_version as u64,
+        oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION
+    );
+    // Same bytes `settings` holds, so the browser can diff and restore-to-draft
+    // without reconstructing a graph the backend never wrote.
+    let live = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+        .unwrap()
+        .unwrap();
+    assert_eq!(envelope, live);
+    let parsed: Value = serde_json::from_str(&envelope).unwrap();
+    assert_eq!(parsed["revision"], 1);
+}
+
+#[test]
+fn the_listing_is_scoped_to_one_branch() {
+    let conn = fresh_conn();
+    let context = ctx("", "user-a");
+    for (branch, count) in [("branch-a", 2u64), ("branch-b", 1u64)] {
+        let key = format!("{TOPOLOGY_SETTING_KEY}/{branch}");
+        for expected in 0..count {
+            save_topology_json_at_key_with_revision(
+                &conn,
+                vec![store_node("store-1")],
+                vec![],
+                &key,
+                &[],
+                Some(expected),
+                None,
+                None,
+                Some(&context),
+            )
+            .unwrap();
+        }
+    }
+
+    assert_eq!(
+        list_topology_revision_summaries(&conn, "branch-a", 50)
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        list_topology_revision_summaries(&conn, "branch-b", 50)
+            .unwrap()
+            .len(),
+        1
+    );
+    // The unscoped legacy graph is its own scope, not a catch-all.
+    assert!(
+        list_topology_revision_summaries(&conn, "", 50)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn the_listing_limit_is_clamped_not_trusted() {
+    // The parameter arrives from the renderer, so an unclamped LIMIT is both a
+    // memory hazard and a way to ask for the whole table.
+    assert_eq!(normalize_topology_revision_limit(None), 50);
+    assert_eq!(normalize_topology_revision_limit(Some(5)), 5);
+    assert_eq!(
+        normalize_topology_revision_limit(Some(0)),
+        1,
+        "zero must not mean 'everything'"
+    );
+    assert_eq!(normalize_topology_revision_limit(Some(u32::MAX)), 200);
+}

@@ -101,6 +101,7 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-dev-mock:sales': 'dev-mock/tauri-api.ts',
   'oz-dev-mock:shift-history': 'dev-mock/tauri-api.ts',
   'oz-dev-mock:topology': 'dev-mock/tauri-api.ts',
+  'oz-dev-mock:topology-revisions': 'dev-mock/tauri-api.ts',
   'oz-dev-mock:user-prefs': 'dev-mock/tauri-api.ts',
   'oz-dev-mock:workspaces': 'dev-mock/tauri-api.ts',
 };

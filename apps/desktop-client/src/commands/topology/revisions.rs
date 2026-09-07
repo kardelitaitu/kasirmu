@@ -34,6 +34,7 @@
 //! envelope and never increments `revision`, so no row is expected.
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use serde::Serialize;
 
 use crate::error::AppError;
 
@@ -105,6 +106,178 @@ pub(crate) fn normalize_topology_change_note(raw: Option<&str>) -> Result<String
     Ok(note.to_owned())
 }
 
+// ── Reading history back ───────────────────────────────────────
+
+/// Default and ceiling for a history listing. The ceiling exists because the
+/// payload is built from an unbounded merchant-facing parameter; the browser
+/// paginates by walking backwards through revision numbers, so it never needs
+/// more than a screenful at once.
+pub(crate) const TOPOLOGY_REVISION_LIST_DEFAULT_LIMIT: u32 = 50;
+pub(crate) const TOPOLOGY_REVISION_LIST_MAX_LIMIT: u32 = 200;
+
+/// Clamp a caller-supplied limit into the accepted range.
+pub(crate) fn normalize_topology_revision_limit(raw: Option<u32>) -> u32 {
+    raw.unwrap_or(TOPOLOGY_REVISION_LIST_DEFAULT_LIMIT)
+        .clamp(1, TOPOLOGY_REVISION_LIST_MAX_LIMIT)
+}
+
+/// One row of revision history, metadata only.
+///
+/// The envelope is deliberately absent: 200 rows of ~5 KB diagram is a
+/// megabyte-scale payload for a panel that renders one line per revision.
+/// `restorable` tells the browser whether asking for the graph can succeed.
+#[derive(Debug, Serialize)]
+// camelCase, matching the 93 other tauri DTOs in commands/ — and matching
+// `TopologyRevisionGraphResult`, which the browser consumes alongside this
+// one. Two shapes in one feature is how drift starts.
+#[serde(rename_all = "camelCase")]
+pub struct TopologyRevisionSummary {
+    /// Envelope revision this row records.
+    pub revision: i64,
+    /// Merchant-authored "what changed and why"; empty when not given.
+    pub change_note: String,
+    /// ISO-8601 commit time of the Apply.
+    pub published_at: String,
+    /// Session user who Applied it.
+    pub published_by: String,
+    /// Exempt from pruning and deflation (ADR #46 §4).
+    pub pinned: bool,
+    /// Graph size at Apply time.
+    pub node_count: i64,
+    /// Graph size at Apply time.
+    pub wire_count: i64,
+    /// Workspace instances the Apply created.
+    pub workspace_creations: i64,
+    /// Workspace instances the Apply updated.
+    pub workspace_updates: i64,
+    /// Workspace instances the Apply archived.
+    pub workspace_archives: i64,
+    /// Contract axis the revision was authored under (ADR #46 §7).
+    pub contract_schema_version: i64,
+    /// False once the retention sweep has deflated the snapshot (ADR #46 §4).
+    /// The record survives; the graph does not. The browser MUST render
+    /// "record only — snapshot pruned" rather than offer a restore it cannot
+    /// fulfil, which is the one user-visible consequence of choosing to
+    /// deflate instead of delete.
+    pub restorable: bool,
+}
+
+/// Read history newest-first for one branch. `branch_id` is `""` for the
+/// unscoped legacy graph, matching the write path.
+pub(crate) fn list_topology_revision_summaries(
+    conn: &Connection,
+    branch_id: &str,
+    limit: u32,
+) -> Result<Vec<TopologyRevisionSummary>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT revision, change_note, published_at, published_by, pinned,
+                node_count, wire_count, workspace_creations, workspace_updates,
+                workspace_archives, contract_schema_version,
+                (diagram IS NOT NULL) AS restorable
+         FROM topology_revisions
+         WHERE branch_id = ?1
+         ORDER BY revision DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![branch_id, limit as i64], |r| {
+        Ok(TopologyRevisionSummary {
+            revision: r.get(0)?,
+            change_note: r.get(1)?,
+            published_at: r.get(2)?,
+            published_by: r.get(3)?,
+            pinned: r.get::<_, i64>(4)? != 0,
+            node_count: r.get(5)?,
+            wire_count: r.get(6)?,
+            workspace_creations: r.get(7)?,
+            workspace_updates: r.get(8)?,
+            workspace_archives: r.get(9)?,
+            contract_schema_version: r.get(10)?,
+            restorable: r.get::<_, i64>(11)? != 0,
+        })
+    })?;
+    rows.collect::<Result<_, _>>().map_err(Into::into)
+}
+
+/// The three answers a request for one revision's graph can get.
+///
+/// `NotFound` and `Deflated` MUST stay distinct. Collapsing them would make a
+/// pruned deploy read as "never happened", silently rewriting history at the
+/// moment a merchant is trying to reconstruct an incident — the exact thing
+/// §4's deflate-instead-of-delete decision exists to prevent.
+#[derive(Debug)]
+pub enum TopologyRevisionLookup {
+    /// No row for this `(branch_id, revision)`.
+    NotFound,
+    /// Recorded, but the retention sweep dropped the snapshot (ADR #46 §4).
+    Deflated {
+        /// The note survives deflation — that is the point of keeping the row.
+        change_note: String,
+        /// ISO-8601 commit time.
+        published_at: String,
+        /// Session user who Applied it.
+        published_by: String,
+    },
+    /// Recorded, with a restorable envelope.
+    Restorable {
+        /// Merchant-authored "what changed and why".
+        change_note: String,
+        /// ISO-8601 commit time.
+        published_at: String,
+        /// Session user who Applied it.
+        published_by: String,
+        /// Contract axis it was authored under, for §7's "why can't this
+        /// validate?" message.
+        contract_schema_version: i64,
+        /// The stored envelope, byte-identical to what `settings` held.
+        envelope: String,
+    },
+}
+
+/// Fetch one revision, preserving the distinction between "absent" and
+/// "present but pruned".
+///
+/// Named `_row` rather than sharing the command's name: `commands.rs`
+/// glob-imports this module, and a local definition shadows a glob import —
+/// so an identically-named command would have resolved its own data call back
+/// to itself rather than here.
+pub(crate) fn load_topology_revision_row(
+    conn: &Connection,
+    branch_id: &str,
+    revision: i64,
+) -> Result<TopologyRevisionLookup, AppError> {
+    // `diagram` is read as Option<String>; the row's existence is probed
+    // separately, so a deflated row is not mistaken for a missing one.
+    let row: Option<(Option<String>, String, String, String, i64)> = conn
+        .query_row(
+            "SELECT diagram, change_note, published_at, published_by,
+                    contract_schema_version
+             FROM topology_revisions
+             WHERE branch_id = ?1 AND revision = ?2",
+            params![branch_id, revision],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .optional()?;
+
+    let Some((diagram, change_note, published_at, published_by, contract_version)) = row else {
+        return Ok(TopologyRevisionLookup::NotFound);
+    };
+    match diagram {
+        Some(envelope) => Ok(TopologyRevisionLookup::Restorable {
+            change_note,
+            published_at,
+            published_by,
+            contract_schema_version: contract_version,
+            envelope,
+        }),
+        None => Ok(TopologyRevisionLookup::Deflated {
+            change_note,
+            published_at,
+            published_by,
+        }),
+    }
+}
+
+/// How many revisions per branch stay restorable before deflation begins
 /// How many revisions per branch stay restorable before deflation begins
 /// (ADR #46 §4).
 ///

@@ -1007,6 +1007,12 @@ pub fn run() {
             commands::topology::load_topology,
             commands::topology::can_save_topology,
             commands::topology::apply_topology_diff,
+            // ADR #46 §1/§8 — read-only deploy history. Both gated on
+            // `audit:view` (who changed this, when, and why — the audit
+            // screen's own question), and both read the GLOBAL database,
+            // where topology_revisions lives beside the graph it describes.
+            commands::topology::list_topology_revisions,
+            commands::topology::load_topology_revision,
             // ADR #45 §4.2 — diagram templates, persisted per branch in the
             // same settings namespace as the graph they seed.
             commands::topology::save_topology_template,

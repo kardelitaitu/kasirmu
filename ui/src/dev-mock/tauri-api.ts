@@ -1770,6 +1770,72 @@ function saveMockTopology(topology: MockTopology): void {
 }
 const mockTopology: MockTopology = loadMockTopology();
 
+// ── Topology revision history (ADR #46) ───────────────────────
+//
+// The dev-mock mirrors the backend's append-only history so the version
+// browser is reachable without a running desktop client. It also mirrors
+// §4's DEFlation rule, not just the append — otherwise `restorable: false`
+// is unreachable in the browser and the "record only — snapshot pruned"
+// state the real sweep produces can never be exercised during development.
+const MOCK_TOPOLOGY_REVISIONS_KEY = 'oz-dev-mock:topology-revisions';
+/** Mirrors `TOPOLOGY_REVISION_RESTORABLE_KEEP` in revisions.rs. */
+const MOCK_TOPOLOGY_REVISION_KEEP = 20;
+
+interface MockTopologyRevision {
+  revision: number;
+  changeNote: string;
+  publishedAt: string;
+  publishedBy: string;
+  pinned: boolean;
+  nodeCount: number;
+  wireCount: number;
+  workspaceCreations: number;
+  workspaceUpdates: number;
+  workspaceArchives: number;
+  contractSchemaVersion: number;
+  /** The stored envelope; deleted when the row is deflated. */
+  diagram?: MockTopology;
+}
+
+function loadMockTopologyRevisions(): MockTopologyRevision[] {
+  try {
+    const raw = localStorage.getItem(MOCK_TOPOLOGY_REVISIONS_KEY);
+    if (raw) return JSON.parse(raw) as MockTopologyRevision[];
+  } catch {
+    // storage unavailable — start empty
+  }
+  return [];
+}
+
+function saveMockTopologyRevisions(rows: MockTopologyRevision[]): void {
+  try {
+    localStorage.setItem(MOCK_TOPOLOGY_REVISIONS_KEY, JSON.stringify(rows));
+  } catch {
+    // storage unavailable — keep the in-memory copy for this session
+  }
+}
+
+const mockTopologyRevisions: MockTopologyRevision[] = loadMockTopologyRevisions();
+
+/** Append one immutable revision, then deflate anything past the budget.
+ *  Deflation drops the diagram and keeps the record — never delete the row. */
+function recordMockTopologyRevision(row: MockTopologyRevision): void {
+  mockTopologyRevisions.push(row);
+  const unpinned = mockTopologyRevisions
+    .filter((r) => !r.pinned)
+    .sort((a, b) => b.revision - a.revision);
+  for (const stale of unpinned.slice(MOCK_TOPOLOGY_REVISION_KEEP)) {
+    delete stale.diagram;
+  }
+  saveMockTopologyRevisions(mockTopologyRevisions);
+}
+
+/** The metadata projection the list command returns — never the diagram. */
+function summarizeMockTopologyRevision(r: MockTopologyRevision) {
+  const { diagram, ...rest } = r;
+  return { ...rest, restorable: diagram !== undefined };
+}
+
 const handlers: Record<string, (args: unknown) => unknown> = {
   // ═══════════════════════════════════════════════════════════════
   // AUTH / STAFF
@@ -2176,7 +2242,65 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     if (resolvedIssueKeys) mockTopology.resolved_issue_keys = [...resolvedIssueKeys];
     mockTopology.revision = (mockTopology.revision ?? 0) + 1;
     saveMockTopology(mockTopology);
+    // ADR #46 §3: in the real backend this row is written INSIDE the same
+    // transaction as the envelope, so a rejected Apply leaves no history. The
+    // conflict throw above already mirrors that — control never reaches here
+    // on a rejected Apply.
+    recordMockTopologyRevision({
+      revision: mockTopology.revision,
+      changeNote: (args as { changeNote?: string }).changeNote ?? '',
+      publishedAt: new Date().toISOString(),
+      publishedBy: 'dev-mock',
+      pinned: false,
+      nodeCount: mockTopology.nodes.length,
+      wireCount: mockTopology.wires.length,
+      workspaceCreations: workspaceCreations?.length ?? 0,
+      workspaceUpdates: workspaceUpdates?.length ?? 0,
+      workspaceArchives: workspaceArchives?.length ?? 0,
+      contractSchemaVersion: 2,
+      diagram: JSON.parse(JSON.stringify(mockTopology)) as MockTopology,
+    });
     return { revision: mockTopology.revision };
+  },
+
+  // ADR #46 §1/§8: metadata only, newest first — the diagram is fetched per
+  // revision by `load_topology_revision`, mirroring the real payload bound.
+  'list_topology_revisions': (args) => {
+    const { limit } = (args as { limit?: number }) ?? {};
+    const budget = Math.min(Math.max(limit ?? 50, 1), 200);
+    return mockTopologyRevisions
+      .slice()
+      .sort((a, b) => b.revision - a.revision)
+      .slice(0, budget)
+      .map(summarizeMockTopologyRevision);
+  },
+
+  // `deflated` and `not-found` stay distinct (ADR #46 §4): a pruned deploy
+  // still happened.
+  'load_topology_revision': (args) => {
+    const { revision } = (args as { revision?: number }) ?? {};
+    const row = mockTopologyRevisions.find((r) => r.revision === revision);
+    if (!row) {
+      return { status: 'not-found', revision: revision ?? 0, changeNote: '', publishedAt: '', publishedBy: '' };
+    }
+    if (row.diagram === undefined) {
+      return {
+        status: 'deflated',
+        revision: row.revision,
+        changeNote: row.changeNote,
+        publishedAt: row.publishedAt,
+        publishedBy: row.publishedBy,
+      };
+    }
+    return {
+      status: 'restorable',
+      revision: row.revision,
+      changeNote: row.changeNote,
+      publishedAt: row.publishedAt,
+      publishedBy: row.publishedBy,
+      contractSchemaVersion: row.contractSchemaVersion,
+      diagram: row.diagram,
+    };
   },
 
   'set_receipt_settings_scoped': () => null,
