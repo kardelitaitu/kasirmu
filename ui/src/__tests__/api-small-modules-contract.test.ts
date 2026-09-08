@@ -5,6 +5,17 @@ vi.mock('@/utils/logged-invoke', () => ({
   loggedInvoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
+// Opt out of the global @/api/branding stub installed by test-setup.ts. That
+// stub silences IPC noise for the whole suite by replacing @/api/branding with
+// no-op resolvers, but this contract suite must verify branding.ts's REAL IPC
+// command names. Re-exporting the original module here overrides the global
+// mock (per-file mocks win) while still routing through the per-file
+// loggedInvoke mock above, so the functional branding contract assertions below
+// keep checking the actual command strings (e.g. 'get_brand_settings').
+vi.mock('@/api/branding', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/branding')>()),
+}));
+
 import { getSubscriptionCapabilities } from '@/api/subscription';
 import { ping, getVersion, getVersionScoped, getLocalIp, getDeviceId } from '@/api/system';
 import { listAllFeatures, setFeature, setFeaturesBulk } from '@/api/features';
