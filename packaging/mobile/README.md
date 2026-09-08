@@ -1,4 +1,17 @@
 <!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.tablet.config.ts, ui/src/main.tablet.tsx, ui/src/frontend/shell/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.tablet.html, .github/workflows/{android,ios}.yml, apps/tablet-client/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/tablet-client/AGENTS.md (linked) · observe: line 429 references ui/dist-tablet/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the tablet-client setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
+<!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+
+> **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
+> `apps/tablet-client/gen/` contains only `android/` (49 tracked files) and `schemas/`.
+> There is no `apple/` directory, committed or on disk. `.gitignore` states the policy
+> explicitly — *"the generated scaffold under `apps/*/gen/` is COMMITTED so CI and
+> contributors don't need the Tauri CLI installed to build"* — and Android follows that
+> policy while iOS has never been generated. So **every `gen/apple/...` path below
+> describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
+> The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
+> while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
+> verified until the scaffold exists. Prefer discovery over a hardcoded name:
+> `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
 # OZ-POS Mobile Build & Deployment Guide
 

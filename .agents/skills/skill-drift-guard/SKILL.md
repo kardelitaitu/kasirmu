@@ -457,7 +457,7 @@ For each new invariant worth pinning:
 2. Use `setup` / `teardown` for fixtures — backup to `$BATS_TEST_TMPDIR`, restore in `teardown`.
 3. Prefer substring assertions (`[[ "$output" == *"marker"* ]]`) over exact-string match — message templates can evolve without breaking the test, while the marker survives.
 
-If a future change needs to source helper functions directly, the convention is to extract them into `.agents/skills/skill-drift-guard/scripts/lib.sh` and `source "$(dirname "${BATS_TEST_FILENAME}")/../scripts/lib.sh"` from the test. (No `lib.sh` exists today — detect.sh is self-contained; this paragraph defines the convention for when that changes.)
+If a future change needs to source helper functions directly, the convention is to extract them into `.agents/skills/skill-drift-guard/scripts/lib.sh` and `source "$(dirname "${BATS_TEST_FILENAME}")/../scripts/lib.sh"` from the test. (No `lib.sh` exists today — detect.sh is self-contained; this paragraph defines the convention for when that changes.)  <!-- dead-ref: ok: a conditional convention; lib.sh is the file a future change would CREATE, not one that exists -->
 
 ---
 

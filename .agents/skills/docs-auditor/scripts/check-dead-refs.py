@@ -76,7 +76,10 @@ HIST_DIR_PREFIXES = ("docs/decisions/", "docs/records/", "docs/archived/",
                      "docs/releases/", "docs/plans/")   # plans name files to CREATE
 
 # Agent work logs and scratch notes that are not documentation of the product.
-SCRATCH = (".freebuff/", "orchestrator-journal.md", "skill-drift-report.md")
+# Also /pr_body.md: a generated pull-request body left in the worktree (.gitignore
+# has it). Scanning it as documentation invents findings about a throwaway artifact.
+SCRATCH = (".freebuff/", "orchestrator-journal.md", "skill-drift-report.md",
+           "pr_body.md", "-journal.md")
 
 # Words meaning "this reference is deliberately about something that is absent".
 NEGATIVE_MARKERS = re.compile(
@@ -122,6 +125,71 @@ def build_index():
     return files, dirs, basenames
 
 
+# A path matched by .gitignore is ABSENT BY DESIGN: secrets (*.pem, *.keystore),
+# build output (*.ipa, target/, dist/), local config. Flagging those as dead refs is
+# wrong. The distinction that matters is the other one: a doc pointing at a gitignored
+# path describes something you are meant to CREATE, while a doc pointing at a
+# NON-ignored missing path describes something that should have been committed.
+# (That second case is a live finding: apps/tablet-client/gen/apple/ is not ignored,
+# and .gitignore states the gen/ scaffold policy IS committed - so the iOS guides point
+# at a scaffold that was never generated.)
+
+def git_ignored(candidates):
+    """One batched git check-ignore over every unresolved candidate.
+
+    Returns the subset that .gitignore matches. Degrades to an empty set when git is
+    unavailable, so the tool errs toward reporting rather than toward silence.
+    """
+    if not candidates:
+        return set()
+    import subprocess
+    probes = set()
+    for c in candidates:
+        probes.add(c)
+        # *.ipa is ignored but its directory is not; ask about each ancestor too.
+        parts = c.split("/")
+        for k in range(1, len(parts)):
+            probes.add("/".join(parts[:k]) + "/")
+    # Paths as ARGUMENTS, output to a temp FILE. Three things had to be learned the hard
+    # way, and all three failed silently: (a) capture_output= uses piped stdio, blocked in
+    # some sandboxes, so the call returns nothing; (b) --stdin through a TemporaryFile
+    # handle also came back empty here even though the same command works from a shell;
+    # (c) probing every ancestor pushed ~600 arguments past the Windows command-line
+    # limit, which raised, was caught, and returned "nothing is ignored" - reporting a
+    # clean result for having crashed. Small batches, and failure is LOUD.
+    import tempfile
+    ordered = sorted(probes)
+    found = set()
+    failed = 0
+    CHUNK = 20
+    try:
+        for s in range(0, len(ordered), CHUNK):
+            batch = ordered[s:s + CHUNK]
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as pout:
+                rc = subprocess.run(["git", "check-ignore", "--"] + batch,
+                                    stdout=pout, stderr=subprocess.DEVNULL, timeout=180)
+                pout.seek(0)
+                body = pout.read()
+                if rc.returncode not in (0, 1):    # 0 = some ignored, 1 = none, else bad
+                    failed += 1
+            for ln in body.splitlines():
+                ln = ln.strip()
+                if ln.startswith("./"):
+                    ln = ln[2:]          # NOT lstrip("./") - it eats leading dots
+                if ln:
+                    found.add(ln)
+    except Exception as exc:
+        print("WARNING: git check-ignore failed (%s); reporting every unresolved path."
+              % exc, file=sys.stderr)
+        return set()
+    if failed:
+        print("WARNING: %d git check-ignore batch(es) errored; results may be incomplete."
+              % failed, file=sys.stderr)
+    hits = found
+    return {c for c in candidates
+            if c in hits or any(c == h.rstrip("/") or c.startswith(h) for h in hits)}
+
+
 def is_historical_doc(path, text):
     if path.startswith(HIST_DIR_PREFIXES):
         return True
@@ -129,7 +197,7 @@ def is_historical_doc(path, text):
     # A changelog is a ledger of what shipped, including under names that later moved.
     # So is a root-level plan file (todo-global-saas-N.md): it enumerates the tree it
     # intended to change, and the code cites it as the contract for that work.
-    if "CHANGELOG" in name.upper() or name.startswith("todo-global-saas"):
+    if "CHANGELOG" in name.upper() or name.startswith(("todo-", "plan-", "prd-")):
         return True
     if DATE_NAME.match(name):
         return True
@@ -167,12 +235,21 @@ def check_file(path, files, dirs, basenames, include_bare=False):
     latest.json" is naming a build artifact, not asserting a repo path, and the noise
     buried the real findings (154 hits vs 61). Turn it on when auditing a page that
     documents scripts by name."""
+
     try:
         text = (ROOT / path).read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         return None, str(exc)
     hits = []
     lines = text.split(chr(10))
+
+    # File-level, prefix-scoped opt-out, declared once near the top of the page:
+    #   <!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+    # A page whose entire subject is generated output (an iOS build guide) should say so
+    # once, visibly, instead of carrying a dozen inline pragmas. It stays grep-able, and
+    # the exemption is scoped to a prefix so the rest of the page is still checked.
+    head = chr(10).join(lines[:40])
+    prefixes = tuple(re.findall(r"dead-ref-prefix-ok:\s*([A-Za-z0-9._/-]+)", head))
     for n, line in enumerate(lines, 1):
         # Opt-out pragma: "<!-- dead-ref: ok -->" on the line, or on the line above.
         # Same purpose as #[allow(...)] / eslint-disable-next-line - a reference can be
@@ -180,6 +257,16 @@ def check_file(path, files, dirs, basenames, include_bare=False):
         # doc should say so in one token rather than the tool guessing.
         if "dead-ref: ok" in line or (n >= 2 and "dead-ref: ok" in lines[n - 2]):
             continue
+        # An annotation BELOW a claim suppresses it. Auditors write the claim, then the
+        # caveat underneath ("does not exist yet, create it"), so a marker only on the
+        # reference line is the wrong shape - INCIDENT_RESPONSE.md §7.3 was reported as
+        # drift while its own "> Pending" note sat two lines down. Bounded to 4 lines and
+        # requires a note block (a ">" line) so ordinary prose cannot silence findings.
+        ahead = chr(10).join(lines[n:n + 4])
+        if "\n> " in ahead or ahead.startswith("> "):
+            if re.search(r"(?m)^> .*(does not exist|doesn.t exist|Pending|not exist yet|"
+                         r"do not exist|does not yet exist)", ahead):
+                continue
         if NEGATIVE_MARKERS.search(line):
             continue
         cands = []
@@ -200,6 +287,9 @@ def check_file(path, files, dirs, basenames, include_bare=False):
                 continue
             cands.append("~/" + tok)
         for c in cands:
+            # a prefix the page declared it exists to document
+            if prefixes and c.startswith(prefixes):
+                continue
             if PLACEHOLDER.search(c):
                 continue
             if not resolve_ok(c, files, dirs, basenames):
@@ -226,6 +316,7 @@ def main():
     targets = args.paths or sorted(f for f in files if f.endswith(".md"))
 
     live, hist, errs, scanned = [], [], [], 0
+    rows = []            # (file, line, candidate, historical) - filtered below
     for t in targets:
         if any(x in t for x in ("/node_modules/", "/target/", "/references/")):
             continue
@@ -236,7 +327,23 @@ def main():
         if hits is None:
             errs.append("%s: %s" % (t, historical))
             continue
-        (hist if historical else live).append((t, hits))
+        for n, cand in hits:
+            rows.append((t, n, cand, historical))
+
+    # One batched git query decides which unresolved paths are ignored on purpose,
+    # so the answer comes from .gitignore rather than a hardcoded extension list.
+    seen = {r[2] for r in rows}
+    ign = git_ignored(seen)
+    before = len(rows)
+    rows = [r for r in rows if r[2] not in ign]
+    ignored_hits = before - len(rows)
+
+    acc = {}
+    hacc = {}
+    for f, n, c, historical in rows:
+        (hacc if historical else acc).setdefault(f, []).append((n, c))
+    live = sorted(acc.items(), key=lambda kv: kv[0])
+    hist = sorted(hacc.items(), key=lambda kv: kv[0])
 
     live_n = len([1 for t, h in live if h])
     live = [(t, h) for t, h in live if h]
@@ -279,3 +386,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+    print("git-ignored (absent by design, skipped): %d ref(s)" % ignored_hits)
+    print("")

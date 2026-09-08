@@ -77,7 +77,7 @@ $env:OZPOS_OZ_LICENSE_PRIVATE_KEY      # RSA license signing key (PEM, multiline
 ## 💻 Running CLI Tools on Windows
 
 > 🛑 **`bash <script>` hangs on this platform — use Git's bash by full path.** Every
-> `bash scripts/foo.sh` in this file and in the `tdd` skill resolves to
+> `bash scripts/foo.sh` <!-- dead-ref: ok: a generic example filename, not this repo's script --> in this file and in the `tdd` skill resolves to
 > `C:\Windows\System32\bash.exe`, which is **WSL**, not Git Bash. Where WSL is installed but its
 > distro is not running (or the sandbox blocks the VM's named pipes), the process never returns —
 > it does not fail, it **hangs until an external timeout kills it**. Measured directly:

@@ -1,4 +1,17 @@
 # iOS / iPad Build Guide
+<!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+
+> **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
+> `apps/tablet-client/gen/` contains only `android/` (49 tracked files) and `schemas/`.
+> There is no `apple/` directory, committed or on disk. `.gitignore` states the policy
+> explicitly — *"the generated scaffold under `apps/*/gen/` is COMMITTED so CI and
+> contributors don't need the Tauri CLI installed to build"* — and Android follows that
+> policy while iOS has never been generated. So **every `gen/apple/...` path below
+> describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
+> The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
+> while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
+> verified until the scaffold exists. Prefer discovery over a hardcoded name:
+> `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
 > **Purpose:** Build, sign, and distribute OZ-POS tablet client for iOS/iPad.
 >

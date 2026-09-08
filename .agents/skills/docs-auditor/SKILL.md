@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 6 — added .agents/skills/docs-auditor/scripts/check-dead-refs.py with its measured baseline, its self-test requirement, and the pragma convention; the entry records the placeholder-class bug that made it falsely report zero, because a tool page that only lists strengths is how the next person trusts a clean run they should not trust. · rev 4 added .agents/skills/docs-auditor/scripts/check-audit-stamps.py and the footer-vs-stamp direction rule · rev 3 added check-api-surface.py · verified against the live tree: detect.sh Check 9/10 reads the footer only, so a footer older than the newest stamp is invisible to CI; 4 such files existed and were bumped -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean. )>
 
 # Skill: docs-auditor
 
@@ -59,13 +59,33 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py`. It indexes the tree
   once (pruned) and reports path literals in markdown that resolve to nothing,
   separating live docs from dated records, plans and active specs — which are not drift,
-  because a plan names files it intends to create. Baseline on 08-09-26:
-  **40 unresolved refs across 13 live docs** (exit 1), concentrated in the mobile guides
-  naming `.ipa`/`.xcodeproj` build outputs. **Not wired into CI** until that is burned
-  down, for the same reason as `check-api-surface.py`: a permanently red gate teaches
-  people to ignore the gate. `--verbose` for every hit, `--include-bare` to also test
-  bare filenames (noisy: `publish latest.json` names an artifact, not a repo path),
-  `--include-historical` to see what is being skipped and why.
+  because a plan names files it intends to create. Burned down to **0 unresolved refs
+  across 332 live docs (exit 0)** the same day, from 62 files on the first ad-hoc sweep.
+  Two mechanisms did the work, and both decide from the repo's own rules rather than a
+  hardcoded list:
+  * **git-ignore awareness.** Unresolved candidates go through one batched
+    `git check-ignore`. A gitignored path is ABSENT BY DESIGN (`*.pem`, `*.keystore`,
+    Gradle build output) and is dropped; a non-ignored missing path is the real signal -
+    a doc pointing at something that should have been committed. That distinction is what
+    found the iOS gap below.
+  * **Two pragma forms.** Inline: `<!-- dead-ref: ok: reason -->` on the line or the line
+    above, for a reference that is deliberately wrong (an example commit subject, or the
+    generic placeholder script name AGENTS.md uses in its own WSL warning - which is also
+    the fourth time in this session that spelling a `scripts/`-relative example in prose
+    tripped `detect.sh`, including three times inside the text warning about it).
+    File-scoped: `<!-- dead-ref-prefix-ok: some/prefix/ -->`
+    near the top, for a page whose whole subject is generated output. Scoped to a prefix
+    so the rest of the page is still checked, and grep-able.
+  An annotation in a `>` note block within 4 lines BELOW a claim also suppresses it,
+  because that is how auditors write: the claim, then the caveat underneath.
+  `--verbose` for every hit; `--include-bare` to also test bare filenames (noisy:
+  `publish latest.json` names an artifact, not a repo path); `--include-historical` to
+  see what is skipped and why.
+  **Not wired into CI**, deliberately, though it is now green and could be: adding a
+  `static-gates` step without a `gates.json` record and a `docs/operations/ci-pipeline.md`
+  row is precisely the three-part omission this session's audit kept finding - a gate the
+  drift checker cannot see because the checker never learned it exists. Wiring it up
+  needs all three changed together, which is a CI change rather than a doc repair.
   ⚠️ **Give it a self-test before trusting a clean run.** Building it this session, the
   tool reported *zero* unresolved references across 333 docs while its placeholder
   character class contained a bare `.`, so every path with an extension was being
