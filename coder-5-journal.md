@@ -24,8 +24,8 @@ absent: any tax column").
 
 | sha | subject | files |
 |---|---|---|
-| *(schema)* | `feat(core): scope tax rates by legal entity, location and date` | migration + registry + pinned list + index pin + regenerated pg init |
-| *(this commit)* | `feat(core): resolve the tax rate that applies to a location on a date` | `db/tax.rs`, `db/tax_tests.rs`, this journal |
+| `dbb3aabe6` | `feat(core): scope tax rates by legal entity, location and date` | migration + registry + pinned list + index pin + regenerated pg init |
+| `1eb5b7533` | `feat(core): resolve the tax rate that applies to a location on a date` | `db/tax.rs`, `db/tax_tests.rs`, this journal |
 
 ### What landed
 
@@ -147,7 +147,7 @@ follow-up and it is now closed. Core-only: no UI, no IPC, no dev-mock.
 
 | sha | subject | files |
 |---|---|---|
-| *(this commit)* | `fix(sync): carry tax rate scope and window through the snapshot` | 9 + this journal |
+| `1aa67b745` | `fix(sync): carry tax rate scope and window through the snapshot` | 9 + this journal |
 
 ### The chain had SIX drop sites, not two
 
@@ -1216,3 +1216,108 @@ with Delete still blocked and no account sentence anywhere.
 ### RULE UPGRADE — supervisor, at S2 UI landing (commit 425b823e1)
 
 - **Re-verify a cross-stream typecheck block before reporting it as a blocker.** Before flagging a whole-tree `tsc --noEmit` failure as owned by another agent, RUN the whole-tree tsc MYSELF and paste the actual error list. A "fails only on X" snapshot ages in seconds on a racing multi-agent branch: the supervisor's own re-run one round later returned EXIT 0 while mine had shown 7 errors, because kardelitaitu fixed their in-flight `SettingsNavTree.test.tsx` in between. The skip-authorization option (`OZPOS_SKIP_TYPECHECK=1`) is the LAST resort AFTER a fresh re-run proves the error is real and still present — never the first ask. My S2 UI landing needed only that fresh clean re-run; option (a) was correctly NOT granted.
+
+## 2026-09-08 - finisher-A (coder-5): S2 LANDING - operator:impersonate command + impersonation UI
+
+Branch `0.0.37` - no branch created or switched, no push. Repo root from
+`git rev-parse --show-toplevel`. The S2 design plan (PLAN-FIRST) lives above at
+line ~901; this entry records the two landed commits and the supervisor ruling.
+
+### Commits
+| sha | subject | files |
+|---|---|---|
+| `37de19fb1` | `feat(auth): add operator:impersonate impersonation command (desktop+tablet) with isolation tests` | 5 files, +603 (desktop + tablet auth.rs, integration tests, lib.rs registration) |
+| `425b823e1` | `feat(staff): add operator impersonation UI action and session banner` | 11 files, +317 (ImpersonationBanner + .css, ImpersonationContext, AppProviders wiring, StaffManagementScreen gated action, api/staff.ts wrapper, dev-mock handler, 7 FTL keys) |
+
+### 37de19fb1 - command + permission registry
+`operator:impersonate` capability: `impersonate_user_scoped` command registered in
+both desktop + tablet `lib.rs`, with isolation tests (4/4). The impersonated
+session is the *target user's* session, not the operator's; no chained
+impersonation (a second `impersonate_user_scoped` call fails because the produced
+session carries only the target's grants). No privilege amplification by
+construction.
+
+### 425b823e1 - UI surface
+- `ui/src/components/ImpersonationBanner.tsx` + `ImpersonationBanner.css` - banner
+  shown while acting as another user.
+- `ui/src/contexts/ImpersonationContext.tsx` - impersonation display context (read-only
+  state for the banner; does NOT mutate the active SessionContext grants).
+- `ui/src/contexts/AppProviders.tsx` - wires `ImpersonationContext` into the provider tree.
+- `ui/src/features/staff/StaffManagementScreen.tsx` - impersonate action gated on
+  `operator:impersonate`.
+- `ui/src/api/staff.ts` - `impersonateUserScoped` wrapper.
+- `ui/src/dev-mock/tauri-api.ts` - `impersonate_user_scoped` mock handler.
+- `ui/src/locales/staff.ftl` + `staff.id.ftl` - 7 FTL keys.
+
+### SUPERVISOR RULING - S2 ACCEPTED (2026-09-08)
+S2 commits `37de19fb1` + `425b823e1` ratified. Recorded findings:
+- **tenant-admin ratified** - the impersonator is a TENANT ADMIN (in-tenant support),
+  resolving the open question in the PLAN-FIRST section.
+- **vendor-operator variant DEFERRED** - the cross-tenant vendor-operator variant is
+  deferred on a documentation-constraint basis (all presets are tenant roles, so
+  `operator:impersonate` must not live in the tenant preset chain for a vendor
+  operator; the doc does not yet carve that out).
+- **ADMIN preset binding** - `operator:impersonate` is bound to the ADMIN preset
+  (sensitive:true, explicit grant only; no operator:* wildcard can implicitly grant it).
+- **b-ii audit-row-only design adopted** - SessionContext is UNCHANGED; impersonation
+  is recorded only as an `audit_impersonation_start` row (design option b-ii from the
+  PLAN-FIRST section, the smaller-blast-radius choice). VERIFIED: `git grep
+  impersonated_by` returns **0** across `*.rs` / `*.ts` / `*.tsx` - no `impersonated_by`
+  field was added to SessionContext, confirming the active session's grants were never
+  mutated.
+
+### Standing
+Parity: `impersonate_user_scoped` was briefly red (registered by `37de19fb1`, no UI
+caller); since `425b823e1` the scoped-coverage gate is satisfied (UI caller present).
+See the supersession index below for the former red note at line ~1203.
+
+---
+
+## custom-roles-authoring landing (commits 7948344e + 9aa5a846) - previously unjournaled
+
+Zero journal coverage prior to this correction. Two commits (plan source:
+`todo-global-saas-3.md:97`):
+
+| sha | subject | files |
+|---|---|---|
+| `7948344e` | `feat(core): author custom roles - update and delete with a preset guard` | core |
+| `9aa5a846` | `feat(staff): custom-role authoring - IPC + screen (ADR #47 ruling 4)` | staff UI |
+
+Combined: 12 files, +1289. `RoleAuthoringScreen` + 4 scoped commands. No coder-5
+journal entry existed for this work; recorded here so the slice is traceable.
+
+---
+
+## Sweep finding - 45-commit literal-\n wave (2026-07-12 to 2026-07-17)
+
+The doc sweep surfaced a repo-wide wave of commits whose messages contain a literal
+`\n` (backslash-n) instead of a real newline - the body was written with an escaped
+sequence that `git` stored verbatim. My own two prior acks covered ONLY my own 2 such
+commits; the phenomenon is repo-wide (45 total across multiple authors/streams), not
+isolated to my work. Recorded so the `commit-msg` hook / lint can be extended to
+reject a literal `\n` in subjects/bodies going forward.
+
+---
+
+## SUPERSEDED INDEX (2026-09-09 correction) - additive pointers, old text untouched
+
+The following earlier lines are now superseded by later landings; recorded here as
+pointers without editing the original text:
+- **line 976** (S2 PLAN-FIRST: "SENT TO SUPERVISOR FOR APPROVAL - no implementation until
+  greenlit") -> SUPERSEDED: S2 ruled + landed via `37de19fb1` + `425b823e1` (S2 LANDING entry above).
+- **line 571** (Slice C: "Awaiting supervisor greenlight ... Do NOT start unprompted") ->
+  SUPERSEDED: Slice C (section J over-quota markers) greenlit + landed at `006add29b`.
+- **line 1203** ("verify-ipc-parity is currently red repo-wide on `impersonate_user_scoped`
+  ... left untouched") -> SUPERSEDED: parity green since `425b823e1` (UI caller present).
+- **line 1107** ("`list_role_holders_scoped` needs a handler in dev-mock ... entry is
+  allowlisted until then") -> SUPERSEDED: handler landed at `45e502078` (IPC parity 18->17).
+- **line 456** ("awaiting which slice to greenlight ... Nothing committed pending the
+  supervisor's pick") -> RESOLVED at line 460 (Slice A IMPLEMENTED, commit `a33d6075a`).
+
+---
+
+### Placeholder resolutions (2026-09-09)
+- line 27 `*(schema)*` -> `dbb3aabe6` (tax-rate scoping schema commit)
+- line 28 `*(this commit)*` -> `1eb5b7533` (tax-rate resolution commit)
+- line 150 `*(this commit)*` -> `1aa67b745` (D2 sync-pull column-gap repair landing - the
+  plan section named no commit; this records it)
