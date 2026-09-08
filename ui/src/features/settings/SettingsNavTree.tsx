@@ -373,11 +373,11 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
 
   // ── Keyboard shortcut hints (P60-blog-3) ─────────────────
   const KEYBOARD_SHORTCUTS = [
-    { keys: ['↑', '↓'], desc: 'Navigate items' },
-    { keys: ['→'], desc: 'Expand category' },
-    { keys: ['←'], desc: 'Collapse category' },
-    { keys: ['Home', 'End'], desc: 'First / last item' },
-    { keys: ['Esc'], desc: 'Close mobile sidebar' },
+    { keys: ['↑', '↓'], desc: l10n.getString('settings-shortcuts-desc-navigate') },
+    { keys: ['→'], desc: l10n.getString('settings-shortcuts-desc-expand') },
+    { keys: ['←'], desc: l10n.getString('settings-shortcuts-desc-collapse') },
+    { keys: ['Home', 'End'], desc: l10n.getString('settings-shortcuts-desc-firstlast') },
+    { keys: ['Esc'], desc: l10n.getString('settings-shortcuts-desc-close') },
   ];
 
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -404,11 +404,11 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
     if (prevSection.current !== activeSection) {
       const item = NAV_ITEMS.find((n) => n.key === activeSection);
       if (item) {
-        setAnnouncement(`Opened ${item.label} settings`);
+        setAnnouncement(l10n.getString('settings-announce-section-opened', { section: item.label }));
       }
       prevSection.current = activeSection;
     }
-  }, [activeSection]);
+  }, [activeSection, l10n]);
 
   // ── Collapsible categories (multi-expandable, persisted) ──────────
   const [expandedCategories, setExpandedCategories] = useState<string[]>(() => {
@@ -505,13 +505,13 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
   useEffect(() => {
     if (q && prevQ.current !== q) {
       setAnnouncement(visibleCount === 0
-        ? 'No settings match your search'
-        : `${visibleCount} ${visibleCount === 1 ? 'result' : 'results'} found`);
+        ? l10n.getString('settings-announce-search-none')
+        : l10n.getString('settings-announce-search-count', { count: visibleCount }));
     } else if (!q && prevQ.current) {
-      setAnnouncement('Search cleared');
+      setAnnouncement(l10n.getString('settings-announce-search-cleared'));
     }
     prevQ.current = q;
-  }, [q, visibleCount]);
+  }, [q, visibleCount, l10n]);
 
   // ── Screen reader: announce category expand/collapse (P60-4e) ────
   // We track previous expandedCategories to detect user-initiated toggles
@@ -528,13 +528,13 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
       if (label) {
         const count = CATEGORIES.find((c) => c.label === label)?.keys.length ?? 0;
         setAnnouncement(added
-          ? `${label} category expanded, ${count} ${count === 1 ? 'item' : 'items'}`
-          : `${label} category collapsed`);
+          ? l10n.getString('settings-announce-category-expanded', { category: label, count })
+          : l10n.getString('settings-announce-category-collapsed', { category: label }));
       }
       userToggleRef.current = false;
     }
     prevCategories.current = expandedCategories;
-  }, [expandedCategories]);
+  }, [expandedCategories, l10n]);
 
   // ── Treegrid keyboard navigation (P60-4c/d) ──────────────
   // Escape-to-close-mobile-drawer stays GLOBAL (document) because focus may

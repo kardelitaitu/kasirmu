@@ -240,6 +240,30 @@ settings-sidebar-count-aria = { $count } items
 settings-sidebar-count-title = { $count } items
 settings-sidebar-no-results = No matching sections
 settings-sidebar-clear-results = Clear search
+
+# ── Live-region announcements (localized via Fluent vars, P60-4e) ──
+settings-announce-section-opened = { $section } settings opened
+settings-announce-search-none = No settings match your search
+settings-announce-search-count =
+    { $count ->
+        [one] { $count } result found
+       *[other] { $count } results found
+    }
+settings-announce-search-cleared = Search cleared
+settings-announce-category-expanded =
+    { $category } category expanded, { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
+settings-announce-category-collapsed = { $category } category collapsed
+
+# ── Keyboard shortcut descriptions (popover) ──
+settings-shortcuts-desc-navigate = Navigate items
+settings-shortcuts-desc-expand = Expand category
+settings-shortcuts-desc-collapse = Collapse category
+settings-shortcuts-desc-firstlast = First / last item
+settings-shortcuts-desc-close = Close mobile sidebar
+
 settings-theme-toggle-dark-aria = Switch to dark mode
 settings-theme-toggle-light-aria = Switch to light mode
 settings-loading = Loading settings…

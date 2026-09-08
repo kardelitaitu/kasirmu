@@ -48,6 +48,30 @@ settings-sidebar-count-aria = { $count } item
 settings-sidebar-count-title = { $count } item
 settings-sidebar-no-results = Tidak ada bagian yang cocok
 settings-sidebar-clear-results = Hapus pencarian
+
+# ── Live-region announcements (localized via Fluent vars, P60-4e) ──
+settings-announce-section-opened = Setelan { $section } dibuka
+settings-announce-search-none = Tidak ada pengaturan yang cocok dengan pencarian
+settings-announce-search-count =
+    { $count ->
+        [one] { $count } hasil ditemukan
+       *[other] { $count } hasil ditemukan
+    }
+settings-announce-search-cleared = Pencarian dihapus
+settings-announce-category-expanded =
+    { $category } kategori dibuka, { $count ->
+        [one] { $count } item
+       *[other] { $count } item
+    }
+settings-announce-category-collapsed = { $category } kategori ditutup
+
+# ── Keyboard shortcut descriptions (popover) ──
+settings-shortcuts-desc-navigate = Navigasi item
+settings-shortcuts-desc-expand = Buka kategori
+settings-shortcuts-desc-collapse = Tutup kategori
+settings-shortcuts-desc-firstlast = Item pertama / terakhir
+settings-shortcuts-desc-close = Tutup bilah sisi seluler
+
 settings-theme-toggle-dark-aria = Beralih ke mode gelap
 settings-theme-toggle-light-aria = Beralih ke mode terang
 settings-store-name = Nama Toko

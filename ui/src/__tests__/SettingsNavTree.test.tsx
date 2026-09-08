@@ -14,7 +14,7 @@ import settingsIdFtl from '@/locales/settings.id.ftl?raw';
 vi.mock('@fluent/react', () => ({
   useLocalization: () => ({
     l10n: {
-      getString: (key: string) => {
+      getString: (key: string, args?: Record<string, unknown>) => {
         const keyMap: Record<string, string> = {
           'settings-sidebar-nav-aria': 'Settings navigation',
           'settings-sidebar-collapse-all-aria': 'Collapse all categories',
@@ -38,7 +38,23 @@ vi.mock('@fluent/react', () => ({
           'settings-nav-inventory': 'Inventory',
           'settings-nav-diagnostics': 'Diagnostics',
         };
-        return keyMap[key] ?? key;
+        if (keyMap[key] !== undefined) return keyMap[key];
+        const vars = (args ?? {}) as Record<string, string | number>;
+        const announcementMap: Record<string, (v: Record<string, string | number>) => string> = {
+          'settings-announce-section-opened': (v) => `${v['section']} settings opened`,
+          'settings-announce-search-none': () => 'No settings match your search',
+          'settings-announce-search-count': (v) => `${v['count']} ${v['count'] === 1 ? 'result' : 'results'} found`,
+          'settings-announce-search-cleared': () => 'Search cleared',
+          'settings-announce-category-expanded': (v) => `${v['category']} category expanded, ${v['count']} ${v['count'] === 1 ? 'item' : 'items'}`,
+          'settings-announce-category-collapsed': (v) => `${v['category']} category collapsed`,
+          'settings-shortcuts-desc-navigate': () => 'Navigate items',
+          'settings-shortcuts-desc-expand': () => 'Expand category',
+          'settings-shortcuts-desc-collapse': () => 'Collapse category',
+          'settings-shortcuts-desc-firstlast': () => 'First / last item',
+          'settings-shortcuts-desc-close': () => 'Close mobile sidebar',
+        };
+        if (announcementMap[key]) return announcementMap[key](vars);
+        return key;
       },
     },
   }),
@@ -554,7 +570,7 @@ describe('SettingsNavTree', () => {
       await user.click(operationsBtn);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('Operations category expanded');
+      expect(region?.textContent).toContain('Operations category expanded, 6 items');
     });
 
     it('announces category collapsed when the expanded category header is clicked again', async () => {
@@ -575,7 +591,7 @@ describe('SettingsNavTree', () => {
       rerender(<SettingsNavTree {...defaultProps} activeSection="receipt" />);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('Opened Receipt settings');
+      expect(region?.textContent).toContain('Receipt settings opened');
     });
 
     it('announces search results count when query changes', () => {
