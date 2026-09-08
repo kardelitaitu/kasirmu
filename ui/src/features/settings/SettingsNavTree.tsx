@@ -241,24 +241,37 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
   // P60-4b: Focus trap on mobile sidebar overlay
   useFocusTrap(sidebarRef, mobileSidebarOpen, onMobileClose);
 
-  // ── Debounced localStorage write (P60-2c: prevents race on rapid toggle) ─
-  const debouncedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Per-key debounced localStorage write (P60-2c: prevents race on rapid toggle) ─
+  // Each preference key owns its own pending timer so two toggles on DIFFERENT
+  // keys within the debounce window no longer clobber each other (the previous
+  // shared-timer design silently dropped the first write). On unmount we FLUSH
+  // every pending write rather than dropping it, so no preference is lost.
+  const pendingWritesRef = useRef<Map<string, { timer: ReturnType<typeof setTimeout>; run: () => void }>>(new Map());
 
   function debouncedPersist(key: string, value: string | null) {
-    if (debouncedRef.current) clearTimeout(debouncedRef.current);
-    debouncedRef.current = setTimeout(() => {
+    const existing = pendingWritesRef.current.get(key);
+    if (existing) clearTimeout(existing.timer);
+
+    const run = () => {
       if (value === null) {
         localStorage.removeItem(key);
       } else {
         localStorage.setItem(key, value);
       }
-      debouncedRef.current = null;
-    }, 100);
+      pendingWritesRef.current.delete(key);
+    };
+
+    const timer = setTimeout(run, 100);
+    pendingWritesRef.current.set(key, { timer, run });
   }
 
   useEffect(() => {
     return () => {
-      if (debouncedRef.current) clearTimeout(debouncedRef.current);
+      pendingWritesRef.current.forEach(({ timer, run }) => {
+        clearTimeout(timer);
+        run();
+      });
+      pendingWritesRef.current.clear();
     };
   }, []);
 

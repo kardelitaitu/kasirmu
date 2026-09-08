@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SettingsNavTree, {
   CATEGORIES,
@@ -374,6 +374,46 @@ describe('SettingsNavTree', () => {
     if (backdrop) await user.click(backdrop);
 
     expect(onMobileClose).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Sidebar preference persistence (P60-2c, per-key debounce) ──
+
+  describe('sidebar preference persistence', () => {
+    it('writes both preference keys when toggled within the debounce window', () => {
+      vi.useFakeTimers();
+      try {
+        const { getByRole } = render(<SettingsNavTree {...defaultProps} />);
+
+        // Collapse the sidebar → schedules persist('settings-sidebar-collapsed', 'true')
+        fireEvent.click(getByRole('button', { name: 'Collapse sidebar' }));
+        // Expand a collapsed category → schedules persist('settings-sidebar-expanded', ...)
+        fireEvent.click(screen.getByText('Operations').closest('button')!);
+
+        // Both timers are still pending; advance past the 100ms debounce window.
+        act(() => { vi.advanceTimersByTime(100); });
+
+        expect(localStorage.getItem('settings-sidebar-collapsed')).toBe('true');
+        const expanded = JSON.parse(localStorage.getItem('settings-sidebar-expanded') ?? '[]');
+        expect(Array.isArray(expanded) && expanded).toContain('Operations');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('flushes pending preference writes on unmount instead of dropping them', () => {
+      vi.useFakeTimers();
+      try {
+        const { unmount, getByRole } = render(<SettingsNavTree {...defaultProps} />);
+
+        fireEvent.click(getByRole('button', { name: 'Collapse sidebar' }));
+        // Unmount BEFORE the debounce timer fires → cleanup must flush the write.
+        act(() => { unmount(); });
+
+        expect(localStorage.getItem('settings-sidebar-collapsed')).toBe('true');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   // ── Keyboard navigation (P60-5b) ───────────────────────────
