@@ -519,14 +519,16 @@ export default function FastPINOverlay({ open, onClose, onVerified }: FastPINOve
   if (!open && !exiting) return null;
 
   // Escape key is handled via document-level keydown listener
-  /* eslint-disable jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */
   return (
     <div
+      role="presentation"
+      tabIndex={-1}
       className={`fastpin-overlay${exiting ? ' fastpin-overlay--exiting' : ''}`}
       onClick={(e) => {
         if (e.target === e.currentTarget && !loading) handleClose();
       }}
     >
+      {/* role="dialog" is keyboard-managed via onKeyDown; the rule flags the handler on a non-interactive role */}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         className={`fastpin-card${exiting ? ' fastpin-card--exiting' : ''}`}
