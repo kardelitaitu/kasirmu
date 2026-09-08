@@ -527,6 +527,8 @@ import {
   createWorkspaceInstanceScoped,
   updateWorkspaceInstanceScoped,
   archiveWorkspaceInstanceScoped,
+  suspendSurplusWorkspaceInstancesScoped,
+  recoverWorkspaceInstancesScoped,
 } from '@/api/workspaces';
 import { impersonateUserScoped } from '@/api/staff';
 
@@ -600,6 +602,48 @@ describe('workspaces.ts IPC contract', () => {
       sessionToken: 'tok',
       instanceId: 'ws-old',
     });
+  });
+
+  // §J B1. The command signatures take Option<String> store_id, and the api
+  // layer always sends the key (null when unspecified) rather than dropping it.
+  // Pinned both ways because "omitted" and "null" are different payloads and
+  // Tauri only accepts one of them as None — a call site that stops sending the
+  // key would still typecheck.
+  it('suspendSurplusWorkspaceInstancesScoped invokes "suspend_surplus_workspace_instances_scoped" with an explicit store', async () => {
+    mockInvoke.mockResolvedValue(3);
+    const n = await suspendSurplusWorkspaceInstancesScoped('tok', 'store-2');
+    expect(n).toBe(3);
+    expect(mockInvoke).toHaveBeenCalledWith('suspend_surplus_workspace_instances_scoped', {
+      sessionToken: 'tok',
+      storeId: 'store-2',
+    });
+  });
+
+  it('suspendSurplusWorkspaceInstancesScoped sends storeId: null when the store is omitted', async () => {
+    mockInvoke.mockResolvedValue(0);
+    const n = await suspendSurplusWorkspaceInstancesScoped('tok');
+    expect(n).toBe(0);
+    expect(mockInvoke).toHaveBeenCalledWith('suspend_surplus_workspace_instances_scoped', {
+      sessionToken: 'tok',
+      storeId: null,
+    });
+  });
+
+  it('recoverWorkspaceInstancesScoped invokes "recover_workspace_instances_scoped" and returns the restored count', async () => {
+    mockInvoke.mockResolvedValue(2);
+    const n = await recoverWorkspaceInstancesScoped('tok', 'store-1');
+    expect(n).toBe(2);
+    expect(mockInvoke).toHaveBeenCalledWith('recover_workspace_instances_scoped', {
+      sessionToken: 'tok',
+      storeId: 'store-1',
+    });
+  });
+
+  it('both remediation commands propagate backend errors instead of swallowing them', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('unknown store: nope'));
+    await expect(suspendSurplusWorkspaceInstancesScoped('tok', 'nope')).rejects.toThrow('unknown store');
+    mockInvoke.mockRejectedValueOnce(new Error('not registered'));
+    await expect(recoverWorkspaceInstancesScoped('tok')).rejects.toThrow('not registered');
   });
 
   it('propagates backend errors', async () => {

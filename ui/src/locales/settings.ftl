@@ -17,6 +17,18 @@ settings-license-quota-dim-pos-registers = POS terminals
 settings-license-quota-dim-warehouses = Warehouse stock points
 settings-license-quota-dim-staff = Staff accounts
 settings-license-quota-dim-products = Products
+# §J B1 — the two workspace-register remediation actions on the over-quota
+# card. remedy-hint names the store because the card reads as tenant-wide while
+# both actions are bound to one store; the copy must not imply otherwise.
+settings-license-quota-remedy-aria = Workspace register remediation
+settings-license-quota-remedy-title = Workspace registers
+settings-license-quota-remedy-hint = Suspend the surplus registers of { $store }, or restore the ones an earlier downgrade suspended. Only this store is affected.
+settings-license-quota-remedy-suspend = Suspend surplus
+settings-license-quota-remedy-recover = Restore suspended
+settings-license-quota-remedy-suspended = { $count } surplus register(s) suspended. They are disabled, not deleted.
+settings-license-quota-remedy-recovered = { $count } suspended register(s) restored.
+settings-license-quota-remedy-none = Nothing to change — no register of this store is over the limit or suspended.
+settings-license-quota-remedy-failed = That action failed. The quota numbers above are unchanged.
 setup-tagline = Point of Sale — Simplified
 setup-step-store-type = Store Type
 setup-step-payments = Payments

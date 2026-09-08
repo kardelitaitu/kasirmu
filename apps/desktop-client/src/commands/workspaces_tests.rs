@@ -526,3 +526,77 @@ async fn list_workspaces_scoped_rejects_tampered_subscription_signature() {
         other => panic!("expected AppError::Invalid/Core, got {other:?}"),
     }
 }
+
+// ── §J B1: remediation target resolution ─────────────────────────────
+
+/// Seed one location row so "known store" has a referent. Written out rather
+/// than relying on whatever `fresh_db` seeds, so a future change to the default
+/// location cannot quietly flip these assertions.
+fn conn_with_location(id: &str) -> rusqlite::Connection {
+    let conn = oz_core::migrations::fresh_db();
+    conn.execute(
+        "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, 'Seeded Store')",
+        rusqlite::params![id],
+    )
+    .unwrap();
+    conn
+}
+
+#[test]
+fn remediation_target_without_an_id_keeps_the_session_store() {
+    // The historical behaviour, and the reason the signature change is
+    // backward compatible: omitting the argument resolves to the caller's own
+    // store and needs no `locations` lookup at all.
+    let conn = conn_with_location("store-1");
+    let got = remediation_target(&conn, "store-9", None).unwrap();
+    assert_eq!(got, "store-9");
+}
+
+#[test]
+fn remediation_target_accepts_a_location_that_exists() {
+    let conn = conn_with_location("store-1");
+    let got = remediation_target(&conn, "store-9", Some("store-1".into())).unwrap();
+    assert_eq!(got, "store-1");
+}
+
+#[test]
+fn remediation_target_refuses_a_store_that_is_not_a_location() {
+    // The whole point of the check: without it, an invented id reaches
+    // `open_store`, which CREATES the missing database, and the command returns
+    // a clean 0 — a quota repair that reports success having done nothing
+    // anywhere.
+    let conn = conn_with_location("store-1");
+    let err = remediation_target(&conn, "store-9", Some("store-does-not-exist".into()))
+        .expect_err("unknown store must be refused");
+    match err {
+        AppError::Invalid(msg) => assert!(msg.contains("unknown store"), "got: {msg}"),
+        other => panic!("expected AppError::Invalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn remediation_target_refuses_a_blank_id_instead_of_defaulting() {
+    // A blank string is not "unspecified". Treated as unspecified it would
+    // silently act on the caller's store while the UI believed it was acting on
+    // the store named in the request; treated literally it would name a
+    // database file with an empty id.
+    let conn = conn_with_location("store-1");
+    let err = remediation_target(&conn, "store-9", Some("   ".into()))
+        .expect_err("blank store_id must be refused");
+    match err {
+        AppError::Invalid(msg) => {
+            assert!(msg.contains("must not be blank"), "got: {msg}");
+        }
+        other => panic!("expected AppError::Invalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn remediation_target_trims_so_padding_cannot_mint_a_second_store() {
+    // " store-1 " must resolve to exactly store-1. Passed through untrimmed it
+    // would open a different database path that merely looks like the same one,
+    // and get_location_profile would then reject a store the owner can see.
+    let conn = conn_with_location("store-1");
+    let got = remediation_target(&conn, "store-9", Some("  store-1  ".into())).unwrap();
+    assert_eq!(got, "store-1");
+}

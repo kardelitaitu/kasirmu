@@ -1379,3 +1379,107 @@ came out of that, one of them a mistake of mine that would have shipped:
 - The proposal at the end of :1291 — extend `commit-msg` to reject a literal `\n` —
   is supported by these numbers rather than weakened by them: 84 commits already
   carry the defect, and none of the ten gates looks at message bodies today.
+
+---
+
+## 2026-09-09 — finisher-B: §J B1 — the two orphaned remediation commands get their call site
+
+Supervisor greenlit B1 from my scoping report, one commit. Branch 0.0.37, no branch,
+no push, version untouched.
+
+### What landed
+
+- **`apps/desktop-client/src/commands/workspaces.rs`** — both commands take
+  `store_id: Option<String>` (the ruling's backward-compatible extension: `None` = the
+  caller's store, exactly as before). Desktop-only registration left as-is and now
+  *recorded* rather than implied.
+- **`ui/src/api/workspaces.ts`** — `suspendSurplusWorkspaceInstancesScoped` /
+  `recoverWorkspaceInstancesScoped`, both `Promise<number>` (the commands return
+  `Result<u32>` — a count, not a row set).
+- **`OverQuotaCard.tsx`** (+79 JSX lines) — the two actions, a result note, and the
+  store they apply to named in the hint. The module doc said "Read-only"; that sentence
+  is gone because it is no longer true.
+- **9 keys in `settings.ftl` + `settings.id.ftl`** (Indonesian translated, not copied).
+- **dev-mock**: `suspend_surplus_workspace_instances_scoped` was answering `() => []` to
+  a command declared `Result<u32>` — it had been parked under the picker group and
+  copied its neighbour's shape. Now `() => 0`, plus a new `recover` handler. Both answer
+  0 rather than an invented number: `MOCK_WORKSPACES_SEED` has no `status` column at
+  all, so no instance can be represented as suspended and "surplus" is undefined in the
+  mock. That is recorded in the file so nobody reads the 0 as a live answer.
+- **Allowlist**: the two names **left `scoped_orphans` and entered `tablet`**. They could
+  not simply disappear — a shared-UI caller plus a desktop-only registration is exactly
+  what the `tablet` list is for, and the memo-authoring entries set that precedent. The
+  `_comment` records it as a product choice, not a gap.
+- **Tests**: 5 Rust (`remediation_target_*`) + 4 card + 4 contract.
+
+### The security shape of this slice, since it is the part that was not in the order
+
+The order said "add `store_id: Option<String>`", which reads like a two-line change.
+`DbManager::open_store` **creates the database file when it is missing**
+(platform/core/src/database/manager.rs:70), so an unvalidated caller-supplied id would
+mint a new store database for any string, find nothing to remediate in it, and return a
+successful `0`. For a quota repair that is the worst failure available: it looks done.
+So the id is validated against `locations` via `Store::get_location_profile` before any
+store handle is opened, in one choke point both commands share. `WORKSPACES_SWITCH` stays
+the gate — the permission says what a caller may do, the validated id only says which
+store they may do it to. Two details worth keeping:
+
+- **A blank id is refused, not defaulted.** `"   "` is not the same request as omission;
+  silently falling back to the session store would act on one store while the UI named
+  another.
+- **The id is trimmed before use**, which I only thought of on the second pass. Passed
+  through padded, `" store-1 "` names a *different* file that looks like the same store
+  — and would then be rejected by the lookup for a store the owner can see in the list.
+
+The helper was split into a sync `remediation_target(&Connection, …)` + an async shell so
+the validation is reachable from a plain `#[test]`, following the
+`load_over_quota_report` precedent. Without that split the choke point had no test, which
+for an authz-adjacent validator is not an acceptable shape.
+
+### Two findings that change what the ruling assumed
+
+1. **Ruling 4 is factually wrong, and I checked it before implementing rather than
+   after.** "suspend/recover are the built pair; an explicit archive does not exist" —
+   `archive_workspace_instance_scoped` exists at `workspaces.rs:381`, backed by
+   `Store::archive_instance` (`workspaces_lifecycle.rs:400`), registered in desktop,
+   wrapped at `ui/src/api/workspaces.ts:128`, mocked at `tauri-api.ts:2356`, and covered
+   by a contract test at `api-ipc-contract.test.ts:596`. What it has *not* got is a
+   component call site: zero. So archive is complete through five layers and dead at the
+   sixth. §J's "archive or upgrade" is therefore **not** unmapped, and I did not write
+   that it maps to suspend. Not folded into B1: it is per-instance (`instance_id`), which
+   needs a list of the store's instances in the card, i.e. a UI decision rather than a
+   wiring job. Escalated as its own question.
+2. **The card must not be gated on being over quota.** The obvious placement for a
+   remediation block is inside the over-quota region, and for `suspend` that is right.
+   For `recover` it is exactly wrong: after an upgrade the numbers are clean,
+   `overRows` is empty, and the registers a downgrade suspended are still suspended.
+   Gating recovery on over-quota hides the only way back in the one state where the
+   owner has already paid to fix it. So the section renders whenever the report loaded,
+   and a test asserts it appears alongside the all-clear message.
+
+### Deliberate deviation from the letter of the ruling
+
+The ruling rejected a location picker, which I honoured — no picker. But the card passes
+`resolvedStoreId` **explicitly** rather than omitting it. The hint text names a store, so
+the action must be bound to that same named store; letting the backend infer a target
+would leave the copy and the call each holding their own answer to "which store?". It
+also means the new `Some` branch is exercised by the real UI instead of shipping as a
+code path nothing walks. The consequence, stated plainly: **B1 gives the owner remediation
+for the store they are signed into, not for any store** — the argument is ready for the
+picker, this slice does not add one.
+
+One trap worth recording: `useWorkspace()` exposes `resolvedStoreId`; `storeId` belongs to
+`useWorkspaceScope()`. I wrote `storeId` first and only caught it because
+`OverQuotaCard.test.tsx` mocks the context shape and the mock had no such key. A field
+name invented from prose is exactly what typecheck is for — but reading the consumer's
+mock found it faster than building would have.
+
+### Gates
+
+`cargo check -p oz-pos-app` clean. `cargo test -p oz-pos-app --lib remediation_target`:
+5 passed. `npx tsc --noEmit`: clean. `vitest run OverQuotaCard api-ipc-contract`: 66
+passed. `lint-i18n.sh`: no issues. `verify-ipc-parity.py`: OK — tablet 150 to 152
+unregistered references (my two, allowlisted), and the gated dead-surface list drops
+`recover_workspace_instances_scoped` and `suspend_surplus_workspace_instances_scoped`,
+which is the actual point of the slice: two permission checks that guarded nothing now
+guard something.

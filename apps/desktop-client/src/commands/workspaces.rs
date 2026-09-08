@@ -20,6 +20,7 @@ use sha2::Sha256;
 use oz_core::db::Store;
 use oz_core::db::workspaces::{CreateWorkspaceInstanceArgs, WorkspaceDto};
 use oz_core::permissions;
+use oz_core::session::SessionContext;
 use oz_core::subscription::TenantSubscription;
 
 use crate::commands::authz::require_permission_for_session;
@@ -392,6 +393,56 @@ pub async fn archive_workspace_instance_scoped(
     Ok(())
 }
 
+/// Resolve which store a §J quota-remediation command will act on.
+///
+/// `None` keeps the historical behaviour: the caller's own store, taken from the
+/// session. `Some(id)` lets the owner-facing tenant-level over-quota card remediate
+/// a location the caller is not currently signed in to, which is the case the
+/// remediation exists for — an owner with 3 surplus registers in store B while
+/// signed in to store A.
+///
+/// The id is validated against the tenant's `locations` table BEFORE any store
+/// database is opened. `DbManager::open_store` creates the file when it is missing
+/// (platform/core/src/database/manager.rs:70), so an unvalidated id would silently
+/// mint a fresh store database, find nothing to remediate there, and return a
+/// successful `0`. For a quota repair that is the worst available failure shape:
+/// it looks finished. `resolve_session`/`open_store` are also never given a
+/// caller-supplied id anywhere else, so this stays the single choke point.
+fn remediation_target(
+    global: &rusqlite::Connection,
+    session_store_id: &str,
+    requested: Option<String>,
+) -> Result<String, AppError> {
+    let Some(raw) = requested else {
+        return Ok(session_store_id.to_string());
+    };
+    // Trimmed before it is used anywhere: this value goes on to name a database
+    // file through open_store, so a padded id must not become a second, distinct
+    // store that merely looks like the first.
+    let id = raw.trim();
+    if id.is_empty() {
+        return Err(AppError::Invalid(
+            "store_id must not be blank; omit it to target the caller's own store".into(),
+        ));
+    }
+    if Store::new(global).get_location_profile(id)?.is_none() {
+        return Err(AppError::Invalid(format!("unknown store: {id}")));
+    }
+    Ok(id.to_string())
+}
+
+/// Async shell around [`remediation_target`]: takes the global lock and
+/// forwards. Split out so the validation is reachable from a plain #[test],
+/// following the `load_over_quota_report` precedent in commands/subscription.rs.
+async fn resolve_remediation_target(
+    state: &State<'_, AppState>,
+    session: &SessionContext,
+    store_id: Option<String>,
+) -> Result<String, AppError> {
+    let global_db = state.db.lock().await;
+    remediation_target(&global_db, &session.store_id, store_id)
+}
+
 /// Recover `QuotaSuspended` workspace instances after a tier upgrade. ADR #5 Phase 3b.
 ///
 /// Iterates the target store's database, restores suspended instances up to
@@ -399,11 +450,17 @@ pub async fn archive_workspace_instance_scoped(
 #[tauri::command]
 pub async fn recover_workspace_instances_scoped(
     session_token: String,
+    store_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<u32, AppError> {
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::WORKSPACES_SWITCH).await?;
+    // §J B1: an explicit target is owner-level and cross-store, so it is validated
+    // against `locations` before the store db is opened. The gate stays
+    // WORKSPACES_SWITCH either way — the permission is what a caller may do, the
+    // validated id only says which store they may do it to.
+    let target = resolve_remediation_target(&state, &session, store_id).await?;
 
     // Load subscription from the GLOBAL database.
     let sub = {
@@ -416,17 +473,18 @@ pub async fn recover_workspace_instances_scoped(
 
     let conn = state
         .db_manager
-        .open_store(&session.store_id)
+        .open_store(&target)
         .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     let effective = sub.effective_tier();
-    let restored = store.auto_recover_instances(&session.store_id, &effective)?;
+    let restored = store.auto_recover_instances(&target, &effective)?;
     drop(db);
     tracing::info!(
-        store_id = %session.store_id,
+        store_id = %target,
+        caller_store = %session.store_id,
         restored = %restored,
         tier = %effective.name(),
         "workspace instances recovered after tier upgrade"
@@ -442,11 +500,16 @@ pub async fn recover_workspace_instances_scoped(
 #[tauri::command]
 pub async fn suspend_surplus_workspace_instances_scoped(
     session_token: String,
+    store_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<u32, AppError> {
     // F-017: enforce per-domain permission on this scoped command.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::WORKSPACES_SWITCH).await?;
+    // §J B1: see `resolve_remediation_target`. An explicit store is validated
+    // against `locations` before its database is opened, so a typo cannot create
+    // an empty store db and report a clean 0-instance suspension.
+    let target = resolve_remediation_target(&state, &session, store_id).await?;
 
     // Load subscription from the GLOBAL database.
     let sub = {
@@ -459,17 +522,18 @@ pub async fn suspend_surplus_workspace_instances_scoped(
 
     let conn = state
         .db_manager
-        .open_store(&session.store_id)
+        .open_store(&target)
         .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     let effective = sub.effective_tier();
-    let suspended = store.suspend_surplus_instances(&session.store_id, &effective)?;
+    let suspended = store.suspend_surplus_instances(&target, &effective)?;
     drop(db);
     tracing::info!(
-        store_id = %session.store_id,
+        store_id = %target,
+        caller_store = %session.store_id,
         suspended = %suspended,
         tier = %effective.name(),
         "surplus workspace instances suspended after tier downgrade"

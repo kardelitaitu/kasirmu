@@ -228,3 +228,49 @@ export async function listAllWorkspacesScoped(
   return loggedInvoke<WorkspaceTypeDto[]>('list_all_workspaces_scoped', { sessionToken });
 }
 
+// ── §J Quota Remediation (over-quota suspend / recover) ─────────────────
+
+/**
+ * Suspend a store's surplus workspace instances after a tier downgrade
+ * (ADR #5 Phase 3c, the §J remediation path). Least-recently-used instances are
+ * moved to `quota_suspended`; resolves to the count actually suspended.
+ *
+ * `storeId` is optional and that optionality is the point: omitted, the command
+ * acts on the caller's own store (its historical behaviour). Passed, it acts on
+ * that location instead — which is what the owner-facing over-quota card needs,
+ * because the card reports the whole tenant while the session is bound to a
+ * single store. The backend validates the id against `locations` before opening
+ * any store database and rejects an unknown one, so a typo is an error rather
+ * than a silent no-op on a freshly created empty store.
+ *
+ * Desktop-only: not registered on tablet (recorded product choice, the same
+ * precedent as memo authoring and payables).
+ */
+export async function suspendSurplusWorkspaceInstancesScoped(
+  sessionToken: string,
+  storeId?: string,
+): Promise<number> {
+  return loggedInvoke<number>('suspend_surplus_workspace_instances_scoped', {
+    sessionToken,
+    storeId: storeId ?? null,
+  });
+}
+
+/**
+ * Recover a store's `quota_suspended` workspace instances after a tier upgrade
+ * (ADR #5 Phase 3b) — the inverse of {@link suspendSurplusWorkspaceInstancesScoped}
+ * and the reason suspension is a safe remediation to offer: nothing is destroyed,
+ * so an upgrade can hand the instances back. Returns the count restored.
+ *
+ * Same optional `storeId` semantics and the same desktop-only registration.
+ */
+export async function recoverWorkspaceInstancesScoped(
+  sessionToken: string,
+  storeId?: string,
+): Promise<number> {
+  return loggedInvoke<number>('recover_workspace_instances_scoped', {
+    sessionToken,
+    storeId: storeId ?? null,
+  });
+}
+

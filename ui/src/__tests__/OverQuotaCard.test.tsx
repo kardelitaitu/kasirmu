@@ -15,6 +15,12 @@
  *   - At-cap is within quota (the strictly-greater rule)
  *   - An unlimited dimension is never over, however large the usage
  *   - The alert's Refresh retries the assessment
+ *
+ * B1 added the two remediation actions, covered below:
+ *   - They are offered while the tenant is within quota (recovery state)
+ *   - Suspend sends the store the hint names, and reports its count
+ *   - A 0 count says "nothing to change" rather than going quiet
+ *   - A rejected action surfaces failure without discarding the assessment
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -29,8 +35,8 @@ import type { QuotaUsageRow, OverQuotaMarkerRow } from '@/api/subscription';
 
 const { invokeMock, reportHandler } = vi.hoisted(() => {
   let handler: ((cmd: string, args?: unknown) => Promise<unknown>) | null = null;
-  const impl = (cmd: string): Promise<unknown> => {
-    if (handler) return handler(cmd);
+  const impl = (cmd: string, args?: unknown): Promise<unknown> => {
+    if (handler) return handler(cmd, args);
     if (cmd === 'get_over_quota_report') {
       return Promise.resolve({
         tierKey: 'premium',
@@ -50,6 +56,12 @@ const { invokeMock, reportHandler } = vi.hoisted(() => {
     if (cmd === 'get_brand_settings') {
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
+    // §J B1: both remediation commands answer a COUNT (Result<u32>), which is
+    // the shape the dev-mock used to get wrong by answering []. Defaults here
+    // keep the pre-existing tests untouched; the remediation tests install a
+    // handler and assert the payload they send.
+    if (cmd === 'suspend_surplus_workspace_instances_scoped') return Promise.resolve(2);
+    if (cmd === 'recover_workspace_instances_scoped') return Promise.resolve(1);
     return Promise.resolve(undefined);
   };
   return {
@@ -66,9 +78,12 @@ const { invokeMock, reportHandler } = vi.hoisted(() => {
 });
 
 vi.mock('@tauri-apps/api/core', () => ({
-  // The card's only call takes no arguments, so the mock's arity matches
-  // its implementation exactly rather than swallowing a second one.
-  invoke: (cmd: string) => invokeMock(cmd),
+  // B1 added two calls that DO carry arguments, so the mock now forwards both.
+  // This file previously kept arity at 1 on purpose, so an unexpected argument
+  // was visible by construction. That guarantee is not free any more, so it
+  // moved into the remediation tests below, which assert the exact payload
+  // instead of relying on a mock that would drop it.
+  invoke: (cmd: string, args?: Record<string, unknown>) => invokeMock(cmd, args),
 }));
 
 vi.mocked(useWorkspace).mockReturnValue({
@@ -264,5 +279,90 @@ describe('OverQuotaCard', () => {
     });
     const calls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'get_over_quota_report');
     expect(calls).toHaveLength(2);
+  });
+
+  // ── §J B1: the two remediation actions ─────────────────────────────────
+  it('offers the remediation actions while everything is within quota', async () => {
+    // The recovery half of §J matters most when the numbers already look clean:
+    // after an upgrade the tenant is within quota, but the registers a downgrade
+    // suspended are still suspended. Gate this section on an over-quota row and
+    // the only route back from a suspension becomes a support ticket — in the
+    // one state where the owner has already paid to fix it.
+    reportHandler.set(() => Promise.resolve(reportWith([row('locations', 5, 1)])));
+    renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-ok')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('over-quota-remedy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Suspend surplus' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restore suspended' })).toBeInTheDocument();
+  });
+
+  it('suspends the store the session is bound to and reports the count returned', async () => {
+    let sent: unknown;
+    reportHandler.set((cmd, args) => {
+      if (cmd === 'suspend_surplus_workspace_instances_scoped') {
+        sent = args;
+        return Promise.resolve(3);
+      }
+      return Promise.resolve(reportWith([row('pos_registers', 2, 5)]));
+    });
+    renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-remedy')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend surplus' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-remedy-note')).toHaveTextContent(
+        '3 surplus register(s) suspended',
+      );
+    });
+    // The payload assertion replaces what the old arity-1 mock enforced
+    // structurally: the command has to receive the store the hint names, and
+    // the key must be present as storeId (the wire name for the Rust
+    // Option<String>). A call that silently dropped it would still render a
+    // plausible success — the backend falls back to the session store — which
+    // is exactly why it is asserted rather than assumed.
+    expect(sent).toEqual({ sessionToken: HARNESS_SESSION_TOKEN, storeId: 'default' });
+  });
+
+  it('says so when an action changes nothing, instead of going quiet', async () => {
+    // count === 0 is a real answer with an opposite meaning to "the button did
+    // nothing". Both commands return 0 when the store has no surplus and
+    // nothing suspended, so an unhandled 0 reads as a broken control.
+    reportHandler.set((cmd) => {
+      if (cmd === 'recover_workspace_instances_scoped') return Promise.resolve(0);
+      return Promise.resolve(reportWith([row('locations', 5, 1)]));
+    });
+    renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-remedy')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore suspended' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-remedy-note')).toHaveTextContent('Nothing to change');
+    });
+  });
+
+  it('surfaces a rejected action without discarding the assessment it already had', async () => {
+    reportHandler.set((cmd) => {
+      if (cmd === 'suspend_surplus_workspace_instances_scoped') {
+        return Promise.reject(new Error('unknown store: nope'));
+      }
+      return Promise.resolve(reportWith([row('pos_registers', 2, 5)]));
+    });
+    renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('5 of 2 — 3 over')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend surplus' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-remedy-note')).toHaveTextContent('That action failed');
+    });
+    // The failure is about the action, not the assessment: the over-quota rows
+    // must survive it, or a failed button press would look like the excess
+    // resolved itself.
+    expect(screen.getByText('5 of 2 — 3 over')).toBeInTheDocument();
+    expect(screen.queryByTestId('over-quota-failed')).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 {
-  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant. pause_subscription_scoped / resume_subscription_scoped joined the same way: LicenseSettings now prefers the SETTINGS_EDIT-checked twins, and the tablet shell registers neither variant of either command. get_report_schedule_scoped joined the same way: EmailReportSettings now prefers the REPORTS_SCHEDULE-checked twin, and the tablet shell registers neither variant. The legal-entity commands were initially allowlisted with bcd1f501 while the tablet shell had no implementation; they are removed from this list once the shared command module is registered in the tablet shell. The three memo-authoring entries (create_memo_scoped, list_authored_memos_scoped, publish_memo_scoped) are a deliberate product choice, not a gap: authoring is desktop-only (the back-office manager writes Memos; the tablet's Memo surface is the display banner), following the legal-entity precedent of desktop-first authoring IPC. stop_memo_scoped and revise_memo_scoped join them for the same reason (the 2026-09-07 A2/scope rulings): early-stopping and corrections are management actions on the authoring screen (MemosScreen is registry-gated to manager+ on desktop), and the tablet shell has no management surface. All five come off this list only if Memo authoring/management is ever ported to the tablet shell.",
+  "_comment": "Known IPC registration gaps at gate introduction (F-008/F-050). Entries are UI command strings not yet registered in that shell; they shrink to zero as F-006 removes the dead surface. Stale entries (command now registered) fail the gate. create_backup_scoped / get_backup_status_scoped joined with 5f0692e1: DataManagementScreen now prefers the permission-checked twins, but the tablet shell registers no data surface at all -- create_backup, get_backup_status, export_data, import_data and import_preview were already listed here. The unscoped names stay, because the ADR #7 conditional still falls back to them when no session token exists. pick_logo_file_scoped joined the same way: AppearanceSettings now prefers the SETTINGS_EDIT-checked twin, and the tablet shell registers neither variant. pause_subscription_scoped / resume_subscription_scoped joined the same way: LicenseSettings now prefers the SETTINGS_EDIT-checked twins, and the tablet shell registers neither variant of either command. get_report_schedule_scoped joined the same way: EmailReportSettings now prefers the REPORTS_SCHEDULE-checked twin, and the tablet shell registers neither variant. The legal-entity commands were initially allowlisted with bcd1f501 while the tablet shell had no implementation; they are removed from this list once the shared command module is registered in the tablet shell. The three memo-authoring entries (create_memo_scoped, list_authored_memos_scoped, publish_memo_scoped) are a deliberate product choice, not a gap: authoring is desktop-only (the back-office manager writes Memos; the tablet's Memo surface is the display banner), following the legal-entity precedent of desktop-first authoring IPC. stop_memo_scoped and revise_memo_scoped join them for the same reason (the 2026-09-07 A2/scope rulings): early-stopping and corrections are management actions on the authoring screen (MemosScreen is registry-gated to manager+ on desktop), and the tablet shell has no management surface. All five come off this list only if Memo authoring/management is ever ported to the tablet shell. The two §J quota-remediation commands (suspend_surplus_workspace_instances_scoped, recover_workspace_instances_scoped) joined on 2026-09-09 for the same reason the memo entries did, and by the route the scoped_orphans comment prescribes: they sat in scoped_orphans as permission checks guarding nothing until B1 gave them a caller in the shared over-quota card, and this shell does not register them. Quota remediation is a back-office owner action on a tenant-level view, so this is a recorded product choice and not a gap. They come off this list when the tablet shell registers them - and, per the same rule, they must never leave one list without appearing in another.",
   "desktop": [
     "adjust_stock",
     "create_product",
@@ -147,6 +147,7 @@
     "products_list_images_scoped",
     "products_set_image_scoped",
     "publish_memo_scoped",
+    "recover_workspace_instances_scoped",
     "refresh_picker_ticket",
     "register_kds_device_scoped",
     "renew_license",
@@ -168,6 +169,7 @@
     "start_inventory_shift",
     "start_scanner",
     "stop_scanner",
+    "suspend_surplus_workspace_instances_scoped",
     "test_auth_connection",
     "update_inventory_location",
     "update_kds_device_status_scoped",
@@ -202,11 +204,9 @@
     "pending_sync_count_scoped",
     "ping_scoped",
     "record_payable_payment_scoped",
-    "recover_workspace_instances_scoped",
     "renew_license_scoped",
     "rotate_encryption_key_scoped",
     "settings_changed_sink_scoped",
-    "suspend_surplus_workspace_instances_scoped",
     "test_auth_connection_scoped",
     "write_off_payable_scoped"
   ],

@@ -17,6 +17,19 @@ settings-license-quota-dim-pos-registers = Terminal POS
 settings-license-quota-dim-warehouses = Titik stok gudang
 settings-license-quota-dim-staff = Akun staf
 settings-license-quota-dim-products = Produk
+# §J B1 — dua aksi perbaikan register workspace pada kartu melebihi kuota.
+# remedy-hint menyebut nama toko karena kartu ini terbaca sebagai tingkat tenant
+# sementara kedua aksinya terikat satu toko; teksnya tidak boleh menimbulkan
+# kesan lain.
+settings-license-quota-remedy-aria = Perbaikan register workspace
+settings-license-quota-remedy-title = Register workspace
+settings-license-quota-remedy-hint = Suspensi register surplus milik { $store }, atau pulihkan yang sempat disuspensi oleh penurunan paket sebelumnya. Hanya toko ini yang terpengaruh.
+settings-license-quota-remedy-suspend = Suspensi surplus
+settings-license-quota-remedy-recover = Pulihkan yang disuspensi
+settings-license-quota-remedy-suspended = { $count } register surplus disuspensi. Dinonaktifkan, bukan dihapus.
+settings-license-quota-remedy-recovered = { $count } register yang disuspensi telah dipulihkan.
+settings-license-quota-remedy-none = Tidak ada yang berubah — tidak ada register toko ini yang melebihi batas atau sedang disuspensi.
+settings-license-quota-remedy-failed = Aksi tersebut gagal. Angka kuota di atas tidak berubah.
 settings-nav-general = Umum
 settings-nav-appearance = Tampilan
 settings-nav-receipt = Nota
