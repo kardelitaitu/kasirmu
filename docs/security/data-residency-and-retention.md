@@ -1,5 +1,7 @@
 # Data Residency & Retention Policy — OZ-POS
 
+<!-- Audit stamp: 2026-09-09 · DSH · status: VERIFIED-TRUE, 2 precision notes (0 errors) · Every load-bearing claim re-checked against code rather than against the document's own confidence, and the page held: legal_entities has no region column (20260908_legal_entities.sql carries id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at - so §K residency really is decided-not-built); crates/oz-api contains ZERO references to customers, which is stronger than the claimed 'no write path'; the pin_hash citation is exact (pg.rs:421 INSERT INTO users (... pin_hash ...)); hash_pin is Argon2id (platform/core/src/auth.rs:9,18 with m=19456,t=2,p=1); the audit-delete trigger exists in BOTH engines (20260813_init.pg.sql:1468/1480 and 20260813_init.sql:1046); stripe_customers is real; create_backup_scoped (data.rs:605) writes .backup.db (:574) behind a DATA_EXPORT gate (:599/611); telemetry is genuinely absent (0 of 38 ui dependencies, 0 in ui/src); and every retention number holds - RETENTION_DAYS=90 (prune.rs:20), hourly via from_secs(3600) (:45), PRUNE_BATCH_SIZE=500 (:22), start_prune_loop_pg real (prune.rs:165, wired at cloud-server/main.rs:347), the 30-day memo commits c8d2a54fd and 5ee1064a1 both exist, and 20260914_memo_retention.sql exists. Two cited migrations looked missing only because an ls|head -4 truncated the list. · PRECISION NOTE 1 (metrics): the page said the license server exposes no metrics, which is true of that process while the deployed image still answers /metrics on the same origin - Caddy sends it to :3099, which is oz-cloud-server. For a residency policy the distinction is load-bearing: an auditor checking whether auth data leaves via metrics must look at the sync server, not at the absence of a route in apps/license-server. · PRECISION NOTE 2 (the headline gap): 'no per-tenant DELETE in crates/oz-api' was true in spirit and false to a grep, because pg.rs:1975 deletes memos by tenant_id during snapshot reconciliation. Restated as no per-tenant ERASURE, naming the reconciliation line and noting that the tenant-wide shapes exist only in pg_tests.rs cleanup - so nobody cites one as evidence of the other. · This is the strongest page of its kind in the repo: it already separates implemented / decided-not-built / open-gap and cites sources inline. Nothing was softened and no gap was closed on paper. -->
+
 <!-- Authored 2026-09-07 · facts verified against HEAD 3c2fcdb8 by direct code
      inspection (sources cited inline). Implements the documentation deliverable
      of todo-global-saas-3.md §"Define data residency and retention policy" and
@@ -80,8 +82,16 @@ password-rotation state (superuser email + hash snapshots,
 **Telemetry: none.** No third-party analytics or crash-reporting SDK exists in
 either client (`ui/package.json`, both `tauri.conf.json` — verified by search)
 or in the Rust crates. Server-side `/metrics` (Prometheus) are operational
-counters/latencies, not user tracking, and the license server exposes no
-metrics at all (runbook §2).
+counters/latencies, not user tracking, and the license server exposes no metrics at all
+(runbook §2) — precise about which process, because the deployed image answers `/metrics`
+anyway: Caddy routes it to `localhost:3099`, and that is `oz-cloud-server`
+(`apps/unified/Caddyfile:95`, `apps/unified/supervisord.conf:3`,
+`apps/cloud-server/src/config.rs:139`). PocketBase and the license code listen on `:8080`
+and register no metrics route. Both statements are true about different things, and for a
+residency policy the difference is load-bearing: an auditor asking whether *auth* data can
+leave via metrics has to look at the sync server, not at the absence of a route in
+`apps/license-server`. No telemetry SDK exists in any `Cargo.toml`, any client
+`tauri.conf.json`, or any of the 38 `ui` dependencies.
 
 ## 3. Retention schedule
 
@@ -120,9 +130,15 @@ Implemented today:
 **Open gaps — recorded, not glossed:**
 
 1. **No sync-DB purge.** License-server tenant deletion does not touch the
-   Postgres sync DB: there is no per-tenant `DELETE` in `crates/oz-api`
-   (verified at HEAD). A deleted tenant's sales/catalog/users rows persist in
-   the cloud store. A purge (or crypto-shred) workflow keyed off tenant
+   Postgres sync DB: there is no per-tenant **erasure** in `crates/oz-api`
+   (verified at HEAD). Wording matters here, because the crate does contain one
+   tenant-scoped `DELETE` in production code — `pg.rs:1975`,
+   `DELETE FROM memos WHERE tenant_id = $1 AND NOT (id = ANY($2))` — and it is
+   snapshot *reconciliation* during a memo push, not a right-to-be-forgotten
+   path. Grep alone would therefore report a false purge capability: what is
+   absent is any statement that removes a tenant's sales, catalog or user rows
+   (those shapes exist only in `pg_tests.rs`, as test cleanup). A deleted
+   tenant's rows persist in the cloud store. A purge (or crypto-shred) workflow keyed off tenant
    deletion is the main unmet obligation of this policy.
 2. **No tenant self-service deletion or export request path.** Both are
    operator/admin actions today.
@@ -160,3 +176,5 @@ website (Cloudflare Workers) and the license-server deployment region are
 deployment-level facts (single-region, §1), not per-tenant choices. Updates to
 this file must re-verify its claims against HEAD — it names files, columns,
 and the absence of code paths, all of which can drift.*
+
+> last audited 09-09-26 by docs-auditor
