@@ -5,7 +5,7 @@
 // loading/disabled states, custom footer override, and i18n fallbacks.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
@@ -245,7 +245,7 @@ describe('ConfirmDialog', () => {
   it('calls onCancel when close button is clicked', async () => {
     renderConfirmDialog({ showCloseButton: true, onCancel });
     await userEvent.click(screen.getByRole('button', { name: /close/i }));
-    expect(onCancel).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
   });
 
   // ── Overlay click (inherited from Modal) ──────────────────────
@@ -254,7 +254,7 @@ describe('ConfirmDialog', () => {
     renderConfirmDialog({ onCancel });
     const overlay = document.querySelector('.modal-overlay')!;
     await userEvent.click(overlay);
-    expect(onCancel).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
   });
 
   it('does not call onCancel when panel is clicked', async () => {
@@ -266,10 +266,10 @@ describe('ConfirmDialog', () => {
 
   // ── Escape key (inherited from Modal) ─────────────────────────
 
-  it('calls onCancel when Escape is pressed', () => {
+  it('calls onCancel when Escape is pressed', async () => {
     renderConfirmDialog({ onCancel });
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(onCancel).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
   });
 
   // ── Body scroll lock (inherited from Modal) ──────────────────

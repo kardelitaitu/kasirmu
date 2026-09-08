@@ -866,6 +866,38 @@
   }
 }
 
+/* Exit animation — mirror of entry keyframes (modal-fade-in / modal-slide-up).
+   Gated to no-preference so reduced-motion users get a snap-close via animDuration(0). */
+@media (prefers-reduced-motion: no-preference) {
+  .modal-overlay--exiting {
+    animation: modal-fade-out var(--duration-200) var(--ease-in);
+    animation-fill-mode: both;
+    pointer-events: none;
+  }
+
+  .modal-panel--exiting {
+    animation: modal-slide-down var(--duration-200) var(--ease-in);
+    animation-fill-mode: both;
+    pointer-events: none;
+  }
+
+  @keyframes modal-fade-out {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+  }
+
+  @keyframes modal-slide-down {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+    }
+  }
+}
+
 /* ── ConfirmDialog ─────────────────────────────────────── */
 .confirm-dialog-body {
   display: flex;

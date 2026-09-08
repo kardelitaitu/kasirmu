@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Modal } from '@/components/Modal';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
@@ -122,7 +122,7 @@ describe('Modal', () => {
       children: <p>Content</p>,
     });
     await userEvent.click(screen.getByRole('button', { name: /close/i }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('hides close button when showCloseButton is false', () => {
@@ -145,7 +145,7 @@ describe('Modal', () => {
     });
     const overlay = document.querySelector('.modal-overlay')!;
     await userEvent.click(overlay);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('does not call onClose when panel is clicked', async () => {
@@ -161,14 +161,14 @@ describe('Modal', () => {
 
   // ── Escape key ────────────────────────────────────────────────
 
-  it('calls onClose when Escape is pressed', () => {
+  it('calls onClose when Escape is pressed', async () => {
     renderModal({
       open: true,
       onClose,
       children: <p>Content</p>,
     });
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   // ── Focus trap ────────────────────────────────────────────────
