@@ -1,5 +1,5 @@
 # CI Pipeline Documentation
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 1 · FIRST STAMP THIS PAGE EVER CARRIED. It also had no footer, which is how a document could be substantially repaired earlier today - commit 404853032 un-retired ten rows from the dead ci.yml onto the jobs that actually run them, and corrected seven more that claimed Required/Advisory for gates running nowhere - and still hold no evidence that anyone had looked at it. Content work without a stamp is work that cannot be cited later, and my own notes in other docs had started referring to this page as audited merely because I had fixed it, which is a different claim. · Re-verified against .github/workflows/ directly rather than against another doc: 2 live workflows (dev-ci.yml, release.yml), 11 .bak files, dev-ci triggers pull_request + workflow_dispatch with no push trigger, ten jobs, 28 named steps in static-gates. · New: the release.yml.bak row and the note beneath the table - the retired copy of a live pipeline, the only same-name twin in that directory, previously named by no document in the repo. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 1 · FIRST STAMP THIS PAGE EVER CARRIED. It also had no footer, which is how a document could be substantially repaired earlier today - commit 404853032 un-retired ten rows from the dead ci.yml onto the jobs that actually run them, and corrected seven more that claimed Required/Advisory for gates running nowhere - and still hold no evidence that anyone had looked at it. Content work without a stamp is work that cannot be cited later, and my own notes in other docs had started referring to this page as audited merely because I had fixed it, which is a different claim. · Re-verified against .github/workflows/ directly rather than against another doc: 2 live workflows (dev-ci.yml, release.yml), 11 .bak files, dev-ci triggers pull_request + workflow_dispatch with no push trigger, ten jobs, 28 named steps in static-gates. · New: the release.yml.bak row and the note beneath the table - the retired copy of a live pipeline, the only same-name twin in that directory, previously named by no document in the repo. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (2 findings) + 3 adjacent CI claims corrected while re-reading the same tables. Fixed: Gate Vocabulary named `ci.yml` and `nightly.yml` as gate consumers, both retired `.bak` since `23c963303`; the two LIVE workflow files are `dev-ci.yml` and `release.yml` and those are the rows now. The `northflank-deploy` row claimed it `needs` every live job except `ci-docs-drift`; the actual `needs:` list at `dev-ci.yml:656` has 7 of the 10 jobs and omits `release-readiness` too, so the deploy is NOT gated on the updater signing chain (recorded at `docs/plans/0.0.36-backlog.md:3690`) - the row said the opposite. The `audit` row asserted `security.yml` never existed at all; false: `git log --name-status -1 23c963303` shows `R100 .github/workflows/security.yml -> security.yml.bak` and 12 commits touch the live path, and `cargo audit`/`cargo deny` are at `security.yml.bak:19-34`/`:36-50`. The `deploy.yml` inventory row called it a website deploy; `deploy.yml.bak:46` is `name: Deploy Backend (Northflank)`. Verified from the files themselves: 2 live workflows, `dev-ci.yml` triggers `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` key, `release.yml` triggers `push: tags: ['v*']` with jobs `release-validate`/`release-build`/`release-publish`; `static-gates` holds 28 named steps. Left alone: the `release.yml.bak` deletion is a CODE/CONFIG finding already recorded at the note under the inventory table, and the historical Purpose/Trigger columns are retained by design per the note at the top of that table. -->
 
 > **Canonical CI dashboard** (AUDIT-27 CI-08). This document is the single source of truth for what jobs run in CI, what gates they map to, and which workflows exist. It is verified by `scripts/verify-ci-docs-drift.py` on every PR and local `check.sh` run.
 
@@ -58,11 +58,11 @@
 | `release-validate` | ✅ Required | release.yml | tag push only: `check-release-version.mjs <tag>` (tag ↔ version ↔ changelog), its `--self-test`, and the updater compat check. |
 | `release-build` | ✅ Required | release.yml | matrix `desktop-linux` / `desktop-windows` / `desktop-macos`: nextest, `cargo tauri build`, bundle-existence gate, Windows asInvoker manifest check, optional SignPath/Authenticode with a loud unsigned fallback. |
 | `release-publish` | ✅ Required | release.yml | signed `latest.json`+`beta.json`, signature verification against the committed pubkey, SHA-256 inventory, draft release, provenance attestation, then publish. Hard-fails without `UPDATER_PRIVATE_KEY`. |
-| `northflank-deploy` | ✅ Required | dev-ci.yml | Backend deploy to Northflank; `needs` every other live job except `ci-docs-drift`. **Effectively `workflow_dispatch` only**: its `if:` also tests `github.event_name == 'push'`, but `dev-ci.yml` triggers on `pull_request` and `workflow_dispatch` alone, so that half is dead code and no push ever reaches it. The workflow's own comment records this. |
+| `northflank-deploy` | ✅ Required | dev-ci.yml | Backend deploy to Northflank; `needs: [changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates]` (`dev-ci.yml:656`) — seven of ten jobs, so it excludes **two**: `ci-docs-drift` (deliberate, advisory) and `release-readiness` (**no comment accounts for it**, so the deploy is *not* gated on the updater signing chain — recorded at `docs/plans/0.0.36-backlog.md:3690`). **Effectively `workflow_dispatch` only**: its `if:` also tests `github.event_name == 'push'`, but `dev-ci.yml` triggers on `pull_request` and `workflow_dispatch` alone, so that half is dead code and no push ever reaches it. The workflow's own comment records this. |
 | `lighthouse` | ❌ Runs nowhere | ci.yml | Lighthouse a11y audit. gates.json: **retired** |
 | `docker` | ❌ Runs nowhere | ci.yml | No Trivy or docker-build step exists in either live workflow (verified by grep), and the gate has no gates.json record at all |
 | `coverage` | ❌ Runs nowhere | ci.yml | Coverage report. gates.json: **retired**. `scripts/coverage.sh` exists; nothing invokes it in CI |
-| `audit` | ❌ Runs nowhere | ci.yml | `cargo audit` + `npm audit`. gates.json: **retired**; `security.yml` never existed at all, only `security.yml.bak`. This is the row AGENTS.md means by "security suites are not enforced" |
+| `audit` | ❌ Runs nowhere | ci.yml | `cargo audit` + `npm audit`. gates.json: **retired**; the runner lived in `security.yml`, which was renamed to `security.yml.bak` by `23c963303` on 2026-09-02 (cargo-audit job at `security.yml.bak:19-34`, cargo-deny at `:36-50`) — so the file did exist live before that rename, contrary to what this row claimed until 09-09-26. This is the row AGENTS.md means by "security suites are not enforced" |
 | `security-pr` | ❌ Runs nowhere | ci.yml | gates.json marks this **retired** with no CI runner. The row claimed ✅ Required until 08-09-26 |
 | `fuzz` | ❌ Runs nowhere | ci.yml | Fuzz targets exist under `fuzz/`; gates.json marks the runner **retired**, so nothing executes them |
 | `flaky-quarantine` | ❌ Runs nowhere | ci.yml | gates.json: **retired**, no runner. `scripts/verify-flaky-quarantine.py` exists and passes, but no live workflow and not `check.sh` invoke it |
@@ -169,7 +169,7 @@
 | `android.yml` | 🔴 retired `.bak` | push/PR to main | Android build |
 | `ios.yml` | 🔴 retired `.bak` | push/PR to main | iOS build |
 | `e2e-pr.yml` | 🔴 retired `.bak` | PR to main | E2E on PRs |
-| `deploy.yml` | 🔴 retired `.bak` | push to main | Website deploy |
+| `deploy.yml` | 🔴 retired `.bak` | push to main | Backend deploy to Northflank (`name: Deploy Backend (Northflank)`, `deploy.yml.bak:46`) — the predecessor of `dev-ci.yml#northflank-deploy`, not a website deploy |
 | `docker-digest-drift.yml` | 🔴 retired `.bak` | schedule | Docker digest drift check |
 | `docker-persistence.yml` | 🔴 retired `.bak` | schedule | Docker persistence check |
 | `website.yml` | 🔴 retired `.bak` | push to main | Website build + deploy |
@@ -194,8 +194,8 @@
 ## Gate Vocabulary
 
 The gate vocabulary is defined in `scripts/gates.json` and shared by:
-- `.github/workflows/ci.yml` (CI jobs)
-- `.github/workflows/nightly.yml` (nightly jobs)
+- `.github/workflows/dev-ci.yml` (live CI jobs)
+- `.github/workflows/release.yml` (live tag jobs)
 - `scripts/check.sh` (local pre-push)
 - `scripts/check-ui.mjs` (`npm run check:all`)
 - `scripts/verify-ci-docs-drift.py` (this document)
@@ -312,5 +312,5 @@ flip the status, and delete the `_note`.
 
 *Generated and maintained by the OZ-POS team. Last verified by `verify-ci-docs-drift.py`.*
 
-> last audited 08-09-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor
 

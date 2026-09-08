@@ -1,4 +1,5 @@
 # iPad (iOS) Install Test — OZ-POS
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Both were the same retirement: "Option D — Via CI" asserted that .github/workflows/ios.yml builds a signed IPA on tag or manual trigger, and the Related links pointed at the live blob URL for that file. Reality verified from the files: GitHub only executes *.yml, ios.yml has been .github/workflows/ios.yml.bak since 23c963303 on 2026-09-02 (git log --name-status shows the R100 rename), and the sole tag-triggered live workflow is release.yml, which is desktop-only by its own admission at .github/workflows/release.yml:24 · Repaired by marking Option D unavailable, keeping the secret manifest as revival documentation (cited at .github/workflows/ios.yml.bak:13-19) and retargeting the link to the .bak path, which is the only one that resolves · NOT WEAKENED: no claim here was upgraded — the guide's own 08-09-26 prerequisite note at the top still stands (no gen/apple/ scaffold is committed), and that is the deeper reason this option cannot work: even restoring the workflow needs the scaffold first · LEFT ALONE: Options A–C, TestFlight and provisioning steps — third-party Xcode/Apple behaviour, unverifiable from this Windows workstation, so they were not re-checked and must not be read as verified. -->
 <!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
@@ -177,10 +178,19 @@ apps/tablet-client/gen/apple/build/oz-pos-tablet.ipa
 > find apps/tablet-client/gen/apple -name "*.ipa" 2>/dev/null
 > ```
 
-### Option D — Via CI (GitHub Actions)
+### Option D — Via CI (GitHub Actions): **not available, nothing builds an IPA**
 
-The `.github/workflows/ios.yml` workflow builds a signed IPA on tag
-or manual trigger. To use it:
+This was a live path and is not one any more. The workflow it named is retired —
+`.github/workflows/ios.yml` was renamed to `.github/workflows/ios.yml.bak` by
+`23c963303` on 2026-09-02 and GitHub never executes a `.bak` file — so a `v*` tag
+push builds the three desktop installers and **no iOS artifact**; the live release
+workflow states its own scope at `.github/workflows/release.yml:24` ("Mobile
+(`android.yml.bak` / `ios.yml.bak`). Never part of this file."). Options A–C are
+the only ways to get an IPA onto a device today.
+
+What follows is kept as the recipe for whoever restores the workflow. The secret
+names are the ones its retired header declares
+(`.github/workflows/ios.yml.bak:13-19`):
 
 1. Set up the required **secrets** in your GitHub repository:
 
@@ -193,13 +203,15 @@ or manual trigger. To use it:
    | `APPLE_CERT_PASSWORD` | Certificate password |
    | `KEYCHAIN_PASSWORD` | Temporary keychain password (any value) |
 
-2. Create and push a tag:
+2. Only **if the workflow is restored**, create and push a tag:
    ```bash
    git tag v0.0.16
    git push origin v0.0.16
    ```
 
-3. Download the IPA artifact from the Actions run.
+3. Then download the IPA artifact from that Actions run. Today there is no such run:
+   the only tag-triggered workflow that executes is the desktop-only release
+   pipeline, so no IPA is produced and none can be downloaded.
 
 ---
 
@@ -705,8 +717,8 @@ Notes:
 - [Tauri iOS Guide](https://v2.tauri.app/start/mobile/ios/) — Official Tauri iOS docs
 - [Apple Developer Documentation](https://developer.apple.com/documentation/)
 - [TestFlight Guide](https://developer.apple.com/testflight/)
-- [iOS CI Workflow](https://github.com/kardelitaitu/oz-pos/blob/main/.github/workflows/ios.yml) — Automated iOS build pipeline
+- [iOS CI Workflow — retired](https://github.com/kardelitaitu/oz-pos/blob/main/.github/workflows/ios.yml.bak) — inert `.bak` since `23c963303`; kept only as the build recipe for a future restoration
 
 ---
 
-> last audited 08-08-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor

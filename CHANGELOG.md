@@ -1,10 +1,28 @@
 # Changelog
 
-<!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: ACCURATE (3 noted findings) · F1: top release header [0.0.21] vs Cargo.toml/branch 0.0.22 drift · F2: "27 modules self-register via modules/index.ts" -> 24 feature register.tsx wired via @/features barrel (decentralized self-registration model accurate) · F3: "5,221+ Rust tests" -> actual repo-wide 5,212 · re-verified 2026-07-31 (3,476 UI tests, 14 check.sh steps) · verified accurate: 48 .ftl files, 101 migrations (highest N=106), Node>=22/npm>=11, Vite ^6, 228 UI test files, modules/currency CurrencyRepository, crates/oz-core/src/user_preferences.rs + 038_user_preferences.sql, KDS Kanban/Focus/Metro + Switcher + KdsTicketCard + useKdsPreferences all exist, 10 modules/ · re-audited 2026-08-08 by docs-auditor: restructured (0.0.23/0.0.24 order fixed, 0.0.10/0.0.6 gaps noted, 14->15 check.sh steps reconciled); P80-P251 rescue blocks re-parented to their version sections (git bcd40394 merged 0.0.19-0.0.25 entries into 0.0.18 dropping headers; pre-merge headers restored as of 2026-08-08); 0.0.23/0.0.25 entries verified accurate (commits 9b7552e7/cc062951, 17 baseline findings) -->
+<!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: ACCURATE (3 noted findings) · F1: top release header [0.0.21] vs Cargo.toml/branch 0.0.22 drift · F2: "27 modules self-register via modules/index.ts" -> 24 feature register.tsx wired via @/features barrel (decentralized self-registration model accurate) · F3: "5,221+ Rust tests" -> actual repo-wide 5,212 · re-verified 2026-07-31 (3,476 UI tests, 14 check.sh steps) · verified accurate: 48 .ftl files, 101 migrations (highest N=106), Node>=22/npm>=11, Vite ^6, 228 UI test files, modules/currency CurrencyRepository, crates/oz-core/src/user_preferences.rs + 038_user_preferences.sql, KDS Kanban/Focus/Metro + Switcher + KdsTicketCard + useKdsPreferences all exist, 10 modules/ · re-audited 2026-08-08 by docs-auditor: restructured (0.0.23/0.0.24 order fixed, 0.0.10/0.0.6 gaps noted, 14->15 check.sh steps reconciled); P80-P251 rescue blocks re-parented to their version sections (git bcd40394 merged 0.0.19-0.0.25 entries into 0.0.18 dropping headers; pre-merge headers restored as of 2026-08-08); 0.0.23/0.0.25 entries verified accurate (commits 9b7552e7/cc062951, 17 baseline findings) · REV 2 (09-09-26, DSH docs-auditor, CI-claim pass) — status: HISTORICAL-RECORD, annotated not rewritten (7 findings from .agents/skills/docs-auditor/scripts/check-ci-claims.py, on 6 lines: 125 x2, 672, 835, 938, 1596, 1609 in the pre-repair numbering). Release notes are dated records, so NOT ONE was rewritten; each line carries a ci-claim: ok pragma naming the retirement, and the substance lives in the new ⚠️ currency block under the intro (it names 23c963303 of 2026-09-02, the eleven renames, and 3b10ea3a2 of 2026-09-04 restoring release.yml desktop-only, and points at docs/operations/ci-pipeline.md for what runs now). Verified each flagged entry against the file it describes rather than trusting the note: architecture-boundaries really was a job in ci.yml and now runs as the "Architecture boundaries" STEP of dev-ci.yml#static-gates (.github/workflows/dev-ci.yml:466-467); the tee ui/vitest-output.log step is at ci.yml.bak:586; a coverage job exists only in ci.yml.bak (:773); the nightly job set the 0.0.15 entry lists is intact in .github/workflows/nightly.yml.bak (rust-test, ui-test, e2e, release-*, benchmarks at :547-580); sccache-action is pinned v0.0.10 in the live dev-ci.yml too (:189); docs.yml was deleted outright by 0fb946b16, not retired, so no .bak exists for it. Nothing was marked resolved and no gap softened: the notes still describe jobs that no longer run, and the block above them now says so in those words. -->
 
 All notable changes to OZ-POS are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
+
+> **⚠️ CI names in these entries are as-of-release, not as-of-today.** Every entry
+> below the 0.0.35 section describes the CI its own release shipped with, and the CI
+> graph changed underneath them: on 2026-09-02 `23c963303` renamed eleven workflows
+> to `.bak` (`ci.yml`, `nightly.yml`, `website.yml`, `security.yml`, `deploy.yml`,
+> `e2e-pr.yml`, `android.yml`, `ios.yml`, both `docker-*.yml` and `release.yml`) and
+> replaced them with `dev-ci.yml`; `release.yml` was restored separately by
+> `3b10ea3a2` on 2026-09-04, desktop-only. A `.yml.bak` is never executed by GitHub,
+> so "we added job X to ci.yml" remains a true record of what happened and a false
+> statement of what runs. Two entries predate even that: `docs.yml` was deleted
+> outright by `0fb946b16`, and `circleci.yml` existed for one day (created
+> `0ee9fef4`, moved to `.circleci/config.yml` by `ad1d06e9`).
+> **What runs today (and how to re-check it):** two live workflows —
+> `.github/workflows/dev-ci.yml` (`pull_request` targeting `main` + `workflow_dispatch`,
+> no push trigger) and `.github/workflows/release.yml` (`v*` tags). Re-measure with
+> `Get-ChildItem .github/workflows` (or `ls`), never from this file. Current gates and
+> their runners are in `docs/operations/ci-pipeline.md`; `.agents/skills/docs-auditor/scripts/check-ci-claims.py`
+> polices every other doc against these two files.
 
 ## [0.0.37] — 2026-09-04
 
@@ -122,7 +140,7 @@ The 100 commits from **2026-08-07 through 2026-08-09** form the final 0.0.25 har
 - **Architecture boundary checker** — Added `scripts/verify-architecture-boundaries.py` to inspect Cargo path dependencies and production UI Tauri IPC usage. It detects module-to-module dependencies, `oz-core` upward dependencies, non-composition platform-to-business dependencies, and direct `invoke()` calls outside approved API or infrastructure adapters.
 - **Transitional boundary baseline** — Added `scripts/architecture-boundaries-baseline.json` with 17 individually tracked findings, owners, reasons, and expiry dates. Existing debt remains visible while new, expired, or stale findings fail validation.
 - **Deterministic checker coverage** — Added 14 fixture-based tests covering dependency direction, dev-dependency exclusions, UI imports and calls, generic/aliased/namespace invokes, comments and test exclusions, baseline behavior, malformed metadata, Windows paths, and JSON output.
-- **CI architecture gate** — Added the required `architecture-boundaries` job to `.github/workflows/ci.yml` and registered it in `scripts/gates.json`.
+- **CI architecture gate** — Added the required `architecture-boundaries` job to `.github/workflows/ci.yml` and registered it in `scripts/gates.json`. <!-- ci-claim: ok: release note for [0.0.25] as shipped; ci.yml is inert .github/workflows/ci.yml.bak since 23c963303, and this check still runs — as a STEP named "Architecture boundaries" inside dev-ci.yml#static-gates (dev-ci.yml:466-467) -->
 - **PostgreSQL pull composite cursor** — `PgTransport::pull_updates` now takes a composite `(created_at, id)` cursor like the HTTP server, so rows sharing the anchor's exact timestamp are never skipped, and the durable pull anchor advances on `created_at` (the cursor's first key) even when the remote never stamps `synced_at`. The daemon paginates pages until the remote returns no next cursor.
 - **AnchorExpired snapshot recovery no longer re-fetches every cycle** — After an `AnchorExpired` snapshot import succeeds, the durable pull anchor now advances to the server's `oldest_available` (or clears) instead of retaining the stale anchor. Previously every cycle re-triggered the expired anchor and re-downloaded the full snapshot.
 - **Operator requeue rewind survives the daemon apply phase** — The daemon (SQLite and PostgreSQL) now re-reads the durable `sync_pull_state` before advancing it after a pull page. If an operator requeues a dead-lettered item (which rewinds the anchor to `NULL`) while the pull is in flight, the rewind is retained so the next cycle re-fetches the item — previously the apply-phase write clobbered it and the requeued item was never re-pulled.
@@ -669,7 +687,7 @@ All workspace setting cards migrated from `localStorage` stubs to real Tauri IPC
 
 ### Fixed
 
-- **CI/docs pipeline**: Added `libglib2.0-dev` and `pkg-config` system dependency step to `.github/workflows/docs.yml` to resolve `glib-sys` build failure on Ubuntu runners.
+- **CI/docs pipeline**: Added `libglib2.0-dev` and `pkg-config` system dependency step to `.github/workflows/docs.yml` to resolve `glib-sys` build failure on Ubuntu runners. <!-- ci-claim: ok: release note for [0.0.18]; docs.yml no longer exists in any form — deleted by 0fb946b16, "remove the GitHub Pages docs deploy - the portal ships via Cloudflare now" -->
 ## [0.0.17] — 2026-07-21
 
 ### Added
@@ -832,7 +850,7 @@ Settings navigation tree extracted from monolithic SettingsPage.tsx into a stand
 
 - **Baseline Benchmark Report** — Created `docs/benchmarks/baseline-2026-07-20.md` with Criterion.rs measurements for transaction commit, barcode lookup, cart operations, and stock deduction. Hardware and CI runner specs documented.
 - **Regression Tracking** — Created `docs/benchmarks/regression-tracking.md` with `critcmp` workflow for comparing baseline vs. current benchmarks on every release.
-- **Nightly CI** — Added `.github/workflows/nightly.yml` for daily full-matrix builds covering: all Rust tests (all features), 4 UI test shards, 3 E2E shards with Docker Compose, cargo doc, release builds (Linux + Windows + macOS + Android), and benchmarks with automatic regression detection.
+- **Nightly CI** — Added `.github/workflows/nightly.yml` for daily full-matrix builds covering: all Rust tests (all features), 4 UI test shards, 3 E2E shards with Docker Compose, cargo doc, release builds (Linux + Windows + macOS + Android), and benchmarks with automatic regression detection. <!-- ci-claim: ok: release note for [0.0.15]; nightly.yml is inert .github/workflows/nightly.yml.bak since 23c963303 — nothing is scheduled today, neither live workflow declares a schedule trigger -->
 - **Fuzz Testing Infrastructure** — Created `fuzz/Cargo.toml` with `cargo-fuzz` targets for SKU parsing, `Money` arithmetic (overflow/underflow detection), and `Cart` JSON deserialization (malformed payloads, type mismatches). Fuzz CI job (non-blocking, informational) added to `ci.yml`.
 
 ### Fixed
@@ -935,7 +953,7 @@ Settings navigation tree extracted from monolithic SettingsPage.tsx into a stand
   - `AppShell.test.tsx` — Rewrote idle-timer tests to match actual lock-screen behaviour (lock screen with session, no-op without session). Fixed TS2322/TS2353 type errors — replaced `vi.fn<[], AuthContextValue>()` generic with `Mock<() => AuthContextValue>` annotation; removed `username`/`token` fields not present in `LoginSessionDto`; added `swapSession` to mock.
   - `MenuEngineeringScreen.test.tsx` — Changed target date from `'2026-08-14'` (same value as `today()`, causing no-op) to `'2026-08-15'`.
 - **`npm ci` EPERM on Windows**: Added 3-phase retry (wait → force-remove → retry loop) in `scripts/check.ps1` — Windows file locks on Rollup native binaries are transient, so a 5s poll + 3 retry loop is more robust than a single `npm install` fallback.
-- **sccache-action pinning**: Updated all 6 occurrences of `sccache-action` from `v0` (floating tag) to `v0.0.10` across `.github/workflows/ci.yml`, `android.yml`, `ios.yml`, `release.yml`.
+- **sccache-action pinning**: Updated all 6 occurrences of `sccache-action` from `v0` (floating tag) to `v0.0.10` across `.github/workflows/ci.yml`, `android.yml`, `ios.yml`, `release.yml`. <!-- ci-claim: ok: release note for [0.0.13]; three of the four files named are inert .bak since 23c963303, and release.yml was restored desktop-only by 3b10ea3a2 — the pins survive in dev-ci.yml (e.g. dev-ci.yml:189) -->
 - **Canvas mock**: Added `HTMLCanvasElement.getContext` stub in `ui/src/test-setup.ts` to prevent jsdom crash in chart-rendering components.
 - **vitest exclude**: Added `exclude: ['e2e/**', 'node_modules/**']` to `ui/vite.config.ts` so Playwright spec files aren't picked up by vitest.
 
@@ -1593,7 +1611,7 @@ Settings navigation tree extracted from monolithic SettingsPage.tsx into a stand
 - Pre-commit hook (auto `cargo fmt --all`)
 - CI fixes for cross-platform compilation (macOS keychain, Linux libudev+zbus, Windows Tauri)
 
-- **UI test & lint quality**: Resolved Vitest `exit code 1` on Node 24 CI by fixing invalid DOM nesting (`<span>` inside `<option>` across `PromotionManagementScreen`) and filtering React/Node 24 console warnings (`validateDOMNesting`, `punycode` deprecation, `act()`/`flushSync` warnings, and `@fluent/react` missing-key noise in `test-setup.ts` and `vite.config.ts`); fixed subshell pathing for `tee ui/vitest-output.log` in `.github/workflows/ci.yml` and `release.yml`; resolved all 15 React Hook `exhaustive-deps` warnings and all 5 fast-refresh/import type annotations in `ui/` (`vite.config.d.ts`, `LocaleContext`, `useToast`, `ThemeProvider`, `Toast`), achieving 0 ESLint errors and 0 warnings.
+- **UI test & lint quality**: Resolved Vitest `exit code 1` on Node 24 CI by fixing invalid DOM nesting (`<span>` inside `<option>` across `PromotionManagementScreen`) and filtering React/Node 24 console warnings (`validateDOMNesting`, `punycode` deprecation, `act()`/`flushSync` warnings, and `@fluent/react` missing-key noise in `test-setup.ts` and `vite.config.ts`); fixed subshell pathing for `tee ui/vitest-output.log` in `.github/workflows/ci.yml` and `release.yml`; resolved all 15 React Hook `exhaustive-deps` warnings and all 5 fast-refresh/import type annotations in `ui/` (`vite.config.d.ts`, `LocaleContext`, `useToast`, `ThemeProvider`, `Toast`), achieving 0 ESLint errors and 0 warnings. <!-- ci-claim: ok: release note for [0.0.3]; the ci.yml it patched is inert .github/workflows/ci.yml.bak since 23c963303 (the tee step survives there at ci.yml.bak:586), and its live successor dev-ci.yml has no vitest tee step -->
 
 ### Changed
 - **Node.js 24 migration**: Migrated UI build and CI test environments (`ci.yml`, `release.yml`, and `ui/package.json` engines) to **Node.js 24**, aligning with local environments (`check.ps1`) and targeting Active LTS for the 2027 Q2 release window.
@@ -1606,7 +1624,7 @@ Settings navigation tree extracted from monolithic SettingsPage.tsx into a stand
 ## [0.0.2] — 2026-06-30
 
 ### Added
-- **Coverage tooling**: `.tarpaulin.toml` config, coverage CI job in `.github/workflows/ci.yml`, gated coverage step in `scripts/check.sh`.
+- **Coverage tooling**: `.tarpaulin.toml` config, coverage CI job in `.github/workflows/ci.yml`, gated coverage step in `scripts/check.sh`. <!-- ci-claim: ok: release note for [0.0.2]; the coverage job existed only in ci.yml, retired to .github/workflows/ci.yml.bak by 23c963303 — no live workflow defines a coverage job, and scripts/gates.json marks it retired with no ci block -->
 - **Payment gateway fields**: Migration `027_payment_gateway_fields.sql` adds `gateway_reference`, `gateway_status`, `gateway_response` to `payments` table.
 - **Square payment processor**: `SquarePaymentProcessor` driver (`crates/oz-payment/src/drivers/square.rs`) — all 6 trait methods via REST API, 18 tests.
 - **PostgreSQL cloud sync**: `PgTransport` and `PgSyncDaemon` in `platform/sync/src/` — outbox replication to any PostgreSQL host.
@@ -1695,7 +1713,7 @@ Settings navigation tree extracted from monolithic SettingsPage.tsx into a stand
 [0.0.2]: https://github.com/kardelitaitu/oz-pos/releases/tag/v0.0.2
 [0.0.1]: https://github.com/kardelitaitu/oz-pos/releases/tag/v0.0.1
 
-> last audited 09-08-26 by buffy
+> last audited 09-09-26 by docs-auditor
 > audit: Phase 1 Core Architecture & API Docs Audit
 
 > status: ACCURATE (verified against actual codebase) · verified accurate: version numbers match Cargo.toml, all script paths exist, ADRs referenced in docs/decisions/, test counts verified

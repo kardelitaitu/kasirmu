@@ -1,4 +1,5 @@
 # iOS / iPad Build Guide
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Finding: §3 told the reader to "configure the GitHub secrets as documented in .github/workflows/ios.yml" — that file is .github/workflows/ios.yml.bak since 23c963303 (2026-09-02) and GitHub never executes a .bak, so no live workflow consumes any of those secrets; the repair keeps the secret manifest (cited at .github/workflows/ios.yml.bak:13-19) but says plainly that it is revival documentation, not today's pipeline · VERIFIED: git grep -l CLOUDFLARE/APPLE secret names across .github/workflows shows the live pair is dev-ci.yml + release.yml only; git grep -in ios -- .github/workflows/dev-ci.yml .github/workflows/release.yml returns exactly one hit, the comment at .github/workflows/release.yml:24 ("Mobile (android.yml.bak / ios.yml.bak). Never part of this file.") · LEFT ALONE deliberately: the whole guide is still forward-looking because the 08-09-26 prerequisite note at the top is true — apps/tablet-client/gen/ has no apple/ scaffold committed, so nothing here can be executed end-to-end and no claim below it was re-verified against Xcode behaviour · The macOS/keychain commands are third-party tool usage, not repo claims; unverified from this workstation. -->
 <!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
@@ -131,7 +132,17 @@ security export -k login.keychain \
 base64 -w0 /tmp/dist-cert.p12 > dist-cert.p12.b64
 ```
 
-Then configure the GitHub secrets as documented in `.github/workflows/ios.yml`.
+Then keep these credentials somewhere durable — but note that **no live workflow
+consumes them:** the workflow this step pointed at is retired, renamed from
+`.github/workflows/ios.yml` to `.github/workflows/ios.yml.bak` by `23c963303` on
+2026-09-02, and GitHub never executes a `.bak` file. A GitHub Actions secret of
+these names is therefore read by nothing today. The six names and their purposes are still listed in that inert
+workflow's own header (`.github/workflows/ios.yml.bak:13-19`: `APPLE_TEAM_ID`,
+`APPLE_BUNDLE_ID`, `APPLE_PROV_PROFILE_BASE64`, `APPLE_CERT_BASE64`,
+`APPLE_CERT_PASSWORD`, `KEYCHAIN_PASSWORD`) and are the manifest for whoever
+restores it. For the local route, the values stay on the macOS host: Xcode's
+keychain plus the provisioning profile below. The only release workflow that runs
+is desktop-only by design — see `.github/workflows/release.yml:24`.
 
 ## 4. Building for Simulator
 
@@ -241,4 +252,4 @@ find apps/tablet-client/target -name "*.ipa" 2>/dev/null
 
 ---
 
-> last audited 08-08-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor

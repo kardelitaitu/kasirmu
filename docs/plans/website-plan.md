@@ -1,4 +1,5 @@
 # OZ-POS Website Plan
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Undated plan written in present tense, so its §10 Deployment rows read as current fact; corrected to what the workflows do today. Verified from the files: (a) the live website job is dev-ci.yml:137-163 — "Website Check + Build", needs changes, if needs.changes.outputs.website == 'true', steps asset hygiene / npm ci / playwright chromium (for Mermaid) / npm run check / npm test / npm run build and NOT a deploy; (b) git grep -l wrangler .github/workflows matches only website.yml.bak, so no live workflow deploys; (c) website/package.json:17 is the deploy route, "deploy": "bash ../scripts/wrangler-deploy.sh", which fails closed at scripts/wrangler-deploy.sh:42-43 when CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID are unset. FLAGGED, NOT FIXED (config, out of doc-repair scope): that npm script invokes bare bash, which root AGENTS.md records as resolving to WSL on this workstation and hanging or running the Linux node against Windows-built node_modules; the runbook records the same and gives the explicit Git-bash form. ALSO FLAGGED, NOT FIXED: the §0 blurb says "hosted on Cloudflare Pages" while §10 and website/wrangler.toml say Workers static assets — a contradiction internal to this plan, not a CI claim, so it is left for whoever owns the site. LEFT ALONE: the Pages-alternative note under §10 and all env-var semantics (verified against wrangler.toml bindings by the rows themselves, and untouched by this pass). -->
 
 > Static marketing site hosted on Cloudflare Pages — two locales, Paddle checkout,
 > tenant-email auth via the license server (PocketBase datastore on Northflank).
@@ -528,7 +529,7 @@ Live at `https://ozpos.my.id` until the custom domain is bought.
 |---------|-------|
 | Platform | Workers static assets (`wrangler deploy` from `website/`) |
 | Config | `website/wrangler.toml` (built in) |
-| CI | `.github/workflows/website.yml` — check+build on PRs; build+deploy on main (fail-closed on missing secrets) |
+| CI | **check + build only, on a PR.** `dev-ci.yml#website` runs asset hygiene, `npm ci`, typecheck/lint, unit tests and `npm run build`, path-gated on the `changes` router (`.github/workflows/dev-ci.yml:137-163`). **Nothing deploys this site.** `.github/workflows/website.yml` (the check+deploy workflow this row named) has been inert `.github/workflows/website.yml.bak` since `23c963303` on 2026-09-02, GitHub never executes a `.bak`, and `dev-ci.yml` has no push trigger — so "build+deploy on main" describes a pipeline that no longer exists. Deploy is `npm run deploy` from `website/` → `scripts/wrangler-deploy.sh`, run by a person; it is still fail-closed, but on env vars, not GitHub secrets (`scripts/wrangler-deploy.sh:42-43`) |
 | Framework | Astro |
 | Build command | `npm run build` |
 | Output | `dist/` |
@@ -549,7 +550,7 @@ Live at `https://ozpos.my.id` until the custom domain is bought.
 
 ### Environment Variables
 
-**Cloudflare (site) — Workers static assets (deployed via `.github/workflows/website.yml`, `wrangler deploy`):**
+**Cloudflare (site) — Workers static assets (deployed by hand with `npm run deploy` from `website/`; the workflow that used to run it is inert `.github/workflows/website.yml.bak`):**
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
@@ -780,3 +781,5 @@ Includes the new license-server work the previous plan silently assumed.
 | License server | existing | Northflank Hobby tier, already deployed |
 | Domain | ~$10/year | Cloudflare Registrar |
 | **Total** | **~$0-10/mo** | Before Paddle transaction fees |
+
+> last audited 09-09-26 by docs-auditor

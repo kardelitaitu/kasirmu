@@ -1,6 +1,6 @@
 # Operations Runbook — OZ-POS (unified Northflank deployment)
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
 
 One Northflank service, one Docker image. Two functions behind one caddy
 reverse proxy (single public port):
@@ -644,7 +644,13 @@ dashboard and simply names which account the token acts on.
   Zone/DNS/Pages/KV permissions required.
 - Create it at **My Profile → API Tokens → Create Token** (a user token; an Account
   token under Manage Account → API Tokens also works). The secret is **shown only
-  once** — copy it straight into the GitHub secret store.
+  once** — copy it straight into wherever the deploy reads it from, which today is
+  the environment, not GitHub: `scripts/wrangler-deploy.sh:42` fails when
+  `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are unset, and AGENTS.md feeds those
+  from `.env` / the `OZPOS_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
+  same name is harmless to keep (it is what the retired website pipeline expected) but
+  `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` matches only `website.yml.bak`
+  and `scripts/wrangler-deploy.sh`, so no live workflow reads it.
 - Optional hardening: restrict to the single account; skip Client IP filtering unless
   you accept the tradeoff — GitHub-hosted runner egress IPs change, so IP filters are
   a frequent false-failure source.
@@ -655,12 +661,22 @@ dashboard and simply names which account the token acts on.
   it stays valid until revoked, its scopes change, or the account relationship changes.
   That is exactly how this bit us (2026-08-17): no TTL, no calendar event, and nothing
   alerted when the token stopped working.
-- **Observed failure mode:** the deploy job errors with `Authentication error [code:
+- **Observed failure mode (as it presented on 2026-08-17, when a workflow still
+  deployed the site — the two job names below are retired `.bak` content, see the
+  bullet after this one):** the deploy job errors with `Authentication error [code:
   10000]` / `Invalid access token [code: 9109]` on `/accounts/<id>/workers/services/oz-pos`.
-  The job "fails loudly" in its own log, but **nobody is paged**: the PR `check` job
-  stays green (it does not deploy), so the Actions list looks healthy until you open
-  the `deploy` job. The live site keeps serving the last good build — here, the
-  pre-portal 1-card docs hub — for ~20 failed runs before the outage was noticed.
+  The job "fails loudly" in its own log, but **nobody is paged**: the PR-side `check`
+  job (retired `website.yml`, still readable at `website.yml.bak:71`) stays green
+  because it does not deploy, so the Actions list looks healthy until you open the
+  `deploy` job (`website.yml.bak:144`). The live site keeps serving the last good
+  build — here, the pre-portal 1-card docs hub — for ~20 failed runs before the
+  outage was noticed.
+- **What replaced that failure mode: nothing.** No live workflow deploys the website,
+  so there is no run that can go red and no Actions list to look healthy or otherwise.
+  A rejected token now surfaces only as an error in the terminal of whoever typed
+  `npm run deploy`, and a forgotten deploy is invisible from GitHub altogether. That
+  is strictly less detection than 2026-08-17 had, and it is why probe #3 below is the
+  only real signal.
 - **Policy:** give every token a **TTL ≤ 1 year** (Cloudflare's maximum is 10 years)
   and put the expiry date in the ops calendar. A TTL forces a deliberate review cadence
   instead of silent rot.
@@ -668,8 +684,11 @@ dashboard and simply names which account the token acts on.
 ### 9.3 Detection (run these on any deploy suspicion)
 
 ```bash
-# 1. Are recent deploys actually succeeding? All-failed = credential problem, not code.
-gh run list --workflow "Website Deploy" --branch main --limit 5
+# 1. There is no deploy run to list. Probe #1 was `gh run list --workflow "Website
+#    Deploy"`; that workflow went inert when 23c963303 renamed it to .bak on
+#    2026-09-02, so the command now returns an empty list. An empty list is the
+#    missing workflow, NOT evidence that deploys are healthy — the health evidence
+#    is probe #3 (the live site) and the wrangler output of the human who deployed.
 
 # 2. Is the token itself valid? (authoritative — Cloudflare's verify endpoint)
 curl "https://api.cloudflare.com/client/v4/user/tokens/verify" \
@@ -690,10 +709,11 @@ curl -sf -o /dev/null -w '%{http_code}\n' \
 ```
 
 GitHub's secret store exposes no expiry/rotation metadata, so rely on these three
-probes (fold probe #3 into the §5 poller or an uptime monitor). The deploy job
-itself now runs probe #2 as its first step (`website.yml` → "Validate Cloudflare
-deploy credentials (fail-fast)"), so a rejected token fails the deploy in ~1s before
-the ~5 min portal build — probe #3 stays the ground truth for what actually shipped.
+probes (fold probe #3 into the §5 poller or an uptime monitor). The fail-fast step
+this section used to describe — "Validate Cloudflare deploy credentials
+(fail-fast)", `website.yml.bak:155` — died with the retired workflow. Nothing
+validates the token before a deploy any more: probe #2 is now a step YOU run by
+hand, and probe #3 is the only ground truth for what actually shipped.
 
 ### 9.4 Rotation (zero-downtime, ~5 min)
 
@@ -702,11 +722,16 @@ the ~5 min portal build — probe #3 stays the ground truth for what actually sh
    immediately — shown only once.
 2. **Verify before touching GitHub:** run the §9.3 probe #2 with the new token →
    `"status": "active"`.
-3. **Update the GitHub secret:** Settings → Secrets and variables → Actions →
-   `CLOUDFLARE_API_TOKEN` → paste → save. (`CLOUDFLARE_ACCOUNT_ID` stays the same.)
-4. **Confirm with a real deploy:** re-run the last failed Website Deploy run
-   (`gh run rerun <id>`) or push a trivial `website/**` change; confirm the `deploy`
-   job succeeds and probe #3 returns 200.
+3. **Update wherever the deploy actually reads the token:** the `.env` entry and the
+   `OZPOS_CLOUDFLARE_API_TOKEN` user variable that feed `scripts/wrangler-deploy.sh`.
+   Updating only the GitHub secret (Settings → Secrets and variables → Actions →
+   `CLOUDFLARE_API_TOKEN`) rotates a credential nothing live consumes, and the manual
+   deploy would keep using the revoked token.
+4. **Confirm with a real deploy:** run `npm run deploy` from `website/` (the manual
+   route named at the top of §9) and confirm probe #3 returns 200. The two old routes
+   are gone: there is no Website Deploy run left to rerun, and pushing a `website/**`
+   change deploys nothing — the only live website job is `dev-ci.yml#website`, which
+   stops at Build, and `dev-ci.yml` has no push trigger at all.
 5. **Revoke the old token** (API Tokens → Roll / Delete). Two overlapping tokens
    during rotation is fine — the old one must die only after the new one is proven.
 
@@ -714,15 +739,22 @@ the ~5 min portal build — probe #3 stays the ground truth for what actually sh
 
 - **TTL policy from §9.2:** every token gets a TTL ≤ 1 year + a calendar entry. A token
   with no TTL is a standing silent-rot risk — treat it as an incident to fix.
-- **Automated token-verify smoke:** the deploy job now runs probe #2 pre-build (see
-  §9.3), so an invalid token fails fast at deploy time — but that only alerts when a
-  deploy actually happens. Wire probe #2 into a scheduled workflow (or the §5 poller)
-  so an invalid token alerts *before* the next deploy, instead of after 20 red runs.
+- **Automated token-verify smoke — still not built, and now the only would-be
+  detector is gone.** This bullet used to say the deploy job runs probe #2 pre-build
+  (see §9.3); that step retired with `website.yml` on 2026-09-02, so nothing checks
+  the token at deploy time or any other time. The recommendation stands unchanged:
+  wire probe #2 into a scheduled workflow (or the §5 poller) so an invalid token
+  alerts *before* someone tries to deploy. Note that neither live workflow declares
+  a schedule trigger today, so this means writing one, not editing an existing run.
   The token is a repo secret; the verify endpoint needs no other permission.
 - **Live-portal poller:** probe #3 is the ground truth for "did the deploy actually
   land" — a 404 on `/docs-portal/intro.html` means stale assets regardless of what CI
   says. Add it to the §5 alert rules as a page-level check.
-- **Treat a red `deploy` job as an incident:** add "Website Deploy `deploy` job failed"
-  to §3 — the check job being green is not a signal that anything shipped.
+- **Treat a stale site as an incident:** the retired Website Deploy workflow is what
+  used to be able to go red here, so "deploy job failed" is no longer an alert any
+  system can raise. Add the equivalent for probe #3 to §3 instead — a 404 on
+  `https://ozpos.my.id/docs-portal/intro.html` is now the ONLY signal that a deploy
+  did not land, because no live workflow deploys the site and a green PR tells you
+  nothing about what shipped.
 
-> last audited 08-09-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor
