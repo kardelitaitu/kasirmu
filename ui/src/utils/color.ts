@@ -191,7 +191,7 @@ export function clearAccentPalette(): void {
 /**
  * Read the computed value of a CSS custom property on `:root`.
  */
-function readCSSVar(name: string): string | null {
+export function readCSSVar(name: string): string | null {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || null;
 }

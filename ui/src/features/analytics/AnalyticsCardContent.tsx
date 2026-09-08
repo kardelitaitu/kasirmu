@@ -18,6 +18,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { readCSSVar } from '@/utils/color';
 import { downloadCsv } from '@/utils/export-csv';
 import { useAnalyticsQuery } from './useAnalyticsQuery';
 import { cardQueryKey } from './analytics-cache';
@@ -82,9 +83,55 @@ function useMoney() {
   return { fmt, fmtIn, short, count };
 }
 
-const PALETTE = ['#4f46e5', '#3b82f6', '#06b6d4', '#22c55e', '#f59e0b', '#f97316', '#ef4444', '#8b5cf6'];
+/**
+ * Resolve one chart colour from its theme token with a hex fallback.
+ *
+ * echarts paints to canvas, where CSS var() strings never resolve — the
+ * value must be concrete by the time it reaches an option. readCSSVar
+ * returns the computed token on :root (empty under jsdom/tests), and the
+ * fallback keeps the chart's look stable in every environment where the
+ * stylesheet is absent. Each fallback is the value this chart shipped
+ * before the token pass, so a bare test DOM renders byte-identical output.
+ */
+function chartColor(varName: string, fallback: string): string {
+  return readCSSVar(varName) ?? fallback;
+}
 
-const CHART_TEXT = '#94a3b8';
+/**
+ * Per-card accent colours, read from the theme's semantic tokens (same
+ * source every themed surface uses) with the pre-token hexes as fallbacks:
+ * indigo→--color-accent, blue→--color-accent-secondary, cyan→--color-info,
+ * green→--color-success, amber→--color-warning, red→--color-danger,
+ * violet→--color-purple, grey→--color-fg-muted.
+ */
+const PALETTE_TOKENS = [
+  ['--color-accent', '#4f46e5'],
+  ['--color-accent-secondary', '#3b82f6'],
+  ['--color-info', '#06b6d4'],
+  ['--color-success', '#22c55e'],
+  ['--color-warning', '#f59e0b'],
+  ['--color-warning-pos', '#f97316'],
+  ['--color-danger', '#ef4444'],
+  ['--color-purple', '#8b5cf6'],
+] as const;
+
+/** The palette as echarts needs it: concrete colour strings. */
+const PALETTE: string[] = PALETTE_TOKENS.map(([varName, fallback]) => chartColor(varName, fallback));
+
+/** Chart line/bar colours that carry one semantic meaning across cards. */
+const CHART_ACCENT = chartColor('--color-accent', '#4f46e5');
+const CHART_PREV = chartColor('--color-fg-muted', '#94a3b8');
+const CHART_BASKET = chartColor('--color-info', '#06b6d4');
+const CHART_INVENTORY = chartColor('--color-success', '#22c55e');
+const CHART_TABLES = chartColor('--color-warning', '#f59e0b');
+/** Legend/donut tint for the customers card's returning segment (accent-subtle). */
+const CHART_ACCENT_SOFT = chartColor('--color-accent-subtle', '#c7d2fe');
+/** Donut segment separators. The analytics surface is a fixed light card
+ *  (AUT-1 scoped tokens in AnalyticsScreen.css), so the border stays the
+ *  card's white surface rather than a theme-dependent token. */
+const DONUT_BORDER = '#fff';
+/** Axis text — theme-neutral grey, matching the pre-token value. */
+const CHART_TEXT = chartColor('--color-fg-muted', '#94a3b8');
 
 /** Stable empty bucket list — the AOV card's `data?.buckets` fallback so a
  *  fresh `[]` literal isn't recreated every render (a referential-stability
@@ -649,13 +696,13 @@ function RevenueCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title
         name: l10n.getString('analytics-card-revenue'),
         type: 'line' as const, data: data.map((d) => d.value),
         smooth: true, symbol: 'circle', symbolSize: 4,
-        itemStyle: { color: '#4f46e5' }, areaStyle: { opacity: 0.12 }, lineStyle: { width: 2 },
+        itemStyle: { color: CHART_ACCENT }, areaStyle: { opacity: 0.12 }, lineStyle: { width: 2 },
       },
       ...(compare && prevData.length ? [{
         name: l10n.getString('analytics-card-prev'),
         type: 'line' as const, data: alignPrevBuckets(data, prevData),
         smooth: true, symbol: 'none',
-        itemStyle: { color: '#94a3b8' }, lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' as const },
+        itemStyle: { color: CHART_PREV }, lineStyle: { width: 1.5, color: CHART_PREV, type: 'dashed' as const },
       }] : []),
     ],
   }) : null), [data, prevData, compare, fmt, l10n]);
@@ -707,13 +754,13 @@ function AovCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: st
       {
         type: 'line' as const, data: buckets.map((d) => d.value),
         smooth: true, symbol: 'circle', symbolSize: 4,
-        itemStyle: { color: '#4f46e5' }, areaStyle: { opacity: 0.12 }, lineStyle: { width: 2 },
+        itemStyle: { color: CHART_ACCENT }, areaStyle: { opacity: 0.12 }, lineStyle: { width: 2 },
       },
       ...(compare && prevBuckets.length ? [{
         name: l10n.getString('analytics-card-prev'),
         type: 'line' as const, data: alignPrevBuckets(buckets, prevBuckets),
         smooth: true, symbol: 'none',
-        itemStyle: { color: '#94a3b8' }, lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' as const },
+        itemStyle: { color: CHART_PREV }, lineStyle: { width: 1.5, color: CHART_PREV, type: 'dashed' as const },
       }] : []),
     ],
   }) : null), [buckets, prevBuckets, compare, fmt, l10n]);
@@ -780,11 +827,11 @@ function CustomersCard({ q, title, expanded, compare }: { q: AnalyticsQuery; tit
     tooltip: { trigger: 'item' as const },
     series: [{
       type: 'pie' as const, radius: ['58%', '82%'], center: ['50%', '50%'],
-      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
+      itemStyle: { borderRadius: 4, borderColor: DONUT_BORDER, borderWidth: 2 },
       label: { show: false }, emphasis: { scaleSize: 4 },
       data: [
-        { value: newCount, name: l10n.getString('analytics-card-customers-new'), itemStyle: { color: '#4f46e5' } },
-        { value: retCount, name: l10n.getString('analytics-card-customers-returning'), itemStyle: { color: '#c7d2fe' } },
+        { value: newCount, name: l10n.getString('analytics-card-customers-new'), itemStyle: { color: CHART_ACCENT } },
+        { value: retCount, name: l10n.getString('analytics-card-customers-returning'), itemStyle: { color: CHART_ACCENT_SOFT } },
       ],
     }],
   }) : null), [newCount, retCount, l10n, split]);
@@ -804,8 +851,8 @@ function CustomersCard({ q, title, expanded, compare }: { q: AnalyticsQuery; tit
         <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('customers', expanded) }} notMerge />
       </div>
       <Legend items={[
-        { name: l10n.getString('analytics-card-customers-new'), value: count(newCount), color: '#4f46e5' },
-        { name: l10n.getString('analytics-card-customers-returning'), value: count(retCount), color: '#c7d2fe' },
+        { name: l10n.getString('analytics-card-customers-new'), value: count(newCount), color: CHART_ACCENT },
+        { name: l10n.getString('analytics-card-customers-returning'), value: count(retCount), color: CHART_ACCENT_SOFT },
       ]} />
       <p className="analytics-card-insight">
         {l10n.getString('analytics-card-customers-new-share', { pct: String(newPct) })}
@@ -1033,7 +1080,7 @@ function CategoryCard({ q, title, expanded, compare }: { q: AnalyticsQuery; titl
     tooltip: { trigger: 'item' as const },
     series: [{
       type: 'pie' as const, radius: ['58%', '82%'], center: ['50%', '50%'],
-      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
+      itemStyle: { borderRadius: 4, borderColor: DONUT_BORDER, borderWidth: 2 },
       label: { show: false }, emphasis: { scaleSize: 4 },
       data: names.map((n, i) => ({ value: pcts[i], name: n, itemStyle: { color: PALETTE[i % PALETTE.length] } })),
     }],
@@ -1098,13 +1145,13 @@ function BasketCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title:
     series: [
       {
         type: 'bar' as const, data: data.map((d) => d.value),
-        itemStyle: { color: '#06b6d4', borderRadius: [3, 3, 0, 0] }, barWidth: '55%',
+        itemStyle: { color: CHART_BASKET, borderRadius: [3, 3, 0, 0] }, barWidth: '55%',
       },
       ...(compare && prevData.length ? [{
         name: l10n.getString('analytics-card-prev'),
         type: 'line' as const, data: alignPrevBuckets(data, prevData),
         smooth: true, symbol: 'none',
-        itemStyle: { color: '#94a3b8' }, lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' as const },
+        itemStyle: { color: CHART_PREV }, lineStyle: { width: 1.5, color: CHART_PREV, type: 'dashed' as const },
       }] : []),
     ],
   }) : null), [data, prevData, compare, l10n]);
@@ -1154,14 +1201,14 @@ function InventoryCard({ q, title, expanded, compare }: { q: AnalyticsQuery; tit
     series: [
       {
         type: 'line' as const, data: data.map((d) => d.value),
-        smooth: true, symbol: 'none', lineStyle: { width: 2, color: '#22c55e' },
-        areaStyle: { opacity: 0.12 }, itemStyle: { color: '#22c55e' },
+        smooth: true, symbol: 'none', lineStyle: { width: 2, color: CHART_INVENTORY },
+        areaStyle: { opacity: 0.12 }, itemStyle: { color: CHART_INVENTORY },
       },
       ...(compare && prevData.length ? [{
         name: l10n.getString('analytics-card-prev'),
         type: 'line' as const, data: alignPrevBuckets(data, prevData),
         smooth: true, symbol: 'none',
-        itemStyle: { color: '#94a3b8' }, lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' as const },
+        itemStyle: { color: CHART_PREV }, lineStyle: { width: 1.5, color: CHART_PREV, type: 'dashed' as const },
       }] : []),
     ],
   }) : null), [data, prevData, compare, l10n]);
@@ -1261,13 +1308,13 @@ function TablesCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title:
     series: [
       {
         type: 'bar' as const, data: data.map((d) => d.value),
-        itemStyle: { color: '#f59e0b', borderRadius: [3, 3, 0, 0] }, barWidth: '55%',
+        itemStyle: { color: CHART_TABLES, borderRadius: [3, 3, 0, 0] }, barWidth: '55%',
       },
       ...(compare && prevData.length ? [{
         name: l10n.getString('analytics-card-prev'),
         type: 'line' as const, data: alignPrevBuckets(data, prevData),
         smooth: true, symbol: 'none',
-        itemStyle: { color: '#94a3b8' }, lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' as const },
+        itemStyle: { color: CHART_PREV }, lineStyle: { width: 1.5, color: CHART_PREV, type: 'dashed' as const },
       }] : []),
     ],
   }) : null), [data, prevData, compare, l10n]);
@@ -1322,14 +1369,14 @@ function OccupancyCard({ q, title, expanded, compare }: { q: AnalyticsQuery; tit
     series: [
       {
         type: 'line' as const, data: hourly.map((d) => d.pct),
-        smooth: true, symbol: 'none', lineStyle: { width: 2, color: '#f59e0b' },
-        areaStyle: { opacity: 0.12 }, itemStyle: { color: '#f59e0b' },
+        smooth: true, symbol: 'none', lineStyle: { width: 2, color: CHART_TABLES },
+        areaStyle: { opacity: 0.12 }, itemStyle: { color: CHART_TABLES },
       },
       ...(compare && prevHourly.length ? [{
         name: l10n.getString('analytics-card-prev'),
         type: 'line' as const, data: prevPct,
         smooth: true, symbol: 'none',
-        itemStyle: { color: '#94a3b8' }, lineStyle: { width: 1.5, color: '#94a3b8', type: 'dashed' as const },
+        itemStyle: { color: CHART_PREV }, lineStyle: { width: 1.5, color: CHART_PREV, type: 'dashed' as const },
       }] : []),
     ],
   }), [hourly, prevPct, compare, l10n, prevHourly.length]);
