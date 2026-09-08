@@ -82,6 +82,7 @@ import {
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
 import { useTopologyEditorLoadLifecycle } from './nodeTopologyEditorLoadLifecycle';
+import { useTopologyEditorAnnouncements } from './nodeTopologyEditorAnnouncements';
 import {
   bendLandedAtStart,
   cancelBendDecision,
@@ -359,12 +360,6 @@ const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
 const issueKey = topologyIssueKey;
 const graphIssueKey = (messageId: string) => `graph:${messageId}`;
 
-/** Milliseconds the selection-announcement waits after the LAST selection
- *  change before speaking. Long enough to absorb a marquee drag that
- *  flicks 1→2→3 (one announcement, on the final set), short enough that a
- *  click or keyboard select still feels immediate. */
-const SELECTION_ANNOUNCE_SETTLE_MS = 120;
-
 /** Branch Location profile fields — fetched lazily from the backend. */
 function BranchLocationFields({ nodeId, sessionToken, l10n, beginInspectorEdit }: {
   nodeId: string;
@@ -620,21 +615,6 @@ export default function NodeTopologyEditor({
    *  coordinate (canvas units) for a vertical (x) and/or horizontal (y)
    *  guide. Null while idle. Cleared on mouseup. */
   const [alignmentGuide, setAlignmentGuide] = useState<{ x?: number; y?: number } | null>(null);
-  /** Accessible snap feedback: the alignment guides are aria-hidden, so a
-   *  visually-hidden live region announces when a drag/nudge SNAPS. The
-   *  announcement fires on ENTRY only (null → guide); while the guide stays
-   *  visible (snapped), the recreated guide object must not re-announce on
-   *  every mousemove — the mouseup clear resets the latch so the next
-   *  approach re-announces. */
-  const [liveAnnouncement, setLiveAnnouncement] = useState('');
-  const prevGuideRef = useRef<{ x?: number; y?: number } | null>(null);
-  useEffect(() => {
-    const prev = prevGuideRef.current;
-    prevGuideRef.current = alignmentGuide;
-    if (alignmentGuide && !prev) {
-      setLiveAnnouncement(l10nRef.current.getString('topology-snap-announce'));
-    }
-  }, [alignmentGuide]);
   /** Marquee box selection: null while idle, a rect in container-relative
    *  screen px while left-dragging on empty background. */
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -1224,40 +1204,19 @@ export default function NodeTopologyEditor({
   /** O(1) node lookup by id — replaces `nodes.find` in hot paths (wire rendering, etc.). */
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
-  /** Announce selection changes through the polite live region. The cards
-   *  cannot carry aria-selected (role=group supports no selection state;
-   *  axe flagged it, and no aria-selected role allows their nested
-   *  controls), so the spoken summary IS the screen-reader contract for
-   *  selection. Settled like the issues readout: a marquee that flickers
-   *  1→2→3 announces once with the final set. Wire selection, multi-node
-   *  counts, and clears are all announced. */
-  const selectionAnnounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevSelectionSignatureRef = useRef('');
-  useEffect(() => {
-    const signature = [...selectedNodeIds].sort().join('|') + (selectedWireId ? `|w:${selectedWireId}` : '');
-    if (signature === prevSelectionSignatureRef.current) return;
-    prevSelectionSignatureRef.current = signature;
-    const announce = () => {
-      if (selectedWireId) return l10nRef.current.getString('topology-selection-wire-announce');
-      if (selectedNodeIds.size === 0) return l10nRef.current.getString('topology-selection-clear-announce');
-      if (selectedNodeIds.size === 1) {
-        const onlyId = [...selectedNodeIds][0]!;
-        return l10nRef.current.getString('topology-selection-announce', { name: nodeMap.get(onlyId)?.name ?? onlyId });
-      }
-      return l10nRef.current.getString('topology-status-selection', { count: selectedNodeIds.size });
-    };
-    if (selectionAnnounceTimerRef.current) clearTimeout(selectionAnnounceTimerRef.current);
-    selectionAnnounceTimerRef.current = setTimeout(() => {
-      selectionAnnounceTimerRef.current = null;
-      setLiveAnnouncement(announce());
-    }, SELECTION_ANNOUNCE_SETTLE_MS);
-  }, [selectedNodeIds, selectedWireId, nodeMap]);
-  useEffect(
-    () => () => {
-      if (selectionAnnounceTimerRef.current) clearTimeout(selectionAnnounceTimerRef.current);
-    },
-    [],
-  );
+  // Announcements (Phase 3.3 hook): the hook owns the live-region state,
+  // the snap-entry latch, and the selection settle debounce; the aliases
+  // keep every one-shot call site and the rendered live region unchanged.
+  const {
+    announcement: liveAnnouncement,
+    announce: setLiveAnnouncement,
+  } = useTopologyEditorAnnouncements({
+    alignmentGuide,
+    selectedNodeIds,
+    selectedWireId,
+    nodeMap,
+    l10nRef,
+  });
 
   /** Relationship type display metadata: color, icon SVG, and localized label. */
   const relationshipStyle = useCallback((type?: SemanticRelationshipType): { color: string; icon: string; label: string } => {
@@ -1802,7 +1761,7 @@ export default function NodeTopologyEditor({
     // the property away so the wires leave with NO bends key at all.
     setWires((prev) => prev.map(({ bends: _bends, ...rest }) => rest));
     setLiveAnnouncement(l10nRef.current.getString('topology-layout-announce'));
-  }, [nodes, wires, pushHistory, snapEnabled, wireRouting, setNodes, setWires]);
+  }, [nodes, wires, pushHistory, snapEnabled, wireRouting, setNodes, setWires, setLiveAnnouncement]);
 
   /** Copy the diagram to the clipboard as the versioned JSON envelope.
    *  Guards a missing clipboard API (insecure context / WebView) with an
@@ -2036,7 +1995,7 @@ export default function NodeTopologyEditor({
       setLiveAnnouncement(l10nRef.current.getString('topology-duplicate-announce'));
     }
     document.body.style.cursor = '';
-  }, [setHistory, setRedo, selectMany]);
+  }, [setHistory, setRedo, selectMany, setLiveAnnouncement]);
 
   /** Escape during an Alt+drag: discard the preview copies and the drag
    *  itself (originals stay selected, no history entry). When the drag was
@@ -2065,7 +2024,7 @@ export default function NodeTopologyEditor({
     setAlignmentGuide(null);
     setLiveAnnouncement(l10nRef.current.getString('topology-duplicate-cancel-announce'));
     dragCleanupRef.current?.();
-  }, [setHistory, setNodes, setWires, cancelDrag]);
+  }, [setHistory, setNodes, setWires, cancelDrag, setLiveAnnouncement]);
 
   /** Alt pressed MID-move (Figma semantics): the drag becomes a duplicate
    *  drag. The originals snap back to their pre-drag positions, fresh copies

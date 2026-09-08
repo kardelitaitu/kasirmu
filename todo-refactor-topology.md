@@ -392,6 +392,27 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 **Next slice:** Phase 3.2 is closed — move to 3.3 selection/hover announcement extraction.
 
+### 2026-09-09 — Slice 3.3a: announcement scheduling and live-region state extracted
+
+**Slice selection:** the journal's confirmed order — Phase 3.3's "extract announcement scheduling and live-region updates from the main component," the first slice of the selection/hover/feedback phase.
+
+**Extracted into `nodeTopologyEditorAnnouncements.ts` (new hook, ~120 lines):**
+- The live-region state itself (`announcement` + `announce` — the imperative one-shot write the gesture callbacks use).
+- The **snap-entry latch** effect: fires on null → guide only; the recreated guide object must not re-announce while the guide stays visible; the mouseup clear resets the latch so the next approach re-announces.
+- The **selection settle debounce** (120 ms): signature-diffed, so a marquee that flicks 1→2→3 announces once with the final set; wire selection, multi counts, and clears all announced; no announce on the initial empty selection.
+- The **unmount timer cleanup**, so a pending settle never writes after unmount.
+- `SELECTION_ANNOUNCE_SETTLE_MS` moves here as the hook's own constant.
+
+**Kept at the call sites (deliberately):** the four one-shot message compositions (`topology-layout-announce`, `topology-duplicate-announce`, `topology-duplicate-cancel-announce`, `topology-migration-announce`) — each gesture owns its own l10n key, and the hook is the delivery mechanism, not the copy deck.
+
+**Behavior-preserving wiring:** the editor destructures the hook result as `announcement: liveAnnouncement, announce: setLiveAnnouncement`, so all six imperative call sites and the rendered `<div role="status" aria-live="polite">` line are byte-identical. Effect ordering is preserved: the hook call sits at the selection effect's original position (~line 1234, after nodeMap), and no code between the old snap-effect position and it writes or reads the announcement state, so snap-before-selection effect order is unchanged. The three gesture callbacks that were pre-existing exhaustive-deps offenders gained `setLiveAnnouncement` in their dep arrays — behavior-identical (it is a stable setState function; zero re-key churn) and it fixes the three NEW warnings the alias would otherwise have introduced, keeping the file at its 11 pre-existing warnings.
+
+**Tests:** `nodeTopologyEditorAnnouncements.test.ts` (new, 12 tests) — snap latch (entry, hold, re-arm), settle debounce (single/multi/wire/clear), the 1→2→3 fold, the unchanged-signature no-op, initial-empty silence, id fallback for unmapped nodes, unmount cleanup, and imperative one-shot writes. Key-plus-args stand-in pins the exact l10n key each path requests.
+
+**Validation:** hook tests 12/12. Focused topology suites (48 files): **2097 passed / 1 skipped / 0 failed** — including the editor suite's end-to-end selection-announcement and snap-announcement tests through the real component. ESLint 0 errors (11 pre-existing warnings). Tree-wide typecheck reports only the settings agent's two `exactOptionalPropertyTypes` errors in their in-flight `SettingsNavTree.test.tsx` (lines 383/388, still red at HEAD) — this slice's files are clean.
+
+**Next slice:** 3.3 continues — selection/hover state hook review for composability, or the pointer/keyboard controller (3.4) design pass.
+
 ## Completion checklist
 
 - [ ] `NodeTopologyEditor.tsx` is a small composition root rather than the owner of unrelated state machines and event systems.
