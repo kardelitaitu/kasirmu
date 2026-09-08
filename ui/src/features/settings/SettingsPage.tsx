@@ -169,6 +169,7 @@ function TopologySection() {
   const scopeKey = branchId ?? (openCreate ? 'create' : 'default');
   return (
     <div
+      className="settings-topology-container"
       data-testid="topology-section"
       {...(branchId ? { 'data-initial-branch': branchId } : {})}
       {...(openCreate ? { 'data-open-create': 'true' } : {})}
