@@ -567,7 +567,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
     function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as Node | null;
       const tEl = target as HTMLElement | null;
-      // Skip when focus is on a form field (typing must not move the treegrid).
+      // Skip when focus is on a form field (typing must not move the nav).
       if (tEl && (tEl.tagName === 'INPUT' || tEl.tagName === 'SELECT' || tEl.tagName === 'TEXTAREA' || tEl.isContentEditable)) return;
 
       // Scope: only act for events originating inside the sidebar, or when no
@@ -733,24 +733,24 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
           </button>
         </div>
 
-        <div
-          className="settings-sidebar-nav"
-          role="treegrid"
-          aria-label={l10n.getString('settings-sidebar-nav-aria')}
-        >
+        {/* Disclosure-navigation container. The <aside> landmark above already
+            carries the accessible name, so this wrapper is intentionally
+            role-free: the old role="treegrid" advertised a 2D interactive grid
+            the DOM could not honour (no rows/gridcells, no treeitem ownership -
+            items were DOM siblings of their headers, split by a region), and
+            regions are landmarks, illegal inside a grid. */}
+        <div className="settings-sidebar-nav">
           {/* ── Pinned sections (P60-blog-1) ────────────────── */}
           {!q && pinnedSections.length > 0 && !sidebarCollapsed && (
-            <div className="settings-sidebar-pinned" role="group" aria-label={l10n.getString('settings-sidebar-pinned-group-aria')}>
+            <div className="settings-sidebar-pinned" role="list" aria-label={l10n.getString('settings-sidebar-pinned-group-aria')}>
               {pinnedSections.map((key) => {
                 const item = NAV_ITEMS.find((n) => n.key === key);
                 if (!item) return null;
                 return (
-                  <div key={key} className="settings-nav-item-wrapper">
+                  <div key={key} className="settings-nav-item-wrapper" role="listitem">
                     <button
                       type="button"
-                      role="treeitem"
-                      aria-level={2}
-                      aria-selected={activeSection === key}
+                      aria-current={activeSection === key ? 'page' : undefined}
                       className={`settings-nav-item${activeSection === key ? ' settings-nav-item--active' : ''}`}
                       onClick={() => onNavigate(key)}
                       aria-label={l10n.getString(NAV_L10N_KEYS[item.key] ?? '')}
@@ -798,20 +798,16 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
               </button>
             </div>
           ) : (
-            filteredCategories.map((cat, catIdx) => {
+            filteredCategories.map((cat) => {
               const isExpanded = expandedCategories.includes(cat.label) || !!q;
               const hasActive = cat.keys.includes(activeSection);
               const panelId = `settings-panel-${cat.label.toLowerCase()}`;
               return (
                 <div key={cat.label} className="settings-sidebar-section">
+                  {/* APG disclosure pattern: the header is a disclosure button
+                      (aria-expanded + aria-controls), never a selectable node. */}
                   <button
                     type="button"
-                    role="treeitem"
-                    aria-level={1}
-                    aria-posinset={catIdx + 1}
-                    aria-setsize={filteredCategories.length}
-                    // Treeitem parent nodes are expandable, not selectable
-                    aria-selected={false}
                     aria-expanded={isExpanded}
                     aria-controls={panelId}
                     className={`settings-sidebar-section-header${hasActive ? ' settings-sidebar-section-header--active' : ''}`}
@@ -844,21 +840,16 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
                   </button>
                   <div
                     id={panelId}
-                    role="region"
-                    aria-label={l10n.getString(CATEGORY_I18N_KEYS[cat.label] ?? cat.label)}
+                    role="list"
                     className={`settings-sidebar-section-items${isExpanded || sidebarCollapsed ? ' settings-sidebar-section-items--expanded' : ''}`}>
-                      {cat.keys.map((key, itemIdx) => {
+                      {cat.keys.map((key) => {
                         const item = NAV_ITEMS.find((n) => n.key === key)!;
                         return (
-                          <div key={key} className="settings-nav-item-wrapper">
+                          <div key={key} className="settings-nav-item-wrapper" role="listitem">
                             <Tooltip content={l10n.getString(NAV_L10N_KEYS[item.key] ?? '')} showDelay={800} portal>
                               <button
                                 type="button"
-                                role="treeitem"
-                                aria-level={2}
-                                aria-posinset={itemIdx + 1}
-                                aria-setsize={cat.keys.length}
-                                aria-selected={activeSection === key}
+                                aria-current={activeSection === key ? 'page' : undefined}
                                 className={`settings-nav-item${activeSection === key ? ' settings-nav-item--active' : ''}`}
                                 onClick={() => onNavigate(key)}
                                 aria-label={l10n.getString(NAV_L10N_KEYS[item.key] ?? '')}
@@ -900,24 +891,33 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
           )}
         </div>
 
-        {/* ── Resize handle (P60-blog-4) ─────────── */}
+        {/* ── Resize handle (P60-blog-4): APG window-splitter separator ── */}
         {!sidebarCollapsed && (
-          <button
-            type="button"
+          /* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- APG separator pattern: the window splitter is a focusable non-interactive element with pointer + arrow-key resize by design (aria-valuenow/min/max report the geometry) */
+          <div
+            role="separator"
+            tabIndex={0}
             className="settings-sidebar-resize-handle"
             onMouseDown={handleResizeStart}
+            aria-orientation="vertical"
             aria-label={l10n.getString('settings-sidebar-resize-aria')}
+            aria-valuenow={sidebarWidth ?? SIDEBAR_MIN_WIDTH}
+            aria-valuemin={SIDEBAR_MIN_WIDTH}
+            aria-valuemax={SIDEBAR_MAX_WIDTH}
             onKeyDown={(e) => {
-              if (e.key === 'ArrowRight') {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                // The splitter owns its arrows: stop them from also reaching the
+                // sidebar disclosure arrow navigation (expand/collapse).
+                e.stopPropagation();
                 e.preventDefault();
-                setSidebarWidth((prev) => Math.min(SIDEBAR_MAX_WIDTH, (prev ?? SIDEBAR_MIN_WIDTH) + 10));
-              } else if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                setSidebarWidth((prev) => Math.max(SIDEBAR_MIN_WIDTH, (prev ?? SIDEBAR_MIN_WIDTH) - 10));
+                setSidebarWidth((prev) => e.key === 'ArrowRight'
+                  ? Math.min(SIDEBAR_MAX_WIDTH, (prev ?? SIDEBAR_MIN_WIDTH) + 10)
+                  : Math.max(SIDEBAR_MIN_WIDTH, (prev ?? SIDEBAR_MIN_WIDTH) - 10));
               }
             }}
           />
         )}
+        {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       </aside>
 
       {/* ── Live region: announcements for screen readers (P60-4e) ── */}

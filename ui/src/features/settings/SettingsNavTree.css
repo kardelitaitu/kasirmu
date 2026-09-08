@@ -419,8 +419,8 @@
   min-width: 0;
 }
 
-.settings-nav-item-wrapper > button[role="treeitem"],
-.settings-nav-item-wrapper > .tooltip-wrapper > button[role="treeitem"] {
+.settings-nav-item-wrapper > button.settings-nav-item,
+.settings-nav-item-wrapper > .tooltip-wrapper > button.settings-nav-item {
   flex: 1;
   min-width: 0;
 }
