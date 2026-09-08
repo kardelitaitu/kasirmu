@@ -20,12 +20,14 @@ use oz_core::db::audit_security::{
     SECURITY_REASON_BAD_PIN, SECURITY_REASON_INACTIVE, SECURITY_REASON_RATE_LIMITED,
     SECURITY_REASON_UNKNOWN_USER, SecurityEvent,
 };
+use oz_core::permissions;
 use oz_core::session::SessionContext;
 use oz_core::subscription::TenantSubscription;
 use oz_security::mask::mask_token;
 
 use foundation::validate_not_empty;
 
+use crate::commands::authz::require_permission_for_session;
 use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -594,6 +596,189 @@ pub async fn create_session(
             instance_id: args.instance_id,
             type_key: args.type_key,
             terminal_id: args.terminal_id,
+        },
+    })
+}
+
+/// Bounded lifetime of an impersonation session, in seconds.
+///
+/// Impersonation sessions are deliberately short-lived and never inherit the
+/// operator's `session.ttl_seconds`: a support session must expire on its own
+/// rather than ride a 24h operator login. The integration suite asserts that the
+/// emitted `expires_at` always reflects this constant.
+pub(crate) const IMPERSONATION_SESSION_TTL_SECONDS: i64 = 1800;
+
+/// Begin an operator impersonation session for support.
+///
+/// The caller must present a valid operator session that holds the
+/// `operator:impersonate` capability (granted to the ADMIN preset; OWNER
+/// inherits it via `*`). The produced session carries ONLY the target user's
+/// scope and grants — the impersonated context reuses the operator's
+/// store/instance/type/terminal scope with the target's `user_id`/`role_id`. The
+/// operator's own grants are never merged, and `operator:impersonate` is never
+/// propagated into the produced token, so privilege amplification is
+/// structurally impossible.
+///
+/// The target must belong to the operator's authorized tenant scope (the same
+/// store/instance); otherwise the request is denied fail-closed. The session is
+/// short-lived ([`IMPERSONATION_SESSION_TTL_SECONDS`]) and an `impersonate.start`
+/// security event is recorded naming the operator (actor) and the impersonated
+/// user (subject).
+#[tauri::command]
+pub async fn impersonate_user_scoped(
+    session_token: String,
+    target_user_id: String,
+    state: State<'_, AppState>,
+) -> Result<CreateSessionResult, AppError> {
+    // 1. Resolve and authenticate the operator's own session.
+    let operator = state.resolve_session(&session_token)?;
+
+    // 2. Capability gate: the operator must hold operator:impersonate. This locks
+    //    the DB internally and releases before returning, so the later locks
+    //    below cannot deadlock.
+    require_permission_for_session(&state, &operator, permissions::OPERATOR_IMPERSONATE).await?;
+
+    // 3. Validate the target identifier (H-3: no empty input).
+    if target_user_id.trim().is_empty() {
+        return Err(AppError::Invalid("target_user_id must not be empty".into()));
+    }
+
+    // 4. Resolve the target user and enforce tenant isolation within a single DB
+    //    lock.
+    let target = {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+
+        let target = store
+            .get_user(&target_user_id)?
+            .ok_or_else(|| AppError::Invalid(format!("no such user: {target_user_id}")))?;
+
+        // Tenant-isolation guard: the target must be reachable from the operator's
+        // authorized store/instance. Impersonation never crosses a tenant
+        // boundary.
+        if !store.verify_instance_access(
+            &target.role_id,
+            &target.id,
+            &operator.instance_id,
+            &operator.store_id,
+        )? {
+            tracing::warn!(
+                operator = %operator.user_id,
+                target = %target.id,
+                operator_instance = %operator.instance_id,
+                operator_store = %operator.store_id,
+                "impersonation denied — target outside operator tenant scope"
+            );
+            return Err(AppError::PermissionDenied(
+                "Target user is outside the operator's authorized tenant scope".into(),
+            ));
+        }
+
+        target
+    };
+
+    // Snapshot time once for both the expiry and the creation timestamp.
+    let now_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let token = uuid::Uuid::now_v7().to_string();
+    let expires_at = Some(now_ts + IMPERSONATION_SESSION_TTL_SECONDS);
+
+    // 5. Record the start event (actor = operator, subject = target). The
+    //    produced session reuses the operator's scope with the target's identity,
+    //    so the audit must name BOTH the operator (actor) and the impersonated
+    //    user (subject) explicitly.
+    {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        // Resolve the operator's username for the audit actor field; fall back to
+        // the id (e.g. when the operator row is unavailable) rather than failing
+        // the whole impersonation over an audit detail.
+        let operator_username = store
+            .get_user(&operator.user_id)?
+            .map(|u| u.username)
+            .unwrap_or_else(|| operator.user_id.clone());
+        let event = SecurityEvent::impersonate_start(
+            operator.user_id.clone(),
+            operator_username,
+            target.id.clone(),
+            target.username.clone(),
+            Some(operator.terminal_id.clone()),
+        );
+        record_security_event(&store, &event);
+    }
+
+    // 6. Insert the target-scoped session, mirroring create_session's
+    //    prune-at-200 / LRU-at-256 eviction so the impersonation store cannot
+    //    grow unbounded.
+    {
+        let mut session_store = state
+            .session_store
+            .write()
+            .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
+
+        // Lazy prune: sweep expired sessions when the store is near capacity.
+        if session_store.len() >= 200 {
+            let before = session_store.len();
+            session_store.retain(|_, ctx| !ctx.is_expired());
+            let pruned = before - session_store.len();
+            if pruned > 0 {
+                tracing::info!("lazy prune removed {pruned} expired session(s)");
+            }
+        }
+
+        // Defensive: log if a UUID collision occurs (astronomically unlikely).
+        if session_store.contains_key(&token) {
+            tracing::warn!(token = %mask_token(&token), "session token collision detected — overwriting");
+        }
+
+        // Enforce a maximum session count with deterministic LRU eviction.
+        const MAX_SESSIONS: usize = 256;
+        if session_store.len() >= MAX_SESSIONS {
+            let oldest_entry = session_store
+                .iter()
+                .min_by_key(|(_, ctx)| ctx.created_at)
+                .map(|(t, _)| t.clone());
+            if let Some(old_token) = oldest_entry {
+                session_store.remove(&old_token);
+                tracing::warn!(
+                    old_token = %mask_token(&old_token),
+                    "session store full — evicted oldest session by created_at"
+                );
+            }
+        }
+
+        let context = SessionContext::new(
+            target.id.clone(),
+            target.role_id.clone(),
+            operator.terminal_id.clone(),
+            operator.store_id.clone(),
+            operator.instance_id.clone(),
+            operator.type_key.clone(),
+            expires_at,
+            now_ts,
+        );
+        session_store.insert(token.clone(), context.clone());
+    }
+
+    tracing::info!(
+        operator = %operator.user_id,
+        target = %target.id,
+        ttl_seconds = %IMPERSONATION_SESSION_TTL_SECONDS,
+        "impersonation session started"
+    );
+
+    Ok(CreateSessionResult {
+        session_token: token,
+        context: SessionContextDto {
+            user_id: target.id,
+            role_id: target.role_id,
+            store_id: operator.store_id,
+            instance_id: operator.instance_id,
+            type_key: operator.type_key,
+            terminal_id: operator.terminal_id,
         },
     })
 }

@@ -456,6 +456,7 @@ pub fn run() {
                 commands::auth::create_session,
                 commands::auth::destroy_session,
                 commands::auth::session_keepalive,
+                commands::auth::impersonate_user_scoped,
                 commands::branding::get_brand_settings,
                 commands::branding::set_brand_primary_colour,
                 commands::branding::set_brand_logo_path,

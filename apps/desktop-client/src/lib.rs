@@ -794,6 +794,7 @@ pub fn run() {
             commands::auth::session_keepalive,
             commands::auth::verify_pin,
             commands::auth::refresh_picker_ticket,
+            commands::auth::impersonate_user_scoped,
             commands::branding::get_brand_settings_scoped,
             commands::branding::get_brand_settings,
             commands::branding::pick_logo_file,

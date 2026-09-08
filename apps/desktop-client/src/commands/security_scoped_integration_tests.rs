@@ -288,6 +288,237 @@ async fn refresh_picker_ticket_end_to_end() {
     );
 }
 
+// ── Operator impersonation (operator:impersonate) ─────────────────────
+
+/// Seed a second owner-privileged user so an operator can impersonate an
+/// in-scope target. Owner users sit in the role bypass set, so they always
+/// pass `verify_instance_access` for an existing, active instance — exactly the
+/// in-scope case the command must allow.
+fn seed_target_owner(conn: &rusqlite::Connection) {
+    conn.execute_batch(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)          VALUES ('user-target', 'target', 'hash', 'Target', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn impersonate_user_scoped_creates_target_scoped_session() {
+    let conn = migrations::fresh_db();
+    seed_owner_user(&conn);
+    seed_target_owner(&conn);
+    let state = test_state(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // Operator session (owner holds operator:impersonate via the `*` preset).
+    let login = auth::create_session(
+        CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: {
+                let s = app.state::<AppState>();
+                mint_ticket(&s, "user-owner")
+            },
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let result = auth::impersonate_user_scoped(
+        login.session_token.clone(),
+        "user-target".into(),
+        app.state(),
+    )
+    .await;
+    assert!(result.is_ok(), "in-scope impersonation must succeed");
+    let imp = result.unwrap();
+
+    // The impersonated context is TARGET-scoped for identity, but reuses the
+    // operator's store/instance/type/terminal scope. No operator grant is
+    // merged and the impersonation capability is never carried into the token.
+    assert_eq!(imp.context.user_id, "user-target");
+    assert_eq!(imp.context.role_id, "role-owner");
+    assert_eq!(imp.context.store_id, "default");
+    assert_eq!(imp.context.instance_id, "default-restaurant-pos");
+    assert_eq!(imp.context.type_key, "restaurant-pos");
+    assert_eq!(imp.context.terminal_id, "terminal-1");
+
+    // The produced token resolves to the target's scope.
+    let resolved = app
+        .state::<AppState>()
+        .resolve_session(&imp.session_token)
+        .expect("impersonation token must resolve");
+    assert_eq!(resolved.user_id, "user-target");
+    assert_eq!(resolved.role_id, "role-owner");
+    assert_eq!(resolved.store_id, "default");
+}
+
+#[tokio::test]
+async fn impersonate_user_scoped_revoked_by_destroy_session() {
+    let conn = migrations::fresh_db();
+    seed_owner_user(&conn);
+    seed_target_owner(&conn);
+    let state = test_state(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let login = auth::create_session(
+        CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: {
+                let s = app.state::<AppState>();
+                mint_ticket(&s, "user-owner")
+            },
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let imp = auth::impersonate_user_scoped(
+        login.session_token.clone(),
+        "user-target".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    // Stopping the impersonation (destroy_session) must revoke the token.
+    let revoked = auth::destroy_session(app.state(), imp.session_token.clone()).await;
+    assert!(
+        revoked.is_ok(),
+        "destroy_session must accept the impersonation token"
+    );
+
+    let after = app.state::<AppState>().resolve_session(&imp.session_token);
+    assert!(
+        matches!(after, Err(AppError::InvalidSession)),
+        "revoked impersonation token must not resolve: {:?}",
+        after.err()
+    );
+}
+
+#[tokio::test]
+async fn impersonate_user_scoped_enforces_ttl() {
+    let conn = migrations::fresh_db();
+    seed_owner_user(&conn);
+    seed_target_owner(&conn);
+    let state = test_state(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let login = auth::create_session(
+        CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: {
+                let s = app.state::<AppState>();
+                mint_ticket(&s, "user-owner")
+            },
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let imp = auth::impersonate_user_scoped(
+        login.session_token.clone(),
+        "user-target".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    // The impersonation session must carry a finite TTL reflecting the named
+    // constant — never an open-ended (None) session.
+    let stored = app
+        .state::<AppState>()
+        .session_store
+        .read()
+        .unwrap()
+        .get(&imp.session_token)
+        .cloned()
+        .expect("impersonation session stored");
+    let expiry = stored
+        .expires_at
+        .expect("impersonation must set expires_at");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    assert!(expiry > now, "impersonation expiry must be in the future");
+    assert!(
+        expiry >= now + auth::IMPERSONATION_SESSION_TTL_SECONDS - 2
+            && expiry <= now + auth::IMPERSONATION_SESSION_TTL_SECONDS + 2,
+        "impersonation expiry must reflect IMPERSONATION_SESSION_TTL_SECONDS (now={now}, expiry={expiry})"
+    );
+
+    // And the TTL is actually enforced: forcing the stored session into the past
+    // makes the token reject on resolution.
+    {
+        let app_state = app.state::<AppState>();
+        let mut sessions = app_state.session_store.write().unwrap();
+        if let Some(ctx) = sessions.get_mut(&imp.session_token) {
+            ctx.expires_at = Some(1); // far in the past
+        }
+    }
+    let expired = app.state::<AppState>().resolve_session(&imp.session_token);
+    assert!(
+        matches!(expired, Err(AppError::InvalidSession)),
+        "expired impersonation token must not resolve"
+    );
+}
+
+#[tokio::test]
+async fn impersonate_user_scoped_denies_without_operator_permission() {
+    let conn = migrations::fresh_db();
+    // A staff user with no operator:impersonate grant.
+    seed_staff_no_products(&conn);
+    seed_target_owner(&conn);
+    let state = test_state(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // Operator is a lite (staff) user — holds sales:view only.
+    insert_session(
+        &app.state::<AppState>(),
+        "lite-token",
+        "user-lite",
+        "role-lite",
+        "default",
+    );
+
+    let result =
+        auth::impersonate_user_scoped("lite-token".into(), "user-target".into(), app.state()).await;
+    assert!(
+        matches!(result, Err(AppError::PermissionDenied(_))),
+        "impersonation without operator:impersonate must be denied: {:?}",
+        result.err()
+    );
+}
+
 // ── get_setting secret redaction (C-2) ───────────────────────────
 
 #[tokio::test]
