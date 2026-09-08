@@ -66,6 +66,7 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 ### First implementation queue
 
 - [ ] **Slice 0 — baseline only:** add or strengthen characterization tests and record focused test/typecheck results. No production extraction.
+- [x] **Slice 1a — persisted mapping seam:** route authoritative-load node and wire payloads through the existing pure `diagramNodeToCanvas` and `diagramWireToCanvas` helpers. No effects, event handlers, or JSX moved.
 - [ ] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice.
 - [ ] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged.
 - [ ] **Slice 3 — inspector boundary:** extract the inspector drawer and branch profile fields behind typed props. Preserve the existing `BranchLocationFields` API behavior and test selectors.
@@ -212,6 +213,15 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Decision:** Start with characterization and boundaries; do not change production topology code until the first extraction has a focused acceptance test and a clean comparison against this baseline.
 - **Next slice:** complete the import/re-export inventory, then extract only the load/seed/branch-sync/restore lifecycle.
 - **Commit:** baseline journal recorded in the current refactor-plan commit.
+
+### 2026-09-08 — Slice 1a: reuse persisted mapping helpers
+
+- **Problem:** The authoritative load path duplicated node and wire payload-to-canvas mapping already used by restore-to-draft, allowing the two paths to drift.
+- **Solution:** Replaced both load-path mapping blocks with `diagramNodeToCanvas` and `diagramWireToCanvas` from `topologyEditorHelpers.ts`. Endpoint filtering remains in the load path; semantic normalization and optional-field handling now have one implementation.
+- **Scope:** `NodeTopologyEditor.tsx` only for production code; no event handlers, effects, refs, JSX, API behavior, or persisted schema moved.
+- **Result:** Editor reduced from 6,048 to 5,996 lines. The remaining load effect is intentionally still in the parent for the next lifecycle slice.
+- **Validation:** `ui/npm run typecheck` passed. Focused topology tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`.
+- **Rollback:** Revert commit `refactor(ui): reuse topology mapping helpers` without affecting unrelated work.
 
 ## Completion checklist
 

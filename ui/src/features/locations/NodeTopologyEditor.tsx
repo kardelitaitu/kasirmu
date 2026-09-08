@@ -65,7 +65,6 @@ import { useTopologyEditorDrag } from './nodeTopologyEditorDragState';
 import { useTopologyEditorConnection } from './nodeTopologyEditorConnectionState';
 import { useTopologyEditorHover } from './nodeTopologyEditorHoverState';
 import {
-  normalizeWireDirection,
   topologyIssueKey,
   type TopologyValidationError,
 } from './topologyContract';
@@ -89,7 +88,6 @@ import './NodeTopologyEditor.css';
 // file. Re-exported here so every existing importer (tests, sibling
 // topology modules) keeps its `from './NodeTopologyEditor'` path working.
 import {
-  normalizeVisualPort,
   elbowPoints,
   polylineD,
   canvasStateEqual,
@@ -1529,21 +1527,9 @@ export default function NodeTopologyEditor({
         const savedById = new Map<string, TopologyNodeData>();
         loadSuccess(data?.revision ?? 0);
         if (data && data.nodes) {
-          for (const n of data.nodes) {
-            const node: TopologyNodeData = {
-              id: n.id,
-              type: n.type as NodeType,
-              name: n.name,
-              x: n.x,
-              y: n.y,
-            };
-            if (n.subtitle !== undefined) node.subtitle = n.subtitle;
-            if (n.tier_requirement !== undefined) node.tierRequirement = n.tier_requirement as 'pro' | 'enterprise';
-            if (n.telemetry_badge !== undefined) node.telemetryBadge = n.telemetry_badge;
-            if (n.telemetry_status !== undefined) node.telemetryStatus = n.telemetry_status as 'online' | 'warning' | 'offline';
-            if (n.metadata !== undefined) node.metadata = n.metadata;
-            if (n.store_profile_id !== undefined) node.storeProfileId = n.store_profile_id;
-            savedById.set(n.id, node);
+          for (const persistedNode of data.nodes) {
+            const node = diagramNodeToCanvas(persistedNode);
+            savedById.set(node.id, node);
           }
         }
 
@@ -1658,26 +1644,7 @@ export default function NodeTopologyEditor({
           const validIds = new Set(mergedNodes.map((n) => n.id));
           const loadedWires: TopologyWireData[] = (data?.wires ?? [])
             .filter((w) => validIds.has(w.from_node_id) && validIds.has(w.to_node_id))
-            .map((w) => {
-              const wire: TopologyWireData = {
-                id: w.id,
-                fromNodeId: w.from_node_id,
-                toNodeId: w.to_node_id,
-                // Same closed-union discipline as the semantic contract: a
-                // corrupt stored direction folds to a legal value here so
-                // the editor model (and the Apply round-trip) never carries
-                // garbage that would render wrong markers.
-                direction: normalizeWireDirection(w.direction),
-              };
-              if (w.label !== undefined) wire.label = w.label;
-              if (w.bends !== undefined) wire.bends = w.bends;
-              if (w.from_port != null) wire.fromPort = normalizeVisualPort(w.from_port, 'right');
-              if (w.to_port != null) wire.toPort = normalizeVisualPort(w.to_port, 'left');
-              if (w.from_port_id !== undefined) wire.fromPortId = w.from_port_id;
-              if (w.to_port_id !== undefined) wire.toPortId = w.to_port_id;
-              if (w.relationship_type !== undefined) wire.relationshipType = w.relationship_type as SemanticRelationshipType;
-              return wire;
-            });
+            .map(diagramWireToCanvas);
           // Reset transient state BEFORE the loaded canvas lands — the
           // resets must never act on the replacement canvas (a cancelled
           // bend-drag, for example, would otherwise restore its old start
@@ -1743,26 +1710,7 @@ export default function NodeTopologyEditor({
         setHistory([]);
         setRedo([]);
         setNodes([...savedById.values()]);
-        const loadedWires: TopologyWireData[] = data.wires.map((w) => {
-          const wire: TopologyWireData = {
-            id: w.id,
-            fromNodeId: w.from_node_id,
-            toNodeId: w.to_node_id,
-            // Same closed-union discipline as the semantic contract: a
-            // corrupt stored direction folds to a legal value here so
-            // the editor model (and the Apply round-trip) never carries
-            // garbage that would render wrong markers.
-            direction: normalizeWireDirection(w.direction),
-          };
-          if (w.label !== undefined) wire.label = w.label;
-          if (w.bends !== undefined) wire.bends = w.bends;
-          if (w.from_port != null) wire.fromPort = normalizeVisualPort(w.from_port, 'right');
-          if (w.to_port != null) wire.toPort = normalizeVisualPort(w.to_port, 'left');
-          if (w.from_port_id !== undefined) wire.fromPortId = w.from_port_id;
-          if (w.to_port_id !== undefined) wire.toPortId = w.to_port_id;
-          if (w.relationship_type !== undefined) wire.relationshipType = w.relationship_type as SemanticRelationshipType;
-          return wire;
-        });
+        const loadedWires: TopologyWireData[] = data.wires.map(diagramWireToCanvas);
         setWires(loadedWires);
         commitSnapshot({ nodes: [...savedById.values()], wires: loadedWires });
       })
