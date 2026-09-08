@@ -203,19 +203,34 @@ pub async fn put_image(
     Query(query): Query<PutImageQuery>,
     body: Bytes,
 ) -> Response {
+    // Mirror `process_image`'s deterministic rejection (empty / oversize /
+    // non-WebP) so a malformed payload still gets a 400, not a 409, and so
+    // the client-hash handshake below only ever applies to a storable body.
+    if body.is_empty() || body.len() > MAX_IMAGE_BYTES || !is_webp_magic(&body) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "image rejected: must be a WebP ≤ 32 KB"})),
+        )
+            .into_response();
+    }
+    // Verify the client-computed hash (spec 0046b §3.4) BEFORE persisting
+    // anything. The store is content-addressed — sha-256 of the upload IS
+    // the identity — so the check is pure CPU and needs no IO. Doing it up
+    // front means a mismatch returns 409 with the bytes genuinely discarded
+    // (never written, never refcounted) instead of orphaning a stored file.
+    let hash16 = sha256_hex16(&body);
+    if let Some(expected) = query.hash.as_deref() {
+        if !is_valid_hash16(expected) || expected != hash16 {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"error": "hash mismatch"})),
+            )
+                .into_response();
+        }
+    }
     let outcome = process_image(&state, &claims, &body).await;
     match outcome {
-        ImageOutcome::Stored(hash16) | ImageOutcome::Duplicate(hash16) => {
-            // Verify the client-computed hash if supplied (409 on mismatch).
-            if let Some(expected) = query.hash.as_deref()
-                && (!is_valid_hash16(expected) || expected != hash16)
-            {
-                return (
-                    StatusCode::CONFLICT,
-                    Json(serde_json::json!({"error": "hash mismatch"})),
-                )
-                    .into_response();
-            }
+        ImageOutcome::Stored(_) | ImageOutcome::Duplicate(_) => {
             (StatusCode::CREATED, Json(PutImageResponse { hash16 })).into_response()
         }
         ImageOutcome::Rejected => (

@@ -188,6 +188,83 @@ async fn put_image_rejects_non_webp() {
 }
 
 #[tokio::test]
+async fn put_image_hash_mismatch_returns_409_without_storing() {
+    let (state, dir) = temp_image_dir();
+    let app = router(state.clone());
+    let token = test_token(&state, "tenant-a");
+    let body = make_webp_body();
+    // A valid-format but wrong hash — must NOT persist the bytes.
+    let wrong_hash = "ffffffffffffffff";
+    let uri = format!("/api/v1/images?hash={wrong_hash}");
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&uri)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/octet-stream")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+    // The content-addressed file must NOT exist (bytes were discarded,
+    // not orphaned) and the refcount must be zero.
+    let stored_count = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .map_or(false, |x| x == "webp")
+        })
+        .count();
+    assert_eq!(stored_count, 0, "hash mismatch must not persist any file");
+
+    let db = state.db.lock().await;
+    let n: i64 = oz_core::db::Store::new(&db)
+        .conn
+        .query_row("SELECT COUNT(*) FROM image_refs", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n, 0, "hash mismatch must not create a refcount");
+    drop(db);
+    cleanup(&dir);
+}
+
+#[tokio::test]
+async fn put_image_hash_match_stores_successfully() {
+    let (state, dir) = temp_image_dir();
+    let app = router(state.clone());
+    let token = test_token(&state, "tenant-a");
+    let body = make_webp_body();
+    let hash = sha256_hex16(&body);
+    let uri = format!("/api/v1/images?hash={hash}");
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&uri)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/octet-stream")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp).await;
+    assert_eq!(json["hash16"], hash);
+    cleanup(&dir);
+}
+
+#[tokio::test]
 async fn get_image_returns_404_for_unknown_hash() {
     let (state, dir) = temp_image_dir();
     let app = router(state.clone());
