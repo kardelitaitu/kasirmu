@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { requiredLocalized } from '@/frontend/shared';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { animDuration } from '@/utils/animation';
 import {
   registerKdsDeviceScoped,
   type KdsDevice,
@@ -26,6 +27,13 @@ export interface KdsEnrollmentModalProps {
 
 /** Step in the enrollment flow. */
 type EnrollmentStep = 'form' | 'generating' | 'qr' | 'error';
+
+/**
+ * Exit-fade length in ms. Mirrors `var(--duration-200)` on the
+ * `--exiting` rules in KdsEnrollmentModal.css — the two must stay in
+ * step, or the surface unmounts mid-animation (or lingers after it).
+ */
+const EXIT_MS = 200;
 
 /**
  * KdsEnrollmentModal — handles new KDS device registration via QR-code
@@ -81,6 +89,56 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   const { l10n } = useLocalization();
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, isOpen, onClose);
+
+  // ── Exit animation (see .agents/skills/exit-animation-pattern) ──────
+  // The parent owns `isOpen`, so every dismiss path (X, Cancel, Done,
+  // backdrop, Escape) still calls `onClose()` synchronously — the modal
+  // only defers its OWN unmount by one mirror fade. `animDuration()`
+  // returns 0 under `prefers-reduced-motion`, where the CSS `--exiting`
+  // rules are also gated off, so the surface snaps away instead.
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevOpenRef = useRef(isOpen);
+
+  // Unmount cleanup: never setState against an unmounted component
+  // (React 18 strict mode double-mounts in dev). Empty deps → runs only
+  // on unmount, so it can never cancel the fade mid-flight.
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // true → false: play the exit fade, then retire the surface.
+  // false → true (reopened during the fade): cancel the pending timer and
+  // drop the `--exiting` class so the modal stays put. Both branches read
+  // only refs and setters, so `[isOpen]` is a complete dependency list —
+  // the transition is driven purely by the parent's state.
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = isOpen;
+    if (isOpen) {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setExiting(false);
+      return;
+    }
+    if (!wasOpen) return;
+    setExiting(true);
+    // Rapid re-dismiss: retire the stale timer before scheduling anew.
+    if (exitTimerRef.current !== null) {
+      clearTimeout(exitTimerRef.current);
+    }
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null;
+      setExiting(false);
+    }, animDuration(EXIT_MS));
+  }, [isOpen]);
 
   const [step, setStep] = useState<EnrollmentStep>('form');
   const [name, setName] = useState('');
@@ -204,18 +262,22 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
     [onClose],
   );
 
-  if (!isOpen) return null;
+  // Stay mounted for exactly one exit fade after `isOpen` drops.
+  if (!isOpen && !exiting) return null;
 
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="kds-enrollment-overlay"
+      className={`kds-enrollment-overlay${exiting ? ' kds-enrollment-overlay--exiting' : ''}`}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-label={requiredLocalized(l10n, 'kds-enrollment-title')}
     >
-      <div className="kds-enrollment-modal" ref={panelRef}>
+      <div
+        className={`kds-enrollment-modal${exiting ? ' kds-enrollment-modal--exiting' : ''}`}
+        ref={panelRef}
+      >
         {/* Header */}
         <div className="kds-enrollment-header">
           <h2 className="kds-enrollment-title">

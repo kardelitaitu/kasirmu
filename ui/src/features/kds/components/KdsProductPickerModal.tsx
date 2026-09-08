@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { animDuration } from '@/utils/animation';
 import { listProductsScoped, type ProductDto } from '@/api/products';
 import { type CreateKdsLineItemInput, type KdsModifier } from '@/api/kds';
 import './KdsProductPickerModal.css';
@@ -33,6 +34,13 @@ export interface KdsProductPickerModalProps {
    */
   pending?: boolean;
 }
+
+/**
+ * Exit-fade length in ms. Mirrors `var(--duration-200)` on the
+ * `--exiting` rules in KdsProductPickerModal.css — the two must stay in
+ * step, or the surface unmounts mid-animation (or lingers after it).
+ */
+const EXIT_MS = 200;
 
 /** Selected product entry in the picker. */
 interface PickedEntry {
@@ -148,6 +156,55 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, isOpen, onClose);
 
+  // ── Exit animation (see .agents/skills/exit-animation-pattern) ──────
+  // The parent owns `isOpen`, so every dismiss path (X, Cancel, backdrop,
+  // Escape) still calls `onClose()` synchronously — the modal only defers
+  // its OWN unmount by one mirror fade. `animDuration()` returns 0 under
+  // `prefers-reduced-motion`, where the CSS `--exiting` rules are gated
+  // off too, so the surface snaps away instead of fading.
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevOpenRef = useRef(isOpen);
+
+  // Unmount cleanup: never setState against an unmounted component
+  // (React 18 strict mode double-mounts in dev). Empty deps → runs only
+  // on unmount, so it can never cancel the fade mid-flight.
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // true → false: play the exit fade, then retire the surface.
+  // false → true (reopened during the fade): cancel the pending timer and
+  // drop the `--exiting` class so the modal stays put. Both branches read
+  // only refs and setters, so `[isOpen]` is a complete dependency list.
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = isOpen;
+    if (isOpen) {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setExiting(false);
+      return;
+    }
+    if (!wasOpen) return;
+    setExiting(true);
+    // Rapid re-dismiss: retire the stale timer before scheduling anew.
+    if (exitTimerRef.current !== null) {
+      clearTimeout(exitTimerRef.current);
+    }
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null;
+      setExiting(false);
+    }, animDuration(EXIT_MS));
+  }, [isOpen]);
+
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -234,7 +291,8 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   // do NOT add a second Escape handler here; it would fire onClose twice
   // per keypress (regression pinned by KdsProductPickerModal.test.tsx).
 
-  if (!isOpen) return null;
+  // Stay mounted for exactly one exit fade after `isOpen` drops.
+  if (!isOpen && !exiting) return null;
 
   return (
     // Backdrop click is a convenience — keyboard users close via the Close
@@ -242,14 +300,17 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
     // keyboard twin here.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="kds-picker-overlay"
+      className={`kds-picker-overlay${exiting ? ' kds-picker-overlay--exiting' : ''}`}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-label={requiredLocalized(l10n, 'kds-picker-title')}
       data-testid="kds-picker-backdrop"
     >
-      <div className="kds-picker-modal" ref={panelRef}>
+      <div
+        className={`kds-picker-modal${exiting ? ' kds-picker-modal--exiting' : ''}`}
+        ref={panelRef}
+      >
         {/* ── Header ────────────────────────────────────────────── */}
         <div className="kds-picker-header">
           <h2 className="kds-picker-title">
