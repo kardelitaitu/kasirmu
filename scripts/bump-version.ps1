@@ -183,9 +183,9 @@ Update-File "website/src/i18n/id.json" ('"subtitle": "Versi {0} {1} gratis selam
 # Dockerfile.unified carries the same cache-priming manifests as Dockerfile.server.
 Update-File "Dockerfile.unified" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 
-# .prime/AGENTS.md mirrors the root version-lock line (same wording as AGENTS.md).
-Update-File ".prime/AGENTS.md" "- **Version is locked at the current release (``$currentVersion``).** Never change the version number" "- **Version is locked at the current release (``$TargetVersion``).** Never change the version number"
-Update-File ".prime/AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
+# .prime/AGENTS.md used to be synced here. The .prime/ tree (a third rules mirror and
+# a Python codebase-memory wrapper) was deleted on 08-09-26; verify-agents-mirrors.py
+# now expects exactly two mirrors and will fail if a third reappears unannounced.
 
 # README's "Latest release" claim (prose, updated per release).
 Update-File "README.md" "Latest release: **v$currentVersion** (on branch ``$currentVersion``)." "Latest release: **v$TargetVersion** (on branch ``$TargetVersion``)."

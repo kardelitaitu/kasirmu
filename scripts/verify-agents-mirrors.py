@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 r"""
-scripts/verify-agents-mirrors.py — Keep the three AGENTS.md mirrors telling the truth.
+scripts/verify-agents-mirrors.py — Keep the AGENTS.md mirrors telling the truth.
 
 WHY THIS EXISTS
 ===============
 
-There are three copies of the agent rules: root `AGENTS.md`, `.agents/AGENTS.md`,
-`.prime/AGENTS.md`. `.agents/AGENTS.md` documents the hazard itself:
+There are two copies of the agent rules: root `AGENTS.md` and `.agents/AGENTS.md`.
+A third, `.prime/AGENTS.md`, existed until 08-09-26 and was deleted with the `.prime/`
+tree; the per-mirror mutation table it needed went with it. `.agents/AGENTS.md`
+documents the hazard itself:
 
   "scripts/bump-version.ps1 updates the *version* lines in these mirrors but
    nothing updates the *gate* list ... which is how all three drifted to different
@@ -72,7 +74,7 @@ if hasattr(sys.stdout, "buffer"):
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 
-MIRRORS = ["AGENTS.md", ".agents/AGENTS.md", ".prime/AGENTS.md"]
+MIRRORS = ["AGENTS.md", ".agents/AGENTS.md"]
 
 WORD_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
             "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
@@ -228,18 +230,18 @@ def steps_claimed_local_only(text: str) -> set[int]:
     return out
 
 
-# `.prime/AGENTS.md` states the same lie without step numbers: "there is **no** CI
-# job for migration column types, PG schema drift, or Go". A numeric-only regex
-# cannot see it, and that phrasing is what a reader of .prime actually follows, so
-# matching numbers alone would leave the motivating bug class uncaught in one of
-# the three files it exists to police.
+# ORIGIN: `.prime/AGENTS.md` stated this same lie without step numbers ("there is
+# **no** CI job for migration column types, PG schema drift, or Go"). A numeric-only
+# regex cannot see that phrasing. The mirror is gone, but the pattern stays: the
+# named-tooling negation is a phrasing any of these files can fall into, and matching
+# numbers alone would leave the motivating bug class uncaught.
 NAMED_LOCAL_RE = re.compile(
     r"(?:there is|there are)\s+\**no\**\s+CI\s+(?:job|gate|backstop|step)s?\s+(?:for|that)"
     r"\s+([^.\n]+)", re.I)
 
-# The same lie told in different words. Found against my own prose: after I added a
-# CI step for bundle-parity, `.prime/AGENTS.md` still read "still guarded **only** by
-# the opt-in local hook", and the gate passed all three mirrors. NEGATION-ONLY
+# The same lie told in different words. Found against my own prose: after a CI step
+# for bundle-parity landed, `.prime/AGENTS.md` still read "still guarded **only** by
+# the opt-in local hook", and the gate passed every mirror then present. NEGATION-ONLY
 # patterns see "no CI job for X" and miss "X is guarded only by the hook", which
 # asserts precisely the same falsehood -- and is the phrasing these files actually
 # favour, because they describe what DOES run and then note the exception.
@@ -456,11 +458,12 @@ def scan(root: Path) -> list[str]:
                         f"{', '.join(covered[ordinal])} in a live workflow")
                     break
 
-        # (5) version lock. The three mirrors phrase this differently:
+        # (5) version lock. The mirrors have phrased this differently over time:
         #   root/.agents : "Version is locked at `0.0.36`"
-        #   .prime       : "Version is locked at the current release (`0.0.36`)"
-        # A regex demanding the version immediately after "locked at" reported
-        # .prime as unversioned when it carries the lock in its own words.
+        #   (removed) .prime: "Version is locked at the current release (`0.0.36`)"
+        # A regex demanding the version immediately after "locked at" reported the
+        # second phrasing as unversioned, so the window stays wide. Both surviving
+        # mirrors use the first form; the leniency is deliberate, not an oversight.
         if not re.search(r"locked at[^\n]{0,40}[\(`]" + re.escape(version) + r"[\)`]",
                          text):
             problems.append(f"{rel}: does not carry the current version lock ({version})")
@@ -528,7 +531,9 @@ def report(root: Path) -> int:
         for p in problems:
             print(f"    - {p}")
         return 1
-    print("  all three mirrors agree with the repo")
+    # Derived, never asserted: this said "all three mirrors" while MIRRORS held
+    # three, and would have gone quietly false when .prime/AGENTS.md was deleted.
+    print(f"  all {len(MIRRORS)} mirrors agree with the repo")
     return 0
 
 
@@ -593,56 +598,18 @@ MUTATIONS = [
      "runs on push"),
 ]
 
-# `.prime/AGENTS.md` is a role brief, not a full rules mirror. It phrases the same
-# facts differently ("locked at the current release (`0.0.36`)", "there is **no**
-# CI job for migration column types or PG schema drift") and deliberately carries
-# no commit-type list. Reusing the root mutations against it produced four
-# "changed nothing" results -- which is the vacuous-mutation guard doing its job,
-# not a checker gap. So each mirror gets its own table, and anything genuinely not
-# applicable is recorded with a reason rather than silently skipped.
-MUTATIONS_BY_MIRROR: dict[str, list] = {
-    ".prime/AGENTS.md": [
-        # Anchored on a sentence that does not contain a gate count. The previous anchors
-        # replaced "**Every one of the eight now has a CI backstop.**", and when that prose
-        # was corrected to "ten" in a410ea9f the anchor stopped matching, so both mutations
-        # became no-ops and the self-test reported them as vacuous -- a doc edit silently
-        # disarming a checker three commits and one file away. Anchoring on count-free text
-        # keeps these alive through the next correction.
-        ("false CI-coverage claim restored (negation phrasing)",
-         lambda t: t.replace(
-             "For comprehensive local validation that mirrors the entire CI matrix",
-             "There is **no** CI job for migration column types or PG schema drift. "
-             "For comprehensive local validation that mirrors the entire CI matrix", 1),
-         "no CI job"),
-        ("false local-only claim (participial phrasing)",
-         lambda t: t.replace(
-             "For comprehensive local validation that mirrors the entire CI matrix",
-             "The remaining holdout is `generate-pg-migration.py`, still guarded only by "
-             "the opt-in local hook. For comprehensive local validation that mirrors the "
-             "entire CI matrix", 1),
-         "only by the local hook"),
-        ("gate count off by one",
-         lambda t: re.sub(r"runs \*\*(?:eight|nine|ten|[a-z]+) steps\*\*",
-                          "runs **five steps**", t, count=1),
-         "pre-commit steps"),
-        ("version lock removed",
-         lambda t: re.sub(r"locked at the current release \(`[\d.]+`\)",
-                          "locked at the current release (`0.0.1`)", t, count=1),
-         "version lock"),
-        ("phantom CI job cited",
-         lambda t: t.replace("dev-ci.yml#static-gates", "dev-ci.yml#go-job", 1),
-         "#go-job"),
-        ("push trigger claimed",
-         lambda t: t.replace("has **no `push` trigger at all**",
-                             "runs on push to main", 1),
-         "push trigger"),
-        # Not applicable, deliberately. .prime carries no `<type>` list, so the
-        # commit-type check has nothing to mutate. Recorded so the omission is a
-        # decision someone can revisit rather than a hole.
-        ("commit type dropped from the list", None,
-         ".prime documents no commit-type list"),
-    ],
-}
+# Per-mirror mutation tables. A mirror that phrases the same facts differently
+# from root needs its own anchors, or the root mutations match nothing and the
+# self-test passes vacuously -- the vacuous-mutation guard exists precisely to
+# catch that.
+#
+# The only bespoke table here belonged to .prime/AGENTS.md, a role brief that
+# phrased the version lock and the CI-coverage negation in its own words. That
+# file was deleted with the .prime/ tree on 08-09-26 and its table went with it.
+# The mechanism stays because the next mirror added will need it: anything
+# genuinely not applicable must be recorded with a reason (mutate=None) rather
+# than silently skipped.
+MUTATIONS_BY_MIRROR: dict[str, list] = {}
 
 
 def make_fixture(src: Path, dst: Path) -> None:

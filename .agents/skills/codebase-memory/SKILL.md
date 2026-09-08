@@ -3,7 +3,7 @@ name: codebase-memory
 description: "Query the OZ-POS code knowledge graph from run_code via the codebase-memory-mcp server. Use for structural discovery instead of grep/read: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, blast radius, dead code, unused functions, high fan-in, high fan-out, refactor candidates, code quality audit, hot paths, Cypher query examples, edge types, graph query syntax, how to use search_graph."
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: NEW, then RE-MEASURED the same day after `index_repository` refreshed the graph (generation 2026-09-04T18:32Z → 2026-09-08T05:07Z). Every number, shape, error string and latency below was produced by executing the tool against the live oz-pos graph — nothing is copied from the upstream docs. The re-measurement is itself a lesson: 44,213 nodes became 47,026, a tld-7 hot path became tld-4, and an unlabeled-source Cypher that returned 42 rows on the old index returned 0 on the new one. Numbers in this file are dated, not permanent. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: NEW, then RE-MEASURED twice the same day as the graph advanced (generation 2026-09-04T18:32Z → 05:07Z → 05:23Z). Every number, shape, error string and latency below was produced by executing the tool against the live oz-pos graph — nothing is copied from the upstream docs. The re-measurements are themselves a lesson: 44,213 nodes became 47,002, a tld-7 hot path became tld-4, an unlabeled-source Cypher that returned 42 rows on one generation returned 0 on the next, and this file shipped one false causal claim ("index_repository lies about failing") that a later controlled retry disproved — the real cause was a reserved-name ghost file, and the refresh it credited itself to was the post-commit hook. Numbers here are dated, and so is every inference. -->
 
 # Codebase Memory — OZ-POS knowledge graph
 
@@ -41,19 +41,24 @@ faster grep is how you get confident wrong answers.
 | 5 | **Read the `in`/`out` columns for fan-in/fan-out.** | `direction` is accepted by `search_graph` and does nothing. |
 | 6 | **Filter by `label` and `file_pattern` before quoting a count.** | Markdown headings, mock registries and generated schemas are all nodes. |
 | 7 | **Never re-index, delete a project, or ingest traces without an explicit order.** | Those mutate the artifact every other agent on this branch reads. |
-| 8 | **Quote the index generation alongside any number you report.** | "47,026 nodes" is meaningless without "as of 2026-09-08T05:07Z". |
+| 8 | **Quote the index generation alongside any number you report.** | "47,002 nodes" is meaningless without "as of 2026-09-08T05:23Z". |
 
 ---
 
 ## Which copy of this skill wins
 
-Three documents describe the same server. They are not interchangeable:
+Two documents describe the same server, and they are not interchangeable:
 
 | Location | Scope | Invocation model |
 |---|---|---|
 | `.agents/skills/codebase-memory/SKILL.md` (this file) | This repo, from `run_code` | TypeScript `await tools.mcp__cbm__<tool>({...})` |
-| `.prime/agent/skills/codebase-memory-mcp/SKILL.md` | prime-agent only | Python `import codebase_memory_mcp` |
-| `~/.agents/skills/codebase-memory/` (outside the repo) | Machine wiring | launcher path, daemon port, per-client MCP config |
+| `~/.agents/skills/codebase-memory/` (outside the repo) | Machine wiring, every project on this host | launcher path, daemon port, per-client MCP config |
+
+A third lived here until 08-09-26: `.prime/agent/skills/codebase-memory-mcp/`, a
+Python wrapper (`import codebase_memory_mcp`) for the prime-agent runtime. The whole
+`.prime/` tree was deleted, so that invocation model no longer exists in this repo. If
+you meet a `codebase_memory_mcp` import, it is from a different toolchain — check before
+following it.
 
 The server itself is configured by `.mcp.json` (repo root) and `.agents/mcp.json`,
 both of which exec a user-scope launcher script — the binary is **not** in this repo,
@@ -97,18 +102,22 @@ const r = await tools.mcp__cbm__search_graph({
 | Project name to pass | `oz-pos` |
 | Root path | `C:/dev/ozpos/0.0.35/oz-pos` |
 | Indexed branch | `0.0.37` |
-| Nodes / edges | 47,026 / 238,705 |
-| Node labels / edge types | 19 / 26 (top edges: USAGE 99,372 · CALLS 56,000 · DEFINES 44,191 · DECORATES 11,192 · IMPORTS 8,159) |
-| File nodes | 3,000 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 |
-| Index generation | 2026-09-08T05:07:39Z (= 12:07 local), mode `full`, `recording_status: complete` — **already superseded**: a second refresh landed at 05:18:33Z (47,066 nodes) while this page was being written, by another agent working the same repo. Treat the generation as the volatile field, not the counts. |
+| Nodes / edges | 47,002 / 238,859 |
+| Node labels / edge types | 19 / 26 (top edges: USAGE 99,400 · CALLS 56,009 · DEFINES 44,167) |
+| File nodes | 2,998 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 |
+| Index generation | 2026-09-08T05:23:51Z (= 12:23 local), mode `full`, `recording_status: complete`. **Expect drift**: the post-commit hook re-indexes on every commit, and this table was already stale twice while it was being written. The generation is the volatile field — quote it, do not quote the counts. |
 | Coverage flags | 44 `parse_partial` files, 0 `skipped`, 174 files + 20 dirs excluded by design |
 | Exclusions | `.cbmignore` (build artifacts, node_modules, images, logs) — it deliberately un-excludes `scripts/`, `docs/`, `audit/` so prose and shell are searchable |
 
-**Expect the index to lag, by a lot.** Before it was refreshed on 08-09-26 this graph
-was 610 commits behind HEAD (generation 04-09-26). After the refresh it is already 2
-commits behind again — HEAD moves every few minutes on this branch and 30+ files are
-normally dirty. A lagging index is the normal state here, not an error state, which is
-why the next section is mandatory rather than advisory.
+**The index lags by however long it has been since the last commit — which can be
+weeks.** This graph sat 610 commits behind HEAD (generation 04-09-26) until 08-09-26,
+because `.githooks/post-commit` had been dead for 535 commits and every failure path
+sent its output to `/dev/null`. It is now alive and re-indexes on each commit, so the
+normal lag is minutes. But "minutes" depends on a hook that is local config, unversioned
+per clone, and silently skippable — so read the generation, never assume it.
+
+That is why the next section is mandatory rather than advisory, and why a graph that
+looks current can still be describing a tree that no longer exists.
 
 ---
 
@@ -293,7 +302,7 @@ await tools.mcp__cbm__get_architecture({ project: 'oz-pos', aspects: ['cycles'] 
 ```
 
 `path` is real scoping: `modules/sales` returned 232 nodes / 582 edges against the
-47,026-node root, plus its own hotspots. `clusters` returned 12 communities (top: 385
+47,002-node root, plus its own hotspots. `clusters` returned 12 communities (top: 385
 members at cohesion 0.7956 around `resolve_session`/`open_store`). `cycles` returned 14
 circular CALLS groups over 47,467 scanned edges. Measured `hotspots` fan-in: `Store.new`
 1369, `license-server.lock` 1266, `QrisPaymentProcessor.clone` 870, `PluginDb.execute`
@@ -329,14 +338,14 @@ be ten lines inside a bigger routine; read the snippet before writing it up.
 ## Cypher: the trap that will burn you first
 
 **A relationship pattern needs a label on the SOURCE node, or it silently returns the
-wrong answer.** Measured on this graph, which holds 56,000 CALLS edges:
+wrong answer.** Measured on this graph, which holds 56,009 CALLS edges:
 
 | Pattern | Result |
 |---|---|
 | `MATCH (a:Function)-[r:CALLS]->(b) RETURN count(r)` | 48,575 |
 | `MATCH (a:Function)-[r:CALLS]->(b:Function) RETURN count(r)` | 24,664 |
 | `MATCH (a)-[r:CALLS]->(b:Function) RETURN count(r)` | **0 rows** (42 on the previous index) |
-| `MATCH ()-[r:CALLS]->() RETURN count(r)` — anonymous on both ends | **0 rows**, against a true 56,000 |
+| `MATCH ()-[r:CALLS]->() RETURN count(r)` — anonymous on both ends | **0 rows**, against a true 56,009 |
 | `MATCH (a)-[r:CALLS]->(b:Function) RETURN a.name, b.name LIMIT 3` | **0 rows** |
 | `MATCH (a)-[r:HTTP_CALLS]->(b) RETURN a.name, b.name LIMIT 3` | **0 rows** |
 | `MATCH (a:Function)-[r:HTTP_CALLS]->(b) RETURN a.name, b.name LIMIT 3` | 4 rows (`resolve → https://api.ipify.org`, `rate_limiter_allows_within_limit → /api/sync/push`) |
@@ -442,7 +451,7 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
 
 | Call | Latency |
 |---|---|
-Re-measured warm against the 47,026-node index:
+Re-measured warm against the 47,002-node index:
 
 | Call | Latency |
 |---|---|
@@ -462,46 +471,67 @@ Graph tools are ~30–50× cheaper than the grep-backed ones; the exception is
 
 ## Re-indexing, and what not to touch
 
-The index is a snapshot; when it is too stale to answer your question, say so and ask
-the user before re-indexing — it rewrites the shared artifact every other agent on this
-branch reads.
+**The graph already refreshes itself.** `.githooks/post-commit` re-indexes in the
+background after every commit (proven: three `oz-pos-<epoch>.log` run logs appeared
+inside three minutes while this page was being edited). So on a branch where commits
+land every few minutes, the graph is normally minutes old, not days old — the 610-commit
+lag this file originally documented was a *dead hook*, not normal operation. The hook
+ran 535 commits without indexing once, and every failure path pointed at `/dev/null`,
+which is why its rewrite is "make the failure visible". Check the hook is alive
+(`git config --get core.hooksPath` → `.githooks`) before concluding a stale graph needs
+a manual re-index.
 
-### `index_repository` lies about failing
+### When `index_repository` really does fail
 
-Run against this repo on 08-09-26 with `mode: 'full'`, then `'full'` again, then
-`'fast'`. All three returned the identical error at ~2.7 s:
+Three calls on 08-09-26 failed at ~2.7 s with:
 
 ```text
 {"project":"oz-pos","status":"error","hint":"Pipeline failed. Check repo_path exists
 and contains source files. Try mode='fast' for a quicker diagnostic run."}
 ```
 
-The database was rewritten anyway: `oz-pos.db` went from 136 MB / 44,213 nodes (Sep 5)
-to 144 MB / 47,026 nodes (Sep 8 12:07), and `check_index_coverage` now reports
-generation `2026-09-08T05:07:39Z`. **The MCP call reports the handshake, not the job** —
-the supervisor keeps the worker running after the tool returns.
+The cause was a **file literally named `nul` in the repo root** — what `2> nul` creates
+under Git bash (cmd.exe writes to the NUL device; MSYS creates a real file). It aborts
+the indexer's discovery pass *before* `.cbmignore` is consulted, so the ignore entry for
+`nul` never gets a chance to apply. Once the post-commit hook's new quarantine moved the
+ghost to `.git/cbm-ghosts`, the identical call **succeeded in 5.0 s**.
 
-So:
+Two lessons, and the second one is about me:
 
-1. **Never trust the return value.** Confirm with `index_status` (nodes/edges) and
-   `check_index_coverage` → `indexed_at`. Those are the ground truth.
-2. **The hint is not a diagnosis.** It told me to "try `mode='fast'`" for a call that
-   had already passed `mode: 'fast'`. Content is not the variable either: an A/B in a
-   scratch repo made `nul`-vs-no-`nul` pass/fail one way and then the exact opposite way,
-   so treat the failure as nondeterministic contention (4 client processes were live;
-   the daemon caps `physical_job_limit` at 4) rather than a repo defect.
-3. **Watch the staging file** to see whether a run is actually in flight:
-   `~/.cache/codebase-memory-mcp/oz-pos.db.stage.*` grows while indexing and vanishes on
-   swap. `logs/cbm-daemon.log` records `tool=index_repository status=error` next to
-   `index.supervisor.reap outcome=clean exit_code=0` — the reap is the real signal.
-4. **Always pass `name: 'oz-pos'`.** Without it the project is keyed from the path
-   (`C-dev-...`-style, as the other indexed projects on this machine are), which leaves
-   you with a second full graph and every tool call still reading the stale one.
-5. **Budget minutes, not hours.** The swap landed within ~7 minutes of the first
-   attempt (and another agent was probing the same repo concurrently, so do not read
-   that as a clean timing measurement for one call). Four historical
-   `tool=index_repository status=ok` entries in the daemon log ran 1.4–5.3 s — those were
-   incremental passes over an already-indexed tree.
+1. **A generic "Pipeline failed" here means the tree, not the tool.** Look for
+   reserved-name ghosts (`nul`, `con`, `prn`, `aux`, `com1`…`com9`, `lpt1`…) at the root:
+   `ls` for them, and check `.git/cbm-ghosts`.
+2. **Do not infer causation from a refresh you did not verify.** I wrote that the tool
+   "lies about failing" because the database was rewritten minutes after my three
+   errors. It was not my calls — it was the post-commit hook firing on someone else's
+   commit. The error was real. Confirm which mechanism ran before you document one.
+3. **The hint text is not a diagnosis.** It says "try `mode='fast'`" even when you
+   already passed `fast`.
+
+### Success shape (measured, `mode: 'full'`, 5.0 s)
+
+```json
+{ "project": "oz-pos", "status": "indexed", "nodes": 47002, "edges": 238859,
+  "expected_nodes": 47002, "expected_edges": 238859, "skipped_count": 0,
+  "parse_partial_count": 0, "not_indexed_files_count": 174,
+  "excluded": { "dirs": [".cargo", ".freebuff", ".git", ".vscode", "fuzz"], "count": 20, "truncated": true },
+  "adr_present": false, "artifact_present": false }
+```
+
+`nodes` == `expected_nodes` is the integrity assertion — compare them, and compare
+`status` to `indexed`. Note `parse_partial_count: 0` in this response while
+`index_status` reports 44 for the same generation: they count different things, so
+`index_status` is the coverage authority.
+
+### Calling it correctly
+
+- **Always pass `name: 'oz-pos'`.** Without it the project is keyed from the path
+  (`C-dev-...`-style, like the other indexed projects on this machine), leaving a second
+  full graph while every tool call keeps reading the stale one.
+- `mode`: `fast` | `moderate` | `full` | `cross-repo-intelligence`. `full` is what this
+  repo uses and what `semantic_query` needs.
+- Confirm a run with `index_status` (nodes/edges) and `check_index_coverage` →
+  `indexed_at`, not by trusting the wall clock.
 
 `delete_project` removes an index outright (returns `status: deleted`, or
 `status: not_found` when the failed run never registered a project). `ingest_traces`
@@ -536,8 +566,9 @@ the generation changed mid-session, invalidating numbers an hour old.
 4. **Quoting a dead-code count without filtering.** `max_degree: 0` on this repo returns
    364 functions, many of them mock-registry strings in `ui/src/dev-mock/tauri-api.ts`.
    AGENTS.md's three-grep rule still applies — features register lazily.
-5. **Citing a graph path as a location.** See the staleness example above; the directory
-   moved and the graph did not notice.
+5. **Citing a graph path as a location.** See the staleness example above: the
+directory moved, the graph did not notice for 610 commits, and when it finally did the
+answer changed under a file that had already quoted the old one.
 6. **Skipping `check_index_coverage` on the files you are about to edit.** 44 files here
    carry `parse_partial` ranges; one migration file has a 486-line hole. A symbol that
    "has no callers" inside such a range may simply not be in the graph.
@@ -545,13 +576,18 @@ the generation changed mid-session, invalidating numbers an hour old.
    respectively on this repo. Scope with `path`, or ask for the two or three aspects you
    need.
 8. **Re-indexing to "fix" a surprising result.** A surprising result is usually a query
-   bug (items 1–3). Re-indexing is a shared-artifact write; ask first.
-9. **Assuming the Python form works here.** `import codebase_memory_mcp` is prime-agent
-   only. From `run_code` it is `await tools.mcp__cbm__<tool>({...})`, always with
-   `project`.
-10. **Believing `index_repository` when it says it failed.** All three attempts on
-    08-09-26 returned `status: error` at ~2.7 s and the index refreshed anyway. Confirm
-    with `index_status` + `check_index_coverage.indexed_at`, never with the return value.
+   bug (items 1–3), not a stale graph — and the post-commit hook means the graph is
+   probably current. A re-index is cheap (5 s) but it is a shared-artifact write that
+   invalidates numbers other agents are quoting, so ask first.
+9. **Assuming a Python import form works here.** `import codebase_memory_mcp` came from
+   the deleted `.prime/` wrapper and has no runtime in this repo. From `run_code` it is
+   `await tools.mcp__cbm__<tool>({...})`, always with `project`.
+10. **Accepting "Pipeline failed" as a tool defect.** Three calls on 08-09-26 failed
+    identically at ~2.7 s; the cause was a reserved-name ghost file in the repo root, and
+    the same call succeeded in 5.0 s once it was quarantined. I first wrote this up as the
+    tool lying, because the database had refreshed shortly after — it had, but via the
+    post-commit hook on someone else's commit. **Check what else could have caused the
+    effect before documenting your own.**
 11. **Carrying a number forward from a previous generation.** `transitive_loop_depth`
     topped out at 7 before the re-index and 4 after; the unlabeled-source Cypher went
     42 → 0; `routes` swapped most of its 20 rows. Re-measure anything you quote.
@@ -568,7 +604,8 @@ the generation changed mid-session, invalidating numbers an hour old.
 - `skill-drift-guard` — audits this file's paths, crate tokens and footer on every run.
 - `docs-auditor` — when the claim being checked is in a document rather than in code.
 - `tdd` — the graph is the fastest way to find the weak point before writing a test.
-- `.prime/agent/skills/codebase-memory-mcp/SKILL.md` — the Python wrapper, different runtime.
+- `.githooks/post-commit` — what actually keeps this graph current; read it before
+  assuming you need to re-index by hand.
 
 ---
 
