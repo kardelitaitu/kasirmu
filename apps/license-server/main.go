@@ -222,6 +222,13 @@ func main() {
 		if err := ensureAddonsField(app); err != nil {
 			return err
 		}
+		// Phase D2: feature_grants json field on subscriptions so the admin
+		// authoring endpoint and the build-site grafts have a persisted grant
+		// source on every deployment (fresh boots get it from the embedded
+		// pb_schema.json).
+		if err := ensureFeatureGrantsField(app); err != nil {
+			return err
+		}
 		// Wire rate-limiter persistence to SQLite (H2 audit). Idempotent
 		// and logs-and-returns on schema/hydrate failure so the server can
 		// still boot in degraded in-memory-only mode if SQLite is unavailable.
@@ -299,6 +306,8 @@ func main() {
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/tier-override", handleAdminTierOverride(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/grant-subscription", handleAdminGrantSubscription(app))
+		// Phase D2: per-feature grant authoring (admin-only, OZ_ADMIN_KEY).
+		se.Router.POST("/api/v1/admin/subscriptions/{id}/feature-grants", handleAdminSetFeatureGrants(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/devices/{deviceId}/revoke", handleAdminRevokeDevice(app))
 		se.Router.DELETE("/api/v1/admin/tenants/{id}", handleAdminDeleteTenant(app))
 		se.Router.GET("/api/v1/admin/health", handleAdminHealth(app))

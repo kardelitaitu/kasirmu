@@ -473,6 +473,8 @@ func midtransProvision(app core.App, n midtransNotification) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, tenant.Id)
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign subscription: %w", err)
@@ -584,6 +586,8 @@ func midtransSetGrace(app core.App, n midtransNotification) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, subRecord.GetString("tenant_id"))
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign grace subscription: %w", err)

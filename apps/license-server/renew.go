@@ -189,6 +189,8 @@ func handleRenew(app core.App) func(e *core.RequestEvent) error {
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
 
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		sub.Features = featureGrantsForTenant(app, req.TenantID)
 		payloadStr, signature, err := signSubscription(sub)
 		if err != nil {
 			return e.JSON(http.StatusInternalServerError, map[string]any{

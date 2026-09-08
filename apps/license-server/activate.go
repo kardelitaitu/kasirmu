@@ -958,6 +958,8 @@ func handleActivate(app core.App) func(e *core.RequestEvent) error {
 		}
 
 		// ── Build and sign subscription payload ───────────────────
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		sub.Features = featureGrantsForTenant(app, tenantID)
 		payloadStr, signature, err := signSubscription(sub)
 		if err != nil {
 			return e.JSON(http.StatusInternalServerError, map[string]any{

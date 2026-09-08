@@ -256,6 +256,8 @@ func handleAdminGrantSubscription(app core.App) func(e *core.RequestEvent) error
 			GraceUntil:      grace,
 			IssuedAt:        startsAt,
 		}
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		payload.Features = featureGrantsForTenant(app, tenant.Id)
 		payloadStr, signature, err := signSubscription(payload)
 		if err != nil {
 			log.Printf("/admin/tenants/%s/grant-subscription: sign failed: %v", tenant.Id, err)

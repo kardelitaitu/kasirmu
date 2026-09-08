@@ -127,6 +127,8 @@ func resumeSubscription(app core.App, sub *core.Record, now time.Time) (payloadS
 		GraceUntil:      newGraceUntil.Format(time.RFC3339),
 		IssuedAt:        now.Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	resumed.Features = featureGrantsForTenant(app, sub.GetString("tenant_id"))
 	payloadStr, signature, err = signSubscription(resumed)
 	if err != nil {
 		return "", "", time.Time{}, err

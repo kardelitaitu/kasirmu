@@ -299,6 +299,10 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensureAddonsField(app); err != nil {
 			return err
 		}
+		// Phase D2: feature_grants json field on subscriptions (prod boot mirror).
+		if err := ensureFeatureGrantsField(app); err != nil {
+			return err
+		}
 
 		se.Router.POST("/api/v1/license/activate", handleActivate(app))
 		// LSE-11 phase A: recovery-code endpoint — mirror production boot.
@@ -332,6 +336,8 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/tier-override", handleAdminTierOverride(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/grant-subscription", handleAdminGrantSubscription(app))
+		// Phase D2: per-feature grant authoring (admin-only, OZ_ADMIN_KEY).
+		se.Router.POST("/api/v1/admin/subscriptions/{id}/feature-grants", handleAdminSetFeatureGrants(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/devices/{deviceId}/revoke", handleAdminRevokeDevice(app))
 		se.Router.DELETE("/api/v1/admin/tenants/{id}", handleAdminDeleteTenant(app))
 		se.Router.GET("/api/v1/admin/health", handleAdminHealth(app))

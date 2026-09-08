@@ -318,6 +318,8 @@ func handleAdminRenew(app core.App) func(e *core.RequestEvent) error {
 			GraceUntil:      grace,
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		payload.Features = featureGrantsForTenant(app, tenant.Id)
 		payloadStr, signature, signErr := signSubscription(payload)
 		if signErr != nil {
 			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "renew failed"})
