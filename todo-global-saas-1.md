@@ -549,6 +549,15 @@ Scope findings from the pre-implementation investigation, in execution order:
     a11y, minimap/node-card/finder/relationship-picker/validation-widget/
     warehouse-card/wire-group, memo, Inspector, DevMock).
 
+    **Count resync 2026-09-08 (supervisor round 6):** the "333 keys" figure above
+    was accurate when written but has since aged — `verify-ftl-orphans.py
+    --census` at HEAD shows the renamed bundle now carries **375 keys** (keys
+    added by later slices, e.g. memo-banner and diagnostics work). Not a gate
+    regression: the census still reports every bundle key referenced, and the
+    staged orphan gate enforces the invariant at every commit. Historical
+    figures in journal prose are left unedited; this annotation is the resync
+    record (finding first raised in coder-1-journal.md).
+
     **1e is now closed.** The only remaining `store`-worded strings are
     intentionally preserved per the Terminology table: `store-pos` /
     `restaurant-pos` legacy workspace identifiers, the `multi-store` feature
