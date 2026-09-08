@@ -167,6 +167,16 @@ actual relationship mutation.
 - [ ] **Implement regional configuration.** Support locale, language, timezone,
       currency, tax regime, fiscalization, receipt format, numbering, and local
       payment settings at the decided organization/legal-entity/location scopes.
+      — **Unblocked 2026-09-08** (§G closed by `20260908_legal_entities.sql`).
+      **Design written:** see §"Regional configuration — design" below — nine
+      axes, six of which already exist somewhere with no stated precedence, three
+      (`fiscalization`, `numbering`, any entity-level default) that do not exist
+      at all, and one live defect the inventory surfaced: `locations.timezone` is
+      written as an IANA name and read as a fixed UTC offset, so a Jakarta
+      location buckets its own business dates in UTC. **Slice 1** (schema +
+      `oz_core::regional` resolver, core-only) is the one landing this round;
+      slices 2–7 are queued below. Box stays open until the axis set is
+      complete.
 - [ ] **Separate business tax configuration from application defaults.** Tax
       rules, effective dates, tax-inclusive behavior, and fiscal requirements
       should be location-aware; display currency and UI preferences should not
@@ -2519,3 +2529,162 @@ the owner-facing remediation surface (IPC command returning
 archive-or-upgrade actions — touches the parity gate + dev-mock + FTL),
 and whether to persist a per-resource `over_quota` marker (a migration,
 which the rename/ADR agents keep hot).
+
+## Regional configuration — design (2026-09-08, coder-4)
+
+The design for the P1 item **"Implement regional configuration"** (line ~167),
+written against HEAD `7a2e472b`. The item sat behind §G Legal Entity; that gate
+CLOSED with `20260908_legal_entities.sql` (the `legal_entities` table,
+`locations.legal_entity_id`, and scoped IPC on both clients), so the item is
+unblocked. This section is design + the slice queue; **only Slice 1 lands with
+it** — the P1 box stays unchecked until the whole axis set is delivered.
+
+### The inventory: what already exists per axis
+
+Nine axes are named. Six already exist somewhere; three do not exist at all.
+"Exists" is measured against code, not against the todo text.
+
+| Axis | What exists today (verified) | Where it lives | Real gap |
+|---|---|---|---|
+| **currency** | `locations.currency` column (default `'USD'`); `settings` key `currency.default` + 3 display keys (`currency.format`, `currency.symbol_position`, `currency.decimal_separator`, `currency.thousands_separator`); `currencies` reference table (code/numeric/minor_exponent/symbol); `currency_info` IPC on both clients | location column **and** an org-global KV row | two sources, no stated precedence |
+| **timezone** | `locations.timezone` column (default `'UTC'`); consumed by `db/reports.rs::tz_modifier` (REP-03) | location column | **contract conflict, see below** |
+| **locale** | `user_preferences` KV (`locale`, per-user); `ui.locale` written by `GeneralSection.tsx:50` via `setSettingScoped` | per-user table + one KV row | **the KV row has no reader anywhere in the repo** — an orphan write |
+| **language** | Fluent negotiation in `ui/src/i18n/*` + `LanguageSelector`; persisted only as that same `ui.locale` | UI/localStorage + KV | no org/entity default; user-only |
+| **receipt format** | 10 `settings` keys (`receipt.footer`, `receipt.paper_width`, `receipt.show_tax`, `receipt.show_currency`, `receipt.decimal_separator`, `receipt.show_table_number`, 4 margins) + `ReceiptSettingsDto` IPC on both clients + `ReceiptSection.tsx` | org-global KV (the `settings` table has **no scope column**) | not scoped at all |
+| **tax regime** | `tax_rates` table (`rate_bps`, `is_default`, `is_inclusive`, `is_active`, `tenant_id`) + `tax.rounding_mode` KV + `TaxConfigurationScreen` | tenant-global | **the adjacent P1 box owns this** — see "Where the two items meet" |
+| **fiscalization** | **nothing** — `git grep -i fiscal` over `*.rs` returns zero hits | — | whole axis |
+| **numbering** | **nothing** that is a numbering scheme: `sales.receipt_number` is just `sale.id` (`sales_checkout.rs:495`), and `kds_daily_counters` is a KDS ticket display counter | — | whole axis |
+| **local payment** | `supports_qris` is a **tier** capability (`entitlements`/caps DTO), not a regional setting; `payment_gateways` table is provider credentials | org KV / tenant table | conflates "which market" with "which plan" |
+| **residency** | `docs/security/data-residency-and-retention.md`; no column anywhere | doc only | **explicitly later — §K** |
+
+Two structural facts drive every mapping below:
+
+1. **`settings` is a flat, unscoped KV** (`key TEXT PRIMARY KEY`). It is the
+   only config store today, so every "org-global" key is also the only place a
+   location could put its own value. Scoping it is a schema change, not a
+   naming convention.
+2. **The location row is a full-overwrite surface.**
+   `update_location_profile_scoped` takes every mutable field, and
+   `TopologyScreen.tsx:520` hand-lists them at the call site. Any new column
+   that rides that path gets silently reset by every caller that does not know
+   about it. That is why the regional axes get their **own** write path instead
+   of being appended to the location update.
+
+### The timezone contract conflict (found while inventorying, not invented)
+
+`LocationProfile.timezone` is documented as **IANA** (`"Asia/Jakarta"`), the
+IPC tests seed `"Asia/Jakarta"`, and `MultiStoreDashboardScreen` renders the
+column raw. But `db/reports.rs:414` (REP-03) documents the *same column* as
+holding `'+HH:MM'` / `'-HH:MM'` / `'UTC'` and **deliberately falls back to UTC
+on an IANA name** (no tzdata dependency in core). `iana_timezone_names_fall_back_to_utc`
+pins that fallback. So the value the UI writes is the value the reports layer
+ignores: a Jakarta location buckets its own business dates in UTC. This is a
+pre-existing defect this design inherits rather than fixes, and it is why
+Slice 1 stores timezone as an **offset** and names the axis honestly — see the
+open questions. Do not "fix" it by adding tzdata to core without a ruling.
+
+### Axis → scope map (§H, with §K's rollout order)
+
+§H (todo-global-saas-1.md:222) is the contract; §K (todo-global-saas-3.md:16)
+is the rollout order. Mapped:
+
+| Axis | Owning scope | Inherited by | Mechanism |
+|---|---|---|---|
+| locale | organization → legal entity → location | ↓ | new columns (Slice 1) |
+| language | **user** (unchanged) | — | existing `user_preferences` / Fluent; org default joins at Slice 4 |
+| timezone | legal entity → location | ↓ | new entity column; existing location column (Slice 1) |
+| currency | organization → legal entity → location | ↓ | new entity column; existing location column + `currency.default` (Slice 1) |
+| tax regime | legal entity (+ location override) | ↓ | **adjacent P1 box**, not this one |
+| fiscalization | legal entity | — | new table (Slice 5) |
+| receipt format | statutory content = legal entity; layout = workspace/terminal | ↓ | split, then scoped KV (Slice 3) |
+| numbering | legal entity (statutory sequence) | location ticket prefix | new table (Slice 5) |
+| local payment | legal entity → location | — | new scoped rows (Slice 6) |
+| residency | organization | — | **later slice, §K — explicitly not pulled in** |
+
+`country_code` on `legal_entities` is the **market anchor** the fiscalization,
+numbering and payment axes key off. It is NOT residency: residency is where the
+data is *stored* (an organization-level deployment decision, §K), market is how
+it is *traded*. The two must not collapse into one column, and the naming here
+is deliberate so a later reader cannot merge them.
+
+### Rename vs new column vs new table
+
+- **Rename / re-declare (no schema):** `currency.default` and `ui.locale` stay
+  where they are and become the **organization level** of the chain rather than
+  pretending to be location config. `ui.locale` finally gets a reader.
+- **New columns (Slice 1):** `legal_entities.{country_code, locale, timezone,
+  currency}` and `locations.locale`. Nullable, `''` = *not set, inherit* — the
+  same "empty means unset" convention `legal_entities.legal_name`/`tax_id`
+  already use, so no sentinel value is invented.
+- **New table (Slice 5):** `fiscal_schemes` / `document_number_sequences` —
+  both are multi-row-per-entity (a scheme has parameters; a sequence has a
+  prefix + counter + reset period), so neither fits a column. A new
+  tenant_id-bearing table must join `RLS_TABLES` in
+  `scripts/generate-pg-migration.py` or carry an `RLS_EXEMPT` reason.
+- **NOT a new table:** scoped receipt/payment settings ride a
+  `regional_settings(scope_type, scope_id, key, value)` KV (Slice 3) rather
+  than widening `locations` — widening the location row hits the
+  full-overwrite hazard above and forces every DTO on the wire to grow.
+
+### Slice queue (each independently revertible)
+
+1. **Schema + model + resolver (core only) — LANDS WITH THIS DESIGN.**
+   Migration adds the five columns; `oz_core::regional` gains `RegionalConfig`
+   + `ConfigScope` and `Store::regional_config_for_location(location_id)`
+   walking location → legal entity → organization KV → built-in default, with
+   per-axis provenance. No IPC, no UI, no wire change → the parity gate, the
+   FTL gates and `ui/` typecheck are all untouched, and no hot file is edited.
+2. **Read-side IPC.** `get_regional_config_scoped` on both clients
+   (`settings:read`), `ui/src/api/regional.ts`, dev-mock entry. Needs
+   `verify-ipc-parity.py` (not in pre-commit — run it manually) and
+   `verify-scoped-coverage.sh`.
+3. **Write-side IPC + UI.** `set_regional_config_scoped` (`settings:edit`,
+   transactional, validates ISO-4217/ISO-3166/offset shape at the core
+   boundary, not in React) + a Regional card in the Settings hub with its §H
+   scope tag. This is the slice that touches `ui/src/locales/shared.ftl` —
+   currently a **hot file** — so it needs a coordination window.
+4. **Language default.** Org/entity default locale feeds Fluent's negotiation
+   order; per-user override keeps winning. UI-only + one read of Slice 1's
+   chain.
+5. **Fiscalization + numbering** (legal entity). New tables, RLS decision,
+   statutory sequence writes inside the sale transaction.
+6. **Local payment settings** (entity → location): which rails exist in the
+   market, kept separate from `supports_qris`, which stays a tier answer.
+7. **Residency** (§K, Phase 3): organization-level, its own ADR. Not here.
+
+### Where the two items meet (and do not)
+
+The adjacent P1 box — *"Separate business tax configuration from application
+defaults"* — owns `tax_rates` scoping (it needs a `legal_entity_id`/
+`location_id` on the rate rows and an effective-date model), tax-inclusive
+behavior, and fiscal requirements. This item owns the **market facts**
+(`country_code`, locale, timezone, currency) and the **resolution chain**.
+They meet at exactly one seam: `RegionalConfig::tax_regime` will be *derived
+from* `country_code` + the tax box's scoped rates, and both items read the same
+location → entity → org walk. Deliberately **not** bundled: the tax box changes
+money math on every sale, this slice changes none, and a migration that touches
+`tax_rates` collides with the tax box's own migration. Slice 1 therefore adds
+no tax column at all — the tax box should not have to share a migration with a
+locale change.
+
+### Open questions (cannot ask the human from here)
+
+1. **Timezone representation.** Core has no tzdata and REP-03 pins the
+   IANA→UTC fallback. Either (a) store `'+07:00'` offsets and accept that DST
+   is wrong twice a year, or (b) add a tz dependency and store IANA properly.
+   Slice 1 stores what is there and resolves it; it does not pick. Needs a
+   ruling before Slice 3 exposes an editor, because the editor's format is the
+   answer.
+2. **Does `ui.locale` become the organization default**, or is it legacy
+   per-user state that should move to `user_preferences` and be deleted from
+   `settings`? Slice 1 reads it as the org level (the cheapest honest reading
+   of an orphan write); if the ruling is "legacy", Slice 1's fallback is one
+   line to remove.
+3. **One entity or many for a small customer?** §G seeds exactly one default
+   entity per tenant, so the chain degenerates today. The design does not
+   assume multi-entity, but Slice 3's UI has to be usable when there is only
+   one — do not build a per-entity editor that requires a picker first.
+4. **Currency exponent source.** `currencies.minor_exponent` (table) vs
+   `foundation::money::Currency::minor_unit_exponent` (compiled table) are two
+   answers to the same question. Out of scope here, but the regional UI must
+   not become a third.
