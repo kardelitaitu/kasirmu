@@ -204,3 +204,41 @@ staff-error-dob-invalid = Use YYYY-MM-DD format.
 # C2.2: Pro→Premium approaching-limit banner (16+ staff, Pro caps at 20).
 staff-limit-approaching-premium = You are nearing the Pro plan's 20-staff limit. Upgrade to Premium for up to 50 staff.
 staff-limit-approaching-premium-cta = Upgrade to Premium
+
+# ── Role authoring (ADR #47 ruling 4) ────────────────────────────────
+# A custom role is a named permission-set row. The picker is fed by the
+# permission registry, so no key name is hardcoded in the UI.
+role-authoring-title = Roles
+role-authoring-subtitle = Built-in roles are defaults; custom roles are permission sets you author.
+role-create = New role
+role-create-aria = Create a new custom role
+role-list-aria = All roles
+role-empty-title = No roles yet
+role-badge-builtin = Built-in
+role-badge-custom = Custom
+role-grant-count = { $count ->
+    [one] 1 permission
+   *[other] { $count } permissions
+  }
+role-edit = Edit
+role-edit-aria = Edit the { $name } role
+role-delete = Delete
+role-delete-aria = Delete the { $name } role
+role-in-use = { $count ->
+    [one] Used by 1 account
+   *[other] Used by { $count } accounts
+  }
+role-editor-create-title = New role
+role-editor-edit-title = Edit role
+role-field-name = Role name
+role-field-description = Role description
+role-field-permissions = Permissions
+role-perm-sensitive = Sensitive
+role-cancel = Cancel
+role-cancel-aria = Cancel editing this role
+role-save = Save role
+role-save-aria = Save this role
+role-saved = Saved the { $name } role.
+role-deleted = Deleted the { $name } role.
+role-delete-confirm-title = Delete this role?
+role-delete-confirm-body = Accounts holding { $name } will lose its permissions. This cannot be undone.

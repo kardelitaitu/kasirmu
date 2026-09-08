@@ -29,6 +29,7 @@ nav-sales = Riwayat Penjualan
 nav-products = Produk
 nav-categories = Kategori
 nav-staff = Staf
+nav-roles = Peran
 nav-customers = Pelanggan
 nav-inventory = Stok
 nav-general = Umum

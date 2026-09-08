@@ -211,6 +211,57 @@ export interface RoleDto {
    * (may include the `*` wildcard — display as-is, do not gate on it).
    */
   permissions: string[];
+  /**
+   * Whether the preset seeder owns this row. True means the authoring
+   * surface must not offer Edit or Delete: seed_default_roles upserts
+   * preset ids and overwrites their grants, and it is reachable from the UI
+   * (seedDefaultRolesScoped), so an accepted edit would be silently
+   * destroyed later. Note role-custom is itself a preset — a role *called*
+   * custom is not an authored row, so gate on this flag and never on name.
+   */
+  is_builtin: boolean;
+  /**
+   * Rows still pointing at this role (users, assignments, and the two
+   * workspace-grant tables). Non-zero means the backend refuses Delete, so
+   * disable it and say why rather than letting the click fail.
+   */
+  reference_count: number;
+}
+
+/**
+ * Arguments for creating a custom role (ADR #47 ruling 4). Carries no id:
+ * the backend generates one, because a row whose id the preset seeder owns
+ * would be silently rewritten on the next re-seed.
+ */
+export interface CreateRoleArgs {
+  name: string;
+  description?: string;
+  permissions?: string[];
+}
+
+/**
+ * Arguments for rewriting a custom role. `permissions` replaces the grant
+ * set wholesale — it is not merged with the previous one.
+ */
+export interface UpdateRoleArgs {
+  id: string;
+  name: string;
+  description?: string;
+  permissions?: string[];
+}
+
+/**
+ * One registered permission key — the vocabulary the role editor offers,
+ * read from the same registry enforcement consults (ADR #35). Never hardcode
+ * this list in the UI: a copy drifts from the keys the gate actually honors.
+ */
+export interface PermissionKeyDto {
+  key: string;
+  family: string;
+  /** Never grantable under a family wildcard, and blocked for an incomplete
+   *  profile (ADR #35 D3/D6). */
+  sensitive: boolean;
+  description: string;
 }
 
 // ── Session-scoped Staff Management (ADR #7 · audit-open-findings STAFF-01) ───
@@ -262,6 +313,43 @@ export const listStaffScoped = (sessionToken: string): Promise<StaffMemberDto[]>
 /** List all roles (caller resolved from session token). */
 export const listRolesScoped = (sessionToken: string): Promise<RoleDto[]> =>
   loggedInvoke<RoleDto[]>('list_roles_scoped', { sessionToken });
+
+// ── Role authoring (ADR #47 ruling 4) ─────────────────────────────────────
+//
+// Every arg key below is the camelCase form of the Rust parameter name —
+// Tauri binds by that name and the invoke args object is an untyped
+// literal, so a wrong key fails at runtime while typecheck stays green
+// (todo-global-saas-3.md Amendment 3, defect 1).
+
+/**
+ * List the registered permission keys — the vocabulary the role editor
+ * offers. Read from the same registry enforcement consults, so the picker
+ * can never offer a key the gate would deny.
+ */
+export const listPermissionKeysScoped = (
+  sessionToken: string,
+): Promise<PermissionKeyDto[]> =>
+  loggedInvoke<PermissionKeyDto[]>('list_permission_keys_scoped', { sessionToken });
+
+/** Create a custom role. The backend generates the id. */
+export const createRoleScoped = (
+  sessionToken: string,
+  args: CreateRoleArgs,
+): Promise<RoleDto> =>
+  loggedInvoke<RoleDto>('create_role_scoped', { sessionToken, args });
+
+/** Rewrite a custom role. Refused for preset ids. */
+export const updateRoleScoped = (
+  sessionToken: string,
+  args: UpdateRoleArgs,
+): Promise<RoleDto> =>
+  loggedInvoke<RoleDto>('update_role_scoped', { sessionToken, args });
+
+/** Delete a custom role. Refused for preset ids and while referenced. */
+export const deleteRoleScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<null> => loggedInvoke<null>('delete_role_scoped', { sessionToken, id });
 
 /** Create a new staff member (caller resolved from session token). */
 export const createStaffScoped = (

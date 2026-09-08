@@ -21,7 +21,7 @@ use oz_core::{Role, User};
 
 use foundation::{validate_min_length, validate_not_empty};
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -372,6 +372,17 @@ pub struct RoleDto {
     /// (may include `"*"`). Shown in the staff screen so an admin can see
     /// exactly what each role can do.
     pub permissions: Vec<String>,
+    /// Whether the preset seeder owns this row. `true` means the authoring
+    /// surface must not offer Edit or Delete: `seed_default_roles` upserts
+    /// preset ids and overwrites their grants, and it is reachable from the
+    /// UI (`seed_default_roles_scoped`), so an accepted edit would be
+    /// silently destroyed later. `role-custom` is a preset — a role *called*
+    /// custom is not an authored row.
+    pub is_builtin: bool,
+    /// Rows still pointing at this role across `users`, `assignments`,
+    /// `role_workspace_types` and `role_workspaces`. Non-zero means Delete is
+    /// refused, so the UI can say so before the click rather than after.
+    pub reference_count: i64,
 }
 
 #[tauri::command]
@@ -573,19 +584,182 @@ pub async fn list_roles_scoped(
     let store = Store::new(&db);
     require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
     let roles = store.list_roles()?;
-    drop(db);
-    Ok(roles
+    let dtos = roles
         .into_iter()
-        .map(|r| {
-            let permissions = r.permission_keys();
-            RoleDto {
-                id: r.id,
-                name: r.name,
-                description: r.description,
-                permissions,
-            }
+        .map(|r| role_dto(&store, r))
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(db);
+    Ok(dtos)
+}
+
+// ── Role authoring (ADR #47 ruling 4) ──────────────────────────────
+
+/// Create-role args. Deliberately carries no id; see [create_role_scoped].
+#[derive(Debug, Deserialize)]
+pub struct CreateRoleArgs {
+    /// Display name, unique across roles.
+    pub name: String,
+    /// What the role covers.
+    #[serde(default)]
+    pub description: String,
+    /// Registry permission keys to grant.
+    #[serde(default)]
+    pub permissions: Vec<String>,
+}
+
+/// Update-role args. The grant set replaces wholesale — a role edit is not
+/// partial, because a grant silently carried over from the previous set
+/// would be a privilege nobody asked for.
+#[derive(Debug, Deserialize)]
+pub struct UpdateRoleArgs {
+    /// The authored role to rewrite. Preset ids are refused core-side.
+    pub id: String,
+    /// Display name, unique across roles.
+    pub name: String,
+    /// What the role covers.
+    #[serde(default)]
+    pub description: String,
+    /// The complete replacement grant set.
+    #[serde(default)]
+    pub permissions: Vec<String>,
+}
+
+/// One registered permission key: the vocabulary the authoring picker
+/// offers, read from the same registry enforcement consults.
+#[derive(Debug, Serialize)]
+pub struct PermissionKeyDto {
+    /// The key, e.g. 'sales:void'.
+    pub key: String,
+    /// Its family, e.g. 'sales'.
+    pub family: String,
+    /// Whether the key is sensitive — never grantable under a family
+    /// wildcard, and blocked for an incomplete profile (ADR #35 D3/D6).
+    pub sensitive: bool,
+    /// What granting it means, for the picker caption.
+    pub description: String,
+}
+
+/// Serialize a grant set into the JSON array roles.permissions stores.
+fn grants_json(keys: &[String]) -> Result<String, AppError> {
+    serde_json::to_string(keys).map_err(|e| AppError::Internal(format!("encoding grants: {e}")))
+}
+
+/// Build the authoring DTO from a domain role, adding the two facts the
+/// surface needs in order to decide what it may offer.
+fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, AppError> {
+    // Everything borrowed from `role` is read before its fields move into
+    // the DTO; `permission_keys` takes &self and `name`/`description` move.
+    let permissions = role.permission_keys();
+    let is_builtin = oz_core::db::roles::is_builtin_role_id(&role.id);
+    let reference_count = store
+        .role_reference_counts(&role.id)?
+        .iter()
+        .map(|(_, count)| count)
+        .sum();
+    Ok(RoleDto {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+        permissions,
+        is_builtin,
+        reference_count,
+    })
+}
+
+/// List the registered permission keys.
+///
+/// Without this the authoring UI would have to hardcode the vocabulary, which
+/// is what ADR #35 forbids: the registry is the single source of truth, and a
+/// picker fed from a copy of it drifts from the keys the gate actually
+/// honors. Gated on 'staff:read' rather than 'staff:manage_roles' — knowing
+/// which keys exist is not the power to grant them.
+#[tauri::command]
+pub async fn list_permission_keys_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<PermissionKeyDto>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_READ).await?;
+    Ok(oz_core::permission_registry::REGISTRY
+        .iter()
+        .map(|entry| PermissionKeyDto {
+            key: entry.key.to_string(),
+            family: entry.family.to_string(),
+            sensitive: entry.sensitive,
+            description: entry.description.to_string(),
         })
         .collect())
+}
+
+/// Create a custom role: a named key-set row in the same vocabulary
+/// enforcement already speaks (ADR #47 ruling 4).
+///
+/// The id is generated here and never accepted from the wire. A row whose id
+/// the preset seeder owns is rewritten by the next seed_default_roles_scoped,
+/// so letting a caller choose ids would put them one typo away from authoring
+/// something they cannot keep; a generated 'role-<uuidv7>' is outside
+/// ROLE_PRESETS by construction.
+#[tauri::command]
+pub async fn create_role_scoped(
+    session_token: String,
+    args: CreateRoleArgs,
+    state: State<'_, AppState>,
+) -> Result<RoleDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
+    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    let role = store.create_role(
+        &format!("role-{}", uuid::Uuid::now_v7()),
+        &args.name,
+        &args.description,
+        &grants_json(&args.permissions)?,
+    )?;
+    role_dto(&store, role)
+}
+
+/// Re-name, re-describe, or re-grant an authored role.
+///
+/// Editing re-points every holder, so the grant set is validated against the
+/// registry core-side and preset ids are refused there too — the rule lives in
+/// one place, so this command cannot become the way around it.
+#[tauri::command]
+pub async fn update_role_scoped(
+    session_token: String,
+    args: UpdateRoleArgs,
+    state: State<'_, AppState>,
+) -> Result<RoleDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    let role = store.update_role(
+        &args.id,
+        &args.name,
+        &args.description,
+        &grants_json(&args.permissions)?,
+    )?;
+    role_dto(&store, role)
+}
+
+/// Delete an authored role.
+///
+/// Refused for preset ids and for any role still referenced. The second guard
+/// matters more here than a usual FK: authorize_with fails closed on an
+/// unresolvable role, so dropping one out from under a holder would be a
+/// silent loss of access rather than an error.
+#[tauri::command]
+pub async fn delete_role_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
+    let db = state.db.lock().await;
+    Store::new(&db).delete_role(&id)?;
+    Ok(())
 }
 
 /// Create a staff member. Caller identity is resolved from the session token.

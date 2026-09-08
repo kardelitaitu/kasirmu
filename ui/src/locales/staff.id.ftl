@@ -230,3 +230,41 @@ staff-error-dob-invalid = Gunakan format YYYY-MM-DD.
 # C2.2: Pro→Premium approaching-limit banner (16+ staf, batas 20).
 staff-limit-approaching-premium = Anda hampir mencapai batas 20 staf paket Pro. Tingkatkan ke Premium untuk hingga 50 staf.
 staff-limit-approaching-premium-cta = Tingkatkan ke Premium
+
+# ── Pembuatan peran (ADR #47 putusan 4) ──────────────────────────────
+# Peran kustom adalah baris kumpulan izin bernama. Daftarnya diisi dari
+# registri izin, jadi tidak ada nama kunci yang ditulis tetap di UI.
+role-authoring-title = Peran
+role-authoring-subtitle = Peran bawaan adalah default; peran kustom adalah kumpulan izin yang Anda susun sendiri.
+role-create = Peran baru
+role-create-aria = Buat peran kustom baru
+role-list-aria = Semua peran
+role-empty-title = Belum ada peran
+role-badge-builtin = Bawaan
+role-badge-custom = Kustom
+role-grant-count = { $count ->
+    [one] 1 izin
+   *[other] { $count } izin
+  }
+role-edit = Ubah
+role-edit-aria = Ubah peran { $name }
+role-delete = Hapus
+role-delete-aria = Hapus peran { $name }
+role-in-use = { $count ->
+    [one] Dipakai 1 akun
+   *[other] Dipakai { $count } akun
+  }
+role-editor-create-title = Peran baru
+role-editor-edit-title = Ubah peran
+role-field-name = Nama peran
+role-field-description = Deskripsi peran
+role-field-permissions = Izin
+role-perm-sensitive = Sensitif
+role-cancel = Batal
+role-cancel-aria = Batalkan perubahan peran ini
+role-save = Simpan peran
+role-save-aria = Simpan peran ini
+role-saved = Peran { $name } tersimpan.
+role-deleted = Peran { $name } dihapus.
+role-delete-confirm-title = Hapus peran ini?
+role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Tindakan ini tidak bisa dibatalkan.

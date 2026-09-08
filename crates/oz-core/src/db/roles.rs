@@ -31,6 +31,13 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::error::CoreError;
 use crate::{Role, Store};
 
+/// Re-exported so the authoring IPC can label preset rows without taking a
+/// `platform-core` dependency of its own. Reached through this module rather
+/// than `oz_core`'s crate root because that re-export list is a shared edit
+/// point; the predicate itself lives beside `ROLE_PRESETS`, which is the only
+/// thing it can be correct against.
+pub use platform_core::rbac::is_builtin_role_id;
+
 /// The tables that point at a role, in the order diagnostics list them.
 ///
 /// Each declares `REFERENCES roles(id)` with the default NO ACTION, so

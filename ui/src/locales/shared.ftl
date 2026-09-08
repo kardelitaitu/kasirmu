@@ -275,6 +275,7 @@ nav-customers = Customers
 nav-loyalty = Loyalty
 nav-gift-cards = Gift Cards
 nav-staff = Staff
+nav-roles = Roles
 nav-terminals = Terminals
 nav-locations = Locations
 nav-features = Features
