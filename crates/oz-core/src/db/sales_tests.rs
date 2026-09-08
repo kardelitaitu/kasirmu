@@ -3863,3 +3863,377 @@ fn complete_sale_deduction_persists_every_split_keyed_to_one_attempt() {
     let keys: Vec<&str> = rows.iter().map(|(k, _)| k.as_deref().unwrap()).collect();
     assert_eq!(keys, vec!["attempt-a:0", "attempt-a:1"]);
 }
+
+// ── Scoped resolution through the SALE path (tax-separation P1) ────
+//
+// The money-math seam. `db::tax_tests` already proves the resolver picks the
+// right ROW; these prove the right NUMBER reaches the receipt, and — the load
+// bearing one — that a tenant whose rows all predate scoping prices
+// identically whichever door the caller used.
+
+fn seed_entity_and_locations(conn: &Connection, entity: &str, locations: &[&str]) {
+    conn.execute(
+        "INSERT OR IGNORE INTO legal_entities (id, tenant_id, name) VALUES (?1, 'default', ?1)",
+        rusqlite::params![entity],
+    )
+    .unwrap();
+    for loc in locations {
+        conn.execute(
+            "INSERT OR IGNORE INTO locations (id, name, legal_entity_id) VALUES (?1, ?1, ?2)",
+            rusqlite::params![loc, entity],
+        )
+        .unwrap();
+    }
+}
+
+/// Like `seed_tax_rate` but able to express scope, window and inclusivity —
+/// `create_tax_rate` predates all three and writes no scope columns.
+#[allow(clippy::too_many_arguments)]
+fn seed_scoped_rate(
+    conn: &Connection,
+    id: &str,
+    rate_bps: i64,
+    is_default: bool,
+    is_inclusive: bool,
+    legal_entity_id: Option<&str>,
+    location_id: Option<&str>,
+    effective_from: Option<&str>,
+    effective_to: Option<&str>,
+) {
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, is_active,
+                                legal_entity_id, location_id, effective_from, effective_to)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            id,
+            format!("rate {id}"),
+            rate_bps,
+            is_default,
+            is_inclusive,
+            legal_entity_id,
+            location_id,
+            effective_from,
+            effective_to
+        ],
+    )
+    .unwrap();
+}
+
+fn at(location: &str, as_of: &str) -> crate::TaxSaleScope {
+    crate::TaxSaleScope {
+        location_id: location.to_string(),
+        as_of: as_of.to_string(),
+    }
+}
+
+#[test]
+fn a_legacy_tenant_prices_identically_through_either_door() {
+    // THE equivalence proof. One default row, both scope columns NULL — every
+    // tenant on the planet today. The scoped door must not move a single
+    // minor unit, or this slice has changed money math for existing data.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a", "loc-b"]);
+    s.create_tax_rate("VAT 10%", 1000, true, false).unwrap();
+
+    let mut plain = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax(&mut plain, &[], RoundingMode::Truncate)
+        .unwrap();
+    let mut scoped = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut scoped,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+
+    assert_eq!(plain.tax_total, scoped.tax_total);
+    assert_eq!(plain.subtotal, scoped.subtotal);
+    assert_eq!(plain.total, scoped.total, "grand total must not drift");
+    assert_eq!(
+        plain.lines[0].tax_amount, scoped.lines[0].tax_amount,
+        "per-line tax must not drift"
+    );
+    assert_eq!(
+        plain.lines[0].tax_rate_id, scoped.lines[0].tax_rate_id,
+        "and it must be the same rate, not an equal-valued different one"
+    );
+    assert_eq!(
+        plain.lines[0].tax_breakdown_json,
+        scoped.lines[0].tax_breakdown_json
+    );
+    assert_eq!(scoped.tax_total.minor_units, 70, "sanity: 10% of 700");
+}
+
+#[test]
+fn a_location_scoped_rate_stops_that_branch_inheriting_the_default() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a", "loc-b"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-jkt",
+        1100,
+        false,
+        false,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+
+    let mut here = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut here,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(here.lines[0].tax_rate_id.as_deref(), Some("r-jkt"));
+    assert_eq!(here.tax_total.minor_units, 77, "11% of 700");
+
+    // The neighbouring branch keeps the default answer — the scoped row must
+    // not leak across locations through the sale path.
+    let mut there = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut there,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-b", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(there.tax_total.minor_units, 70);
+    assert_ne!(here.total, there.total, "two branches, two receipts");
+}
+
+#[test]
+fn the_sale_path_respects_the_exclusive_window_boundary() {
+    // Consistent with the exclusive `effective_to` ruling: the successor takes
+    // over ON the boundary day, so a sale cannot match both periods.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-period",
+        1100,
+        false,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2026-01-01"),
+        Some("2027-01-01"),
+    );
+
+    let mut before = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut before,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-12-31")),
+    )
+    .unwrap();
+    assert_eq!(before.lines[0].tax_rate_id.as_deref(), Some("r-period"));
+    assert_eq!(before.tax_total.minor_units, 77);
+
+    let mut on_boundary = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut on_boundary,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2027-01-01")),
+    )
+    .unwrap();
+    assert_eq!(
+        on_boundary.tax_total.minor_units, 70,
+        "the window has closed"
+    );
+    assert_ne!(
+        on_boundary.lines[0].tax_rate_id, before.lines[0].tax_rate_id,
+        "the boundary day must flip to the successor"
+    );
+}
+
+#[test]
+fn a_scoped_rate_carries_its_own_inclusive_flag_into_the_money_math() {
+    // Per-scope is_inclusive. The tenant default is EXCLUSIVE; the location row
+    // is INCLUSIVE at the same bps. If the flag were inherited from the
+    // default, both branches would add tax to the total.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a", "loc-b"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-inc",
+        1000,
+        false,
+        true,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+
+    let mut incl = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut incl,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+    let mut excl = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut excl,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-b", "2026-09-08")),
+    )
+    .unwrap();
+
+    assert!(
+        incl.tax_total.minor_units > 0,
+        "inclusive tax is still reported"
+    );
+    assert_eq!(
+        incl.total, incl.subtotal,
+        "inclusive tax is embedded in the displayed price, never added on top"
+    );
+    assert_eq!(
+        excl.total.minor_units,
+        excl.subtotal.minor_units + excl.tax_total.minor_units,
+        "exclusive tax is collected on top"
+    );
+}
+
+#[test]
+fn a_product_assigned_rate_scoped_elsewhere_falls_through_to_the_global_row() {
+    // An assignment says USE this rate, not "ignore where this rate applies".
+    // COFFEE is pinned to a Bali-only rate; priced in Jakarta it must fall
+    // through levels 1 and 2 to the tenant-global answer.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-jkt", "loc-bali"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-bali",
+        1500,
+        false,
+        false,
+        None,
+        Some("loc-bali"),
+        None,
+        None,
+    );
+    seed_product(&conn, "COFFEE", None);
+    conn.execute(
+        "INSERT INTO product_taxes (product_sku, tax_rate_id) VALUES ('COFFEE', 'r-bali')",
+        [],
+    )
+    .unwrap();
+
+    let mut in_jkt = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut in_jkt,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-jkt", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(
+        in_jkt.tax_total.minor_units, 70,
+        "Bali's rate must not price Jakarta"
+    );
+
+    let mut in_bali = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut in_bali,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-bali", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(in_bali.lines[0].tax_rate_id.as_deref(), Some("r-bali"));
+    assert_eq!(in_bali.tax_total.minor_units, 105, "15% of 700");
+
+    // And the unscoped door still sees the assignment — the filter is scoped-only.
+    let mut legacy = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax(&mut legacy, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(legacy.lines[0].tax_rate_id.as_deref(), Some("r-bali"));
+}
+
+#[test]
+fn an_expired_assigned_rate_falls_through_but_a_live_one_does_not() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-dead",
+        1500,
+        false,
+        false,
+        None,
+        None,
+        Some("2020-01-01"),
+        Some("2021-01-01"),
+    );
+    seed_product(&conn, "COFFEE", None);
+    conn.execute(
+        "INSERT INTO product_taxes (product_sku, tax_rate_id) VALUES ('COFFEE', 'r-dead')",
+        [],
+    )
+    .unwrap();
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut sale,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(
+        sale.tax_total.minor_units, 70,
+        "a closed period prices nothing"
+    );
+}
+
+#[test]
+fn a_malformed_business_date_errors_rather_than_priceing() {
+    // Same rule as the resolver: a bad date is the caller's bug. Falling back
+    // to "no scoped rate applies" would look like a configuration answer and
+    // silently bill the tenant-global rate.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    let err = s
+        .compute_sale_tax_for_location(
+            &mut sale,
+            &[],
+            RoundingMode::Truncate,
+            Some(&at("loc-a", "2026-9-8")),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "as_of"),
+        "expected the same as_of validation error the resolver raises, got {err:?}"
+    );
+}

@@ -197,6 +197,7 @@ pub use db::reports::{
     CategoryBreakdownRow, DailyRevenueRow, HourlyHeatmapRow, LowStockAlert, MonthlyRevenueRow,
     StockAlertEvent, TopProductRow, WeeklyRevenueRow,
 };
+pub use db::tax::TaxSaleScope;
 pub use db::{ProductWithDetails, RemoteSyncFailure, Store};
 pub use error::{CoreError, CoreErrorKind};
 pub use features::{

@@ -579,6 +579,87 @@ impl Store<'_> {
             }),
         }
     }
+
+    /// The legal entity a location sits under, from the location row itself.
+    ///
+    /// Derived rather than passed, so a caller cannot claim an entity its
+    /// location does not have — the walk's level 2 must be the entity the
+    /// branch actually belongs to, not whichever one the request named.
+    /// `Ok(None)` covers both "no such location" and "location with no entity
+    /// assigned" (`legal_entity_id` is still nullable per
+    /// 20260908_legal_entities.sql), and in both cases the entity level is
+    /// skipped rather than wildcarded.
+    pub fn location_legal_entity(&self, location_id: &str) -> Result<Option<String>, CoreError> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT legal_entity_id FROM locations WHERE id = ?1",
+                rusqlite::params![location_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten())
+    }
+
+    /// Whether one rate row may price a sale at `scope`.
+    ///
+    /// This is the filter the product- and category-assigned levels need, and
+    /// it is the same two questions the scoped walk asks of its own candidates:
+    /// does the row's scope cover this location, and is its window open on this
+    /// date. An assignment is an instruction to USE a rate, not a licence to
+    /// ignore where that rate says it applies — a product pinned to a
+    /// Jakarta-only rate must not pay Jakarta tax in Bali, and a rate whose
+    /// period has ended must not price anything at all.
+    ///
+    /// Returns `true` for a tenant-global row with an open (or absent) window,
+    /// which is every row written before 20260921 — so filtering an
+    /// assignment list changes nothing for an unscoped tenant.
+    ///
+    /// A missing or archived row is `false`: it cannot price a sale, and
+    /// "not found" and "not applicable" have the same money answer.
+    pub(crate) fn tax_rate_applies_at(
+        &self,
+        rate_id: &str,
+        scope: &TaxSaleScope,
+        entity_of_scope: Option<&str>,
+    ) -> Result<bool, CoreError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT legal_entity_id, location_id, effective_from, effective_to \
+                 FROM tax_rates WHERE id = ?1 AND is_active = 1",
+                rusqlite::params![rate_id],
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                    ))
+                },
+            )
+            .ok();
+        let Some((entity, location, from, to)) = row else {
+            return Ok(false);
+        };
+        let Some(mine) = TaxRateScope::classify(entity.as_deref(), location.as_deref()) else {
+            // Ambiguous scope: no tier may claim it, same refusal as the walk.
+            return Ok(false);
+        };
+        let in_scope = match mine {
+            TaxRateScope::Global => true,
+            TaxRateScope::Location(l) => l == scope.location_id,
+            TaxRateScope::LegalEntity(e) => entity_of_scope == Some(e.as_str()),
+        };
+        if !in_scope {
+            return Ok(false);
+        }
+        Ok(window_covers(
+            from.as_deref(),
+            to.as_deref(),
+            scope.as_date()?,
+        ))
+    }
 }
 
 // ── Scoped-resolution support types ─────────────────────────────────────────
@@ -619,6 +700,75 @@ impl TaxRateScope {
     #[must_use]
     pub fn is_global(&self) -> bool {
         matches!(self, Self::Global)
+    }
+}
+
+/// Where and when a sale is being priced — the input the tax read path needs
+/// before it can honour a scoped rate.
+///
+/// Both fields are REQUIRED, deliberately: an optional date would silently
+/// degrade every scoped row to "as if today", and "today" is the exact value
+/// this table windows on. A caller that does not know the location or the
+/// business date passes `None` for the whole scope and gets the tenant-global
+/// answer, not a guessed one.
+///
+/// `as_of` is a business date, `YYYY-MM-DD`. **Who owns that date is a live
+/// question, not a solved one:** `sale.created_at` is a UTC RFC3339 stamp and
+/// `locations.timezone` is written as an IANA name but read as a fixed offset —
+/// the defect recorded in todo-global-saas-2.md §Regional configuration, open
+/// question 1. Converting here would invent a timezone policy inside money
+/// math, so the CALLER supplies the date and this layer stays honest: a sale
+/// rung up at 20:00 UTC on 31 December in Jakarta is 03:00 on 1 January
+/// locally, and only the caller knows which one it means.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxSaleScope {
+    /// The location pricing the sale — the branch the customer stands in.
+    pub location_id: String,
+    /// Business date the sale is priced on, `YYYY-MM-DD`.
+    pub as_of: String,
+}
+
+impl TaxSaleScope {
+    /// Parse `as_of`, or a `Validation` error.
+    ///
+    /// A bad date is the caller's bug and errors rather than resolving to
+    /// "nothing applies": silently dropping every scoped rate because of a
+    /// typo'd date would price the sale on the tenant-global row and look like
+    /// a configuration answer rather than a crash.
+    pub(crate) fn as_date(&self) -> Result<chrono::NaiveDate, CoreError> {
+        let as_of = self.as_of.as_str();
+        // Same `field` name as [`Store::resolve_tax_rate_for_location`] uses for
+        // the same mistake, so a bad business date has ONE error vocabulary
+        // whichever door the caller came through.
+        parse_effective_date(as_of).ok_or_else(|| CoreError::Validation {
+            field: "as_of",
+            message: format!("expected a business date 'YYYY-MM-DD', got {as_of:?}"),
+        })
+    }
+}
+
+/// Whether a validity window covers `as_of`.
+///
+/// Extracted so the rule is stated ONCE for both readers: the scoped resolver
+/// walking the levels, and the applicability filter applied to
+/// product/category assignments. `effective_to` is EXCLUSIVE — a period and
+/// its successor cannot both match on the boundary day. A date that does not
+/// parse makes the row untrusted, so it does NOT cover.
+pub(crate) fn window_covers(
+    effective_from: Option<&str>,
+    effective_to: Option<&str>,
+    as_of: chrono::NaiveDate,
+) -> bool {
+    let lower_ok = match effective_from {
+        None => true,
+        Some(v) => parse_effective_date(v).is_some_and(|d| d <= as_of),
+    };
+    if !lower_ok {
+        return false;
+    }
+    match effective_to {
+        None => true,
+        Some(v) => parse_effective_date(v).is_some_and(|d| as_of < d),
     }
 }
 
@@ -672,17 +822,11 @@ impl TaxRateCandidate {
     /// match on the boundary day. A stored date that does not parse returns
     /// false: the row is skipped, never trusted.
     fn is_live(&self, as_of: chrono::NaiveDate) -> bool {
-        let lower_ok = match self.effective_from.as_deref() {
-            None => true,
-            Some(v) => parse_effective_date(v).is_some_and(|d| d <= as_of),
-        };
-        if !lower_ok {
-            return false;
-        }
-        match self.effective_to.as_deref() {
-            None => true,
-            Some(v) => parse_effective_date(v).is_some_and(|d| as_of < d),
-        }
+        window_covers(
+            self.effective_from.as_deref(),
+            self.effective_to.as_deref(),
+            as_of,
+        )
     }
 
     /// Ordering within one tier: explicit default, then newest start, then id.
