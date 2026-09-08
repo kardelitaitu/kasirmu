@@ -134,3 +134,77 @@ regenerated, its source untouched), `orchestrator-journal.md`,
 agent has staged. Every commit used an explicit pathspec with `-F`, so none of
 that entered mine. `todo-global-saas-2.md` was read, not written: the tax box at
 line 180 stays `[ ]`.
+
+---
+
+## D2 — Server-side per-feature grant authoring (PLAN APPROVED, implemented)
+
+**Status:** implemented; `gofmt -w` + `go vet ./...` clean; `go test -short`
+full license-server suite green (incl. 8 new D2 tests).
+
+### Approved plan (recap)
+
+Add an admin-only endpoint `POST /api/v1/admin/subscriptions/{id}/feature-grants`
+that persists a canonical `feature_grants` map on the tenant's `subscriptions`
+record and **immediately re-signs** so the client picks the grant up on its next
+`/status` (mirrors the existing `SubscriptionPayload.Features` field already
+consumed by the client verdict precedence
+`server_policy > lifecycle > tier > quota > role > scope`).
+
+- Wire source = the tenant's existing `subscriptions` record (active, latest by
+  `starts_at`). `license_keys` is left untouched.
+- The persisted map is grafted into every `signSubscription` build site
+  (activate / renew / resume / midtrans + paddle webhooks / admin dashboard /
+  admin tenant-lifecycle = 11 sites) via `featureGrantsForTenant(app, <tid>)`,
+  so an authored grant survives the next natural re-sign instead of being
+  dropped.
+
+### Amendment 1 (authoritative) — FeatureGrantKeys = the FIVE boolean supports_* features only
+
+`FeatureGrantKeys` = `supports_qris`, `supports_analytics`, `supports_loyalty`,
+`supports_daily_dashboard`, `supports_cloud_sync`. The endpoint 400s on any
+other key. For a **quota-named** key it returns 400 with the explicit message
+`quota overrides are a separate unspecced surface`. A `quotaFeatureKeys` map +
+`isQuotaFeatureKey` exists only to give that coherent-but-unspecced request a
+distinguishable message from a junk key. The Go constant's doc comment records
+WHY quota keys are excluded (boolean grant on a quantity feature is incoherent)
+so nobody "completes" the list. Rust side is unchanged (fail-closed unknown
+keys, already landed).
+
+### Amendment 2 (authoritative) — immediate re-sign is REQUIRED
+
+The endpoint persists AND re-signs in one operation (`resignSubscriptionWithGrants`
+-> `signSubscription` writes `signed_payload` + `signature`). A test asserts the
+re-signed payload carries the new `features` block, so a grant is live on the
+next `/status` rather than dormant until a webhook/renew.
+
+### Extra constraints honored
+
+- **Idempotent:** re-POST of the same grants updates the one existing
+subscription row (no duplicate row) and yields a byte-identical `signed_payload`.
+Omitting a key drops it from the persisted map.
+- **Pre-first-activation authoring** is noted in the endpoint doc comment as a
+future extension (not a current flow).
+- `omitempty` byte-identity preserved: `signSubscription` with `Features: nil`
+emits no `features` key (unit test `TestSignSubscription_FeaturesOmitempty`).
+
+### Files touched (D2)
+
+- `apps/license-server/feature_grants.go` (new): constants, `isValidFeatureGrantKey`,
+  `isQuotaFeatureKey`, `featureGrantsForTenant`, `handleAdminSetFeatureGrants`,
+  `resignSubscriptionWithGrants`, `ensureFeatureGrantsField`.
+- `apps/license-server/feature_grants_test.go` (new): auth / key-validation /
+  persist+resign / idempotency / not-found / omitempty tests.
+- `apps/license-server/pb_schema.json`: added `feature_grants` json field to
+  `subscriptions` (schema parity for fresh boots).
+- `apps/license-server/main.go`: `ensureFeatureGrantsField` in OnServe bootstrap;
+  route registration for the endpoint.
+- `apps/license-server/handler_test.go`: same field migration + route in
+  `registerTestRoutes` (test harness boots via OnServe, not `main()`).
+- 11 graft sites: `activate.go`, `renew.go`, `resume.go`, `midtrans_webhook.go`,
+  `paddle_webhook.go` (x4), `admin_dashboard.go`, `admin_tenant_lifecycle.go`.
+
+### Hot files / branch discipline
+
+Branch `0.0.37`, no push/switch. Committed with an explicit pathspec limited to
+the 12 license-server files above; no other agent's dirty files swept in.
