@@ -1,5 +1,15 @@
 # Security Audit: Admin Dashboard Login Flow
 
+<!-- Audit stamp: 2026-09-09 . DSH . status: HISTORICAL-RECORD, annotated not rewritten .
+Dated 2026-08-29 snapshot; body left verbatim (rule E). Re-verified against branch 0.0.37:
+F2/F4/F6/F7/F8 still describe the code (admin.js:32-53 + admin-utils.js:1374; worker.ts:284-287;
+web_otp.go:43-46 and :52-56; login_lockout.go:36-40, :82-90; admin_dashboard.go:87-94).
+F5's parent-domain cookie is gone (worker.ts:111-113 writes Domain=${hostname}), F3's
+script-src premise is gone (worker.ts:121-131), and F3's "not on the marketing site"
+mitigation is now FALSE — /__oz/session is served on ozpos.my.id (worker.ts:724-738),
+which widens rather than narrows the exposure. See the Currency block.
+-->
+
 **Date:** 2026-08-29  
 **Scope:** `admin.ozpos.my.id` login flow — from the auth gate in the worker through the login page and license server auth endpoints to the admin dashboard SPA.
 
@@ -114,3 +124,19 @@ This is misleading — the operator could see fake numbers and think they're rea
 1. **(Architecture)** Replace `?token=` query param with a one-time exchange code — the license server issues a short-lived (30s) exchange code, the worker POSTs it to the license server to get the real JWT, eliminating the token from URLs entirely.
 2. **(CSP)** Separate the admin/dashboard subdomains' CSP from the marketing site's CSP — the admin SPA could have a stricter CSP (no `'unsafe-inline'`) by extracting the inline JS to an external file.
 3. **(Session)** Add server-side session refresh — the `/__oz/session` could refresh the session TTL on each call, keeping active sessions alive without requiring re-login.
+
+---
+
+## Currency (re-checked 2026-09-09 against branch 0.0.37 — annotation only; the record above is unchanged)
+
+Nothing here is downgraded. Two findings lost the mitigation the summary credited them with, and one lost its subject entirely.
+
+- **F1's subject is gone.** The `?token=` handoff this audit described was deleted the next day: commit `dbd3106ae` "fix(security): remove deprecated ?token= fallback (M3 / Phase 3 item 12)". `grep -E '\?token=|"token="' website/ scripts/ apps/` returns nothing, and `website/worker.ts:13-16` now documents only the `?code=` exchange. F1's "✅ Mitigated" is therefore understated — the residual risk it accepted no longer exists. Recommendation 1 below (one-time exchange code, 30 s) is exactly what shipped: `exchangeTTL = 30 * time.Second` at `apps/license-server/web_exchange.go:34`, registered at `apps/license-server/main.go:294-295`.
+- **F4's headers survive, on a different response.** The `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` + `Referrer-Policy: no-referrer` + `Pragma` set it credits is still shipped on the exchange 302 (`website/worker.ts:284-287`), the logout 302 (`:625-627`) and the portal 302 (`:706-709`) — but the token-bearing 302 it was written about is the one F1 lost.
+- **F5's premise is false today, in both directions.** `Domain=.ozpos.my.id` is gone: `setCookieHeader()` emits `Domain=${domain}` (`website/worker.ts:111-113`) and both call sites pass the request hostname (`:283`, `:705`), so a session minted on `admin.ozpos.my.id` is scoped to that host. It is **not** true that the parent domain is never used: the account-portal handoff runs on `ozpos.my.id` itself, so its cookie is written as `Domain=ozpos.my.id` (`:705`) and is sent to every subdomain. Re-measure: `grep -n 'Domain=' website/worker.ts`.
+- **F3 is now wider, not narrower.** Its mitigation bullet — "only available on `DASHBOARD_HOSTS` … not on the marketing site" — no longer holds: `DASHBOARD_HOSTS` is down to `admin.ozpos.my.id` alone (`website/worker.ts:72`) while `/__oz/session` is *also* served on the marketing host (`:724-738`) so the account portal can read its own cookie back. The second bullet, "CSP includes `'unsafe-inline'` for `script-src`", is also gone for these pages: `script-src 'self' https://static.cloudflareinsights.com` with the change recorded at `website/worker.ts:121-131`; `style-src` still carries `'unsafe-inline'` (`:131"). So the one reason the doc gave for accepting F3 architecturally has been removed, and the endpoint's blast radius grew. Do not read "accept" as re-confirmed.
+- **F6 is a default now, not a constant.** `defaultWebSessionTTL` = 24 h stands (`apps/license-server/web_otp.go:43-46`) and the 30-day cookie Max-Age stands (`website/worker.ts:283`), but the TTL is overridable via `OZ_WEB_SESSION_TTL` (`web_otp.go:310-322`, documented at `.env.example:96` and `docs/operations/runbook.md:440`). Recommendation 3 below is implemented server-side — `touchSession()` (`web_otp.go:127-133), called from `web_dashboard.go:49` and `web_exchange.go:145` — but not on `/__oz/session`, which never reaches the license server.
+- **F7 is narrower than it reads.** Sessions are still memory-only (`web_otp.go:13-19`, `:75-85), so "resets on restart" holds for them; the *lockout* counters no longer reset — they persist to SQLite table `rate_limit_login_lockouts` (`apps/license-server/login_lockout.go:20`, `:216`).
+- **F8 stands in full, with one open follow-on.** Window 15 min, 3/email, 10/IP: `web_otp.go:52-56`. Escalating lockout 5 s → +30 s → 15 min cap: `login_lockout.go:36-40` with the formula at `:82-90`. The 403 for a non-admin tenant email: `admin_dashboard.go:87-94`. Still unfixed, and discovered only later: `login_lockout.go:203`, `:218` and `:319` log `key=%q`, and that key is `"email:"+email` (`:384-386`) — the customer's address goes to the server log. Re-measure with `go -C apps/license-server test -short ./...` plus `grep -n 'key=%q' apps/license-server/login_lockout.go`.
+
+> last audited 09-09-26 by docs-auditor
