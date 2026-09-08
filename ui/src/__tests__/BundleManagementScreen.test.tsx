@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -24,7 +25,7 @@ vi.mock('@/api/bundles', () => ({
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok-test', activeWorkspace: null, logout: vi.fn() }),
-  WorkspaceProvider: ({ children }: { children: import('react').ReactNode }) => <>{children}</>,
+  WorkspaceProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({

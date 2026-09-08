@@ -1,4 +1,4 @@
-import { useLocalization } from '@fluent/react';
+import type { useLocalization } from '@fluent/react';
 import { NODE_TYPE_ICON } from './topologyCard';
 import type { NodeType, WorkspaceTypeKey, TopologyNodeData, TopologyWireData } from './NodeTopologyEditor';
 

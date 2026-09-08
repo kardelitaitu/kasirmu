@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Localized, useLocalization } from '@fluent/react';
+import { Localized } from '@fluent/react';
+import type { useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
 import { CheckIcon } from './NodeTopologyIcons';
 

@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 
 import MemosScreen from '@/features/memo/MemosScreen';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
+import type * as SubscriptionContextModule from '@/contexts/SubscriptionContext';
 import type { Memo } from '@/api/memos';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
@@ -53,9 +54,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 // §B gate: defaults OPEN for the regular screen tests; the gate test
 // overrides per-test. subscription.ftl supplies the lock strings.
 vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('@/contexts/SubscriptionContext')
-  >();
+  const actual = await importOriginal<typeof SubscriptionContextModule>();
   return {
     ...actual,
     useAdminGate: vi.fn().mockReturnValue({ locked: false, state: 'active' }),

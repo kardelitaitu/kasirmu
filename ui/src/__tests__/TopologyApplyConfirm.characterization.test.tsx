@@ -22,6 +22,7 @@ import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
 import { applyTopologyDiff, listTopologyRevisions } from '@/api/topology';
 import type { ComponentProps } from 'react';
+import type * as FluentReactModule from '@fluent/react';
 import multiStoreFtl from '@/locales/multi-location.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
@@ -34,7 +35,7 @@ vi.mock('@tauri-apps/api/core', async () => {
 });
 
 vi.mock('@fluent/react', async () => {
-  const actual = await vi.importActual<typeof import('@fluent/react')>('@fluent/react');
+  const actual = await vi.importActual<typeof FluentReactModule>('@fluent/react');
   return {
     ...actual,
     // The dialog's Localized elements carry English fallback children, which

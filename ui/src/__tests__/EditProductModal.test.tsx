@@ -6,6 +6,7 @@ import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import { FluentResource, FluentBundle } from '@fluent/bundle';
 import { EditProductModal } from '@/features/retail/EditProductModal';
 import type { ProductDto, ProductImageDto } from '@/api/products';
+import type * as ProductsModule from '@/api/products';
 
 // ── Mocks ─────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }));
 
 vi.mock('@/api/products', async (importActual) => {
-  const actual = await importActual<typeof import('@/api/products')>();
+  const actual = await importActual<typeof ProductsModule>();
   return {
     ...actual,
     productsSetImageScoped: mocks.setImage,

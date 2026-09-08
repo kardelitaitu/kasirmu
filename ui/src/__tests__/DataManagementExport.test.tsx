@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DataManagementScreen from '@/features/settings/DataManagementScreen';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
+import type * as SubscriptionContextModule from '@/contexts/SubscriptionContext';
 
 // ── Shared mocks ─────────────────────────────────────────────────
 
@@ -39,9 +40,7 @@ vi.mock('@/frontend/shared/Toast', () => ({
 // overrides per-test. AdminLockedFeature strings resolve through the
 // @fluent/react mock below (mockStrings entry).
 vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('@/contexts/SubscriptionContext')
-  >();
+  const actual = await importOriginal<typeof SubscriptionContextModule>();
   return {
     ...actual,
     useAdminGate: vi.fn().mockReturnValue({ locked: false, state: 'active' }),

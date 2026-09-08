@@ -16,6 +16,7 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 import sharedIdFtl from '@/locales/shared.id.ftl?raw';
 import subscriptionFtl from '@/locales/subscription.ftl?raw';
 import type { AuditEntryDto, AuditLogPageDto } from '@/api/audit';
+import type * as SubscriptionContextModule from '@/contexts/SubscriptionContext';
 
 const { mockListAuditLogScoped, mockGetAuditReviewStatusScoped, mockMarkAuditReviewedScoped, mockExportAuditLogScoped } =
   vi.hoisted(() => ({
@@ -41,9 +42,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 // screen tests (the §B gate test overrides it per-test), `useSubscription`
 // forwards to the real hook.
 vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('@/contexts/SubscriptionContext')
-  >();
+  const actual = await importOriginal<typeof SubscriptionContextModule>();
   const adminGateMock = vi.fn().mockReturnValue({ locked: false, state: 'active' });
   return {
     ...actual,
