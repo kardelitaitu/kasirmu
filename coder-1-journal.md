@@ -242,8 +242,10 @@ round are now closed by someone.
    That is a schema migration and therefore out of Phase C as designed.
 3. The tablet `-D warnings` violation above — who owns tablet caps?
 
-> Closed by someone else mid-round 3: `8244df55 fix(tablet): silence the
-> pre-existing warning cargo-check fails on` took the tablet unused-`mut`.
+> Closed before this round started: `8244df55 fix(tablet): silence the
+> pre-existing warning cargo-check fails on` took the tablet unused-`mut`. It was
+> already in `git log` when finisher-C opened the round; the open question is
+> recorded as answered, not answered-by-me.
 
 ---
 
@@ -289,21 +291,28 @@ the doc's prose: keys are the canonical `AvailabilityFeature::as_str()` wire nam
 is shorthand, the enum stays the single source of the key vocabulary, and an
 unknown key is inert by construction.
 
-### Gates — all green, all run BEFORE the commits
+### Gates — all green, run BEFORE each commit and re-run at the final HEAD
 
 | gate | result |
 |---|---|
 | `gofmt -l .` (apps/license-server) | clean |
 | `go vet ./...` | exit 0 |
-| `go test -short -count=1 .` | **ok 111.041s** |
+| `go test -short -count=1 .` | **ok 111.041s** pre-commit · **ok 118.573s** re-run at HEAD |
 | `cargo test -p oz-core --lib subscription` | **130 passed / 0 failed** |
 | `cargo test -p oz-core --lib entitlements` | **13 passed / 0 failed** |
 | `cargo test -p oz-core --lib availability` | **13 passed / 0 failed** |
 | `cargo test -p oz-pos-app --lib subscription` | **26 passed / 0 failed** |
 | `cargo test -p oz-pos-tablet --lib subscription` | **6 passed / 0 failed** |
-| `cargo fmt --all --check` | clean before and after both Rust commits |
+| `cargo fmt --all --check` | clean before and after all three commits |
+| `RUSTFLAGS=-D warnings cargo check -p oz-core -p oz-pos-app -p oz-pos-tablet --all-targets` | **exit 0**, Finished in 4m 41s, zero warnings (the `dev-ci.yml#cargo-check` shape) |
 
-### Two coordination calls worth keeping
+The five Rust rows were re-run verbatim after `12443a1e` and returned the same
+counts (130 / 13 / 13 / 26 / 6, zero failures), so nothing in the landing shifted
+a test. The working tree still carries other agents' uncommitted work, so those
+re-runs cover HEAD **plus** their in-flight diffs — a stronger check than HEAD
+alone, and the reason no gate was attributed to a stale tree.
+
+### Three coordination calls worth keeping
 
 1. **`crates/oz-core/src/subscription.rs` was a MIXED file** — coder-1's D1 block
    (+41) and coder-3's `SubscriptionTier::audit_retention_days` (+26) in one file.
