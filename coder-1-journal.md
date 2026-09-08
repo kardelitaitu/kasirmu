@@ -403,3 +403,46 @@ D2 (server-side grant authoring) and the Caps DTO / dev-mock trial+grant
 projection remain open and untouched — both depend on live-server
 `Features` authoring and the hot `ui/src/dev-mock/tauri-api.ts`, which this
 landing did not touch.
+
+## 2026-09-09 — todo-tools.md L319 IA/gate-parity audit (finisher-A)
+
+Audited L319 ("Add an information-architecture and gate parity test. Verify
+every top-level page has a registered route, its role policy agrees with the
+route policy, and its tier policy ... is tested. Verify Settings subpages and
+page/action quota gates separately.") against the current test union. Result:
+L319 is **NOT** flipped to [x] — one clause remains uncovered (see gap below).
+
+### Clauses satisfied (covering tests)
+- "every top-level page has a registered route" — `WorkspaceHomeTools.test.tsx`
+  (`route parity (no dead tiles)`: every tool route resolves to a registered
+  page) + `WorkspaceHomeTools.navParity.test.tsx` (commit `32e474b5`: every
+  tool route is a real sidebar nav entry).
+- "role policy agrees with the route policy" — `WorkspaceHomeTools.test.tsx`
+  (`home minimumRole is never looser than the route requiredRole`) and
+  `WorkspaceHomeTools.navParity.test.tsx` (home gate never looser than nav
+  `requiredRole`; home-stricter is intentional).
+- "tier policy (Analytics/Reports Pro+, Audit Log Premium+, cloud sync Plus+)
+  is tested" — `WorkspaceHomeTools.test.tsx` (`pins the agreed minimum tiers`:
+  analytics=pro, reports=pro, audit=premium, cloud-sync=plus) + `tierLevel —
+  canonical ordering`.
+- "Settings subpages" — `SettingsDeepLink.test.tsx` (`#/settings/topology`
+  deep-link switches the mounted section, KEPT_SECTIONS) and
+  `SettingsNavTree.test.tsx` (nav tree carries topology + sync items).
+- Role/permission gate machinery — `ui/src/__tests__/pageRegistry.test.ts`
+  (`passesGate` role hierarchy + permission precedence, `hasGrantedPermission`).
+
+### GAP — "page/action quota gates separately" is NOT covered
+The page-registry/menu-registry gate stack does NOT implement quota:
+`passesGate` only handles `requiredRole` + `requiredPermission`, and
+`getEnabledPages`/`getNavItems` filter only on the `feature` enabled-set. Quota
+is enforced at a different layer — server-side via the `AvailabilityFacts`
+precedence (server_policy > lifecycle > tier > quota > role > scope) and
+ultimately surfaces as `FeatureVerdict::reason_code() == "quota"`. No test pins
+that a feature/action at quota is gated in the IA: the only quota references in
+the UI tests are *display/consistency* tests, not gate-parity tests —
+`DiagnosticsSection.test.tsx:237,448` (renders the quota verdict detail line)
+and `TopologyScreen.test.tsx:1477` (tier badge agrees with the backend quota
+gate). None asserts an IA gate. L319's quota clause therefore remains open.
+Action for whoever owns gate parity: add a test that exercises a page/action
+being gated by a quota verdict (reason_code "quota") through the availability
+stack, then flip L319 to [x].
