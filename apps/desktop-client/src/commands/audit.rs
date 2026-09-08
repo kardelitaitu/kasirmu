@@ -6,8 +6,11 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use oz_core::availability::UsageCounts;
 use oz_core::db::Store;
+use oz_core::entitlements::build_entitlements;
 use oz_core::permissions;
+use oz_core::subscription::SubscriptionTier;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -117,6 +120,7 @@ pub async fn list_audit_log_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditLogPageDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
+    require_audit_tier(&state)?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_VIEW).await?;
     let db = conn
         .lock()
@@ -147,6 +151,37 @@ async fn require_audit_permission(
     let db = state.db.lock().await;
     let store = Store::new(&db);
     require_permission_for_user(&store, user_id, permission)
+}
+
+/// Tier gate for every tenant-facing audit-log read surface (AUD-01/04/09,
+/// todo-global-saas-2.md P1 "audit baseline").
+///
+/// The adopted decision (todo-global-saas-1.md "Decisions to preserve",
+/// published on the pricing page): **Audit Log is Premium+** — which
+/// subsumes the Free rule "no tenant-facing audit logs and no audit-log
+/// retention entitlement": Free/Plus/Pro sessions get
+/// [`AppError::PermissionDenied`] before any audit row is read, reviewed,
+/// or exported, no matter which roles they hold.
+///
+/// Reads the SAME fail-closed entitlement read model the caps command
+/// projects from: a missing/tampered/unreadable subscription row projects
+/// Free here too (lock the gate rather than error open — §B), and the
+/// desktop dev Free→Premium upgrade applies in debug builds so dev
+/// machines keep exercising the screen. Premium+ passes; the paid-tier
+/// retention schedule (Plus 90d / Pro 180d) governs only the SWEEP, not
+/// the read gate.
+fn require_audit_tier(state: &AppState) -> Result<(), AppError> {
+    let db = state.db.blocking_lock();
+    let store = Store::new(&db);
+    let ent = build_entitlements(&store, UsageCounts::default(), true);
+    drop(db);
+    match ent.tier {
+        SubscriptionTier::Premium | SubscriptionTier::Enterprise => Ok(()),
+        other => Err(AppError::PermissionDenied(format!(
+            "audit log requires the Premium plan or above (current tier: {})",
+            other.name()
+        ))),
+    }
 }
 
 // ── Review checkpoints (AUD-04) ───────────────────────────────────
@@ -205,13 +240,14 @@ pub struct AuditReviewStatusDto {
 
 /// Fetch the session store's latest review checkpoint + unreviewed count
 /// (AUD-04). Resolves the store from the session token and enforces
-/// `audit:view`.
+/// `audit:view` plus the Premium+ audit tier.
 #[tauri::command]
 pub async fn get_audit_review_status_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<AuditReviewStatusDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
+    require_audit_tier(&state)?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_VIEW).await?;
     let db = conn
         .lock()
@@ -233,7 +269,7 @@ pub async fn get_audit_review_status_scoped(
 ///
 /// Writes the checkpoint row and an `audit.review` audit event in one
 /// transaction, so the review action is durable, shared across managers,
-/// and itself auditable. Enforces `audit:view`.
+/// and itself auditable. Enforces `audit:view` plus the Premium+ tier.
 #[tauri::command]
 pub async fn mark_audit_reviewed_scoped(
     session_token: String,
@@ -241,6 +277,7 @@ pub async fn mark_audit_reviewed_scoped(
     state: State<'_, AppState>,
 ) -> Result<ReviewCheckpointDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
+    require_audit_tier(&state)?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_VIEW).await?;
     let db = conn
         .lock()
@@ -306,6 +343,7 @@ pub async fn export_audit_log_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditExportDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
+    require_audit_tier(&state)?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_EXPORT).await?;
     // Read + export-event write happen on the SAME store connection (matching
     // every other scoped audit mutation, e.g. mark_audit_reviewed_scoped), so

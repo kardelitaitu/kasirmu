@@ -247,6 +247,55 @@ pub fn run() {
                     });
                 }
 
+                // ── Audit retention sweep daemon (todo-global-saas-2.md P1) ─
+                // Mirrors the desktop sweep: every 15 minutes, resolve the tier
+                // from the global DB and enforce the adopted schedule (Free
+                // purge-all, Plus 90d, Pro 180d, Premium 1y, Enterprise 3y) on
+                // it. The tablet shares ONE database (AppState.db) — there is
+                // no per-store split here. A missing/tampered subscription row
+                // SKIPS the tick: the fail-closed projection is Free and a
+                // purge triggered by corrupted data would be irreversible.
+                {
+                    let sweep_handle = app_handle.clone();
+                    platform_startup::spawn_daemon("tablet audit retention sweep", async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(900));
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let Some(state) = sweep_handle.try_state::<AppState>() else {
+                                continue;
+                            };
+                            let now = chrono::Utc::now()
+                                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                            let conn = state.db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            let ent = oz_core::entitlements::build_entitlements(
+                                &store,
+                                oz_core::availability::UsageCounts::default(),
+                                false,
+                            );
+                            if !ent.loaded {
+                                tracing::warn!(
+                                    "tablet audit sweep: no valid subscription row — skipping tick"
+                                );
+                                continue;
+                            }
+                            match store.sweep_audit_retention(&ent.tier, &now) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "tablet audit sweep: deleted {n} expired audit row(s) (tier: {})",
+                                    ent.tier.name()
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "tablet audit retention sweep failed"
+                                ),
+                            }
+                        }
+                    });
+                }
+
                 // ── Background sync daemon ────────────────────────────────
                 // Uses the same 3-phase split as the Tauri commands:
                 // read DB → async HTTP → write DB, so the DB lock is never

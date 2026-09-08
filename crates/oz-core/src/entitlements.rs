@@ -153,6 +153,17 @@ impl Entitlements {
         self.tier.sales_history_days()
     }
 
+    /// Tier audit-log retention window in days, measured from the event
+    /// timestamp (`None` = no retention entitlement — Free keeps no
+    /// tenant-facing audit logs and the sweep purges). Reads the tier
+    /// directly like `sales_history_days`; the same instance the caps
+    /// projection and the audit commands consult, so a schedule change
+    /// cannot drift between the sweep and any UI that displays it.
+    #[must_use]
+    pub fn audit_retention_days(&self) -> Option<i64> {
+        self.tier.audit_retention_days()
+    }
+
     /// The tier's offline grace window in days.
     #[must_use]
     pub fn offline_grace_days(&self) -> i64 {

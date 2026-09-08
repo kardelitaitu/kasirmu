@@ -715,3 +715,221 @@ fn log_audit_keeps_non_secret_json_intact() {
     assert!(entries[0].details.contains("1000"));
     assert!(!entries[0].details.contains("[REDACTED]"));
 }
+
+// ── Tier audit retention sweep (todo-global-saas-2.md P1) ───────
+
+use crate::subscription::SubscriptionTier;
+
+/// Insert an audit row with an explicit RFC3339 timestamp and id.
+fn insert_audit_at(conn: &Connection, id: &str, created_at: &str) {
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, details, outcome, created_at)
+         VALUES (?1, 'sweeper-test', 'sale.void', '{}', 'success', ?2)",
+        rusqlite::params![id, created_at],
+    )
+    .unwrap();
+}
+
+/// Count rows in audit_log.
+fn audit_count(conn: &Connection) -> i64 {
+    conn.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0))
+        .unwrap()
+}
+
+/// The sweep must leave the trigger marker disarmed after every path.
+fn marker_count(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM settings WHERE key = 'audit.retention_sweep_active'",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn audit_retention_row_inside_window_survives() {
+    let conn = fresh();
+    let s = store(&conn);
+    // Plus = 90 days. `now` is far in the future of the seeded timestamps;
+    // a row 10 days old is inside the window.
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-win", "2099-12-22T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, now)
+        .unwrap();
+    assert_eq!(deleted, 0, "nothing is past the Plus window");
+    assert_eq!(audit_count(&conn), 1);
+    assert_eq!(marker_count(&conn), 0, "marker must not linger");
+}
+
+#[test]
+fn audit_retention_row_outside_window_is_swept() {
+    let conn = fresh();
+    let s = store(&conn);
+    // Plus = 90 days: a row 91 days old is out, a row 89 days old is in.
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-old", "2099-10-02T00:00:00.000Z");
+    insert_audit_at(&conn, "aud-new", "2099-10-04T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, now)
+        .unwrap();
+    assert_eq!(deleted, 1, "only the 91-day-old row is past the window");
+    assert_eq!(audit_count(&conn), 1);
+    let remaining = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(remaining[0].id, "aud-new");
+    assert_eq!(marker_count(&conn), 0);
+}
+
+#[test]
+fn audit_retention_window_is_measured_from_event_timestamp() {
+    // The schedule is measured from the EVENT timestamp, not from row
+    // insertion order: insert the IN-WINDOW row first and the EXPIRED row
+    // second (higher rowid, newer in the table) — only the expired one
+    // goes, despite being the most recently inserted.
+    let conn = fresh();
+    let s = store(&conn);
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-in-window", "2099-12-22T00:00:00.000Z");
+    insert_audit_at(&conn, "aud-expired-but-late", "2099-01-01T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, now)
+        .unwrap();
+    assert_eq!(deleted, 1, "event timestamp, not insertion order, decides");
+    let remaining = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].id, "aud-in-window");
+    assert_eq!(marker_count(&conn), 0);
+}
+
+#[test]
+fn audit_retention_per_tier_windows() {
+    // One row exactly N days + 1ms old is expired for every tier with a
+    // shorter window and survives for every tier with a longer one.
+    let cases: &[(SubscriptionTier, &str, usize)] = &[
+        // 200 days old: Plus(90) and Pro(180) sweep it;
+        // Premium(365)/Enterprise(1095) keep it.
+        (SubscriptionTier::Plus, "2099-06-15T00:00:00.000Z", 1),
+        (SubscriptionTier::Pro, "2099-06-15T00:00:00.000Z", 1),
+        (SubscriptionTier::Premium, "2099-06-15T00:00:00.000Z", 0),
+        (SubscriptionTier::Enterprise, "2099-06-15T00:00:00.000Z", 0),
+    ];
+    for (tier, ts, expected) in cases {
+        let conn = fresh();
+        let s = store(&conn);
+        insert_audit_at(&conn, "aud-tier", ts);
+        let deleted = s
+            .sweep_audit_retention(tier, "2100-01-01T00:00:00.000Z")
+            .unwrap();
+        assert_eq!(
+            deleted, *expected,
+            "tier {:?} swept {deleted} rows, expected {expected}",
+            tier
+        );
+        assert_eq!(marker_count(&conn), 0);
+    }
+}
+
+#[test]
+fn audit_retention_free_purges_everything() {
+    // Free has NO retention entitlement: every row goes, regardless of
+    // age ("Free has no tenant-facing audit logs").
+    let conn = fresh();
+    let s = store(&conn);
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-fresh", now); // brand new — still purged
+    insert_audit_at(&conn, "aud-ancient", "2019-01-01T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Free, now)
+        .unwrap();
+    assert_eq!(deleted, 2);
+    assert_eq!(audit_count(&conn), 0);
+    assert_eq!(marker_count(&conn), 0);
+}
+
+#[test]
+fn audit_retention_sweep_is_noop_when_nothing_expired() {
+    let conn = fresh();
+    let s = store(&conn);
+    // Empty-table fast path (paid tier, nothing at all).
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Enterprise, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(deleted, 0);
+    // Free on an empty table also fast-paths (no transaction, no marker).
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Free, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(deleted, 0);
+
+    // Non-empty table, nothing past the cutoff (paid tier): the row 1ms
+    // inside the Enterprise window survives.
+    insert_audit_at(&conn, "aud-live", "2099-12-31T23:59:59.999Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Enterprise, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(deleted, 0);
+    assert_eq!(audit_count(&conn), 1);
+    assert_eq!(marker_count(&conn), 0, "no sweep left a marker behind");
+}
+
+#[test]
+fn audit_retention_sweep_is_idempotent() {
+    let conn = fresh();
+    let s = store(&conn);
+    insert_audit_at(&conn, "aud-x", "2099-01-01T00:00:00.000Z");
+    let first = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    let second = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(first, 1);
+    assert_eq!(second, 0, "second sweep finds nothing to do");
+}
+
+#[test]
+fn audit_retention_trigger_still_blocks_direct_delete() {
+    // The carve-out is transaction-scoped: a plain DELETE outside a live
+    // sweep must still hit the immutability trigger.
+    let conn = fresh();
+    insert_audit_at(&conn, "aud-locked", "2019-01-01T00:00:00.000Z");
+    let err = conn
+        .execute("DELETE FROM audit_log WHERE id = 'aud-locked'", [])
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("immutable"),
+        "expected the immutability trigger, got: {err}"
+    );
+}
+
+#[test]
+fn audit_retention_update_remains_absolutely_immutable() {
+    // Deletion is the implemented retention policy; UPDATE stays blocked
+    // with NO carve-out (migration 20260920 touches only the DELETE
+    // trigger).
+    let conn = fresh();
+    insert_audit_at(&conn, "aud-frozen", "2019-01-01T00:00:00.000Z");
+    let err = conn
+        .execute(
+            "UPDATE audit_log SET details = '{}' WHERE id = 'aud-frozen'",
+            [],
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("immutable"), "got: {err}");
+}
+
+#[test]
+fn audit_retention_bad_now_timestamp_fails_closed() {
+    let conn = fresh();
+    let s = store(&conn);
+    insert_audit_at(&conn, "aud-badts", "2099-01-01T00:00:00.000Z");
+    let err = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, "not-a-timestamp")
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("bad `now` timestamp"),
+        "got: {err}"
+    );
+    assert_eq!(audit_count(&conn), 1, "nothing deleted on error");
+    assert_eq!(marker_count(&conn), 0);
+}

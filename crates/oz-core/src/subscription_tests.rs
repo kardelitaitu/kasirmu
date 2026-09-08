@@ -1659,3 +1659,33 @@ fn trial_state_does_not_change_the_tier_or_quota_answer() {
     assert!(trial.is_trial());
     assert!(!plain.is_trial());
 }
+
+// ── Audit retention schedule (todo-global-saas-2.md P1) ──────
+
+#[test]
+fn tier_audit_retention_matches_published_schedule() {
+    // Adopted schedule (todo-global-saas-1.md "Decisions to preserve",
+    // published on the pricing page since 2026-09-06): Free none, Plus 90,
+    // Pro 180, Premium 1 year, Enterprise 3 years.
+    assert_eq!(SubscriptionTier::Free.audit_retention_days(), None);
+    assert_eq!(SubscriptionTier::Plus.audit_retention_days(), Some(90));
+    assert_eq!(SubscriptionTier::Pro.audit_retention_days(), Some(180));
+    assert_eq!(
+        SubscriptionTier::Premium.audit_retention_days(),
+        Some(365),
+        "1 year"
+    );
+    assert_eq!(
+        SubscriptionTier::Enterprise.audit_retention_days(),
+        Some(1_095),
+        "3 years default"
+    );
+}
+
+#[test]
+fn tier_audit_retention_one_time_is_free() {
+    // The deprecated perpetual license resolves as the free quota tier
+    // everywhere else (tier_key), so it carries no audit retention
+    // entitlement here either.
+    assert_eq!(SubscriptionTier::OneTime.audit_retention_days(), None);
+}

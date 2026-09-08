@@ -1,4 +1,6 @@
-//! Audit Log — append-only immutable entries.
+//! Audit Log — append-only immutable entries, plus the tier retention
+//! sweep (`sweep_audit_retention`) that deletes rows past the tenant's
+//! window through the trigger carve-out migration 20260920.
 /*
 last audited 25-07-26 by RSA-Agent (oz-core slice B5 finale)
 crate: oz-core | status: SAFE | lint: CLEAN
@@ -116,6 +118,122 @@ fn sanitize_details(details: &str) -> String {
 }
 
 impl Store<'_> {
+    /// The settings-table key the retention sweep sets while it deletes
+    /// expired rows (migration 20260920's trigger carve-out). The
+    /// `audit_log_immutable_delete` trigger raises UNLESS this key exists,
+    /// and the sweep only ever holds it inside its own transaction, so a
+    /// DELETE issued outside a live sweep still aborts.
+    pub const SWEEP_MARKER_KEY: &'static str = "audit.retention_sweep_active";
+
+    /// Tier audit retention sweep (todo-global-saas-2.md P1 "audit baseline
+    /// and retention schedule").
+    ///
+    /// Deletes every `audit_log` row whose `created_at` is older than the
+    /// tenant tier's window, measured from the event timestamp. The window
+    /// comes from `SubscriptionTier::audit_retention_days` (via the
+    /// `Entitlements` read model); `None` means the tier has no retention
+    /// entitlement (Free keeps no tenant-facing audit logs) and every row
+    /// is purged.
+    ///
+    /// All work runs in ONE transaction: the sweep marker is inserted,
+    /// expired rows are deleted, the marker is cleared, the transaction
+    /// commits. The carve-out trigger (migration 20260920) permits DELETE
+    /// only while the marker row exists, so the exemption is never visible
+    /// outside a live sweep — a crash rolls the marker back together with
+    /// the deletes, and any other connection's DELETE still aborts. The
+    /// UPDATE trigger stays unconditionally immutable: no anonymization
+    /// path exists; deletion IS the implemented retention policy.
+    ///
+    /// The cutoff is computed HERE, in Rust, and passed as an RFC3339
+    /// string — the memo sweep's 2026-09-07 ruling: RFC3339-vs-RFC3339
+    /// keeps the comparison in one format (SQLite's `datetime()` emits a
+    /// space-separated form that mis-sorts against `…T…Z`). `now` must be
+    /// RFC3339 with a `T` separator, matching what `AuditEntry::new`
+    /// persists.
+    ///
+    /// The negative-window fast path skips the marker entirely, so a
+    /// sweep with nothing to do never opens a transaction. Returns the
+    /// number of rows deleted (0 = nothing expired); idempotent.
+    ///
+    /// Callers must resolve the tier fail-closed (missing/tampered row →
+    /// skip the sweep): this method cannot distinguish "the caller checked
+    /// and the tier is Free" from "the caller did not check", and a purge
+    /// triggered by a tampered row would be irreversible.
+    pub fn sweep_audit_retention(
+        &self,
+        tier: &crate::subscription::SubscriptionTier,
+        now: &str,
+    ) -> Result<usize, CoreError> {
+        match tier.audit_retention_days() {
+            // Free (and the legacy perpetual license): no tenant-facing
+            // audit logs — purge everything.
+            None => self.sweep_audit_retention_all(),
+            Some(window_days) => {
+                let cutoff = chrono::DateTime::parse_from_rfc3339(now)
+                    .map_err(|e| {
+                        CoreError::Internal(format!(
+                            "audit retention sweep: bad `now` timestamp: {e}"
+                        ))
+                    })?
+                    .with_timezone(&chrono::Utc)
+                    - chrono::Duration::days(window_days);
+                let cutoff_str = cutoff.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+                // Fast path: nothing expired, no transaction, no marker.
+                let expired: i64 = self.conn.query_row(
+                    "SELECT COUNT(*) FROM audit_log WHERE created_at < ?1",
+                    rusqlite::params![cutoff_str],
+                    |row| row.get(0),
+                )?;
+                if expired == 0 {
+                    return Ok(0);
+                }
+
+                let tx = self.conn.unchecked_transaction()?;
+                tx.execute(
+                    "INSERT INTO settings (key, value) VALUES (?1, '1')
+                     ON CONFLICT (key) DO UPDATE SET value = '1', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+                    rusqlite::params![Self::SWEEP_MARKER_KEY],
+                )?;
+                let deleted = tx.execute(
+                    "DELETE FROM audit_log WHERE created_at < ?1",
+                    rusqlite::params![cutoff_str],
+                )?;
+                tx.execute(
+                    "DELETE FROM settings WHERE key = ?1",
+                    rusqlite::params![Self::SWEEP_MARKER_KEY],
+                )?;
+                tx.commit()?;
+                Ok(deleted)
+            }
+        }
+    }
+
+    /// Purge EVERY audit row (the Free branch of
+    /// [`Self::sweep_audit_retention`]). Same one-transaction marker
+    /// discipline; the count query is the fast path here.
+    fn sweep_audit_retention_all(&self) -> Result<usize, CoreError> {
+        let total: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM audit_log", [], |row| row.get(0))?;
+        if total == 0 {
+            return Ok(0);
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, '1')
+             ON CONFLICT (key) DO UPDATE SET value = '1', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            rusqlite::params![Self::SWEEP_MARKER_KEY],
+        )?;
+        let deleted = tx.execute("DELETE FROM audit_log", [])?;
+        tx.execute(
+            "DELETE FROM settings WHERE key = ?1",
+            rusqlite::params![Self::SWEEP_MARKER_KEY],
+        )?;
+        tx.commit()?;
+        Ok(deleted)
+    }
+
     /// Insert a new audit log entry (append-only).
     ///
     /// AUD-06: the `details` payload is sanitised before persistence — secret

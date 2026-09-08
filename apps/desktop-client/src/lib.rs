@@ -549,6 +549,110 @@ pub fn run() {
                 );
             }
 
+            // ── Audit retention sweep daemon (todo-global-saas-2.md P1) ─
+            // Enforces the adopted tier schedule (Free purge-all, Plus 90d,
+            // Pro 180d, Premium 1y, Enterprise 3y default) on every DB that
+            // carries an audit_log table: the GLOBAL database (Memos-adjacent
+            // system events, api.write entries, sale/stock/product events from
+            // the module handlers) AND each open per-store database (the
+            // store-scoped entries the audit screen reads). Every 15 minutes —
+            // audit rows expire on day boundaries, so 5-minute sweeps would
+            // buy nothing. Same std-sync Mutex discipline as the KDS health
+            // daemon: the guard lives only inside a lexical block.
+            //
+            // Fail-closed asymmetry: an unreadable/tampered subscription row
+            // SKIPS the tick (a purge triggered by corrupted data would be
+            // irreversible; a skipped sweep just delays deletion to a later
+            // tick), while a validly-signed Free row purges everything.
+            {
+                let db = app.state::<AppState>().db.clone();
+                let db_manager = app.state::<AppState>().db_manager.clone();
+                platform_startup::spawn_daemon("audit retention sweep", async move {
+                    let mut interval =
+                        tokio::time::interval(std::time::Duration::from_secs(900));
+                    // Skip the first tick so startup isn't delayed.
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        let now = chrono::Utc::now()
+                            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                        // Resolve the tier ONCE per tick from the global DB,
+                        // the same read model the caps command projects from.
+                        // NOT fail-closed here, deliberately inverted: a
+                        // missing/tampered/unreadable row (`loaded == false`)
+                        // SKIPS the whole tick, because the fail-closed
+                        // projection is Free and a purge triggered by
+                        // corrupted data would be irreversible — a skipped
+                        // sweep only delays deletion to a later tick. A
+                        // validly-signed Free row purges, as the schedule
+                        // demands. debug_upgrade is false: the dev Free→Premium
+                        // promotion must never widen a purge.
+                        let tier = {
+                            let conn = db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            let ent = oz_core::entitlements::build_entitlements(
+                                &store,
+                                oz_core::availability::UsageCounts::default(),
+                                false,
+                            );
+                            if !ent.loaded {
+                                None
+                            } else {
+                                Some(ent.tier)
+                            }
+                        };
+                        let Some(tier) = tier else {
+                            tracing::warn!(
+                                "audit retention sweep: no valid subscription row — skipping tick (fail-closed)"
+                            );
+                            continue;
+                        };
+                        // Global DB first…
+                        {
+                            let conn = db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            match store.sweep_audit_retention(&tier, &now) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "audit retention sweep (global): deleted {n} expired audit row(s) (tier: {})",
+                                    tier.name()
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "audit retention sweep (global) failed"
+                                ),
+                            }
+                        }
+                        // …then every open per-store DB (the audit screen's
+                        // rows live there; closed stores are swept on open by
+                        // the next tick after re-open).
+                        for store_id in db_manager.open_store_ids() {
+                            let Ok(conn) = db_manager.open_store(&store_id) else {
+                                tracing::warn!(store_id, "audit retention sweep: store db unavailable");
+                                continue;
+                            };
+                            let Ok(db) = conn.lock() else {
+                                tracing::warn!(store_id, "audit retention sweep: store db lock poisoned");
+                                continue;
+                            };
+                            let store = oz_core::db::Store::new(&db);
+                            match store.sweep_audit_retention(&tier, &now) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    store_id,
+                                    "audit retention sweep: deleted {n} expired audit row(s) (tier: {})",
+                                    tier.name()
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e, store_id,
+                                    "audit retention sweep failed"
+                                ),
+                            }
+                        }
+                    }
+                });
+            }
+
             // ── LAN event forwarder ────────────────────────────────────
             // Read LAN server config from the settings table (C-4).
             // Default: loopback-only, no PSK. External bind requires

@@ -93,11 +93,21 @@ HEADER = """\
 # trigger name. The generator fails closed if the dumped set and this
 # map ever disagree (missing port OR stale entry).
 TRIGGER_MAP: dict[str, str] = {
+    # Retention carve-out (migration 20260920, todo-global-saas-2.md P1):
+    # the sweep deletes expired rows through the same
+    # settings-key marker (`audit.retention_sweep_active`) the SQLite
+    # trigger checks; the sweep holds the marker only inside its own
+    # transaction. Mirror of the SQLite WHEN clause.
     "audit_log_immutable_delete": """\
 CREATE OR REPLACE FUNCTION audit_log_immutable_delete_fn() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
+    IF NOT EXISTS (
+        SELECT 1 FROM settings WHERE key = 'audit.retention_sweep_active'
+    ) THEN
+        RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
+    END IF;
+    RETURN NULL;
 END;
 $$;
 
