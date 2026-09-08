@@ -415,10 +415,12 @@ fn init_sql_creates_complete_schema_surface() {
         // plus the 5 payables / payable-payments indexes from
         // `20260918_payables.sql` (tenant+status, supplier, partial due-date,
         // payments-by-payable, payments-by-tenant), on top of the previously
-        // pinned 155.
+        // pinned 155; plus the 2 partial scope indexes from
+        // `20260921_tax_rate_scoping.sql` (location, entity — both partial, so
+        // neither indexes the constant NULL that every pre-scoping row carries).
         // (The table's UNIQUE constraint is NOT counted: SQLite names that
         // index `sqlite_autoindex_*` and the query excludes that prefix.)
-        164,
+        166,
         "index surface drifted"
     );
     assert_eq!(
@@ -561,6 +563,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260918_payables.sql".to_string(),
             "20260919_regional_configuration.sql".to_string(),
             "20260920_audit_retention.sql".to_string(),
+            "20260921_tax_rate_scoping.sql".to_string(),
         ]
     );
 
