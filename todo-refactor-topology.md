@@ -356,6 +356,18 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 **Slice order ahead (confirmed):** close 3.2 — move/bend command helpers (history-entry timing, Escape restore, no-op suppression) → 3.3 selection/hover announcement extraction → 3.4 pointer/marquee/bend-drag and the keyboard controller → 3.5 viewport/persistence → Phase 4 `ApplyPanelProps` render-tree extraction (the apply/save flow, ~250 lines — the audit's highest-leverage next pass).
 
+### 2026-09-09 — Boundary-record fix: the phantom `--color-surface` token
+
+**Fix:** `NodeTopologyEditor.css` quota-readout chip (`.topology-warehouse-quota`, ~line 1679) — `background: var(--color-surface)` → `var(--color-bg-surface)`, plus a comment recording the phantom and the precedent. One token, no restyling.
+
+**Attribution:** `a33d6075a` (warehouse over-limit quota readout) introduced the phantom after `b68e24389` had cleared the identical phantom from the bend-handle ring — the parity test's own header comment names `--color-surface` as the canonical example of a token that never existed. The chip's background has rendered CSS-initial black in both themes since `a33d6075a`; the fix restores the intended neutral floating readout behind the warning/danger/info variants.
+
+**Token choice:** `--color-bg-surface` is the theme-defined surface token (`#1c1f27` dark — elevated over the `#12141a` canvas the chip floats on; `#ffffff` light) and the established token for this element class: `ConnectionStatus.css`, `GatewayStatusBadge.css`, `UpdateBanner.css`, `FastPINOverlay.css` all use it for floating status overlays. No new token added; the parity test's own commentary excludes "the test asks for the *name* of the right existing token" fixes.
+
+**Verification:** `topologyThemeParity.test.ts` 7/7 (both phantom assertions green). Focused topology suites (48 files): 2069 passed / 1 skipped, the single remaining failure being `themeTokenCompliance`'s 8 hardcoded-spacing violations in `ImpersonationBanner.css` from `425b823e1` — a distinct recorded cross-agent risk, deliberately untouched. `npm run typecheck` exit 0.
+
+**Not fixed (other agents' seams, stay recorded):** `#/settings/topology` storage-key pin, `topologyNodeCard` native tooltips, the impersonation provider crash and banner CSS, the stale E2E settings-sidebar selector, and the render-isolation failures.
+
 ## Completion checklist
 
 - [ ] `NodeTopologyEditor.tsx` is a small composition root rather than the owner of unrelated state machines and event systems.
