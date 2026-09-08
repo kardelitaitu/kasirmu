@@ -53,6 +53,58 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 - [ ] Choose extraction seams that can be tested independently before changing the next group.
 - [ ] Avoid creating a single replacement "god hook" that merely moves the 6k-line problem into another file.
 
+## Execution baseline and first slices
+
+### Current-state inventory
+
+- [ ] Record the exact line count of `ui/src/features/locations/NodeTopologyEditor.tsx` at the start of the refactor; do not use line count alone as the success metric.
+- [ ] Treat the following existing modules as established seams, not targets for needless re-extraction: `nodeTopologyEditorState.ts`, `nodeTopologyEditorSelectionState.ts`, `nodeTopologyEditorDragState.ts`, `nodeTopologyEditorConnectionState.ts`, `nodeTopologyEditorHoverState.ts`, `nodeTopologyEditorSaveState.ts`, `topologyEditorHelpers.ts`, `topologyContract.ts`, `topologyNodeCard.tsx`, `topologyWireGroup.tsx`, `topologyToolRack.tsx`, and `topologyHeader.tsx`.
+- [ ] Confirm the remaining monolith responsibilities currently include load/seed effects, inspector/profile editing, rename flows, templates and clipboard, Apply confirmation, keyboard commands, pointer/marquee/bend interactions, touch gestures, viewport state, validation integration, migration UI, and final canvas composition.
+- [ ] Record the current importers and re-exports before moving any symbol; tests currently import the editor and helper types directly from `NodeTopologyEditor.tsx`.
+- [ ] Record the focused test entry points: `ui/src/__tests__/NodeTopologyEditor.test.tsx` and `ui/src/__tests__/InspectorIntegration.test.tsx`, plus any topology screen tests discovered during Phase 0.
+
+### First implementation queue
+
+- [ ] **Slice 0 — baseline only:** add or strengthen characterization tests and record focused test/typecheck results. No production extraction.
+- [ ] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice.
+- [ ] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged.
+- [ ] **Slice 3 — inspector boundary:** extract the inspector drawer and branch profile fields behind typed props. Preserve the existing `BranchLocationFields` API behavior and test selectors.
+- [ ] **Slice 4 — Apply/migration boundary:** extract Apply confirmation, PIN/session handling, legacy-wire migration UI, and revision-conflict presentation. Keep save decisions and contract validation unchanged.
+- [ ] **Slice 5 — pointer boundary:** extract mouse/pointer, marquee, bend-drag, and document-listener cleanup orchestration. Keep touch gestures separate and defer them to a following slice if the boundary is unclear.
+- [ ] **Slice 6 — viewport/touch boundary:** extract pan, zoom, auto-fit, viewport persistence, minimap coordination, and touch gestures only after pointer behavior is stable.
+- [ ] **Slice 7 — composition cleanup:** move remaining overlays and canvas composition into focused components, then reduce `NodeTopologyEditor.tsx` to orchestration.
+- [ ] Complete and verify each slice before starting the next; do not parallelize slices that change the same state boundary.
+
+### Per-slice acceptance record
+
+For every slice, add a short entry to the task journal or PR notes containing:
+
+- [ ] Slice name and one-sentence responsibility boundary.
+- [ ] Exact production files and test files changed.
+- [ ] Public imports/re-exports intentionally preserved or migrated.
+- [ ] Focused test command and result.
+- [ ] `npm run typecheck` result from `ui/`.
+- [ ] Behavior explicitly checked manually or through tests.
+- [ ] Rollback point: the commit can be reverted without reverting an unrelated slice.
+- [ ] Remaining coupling or follow-up work, if any.
+
+### Dependency direction
+
+- [ ] Pure modules may depend on types, constants, and pure contract helpers, but not React context, toasts, browser globals, or API clients.
+- [ ] State hooks may depend on pure modules and typed domain actions, but should not render JSX.
+- [ ] Feature components may depend on state hooks and pure modules, but API/session access should remain behind the existing screen/editor boundary or a named hook.
+- [ ] `TopologyScreen.tsx` remains responsible for branch selection, permission gating, backend loading around the editor, revision browser ownership, and dirty-switch confirmation unless a later slice explicitly changes that boundary.
+- [ ] `NodeTopologyEditor.tsx` remains the compatibility entry point until all importers have moved.
+- [ ] Do not introduce circular imports between the editor, contract, card, and state modules; use type-only imports or a small shared types module when necessary.
+
+### Stop and reassess conditions
+
+- [ ] Stop the current slice if it requires changing persisted schema, backend APIs, localization IDs, or interaction semantics.
+- [ ] Stop if the proposed module needs most of the parent component's state, refs, effects, and callbacks; the seam is too broad and needs to be split.
+- [ ] Stop if the extraction requires more than one compatibility adapter or causes broad test rewrites unrelated to the moved responsibility.
+- [ ] Stop if focused tests become less specific, require timing sleeps, or lose coverage of cleanup and cancellation paths.
+- [ ] Record the coupling problem and choose a smaller seam before continuing; do not solve uncertainty with a large rewrite.
+
 ## Phase 2 — Stabilize shared types and boundaries
 
 - [ ] Decide which data types are editor-domain types and which are semantic-contract types.
