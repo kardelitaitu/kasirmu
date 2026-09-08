@@ -5,6 +5,8 @@ description: Meta-skill that routes tasks to the right OZ-POS skill. Use when st
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the oz-lua, oz-payment, oz-security and oz-reporting crate READMEs, crates/oz-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed) -->
 
+<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. -->
+
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — oz-lua/oz-payment/oz-security/cloud-sync/oz-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
 
 # OZ-POS Onboarding Guide
@@ -62,6 +64,12 @@ What do you want to do?
 | Audit any project document (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase — verify claims, classify drift, patch the doc, stamp it audited | **`docs-auditor`** |
 | Diagnose, reproduce, and repair failing tests or CI checks on an active pull request | **`pr-repair`** |
 | Create a new pull request with branch-prefixed title and comprehensive description derived from 50–100 commits | **`pr-create-pull-request`** |
+| Explore code structurally instead of grepping — find symbols, trace callers and callees, map a change's blast radius, audit dead code or hot paths, query the knowledge graph | **`codebase-memory`** |
+
+**Discovery is not a router row — it is a standing rule.** `AGENTS.md` requires the knowledge
+graph *before* reading files or grepping for symbols, so `codebase-memory` applies to every
+row above; read it first if you have not used the graph from `run_code` before. Its
+"Mandatory first two calls" section is the whole on-ramp.
 
 If your task touches more than one layer, read each relevant skill in the order shown above (rust-backend → tauri-ipc → ui-components). The skills are designed to be cross-referenced. After making your change, run `skill-drift-guard` to verify the skills still match the code.
 
@@ -163,4 +171,4 @@ If this passes locally, the PR is ready.
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 08-09-26 by DSH
