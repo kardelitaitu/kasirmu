@@ -83,6 +83,26 @@ function mockStaffMember(overrides: Partial<Record<string, unknown>> = {}): Reco
   };
 }
 
+/**
+ * The staff rows the dev mock serves, in ONE place.
+ *
+ * Extracted because two commands now report the same people: list_staff_scoped
+ * lists them, and list_role_holders_scoped counts and groups them per role. A
+ * second literal copy would let the role screen claim one number of accounts
+ * while its own expanded list named different ones -- the exact contradiction
+ * the real backend was just fixed for, reproduced in the preview that exists
+ * to catch it. One source, so the mock cannot show it.
+ */
+function mockStaffFixtures(): Array<Record<string, unknown>> {
+  return [
+    mockStaffMember({ id: 'staff-1', username: 'owner', display_name: 'Owner', role_id: 'role-owner', role_name: 'Owner' }),
+    mockStaffMember({ id: 'staff-2', username: 'admin', display_name: 'Admin', role_id: 'role-admin', role_name: 'Admin' }),
+    mockStaffMember({ id: 'staff-3', username: 'manager', display_name: 'Manager', role_id: 'role-manager', role_name: 'Manager' }),
+    mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
+    mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor' }),
+  ];
+}
+
 /** Granted permission keys per preset, mirroring platform-core ROLE_PRESETS. */
 const MOCK_ROLE_PERMISSIONS: Record<string, string[]> = {
   // Owner — global wildcard.
@@ -178,9 +198,108 @@ const MOCK_AUTHORED_ROLES: MockAuthoredRole[] = [
 ];
 
 const mockRoleList = () => [
-  ...MOCK_ROLES.map((r) => ({ ...r, is_builtin: true, reference_count: 1 })),
-  ...MOCK_AUTHORED_ROLES.map((r) => ({ ...r })),
+  ...MOCK_ROLES.map((r) => ({
+    ...r,
+    is_builtin: true,
+    reference_count: 1,
+    ...mockRoleCounts(r.id),
+  })),
+  ...MOCK_AUTHORED_ROLES.map((r) => ({ ...r, ...mockRoleCounts(r.id) })),
 ];
+
+/**
+ * The two counts a role row must carry since RoleDto split them.
+ *
+ * holder_count is DERIVED from mockRoleHolders, so the number on a collapsed
+ * row and the list it expands to are the same computation — the preview
+ * cannot exhibit the disagreement the production surface was just fixed for.
+ *
+ * grant_count is a flat 0 because the mock has no workspace-grant fixtures at
+ * all: the "and N workspace grants" branch, and a grants-only role (blocked
+ * from deletion by configuration rather than by people), are therefore NOT
+ * exercisable in browser preview. Recorded rather than glossed — a mock that
+ * quietly returned 1 here would be inventing rows no other mock command
+ * serves, which is worse than the gap.
+ */
+function mockRoleCounts(roleId: string): { holder_count: number; grant_count: number } {
+  return { holder_count: mockRoleHolders(roleId).total, grant_count: 0 };
+}
+
+/**
+ * The page size the real backend clamps to (`ROLE_HOLDERS_MAX`). Named here
+ * rather than inlined so the reported `cap` and the slice cannot drift apart.
+ */
+const MOCK_ROLE_HOLDERS_CAP = 50;
+
+/**
+ * One role's holders, in exactly the `RoleHoldersDto` wire shape.
+ *
+ * Mirrors the real command on the three points a preview most easily gets
+ * wrong:
+ *
+ * - An unknown role is a REFUSAL, not an empty list. The backend answers
+ *   NotFound, because "nobody holds this" and "there is no such role" are
+ *   different facts and only the first licenses a delete. A mock that
+ *   returned [] would let a screen be built against a typo-tolerant backend.
+ * - The page is capped and the ceiling is reported, so the surface learns to
+ *   read `total` for "and N more" instead of `holders.length`.
+ * - Every row carries `branch_scope` / `workspace_scope` NEXT TO the counts.
+ *   `all` with a count of 0 means UNRESTRICTED, not "no branches"; the
+ *   fixtures all use the global/organization shape `mockStaffMember` already
+ *   carries, so this and `list_staff_scoped` describe the same people.
+ *
+ * Holders are DERIVED from mockStaffFixtures rather than restated, which is
+ * the whole reason that list was extracted.
+ */
+function mockRoleHolders(roleId: string | undefined): {
+  holders: Array<Record<string, unknown>>;
+  total: number;
+  cap: number;
+} {
+  const wanted = roleId ?? '';
+  // Checked against the two role stores directly rather than against
+  // mockRoleList(), which now calls back through mockRoleCounts ->
+  // mockRoleHolders. Going through the list would recurse forever.
+  const known = [...MOCK_ROLES.map((r) => r.id), ...MOCK_AUTHORED_ROLES.map((r) => r.id)];
+  if (!known.includes(wanted)) {
+    throw new Error(`role ${wanted || '(no id given)'} does not exist`);
+  }
+  // Bracket access throughout: mockStaffMember hands back a
+  // Record<string, unknown>, and the repo's tsconfig forbids dot access on
+  // index signatures (noPropertyAccessFromIndexSignature).
+  const holders = mockStaffFixtures()
+    .filter((member) => String(member['role_id'] ?? '') === wanted)
+    .map((member) => {
+      const asg = (member['assignment'] ?? {}) as {
+        scope_mode?: string;
+        scope_type?: string;
+        scope_id?: string | null;
+        branches_all?: boolean;
+        branch_ids?: string[];
+        workspaces_all?: boolean;
+        workspace_keys?: string[];
+      };
+      return {
+        user_id: member['id'],
+        username: member['username'],
+        display_name: member['display_name'],
+        is_active: member['is_active'] !== false,
+        has_assignment: member['assignment'] != null,
+        scope_mode: asg.scope_mode ?? null,
+        scope_type: asg.scope_type ?? null,
+        scope_id: asg.scope_id ?? null,
+        branch_scope: asg.branches_all === false ? 'list' : 'all',
+        workspace_scope: asg.workspaces_all === false ? 'list' : 'all',
+        branch_count: asg.branch_ids?.length ?? 0,
+        workspace_count: asg.workspace_keys?.length ?? 0,
+      };
+    });
+  return {
+    holders: holders.slice(0, MOCK_ROLE_HOLDERS_CAP),
+    total: holders.length,
+    cap: MOCK_ROLE_HOLDERS_CAP,
+  };
+}
 
 /**
  * A representative subset of the permission registry for the role editor.
@@ -2932,14 +3051,17 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // STAFF MANAGEMENT
   // ═══════════════════════════════════════════════════════════════
 
-  'list_staff_scoped': () => [
-    mockStaffMember({ id: 'staff-1', username: 'owner', display_name: 'Owner', role_id: 'role-owner', role_name: 'Owner' }),
-    mockStaffMember({ id: 'staff-2', username: 'admin', display_name: 'Admin', role_id: 'role-admin', role_name: 'Admin' }),
-    mockStaffMember({ id: 'staff-3', username: 'manager', display_name: 'Manager', role_id: 'role-manager', role_name: 'Manager' }),
-    mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
-    mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor' }),
-  ],
+  'list_staff_scoped': () => mockStaffFixtures(),
   'list_roles_scoped': () => mockRoleList(),
+
+  // Args are flat here, not boxed: the real command takes `id` as its own
+  // named parameter (list_role_holders_scoped(session_token, id, state)) and
+  // api/staff.ts invokes { sessionToken, id }. unwrapArgs tolerates either
+  // envelope, so this keeps working if the wrapper is ever boxed.
+  'list_role_holders_scoped': (args) => {
+    const { id } = unwrapArgs<{ id?: string }>(args);
+    return mockRoleHolders(id);
+  },
 
   'list_permission_keys_scoped': () => MOCK_PERMISSION_KEYS.map((k) => ({ ...k })),
 
