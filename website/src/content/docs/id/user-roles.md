@@ -3,14 +3,18 @@ title: Peran Pengguna
 description: Lima preset izin menentukan apa yang bisa dilakukan dan dilihat setiap akun staf.
 category: gettingStarted
 order: 5
-updated: "2026-08-16"
+updated: "2026-09-08"
 ---
+
+<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIALLY REPAIRED - UNREVIEWED TRANSLATION (2 findings) · Indonesian counterpart of en/user-roles.md, first audit evidence. · Two corrections applied, both factual pointers rather than prose: Pengaturan -> Staf was wrong (Staff is registered in ui/src/features/staff/register.tsx with section: tools, label nav-section-tools = Alat; ui/src/features/settings/ contains no route reference to staff at all), and the Custom bullet read as though custom roles did not exist yet. Role authoring is shipped and routed - route roles, label Peran, gated manager AND staff:manage_roles. Both replacement sentences use the app's own localized labels from shared.id.ftl (Alat, Staf, Peran) rather than invented terms. · CAVEAT, deliberately not hidden: the two replacement sentences are Indonesian I composed from the surrounding text's patterns, NOT a translation by a native speaker or the product's copywriter. The rest of this page is untouched. If a reviewer disagrees with the phrasing, correct the wording - the underlying facts (where Staff lives, that role authoring exists and is gated on staff:manage_roles) are verified against the code and should not be reverted. · NOT ported from the English page: the new Authoring custom roles section (grant registry, the two delete guards, role holders). That is real copywriting and belongs to whoever owns this locale. Page parity is otherwise intact: 17 en, 17 id. -->
 
 ## Apa itu peran
 
 Setiap akun staf memiliki peran — preset izin yang menentukan apa yang bisa
 dilakukan dan dilihat akun tersebut. Peran berasal dari taksonomi tetap lima
-preset, yang ditampilkan saat Anda mengelola staf di **Pengaturan → Staf**.
+preset, yang ditampilkan saat Anda mengubah akun di layar **Staf**, yang berada di bagian
+**Alat** pada bilah sisi (bukan di Pengaturan). Tabel bawaan sebenarnya memuat enam preset;
+yang ditawarkan di pemilih staf ada lima, dan yang keenam dijelaskan di bawah.
 
 ## Lima peran
 
@@ -58,7 +62,8 @@ Matriks ini adalah target untuk basis kode:
   mengelola, tidak pernah mengekspor, dan tidak pernah melihat kolom profil
   sensitif.
 - **Kustom** adalah preset keenam — tanpa izin sendiri; admin memilih setiap
-  izin secara manual. Belum ditampilkan di dropdown staf standar.
+  izin secara manual. Sengaja tidak muncul di dropdown staf, dan tidak perlu: peran kustom
+  dibuat dan dikelola di layar tersendiri, **Alat → Peran**.
 
 ## Status implementasi
 
@@ -88,3 +93,5 @@ Empat celah dalam rencana telah ditutup:
   Dev-mock (`ui/src/dev-mock/tauri-api.ts`) menjalankan model lima peran
   yang nyata — Kasir/Dapur yang pensiun sudah hilang di mana pun, termasuk
   lencana peran, ikon, dan pemilih ruang kerja.
+
+> last audited 08-09-26 by docs-auditor
