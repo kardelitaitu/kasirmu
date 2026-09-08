@@ -19,12 +19,12 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 
 ## Phase 0 — Establish a safe baseline
 
-- [ ] Confirm the working tree and identify any unrelated edits before touching topology files.
-- [ ] Read the current `NodeTopologyEditor.tsx`, `TopologyScreen.tsx`, `topologyContract.ts`, and topology state modules in chunks.
+- [x] Confirm the working tree and identify unrelated edits before touching topology files. The tree already contains unrelated work in `.gitignore`, license/service-health files, connection-health UI, journals, and shared locales; these remain out of scope.
+- [x] Read the current `NodeTopologyEditor.tsx`, `TopologyScreen.tsx`, `topologyContract.ts`, and topology state modules in chunks.
 - [ ] Inventory all imports of `NodeTopologyEditor`, its exported types, and its re-exported helpers.
-- [ ] Inventory the current topology test coverage, especially `NodeTopologyEditor.test.tsx` and `InspectorIntegration.test.tsx`.
-- [ ] Record the baseline file size and the current responsibilities still inside `NodeTopologyEditor.tsx`.
-- [ ] Run the focused topology tests and `npm run typecheck` from `ui/`; save the results in the task notes or journal.
+- [x] Inventory the current topology test coverage, especially `NodeTopologyEditor.test.tsx` and `InspectorIntegration.test.tsx`.
+- [x] Record the baseline file size and the current responsibilities still inside `NodeTopologyEditor.tsx`.
+- [x] Run the focused topology tests and `npm run typecheck` from `ui/`; save the results in the task notes or journal.
 - [ ] Add characterization tests for any important behavior that is currently only covered indirectly before moving that behavior.
 - [ ] Write down the invariants that must not change:
   - [ ] A wire never renders with a missing endpoint.
@@ -200,6 +200,18 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - [ ] Do not make broad naming or formatting changes across `ui/src/features/locations`.
 - [ ] Do not remove tests because an implementation moved; move or strengthen them instead.
 - [ ] Do not optimize rendering based on intuition; measure first and keep performance work separate.
+
+## Refactor journal
+
+### 2026-09-08 — Baseline before first extraction
+
+- **Problem:** `NodeTopologyEditor.tsx` is a large orchestration component and needs a slow, reversible refactor rather than a rewrite.
+- **Baseline:** `NodeTopologyEditor.tsx` 6,048 lines; `TopologyScreen.tsx` 981 lines; `nodeTopologyEditorState.ts` 74 lines; `topologyContract.ts` 1,052 lines. The focused editor test file is 11,159 lines and the inspector integration suite is 380 lines.
+- **Validation:** `ui/npm run typecheck` passed. `ui/npm run test -- --run src/__tests__/NodeTopologyEditor.test.tsx src/__tests__/InspectorIntegration.test.tsx` ran 519 tests: 517 passed, 1 skipped, and 1 failed.
+- **Known baseline failure:** `NodeTopologyEditor — dialog Escape isolation > Escape cancelling the delete dialog keeps the node selected` fails at `NodeTopologyEditor.test.tsx:7020` because the Delete Node dialog remains visible after Escape. This failure predates the refactor and must be resolved or explicitly isolated before claiming a clean refactor milestone.
+- **Decision:** Start with characterization and boundaries; do not change production topology code until the first extraction has a focused acceptance test and a clean comparison against this baseline.
+- **Next slice:** complete the import/re-export inventory, then extract only the load/seed/branch-sync/restore lifecycle.
+- **Commit:** baseline journal recorded in the current refactor-plan commit.
 
 ## Completion checklist
 
