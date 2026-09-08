@@ -191,11 +191,11 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 ### Each phase boundary
 
-- [ ] Run the full topology-related test set.
-- [ ] Run `npm run lint` and `npm run typecheck` from `ui/`.
-- [ ] Run the relevant UI build or broader `npm run check:all` when the phase changes runtime composition or event handling.
-- [ ] Re-check bundle/i18n expectations if localization IDs or topology UI files changed.
-- [ ] Record remaining risks and the next smallest slice before continuing.
+- [x] Run the full topology-related test set.
+- [x] Run `npm run lint` and `npm run typecheck` from `ui/`.
+- [x] Run the relevant UI build or broader `npm run check:all` when the phase changes runtime composition or event handling.
+- [x] Re-check bundle/i18n expectations if localization IDs or topology UI files changed.
+- [x] Record remaining risks and the next smallest slice before continuing.
 
 ## Explicit non-goals during this refactor
 
@@ -326,6 +326,35 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Scope:** `topologyCommands.ts` (+170), `NodeTopologyEditor.tsx` (`commitWire` gate block and `handleDisconnectNode` body swap only), `topologyCommands.test.ts`. No gate order, gate predicate, toast copy, history-entry count, or picker cancellation changed.
 - **Validation:** Command tests 28/28. Focused topology suite (7 files) — 620 passed, 1 skipped, 0 failed. `npm run typecheck` exit 0. ESLint 0 errors (same 11 pre-existing warnings).
 - **Next slice:** 3.2 continued — the move/bend command helpers (history-entry timing, Escape restore, no-op suppression), then selection/hover announcement extraction (3.3).
+
+## Phase 3 boundary record
+
+### 2026-09-09 — Phase 3 boundary verification (first executed boundary pass)
+
+**Trigger:** the four-dimension audit found zero boundary entries in this journal despite three Phase 3 slices landed. This is the Phase 3 (orchestration hooks) boundary record, run against the current tree with all agents' in-flight work present (23 dirty files). Nothing outside `todo-refactor-topology.md` was modified or committed.
+
+**Verified, and how:**
+- **Full topology-related test set** — all 48 topology-adjacent files (`NodeTopology*`, `Topology*`, `topology*`, `nodeTopology*`, `canvasStateEqual`, `api-topology-contract`, `useCanvasChart`): **2074 passed / 1 skipped / 2 failed**, both failures in `topologyThemeParity.test.ts` (committed regression, attribution below — not refactor scope).
+- **`npm run lint`** (ui-wide, tree includes in-flight work): **PASS** (54.6s).
+- **`npm run typecheck`**: **PASS** (exit 0).
+- **`check:all` aggregate** — phase 3 changed runtime composition, so run in full: ESLint PASS, TypeScript PASS, i18n lint PASS, FTL dedupe PASS, bundle budget PASS, perf smoke PASS; vitest gate FAIL (6 files, all committed failures outside refactor scope — attribution below). The E2E gate failed first on the stale-image guard (exit 3 precondition); re-run with `npm run e2e -- --build` (freshly rebuilt images): **186 passed / 52 failed / 6 did not run (8.2m)**.
+- **Bundle/i18n re-check** — topology UI files changed this phase; i18n lint, FTL dedupe, and bundle budget all PASS with no budget regressions.
+
+**Cross-agent risks (recorded, not fixed — outside this journal's write scope; every named production file is clean at HEAD, so these are committed failures, not in-flight work):**
+- `topologyThemeParity.test.ts` ×2 — `var(--color-surface)` reintroduced at `NodeTopologyEditor.css:1679` by `a33d6075a` (quota readout) after `b68e24389` had cleared the gate; the phantom token renders CSS-initial black in both themes. Also drives the `themeTokenCompliance` baseline-growth failure (×1).
+- `storageKeyPins.test.ts` ×1 — `#/settings/topology` unpinned, introduced by `b1f41915c` (Locations→Topology entry point).
+- `nativeTooltipCompliance.test.ts` ×2 — `topologyNodeCard.tsx` carries 13 native `title` attributes vs baseline 9, attributed to `1c445b897` (node body meta).
+- `StaffManagementScreen.test.tsx` ×27 — `useImpersonation must be used within an ImpersonationProvider`, introduced by `425b823e1` (impersonation UI action).
+- `memoRenderIsolation.test.tsx` ×2 — render count 2 vs 1; attribution unconfirmed, adjacent in-flight StatusBar/banner work (`useAuthConnection`, `connectionHealth`) is the suspect pool.
+- E2E ×52 — same specs fail in **both** desktop and tablet projects (admin settings, KDS, session-lock, settings, topology canvas): shared cause, not app regression from this refactor. Topology specs fail at `.settings-sidebar-section-header` (`System` header) which no app source renders — stale selector vs app drift pre-dating the refactor; KDS/session-lock failures are missing localized text; two failures are Windows worker crashes (`0xC0000142` DLL init). The in-flight `shared.ftl` delta is purely additive (one statusbar key) and cannot explain text removals.
+
+**Refactor-internal risks (carried forward from the audit):**
+- Stale-load rendering after a branch switch: cancellation is unit-tested, but the rendered stale state is never asserted.
+- The topology canvas has no green browser-level E2E to regress from — the E2E failures above pre-date the refactor (selector drift), so re-baseline only after the settings-sidebar selector is fixed.
+- The Branch-Location anchor rule has two owners: `topologyCommands.deletableNodeIds` (Set-based) and the editor's `isBranchLocation` closure (keydown/context-menu pre-filters).
+- `useTopologyEditorLoadLifecycle` takes a 24-field deps object — honest, but the load effect still mutates hover/connection/migration state; the coupling was moved, not severed.
+
+**Slice order ahead (confirmed):** close 3.2 — move/bend command helpers (history-entry timing, Escape restore, no-op suppression) → 3.3 selection/hover announcement extraction → 3.4 pointer/marquee/bend-drag and the keyboard controller → 3.5 viewport/persistence → Phase 4 `ApplyPanelProps` render-tree extraction (the apply/save flow, ~250 lines — the audit's highest-leverage next pass).
 
 ## Completion checklist
 
