@@ -228,3 +228,37 @@ DB-level one-or-the-other scope guard with its `TRIGGER_MAP` plpgsql port, and
 the `updated_at` / `snapshot_version` cache constraint from `d38cb0bcb` as a
 success criterion on that IPC writer. Reporting back for reassignment: the
 read side is done end to end, hub to receipt.
+### 2026-09-09 — docs/decisions ADR #48: timezone representation & as_of semantics (finisher-E)
+
+Wrote `docs/decisions/2026-09-09-timezone-representation.md` (130 lines, house ADR
+style) settling the three regional-configuration open questions. Grounded in the
+tree, no web research (stripped task):
+
+- DECISION 1 - stored format = IANA zone name string (not fixed offset).
+  Schema is already IANA-shaped: `crates/oz-core/src/location_profile.rs:31`
+  documents `timezone: String` as IANA, `crates/oz-core/migrations/20260813_init.sql:803`
+  is `timezone TEXT NOT NULL DEFAULT 'UTC'`. Indonesia has NO DST (last offset
+  change 1964); IANA absorbs future political changes via tzdata, no row migration.
+  Fixed offsets remain a display-only concern (orthogonal).
+- DECISION 2 - slice-4 editor = bounded preset list of the 3 Indonesian IANA
+  zones (Asia/Jakarta, Asia/Makassar, Asia/Jayapura); no free offset field, no
+  search. Enforce at the regional write boundary (still open: write path,
+  todo-global-saas-2.md; location row is full-overwrite per
+  `crates/oz-core/src/db/regional.rs:6-7`).
+- DECISION 3 - as_of = business date (YYYY-MM-DD) in the location's IANA zone,
+  converted from a `Utc::now()` instant. Contract already expects a business date:
+  `crates/oz-core/src/db/tax.rs:476`, parse at :491-493, exclusive `effective_to`
+  at :771 / `is_live` :819-828.
+
+CORRECTION of the brief's "9 sites": only 4 production sites construct the
+`Utc::now()` placeholder (verified by grep):
+  1. apps/desktop-client/src/commands/pos.rs:44
+  2. apps/tablet-client/src/commands/pos.rs:42
+  3. apps/desktop-client/src/commands/exchange_rates.rs:238
+  4. apps/tablet-client/src/commands/exchange_rates.rs:274
+The rest of the `as_of` hits are resolver signatures/consumers
+(`tax.rs:485,728,731-745,760,824`; `sales_tax.rs:450`), not placeholders.
+
+Gate: `cargo check -p oz-core --lib` green (Finished dev profile, 0.35s). Commit
+is docs-only (doc + this journal) with explicit pathspec.
+
