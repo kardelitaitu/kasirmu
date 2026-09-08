@@ -3,7 +3,7 @@ import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listInTransitTransfers, cancelStockTransfer, type TransferWithLines } from '@/api/stockTransfers';
 import { l10nErrorMessage } from '@/utils/app-error';
@@ -76,11 +76,9 @@ export default function TransitAuditScreen() {
   if (loading) {
     return (
       <div className="transit-audit-container">
-        <div className="transit-empty">
-          <Localized id="inv-loading">
-            <span>Loading...</span>
-          </Localized>
-        </div>
+        {/* LOAD-05: accessible loading region (role=status + aria-live +
+            aria-busy) instead of a bare localized text node. */}
+        <LoadingStatus className="transit-empty" label={requiredLocalized(l10n, 'inv-loading')} />
       </div>
     );
   }
