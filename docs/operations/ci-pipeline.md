@@ -1,4 +1,5 @@
 # CI Pipeline Documentation
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 1 · FIRST STAMP THIS PAGE EVER CARRIED. It also had no footer, which is how a document could be substantially repaired earlier today - commit 404853032 un-retired ten rows from the dead ci.yml onto the jobs that actually run them, and corrected seven more that claimed Required/Advisory for gates running nowhere - and still hold no evidence that anyone had looked at it. Content work without a stamp is work that cannot be cited later, and my own notes in other docs had started referring to this page as audited merely because I had fixed it, which is a different claim. · Re-verified against .github/workflows/ directly rather than against another doc: 2 live workflows (dev-ci.yml, release.yml), 11 .bak files, dev-ci triggers pull_request + workflow_dispatch with no push trigger, ten jobs, 28 named steps in static-gates. · New: the release.yml.bak row and the note beneath the table - the retired copy of a live pipeline, the only same-name twin in that directory, previously named by no document in the repo. -->
 
 > **Canonical CI dashboard** (AUDIT-27 CI-08). This document is the single source of truth for what jobs run in CI, what gates they map to, and which workflows exist. It is verified by `scripts/verify-ci-docs-drift.py` on every PR and local `check.sh` run.
 
@@ -161,6 +162,7 @@
 |----------|--------|---------|---------|
 | `dev-ci.yml` | 🟢 **LIVE** | PR to main, dispatch | Per-PR validation. Jobs: `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. **No build or artifact step** — it validates the release toolchain but does not produce release assets; that is `release.yml`. |
 | `release.yml` | 🟢 **LIVE** (restored, desktop-only) | tag push (v*) | Builds the three Tauri desktop installers, generates the signed `latest.json`/`beta.json` updater manifests, checksums, attests provenance, and publishes a GitHub Release. Restored in 0.0.36 after `23c96330` renamed it to `.bak` with no replacement. **Docker matrix targets were dropped** — backend images are built by Northflank via `dev-ci.yml#northflank-deploy`. Mobile remains retired (`android.yml`, `ios.yml`). |
+| `release.yml.bak` | 🟠 **stale twin of a LIVE workflow** | (inert — GitHub never reads `.bak`) | The pre-retirement release pipeline, 512 lines vs the live 470. Retired by `23c963303` (09-02) and left behind when `release.yml` was restored on 09-04, so the directory now holds two tracked release workflows that differ by 42 lines. See the note below. |
 | `ci.yml` | 🔴 retired `.bak` | push/PR to main | Primary CI pipeline (lint, test, build, scan) |
 | `nightly.yml` | 🔴 retired `.bak` | schedule (daily) + dispatch | Nightly Rust/doc/UI/E2E + flaky detection |
 | `security.yml` | 🔴 retired `.bak` | schedule (weekly) + dispatch | Cargo audit/deny + container scan |
@@ -171,6 +173,21 @@
 | `docker-digest-drift.yml` | 🔴 retired `.bak` | schedule | Docker digest drift check |
 | `docker-persistence.yml` | 🔴 retired `.bak` | schedule | Docker persistence check |
 | `website.yml` | 🔴 retired `.bak` | push to main | Website build + deploy |
+
+> **Why `release.yml.bak` is called out rather than just listed.** Every other retired file has
+> no live counterpart, so a stale `.bak` there is dead weight. This one is the retired version
+> of a pipeline that RUNS, sitting in the same directory as the live file, differing by 42
+> lines (512 vs 470). `release.yml` was restored on 2026-09-04 by `3b10ea3a2` from git history
+> rather than by renaming the `.bak` back, so `23c963303`'s retirement copy survived it. Two
+> concrete costs: `grep -rn` or tab-completion on `release.yml` hits both files, and anyone
+> reviving the retired mobile pipelines from this directory has to notice which of two
+> `release.yml*` files they are editing. GitHub itself is unaffected - it only reads
+> `*.yml`.
+>
+> **CODE/CONFIG FINDING, recorded not fixed**: `release.yml.bak` should probably be deleted
+> (its content is recoverable from `23c963303`'s parent) or renamed to something that cannot
+> collide, like `release.yml.pre-restoration`. Deleting a tracked file in the CI directory is
+> not a documentation repair, so it is left to whoever owns the pipeline.
 
 ---
 
@@ -294,3 +311,6 @@ flip the status, and delete the `_note`.
 ---
 
 *Generated and maintained by the OZ-POS team. Last verified by `verify-ci-docs-drift.py`.*
+
+> last audited 08-09-26 by docs-auditor
+
