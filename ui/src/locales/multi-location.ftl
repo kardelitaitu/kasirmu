@@ -21,6 +21,17 @@ multi-store-section-stores-overview = Stores overview
 multi-store-section-terminal-status = Terminal status
 multi-store-error-load = Failed to load data
 
+# ── Locations → Topology entry points (todo-global-saas-2 §"Locations and
+# Topology navigation") ──
+multi-store-btn-add-location = Add location
+multi-store-btn-add-location-aria = Add a new location in the topology editor
+multi-store-btn-details = View details
+multi-store-btn-details-label = View details of { $name }
+multi-store-btn-configure-topology = Configure topology
+multi-store-btn-configure-topology-label = Configure topology for { $name }
+multi-store-details-close = Close
+multi-store-details-close-aria = Close location details
+
 # ── Topology Editor ──
 
 topology-builder-title = Visual Store & Workspace Topology Builder

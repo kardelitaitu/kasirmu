@@ -245,10 +245,29 @@ export default function AppShell() {
     const syncFromHash = () => {
       const raw = window.location.hash.replace('#/', '');
       if (!raw) return;
-      // Only sync if the route is registered (prevents garbage hashes
-      // from setting currentRoute to an unknown value).
-      if (getPage(raw)) {
-        setCurrentRoute(raw);
+      // Cross-page deep links may carry a sub-section query — the settings
+      // hub reads its section out of the same hash
+      // (`#/settings/topology?branch=<id>` from the Locations dashboard's
+      // Configure topology action), so strip the query before matching the
+      // registered page route.
+      const route = raw.split('?')[0]!;
+      // Settings sub-sections (`#/settings/<section>…`) are not page routes
+      // themselves — the settings hub is, and SettingsPage validates the
+      // section against KEPT_SECTIONS (a stale one leaves the hub on its
+      // default). Syncing the prefix route here is what makes the deep link
+      // work when the user is ALREADY on the admin workspace but on another
+      // page (e.g. Locations → Configure topology): the hashchange fires,
+      // no workspace switch happens, and without this sync the shell would
+      // keep rendering the old page while SettingsPage — not yet mounted —
+      // had no listener to read the hash. When the hub IS already mounted
+      // this is a no-op (same route) and its own hashchange listener
+      // applies the section.
+      if (getPage(route)) {
+        setCurrentRoute(route);
+      } else if (route.startsWith('settings/')) {
+        if (getPage('settings')) {
+          setCurrentRoute('settings');
+        }
       }
     };
     // Sync once on mount so #/route bookmarks / direct nav work.

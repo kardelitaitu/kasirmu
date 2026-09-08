@@ -140,6 +140,9 @@ let capturedEditorProps: {
   workspaceInstances?: unknown[];
   branchToolbar?: unknown;
   branchLocations?: unknown[];
+  /** The branch id the editor remounts under — the deep-link scoping
+   *  tests read it because the editor is mocked and renders no canvas. */
+  branchId?: string;
   onRenameBranch?: (id: string, name: string) => Promise<boolean>;
   onRenameWorkspace?: (id: string, name: string) => Promise<boolean>;
   onDirtyChange?: (dirty: boolean) => void;
@@ -157,6 +160,7 @@ vi.mock('@/features/locations/NodeTopologyEditor', () => ({
     workspaceInstances?: unknown[];
     branchToolbar?: unknown;
     branchLocations?: unknown[];
+    branchId?: string;
     onRenameBranch?: (id: string, name: string) => Promise<boolean>;
     onRenameWorkspace?: (id: string, name: string) => Promise<boolean>;
     onDirtyChange?: (dirty: boolean) => void;
@@ -1501,5 +1505,80 @@ describe('TopologyScreen', () => {
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
     expect(mockCheckLicenseStatus).not.toHaveBeenCalled();
+  });
+
+  // ── Locations → Topology deep-link hints (§"Locations and Topology
+  //    navigation") ──────────────────────────────────────────────
+
+  it('opens scoped to the deep-linked branch instead of the session default', async () => {
+    // Locations → Configure topology passes ?branch=<id>; the editor must
+    // mount on that location's graph, not the session's resolved store.
+    mockListStores.mockResolvedValue([
+      ...sampleStores,
+      { id: 'store-target', name: 'Deep Linked', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
+    ]);
+    render(<TopologyScreen initialBranchId="store-target" />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    // The selected branch is only observable through the editor's key
+    // (branchId) and the seeds: both must reflect the deep-linked branch.
+    expect(capturedEditorProps.branchId).toBe('store-target');
+    expect(capturedEditorProps.branchLocations).toEqual([
+      { id: 'store-target', name: 'Deep Linked' },
+    ]);
+    expect(mockListWorkspacesScoped).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the default branch when the deep-linked branch no longer exists', async () => {
+    // The dashboard click and this mount are two different store-list
+    // fetches: the location may have been deleted in between. A stale
+    // hint must not strand an unowned canvas with a ghost selector value.
+    render(<TopologyScreen initialBranchId="store-deleted" />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(capturedEditorProps.branchId).toBe('store-1');
+    expect(capturedEditorProps.branchLocations).toEqual([
+      { id: 'store-1', name: 'Main Street' },
+    ]);
+  });
+
+  it('does not honour a deep-link branch once the user picks another one', async () => {
+    // The hint is consumed by the first defaulting pass; afterwards the
+    // user's own selection must win (a stale hint re-asserting itself over
+    // a deliberate user choice would fight the operator).
+    mockListStores.mockResolvedValue([
+      ...sampleStores,
+      { id: 'store-target', name: 'Deep Linked', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
+    ]);
+    mockListWorkspacesScoped
+      .mockResolvedValueOnce(loadedInstances)
+      .mockResolvedValueOnce([]);
+    render(<TopologyScreen initialBranchId="store-target" />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+    expect(capturedEditorProps.branchId).toBe('store-target');
+
+    act(() => { capturedBranchOnChange?.('store-1'); });
+    await waitFor(() => expect(mockListWorkspacesScoped).toHaveBeenCalledTimes(2));
+    expect(capturedEditorProps.branchId).toBe('store-1');
+  });
+
+  it('arms the Add Branch form for the creation hand-off (?create=1)', async () => {
+    // Location creation begins from Locations for discoverability, then
+    // opens the editor with its Add Branch form armed — the editor owns
+    // the actual profile mutation.
+    render(<TopologyScreen openCreateOnMount />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(screen.getByRole('button', { name: 'topology-branch-add-confirm' })).toBeInTheDocument();
+  });
+
+  it('leaves Add Branch closed without the creation hint (default entry)', async () => {
+    // A manager who navigates to the topology section manually must not
+    // find the creation form open — the hint is mount-scoped, not global.
+    render(<TopologyScreen />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(screen.getByRole('button', { name: 'topology-branch-add' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'topology-branch-add-confirm' })).not.toBeInTheDocument();
   });
 });

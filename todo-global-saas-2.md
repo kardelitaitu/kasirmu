@@ -334,9 +334,20 @@ actual relationship mutation.
       already correct.
       **FLIPPED 2026-09-07 (journal pass):** closed on that verification —
       no code change; the box had simply lagged its landed work.
-- [ ] **Add the Locations-to-Topology entry point.** Keep Locations
+- [x] **Add the Locations-to-Topology entry point.** Keep Locations
       status-oriented, but route location creation/details into the relevant
       scoped Topology Editor graph.
+      **DONE 2026-09-09:** per-location `Configure topology` deep-links into
+      the scoped Topology Editor (`#/settings/topology?branch=<id>`, parsed
+      by SettingsPage into TopologyScreen mount hints — stale branch ids fall
+      back to the default branch); per-location `View details` opens a
+      read-only profile modal; a header `Add location` action arms the
+      editor's Add Branch form (`?create=1`) so creation begins from
+      Locations and the editor keeps owning the mutation. AppShell's
+      hashchange sync now lands `settings/<section>` deep links when the
+      admin workspace is already active. Evidence: `feat(ui): add
+      Locations-to-Topology entry point` + 4 test suites (101 tests green,
+      typecheck/lint/i18n gates green).
 - [x] **Version and publish topology changes.** Preserve validation, optimistic
       concurrency, diff review, rollback/recovery, and an explicit Apply/publish
       boundary for location/workspace/device relationships.

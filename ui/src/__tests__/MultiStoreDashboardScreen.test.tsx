@@ -3,11 +3,12 @@
 // Covers: loading state, error state with retry, stat cards,
 // store cards with primary badge, and data rendering.
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MultiStoreDashboardScreen from '@/features/locations/MultiStoreDashboardScreen';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 
 // ── Mocks ──────────────────────────────────────────────────────────
@@ -192,5 +193,96 @@ describe('MultiStoreDashboardScreen', () => {
       expect(screen.getByText('Main Street')).toBeInTheDocument();
     }, { timeout: 3000 });
     expect(screen.queryByText('location-limit-upgrade-premium')).not.toBeInTheDocument();
+  });
+
+  // ── Locations → Topology entry points (§"Locations and Topology
+  //    navigation") ──────────────────────────────────────────────
+  // The dashboard only ROUTES: Configure topology deep-links into the
+  // settings hub's topology section scoped to the location, creation
+  // hands off to the editor's armed Add Branch form, and View details
+  // opens a read-only modal. No mutation happens on this page.
+  describe('Locations → Topology entry points', () => {
+    const mockSetActiveWorkspace = vi.fn();
+
+    beforeEach(() => {
+      window.location.hash = '';
+      mockSetActiveWorkspace.mockClear();
+      vi.mocked(useWorkspace).mockReturnValue({
+        ...(vi.mocked(useWorkspace)()),
+        setActiveWorkspace: mockSetActiveWorkspace,
+      } as ReturnType<typeof useWorkspace>);
+    });
+
+    afterEach(() => {
+      window.location.hash = '';
+    });
+
+    it('renders Add location and the per-location View details / Configure topology pair', async () => {
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      expect(screen.getByRole('button', { name: 'multi-store-btn-add-location-aria' })).toBeInTheDocument();
+      // Every store card gets the pair — including the primary one, whose
+      // footer previously held no actions at all.
+      expect(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })).toHaveLength(2);
+      expect(screen.getAllByRole('button', { name: 'multi-store-btn-configure-topology-label' })).toHaveLength(2);
+    });
+
+    it('deep-links Configure topology into the location-scoped topology editor', async () => {
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-configure-topology-label' })[0]!);
+
+      expect(window.location.hash).toBe('#/settings/topology?branch=store-1');
+      expect(mockSetActiveWorkspace).toHaveBeenCalledWith('admin');
+    });
+
+    it('routes location creation into the topology editor (?create=1)', async () => {
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getByRole('button', { name: 'multi-store-btn-add-location-aria' }));
+
+      expect(window.location.hash).toBe('#/settings/topology?create=1');
+      expect(mockSetActiveWorkspace).toHaveBeenCalledWith('admin');
+    });
+
+    it('opens the read-only details modal and routes its Configure topology action', async () => {
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })[0]!);
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).getByText('Main Street')).toBeInTheDocument();
+      expect(within(dialog).getByText('123 Main St')).toBeInTheDocument();
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'multi-store-btn-configure-topology-label' }));
+      expect(window.location.hash).toBe('#/settings/topology?branch=store-1');
+      // The hand-off closes the modal; navigation takes over from here.
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('closes the details modal without navigating on Close', async () => {
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })[0]!);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'multi-store-details-close-aria' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(window.location.hash).toBe('');
+    });
   });
 });

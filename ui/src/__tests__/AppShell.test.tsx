@@ -4,7 +4,7 @@
 // (chef button), and the standalone kds workspace, plus back-button
 // navigation returning to the correct landing route.
 
-import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
@@ -821,6 +821,69 @@ describe('AppShell — KDS workspace navigation', () => {
       });
       expect(screen.queryByTestId('memo-banner-mount')).not.toBeInTheDocument();
       localStorage.removeItem('app-sidebar-expanded');
+    });
+  });
+
+  // ── Settings sub-section deep links (Locations → Topology) ──
+
+  describe('settings sub-section deep links', () => {
+    beforeEach(() => {
+      clearPages();
+      registerPage({
+        route: 'settings',
+        component: () => <div data-testid="settings-page-stub" />,
+        label: 'Settings',
+      });
+      window.location.hash = '';
+    });
+
+    afterEach(() => {
+      window.location.hash = '';
+    });
+
+    it('routes a #/settings/<section> hashchange onto the settings page on the admin workspace', async () => {
+      // The Locations dashboard's Configure topology action fires from the
+      // admin workspace while another page (locations) is mounted: no
+      // workspace switch happens, and `settings/topology` is not itself a
+      // registered page — only the settings prefix sync must carry the
+      // shell there, or the deep link silently does nothing.
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: 'admin',
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+      await renderWithProviders(<AppShell />);
+      await act(async () => {});
+
+      await act(async () => {
+        window.location.hash = '#/settings/topology?branch=store-1';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-page-stub')).toBeInTheDocument();
+      });
+    });
+
+    it('strips the deep-link query before matching the registered page route', async () => {
+      // `#/settings?x=1` must match the registered `settings` page (the
+      // query belongs to the section, not the route).
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: 'admin',
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+      window.location.hash = '#/settings?branch=store-1';
+      await renderWithProviders(<AppShell />);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-page-stub')).toBeInTheDocument();
+      });
     });
   });
 });

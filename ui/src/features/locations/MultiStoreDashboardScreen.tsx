@@ -9,6 +9,7 @@ import { useContext } from 'react';
 import { openUpgradePricing } from '@/utils/upgrade';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
+import { Modal } from '@/components/Modal';
 import { Skeleton } from '@/components/Skeleton';
 import TerminalStatusPanel from './TerminalStatusPanel';
 import './MultiStoreDashboardScreen.css';
@@ -23,7 +24,7 @@ function isOnline(lastSeenAt: string | null): boolean {
 /** Multi-store dashboard — overview of all store profiles with terminal status and primary store designation. */
 export default function MultiStoreDashboardScreen() {
   const { l10n } = useLocalization();
-  const { sessionToken: rawToken } = useWorkspace();
+  const { sessionToken: rawToken, setActiveWorkspace } = useWorkspace();
   // C2.2: Pro→Premium trigger — when the Pro tier is at its 2-store cap,
   // nudge the owner toward Premium.
   const { caps } = useSubscription();
@@ -35,6 +36,8 @@ export default function MultiStoreDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /** Location whose read-only details modal is open (View details). */
+  const [detailsStore, setDetailsStore] = useState<LocationProfile | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +81,34 @@ export default function MultiStoreDashboardScreen() {
     }
   }, [sessionToken]);
 
+  // ── Locations → Topology entry points (todo-global-saas-2 §"Locations
+  //    and Topology navigation") ──────────────────────────────────────
+  // The dashboard stays status-oriented: these actions only ROUTE. The
+  // Topology Editor (settings hub, topology section) owns every profile
+  // and relationship mutation — creation hands off to its Add Branch form
+  // via `?create=1`, per-location configuration scopes the editor via
+  // `?branch=<id>`; SettingsPage parses both off the mount-time hash and
+  // hands them to the editor as mount hints. Setting the admin workspace
+  // (idempotent when already active) matches the workspace tool cards'
+  // deep-link navigation; when the shell is already there, AppShell's
+  // hashchange sync lands the settings route and SettingsPage's own
+  // listener applies the section.
+  /** Configure topology for one location — opens the editor scoped to
+   *  that location's graph. */
+  const handleConfigureTopology = useCallback((locationId: string) => {
+    window.location.hash = `#/settings/topology?branch=${encodeURIComponent(locationId)}`;
+    setActiveWorkspace('admin');
+  }, [setActiveWorkspace]);
+
+  /** Begin location creation from Locations (discoverability); the
+   *  editor's armed Add Branch form receives the user and owns the
+   *  actual profile mutation and the workspace/terminal/KDS/warehouse/
+   *  routing configuration that follows. */
+  const handleAddLocation = useCallback(() => {
+    window.location.hash = '#/settings/topology?create=1';
+    setActiveWorkspace('admin');
+  }, [setActiveWorkspace]);
+
   const activeTerminals = terminals.filter((t) => t.isActive).length;
   const onlineTerminals = terminals.filter((t) => isOnline(t.lastSeenAt)).length;
 
@@ -92,6 +123,14 @@ export default function MultiStoreDashboardScreen() {
         <Localized id="multi-store-dashboard-title">
           <h1 className="multi-store-dashboard-title">Multi-Store Dashboard</h1>
         </Localized>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleAddLocation}
+          aria-label={l10n.getString('multi-store-btn-add-location-aria')}
+        >
+          <Localized id="multi-store-btn-add-location">Add location</Localized>
+        </Button>
       </div>
 
       {/* C2.2: Pro tier at its 2-store cap — "Buka toko ke-3? Upgrade ke Premium". */}
@@ -184,6 +223,22 @@ export default function MultiStoreDashboardScreen() {
                     }
                     footer={
                       <div className="multi-store-card-actions">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setDetailsStore(store)}
+                          aria-label={l10n.getString('multi-store-btn-details-label', { name: store.name })}
+                        >
+                          <Localized id="multi-store-btn-details">View details</Localized>
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleConfigureTopology(store.id)}
+                          aria-label={l10n.getString('multi-store-btn-configure-topology-label', { name: store.name })}
+                        >
+                          <Localized id="multi-store-btn-configure-topology">Configure topology</Localized>
+                        </Button>
                         {!store.is_primary && (
                           <>
                             <Button
@@ -246,6 +301,67 @@ export default function MultiStoreDashboardScreen() {
           </section>
         </>
       )}
+
+      {/* ── View details modal — read-only location profile ──────
+          Status-oriented detail surface (§"Locations and Topology
+          navigation"): every field the profile carries, plus routing
+          actions that hand off to their owning surfaces. The editor stays
+          the owner of profile mutation; the modal only offers Configure
+          topology and Delete as entry points. */}
+      <Modal
+        open={detailsStore !== null}
+        onClose={() => setDetailsStore(null)}
+        title={detailsStore?.name ?? ''}
+        footer={
+          detailsStore && (
+            <div className="multi-store-details-actions">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const id = detailsStore.id;
+                  setDetailsStore(null);
+                  handleConfigureTopology(id);
+                }}
+                aria-label={l10n.getString('multi-store-btn-configure-topology-label', { name: detailsStore.name })}
+              >
+                <Localized id="multi-store-btn-configure-topology">Configure topology</Localized>
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setDetailsStore(null)}
+                aria-label={l10n.getString('multi-store-details-close-aria')}
+              >
+                <Localized id="multi-store-details-close">Close</Localized>
+              </Button>
+            </div>
+          )
+        }
+      >
+        {detailsStore && (
+          <div className="multi-store-details-grid">
+            <div className="multi-store-card-row">
+              <span className="multi-store-card-label"><Localized id="multi-store-label-address">Address</Localized></span>
+              <span className="multi-store-card-value">{detailsStore.address || '—'}</span>
+            </div>
+            <div className="multi-store-card-row">
+              <span className="multi-store-card-label"><Localized id="multi-store-label-tax-id">Tax ID</Localized></span>
+              <span className="multi-store-card-value">{detailsStore.tax_id || '—'}</span>
+            </div>
+            <div className="multi-store-card-row">
+              <span className="multi-store-card-label"><Localized id="multi-store-label-currency">Currency</Localized></span>
+              <span className="multi-store-card-value">{detailsStore.currency}</span>
+            </div>
+            <div className="multi-store-card-row">
+              <span className="multi-store-card-label"><Localized id="multi-store-label-timezone">Timezone</Localized></span>
+              <span className="multi-store-card-value">{detailsStore.timezone}</span>
+            </div>
+            <div className="multi-store-card-row">
+              <span className="multi-store-card-label"><Localized id="multi-store-label-terminals">Terminals</Localized></span>
+              <span className="multi-store-card-value">{getTerminalCount(detailsStore.id)}</span>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -19,6 +19,17 @@ multi-store-section-stores-overview = Ikhtisar toko
 multi-store-section-terminal-status = Status terminal
 multi-store-error-load = Gagal memuat data
 
+# ── Titik masuk Lokasi → Topologi (todo-global-saas-2 §"Locations and
+# Topology navigation") ──
+multi-store-btn-add-location = Tambah lokasi
+multi-store-btn-add-location-aria = Tambahkan lokasi baru di editor topologi
+multi-store-btn-details = Lihat detail
+multi-store-btn-details-label = Lihat detail { $name }
+multi-store-btn-configure-topology = Atur topologi
+multi-store-btn-configure-topology-label = Atur topologi untuk { $name }
+multi-store-details-close = Tutup
+multi-store-details-close-aria = Tutup detail lokasi
+
 # ── Topology Editor ──
 
 topology-builder-title = Builder Topologi Visual Toko & Workspace

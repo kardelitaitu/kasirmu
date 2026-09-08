@@ -93,6 +93,95 @@ const KEPT_SECTIONS = new Set([
   'about', 'license', 'diagnostics', 'topology', 'store-pos', 'restaurant-pos', 'inventory',
 ]);
 
+// ── Locations → Topology deep-link hints (todo-global-saas-2 §"Locations
+// and Topology navigation") ─────────────────────────────────────────────
+// The Locations dashboard routes into the scoped Topology Editor via
+// `#/settings/topology?branch=<id>` (open that location's graph) and
+// `#/settings/topology?create=1` (arm the add-location form). The query
+// must survive until the topology section mounts: applyHashSection cannot
+// clear the hash when a query is present, or the hand-off would be lost
+// between the hashchange that switched the section and this wrapper's
+// initializer. TopologySection consumes the hints once (the section body
+// is keyed by activeSection, so each fresh deep link reaches a freshly
+// mounted wrapper) and then clears the hash itself.
+
+/** Target deep-link prefix for the topology editor's scope hints. */
+const TOPOLOGY_HASH_PREFIX = '#/settings/topology';
+
+/** Scope hints carried by a `#/settings/topology?…` deep link, or null
+ *  when the current hash names no hints. */
+interface TopologyHints {
+  /** Location (LocationProfile id) the editor must open scoped to. */
+  branchId: string | null;
+  /** Arm the editor's Add Branch form (creation begins from Locations). */
+  openCreate: boolean;
+}
+
+/** Parse the scope hints off the current `#/settings/topology?…` hash.
+ *  Returns null for every other hash shape, including a bare
+ *  `#/settings/topology` deep link (no scope requested). */
+function parseTopologyHints(): TopologyHints | null {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash;
+  if (!hash.startsWith(TOPOLOGY_HASH_PREFIX)) return null;
+  const query = hash.slice(TOPOLOGY_HASH_PREFIX.length);
+  if (!query.startsWith('?')) return null;
+  const params = new URLSearchParams(query.slice(1));
+  const branchId = params.get('branch');
+  const openCreate = params.get('create') === '1';
+  if (!branchId && !openCreate) return null;
+  return { branchId, openCreate };
+}
+
+/**
+ * Renders the topology editor with the Locations deep-link hints applied.
+ * Lives at module scope (not inside SettingsPage) so its initializer can
+ * read the still-consumed hash exactly once per section mount, and so the
+ * hint state survives SettingsPage's own re-renders.
+ */
+function TopologySection() {
+  const [hints, setHints] = useState<TopologyHints | null>(parseTopologyHints);
+
+  // Re-parse on later hashchanges (e.g. a second location opened while the
+  // topology section is already mounted). A hash without hints does not
+  // reset the current editor — the consumed hint state is already cleared.
+  useEffect(() => {
+    const applyHashHints = () => {
+      const parsed = parseTopologyHints();
+      if (parsed) setHints(parsed);
+    };
+    window.addEventListener('hashchange', applyHashHints);
+    return () => window.removeEventListener('hashchange', applyHashHints);
+  }, []);
+
+  // Consume: clear the hash so a stale hint cannot re-arm a later remount
+  // (the deep-link intent has been handed to the editor's mount-time state).
+  useEffect(() => {
+    if (!hints) return;
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [hints]);
+
+  const branchId = hints?.branchId ?? null;
+  const openCreate = hints?.openCreate ?? false;
+  // Key by the resolved scope: a second Configure topology click while the
+  // section is already mounted must remount the editor on the new branch
+  // (the same keyed-remount contract the editor's own branch switch uses).
+  const scopeKey = branchId ?? (openCreate ? 'create' : 'default');
+  return (
+    <div
+      data-testid="topology-section"
+      {...(branchId ? { 'data-initial-branch': branchId } : {})}
+      {...(openCreate ? { 'data-open-create': 'true' } : {})}
+    >
+      <TopologyScreen
+        key={scopeKey}
+        {...(branchId ? { initialBranchId: branchId } : {})}
+        {...(openCreate ? { openCreateOnMount: true } : {})}
+      />
+    </div>
+  );
+}
+
 /** Snapshot of initial loaded values for the Revert-to-saved button. */
 interface SettingsSnapshot {
   receipt: ReceiptSettingsDto;
@@ -345,11 +434,21 @@ function SettingsPageContent() {
     const applyHashSection = () => {
       const hash = window.location.hash.replace(/^#\//, '');
       if (!hash.startsWith('settings/')) return;
-      const section = hash.slice('settings/'.length);
+      // A deep link may append a query scoping the target section
+      // (`#/settings/topology?branch=<id>` / `?create=1` from the Locations
+      // dashboard): the section name is everything before the '?'.
+      const rawSection = hash.slice('settings/'.length);
+      const queryIndex = rawSection.indexOf('?');
+      const section = queryIndex === -1 ? rawSection : rawSection.slice(0, queryIndex);
       if (section && KEPT_SECTIONS.has(section)) {
         setActiveSection(section);
-        // Clear the hash after consuming it so stale sections don't persist
-        window.history.replaceState(null, '', window.location.pathname);
+        // Clear the hash after consuming it so stale sections don't persist.
+        // A hint-carrying link keeps its query: TopologySection parses the
+        // scope after this listener runs, and clearing it here would lose
+        // the hand-off between the hashchange and the section mount.
+        if (queryIndex === -1) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
       }
     };
     applyHashSection();
@@ -852,7 +951,7 @@ function SettingsPageContent() {
         return <DiagnosticsSection />;
 
       case 'topology':
-        return <TopologyScreen />;
+        return <TopologySection />;
 
       case 'store-pos':
         return (

@@ -21,7 +21,7 @@
 // The marker is settings-section-content--full, applied at SettingsPage.tsx:1003 if and
 // only if activeSection === 'topology', so it is an unambiguous read of the live section.
 
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import { waitFor, cleanup } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
@@ -33,6 +33,17 @@ import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
+
+// The topology section body is stubbed so the deep-link scope hints can be
+// asserted on the props SettingsPage hands the editor (the real screen owns
+// its own suite). Stubbing the barrel also keeps these shell-level tests off
+// the editor's IPC surface.
+const { topologyScreenSpy } = vi.hoisted(() => ({
+  topologyScreenSpy: vi.fn((_props?: unknown) => null),
+}));
+vi.mock('@/features/locations', () => ({
+  TopologyScreen: (props: unknown) => topologyScreenSpy(props),
+}));
 
 // SettingsPage reads useCurrency/useAuth/useBrand, so it needs the same wrapper the
 // existing SettingsPage suite builds. It does NOT need seeded IPC data here: these tests
@@ -126,5 +137,61 @@ describe('Settings deep-links while the page is already mounted', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange'));
     await new Promise((r) => setTimeout(r, 50));
     expect(isTopologySection()).toBe(false);
+  });
+
+  it('applies ?branch= and ?create=1 hints to the topology editor and clears the hash', async () => {
+    // Locations → Configure topology: the scope must survive the section
+    // switch (applyHashSection must NOT clear a hint-carrying hash — the
+    // hand-off would be lost between the hashchange and the section mount)
+    // and reach the editor as mount props.
+    window.location.hash = '#/settings/topology?branch=store-9&create=1';
+    renderWithProvidersSync(
+      <TestWrapper>
+        <SettingsPage />
+      </TestWrapper>,
+      settingsFtl,
+      sharedFtl,
+    );
+
+    await waitFor(() => {
+      expect(isTopologySection()).toBe(true);
+    });
+    expect(topologyScreenSpy).toHaveBeenCalled();
+    const props = topologyScreenSpy.mock.lastCall![0] as {
+      initialBranchId?: string;
+      openCreateOnMount?: boolean;
+    };
+    expect(props.initialBranchId).toBe('store-9');
+    expect(props.openCreateOnMount).toBe(true);
+
+    // Consumed: the hash is cleared once the hints have been handed off,
+    // so a stale scope cannot re-arm on a later remount.
+    await waitFor(() => {
+      expect(window.location.hash).toBe('');
+    });
+  });
+
+  it('applies no hints for a bare #/settings/topology deep link', async () => {
+    // The plain section deep link (pre-existing behaviour) must keep
+    // mounting the editor without a branch scope.
+    window.location.hash = '#/settings/topology';
+    renderWithProvidersSync(
+      <TestWrapper>
+        <SettingsPage />
+      </TestWrapper>,
+      settingsFtl,
+      sharedFtl,
+    );
+
+    await waitFor(() => {
+      expect(isTopologySection()).toBe(true);
+    });
+    expect(topologyScreenSpy).toHaveBeenCalled();
+    const props = topologyScreenSpy.mock.lastCall![0] as {
+      initialBranchId?: string;
+      openCreateOnMount?: boolean;
+    };
+    expect(props.initialBranchId).toBeUndefined();
+    expect(props.openCreateOnMount).toBeUndefined();
   });
 });

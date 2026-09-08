@@ -52,18 +52,46 @@ import {
  * store profiles only, while topology is its own concern (ADR #7 IA cleanup).
  */
 /**
+ * Deep-link hints from the Locations dashboard's entry points
+ * (todo-global-saas-2 §"Locations and Topology navigation"): the editor
+ * can arrive pre-scoped to one location, or with the Add Branch form armed
+ * for the creation hand-off. Both are mount-time hints — the settings hub
+ * remounts the section body per activeSection, so a fresh deep link always
+ * reaches a freshly mounted editor and later hint changes remount via the
+ * wrapper's key.
+ */
+export interface TopologyScreenProps {
+  /** Open the editor scoped to this branch (a LocationProfile id carried
+   *  in the `#/settings/topology?branch=<id>` deep link). A stale id — the
+   *  location deleted between the dashboard click and this mount — falls
+   *  back to the standard default branch instead of stranding an unowned
+   *  canvas with a ghost selector option. */
+  initialBranchId?: string | null;
+  /** Arrive with the Add Branch form armed (`?create=1` deep link):
+   *  location creation begins from Locations for discoverability; the
+   *  editor owns the actual profile mutation and the workspace/terminal/
+   *  KDS/warehouse/routing configuration that follows. */
+  openCreateOnMount?: boolean;
+}
+
+/**
  * §B administrative gate (todo-global-saas-1.md): topology editing is an
  * administrative SaaS feature — the editor locks while the subscription is
  * not `active`. Location *viewing* stays operational (workspace picker,
  * dashboard); this screen is the management surface.
  */
-export default function TopologyScreen() {
+export default function TopologyScreen({ initialBranchId, openCreateOnMount }: TopologyScreenProps = {}) {
   const { locked } = useAdminGate();
   if (locked) return <AdminLockedFeature />;
-  return <TopologyScreenContent />;
+  return (
+    <TopologyScreenContent
+      {...(initialBranchId != null ? { initialBranchId } : {})}
+      {...(openCreateOnMount ? { openCreateOnMount } : {})}
+    />
+  );
 }
 
-function TopologyScreenContent() {
+function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyScreenProps) {
   const { sessionToken, resolvedStoreId } = useWorkspace();
   const { session } = useAuth();
   const { addToast } = useToast();
@@ -119,8 +147,16 @@ function TopologyScreenContent() {
   /** Real workspace instances loaded from the backend, used to seed the editor. */
   const [workspaceInstances, setWorkspaceInstances] = useState<WorkspaceDto[]>([]);
   const [stores, setStores] = useState<LocationProfile[]>([]);
-  /** Branch (store profile) whose topology graph is on canvas. */
+  /** Branch (store profile) whose topology graph is on canvas. Deliberately
+   *  NOT seeded from the deep link here: a hint naming a location that was
+   *  deleted between the dashboard click and this mount must fall back to
+   *  the ordinary default, and that validation needs the loaded store list
+   *  — the defaulting effect below consumes deepLinkBranchRef instead. */
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  /** §15 deep-link branch scope, captured once at mount. Consumed by the
+   *  defaulting effect below — a later selection is the user's, and the
+   *  hint must not fight it. */
+  const deepLinkBranchRef = useRef<string | null>(initialBranchId ?? null);
   /** Latest dirty flag from the editor (a ref: the branch selector's
    *  onChange is not a render path, and the flag changes on every edit).
    *  The editor reports it via onDirtyChange — the guard for a dirty
@@ -358,12 +394,31 @@ function TopologyScreenContent() {
   /** Default the selector to the session's resolved store when available.
    *  The default branch is resolved ONCE — record it so the branch-switch
    *  refetch effect skips the initial null→default transition (the mount
-   *  effect already loaded those instances). */
+   *  effect already loaded those instances).
+   *
+   *  A deep-linked branch hint (Locations → Configure topology) takes
+   *  precedence over the session default but is still validated against
+   *  the loaded list: the Locations dashboard's click and this mount are
+   *  two different fetches, and the location could have been deleted in
+   *  between — the stale-hint fallback keeps the editor on an owned
+   *  branch instead of a ghost selector value over an empty graph. The
+   *  hint is consumed once; afterwards the user's own selection wins. */
   useEffect(() => {
     setSelectedBranchId((prev) => {
       if (prev) {
         if (lastBranchRef.current === null) lastBranchRef.current = prev;
         return prev;
+      }
+      const deepLinkId = deepLinkBranchRef.current;
+      if (deepLinkId !== null && stores.some((s) => s.id === deepLinkId)) {
+        deepLinkBranchRef.current = null;
+        lastBranchRef.current = deepLinkId;
+        return deepLinkId;
+      }
+      if (deepLinkId !== null && storesResolvedRef.current) {
+        // Stale hint confirmed dead — drop it so a later store-list refresh
+        // cannot resurrect it over a healthy default.
+        deepLinkBranchRef.current = null;
       }
       const next = resolvedStoreId && stores.some((s) => s.id === resolvedStoreId)
         ? resolvedStoreId
@@ -372,6 +427,15 @@ function TopologyScreenContent() {
       return next;
     });
   }, [resolvedStoreId, stores]);
+
+  /** §15 creation hand-off: arrive with the Add Branch form armed. Deep-link
+   *  only — a user who manually navigates to the section must not find the
+   *  form open; this state is set here rather than in useState's initializer
+   *  so it reads as the one-shot mount hint it is. */
+  useEffect(() => {
+    if (openCreateOnMount) setAddingBranch(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hint
+  }, []);
 
   /** Name of the branch armed for deletion, for the delete-confirm message. */
   const deleteTargetName = stores.find((s) => s.id === deleteTargetId)?.name ?? '';
