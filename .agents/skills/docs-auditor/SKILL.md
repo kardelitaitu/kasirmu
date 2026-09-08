@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean. )>
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean. )>
 
 # Skill: docs-auditor
 
@@ -121,6 +121,16 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 | A | Wrapper labels | `## Unversioned …` / `### Orphaned …` / `… backfill blocks` section headers — content parked under an unversioned bucket | `## Unversioned backfill blocks (P80–P251…)` |
 | B | Heading orphans | `####`/`#####` items whose nearest lower heading is not their `###`/`####` parent; non-benign level skips (h2→h4, h3→h5) | `#### Re-audit instructions` directly under an `##` |
 | C | Stale version headers | `##`/`###` header whose top cited version (`0.0.X`, or a range like `0.0.22 / 0.0.23`) trails its own section body's highest `0.0.Y` | `## 7. Prioritized 0.0.5 release-blocker order` with 0.0.22/0.0.23 closures in the body |
+> **Scope: tracked files only.** The scanner asks `git ls-files` first, so vendored and
+> gitignored markdown in the working tree is not policed. On 08-09-26 it reddened on an
+> `h2 -> h4` heading skip inside `references/midtrans-nodejs-client/README.md` - a path
+> with zero tracked entries, excluded by `.gitignore`. A docs gate that a directory
+> nobody committed can fail is a gate people learn to ignore. Git unavailable, or the
+> call fails, -> plain directory walk, so the failure mode is "scan more", never
+> "scan nothing". Prove the check still fires with `--file <a doc you know is bad>`
+> rather than trusting a clean tree run - a scope change is exactly the edit that can
+> silence a gate while leaving it green.
+
 
 ### Usage
 
