@@ -41,12 +41,16 @@ Unified registry for architectural decisions (ADRs), audits, verifications, and 
 | 36 | products | [ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](../decisions/2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | products | [ADR #37: Product Popularity Index — Weighted Activity Score for Retail Sorting](../decisions/2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | products | [ADR #38: Retail POS Row Context Menu — View Product Images in Browser](../decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/todo.md` C3.1 |
+| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/todo.md` C3.1; Phase C complete (C0-C4.3 shipped) |
 | 40 | topology | [ADR #40: Multi-Terminal Peer Model](../decisions/2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
 | 41 | topology | [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBAC)](../decisions/2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | website | [ADR #42: Website Admin Dashboard & User Dashboard (Subdomain Architecture)](../decisions/2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented — subdomain routing + auth gate + password rotation + dashboard/admin SPAs complete (2026-08-28); invoice history and webhook delivery log remain future work (see §5 Open Questions) |
 | 43 | ui | [ADR #43 – React‑only UI decision](../decisions/2026-07-24-react-only-decision.md) | Accepted (2026-07-24) |
+| 43 | cloud | [ADR #43: Cloud Sync Performance & Scale-Out Roadmap](../decisions/2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02) |
 | 44 | topology | [ADR #44: Typed Connection Gating & Live Validation (Implementation)](../decisions/2026-08-08-adr34-typed-connection-gating.md) | Implemented (2026-08-08) |
+| 45 | topology | [ADR #45: Topology Semantic Contract v2](../decisions/2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
+| 46 | topology | [ADR #46: Topology Revision History, Change Notes, and Draft Restore](../decisions/2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), Phase 2 in progress (graph differ 51ad987f) |
+| 47 | authorization | [ADR #47: Scoped Authorization — Role Assignments with Explicit Scopes](../decisions/2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted — ruled 2026-09-07 (all five recommendations adopted) |
 
 ### Research Notes
 
