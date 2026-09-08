@@ -728,6 +728,10 @@ pub fn run() {
             commands::data::import_data,
             commands::staff::list_staff_scoped,
             commands::staff::list_roles_scoped,
+            commands::staff::list_permission_keys_scoped,
+            commands::staff::create_role_scoped,
+            commands::staff::update_role_scoped,
+            commands::staff::delete_role_scoped,
             commands::staff::create_staff_scoped,
             commands::staff::update_staff_scoped,
             commands::staff::get_staff_profile_scoped,
@@ -1002,6 +1006,7 @@ pub fn run() {
             commands::license::test_auth_connection_scoped,
             commands::subscription::get_subscription_capabilities,
             commands::subscription::explain_feature_availability_scoped,
+            commands::subscription::get_over_quota_report,
             // The legacy unscoped save_topology command is intentionally not
             // registered. All production writes use the authenticated,
             // revision-aware apply_topology_diff command.

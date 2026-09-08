@@ -150,6 +150,60 @@ const MOCK_ROLES = [
   { id: 'role-auditor', name: 'Auditor', description: 'Global, read-only — views operational data and the audit log; never manages and never sees sensitive profile fields.', permissions: MOCK_ROLE_PERMISSIONS['role-auditor'] ?? [] },
 ] as const;
 
+// Role authoring (ADR #47 ruling 4): mutable store for authored roles, plus
+// the preset-id set the real backend refuses to author. seed_default_roles
+// upserts preset ids and overwrites their grants, so the mock refuses edits
+// to them too — a mock that accepted everything would let the dev screen be
+// built against behaviour the backend does not have.
+const MOCK_BUILTIN_ROLE_IDS = new Set<string>(MOCK_ROLES.map((r) => r.id));
+
+interface MockAuthoredRole {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  is_builtin: boolean;
+  reference_count: number;
+}
+
+const MOCK_AUTHORED_ROLES: MockAuthoredRole[] = [
+  {
+    id: 'role-night-manager',
+    name: 'Night Manager',
+    description: 'Overnight shift lead — register plus voids, no staff management.',
+    permissions: ['sales:process', 'sales:void', 'reports:view'],
+    is_builtin: false,
+    reference_count: 0,
+  },
+];
+
+const mockRoleList = () => [
+  ...MOCK_ROLES.map((r) => ({ ...r, is_builtin: true, reference_count: 1 })),
+  ...MOCK_AUTHORED_ROLES.map((r) => ({ ...r })),
+];
+
+/**
+ * A representative subset of the permission registry for the role editor.
+ * The real command returns every registered key; this list is deliberately
+ * short, so dev-mode authoring exercises the picker shape without implying
+ * these are the only keys that exist.
+ */
+const MOCK_PERMISSION_KEYS = [
+  { key: 'sales:process', family: 'sales', sensitive: false, description: 'Ring up a sale at the register.' },
+  { key: 'sales:view', family: 'sales', sensitive: false, description: 'View sales records.' },
+  { key: 'sales:void', family: 'sales', sensitive: true, description: 'Void a completed sale.' },
+  { key: 'sales:refund', family: 'sales', sensitive: true, description: 'Refund a completed sale.' },
+  { key: 'products:read', family: 'products', sensitive: false, description: 'View the product catalog.' },
+  { key: 'products:create', family: 'products', sensitive: false, description: 'Add a product.' },
+  { key: 'reports:view', family: 'reports', sensitive: false, description: 'View sales reports.' },
+  { key: 'analytics:view', family: 'analytics', sensitive: false, description: 'View the analytics screen.' },
+  { key: 'staff:read', family: 'staff', sensitive: false, description: 'View staff members.' },
+  { key: 'staff:create', family: 'staff', sensitive: false, description: 'Add a staff member.' },
+  { key: 'staff:manage_roles', family: 'staff', sensitive: true, description: 'Create, edit, or delete roles and their permission sets.' },
+  { key: 'settings:read', family: 'settings', sensitive: false, description: 'View store and system settings.' },
+  { key: 'settings:edit', family: 'settings', sensitive: true, description: 'Modify store settings.' },
+];
+
 const RAW_MOCK_PRODUCTS = [
   { sku: 'CPU-R7-7800X3D', name: 'AMD Ryzen 7 7800X3D 8-Core', category: 'Processors (CPU)', price: { minor_units: 6250000, currency: 'IDR' }, barcode: '730143314930', in_stock: true, stock_qty: 15, tax_rate_ids: [], created_at: new Date().toISOString(), price_updated_at: new Date().toISOString(), product_type: 'retail' },
   { sku: 'CPU-I7-14700K', name: 'Intel Core i7-14700K 20-Core', category: 'Processors (CPU)', price: { minor_units: 6450000, currency: 'IDR' }, barcode: '503203727850', in_stock: true, stock_qty: 10, tax_rate_ids: [], created_at: new Date().toISOString(), price_updated_at: new Date().toISOString(), product_type: 'retail' },
@@ -2080,6 +2134,21 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     };
   },
 
+  // Over-quota assessment (§J remediation): the mock tenant is Premium
+  // with unlimited quotas, so nothing is over — mirrors the premium caps
+  // above and keeps the remediation view renderable in browser mode.
+  'get_over_quota_report': () => ({
+    tierKey: 'premium',
+    tierName: 'Premium',
+    usages: [
+      { dimension: 'locations', limit: null, current: 1 },
+      { dimension: 'pos_registers', limit: null, current: 1 },
+      { dimension: 'warehouses', limit: null, current: 0 },
+      { dimension: 'staff', limit: null, current: 1 },
+      { dimension: 'products', limit: null, current: 0 },
+    ],
+  }),
+
   // ═══════════════════════════════════════════════════════════════
   // LOCATIONS / DEPRECATED STORE PROFILE ALIASES
   // ═══════════════════════════════════════════════════════════════
@@ -2845,7 +2914,65 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
     mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor' }),
   ],
-  'list_roles_scoped': () => MOCK_ROLES.map((r) => ({ ...r })),
+  'list_roles_scoped': () => mockRoleList(),
+
+  'list_permission_keys_scoped': () => MOCK_PERMISSION_KEYS.map((k) => ({ ...k })),
+
+  'create_role_scoped': (args) => {
+    const a =
+      (args as { args?: { name?: string; description?: string; permissions?: string[] } })?.args ??
+      {};
+    const name = (a.name ?? '').trim();
+    if (!name) throw new Error('role name must not be empty');
+    const role: MockAuthoredRole = {
+      id: `role-${Date.now()}`,
+      name,
+      description: a.description ?? '',
+      permissions: [...(a.permissions ?? [])],
+      is_builtin: false,
+      reference_count: 0,
+    };
+    MOCK_AUTHORED_ROLES.push(role);
+    return { ...role };
+  },
+
+  'update_role_scoped': (args) => {
+    const a = (
+      args as {
+        args?: { id?: string; name?: string; description?: string; permissions?: string[] };
+      }
+    )?.args ?? {};
+    // Mirrors the backend refusal: a preset row is owned by the seeder.
+    if (a.id && MOCK_BUILTIN_ROLE_IDS.has(a.id)) {
+      throw new Error(`${a.id} is a built-in preset role and cannot be authored`);
+    }
+    const role = MOCK_AUTHORED_ROLES.find((r) => r.id === a.id);
+    if (!role) throw new Error(`role ${a.id ?? '?'} not found`);
+    const name = (a.name ?? '').trim();
+    if (!name) throw new Error('role name must not be empty');
+    role.name = name;
+    role.description = a.description ?? '';
+    // Replace, never merge — a grant silently carried over would be a
+    // privilege nobody asked for.
+    role.permissions = [...(a.permissions ?? [])];
+    return { ...role };
+  },
+
+  'delete_role_scoped': (raw) => {
+    const id = (raw as { id?: string })?.id ?? '';
+    if (MOCK_BUILTIN_ROLE_IDS.has(id)) {
+      throw new Error(`${id} is a built-in preset role and cannot be deleted`);
+    }
+    const idx = MOCK_AUTHORED_ROLES.findIndex((r) => r.id === id);
+    if (idx < 0) throw new Error(`role ${id} not found`);
+    const existing = MOCK_AUTHORED_ROLES[idx];
+    if (!existing) throw new Error(`role ${id} not found`);
+    if (existing.reference_count > 0) {
+      throw new Error(`role ${id} is still referenced; reassign those rows first`);
+    }
+    MOCK_AUTHORED_ROLES.splice(idx, 1);
+    return null;
+  },
   'create_staff_scoped': (args) => {
     const a = (args as { username?: string; display_name?: string; role_id?: string; pin?: string }) ?? {};
     const roleId = a.role_id && MOCK_ROLE_PERMISSIONS[a.role_id] ? a.role_id : 'role-staff';

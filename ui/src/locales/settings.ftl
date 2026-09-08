@@ -2,6 +2,21 @@
 
 # Setup Wizard
 setup-logo = OZ-POS
+# ── License: over-quota remediation (§J) ──
+settings-license-quota-title = Quota status
+settings-license-quota-intro = Resources measured against the { $tier } tier quotas — the same numbers the creation gates enforce.
+settings-license-quota-ok = Everything is within quota.
+settings-license-quota-over-aria = Over-quota resources
+settings-license-quota-over-heading = Over quota — archive or upgrade
+settings-license-quota-over-line = { $current } of { $limit } — { $excess } over
+settings-license-quota-guidance = Archive unused resources in the relevant screen, or upgrade the tier to raise the limits. Nothing was deleted automatically.
+settings-license-quota-load-failed = Could not load the quota assessment.
+settings-license-quota-refresh = Refresh
+settings-license-quota-dim-locations = Locations
+settings-license-quota-dim-pos-registers = POS terminals
+settings-license-quota-dim-warehouses = Warehouse stock points
+settings-license-quota-dim-staff = Staff accounts
+settings-license-quota-dim-products = Products
 setup-tagline = Point of Sale — Simplified
 setup-step-store-type = Store Type
 setup-step-payments = Payments

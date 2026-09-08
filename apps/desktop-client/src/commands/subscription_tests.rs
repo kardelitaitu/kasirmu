@@ -379,6 +379,76 @@ fn verdict_addon_grant_clears_the_tier_denial_for_analytics() {
     assert_eq!(v.reason_code(), None);
 }
 
+// ── Over-quota report (§J remediation) ───────────────────────────────
+
+/// The report assesses against the EFFECTIVE tier — the one the creation
+/// gates enforce — so a dimension reported over quota is exactly one
+/// whose next creation the gate rejects. On the fresh seeded row (Free,
+/// active) the report shows the Free quotas and the seeded primary
+/// location at-cap-not-over.
+#[test]
+fn over_quota_report_assesses_the_effective_tier() {
+    let conn = fresh_db();
+    let report = load_over_quota_report(&conn).unwrap();
+    assert_eq!(report.tier_key, "free");
+    // Locations: the seeded primary location sits at the Free cap (1) —
+    // at-cap-not-over, the §J "compliant but blocks creation" distinction.
+    let locations = report
+        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .unwrap();
+    assert_eq!(locations.limit, Some(1));
+    assert_eq!(locations.current, 1);
+    assert!(!locations.is_over_quota());
+    // Nothing is over quota on the fresh row.
+    assert!(!report.is_over_quota());
+}
+
+/// A downgrade simulation: stuffing the DB past the Free caps makes the
+/// report name exactly the over dimensions with the right excess — the
+/// numbers an archive-or-upgrade view renders. Staff users sit under the
+/// `role-staff` preset id (count_staff_users excludes only the owner);
+/// terminals need the schema's NOT NULL device_id.
+#[test]
+fn over_quota_report_names_dimensions_and_excess_after_downgrade() {
+    let conn = fresh_db();
+    conn.execute_batch(
+        "INSERT INTO locations (id, name) VALUES ('loc-2', 'Second'), ('loc-3', 'Third');
+         INSERT INTO terminals (id, name, device_id) VALUES ('t-1', 'T1', 'dev-1'), ('t-2', 'T2', 'dev-2');
+         INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-staff', 'Staff', '', '[\"sales:process\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
+            ('u-1', 'a', 'h', 'A', 'role-staff', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z'),
+            ('u-2', 'b', 'h', 'B', 'role-staff', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let report = load_over_quota_report(&conn).unwrap();
+    assert!(
+        report.is_over_quota(),
+        "3 locations / 3 staff / 3 terminals on Free must report over"
+    );
+    let locations = report
+        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .unwrap();
+    assert_eq!(locations.excess(), 2);
+    let staff = report
+        .usage(oz_core::downgrade::QuotaDimension::Staff)
+        .unwrap();
+    assert_eq!(
+        staff.excess(),
+        1,
+        "2 staff on the Free cap of 1 -> excess 1"
+    );
+    let terminals = report
+        .usage(oz_core::downgrade::QuotaDimension::PosRegisters)
+        .unwrap();
+    assert_eq!(
+        terminals.excess(),
+        1,
+        "2 terminals on the Free cap of 1 -> excess 1"
+    );
+    assert_eq!(report.total_excess(), 4);
+}
+
 #[test]
 fn verdict_rejects_unknown_keys_fail_closed() {
     let conn = fresh_db();

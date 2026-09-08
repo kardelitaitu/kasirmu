@@ -17,6 +17,7 @@ use tauri::State;
 use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
+use oz_core::downgrade::OverQuotaReport;
 use oz_core::entitlements::{Entitlements, build_entitlements};
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
@@ -362,6 +363,37 @@ pub async fn explain_feature_availability_scoped(
         &session.store_id,
         &session.type_key,
     )
+}
+
+/// The tenant-level over-quota assessment for the owner-facing
+/// remediation view (todo-global-saas-2.md §J downgrade item): which
+/// resources exceed the effective tier's quota and by how much.
+///
+/// Read-only, no mutation — the view offers archive-or-upgrade actions
+/// that live in their own features; this command only reports. Fails
+/// closed exactly like the caps command: an unreadable row projects the
+/// Free tier's quotas, which is the honest answer for a lapsed
+/// subscription. Gated `settings:read` — a diagnostics read that echoes
+/// quota numbers, like the verdict command.
+#[tauri::command]
+pub async fn get_over_quota_report(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<OverQuotaReport, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let db = state.db.lock().await;
+    load_over_quota_report(&db)
+}
+
+/// The synchronous body of [`get_over_quota_report`], split out so the
+/// tests exercise the exact production path.
+fn load_over_quota_report(db: &rusqlite::Connection) -> Result<OverQuotaReport, AppError> {
+    let store = Store::new(db);
+    // The effective tier is what the gates enforce — assess against it,
+    // not the nominal tier, so the report matches the next rejection.
+    let ent = build_entitlements(&store, gather_usage(&store), false);
+    Ok(store.assess_downgrade(&ent.tier)?)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

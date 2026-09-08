@@ -2,6 +2,21 @@ settings-title = Pengaturan
 settings-category-business = Bisnis
 
 # ── Sidebar navigation labels ──
+# ── Lisensi: remediasi kuota (§J) ──
+settings-license-quota-title = Status kuota
+settings-license-quota-intro = Sumber daya diukur terhadap kuota paket { $tier } — angka yang sama yang diterapkan gerbang pembuatan.
+settings-license-quota-ok = Semua masih dalam batas kuota.
+settings-license-quota-over-aria = Sumber daya melebihi kuota
+settings-license-quota-over-heading = Melebihi kuota — arsipkan atau tingkatkan paket
+settings-license-quota-over-line = { $current } dari { $limit } — { $excess } berlebih
+settings-license-quota-guidance = Arsipkan sumber daya yang tidak terpakai di layar terkait, atau tingkatkan paket untuk menaikkan batas. Tidak ada yang dihapus otomatis.
+settings-license-quota-load-failed = Tidak dapat memuat penilaian kuota.
+settings-license-quota-refresh = Segarkan
+settings-license-quota-dim-locations = Lokasi
+settings-license-quota-dim-pos-registers = Terminal POS
+settings-license-quota-dim-warehouses = Titik stok gudang
+settings-license-quota-dim-staff = Akun staf
+settings-license-quota-dim-products = Produk
 settings-nav-general = Umum
 settings-nav-appearance = Tampilan
 settings-nav-receipt = Nota

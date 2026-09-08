@@ -192,3 +192,24 @@ fn verdict_scope_mirrors_the_desktop_verdict_on_the_same_assignment() {
         "no assignment row, not scope-restricted"
     );
 }
+
+/// The tablet over-quota report mirrors desktop: it assesses against the
+/// effective tier the caps command reports. On the seeded Free row the
+/// seeded primary location sits at-cap-not-over — the §J "compliant but
+/// blocks creation" distinction the remediation view renders.
+#[test]
+fn over_quota_report_assesses_the_effective_tier() {
+    let conn = fresh_db();
+    let store = Store::new(&conn);
+    // Same production path the command body runs (tablet: no debug
+    // upgrade), minus the session gate the command wraps.
+    let ent = build_entitlements(&store, UsageCounts::default(), false);
+    let report = store.assess_downgrade(&ent.tier).unwrap();
+    assert_eq!(report.tier_key, "free");
+    let locations = report
+        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .unwrap();
+    assert_eq!(locations.limit, Some(1));
+    assert!(!locations.is_over_quota());
+    assert!(!report.is_over_quota());
+}

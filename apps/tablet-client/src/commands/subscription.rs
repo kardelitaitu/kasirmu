@@ -16,6 +16,7 @@ use tauri::{State, command};
 use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
+use oz_core::downgrade::OverQuotaReport;
 use oz_core::entitlements::{Entitlements, build_entitlements};
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
@@ -353,6 +354,23 @@ pub async fn explain_feature_availability_scoped(
         &session.store_id,
         &session.type_key,
     )
+}
+
+/// Tablet mirror of the desktop over-quota assessment (todo-global-saas-2.md
+/// §J remediation): which resources exceed the effective tier's quota.
+/// Read-only; gated `settings:read`; fails closed against the effective
+/// (gates-enforced) tier exactly like the caps command.
+#[command]
+pub async fn get_over_quota_report(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<OverQuotaReport, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    let ent = build_entitlements(&store, gather_usage(&store), false);
+    Ok(store.assess_downgrade(&ent.tier)?)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

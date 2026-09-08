@@ -136,3 +136,43 @@ export const explainFeatureAvailability = (
     sessionToken,
     feature,
   });
+
+// ── Over-quota report (§J downgrade remediation) ──────────────────────
+
+/** One quota dimension's usage row (mirrors Rust `QuotaUsage`).
+ *  `limit: null` = unlimited; over is strictly current > limit. */
+export interface QuotaUsageRow {
+  /** Machine dimension key (`locations`, `pos_registers`, ...). */
+  dimension: string;
+  /** Tier cap for this dimension; `null` = unlimited. */
+  limit: number | null;
+  /** Current count (the same `count_*` the creation gates consult). */
+  current: number;
+}
+
+/** The tenant-level over-quota assessment (mirrors Rust
+ *  `OverQuotaReport`, serde snake_case rows). */
+export interface OverQuotaReport {
+  /** Machine tier key the assessment ran against (the effective tier). */
+  tierKey: string;
+  /** Human-readable tier name. */
+  tierName: string;
+  /** Per-dimension usage rows, in the resolver's canonical order. */
+  usages: QuotaUsageRow[];
+}
+
+/** Whether a usage row is strictly over its cap (needs remediation). */
+export const isOverQuota = (row: QuotaUsageRow): boolean =>
+  row.limit !== null && row.current > row.limit;
+
+/** Resources to archive (or the upgrade delta) for one dimension. */
+export const excessOf = (row: QuotaUsageRow): number =>
+  row.limit !== null && row.current > row.limit ? row.current - row.limit : 0;
+
+/**
+ * The owner-facing over-quota assessment (§J remediation view): which
+ * resources exceed the effective tier's quota and by how much.
+ * Read-only; session-gated on `permissions::SETTINGS_READ`.
+ */
+export const getOverQuotaReport = (sessionToken: string): Promise<OverQuotaReport> =>
+  loggedInvoke<OverQuotaReport>('get_over_quota_report', { sessionToken });

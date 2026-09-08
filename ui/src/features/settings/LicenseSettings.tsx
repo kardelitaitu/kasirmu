@@ -8,6 +8,7 @@ import { useToast } from '@/frontend/shared/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './LicenseSettings.css';
+import OverQuotaCard from './OverQuotaCard';
 
 /** Parsed subscription payload from the license server's signed JSON. */
 interface LicensePayload {
@@ -551,6 +552,9 @@ export default function LicenseSettings() {
           </>
         )}
       </div>
+
+      {/* ── §J remediation: live over-quota assessment for the effective tier ── */}
+      <OverQuotaCard />
 
       <ExitSurveyModal
         open={showExitSurvey}
