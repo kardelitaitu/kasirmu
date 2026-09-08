@@ -1,5 +1,30 @@
 # Subscription Tiers — Final Decisions
 
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair — this is the first audit this file ever had: it carried no stamp and no footer in 757 lines, while describing itself as the single source of truth for feature gates.
+
+FIXED
+- The † footnote denied that product-count and KDS quotas exist. Both are enforced,
+  through QuotaDimension plus a per-mutation enforce_*_quota guard. Worse, the test
+  file that pins the KDS numbers opens with "KDS screen quota
+  (subscription-tiers.md §Numeric Limits)" — the code cites this table while the table
+  denies the quota. The * and ** footnotes likewise still read "MUST be enforced before
+  launch" for staff users and the sales-history cap; both are enforced (C1.1 and C1.2),
+  the history cap behind signature verification.
+- Added §3 "Grant precedence". Phase D1 (12443a1e, 1eb5b753, abda8574) let a signed
+  payload override any row of the matrix per tenant, in both directions, and the page
+  never mentioned it. Recorded honestly as not-yet-authorable: no build site sets the
+  block, so the matrix stays the effective truth until D2 — the mechanism exists, the
+  lever cannot be pulled yet.
+
+LEFT ALONE
+- §5 vertical go-to-market and §7 churn figures are commercial judgement, not code
+  claims; auditing them would be an opinion, not a verification.
+
+VERIFIED ACCURATE
+- Five-tier lineup; the numeric-limit rows sampled against the
+  *_matches_published_contract tests; canonical workspace types (retail-pos, resto-pos,
+  kds, warehouse) and the store-pos / restaurant-pos compatibility aliases. -->
+
 > **Status: FINAL** — Approved 2026-08-17. Single source of truth for tier
 > pricing, quotas, and feature gates. Supersedes the tier/pricing sections of
 > `docs/guides/BUSINESS_PLAN.md` §2, ADR #5, and the older pricing content until
@@ -12,7 +37,14 @@
 > item in `todo-global-saas-2.md`); white-label branding:
 > **Enterprise-only** (the only deliberate edit on record, 2026-08-19 —
 > rebranding stays the top-tier differentiator).
-
+>
+> **Amendment, 2026-09-08 (docs audit):** "single source of truth for …
+> feature gates" is still right about *which tier gets what by default*, but
+> it is no longer the whole rule. Phase D1 landed a signed-payload override that
+> can flip any row per tenant, in both directions. See §3 "Grant precedence".
+> The override has no authoring path yet, so nothing emitted today uses it —
+> which is why this file remains authoritative in practice and is amended rather
+> than demoted.
 ## 1. Lineup
 
 **Five tiers: Free · Plus · Pro · Premium · Enterprise**
@@ -79,6 +111,54 @@ Final pricing determined by: number of locations, terminals, users, support leve
 
 ## 3. Quota & feature matrix
 
+> **This matrix is the default answer, not the final one.** A signed license payload
+> can override any row of it per tenant. Read the precedence note below before treating
+> a cell as a guarantee.
+
+### Grant precedence (Phase D1, landed 08-09-26)
+
+The signed payload may carry a `features` block — an explicit per-feature instruction
+keyed by the client's canonical feature key:
+
+```json
+{ "plan": "plus", "features": { "supports_analytics": true, "warehouses": false } }
+```
+
+Semantics, in the order the code applies them:
+
+| Payload says | Effect |
+|---|---|
+| key **absent** | the tier's own answer from the matrix above stands, untouched |
+| `false` | withholds **even where the tier would allow** |
+| `true` | grants **beyond tier** |
+
+An explicit instruction about *this feature* outranks a statement about a workspace type
+that merely implies something about it, so the check runs **before** the inferred
+`allows_workspace_type` path. Both directions are pinned by tests in both clients
+(`80a2168c`).
+
+**Three ways to get this wrong, all silent:**
+
+1. **Wrong key name.** Keys are `AvailabilityFeature::as_str()` — `supports_analytics`,
+   `supports_qris`, `supports_loyalty`, `supports_daily_dashboard`, `supports_cloud_sync`,
+   `sales_history_days`, `locations`, `staff_users`, `pos_instances`, `warehouses`.
+   A shortened `analytics` is a lookup **miss**, not an error: the tier answer stands and
+   nothing reports the typo.
+2. **Malformed block.** If `features` is not an object of booleans (a string, say), every
+   entry is dropped rather than partially trusting the block. Again silent.
+3. **Assuming it is wired up end to end.** It is not. `1eb5b753` added the Go wire field
+   and `abda8574` the Rust parse, and both clients honour the value — but **no build site
+   sets it**: `license_keys` and `subscriptions` have no column to flow it from, so no
+   payload the license server emits today carries the block (verified: zero `Features:`
+   assignments in `apps/license-server`). It is `omitempty`, so a payload with no grants
+   marshals byte-identically to a pre-Phase-D one. Authoring is explicitly owed to D2.
+   **Until then the matrix above is the effective truth**, and this section describes the
+   mechanism, not a lever you can pull today.
+
+Code of record: `payload_feature_grant` in `crates/oz-core/src/subscription.rs`,
+`server_grant_for` in each client's `src/commands/subscription.rs`, and the `Features`
+field in `apps/license-server/main.go`.
+
 ### Quick Reference: Best For
 
 > **Positioning statement:** OZ-POS is the QRIS-native POS with offline-first reliability,
@@ -106,20 +186,46 @@ Final pricing determined by: number of locations, terminals, users, support leve
 | Sales history (view & export) ** | 3 months | 1 year | 5 years | Unlimited | Unlimited |
 | Audit log retention *** | — | 90 days | 180 days | 1 year | 3 years |
 
-† **Published contract, not yet enforced.** The KDS count exists only as the
-dashboard-side derivation `maxKDSForTier()` (the client gates the `kds`
-workspace *type*, not a screen count), and no product-count quota ships at
-all (the archived `plan-product-images.md` `max_products()` was never
-implemented). Phase 1 "Centralize quota enforcement" must issue these numbers
-server-side and enforce them in backend mutations; until then this table is
-the value they must agree with, and the pricing-page invariant test pins it.
+† **Enforced.** This footnote said the opposite until 08-09-26: it claimed the KDS
+count was only a dashboard-side derivation `maxKDSForTier()` and that "no product-count
+quota ships at all". Both were stale by a full phase. Phase 1 "Centralize quota
+enforcement" landed, and the code that landed **cites this table** — the header comment
+of `crates/oz-core/src/db/workspaces_tests.rs` reads "KDS screen quota
+(subscription-tiers.md §Numeric Limits)" — while this page still denied the quota
+existed. What is enforced now, all through `QuotaDimension`
+(`crates/oz-core/src/downgrade.rs`) plus an `enforce_*_quota` guard on the mutation:
 
-\* Max staff users — **MUST be enforced before launch** to prevent revenue leakage.
+| Dimension | Cap fn | Enforced at |
+|---|---|---|
+| Locations | `max_locations()` | `enforce_location_quota` / `enforce_store_quota` (`db/locations.rs`) |
+| POS registers | `max_pos_instances()` | `enforce_terminal_quota` (`db/terminals.rs`) |
+| Warehouses | `max_warehouses()` | `enforce_warehouse_quota` (`db/inventory.rs`) |
+| Staff | `max_staff_users()` | `enforce_staff_quota` (`db/staff.rs`) |
+| Products | `max_products()` | `enforce_product_quota` (`db/products_crud.rs`) |
+| KDS screens | `max_kds_screens()` | `enforce_instance_quota` (`db/workspaces_lifecycle.rs`) |
 
-\*\* Sales history cap — **MUST be enforced before launch**. Free users see only the last
-3 months of transactions. After 3+ months of use, the owner naturally wants to compare
-months — that is the primary upgrade trigger for Free → Plus. Show a blurred/locked
-history preview with an upgrade CTA, not a hard error.
+A breach returns `QuotaError::*Limit`, surfaced as `SubscriptionLimitExceeded`, which
+the UI maps to an upgrade CTA; unlimited tiers are `None` and pass. Each published number
+is pinned by a `*_matches_published_contract` test, so a row above that disagrees with
+code fails `cargo test` — that is the mechanism that replaced "the pricing-page invariant
+test pins it".
+
+KDS specifically: Free/Plus `Some(0)`, Pro `Some(2)`, Premium/Enterprise `None`, and a
+third Pro screen is rejected with its own actionable message rather than the register or
+workspace-type one (`enforce_instance_quota_rejects_third_kds_on_pro`).
+
+\* Max staff users — **enforced** (`enforce_staff_quota`, C1.1: "§9 pre-launch item 1:
+prevents revenue leakage from unlimited Free/Plus team accounts"). Counts active staff
+users with the owner excluded.
+
+\*\* Sales history cap — **enforced** in both clients' history commands
+(`apps/desktop-client/src/commands/history.rs`,
+`apps/tablet-client/src/commands/history.rs`, C1.2): the tier window is read from the
+tenant subscription **after signature verification** and applied by
+`list_sales_with_history_cap(days)`, which returns the rows plus a `capped` flag instead
+of erroring — the blurred-preview-with-CTA behaviour this note asked for. Free users see
+only the last 3 months; after 3+ months the owner naturally wants to compare months, which
+remains the primary Free → Plus trigger.
 
 \*\*\* Audit retention — per the Phase 2 audit baseline
 (`todo-global-saas-2.md`): paid tiers retain basic security events (failed
@@ -755,3 +861,7 @@ Target: >100% (growth from existing customers)
 - **Expansion Revenue:** 10-15% annually from existing customers
 - **Enterprise Mix:** 5% of customers, 25% of revenue
 - **Geographic Mix:** 70% Indonesia, 30% global
+
+---
+
+> last audited 08-09-26 by docs-auditor
