@@ -43,6 +43,13 @@ pub const SECURITY_ACTION_LOGIN_FAILED: &str = "login.failed";
 /// unknown-action fallback until the locale window opens.
 pub const SECURITY_ACTION_LOGOUT: &str = "logout";
 
+/// Security event recorded when an operator begins impersonating a user for
+/// support. The 'operator:' capability class names support impersonation,
+/// not any vendor/cloud-operator status.
+pub const SECURITY_ACTION_IMPERSONATE_START: &str = "impersonate.start";
+/// Security event recorded when an operator stops impersonating a user.
+pub const SECURITY_ACTION_IMPERSONATE_STOP: &str = "impersonate.stop";
+
 /// Action recorded when an admin creates a staff account. Already in
 /// `auditCatalog.ts`, and already in its `CRITICAL_ACTIONS` set, so the
 /// audit screen gives it critical emphasis with no front-end change.
@@ -68,6 +75,8 @@ pub const SECURITY_ACTIONS: &[&'static str] = &[
     SECURITY_ACTION_LOGOUT,
     SECURITY_ACTION_USER_CREATE,
     SECURITY_ACTION_USER_UPDATE,
+    SECURITY_ACTION_IMPERSONATE_START,
+    SECURITY_ACTION_IMPERSONATE_STOP,
 ];
 
 /// `audit_log.user_id` for an event with no resolved account — the unknown
@@ -206,6 +215,52 @@ impl SecurityEvent {
             outcome: "success",
             reason: Some(reason),
             device_id: None,
+            subject_id: Some(subject_id.into()),
+        }
+    }
+
+    /// Security event for the start of an operator impersonation session.
+    ///
+    /// `actor_id` is the operator (lands in `audit_log.user_id`, per the house
+    /// convention of recording the actor, not the acted-upon account);
+    /// `subject_id` is the impersonated user (lands in `target_id`).
+    #[must_use]
+    pub fn impersonate_start(
+        actor_id: impl Into<String>,
+        actor_username: impl Into<String>,
+        subject_id: impl Into<String>,
+        _subject_username: impl Into<String>,
+        device_id: Option<impl Into<String>>,
+    ) -> Self {
+        Self {
+            user_id: actor_id.into(),
+            username: actor_username.into(),
+            action: SECURITY_ACTION_IMPERSONATE_START,
+            outcome: "success",
+            reason: None,
+            device_id: device_id.map(Into::into),
+            subject_id: Some(subject_id.into()),
+        }
+    }
+
+    /// Security event for the end of an operator impersonation session.
+    /// Mirrors `impersonate_start` with the stop action; the
+    /// `actor_id`/`subject_id` pair stays operator/impersonated.
+    #[must_use]
+    pub fn impersonate_stop(
+        actor_id: impl Into<String>,
+        actor_username: impl Into<String>,
+        subject_id: impl Into<String>,
+        _subject_username: impl Into<String>,
+        device_id: Option<impl Into<String>>,
+    ) -> Self {
+        Self {
+            user_id: actor_id.into(),
+            username: actor_username.into(),
+            action: SECURITY_ACTION_IMPERSONATE_STOP,
+            outcome: "success",
+            reason: None,
+            device_id: device_id.map(Into::into),
             subject_id: Some(subject_id.into()),
         }
     }

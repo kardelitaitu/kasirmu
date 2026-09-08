@@ -619,4 +619,12 @@ pub mod permissions {
     /// Forgive a vendor debt without payment (money destruction — audited).
     /// Owner-only.
     pub const PAYABLES_WRITEOFF: &str = "payables:writeoff";
+
+    // ── operator ──
+    /// Act as another user within the operator's authorized tenant scope for
+    /// support. `operator:` names the capability class (support impersonation),
+    /// not any vendor/cloud-operator status. The impersonated session carries
+    /// only the target's grants — the operator's own grants are never merged,
+    /// and this key is never propagated into the produced token.
+    pub const OPERATOR_IMPERSONATE: &str = "operator:impersonate";
 }

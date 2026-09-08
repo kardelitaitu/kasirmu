@@ -249,6 +249,7 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             // another author's Memo is Owner/Admin — Manager authors can
             // stop their own via the command's author short-circuit.
             permissions::MEMO_STOP,
+            permissions::OPERATOR_IMPERSONATE,
             permissions::TOPOLOGY_WRITE,
         ],
     },
@@ -381,4 +382,5 @@ pub const ALL_ENFORCED: &[&str] = &[
     permissions::PAYABLES_CREATE,
     permissions::PAYABLES_SETTLE,
     permissions::PAYABLES_WRITEOFF,
+    permissions::OPERATOR_IMPERSONATE,
 ];
