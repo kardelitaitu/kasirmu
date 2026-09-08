@@ -42,12 +42,23 @@ import './RoleAuthoringScreen.css';
  * hardcoded copy drifts from the keys the gate actually honors.
  *
  * Each row also expands to the accounts holding that role, and the scope
- * that bounds them. That list resolves a role the way enforcement does
- * (assignment first, users.role_id as the fallback), so it can name a
- * different set from the `reference_count` behind the In-use label: that
- * number is FOREIGN-KEY truth across four tables and answers "may this be
- * deleted", while holders answers "what can these accounts do". Showing
- * one and calling it the other is the mistake this note exists to prevent.
+ * that bounds them. Three numbers ride along, and each may only be worded
+ * for what it counts:
+ *
+ * - `reference_count` — FOREIGN-KEY rows across four tables. Gates Delete,
+ *   and nothing else may gate Delete. Never worded as people.
+ * - `holder_count` — accounts that RESOLVE here, from the same predicate
+ *   enforcement uses (assignment first, `users.role_id` fallback). The only
+ *   value allowed to say "used by N accounts", and the number the expanded
+ *   list below agrees with because the two share one WHERE clause.
+ * - `grant_count` — workspace configuration pointing at this role. Blocks a
+ *   delete like a holder does while nobody holds anything.
+ *
+ * The first version of this row labelled `reference_count` as accounts,
+ * which double-counted every ordinary person (`create_user` writes a users
+ * row AND an assignments row) and, at its worst, reported one account for a
+ * role no account held. That is the mistake this split exists to make
+ * unrepresentable.
  */
 /**
  * The ADR #47 resource axis for one holder, as its own message per case.
@@ -448,12 +459,38 @@ export default function RoleAuthoringScreen() {
                         aria-label={l10n.getString('role-delete-aria', { name: role.name })}>
                         <Localized id="role-delete">Delete</Localized>
                       </Button>
-                      {role.reference_count > 0 && (
-                        <Localized
-                          id="role-in-use"
-                          vars={{ count: role.reference_count }}>
-                          <span className="role-in-use">In use</span>
-                        </Localized>
+                      {/* Three cases, because these are two different kinds
+                          of thing. holder_count is people; grant_count is
+                          workspace configuration that blocks a delete without
+                          anybody holding anything. The label formerly printed
+                          their sum and called it accounts, which was never
+                          what the number was. Delete itself stays on
+                          reference_count: that is the FK truth, and it is the
+                          only thing entitled to gate a deletion. */}
+                      {role.holder_count > 0 && (
+                        <span className="role-in-use">
+                          <Localized
+                            id="role-in-use-accounts"
+                            vars={{ count: role.holder_count }}>
+                            <span>{role.holder_count} accounts</span>
+                          </Localized>
+                          {role.grant_count > 0 && (
+                            <Localized
+                              id="role-in-use-grants"
+                              vars={{ count: role.grant_count }}>
+                              <span>and workspace grants</span>
+                            </Localized>
+                          )}
+                        </span>
+                      )}
+                      {role.holder_count === 0 && role.grant_count > 0 && (
+                        <span className="role-in-use">
+                          <Localized
+                            id="role-in-use-grants-only"
+                            vars={{ count: role.grant_count }}>
+                            <span>workspace grants</span>
+                          </Localized>
+                        </span>
                       )}
                     </>
                   )}

@@ -66,6 +66,8 @@ fn role_dto_debug() {
         // no references — the common default shape.
         is_builtin: true,
         reference_count: 0,
+        holder_count: 0,
+        grant_count: 0,
     };
     let d = format!("{dto:?}");
     assert!(d.contains("Admin"));
@@ -80,10 +82,17 @@ fn role_dto_serialize() {
         permissions: vec![],
         is_builtin: false,
         reference_count: 0,
+        holder_count: 0,
+        grant_count: 0,
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["name"], "Viewer");
     assert_eq!(json["description"], "");
+    // The two split counts are on the wire, not computed front-end: TS
+    // declares them required, and a label that reads accounts has to get
+    // them from the resolver predicate rather than derive them from rows.
+    assert_eq!(json["holder_count"], 0);
+    assert_eq!(json["grant_count"], 0);
 }
 
 // ── CreateStaffArgs ─────────────────────────────────────────────────

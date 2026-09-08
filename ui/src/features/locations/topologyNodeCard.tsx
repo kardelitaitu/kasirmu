@@ -18,6 +18,8 @@ import {
   socketSemanticIds,
   semanticPortLabelId,
   topologyUiString,
+  nodeTypeDisplayName,
+  nodeTypeDescription,
 } from './topologyCard';
 import { nodeHeight } from './topologyMetrics';
 import { SettingsIcon, EditIcon, UnlinkIcon } from './NodeTopologyIcons';
@@ -297,11 +299,20 @@ function TopologyNodeCardImpl({
               <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
             </svg>
           </span>
-          <span className="node-subtitle">
-            {node.subtitle
+          {(() => {
+            const typeLabel = nodeTypeDisplayName(node, l10n);
+            const descText = node.subtitle
               || (node.metadata?.['description'] as string)
-              || topologyUiString(l10n, `topology-node-type-${node.type}`, null)}
-          </span>
+              || nodeTypeDescription(node, l10n);
+            const fullText = `${typeLabel} : ${descText}`;
+            return (
+              <span className="node-subtitle" title={fullText}>
+                <strong className="node-subtitle-type">{typeLabel}</strong>
+                <span className="node-subtitle-sep"> : </span>
+                <span className="node-subtitle-desc">{descText}</span>
+              </span>
+            );
+          })()}
           <div className="node-body-status">
             {(() => {
               const peerGroup = node.metadata?.['peerGroup'] as string | undefined;
@@ -374,20 +385,21 @@ function TopologyNodeCardImpl({
               </button>
 
               {/* Button 3: Rename */}
-              <button
-                type="button"
-                className="node-action-btn node-action-btn--rename"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => { if (isRenameable) onStartRename(node.id, node.name); }}
-                disabled={!isRenameable}
-                title={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
-                aria-label={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
-              >
-                <EditIcon size={12} />
-                <span className="node-btn-label">
-                  {topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
-                </span>
-              </button>
+              {isRenameable && (
+                <button
+                  type="button"
+                  className="node-action-btn node-action-btn--rename"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => onStartRename(node.id, node.name)}
+                  title={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
+                  aria-label={topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
+                >
+                  <EditIcon size={12} />
+                  <span className="node-btn-label">
+                    {topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
+                  </span>
+                </button>
+              )}
 
               {/* Button 4: Disconnect */}
               <button

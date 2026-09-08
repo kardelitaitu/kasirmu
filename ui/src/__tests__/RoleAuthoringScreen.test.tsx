@@ -74,6 +74,11 @@ function roleDto(over: Partial<Record<string, unknown>> = {}) {
     permissions: ['sales:view'],
     is_builtin: false,
     reference_count: 0,
+    // Three separate numbers, because they answer three different things:
+    // FK rows (gates Delete), accounts (may say "accounts"), and workspace
+    // grants (block a delete with nobody holding anything).
+    holder_count: 0,
+    grant_count: 0,
     ...over,
   };
 }
@@ -107,7 +112,15 @@ const PRESET = roleDto({ id: 'role-owner', name: 'Owner', is_builtin: true, refe
 // passing assertion cannot be an accident of the badge text matching the name.
 const CUSTOM_PRESET = roleDto({ id: 'role-custom', name: 'Flexible', is_builtin: true, permissions: [] });
 const AUTHORED = roleDto({ id: 'role-night-manager', name: 'Night Manager' });
-const IN_USE = roleDto({ id: 'role-warehouse', name: 'Warehouse Lead', reference_count: 2 });
+// reference_count is 2 for a reason worth keeping visible: the FK total is
+// NOT the account count. One holder plus one workspace grant.
+const IN_USE = roleDto({
+  id: 'role-warehouse',
+  name: 'Warehouse Lead',
+  reference_count: 2,
+  holder_count: 1,
+  grant_count: 1,
+});
 
 const PERMISSION_KEYS = [
   { key: 'sales:view', family: 'sales', sensitive: false, description: 'View sales records.' },
@@ -193,12 +206,13 @@ describe('RoleAuthoringScreen', () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Warehouse Lead')).toBeInTheDocument());
     expect(screen.getByLabelText('Delete the Warehouse Lead role')).toBeDisabled();
-    // "records", not "accounts": the number behind this label counts
-    // foreign-key rows across four tables, and create_user writes two of them
-    // for one person — so it has never been a count of accounts. See
-    // role-in-use in staff.ftl.
-    expect(screen.getByText('Referenced by 2 records')).toBeInTheDocument();
-    expect(screen.queryByText(/Used by \\d+ account/)).not.toBeInTheDocument();
+    // The whole reason for the split, in one row: reference_count is 2, only
+    // ONE of those rows is a person, and the label now says so — 1 account
+    // and 1 workspace grant, never "2 accounts". Delete stays gated on
+    // reference_count, which is the correct FK basis.
+    expect(screen.getByText('Used by 1 account')).toBeInTheDocument();
+    expect(screen.getByText('and 1 workspace grant')).toBeInTheDocument();
+    expect(screen.queryByText(/Used by \\d+ accounts/)).not.toBeInTheDocument();
   });
 
   it('creates with the camelCase wire keys Tauri binds', async () => {
@@ -567,25 +581,32 @@ describe('RoleAuthoringScreen', () => {
     expect(screen.queryByText('0 accounts')).not.toBeInTheDocument();
   });
 
-  it('states records on the row and accounts in the list, without contradiction', async () => {
-    // The precise false claim the reword removes. A role granted to a
-    // workspace type and held by nobody has reference_count 1: under the old
-    // copy the row asserted "Used by 1 account" and, expanded one line below,
-    // "No accounts hold this role." Both were drawn from the same screen.
+  it('states a grant-only role as a grant and never as an account', async () => {
+    // The false claim in its strongest form. A role granted to a workspace
+    // type and held by nobody has reference_count 1, so the original label
+    // asserted one account about a role with zero accounts — and once the
+    // Holders disclosure shipped, it did so directly above "No accounts hold
+    // this role." Same screen, same row, permanently contradictory.
     const granted_only = roleDto({
       id: 'role-granted-only',
       name: 'Granted Only',
       reference_count: 1,
+      holder_count: 0,
+      grant_count: 1,
     });
     scripted({ roleLists: [[granted_only]], holderPage: holdersPage([]) });
     renderScreen();
     await waitFor(() => expect(screen.getByText('Granted Only')).toBeInTheDocument());
-    expect(screen.getByText('Referenced by 1 record')).toBeInTheDocument();
+    expect(screen.getByText('Carries 1 workspace grant')).toBeInTheDocument();
+    // The accounts sentence must not render at all while holder_count is zero,
+    // however many FK rows exist — that pairing is what made the number a lie.
     expect(screen.queryByText(/Used by \\d+ account/)).not.toBeInTheDocument();
+    // Delete still gated: reference_count is FK truth and gates correctly.
+    expect(screen.getByLabelText('Delete the Granted Only role')).toBeDisabled();
     fireEvent.click(screen.getByLabelText('Show the accounts holding the Granted Only role'));
     await waitFor(() => expect(screen.getByText('No accounts hold this role.')).toBeInTheDocument());
-    // The two sentences now describe different things and agree: one FK row,
-    // zero accounts.
-    expect(screen.getByText('Referenced by 1 record')).toBeInTheDocument();
+    // And both sentences survive side by side, because they now describe
+    // different things: one foreign-key row, zero accounts.
+    expect(screen.getByText('Carries 1 workspace grant')).toBeInTheDocument();
   });
 });

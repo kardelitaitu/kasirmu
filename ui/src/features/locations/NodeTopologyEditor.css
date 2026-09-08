@@ -1412,11 +1412,24 @@
 .node-body-meta .node-subtitle {
   flex: 1 1 auto;
   font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.25;
   color: var(--color-fg-muted);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
   text-overflow: ellipsis;
+  word-break: break-word;
+}
+
+.node-subtitle-type {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.node-subtitle-sep {
+  color: var(--color-fg-muted);
 }
 
 .node-body-status {

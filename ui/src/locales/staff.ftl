@@ -224,17 +224,26 @@ role-edit = Edit
 role-edit-aria = Edit the { $name } role
 role-delete = Delete
 role-delete-aria = Delete the { $name } role
-# Counts FOREIGN-KEY rows across four tables (users, assignments, and the two
-# workspace-grant tables), which is the right basis for disabling Delete and
-# the wrong basis for a sentence about people: create_user writes both a users
-# row and an assignments row for one person, so the old "Used by N accounts"
-# reported double for every ordinary account, and a role held by nobody but
-# granted to one workspace type reported one account that did not exist. The
-# account truth is the Holders disclosure below, which uses the resolver
-# predicate rather than a row count. So: records here, accounts there.
-role-in-use = { $count ->
-    [one] Referenced by 1 record
-   *[other] Referenced by { $count } records
+# Three labels for two different kinds of thing, because the number that is
+# allowed to gate Delete is not the number that counts people.
+# reference_count spans four foreign-key tables and create_user writes two of
+# them for one person, so anything worded as accounts must come from
+# holder_count — which the backend computes with the same predicate
+# authorization uses, not by arithmetic over rows. grant_count is workspace
+# configuration that blocks a delete while nobody holds anything: -grants only
+# continues an accounts sentence, and -grants-only stands in for the case
+# where there are no accounts at all to continue.
+role-in-use-accounts = { $count ->
+    [one] Used by 1 account
+   *[other] Used by { $count } accounts
+  }
+role-in-use-grants = { $count ->
+    [one] and 1 workspace grant
+   *[other] and { $count } workspace grants
+  }
+role-in-use-grants-only = { $count ->
+    [one] Carries 1 workspace grant
+   *[other] Carries { $count } workspace grants
   }
 role-editor-create-title = New role
 role-editor-edit-title = Edit role
@@ -251,9 +260,13 @@ role-deleted = Deleted the { $name } role.
 role-delete-confirm-title = Delete this role?
 role-delete-confirm-body = Accounts holding { $name } will lose its permissions. This cannot be undone.
 
-# Who holds a role. Deliberately worded apart from role-in-use above: that
-# count spans four foreign-key referrers and answers whether a role may be
-# deleted, while these describe the accounts that resolve to it.
+# Who holds a role, per holder. The collapsed row already states the same
+# total via role-in-use-accounts, and both read holder_count, which core
+# computes for both from ONE shared WHERE clause — so the number on the row
+# and the list underneath it cannot disagree. That is the property the old
+# single label could not have, because its number came from summing rows.
+# reference_count still gates Delete above these, and rightly so: it counts
+# foreign-key rows, which is exactly what blocks a deletion.
 role-holders-toggle = Holders
 role-holders-aria = Show the accounts holding the { $name } role
 role-holders-list-aria = Accounts holding the { $name } role

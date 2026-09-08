@@ -397,7 +397,23 @@ pub struct RoleDto {
     /// Rows still pointing at this role across `users`, `assignments`,
     /// `role_workspace_types` and `role_workspaces`. Non-zero means Delete is
     /// refused, so the UI can say so before the click rather than after.
+    ///
+    /// This is FOREIGN-KEY truth and the only field that may gate deletion.
+    /// It is NOT a count of accounts and must never be labelled as one —
+    /// `holder_count` is that number, and it is not derivable from this one.
     pub reference_count: i64,
+    /// Accounts that resolve to this role: the only value that may be
+    /// worded as "used by N accounts". From `Store::role_holder_count`, i.e.
+    /// the same predicate authorization uses. NOT a sum of referrer rows:
+    /// `create_user` writes a `users` row AND an `assignments` row for one
+    /// person, so the sum counts every ordinary account twice.
+    pub holder_count: i64,
+    /// Non-account references — `role_workspace_types` and `role_workspaces`
+    /// rows, i.e. workspace configuration pointing at this role. A grant
+    /// blocks a delete just as a holder does, yet no account holds anything
+    /// through it, so it is reported apart rather than added to a count of
+    /// people.
+    pub grant_count: i64,
 }
 
 #[command]
@@ -663,11 +679,22 @@ fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, AppError> {
     // the DTO; `permission_keys` takes &self and `name`/`description` move.
     let permissions = role.permission_keys();
     let is_builtin = oz_core::db::roles::is_builtin_role_id(&role.id);
-    let reference_count = store
-        .role_reference_counts(&role.id)?
+    let refs = store.role_reference_counts(&role.id)?;
+    let reference_count = refs.iter().map(|(_, count)| count).sum();
+    // Split rather than summed, because the kinds answer different questions:
+    // a workspace-type row blocks deletion while no account holds the role
+    // through it. Folding both into one number and printing "Used by N
+    // accounts" stated a fact about people never computed from people.
+    let grant_count = refs
         .iter()
+        .filter(|(table, _)| matches!(*table, "role_workspace_types" | "role_workspaces"))
         .map(|(_, count)| count)
         .sum();
+    // Its own query, not `reference_count - grant_count`: an account whose
+    // assignment names a different role is a referrer of THIS one without
+    // being a holder of it, so no arithmetic over rows recovers the set. That
+    // is also why `reference_count` above is kept rather than derived.
+    let holder_count = store.role_holder_count(&role.id)?;
     Ok(RoleDto {
         id: role.id,
         name: role.name,
@@ -675,6 +702,8 @@ fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, AppError> {
         permissions,
         is_builtin,
         reference_count,
+        holder_count,
+        grant_count,
     })
 }
 

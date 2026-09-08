@@ -224,8 +224,27 @@ export interface RoleDto {
    * Rows still pointing at this role (users, assignments, and the two
    * workspace-grant tables). Non-zero means the backend refuses Delete, so
    * disable it and say why rather than letting the click fail.
+   *
+   * FOREIGN-KEY truth and the ONLY field that may gate deletion. It is NOT a
+   * count of accounts and must never be worded as one — `holder_count` is
+   * that number, and it is not derivable from this one, because
+   * `create_user` writes two rows per person and an account can reference a
+   * role through its `users` row while resolving to a different one.
    */
   reference_count: number;
+  /**
+   * Accounts that resolve to this role — the only value that may read "used
+   * by N accounts". Computed server-side from the same predicate
+   * authorization uses (assignment first, `users.role_id` fallback), NOT by
+   * summing `reference_count`.
+   */
+  holder_count: number;
+  /**
+   * Workspace configuration pointing at this role (`role_workspace_types` /
+   * `role_workspaces`). Blocks a delete like a holder does, but no account
+   * holds anything through it, so it gets its own wording.
+   */
+  grant_count: number;
 }
 
 /**

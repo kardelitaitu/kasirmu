@@ -235,3 +235,77 @@ async fn a_missing_role_is_an_error_rather_than_an_empty_list() {
         "expected a not-found refusal, got {err:?}"
     );
 }
+// ── the DTO split: accounts and grants are different facts ─────────────
+
+fn dto_for(conn: &rusqlite::Connection, id: &str) -> RoleDto {
+    let s = Store::new(conn);
+    let role = s.get_role(id).unwrap().expect("fixture role exists");
+    role_dto(&s, role).unwrap()
+}
+
+#[test]
+fn role_dto_counts_one_account_once_even_though_it_has_two_rows() {
+    // The everyday case the summed label got wrong. create_user writes a
+    // users row AND an assignments row for the same person, so
+    // reference_count is 2 for one holder. Worded as accounts it reported
+    // double for every normally-created account — three holders rendered as
+    // six — and no arithmetic over rows fixes that.
+    let conn = base_conn();
+    add_user(&conn, "user-one", VIEWER);
+
+    let dto = dto_for(&conn, VIEWER);
+    assert_eq!(dto.holder_count, 1, "one person");
+    assert_eq!(dto.reference_count, 2, "two FK rows for that person");
+    assert_eq!(dto.grant_count, 0);
+}
+
+#[test]
+fn role_dto_keeps_a_workspace_grant_out_of_the_holder_count() {
+    // Mirrors the state core constructs in
+    // delete_role_refuses_a_role_named_only_by_a_workspace_type: a role
+    // nobody holds and something still grants. Pre-split the surface rendered
+    // reference_count there and asserted one account about a role with zero
+    // accounts, one line above "No accounts hold this role."
+    let conn = base_conn();
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO workspace_types (key, name) VALUES ('retail-pos', 'Retail POS');
+         INSERT OR IGNORE INTO workspaces (id, key, name) VALUES ('ws-retail', 'retail-pos', 'Retail');",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO role_workspace_types (role_id, type_key) VALUES (?1, 'retail-pos')",
+        [VIEWER],
+    )
+    .unwrap();
+
+    let dto = dto_for(&conn, VIEWER);
+    assert_eq!(dto.holder_count, 0, "nobody holds it");
+    assert_eq!(dto.grant_count, 1, "a workspace grant does");
+    assert!(
+        dto.reference_count > 0,
+        "and it must still block deletion — FK truth is unchanged"
+    );
+}
+
+#[test]
+fn a_divergent_account_is_a_referrer_without_being_a_holder() {
+    // Why reference_count is kept rather than computed as holder_count plus
+    // grant_count. This account's users row points at VIEWER while its
+    // assignment resolves it elsewhere: authorization sends it to the other
+    // role, so listing it as a VIEWER holder would credit access it does not
+    // have — yet the FK row is real, so VIEWER must stay undeletable.
+    let conn = base_conn();
+    add_user(&conn, "user-drift", VIEWER);
+    conn.execute(
+        "UPDATE assignments SET role_id = ?2 WHERE user_id = ?1",
+        rusqlite::params!["user-drift", "role-owner"],
+    )
+    .unwrap();
+
+    let dto = dto_for(&conn, VIEWER);
+    assert_eq!(dto.holder_count, 0, "resolves elsewhere, so not a holder");
+    assert_eq!(
+        dto.reference_count, 1,
+        "the users row is still a real reference: delete must stay blocked"
+    );
+}

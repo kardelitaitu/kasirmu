@@ -250,14 +250,22 @@ role-edit = Ubah
 role-edit-aria = Ubah peran { $name }
 role-delete = Hapus
 role-delete-aria = Hapus peran { $name }
-# Menghitung baris FOREIGN KEY di empat tabel, bukan jumlah orang. Lihat
-# penjelasan pada staff.ftl: "Dipakai N akun" dulu menggandakan setiap akun
-# biasa, karena create_user menulis baris users DAN assignments untuk satu
-# orang. Jumlah akun yang sebenarnya ada di daftar Pemegang di bawah, yang
-# memakai predikat resolusi dan bukan hitungan baris.
-role-in-use = { $count ->
-    [one] Dirujuk 1 catatan
-   *[other] Dirujuk { $count } catatan
+# Tiga label untuk dua hal yang berbeda, karena angka yang boleh menghalangi
+# Penghapusan bukan angka yang menghitung orang. Penjelasan lengkap ada di
+# staff.ftl: jumlah akun harus datang dari holder_count (predikat resolusi,
+# bukan penjumlahan baris), sedangkan grant_count adalah konfigurasi workspace
+# yang menghalangi penghapusan tanpa ada akun yang memegangnya.
+role-in-use-accounts = { $count ->
+    [one] Dipakai 1 akun
+   *[other] Dipakai { $count } akun
+  }
+role-in-use-grants = { $count ->
+    [one] dan 1 grant workspace
+   *[other] dan { $count } grant workspace
+  }
+role-in-use-grants-only = { $count ->
+    [one] Memuat 1 grant workspace
+   *[other] Memuat { $count } grant workspace
   }
 role-editor-create-title = Peran baru
 role-editor-edit-title = Ubah peran
@@ -274,10 +282,12 @@ role-deleted = Peran { $name } dihapus.
 role-delete-confirm-title = Hapus peran ini?
 role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Tindakan ini tidak bisa dibatalkan.
 
-# Pemegang peran. Sengaja dibedakan dari role-in-use di atas: angka itu
-# menghitung empat rujukan foreign key dan menjawab apakah peran boleh
-# dihapus, sedangkan kunci di bawah menjelaskan akun yang benar-benar
-# menyelesaikannya.
+# Pemegang peran, per akun. Baris yang tertutup sudah menyebut total yang
+# sama lewat role-in-use-accounts, dan keduanya membaca holder_count yang
+# dihitung core dari SATU klausul WHERE yang sama — jadi angka di baris dan
+# daftar di bawahnya tidak bisa berbeda. reference_count tetap menghalangi
+# Penghapusan: ia menghitung baris foreign key, dan itu memang yang
+# menghalangi penghapusan.
 role-holders-toggle = Pemegang
 role-holders-aria = Tampilkan akun yang memegang peran { $name }
 role-holders-list-aria = Akun yang memegang peran { $name }

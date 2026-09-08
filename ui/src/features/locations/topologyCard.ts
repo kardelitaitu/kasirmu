@@ -847,6 +847,13 @@ export const TOPOLOGY_UI_FALLBACKS: Readonly<Record<string, string>> = {
   'topology-hardware-barcode-scanner': 'Barcode Scanner',
   'topology-hardware-cash-drawer': 'Cash Drawer',
   'topology-hardware-display-customer': 'Customer Display',
+  'topology-typedesc-store-pos': 'Point of sale terminal for retail transactions and checkout',
+  'topology-typedesc-restaurant-pos': 'Restaurant ordering terminal with table and kitchen routing',
+  'topology-typedesc-kds': 'Kitchen display for order preparation and kitchen routing',
+  'topology-typedesc-warehouse': 'Inventory storage for stock deduction and branch transfers',
+  'topology-typedesc-admin': 'Administrative back-office and configuration terminal',
+  'topology-typedesc-store': 'Physical branch store location root',
+  'topology-typedesc-hardware': 'Hardware peripheral device connected to terminals',
 };
 
 /** Resolve topology chrome with a safe fallback so a stale or partial
@@ -857,4 +864,32 @@ export function topologyUiString(
   vars?: Record<string, FluentVariable> | null,
 ): string {
   return l10n.getString(id, vars ?? null, TOPOLOGY_UI_FALLBACKS[id] ?? id);
+}
+
+/** Resolves the human-readable display name for a node's type (e.g. "Kitchen Display (KDS)"). */
+export function nodeTypeDisplayName(
+  node: TopologyNodeData,
+  l10n: Pick<ReactLocalization, 'getString'>,
+): string {
+  if (node.type === 'workspace') {
+    const typeKey = (node.metadata?.['typeKey'] as string | undefined) ?? 'store-pos';
+    const labelId = NODE_KIND_REGISTRY[`workspace:${typeKey}`]?.typeLabelId;
+    if (labelId) {
+      return topologyUiString(l10n, labelId);
+    }
+    return typeKey;
+  }
+  return topologyUiString(l10n, `topology-node-type-${node.type}`);
+}
+
+/** Resolves the built-in description for a node's typeKey (or node type). */
+export function nodeTypeDescription(
+  node: TopologyNodeData,
+  l10n: Pick<ReactLocalization, 'getString'>,
+): string {
+  if (node.type === 'workspace') {
+    const typeKey = (node.metadata?.['typeKey'] as string | undefined) ?? 'store-pos';
+    return topologyUiString(l10n, `topology-typedesc-${typeKey}`);
+  }
+  return topologyUiString(l10n, `topology-typedesc-${node.type}`);
 }
