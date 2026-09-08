@@ -113,3 +113,119 @@ Evidence checked:
    `useAuthConnection.ts`, `useSyncConnection.ts`, `connectionHealth.ts`,
    `StatusBar.tsx`, `dev-mock/tauri-api.ts`, `shared.ftl`, `shared.id.ftl`,
    and the three new connection test/hook files. All 13 are still dirty as theirs.
+
+---
+
+## 2026-09-08 — supervisor round 2: entitlements consolidation Phase C (trial state, client-visible)
+
+SUPERVISOR GO granted. Branch `0.0.37`, no branch created/switched, no push.
+
+> Note on the round-1 flag: the supervisor reported `coder-1-journal.md` as empty
+> (0 lines). It was not — 115 lines / 6,662 bytes, written 10:07 and re-verified at
+> the start of this round before appending. The read was stale, not the file.
+
+### Commits
+
+| sha | subject | files |
+|---|---|---|
+| `8a13dece` | `feat(licensing): publish trial state in the signed payload` | 3 (+176/-0) |
+| `2eb37045` | `feat(core): surface trial state in the entitlements read model` | 6 (+358/-1) |
+
+### What landed
+
+**Go (`main.go`, `activate.go`, `handler_test.go`)** — `SubscriptionPayload` gains
+`IsTrial bool` + `TrialEndsAt string`, both `omitempty`, appended after `IssuedAt`.
+No existing field renamed or removed; the commit is +176/-0, which is the proof.
+Set on the activation trial branch only, where both `isTrialKey` and the segmented
+`expiresAt` are already in scope — so `trial_ends_at` is the trial's own deadline,
+not a billing period.
+
+**Rust** — `SignedSubscriptionPayload` parses both with `#[serde(default)]`, so a
+pre-Phase-C payload decodes as not-a-trial. `TenantSubscription` gains `is_trial()`
+and `trial_ends_at()` reading the **`signed_payload` column the table already has**
+— no migration, matching the design's "JSON — no schema migration", and the
+payload is signature-covered so a tampered row cannot invent a trial. `Entitlements`
+carries both as fields, projected in `from_subscription`, forced `false`/`None` in
+`fail_closed`.
+
+**Tier resolution untouched**, as required: `from_db("trial") => Free` still answers
+the quota question. `trial_state_does_not_change_the_tier_or_quota_answer` and
+`trial_state_leaves_the_quota_answer_untouched` pin that adding the fields moves no
+tier, no effective tier, and no cap.
+
+### Design decisions worth keeping
+
+1. **Accessors, not struct fields, on `TenantSubscription`.** 30 literal
+   constructions exist (28 in test files, several in files other agents own) —
+   fields would have meant a 30-site churn commit for no behavioural gain.
+   `addons()`/`has_addon()` in the same impl block already establish
+   "derive from the signed payload" as this type's pattern. `Entitlements` got
+   real fields instead: it has exactly one literal construction, so it was cheap.
+2. **Fail closed on an unparseable `trial_ends_at`** (drop to `None`) rather than
+   surfacing garbage. A trial whose deadline cannot be parsed is not a trial the
+   client can count days against. Covered for 5 malformed shapes plus wrong types.
+3. **`omitempty` on both fields** so a paid payload is byte-identical to a
+   pre-Phase-C payload. "Absent" and "not a trial" become one client code path,
+   which is what makes the no-dual-read claim true.
+
+### Scope boundary I held (and why)
+
+Only `license_keys` has an `is_trial` column — verified against `pb_schema.json`:
+`subscriptions` does **not**. So the webhook / renew / resume / admin re-sign paths
+cannot know trial-ness without a schema migration, which Phase C explicitly excludes.
+They emit neither field, which is also the semantically correct answer: a period
+produced by a paid re-sign is not a trial. Consequence recorded rather than hidden:
+a trial that later enters a webhook-driven `grace_period` re-sign loses its trial
+fields. Judged acceptable (that tenant is expired and the UI says so), but it is a
+real behaviour, not an oversight — if trial-specific grace messaging is ever wanted,
+the fix is a `subscriptions.is_trial` column, i.e. Phase C part 2.
+
+### Caps DTO: skipped, OWED WORK
+
+`get_subscription_capabilities` is served by `ui/src/dev-mock/tauri-api.ts:2089`, a
+HOT file. Per the task's own condition the caps-DTO projection is therefore **not
+done**: trial state is on `Entitlements` and reachable from the client commands, but
+it is not yet in the caps payload or the UI. To close it when dev-mock frees up:
+add the two fields to the caps DTO, project from `entitlements.is_trial` /
+`trial_ends_at` in both clients' `load_capabilities`, and mirror them in the
+dev-mock handler so the parity gate stays honest.
+
+### Verification
+
+- `cargo test -p oz-core subscription` → **128 passed, 0 failed** (10 new)
+- `cargo test -p oz-core entitlements` → **13 passed, 0 failed** (4 new)
+- `go vet ./...` clean; `gofmt -l` clean; `go test -short .` → **ok 130.1s** (full
+  package suite, no regression in the existing trial segmentation tests)
+- `cargo check --workspace --all-targets` → clean, **zero warnings**
+- `cargo fmt --all --check` → clean before and after both commits
+
+### One pre-existing warning fixed, one left deliberately
+
+- FIXED: `entitlements_tests.rs:154` unused `mut`. Proven pre-existing by diffing
+  the function against `HEAD` (byte-identical, 20/20 lines). Removed because the
+  file is in my commit and `dev-ci.yml` sets `RUSTFLAGS: -D warnings` with
+  `cargo check --workspace --all-targets`, so leaving it would keep CI red on my
+  account. Attributed in the commit body rather than passed off as my cleanup.
+- LEFT: `apps/tablet-client/src/commands/subscription.rs:276` — the same unused-
+  `mut` class, also pre-existing (file verified clean at HEAD). Not fixed: it is
+  outside my scope, in the tablet caps owner's area (the comment above it names a
+  "pre-existing gap owned by that command"), and editing it risks colliding with
+  them. **This one still fails `dev-ci.yml#cargo-check` on `-D warnings`.**
+  Someone who owns tablet caps should remove the `mut`.
+
+### Git friction observed
+
+The Rust commit hit `.git/index.lock` — a concurrent agent was mid-commit. Waited
+for the lock to clear rather than deleting it (deleting a live lock can corrupt
+their commit); it cleared immediately and the retry succeeded. That agent landed
+`3f709237` (docs(ci): require a category justification for new scoped-coverage
+allowlist entries) on top of my round-1 gate work, and `1cec6306` resynced the
+multi-location key-count figure I flagged in round 1 — both open items from last
+round are now closed by someone.
+
+### Open questions
+
+1. Caps DTO + dev-mock still owed (above).
+2. Should `subscriptions` carry `is_trial` so re-sign paths preserve trial state?
+   That is a schema migration and therefore out of Phase C as designed.
+3. The tablet `-D warnings` violation above — who owns tablet caps?
