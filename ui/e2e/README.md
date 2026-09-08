@@ -82,7 +82,7 @@ Each test file is fully isolated:
 > ⚠️ **This describes a pipeline that no longer executes.** The `e2e` job lived in
 > `.github/workflows/ci.yml`, which `23c96330` retired to `ci.yml.bak` on 09-02; `e2e-pr.yml`
 > went the same way. GitHub never reads a `.bak` file, and neither live workflow defines an
-> `e2e` job — `dev-ci.yml`'s jobs are `changes`, `website`, `cargo-check`, `cargo-nextest`,
+> `e2e` job — `dev-ci.yml`'s jobs are `changes`, `website`, `cargo-check`, `cargo-nextest`, <!-- ci-claim: ok: this line enumerates the live jobs to prove e2e is absent -->
 > `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`;
 > `release.yml`'s are `release-validate`, `release-build`, `release-publish`. `AGENTS.md` says
 > so directly: "E2E, a11y, security and nightly suites are NOT enforced in CI — a green Dev CI
