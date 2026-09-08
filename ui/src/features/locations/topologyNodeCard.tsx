@@ -376,7 +376,7 @@ function TopologyNodeCardImpl({
               {/* Button 3: Rename */}
               <button
                 type="button"
-                className="node-action-btn node-action-btn--rename node-card-rename-btn"
+                className="node-action-btn node-action-btn--rename"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => { if (isRenameable) onStartRename(node.id, node.name); }}
                 disabled={!isRenameable}
@@ -385,7 +385,7 @@ function TopologyNodeCardImpl({
               >
                 <EditIcon size={12} />
                 <span className="node-btn-label">
-                  {"Rename\u200B"}
+                  {topologyUiString(l10n, node.type === 'store' ? 'topology-branch-rename-label' : 'topology-workspace-rename-label')}
                 </span>
               </button>
 
