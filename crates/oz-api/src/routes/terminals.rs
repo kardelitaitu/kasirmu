@@ -118,10 +118,44 @@ pub async fn register_terminal_handler(
         )
             .into_response();
     }
+    // Bound terminal_id (≤64, `[A-Za-z0-9_-]`) so an admin-minted token
+    // can never propagate arbitrary bytes into the store or a query path.
+    if terminal_id.len() > 64
+        || !terminal_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid_terminal_id"})),
+        )
+            .into_response();
+    }
+    let label = body.label.unwrap_or_default();
+    if label.len() > 128 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "terminal label too long (max 128)"})),
+        )
+            .into_response();
+    }
+    if let Some(tenant) = body.tenant_id.as_deref() {
+        if tenant.trim().is_empty()
+            || tenant.len() > 64
+            || !tenant
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "invalid_tenant", "tenant": tenant})),
+            )
+                .into_response();
+        }
+    }
 
     let device_secret = generate_device_secret();
     let secret_hash = hash_secret(&device_secret);
-    let label = body.label.unwrap_or_default();
 
     if let Some(pool) = &state.pg {
         return match crate::pg::register_terminal(

@@ -13,6 +13,16 @@
 //!   length-prefixed binary frames, per-hash `stored|duplicate|rejected`.
 //! - `GET /api/v1/images:pack?hashes=...` — up to 64 files / 2 MB for cold
 //!   start (length-prefixed frames).
+//!
+//! # Auth model
+//!
+//! PUT endpoints accept any valid tenant JWT (the tablet image-push
+//! scheduler uploads with a sync/JWT token, not an admin key — so these
+//! are intentionally NOT operator/admin-gated). No per-tenant byte quota
+//! or rate limit exists: an authenticated tenant can fill the volume by
+//! repeatedly hitting the 32 KB / 512 KB caps. Accepted abuse surface for
+//! a device cohort holding valid creds; add a quota/rate limit if that
+//! changes.
 
 use axum::{
     Json,

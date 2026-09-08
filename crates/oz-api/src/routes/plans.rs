@@ -20,6 +20,17 @@ use crate::AppState;
 use crate::auth::ApiTokenClaims;
 use crate::routes::tokens::admin_key_authorised;
 
+/// Reject tenant IDs that are empty, oversized, or carry non-`[a-zA-Z0-9_-]`
+/// characters — the same charset policy `settings.rs` enforces on its URL
+/// tenant path segment.
+fn valid_tenant(tenant: &str) -> bool {
+    !tenant.is_empty()
+        && tenant.len() <= 64
+        && tenant
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 /// Request body for setting a tenant's plan.
 #[derive(Deserialize)]
 pub struct SetPlanRequest {
@@ -95,6 +106,14 @@ pub async fn set_tenant_plan_handler(
         return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "invalid_admin_key"})),
+        )
+            .into_response();
+    }
+
+    if !valid_tenant(&tenant_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid_tenant", "tenant": tenant_id})),
         )
             .into_response();
     }

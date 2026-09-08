@@ -181,6 +181,12 @@ pub async fn list_active_memos_handler(
 ) -> Response {
     // Defense in depth (device credentials are registration-scoped): when
     // the token carries a terminal_id, the query may not name another one.
+    // NB: this only binds terminal-scoped tokens. An admin-minted token
+    // (no terminal_id — the normal desktop path) carries no such claim and
+    // may query ANY terminal's active memos via `?terminal_id=`, as long as
+    // its tenant matches the bill being scoped. Deliberate: the desktop
+    // must poll arbitrary terminals. Reads stay within-tenant (tenant comes
+    // from claims, never the query).
     if let Some(claimed) = &claims.terminal_id {
         if claimed != &query.terminal_id {
             return (
