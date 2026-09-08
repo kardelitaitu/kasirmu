@@ -55,6 +55,15 @@ violations=0
 #      Also: settings_changed_sink, pick_logo_file, list_all_features,
 #      set_feature(s)_bulk, get/rotate_key_rotation_info, export/import_data,
 #      create_backup, get_backup_status.
+#      `get_over_quota_report` is category 2 on the same reasoning as
+#      `get_subscription_capabilities` directly above it in the list: it
+#      authenticates a `session_token` and checks `settings:read` inline via
+#      `require_permission_for_session`, then assesses the TENANT-level quota
+#      dimensions — locations, POS registers, warehouses, staff and products —
+#      through `Store::assess_downgrade` against `state.db`. A quota is a
+#      per-tenant ceiling rather than a per-store one, so those counts are
+#      organization-global, no store connection is resolved, and a `_scoped`
+#      variant would be an empty ceremony.
 #   3. HARDWARE / TERMINAL PATHS — device-driven, scoped by terminal rather
 #      than store session: gateway_status, edc_terminal_status, edc_sale,
 #      edc_refund, edc_void.
@@ -64,7 +73,7 @@ violations=0
 # NOTE: adding a name here silences the gate for that command forever, and the
 # list is a single regex alternation with no per-entry justification. Prefer a
 # `_scoped` variant whenever the command reads or writes store data.
-ALLOWLIST="staff_login|staff_check_username|has_users|bootstrap_owner|create_session|destroy_session|session_keepalive|verify_pin|refresh_picker_ticket|activate_license|check_license_status|get_license_status|get_machine_id|get_hardware_fingerprint|renew_license|pause_subscription|resume_subscription|test_auth_connection|ping|version|get_device_id|get_local_ip|resolve_boot_store|get_subscription_capabilities|complete_setup|dismiss_setup_wizard|get_setup_status|get_enabled_features|load_topology|can_save_topology|apply_topology_diff|recover_pending_topology_apply_at_startup|save_topology_template|load_topology_template|list_topology_templates|delete_topology_template|list_topology_revisions|load_topology_revision|pin_topology_revision|export_data|import_preview|import_data|create_backup|get_backup_status|gateway_status|edc_terminal_status|edc_sale|edc_refund|edc_void|send_test_report|save_report_schedule|get_report_schedule|list_all_features|set_feature|set_features_bulk|get_key_rotation_info|rotate_encryption_key|currency_info|pick_logo_file|settings_changed_sink|create_inventory_location|create_inventory_transaction|deactivate_inventory_location|delete_stock_threshold|end_inventory_shift|finalize_sale|get_active_inventory_shift|get_inventory_transaction|get_stock_thresholds|get_workspace_inventory_locations|list_inventory_locations|list_inventory_shifts|list_inventory_transactions|list_inventory_transactions_for_shift|set_stock_threshold|set_workspace_inventory_locations|start_inventory_shift|update_inventory_location|void_pending_sale|list_warehouse_products_at_location"
+ALLOWLIST="staff_login|staff_check_username|has_users|bootstrap_owner|create_session|destroy_session|session_keepalive|verify_pin|refresh_picker_ticket|activate_license|check_license_status|get_license_status|get_machine_id|get_hardware_fingerprint|renew_license|pause_subscription|resume_subscription|test_auth_connection|ping|version|get_device_id|get_local_ip|resolve_boot_store|get_subscription_capabilities|get_over_quota_report|complete_setup|dismiss_setup_wizard|get_setup_status|get_enabled_features|load_topology|can_save_topology|apply_topology_diff|recover_pending_topology_apply_at_startup|save_topology_template|load_topology_template|list_topology_templates|delete_topology_template|list_topology_revisions|load_topology_revision|pin_topology_revision|export_data|import_preview|import_data|create_backup|get_backup_status|gateway_status|edc_terminal_status|edc_sale|edc_refund|edc_void|send_test_report|save_report_schedule|get_report_schedule|list_all_features|set_feature|set_features_bulk|get_key_rotation_info|rotate_encryption_key|currency_info|pick_logo_file|settings_changed_sink|create_inventory_location|create_inventory_transaction|deactivate_inventory_location|delete_stock_threshold|end_inventory_shift|finalize_sale|get_active_inventory_shift|get_inventory_transaction|get_stock_thresholds|get_workspace_inventory_locations|list_inventory_locations|list_inventory_shifts|list_inventory_transactions|list_inventory_transactions_for_shift|set_stock_threshold|set_workspace_inventory_locations|start_inventory_shift|update_inventory_location|void_pending_sale|list_warehouse_products_at_location"
 
 # Get all _scoped function names
 scoped_funcs=$(grep -roh "pub async fn [a-z_]*_scoped" apps/desktop-client/src/commands --include="*.rs" 2>/dev/null | sed 's/pub async fn //' | sort -u)
