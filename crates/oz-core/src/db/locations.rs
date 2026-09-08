@@ -13,6 +13,7 @@ next: none | perf: N/A
 use rusqlite::params;
 
 use super::Store;
+use crate::downgrade::QuotaDimension;
 use crate::subscription::{QuotaError, SubscriptionTier};
 use crate::{CoreError, LocationProfile};
 
@@ -94,7 +95,7 @@ impl Store<'_> {
     /// When the tier's `max_locations()` cap is reached, returns
     /// [`QuotaError::StoreLimit`]. Unlimited tiers (`None`) pass.
     pub fn enforce_location_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = tier.max_locations() {
+        if let Some(limit) = QuotaDimension::Locations.limit_for(tier) {
             let current = self.count_locations()?;
             if current >= limit {
                 return Err(QuotaError::StoreLimit {

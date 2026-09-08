@@ -433,6 +433,56 @@ its wire shape, so the parity gate and FTL surfaces stay quiet. The
 `scope` axis joins through the same `Entitlements` instance once the
 ruling recorded in todo-global-saas-3.md Amendment 4 lands.
 
+## Phases A+B landed — implementation journal (2026-09-08, DSH)
+
+Both client-core phases are in, per the sequencing note above (no
+migration, no wire change, UI untouched):
+
+**Phase A — one read model.** `oz_core::entitlements`:
+`Entitlements::from_subscription` assembles tier (effective), §B state,
+add-ons, and usage once; `build_entitlements` wraps the shared
+fail-closed loader (missing/tampered/unreadable → `fail_closed`, never
+an error) and takes `debug_upgrade` as a named decision — desktop passes
+`true`, tablet `false`, so the per-client divergence the design
+preserves is a builder argument rather than an inline `cfg` block that
+reads like an accident. Both clients' `load_capabilities` are now
+projections (`project_capabilities`) of that instance, and both
+`load_feature_verdict`s gather their `AvailabilityFacts` through
+`ent.availability_facts(...)` from the same shape — the desktop dev
+upgrade runs through `Entitlements::apply_debug_upgrade`, shared with
+caps, so a verdict and the payload beside it cannot disagree
+(`dfbc41b2`'s rule, now structural instead of two parallel comments).
+
+**Phase B — one limit table.** The five `enforce_*_quota` gates
+(locations, terminals, warehouses, staff, products) now take their limit
+from `QuotaDimension::limit_for(tier)` instead of calling `tier.max_*`
+inline, signatures unchanged, and `AvailabilityFeature::tier_limit`
+routes through the same table — the three-callers-agree-by-convention
+drift the design measured is closed by structure. `Entitlements`'
+limit projections (`max_locations` etc.) read the table too, so a
+tier-limit change surfaces identically in a gate rejection, an
+`OverQuotaReport` row, a caps payload, and a verdict.
+
+**Correspondence tests** (`entitlements_tests.rs`, 7): the limit
+identity is pinned per dimension across every tier from the read-model
+side — `limit_for(d) == tier.max_x()` — so consolidation cannot
+silently change a limit; plus fail-closed projection identity, usage
+in/out identity, the analytics add-on flowing only while active or in
+grace, the named dev upgrade promoting only a genuinely active Free row,
+and the tablet path (`debug_upgrade: false`) never promoting even in
+dev. Both clients' existing subscription suites (24 desktop / 5 tablet)
+are the regression proof that the projection is behavior-preserving:
+wire shape, numbers, and the `dfbc41b2` fail-closed invariant all pin
+unchanged.
+
+**Deliberately left:** `supports_analytics_with_addons`' nominal-Plus
+requirement lives on in `Entitlements::supports_analytics` via the
+`addon_grant_flows` + advanced_analytics check against the projected
+tier — a Free row with the add-on gets analytics in caps exactly as
+before, and the verdict's addon server-grant keeps its (pre-existing,
+unowned) no-nominal-check shape, recorded here so nobody "unifies" the
+two without a ruling.
+
 ## Phase 2 execution plan (2026-09-06)
 
 Phase 1 gates this file, so the P1 list was dependency-triaged against the

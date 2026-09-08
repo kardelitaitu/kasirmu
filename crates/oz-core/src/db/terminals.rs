@@ -9,6 +9,7 @@ next: none | perf: N/A
 use rusqlite::params;
 
 use crate::Terminal;
+use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
 use crate::subscription::{QuotaError, SubscriptionTier};
 
@@ -65,7 +66,7 @@ impl Store<'_> {
     /// When the tier's `max_pos_instances()` cap is reached, returns
     /// [`QuotaError::RegisterLimit`]. Unlimited tiers (`None`) pass.
     pub fn enforce_terminal_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = tier.max_pos_instances() {
+        if let Some(limit) = QuotaDimension::PosRegisters.limit_for(tier) {
             let current = self.count_terminals()?;
             if current >= limit {
                 return Err(QuotaError::RegisterLimit {

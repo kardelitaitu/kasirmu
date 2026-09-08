@@ -29,6 +29,7 @@
 
 use serde::Serialize;
 
+use crate::downgrade::QuotaDimension;
 use crate::subscription::{SubscriptionLifecycleState, SubscriptionTier};
 
 /// A feature the resolver can explain.
@@ -168,14 +169,18 @@ impl AvailabilityFeature {
     /// unlimited, or that the feature is not limit-shaped at all.
     ///
     /// Public because diagnostics callers surface the same number the
-    /// resolver compared against, and a second source for it would drift.
+    /// resolver compared against. Routed through
+    /// `QuotaDimension::limit_for` (the one limit table, Phase B) so a
+    /// verdict, a caps projection, and the five creation gates cannot
+    /// disagree on a tier limit — the same convention-is-not-structure
+    /// drift the consolidation design closed.
     #[must_use]
     pub fn tier_limit(self, tier: &SubscriptionTier) -> Option<i64> {
         match self {
-            Self::Locations => tier.max_locations(),
-            Self::StaffUsers => tier.max_staff_users(),
-            Self::PosInstances => tier.max_pos_instances(),
-            Self::Warehouses => tier.max_warehouses(),
+            Self::Locations => QuotaDimension::Locations.limit_for(tier),
+            Self::StaffUsers => QuotaDimension::Staff.limit_for(tier),
+            Self::PosInstances => QuotaDimension::PosRegisters.limit_for(tier),
+            Self::Warehouses => QuotaDimension::Warehouses.limit_for(tier),
             Self::SalesHistoryDays => tier.sales_history_days(),
             _ => None,
         }

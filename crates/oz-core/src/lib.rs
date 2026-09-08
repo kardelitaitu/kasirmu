@@ -55,9 +55,10 @@ pub mod events;
 // Note: ExchangeRateRow re-exported from `modules-currency`.
 // The old `pub mod exchange_rate` shim was removed in R2 Phase 4.
 // Import directly from `modules_currency::ExchangeRateRow`.
+/// Feature-gate registry and runtime guards.
+pub mod entitlements;
 /// Unified analytics export — JSON bundle of all report types.
 pub mod export;
-/// Feature-gate registry and runtime guards.
 pub mod features;
 /// Gift cards — issue, redeem, top-up, freeze, balance checks.
 pub mod gift_card;

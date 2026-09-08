@@ -10,6 +10,7 @@
 //! Invariants: SKU uniqueness per tenant; money fields are i64 minor
 //! units; writes run inside transactions; version CAS returns Conflict.
 use super::*;
+use crate::downgrade::QuotaDimension;
 use crate::subscription::{QuotaError, SubscriptionTier};
 
 // ── Product CRUD ─────────────────────────────────────────────────────
@@ -209,7 +210,7 @@ impl Store<'_> {
     /// `SubscriptionLimitExceeded`, which the UI maps to an upgrade CTA).
     /// Unlimited tiers (`None`) pass.
     pub fn enforce_product_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = tier.max_products() {
+        if let Some(limit) = QuotaDimension::Products.limit_for(tier) {
             let current: i64 = self
                 .conn
                 .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;

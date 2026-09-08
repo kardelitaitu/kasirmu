@@ -13,9 +13,10 @@ use chrono;
 use serde::Serialize;
 use tauri::{State, command};
 
-use oz_core::availability::{AvailabilityFacts, AvailabilityFeature, FeatureVerdict, UsageCounts};
+use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
+use oz_core::entitlements::{Entitlements, build_entitlements};
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
@@ -79,81 +80,72 @@ pub async fn get_subscription_capabilities(
     state: State<'_, AppState>,
 ) -> Result<SubscriptionCapabilitiesDto, AppError> {
     let db = state.db.lock().await;
-    let loaded = match TenantSubscription::load(&db, "default") {
-        Ok(Some(sub)) => match sub.verify_signature() {
-            Ok(()) => Some(sub),
-            Err(e) => {
-                tracing::warn!("subscription signature verification failed — failing closed: {e}");
-                None
-            }
-        },
-        Ok(None) => {
-            tracing::warn!("no tenant_subscription row for 'default' — failing closed");
-            None
-        }
-        Err(e) => {
-            tracing::warn!("tenant_subscription read failed — failing closed: {e}");
-            None
-        }
-    };
-
-    let lifecycle = loaded
-        .as_ref()
-        .map(|sub| sub.lifecycle_state())
-        .unwrap_or(SubscriptionLifecycleState::Unavailable);
-    // Grace-aware entitlement tier; Free when the subscription is not
-    // readable (fail closed).
-    let tier = loaded
-        .as_ref()
-        .map(|sub| sub.effective_tier())
-        .unwrap_or(SubscriptionTier::Free);
-
-    // Usage counts are best-effort: they drive approaching-limit banners
-    // only, and a broken global DB must still yield a definitive
-    // fail-closed capabilities payload rather than an IPC error.
-    let count = |sql: &str| -> i64 {
-        db.query_row(sql, [], |r| r.get(0)).unwrap_or_else(|e| {
-            tracing::warn!("usage count failed ({sql}) — reporting 0: {e}");
-            0
-        })
-    };
-    let staff_count = Store::new(&db).count_staff_users().unwrap_or_else(|e| {
-        tracing::warn!("staff count failed — reporting 0: {e}");
-        0
-    });
-    let location_count = count("SELECT COUNT(*) FROM locations");
-    let terminal_count = count("SELECT COUNT(*) FROM terminals");
+    let store = Store::new(&db);
+    // Tablet passes `debug_upgrade: false` — the per-client divergence
+    // the consolidation design preserves deliberately: this client's
+    // caps apply no dev Free→Premium upgrade, so the verdict beside it
+    // must not either.
+    let ent = build_entitlements(&store, gather_usage(&store), false);
 
     drop(db);
 
-    Ok(SubscriptionCapabilitiesDto {
-        tier: tier.tier_key().to_string(),
-        state: lifecycle.as_str().to_string(),
-        max_locations: tier.max_locations(),
-        max_pos_instances: tier.max_pos_instances(),
-        max_warehouses: tier.max_warehouses(),
-        max_staff_users: tier.max_staff_users(),
-        sales_history_days: tier.sales_history_days(),
-        supports_qris: tier.supports_qris(),
+    Ok(project_capabilities(&ent))
+}
+
+/// Gather the usage counts the gates and the caps DTO share, best-effort:
+/// they drive approaching-limit banners and verdict details, and a broken
+/// global DB must still yield a definitive fail-closed payload rather
+/// than an IPC error.
+fn gather_usage(store: &Store<'_>) -> UsageCounts {
+    UsageCounts {
+        locations: store.count_locations().unwrap_or_else(|e| {
+            tracing::warn!("location count failed — reporting 0: {e}");
+            0
+        }),
+        staff_users: store.count_staff_users().unwrap_or_else(|e| {
+            tracing::warn!("staff count failed — reporting 0: {e}");
+            0
+        }),
+        pos_instances: store.count_terminals().unwrap_or_else(|e| {
+            tracing::warn!("terminal count failed — reporting 0: {e}");
+            0
+        }),
+        warehouses: store.count_warehouse_locations().unwrap_or_else(|e| {
+            tracing::warn!("warehouse count failed — reporting 0: {e}");
+            0
+        }),
+    }
+}
+
+/// Project the caps DTO from the one read model (Phase A): every axis —
+/// tier, state, limits, flags, add-ons, usage — reads from the same
+/// `Entitlements` instance the verdict gathers from, so the two surfaces
+/// cannot disagree. The limits route through `QuotaDimension::limit_for`
+/// (Phase B), matching the creation gates.
+fn project_capabilities(ent: &Entitlements) -> SubscriptionCapabilitiesDto {
+    SubscriptionCapabilitiesDto {
+        tier: ent.tier.tier_key().to_string(),
+        state: ent.state.as_str().to_string(),
+        max_locations: ent.max_locations(),
+        max_pos_instances: ent.max_pos_instances(),
+        max_warehouses: ent.max_warehouses(),
+        max_staff_users: ent.max_staff_users(),
+        sales_history_days: ent.sales_history_days(),
+        supports_qris: ent.supports_qris(),
         // Addon-aware (C4.3): Plus + advanced_analytics unlocks analytics.
         // The static part comes from the entitlement tier; the addon grant
         // flows only while the subscription is active or in grace —
         // canceled/expired rows get the downgraded answer.
-        supports_analytics: tier.supports_analytics()
-            || ((lifecycle == SubscriptionLifecycleState::Active
-                || lifecycle == SubscriptionLifecycleState::Grace)
-                && loaded
-                    .as_ref()
-                    .is_some_and(|sub| sub.supports_analytics_with_addons())),
-        supports_loyalty: tier.supports_loyalty(),
-        supports_daily_dashboard: tier.supports_daily_dashboard(),
-        supports_cloud_sync: tier.supports_cloud_sync(),
-        offline_grace_days: tier.offline_grace_days(),
-        location_count,
-        staff_count,
-        terminal_count,
-        addons: loaded.as_ref().map(|sub| sub.addons()).unwrap_or_default(),
-    })
+        supports_analytics: ent.supports_analytics(),
+        supports_loyalty: ent.supports_loyalty(),
+        supports_daily_dashboard: ent.supports_daily_dashboard(),
+        supports_cloud_sync: ent.supports_cloud_sync(),
+        offline_grace_days: ent.offline_grace_days(),
+        location_count: ent.usage.locations,
+        staff_count: ent.usage.staff_users,
+        terminal_count: ent.usage.pos_instances,
+        addons: ent.addons.clone(),
+    }
 }
 
 // ── Feature-availability verdicts (Phase 3 observability) ───────────
@@ -263,39 +255,27 @@ fn load_feature_verdict(
         ))
     })?;
 
-    let loaded = load_subscription_for_verdict(db);
-    let state = loaded
-        .as_ref()
-        .map(|sub| sub.lifecycle_state())
-        .unwrap_or(SubscriptionLifecycleState::Unavailable);
-    // Mirror THIS client's `load_capabilities` exactly. The tablet's
-    // capabilities command applies no debug Free→Premium upgrade, so neither
-    // may the verdict. The invariant that matters is same-session agreement
-    // between a verdict and the gates it explains: a verdict reporting
-    // `premium` while this client's caps reports `free` would tell support a
-    // feature is available on a register whose tier gates are locked — the
-    // exact contradiction this command exists to prevent.
-    //
-    // Desktop's caps DOES apply that upgrade, so the two clients' verdicts
-    // legitimately differ in debug builds and converge in release. The
-    // missing upgrade in the tablet's capabilities command is a pre-existing
-    // gap owned by that command, not something the verdict should paper over
-    // by disagreeing with the payload beside it.
-    let tier = loaded
-        .as_ref()
-        .map(|sub| sub.effective_tier())
-        .unwrap_or(SubscriptionTier::Free);
-
-    // Usage counts come from the SAME `count_*` methods the creation-time
-    // `enforce_*_quota` gates consult, so a quota denial here is exactly
-    // the gate's next-rejection condition.
     let store = Store::new(db);
-    let usage = UsageCounts {
-        locations: store.count_locations().unwrap_or(0),
-        staff_users: store.count_staff_users().unwrap_or(0),
-        pos_instances: store.count_terminals().unwrap_or(0),
-        warehouses: store.count_warehouse_locations().unwrap_or(0),
-    };
+    let loaded = load_subscription_for_verdict(db);
+    // One read model for the whole verdict (Phase A) — and it must mirror
+    // THIS client's `load_capabilities` exactly. The tablet's capabilities
+    // command applies no debug Free→Premium upgrade (`debug_upgrade:
+    // false` below), so neither may the verdict. The invariant that
+    // matters is same-session agreement between a verdict and the gates
+    // it explains: a verdict reporting `premium` while this client's caps
+    // reports `free` would tell support a feature is available on a
+    // register whose tier gates are locked — the exact contradiction this
+    // command exists to prevent.
+    //
+    // Desktop's caps DOES apply that upgrade, so the two clients'
+    // verdicts legitimately differ in debug builds and converge in
+    // release. The missing upgrade in the tablet's capabilities command
+    // is a pre-existing gap owned by that command, not something the
+    // verdict should paper over by disagreeing with the payload beside it.
+    let mut ent = loaded
+        .as_ref()
+        .map(|sub| Entitlements::from_subscription(sub, gather_usage(&store)))
+        .unwrap_or_else(|| Entitlements::fail_closed(UsageCounts::default()));
 
     // Soft role check through the same authorize path the hard gates use —
     // a denial here is DIAGNOSED (reason `role`), not thrown.
@@ -322,13 +302,8 @@ fn load_feature_verdict(
     // for analytics on Plus — the resolver suppresses only the tier check
     // for it, which is exactly the addon semantics.
     let server_grant = if feature == AvailabilityFeature::Analytics
-        && matches!(
-            state,
-            SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
-        )
-        && loaded
-            .as_ref()
-            .is_some_and(|sub| sub.addons().iter().any(|a| a == "advanced_analytics"))
+        && ent.addon_grant_flows()
+        && ent.addons.iter().any(|a| a == "advanced_analytics")
     {
         Some(true)
     } else {
@@ -336,23 +311,20 @@ fn load_feature_verdict(
     };
 
     let expires_at_owned = loaded.as_ref().and_then(|sub| sub.expires_at.clone());
-    let grace_until_owned = grace_until_for(loaded.as_ref(), &tier, &state);
+    let grace_until_owned = grace_until_for(loaded.as_ref(), &ent.tier, &ent.state);
 
-    let facts = AvailabilityFacts {
+    // ADR #47 v1 scope ruling (current-location), mirrored from
+    // desktop so a tablet verdict can never disagree with its
+    // desktop twin on the same assignment.
+    let facts = ent.availability_facts(
         feature,
-        tier: &tier,
-        state,
-        usage,
-        server_grant,
         role_granted,
-        // ADR #47 v1 scope ruling (current-location), mirrored from
-        // desktop so a tablet verdict can never disagree with its
-        // desktop twin on the same assignment.
         scope_granted,
-        permission: Some(permission),
-        expires_at: expires_at_owned.as_deref(),
-        grace_until: grace_until_owned.as_deref(),
-    };
+        Some(permission),
+        server_grant,
+        expires_at_owned.as_deref(),
+        grace_until_owned.as_deref(),
+    );
     Ok(oz_core::availability::explain_availability(&facts))
 }
 

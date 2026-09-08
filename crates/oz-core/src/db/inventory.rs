@@ -6,6 +6,7 @@ findings: COR-11 FIXED DD-MM-YY — deactivate_inventory_location + shift-start 
 next: none | perf: N/A
 */
 
+use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
 use crate::subscription::{QuotaError, SubscriptionTier};
 use crate::{
@@ -55,7 +56,7 @@ impl Store<'_> {
         if location_type != "warehouse" {
             return Ok(());
         }
-        if let Some(limit) = tier.max_warehouses() {
+        if let Some(limit) = QuotaDimension::Warehouses.limit_for(tier) {
             let current = self.count_warehouse_locations()?;
             if current >= limit {
                 return Err(QuotaError::WarehouseLimit {

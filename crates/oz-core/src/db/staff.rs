@@ -8,6 +8,7 @@ next: none — campaign closed for this file | perf: indexed lookups, fine
 
 use rusqlite::params;
 
+use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
 use crate::subscription::{QuotaError, SubscriptionTier};
 use crate::{Role, User};
@@ -212,7 +213,7 @@ impl Store<'_> {
     /// [`QuotaError::StaffLimit`] (surfaced as `SubscriptionLimitExceeded`,
     /// which the UI maps to an upgrade CTA). Unlimited tiers (`None`) pass.
     pub fn enforce_staff_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = tier.max_staff_users() {
+        if let Some(limit) = QuotaDimension::Staff.limit_for(tier) {
             let current = self.count_staff_users()?;
             if current >= limit {
                 return Err(QuotaError::StaffLimit {
