@@ -20,6 +20,7 @@ use modules_currency::repository::CurrencyRepository;
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
+use oz_core::db::Store;
 
 #[tauri::command]
 /// List exchange rates.
@@ -235,7 +236,15 @@ pub async fn get_latest_exchange_rate_scoped(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let repo = CurrencyRepository::new(&db);
-    let as_of = effective_date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+    let as_of = effective_date.unwrap_or_else(|| {
+        let tz = Store::new(&db)
+            .get_location_profile(&session.store_id)
+            .ok()
+            .flatten()
+            .map(|p| p.timezone)
+            .unwrap_or_else(|| "UTC".to_string());
+        oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &tz)
+    });
     let row = repo.get_latest_exchange_rate(&from_currency, &to_currency, &as_of)?;
     drop(db);
     Ok(row.map(ExchangeRateDto::from))

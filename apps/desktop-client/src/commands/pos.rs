@@ -38,10 +38,20 @@ use crate::state::AppState;
 /// checkout receipt resolving on the SAME date instead of straddling a rate
 /// boundary differently — the failure mode that matters, because
 /// `effective_to` is exclusive and a boundary day must have exactly one answer.
-fn tax_scope_now(location_id: &str) -> oz_core::TaxSaleScope {
+fn tax_scope_now(store: &Store, location_id: &str) -> oz_core::TaxSaleScope {
+    // ADR #48 (Decision 3): as_of is the location business date, so resolve it in
+    // the store's IANA zone, not raw UTC. The instant stays Utc::now(); only the
+    // zone applied before formatting changes. A missing/corrupt timezone falls
+    // back to UTC, which is the old behaviour and never resolves a wrong day.
+    let timezone = store
+        .get_location_profile(location_id)
+        .ok()
+        .flatten()
+        .map(|p| p.timezone)
+        .unwrap_or_else(|| "UTC".to_string());
     oz_core::TaxSaleScope {
         location_id: location_id.to_string(),
-        as_of: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        as_of: oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone),
     }
 }
 
@@ -896,7 +906,7 @@ pub async fn preview_promoted_total_scoped(
             &mut sale,
             &lua_overrides,
             oz_core::Settings::get_tax_rounding_mode(&db)?,
-            Some(&tax_scope_now(&session.store_id)),
+            Some(&tax_scope_now(&store, &session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
         let apps = store.compute_checkout_promotions(
@@ -1021,7 +1031,7 @@ pub async fn preview_promoted_total_from_lines_scoped(
             &mut sale,
             &lua_overrides,
             oz_core::Settings::get_tax_rounding_mode(&db)?,
-            Some(&tax_scope_now(&session.store_id)),
+            Some(&tax_scope_now(&store, &session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
         let apps = store.compute_checkout_promotions(
@@ -1155,7 +1165,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             &mut sale,
             &[],
             oz_core::Settings::get_tax_rounding_mode(&db)?,
-            Some(&tax_scope_now(&session.store_id)),
+            Some(&tax_scope_now(&store, &session.store_id)),
         )?;
 
         // PROMO-3 checkout integration: engine-apply the selected
@@ -1423,7 +1433,7 @@ pub async fn complete_sale_scoped(
             &mut sale,
             &lua_overrides,
             oz_core::Settings::get_tax_rounding_mode(&db)?,
-            Some(&tax_scope_now(&session.store_id)),
+            Some(&tax_scope_now(&store, &session.store_id)),
         )?;
 
         if let Some(ref serial_numbers) = args.serial_numbers {
@@ -1565,7 +1575,7 @@ pub async fn compute_cart_tax_scoped(
         &lines,
         parsed,
         oz_core::Settings::get_tax_rounding_mode(&db)?,
-        Some(&tax_scope_now(&session.store_id)),
+        Some(&tax_scope_now(&store, &session.store_id)),
     )?;
     drop(db);
     Ok(tax)

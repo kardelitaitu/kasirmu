@@ -153,6 +153,7 @@ pub mod terminal;
 pub mod terminal_override;
 /// Terminal profile configuration.
 pub mod terminal_profile;
+pub mod timezone;
 /// Semantic validation for the topology graph (ADR #34 contract gates).
 pub mod topology;
 /// Staff user accounts and role-based access control.

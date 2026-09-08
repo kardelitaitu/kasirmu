@@ -443,7 +443,9 @@ fn tax_scope_now_carries_the_location_and_a_date_the_resolver_accepts() {
     // right. A scope the core resolver rejects fails EVERY sale at this
     // location — loudly, which is the intended failure mode, but loudly at
     // checkout is still a broken checkout.
-    let scope = tax_scope_now("loc-42");
+    let db = oz_core::migrations::fresh_db();
+    let store = Store::new(&db);
+    let scope = tax_scope_now(&store, "loc-42");
     assert_eq!(
         scope.location_id, "loc-42",
         "the session's store id must pass through unchanged"
@@ -489,14 +491,24 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
 
     let mut here = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
     store
-        .compute_sale_tax_for_location(&mut here, &[], mode, Some(&tax_scope_now("loc-here")))
+        .compute_sale_tax_for_location(
+            &mut here,
+            &[],
+            mode,
+            Some(&tax_scope_now(&store, "loc-here")),
+        )
         .unwrap();
     assert_eq!(here.lines[0].tax_rate_id.as_deref(), Some("r-here"));
     assert_eq!(here.tax_total.minor_units, 77, "11% of 700");
 
     let mut there = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
     store
-        .compute_sale_tax_for_location(&mut there, &[], mode, Some(&tax_scope_now("loc-there")))
+        .compute_sale_tax_for_location(
+            &mut there,
+            &[],
+            mode,
+            Some(&tax_scope_now(&store, "loc-there")),
+        )
         .unwrap();
     assert_eq!(
         there.tax_total.minor_units, 70,
