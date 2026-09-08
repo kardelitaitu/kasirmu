@@ -83,6 +83,7 @@ import {
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { syncBranchLocations, syncWorkspaceInstanceNames } from './topologyBranchSync';
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
+import { buildWorkspaceTopologyNodes } from './topologyLoadModel';
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
@@ -1537,82 +1538,12 @@ export default function NodeTopologyEditor({
             );
             return;
           }
-          const wsNodes: TopologyNodeData[] = workspaceInstances.map((inst, i) => {
-            const saved = savedById.get(inst.instanceId);
-            const node: TopologyNodeData = {
-              id: inst.instanceId,
-              type: 'workspace',
-              name: inst.name,
-              subtitle: inst.subtitle ?? saved?.subtitle ?? '',
-              x: saved?.x ?? snap(340),
-              y: saved?.y ?? snap(80 + i * 140),
-              telemetryBadge: saved?.telemetryBadge ?? 'Active',
-              telemetryStatus: saved?.telemetryStatus ?? 'online',
-              metadata: { ...(saved?.metadata ?? {}), typeKey: inst.typeKey, purposeKey: inst.purposeKey ?? 'general', persisted: true },
-            };
-            return node;
-          });
-          // Keep saved non-workspace nodes. On a first real workspace load,
-          // seed a stable Branch Location node from the workspace's canonical
-          // store_id so the required Location In graph is authorable without
-          // inventing a primary/default store relationship.
-          const otherNodes = [...savedById.values()]
-            .filter((n) => n.type !== 'workspace')
-            .map((n) => {
-              // Legacy store nodes carry no store_profile_id (dev-mock seed
-              // and pre-canonical diagrams). When branch locations are
-              // supplied, the node id IS the location id — adopt the
-              // canonical identity so the deletion filter below can drop it
-              // when its branch is gone, and so the node keeps its saved
-              // position instead of being dropped and re-seeded at the
-              // default slot.
-              if (n.type !== 'store' || n.storeProfileId) return n;
-              const location = (branchLocations ?? []).find((l) => l.id === n.id);
-              return location ? { ...n, storeProfileId: location.id } : n;
-            })
-            .filter((n) => {
-              // A deleted store profile leaves its Branch Location card (and
-              // wires) behind: when branch locations are supplied (even an
-              // empty list) they own the graph, so drop saved store nodes
-              // whose branch no longer exists — whether the node carried a
-              // store_profile_id or is a legacy node that just failed to
-              // adopt one. A provided-but-empty list means the last branch
-              // was deleted — the saved diagram must not resurrect it. Only
-              // branchLocations === undefined (standalone editor with no
-              // branch concept) keeps the legacy diagram so it still
-              // renders. Wires to a dropped node are filtered below by
-              // validIds.
-              if (branchLocations === undefined) return true;
-              if (n.type === 'store') {
-                return (branchLocations ?? []).some((l) => l.id === (n.storeProfileId ?? n.id));
-              }
-              return true;
-            })
-            // The store profile is the source of truth for a branch's name —
-            // refresh saved store nodes from the live location list so a
-            // rename reaches the card immediately, not on the next Apply.
-            .map((n) => {
-              if (n.type !== 'store' || !n.storeProfileId) return n;
-              const location = (branchLocations ?? []).find((l) => l.id === n.storeProfileId);
-              return location ? { ...n, name: location.name } : n;
-            });
-          const seededStoreIds = new Set(
-            otherNodes.flatMap((node) => node.type === 'store' && node.storeProfileId ? [node.storeProfileId] : []),
+          const mergedNodes = buildWorkspaceTopologyNodes(
+            [...savedById.values()],
+            workspaceInstances,
+            branchLocations,
+            snap,
           );
-          for (const location of branchLocations ?? []) {
-            if (seededStoreIds.has(location.id)) continue;
-            seededStoreIds.add(location.id);
-            otherNodes.push({
-              id: location.id,
-              type: 'store',
-              name: location.name,
-              subtitle: 'Branch Location',
-              x: snap(80),
-              y: snap(140),
-              storeProfileId: location.id,
-            });
-          }
-          const mergedNodes = [...otherNodes, ...wsNodes];
           const validIds = new Set(mergedNodes.map((n) => n.id));
           const loadedWires: TopologyWireData[] = (data?.wires ?? [])
             .filter((w) => validIds.has(w.from_node_id) && validIds.has(w.to_node_id))

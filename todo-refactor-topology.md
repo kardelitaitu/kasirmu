@@ -70,6 +70,7 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 - [x] **Slice 1b — branch synchronization seam:** extract branch-location reconciliation into the pure `syncBranchLocations` helper; React state and transient interaction cleanup remain in the editor.
 - [x] **Slice 1c — workspace rename seam:** extract workspace-instance name reconciliation into the pure `syncWorkspaceInstanceNames` helper; effect timing and React state ownership remain in the editor.
 - [x] **Slice 1d — restore seed effect seam:** extract one-shot restore-seed identity tracking into `useTopologyEditorRestoreSeed`; graph replacement remains a parent callback.
+- [x] **Slice 1e — authoritative seed model seam:** extract saved-node/live-seed reconciliation into `buildWorkspaceTopologyNodes`; load timing and React state updates remain in the editor.
 - [ ] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice.
 - [ ] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged.
 - [ ] **Slice 3 — inspector boundary:** extract the inspector drawer and branch profile fields behind typed props. Preserve the existing `BranchLocationFields` API behavior and test selectors.
@@ -255,6 +256,16 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Result:** Editor reduced from 5,967 to 5,952 lines; the new hook is 26 lines and has two focused tests.
 - **Validation:** Restore hook tests passed 2/2. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`. Full `npm run typecheck` is currently blocked by seven unrelated `SettingsNavTree.test.tsx` errors; the new restore files have no reported type errors.
 - **Next slice:** inventory imports/re-exports, then extract the remaining load lifecycle boundary without moving JSX or input handlers.
+
+### 2026-09-08 — Slice 1e: extract authoritative seed model
+
+- **Problem:** The authoritative load effect mixed the pure construction of workspace and branch canvas nodes with async loading, cancellation, transient reset, history clearing, and React state updates.
+- **Solution:** Added `buildWorkspaceTopologyNodes` to reconcile saved nodes with live workspace instances and branch locations. It preserves saved workspace geometry/metadata, applies live instance fields, adopts legacy branch identity, filters deleted branches, refreshes branch names, and seeds new branches at the existing snapped position.
+- **Scope:** `NodeTopologyEditor.tsx` still owns the load effect, cancellation, skip-after-Apply behavior, wire filtering, transient cleanup, migration reset, history, snapshots, and state setters. Only pure node construction moved.
+- **Tests:** Added `topologyLoadModel.test.ts` for saved workspace restoration and branch identity/deletion/seeding behavior.
+- **Result:** Editor reduced from 5,952 to 5,883 lines; the new builder is 77 lines and has two focused tests.
+- **Validation:** Load-model tests passed 2/2. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`. Full `npm run typecheck` remains blocked by seven unrelated `SettingsNavTree.test.tsx` errors; the new load-model files have no reported type errors.
+- **Next slice:** extract authoritative wire filtering/modeling, then consolidate the remaining load lifecycle into a hook.
 
 ## Completion checklist
 
