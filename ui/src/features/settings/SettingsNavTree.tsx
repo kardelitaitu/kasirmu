@@ -1,97 +1,45 @@
-import { useEffect, useState, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
 import Tooltip from '@/frontend/shell/Tooltip';
 import Fuse from 'fuse.js';
 import type { FuseResultMatch } from 'fuse.js';
 
-import { SettingsScopeTag, type SettingsScopeLevel } from './SettingsScopeTag';
-
 // ── Sidebar nav item type ─────────────────────────────────────────
 
+/**
+ * One page in the flat settings sidebar IA. The category accordion is
+ * gone: every entry is a page. `subpage` marks a drill-down page
+ * (rendered indented with a guide border); `plus` marks a page gated
+ * behind the Plus plan (badged in the nav).
+ */
 export interface SettingsNavItem {
   key: string;
   label: string;
   icon: React.ReactNode;
-  scope: SettingsScopeLevel;
+  subpage?: boolean;
+  plus?: boolean;
 }
 
+// ── Flat page list (13 pages, fixed order) ────────────────────────
+// Labels are the English display strings. They double as the Localized
+// fallback children and the secondary English search field; the active
+// locale resolves through NAV_L10N_KEYS below. Icons are 24-viewBox
+// stroke-2 currentColor glyphs, sized by CSS.
 const NAV_ITEMS: SettingsNavItem[] = [
   {
     key: 'general',
     label: 'General',
-    scope: 'organization',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="3" y="3" width="7" height="7" />
-        <rect x="14" y="3" width="7" height="7" />
-        <rect x="3" y="14" width="7" height="7" />
-        <rect x="14" y="14" width="7" height="7" />
-      </svg>
-    ),
-  },
-  {
-    key: 'appearance',
-    label: 'Appearance',
-    scope: 'workspace',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="3" />
-        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
       </svg>
     ),
   },
   {
-    key: 'receipt',
-    label: 'Receipt',
-    scope: 'workspace',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="16" y1="13" x2="8" y2="13" />
-        <line x1="16" y1="17" x2="8" y2="17" />
-      </svg>
-    ),
-  },
-  {
-    key: 'sync',
-    label: 'Cloud Sync',
-    scope: 'organization',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'local-api',
-    label: 'Local API',
-    scope: 'terminal',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <polyline points="16 18 22 12 16 6" />
-        <polyline points="8 6 2 12 8 18" />
-      </svg>
-    ),
-  },
-  {
-    key: 'about',
-    label: 'About',
-    scope: 'terminal',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="16" x2="12" y2="12" />
-        <line x1="12" y1="8" x2="12.01" y2="8" />
-      </svg>
-    ),
-  },
-
-  {
-    key: 'license',
-    label: 'License',
-    scope: 'organization',
+    key: 'license-subscription',
+    label: 'License & Subscription',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
@@ -99,116 +47,157 @@ const NAV_ITEMS: SettingsNavItem[] = [
     ),
   },
   {
-    key: 'diagnostics',
-    label: 'Diagnostics',
-    scope: 'organization',
+    key: 'devices-connectivity',
+    label: 'Devices & Connectivity',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 22v-5" />
+        <path d="M9 8V2" />
+        <path d="M15 8V2" />
+        <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'business-defaults',
+    label: 'Business Defaults',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <line x1="4" y1="21" x2="4" y2="14" />
+        <line x1="4" y1="10" x2="4" y2="3" />
+        <line x1="12" y1="21" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12" y2="3" />
+        <line x1="20" y1="21" x2="20" y2="16" />
+        <line x1="20" y1="12" x2="20" y2="3" />
+        <line x1="1" y1="14" x2="7" y2="14" />
+        <line x1="9" y1="8" x2="15" y2="8" />
+        <line x1="17" y1="16" x2="23" y2="16" />
+      </svg>
+    ),
+  },
+  {
+    key: 'features-modules',
+    label: 'Features & Modules',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+        <polyline points="2 17 12 22 22 17" />
+        <polyline points="2 12 12 17 22 12" />
+      </svg>
+    ),
+  },
+  {
+    key: 'security-account',
+    label: 'Security & Account',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'data-sync',
+    label: 'Data Sync',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'data-management',
+    label: 'Data Management',
+    subpage: true,
+    plus: true,
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      </svg>
+    ),
+  },
+  {
+    key: 'sync-status',
+    label: 'Sync Status',
+    subpage: true,
+    plus: true,
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="23 4 23 10 17 10" />
+        <polyline points="1 20 1 14 7 14" />
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+      </svg>
+    ),
+  },
+  {
+    key: 'offline-queue',
+    label: 'Offline Queue',
+    subpage: true,
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <line x1="1" y1="1" x2="23" y2="23" />
+        <path d="M16.5 16.5A5 5 0 0 0 18 10h-1.26A8 8 0 0 0 9 4" />
+        <path d="M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.42-.14" />
+      </svg>
+    ),
+  },
+  {
+    key: 'tax-configuration',
+    label: 'Tax Configuration',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <line x1="19" y1="5" x2="5" y2="19" />
+        <circle cx="6.5" cy="6.5" r="2.5" />
+        <circle cx="17.5" cy="17.5" r="2.5" />
+      </svg>
+    ),
+  },
+  {
+    key: 'exchange-rates',
+    label: 'Exchange Rates',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="17 1 21 5 17 9" />
+        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+        <polyline points="7 23 3 19 7 15" />
+        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      </svg>
+    ),
+  },
+  {
+    key: 'system-diagnostics',
+    label: 'System Diagnostics',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
       </svg>
     ),
   },
-  {
-    key: 'email',
-    label: 'Email Reports',
-    scope: 'organization',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="2" y="4" width="20" height="16" rx="2" />
-        <path d="M22 7l-10 7L2 7" />
-      </svg>
-    ),
-  },
-  {
-    key: 'topology',
-    label: 'Topology',
-    scope: 'organization',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="6" cy="6" r="3" />
-        <circle cx="18" cy="6" r="3" />
-        <circle cx="12" cy="18" r="3" />
-        <line x1="8.5" y1="7.5" x2="10.5" y2="16.5" />
-        <line x1="15.5" y1="7.5" x2="13.5" y2="16.5" />
-      </svg>
-    ),
-  },
-  {
-    key: 'store-pos',
-    label: 'Store POS',
-    scope: 'workspace',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="9" cy="21" r="1" />
-        <circle cx="20" cy="21" r="1" />
-        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-      </svg>
-    ),
-  },
-  {
-    key: 'restaurant-pos',
-    label: 'Restaurant POS',
-    scope: 'workspace',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
-        <path d="M7 2v20" />
-        <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
-      </svg>
-    ),
-  },
-  {
-    key: 'inventory',
-    label: 'Inventory',
-    scope: 'location',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-        <line x1="12" y1="22.08" x2="12" y2="12" />
-      </svg>
-    ),
-  },
 ];
 
-// ── Category groupings (accordion) ──────────────────────────────
-
-interface SettingsCategory {
-  label: string;
-  keys: string[];
-}
-
-const CATEGORY_I18N_KEYS: Record<string, string> = {
-  Business: 'settings-category-business',
-  Operations: 'settings-category-operations',
-  System: 'settings-category-system',
-};
-
-const CATEGORIES: SettingsCategory[] = [
-  { label: 'Business', keys: ['general', 'appearance'] },
-  { label: 'Operations', keys: ['receipt', 'sync', 'email', 'store-pos', 'restaurant-pos', 'inventory'] },
-  { label: 'System', keys: ['about', 'license', 'diagnostics', 'topology', 'local-api'] },
-];
-
+// Fluent keys for the localized nav labels. 'settings-nav-general' is
+// reused from the previous IA; every other key is defined by the settings
+// bundles (settings.ftl / settings.id.ftl).
 const NAV_L10N_KEYS: Record<string, string> = {
   general: 'settings-nav-general',
-  appearance: 'settings-nav-appearance',
-  receipt: 'settings-nav-receipt',
-  sync: 'settings-nav-sync',
-  'local-api': 'settings-nav-local-api',
-  about: 'settings-nav-about',
-  license: 'settings-nav-license',
-  diagnostics: 'settings-nav-diagnostics',
-  email: 'settings-nav-email',
-  topology: 'settings-nav-topology',
-  'store-pos': 'settings-nav-store-pos',
-  'restaurant-pos': 'settings-nav-restaurant-pos',
-  inventory: 'settings-nav-inventory',
+  'license-subscription': 'settings-nav-license-subscription',
+  'devices-connectivity': 'settings-nav-devices-connectivity',
+  'business-defaults': 'settings-nav-business-defaults',
+  'features-modules': 'settings-nav-features-modules',
+  'security-account': 'settings-nav-security-account',
+  'data-sync': 'settings-nav-data-sync',
+  'data-management': 'settings-nav-data-management',
+  'sync-status': 'settings-nav-sync-status',
+  'offline-queue': 'settings-nav-offline-queue',
+  'tax-configuration': 'settings-nav-tax-configuration',
+  'exchange-rates': 'settings-nav-exchange-rates',
+  'system-diagnostics': 'settings-nav-system-diagnostics',
 };
 
-// ── Exported for SettingsPage breadcrumb ────────────────────────
+// ── Exported for SettingsPage topbar/breadcrumb ─────────────────
 
-export { NAV_ITEMS, CATEGORIES, CATEGORY_I18N_KEYS, NAV_L10N_KEYS };
+export { NAV_ITEMS, NAV_L10N_KEYS };
 
 // ── Localized label resolution ───────────────────────────────
 // Resolve a Fluent key to the current-locale string, falling back to the
@@ -234,21 +223,16 @@ interface SettingsNavTreeProps {
   onMobileClose: () => void;
 }
 
-// ── Imperative handle type for parent ───────────────────────────
-export interface SettingsNavTreeHandle {
-  toggleCategory: (label: string) => void;
-}
-
 // ── Component ─────────────────────────────────────────────────────
 
-const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(function SettingsNavTree({
+const SettingsNavTree = function SettingsNavTree({
   activeSection,
   onNavigate,
   searchQuery,
   onSearchChange,
   mobileSidebarOpen,
   onMobileClose,
-}, ref) {
+}: SettingsNavTreeProps) {
   const { l10n } = useLocalization();
   const sidebarRef = useRef<HTMLElement>(null);
 
@@ -256,7 +240,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
   useFocusTrap(sidebarRef, mobileSidebarOpen, onMobileClose);
 
   // ── Per-key debounced localStorage write (P60-2c: prevents race on rapid toggle) ─
-  // Each preference key owns its own pending timer so two toggles on DIFFERENT
+  // Each preference key owns its own pending timer so two writes on DIFFERENT
   // keys within the debounce window no longer clobber each other (the previous
   // shared-timer design silently dropped the first write). On unmount we FLUSH
   // every pending write rather than dropping it, so no preference is lost.
@@ -300,7 +284,11 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
     debouncedPersist('settings-sidebar-collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
-
+  // The category accordion persisted 'settings-sidebar-expanded'; with the
+  // accordion gone that key is dead data — sweep it once per mount.
+  useEffect(() => {
+    localStorage.removeItem('settings-sidebar-expanded');
+  }, []);
 
   // ── Pinned sections (P60-blog-1): saved to top of sidebar ───────
   const [pinnedSections, setPinnedSections] = useState<string[]>(() => {
@@ -386,10 +374,10 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
   }, []);
 
   // ── Keyboard shortcut hints (P60-blog-3) ─────────────────
+  // The flat list has no expand/collapse level, so only the hints that still
+  // describe real behaviour are listed.
   const KEYBOARD_SHORTCUTS = [
     { keys: ['↑', '↓'], desc: l10n.getString('settings-shortcuts-desc-navigate') },
-    { keys: ['→'], desc: l10n.getString('settings-shortcuts-desc-expand') },
-    { keys: ['←'], desc: l10n.getString('settings-shortcuts-desc-collapse') },
     { keys: ['Home', 'End'], desc: l10n.getString('settings-shortcuts-desc-firstlast') },
     { keys: ['Esc'], desc: l10n.getString('settings-shortcuts-desc-close') },
   ];
@@ -424,71 +412,23 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
     }
   }, [activeSection, l10n]);
 
-  // ── Collapsible categories (multi-expandable, persisted) ──────────
-  const [expandedCategories, setExpandedCategories] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem('settings-sidebar-expanded');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {
-      // ignore corrupt localStorage data
-    }
-    return ['Business'];
-  });
-
-  useEffect(() => {
-    debouncedPersist('settings-sidebar-expanded', JSON.stringify(expandedCategories));
-  }, [expandedCategories]);
-
-  // Auto-expand category when navigating to a section
-  useEffect(() => {
-    const cat = CATEGORIES.find((c) => c.keys.includes(activeSection));
-    if (cat?.label) {
-      setExpandedCategories((prev) => 
-        prev.includes(cat.label) ? prev : [...prev, cat.label]
-      );
-    }
-  }, [activeSection]);
-
-  const toggleCategory = useCallback((label: string) => {
-    userToggleRef.current = true;
-    setExpandedCategories((prev) => 
-      prev.includes(label) ? prev.filter((c) => c !== label) : [...prev, label]
-    );
-  }, []);
-
-  // ── Expose imperative toggleCategory to parent (P60-breadcrumb) ─
-  useImperativeHandle(ref, () => ({ toggleCategory }), [toggleCategory]);
-
   // ── Fuse.js fuzzy search (P60-blog-2) ────────────────────────
   // Search must match the user's CURRENT locale, not just English. We build
   // the index from the localized label (falling back to the English constant
-  // when the bundle has no translation) and ALSO keep englishLabel /
-  // englishCategory so typing the English term still finds the section. The
-  // index is rebuilt whenever the locale or l10n binding changes
-  // (P60-i18n-search).
+  // when the bundle has no translation) and ALSO keep englishLabel so typing
+  // the English term still finds the section. The index is rebuilt whenever
+  // the locale or l10n binding changes (P60-i18n-search).
   const searchData = useMemo(() => {
-    return CATEGORIES.flatMap((cat) => {
-      const categoryKey = CATEGORY_I18N_KEYS[cat.label] ?? cat.label;
-      const categoryLabel = resolveLocalizedLabel(l10n, categoryKey, cat.label);
-      return cat.keys.map((key) => {
-        const item = NAV_ITEMS.find((n) => n.key === key)!;
-        return {
-          key: item.key,
-          label: resolveLocalizedLabel(l10n, NAV_L10N_KEYS[key] ?? key, item.label),
-          category: categoryLabel,
-          englishLabel: item.label,
-          englishCategory: cat.label,
-        };
-      });
-    });
+    return NAV_ITEMS.map((item) => ({
+      key: item.key,
+      label: resolveLocalizedLabel(l10n, NAV_L10N_KEYS[item.key] ?? item.key, item.label),
+      englishLabel: item.label,
+    }));
   }, [l10n]);
 
   const fuse = useMemo(() => {
     return new Fuse(searchData, {
-      keys: ['label', 'category', 'englishLabel', 'englishCategory'],
+      keys: ['label', 'englishLabel'],
       threshold: 0.4,
       includeMatches: true,
     });
@@ -505,16 +445,12 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
     return map;
   }, [q, fuse, searchQuery]);
 
-  const filteredCategories = useMemo(() => {
-    if (!searchMatches) return CATEGORIES;
-
-    const matchedKeys = new Set(searchMatches.keys());
-    return CATEGORIES
-      .map((cat) => ({
-        ...cat,
-        keys: cat.keys.filter((key) => matchedKeys.has(key)),
-      }))
-      .filter((cat) => cat.keys.length > 0);
+  /** Visible nav items: the full 13-page flat list, or the search-filtered
+   *  subset in NAV_ITEMS order (not relevance order — the sidebar must not
+   *  reshuffle while typing). The pinned group is hidden during search. */
+  const visibleItems = useMemo(() => {
+    if (!searchMatches) return NAV_ITEMS;
+    return NAV_ITEMS.filter((item) => searchMatches.has(item.key));
   }, [searchMatches]);
 
   /** Highlight matching characters in a label. Prefers Fuse's fuzzy match
@@ -552,10 +488,8 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
     );
   }, [q]);
 
-  /** Total visible items across all filtered categories. */
-  const visibleCount = useMemo(() =>
-    filteredCategories.reduce((sum, cat) => sum + cat.keys.length, 0),
-  [filteredCategories]);
+  /** Total visible items (search result count for announcements). */
+  const visibleCount = visibleItems.length;
 
   // ── Screen reader: announce search results when query changes (P60-4e) ─
   const prevQ = useRef(q);
@@ -570,30 +504,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
     prevQ.current = q;
   }, [q, visibleCount, l10n]);
 
-  // ── Screen reader: announce category expand/collapse (P60-4e) ────
-  // We track previous expandedCategories to detect user-initiated toggles
-  // (as opposed to programmatic auto-expand when navigating sections).
-  const prevCategories = useRef(expandedCategories);
-  const userToggleRef = useRef(false);
-  useEffect(() => {
-    // Only announce if this change was user-initiated (via toggleCategory)
-    if (userToggleRef.current) {
-      const prev = prevCategories.current;
-      const added = expandedCategories.find((c) => !prev.includes(c));
-      const removed = prev.find((c) => !expandedCategories.includes(c));
-      const label = added || removed || '';
-      if (label) {
-        const count = CATEGORIES.find((c) => c.label === label)?.keys.length ?? 0;
-        setAnnouncement(added
-          ? l10n.getString('settings-announce-category-expanded', { category: label, count })
-          : l10n.getString('settings-announce-category-collapsed', { category: label }));
-      }
-      userToggleRef.current = false;
-    }
-    prevCategories.current = expandedCategories;
-  }, [expandedCategories, l10n]);
-
-  // ── Treegrid keyboard navigation (P60-4c/d) ──────────────
+  // ── Flat-list keyboard navigation (P60-4c/d) ──────────────
   // Escape-to-close-mobile-drawer stays GLOBAL (document) because focus may
   // legitimately rest outside the sidebar while the drawer is open (e.g. on
   // the backdrop or a trapped focus that hasn't entered the aside yet).
@@ -610,16 +521,13 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
 
   // Arrow / Home / End navigation is scoped to the sidebar so it never hijacks
   // arrows while focus is on a control outside the sidebar (e.g. a detail-pane
-  // button or link). Previously it was bound on `document` with only an
-  // INPUT/SELECT/TEXTAREA exemption, so it still stole arrows from any other
-  // focused element. We keep a single document-level listener (so events
+  // button or link). We keep a single document-level listener (so events
   // dispatched anywhere on the page still reach it) but GUARD it to fire only
   // when the event target is inside the sidebar, or when nothing specific is
-  // focused (document / body) — matching the prior page-level behaviour for the
-  // common case while fixing the real hijack. The Escape-to-close-mobile-drawer
-  // handler above remains a separate GLOBAL document listener.
+  // focused (document / body). The Escape-to-close-mobile-drawer handler above
+  // remains a separate GLOBAL document listener.
   useEffect(() => {
-    const flatKeys = filteredCategories.flatMap((c) => c.keys);
+    const flatKeys = visibleItems.map((item) => item.key);
 
     function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as Node | null;
@@ -654,29 +562,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
         return;
       }
 
-      // ArrowRight → select first child item if category is collapsed
-      if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        const cat = CATEGORIES.find((c) => c.keys.includes(activeSection));
-        if (cat && !expandedCategories.includes(cat.label)) {
-          // Category is collapsed — expand it
-          setExpandedCategories((prev) => [...prev, cat.label]);
-        }
-        return;
-      }
-
-      // ArrowLeft → collapse parent category (if at level 2)
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        const cat = CATEGORIES.find((c) => c.keys.includes(activeSection));
-        if (cat && expandedCategories.includes(cat.label)) {
-          // Current section's category is expanded — collapse it
-          setExpandedCategories((prev) => prev.filter((c) => c !== cat.label));
-        }
-        return;
-      }
-
-      // ArrowDown / ArrowUp → navigate through visible items
+      // ArrowDown / ArrowUp → cycle the flat visible order
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         const next = e.key === 'ArrowDown'
@@ -690,7 +576,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeSection, expandedCategories, mobileSidebarOpen, filteredCategories, onNavigate]);
+  }, [activeSection, visibleItems, onNavigate]);
 
   // ── Render ────────────────────────────────────────────────────
 
@@ -717,18 +603,9 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
         style={sidebarWidth && !sidebarCollapsed ? { width: sidebarWidth, minWidth: sidebarWidth } as React.CSSProperties : undefined}
       >
         <div className="settings-sidebar-header">
-          <Tooltip content={l10n.getString('settings-sidebar-collapse-all-aria')} fit="inline" portal>
-            <button
-              type="button"
-              className="settings-sidebar-collapse-all"
-              onClick={() => setExpandedCategories([])}
-              aria-label={l10n.getString('settings-sidebar-collapse-all-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" width="14" height="14">
-                <polyline points="6 15 12 9 18 15" />
-              </svg>
-            </button>
-          </Tooltip>
+          {/* (The old "collapse all" button is gone with the categories: the only
+              collapsible surface left is the rail itself, and the toggle button
+              on the right already owns it.) */}
           {!sidebarCollapsed && (
             <div className="settings-shortcut-btn-wrap" ref={shortcutRef}>
               <Tooltip content={l10n.getString('settings-shortcut-btn-aria')} fit="inline" portal>
@@ -790,12 +667,9 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
           </button>
         </div>
 
-        {/* Disclosure-navigation container. The <aside> landmark above already
-            carries the accessible name, so this wrapper is intentionally
-            role-free: the old role="treegrid" advertised a 2D interactive grid
-            the DOM could not honour (no rows/gridcells, no treeitem ownership -
-            items were DOM siblings of their headers, split by a region), and
-            regions are landmarks, illegal inside a grid. */}
+        {/* Flat-navigation container. The <aside> landmark above already carries
+            the accessible name, so this wrapper stays role-free (the old
+            role="treegrid" was removed for exactly that reason). */}
         <div className="settings-sidebar-nav">
           {/* ── Pinned sections (P60-blog-1) ────────────────── */}
           {!q && pinnedSections.length > 0 && !sidebarCollapsed && (
@@ -816,7 +690,6 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
                       <span className="settings-nav-label">
                         <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
                       </span>
-                      <SettingsScopeTag scope={item.scope} />
                     </button>
                     <Tooltip content={l10n.getString('settings-nav-unpin-title')} fit="inline" portal>
                       <button
@@ -836,7 +709,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
             </div>
           )}
 
-          {q && filteredCategories.length === 0 ? (
+          {q && visibleItems.length === 0 ? (
             <div className="settings-sidebar-empty-search">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="1.75rem" height="1.75rem" aria-hidden="true">
                 <circle cx="11" cy="11" r="8" />
@@ -855,101 +728,60 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
               </button>
             </div>
           ) : (
-            filteredCategories.map((cat) => {
-              const isExpanded = expandedCategories.includes(cat.label) || !!q;
-              const hasActive = cat.keys.includes(activeSection);
-              const panelId = `settings-panel-${cat.label.toLowerCase()}`;
-              return (
-                <div key={cat.label} className="settings-sidebar-section">
-                  {/* APG disclosure pattern: the header is a disclosure button
-                      (aria-expanded + aria-controls), never a selectable node. */}
-                  <button
-                    type="button"
-                    aria-expanded={isExpanded}
-                    aria-controls={panelId}
-                    className={`settings-sidebar-section-header${hasActive ? ' settings-sidebar-section-header--active' : ''}`}
-                    onClick={() => toggleCategory(cat.label)}
-                  >
-                    <span className="settings-sidebar-section-label-wrap">
-                      <span className="settings-sidebar-section-label">
-                        <Localized id={CATEGORY_I18N_KEYS[cat.label] ?? ''}>{cat.label}</Localized>
-                      </span>
-                      {!sidebarCollapsed && (
-                        <span className="settings-sidebar-count" key={cat.keys.length} aria-label={l10n.getString('settings-sidebar-count-aria', { count: cat.keys.length })}>
-                          {cat.keys.length}
+            /* ── ONE flat page list — no categories, no chevrons, no counts.
+                Search renders the matching subset in the same flat container. */
+            <div className="settings-nav-list" role="list">
+              {visibleItems.map((item) => {
+                const key = item.key;
+                const l10nKey = NAV_L10N_KEYS[key] ?? '';
+                return (
+                  <div key={key} className="settings-nav-item-wrapper" role="listitem">
+                    <Tooltip content={l10n.getString(l10nKey)} showDelay={800} portal>
+                      <button
+                        type="button"
+                        aria-current={activeSection === key ? 'page' : undefined}
+                        className={`settings-nav-item${item.subpage ? ' settings-nav-item--subpage' : ''}${activeSection === key ? ' settings-nav-item--active' : ''}`}
+                        onClick={() => onNavigate(key)}
+                        aria-label={l10n.getString(l10nKey)}
+                      >
+                        <span className="settings-nav-icon">{item.icon}</span>
+                        <span className="settings-nav-label">
+                          {q ? (
+                            highlightLabel(
+                              resolveLocalizedLabel(l10n, l10nKey || item.key, item.label),
+                              searchMatches?.get(key),
+                            )
+                          ) : (
+                            <Localized id={l10nKey}>{item.label}</Localized>
+                          )}
                         </span>
-                      )}
-                    </span>
-                    <svg
-                      className={`settings-sidebar-chevron${isExpanded ? '' : ' collapsed'}`}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      width="12"
-                      height="12"
-                      aria-hidden="true"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
-                  <div
-                    id={panelId}
-                    role="list"
-                    className={`settings-sidebar-section-items${isExpanded || sidebarCollapsed ? ' settings-sidebar-section-items--expanded' : ''}`}>
-                      {cat.keys.map((key) => {
-                        const item = NAV_ITEMS.find((n) => n.key === key)!;
-                        return (
-                          <div key={key} className="settings-nav-item-wrapper" role="listitem">
-                            <Tooltip content={l10n.getString(NAV_L10N_KEYS[item.key] ?? '')} showDelay={800} portal>
-                              <button
-                                type="button"
-                                aria-current={activeSection === key ? 'page' : undefined}
-                                className={`settings-nav-item${activeSection === key ? ' settings-nav-item--active' : ''}`}
-                                onClick={() => onNavigate(key)}
-                                aria-label={l10n.getString(NAV_L10N_KEYS[item.key] ?? '')}
-                              >
-                                <span className="settings-nav-icon">{item.icon}</span>
-                                <span className="settings-nav-label">
-                                  {q ? (
-                                    highlightLabel(
-                                      resolveLocalizedLabel(l10n, NAV_L10N_KEYS[item.key] ?? item.key, item.label),
-                                      searchMatches?.get(key),
-                                    )
-                                  ) : (
-                                    <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
-                                  )}
-                                </span>
-                                {!sidebarCollapsed && <SettingsScopeTag scope={item.scope} />}
-                              </button>
-                            </Tooltip>
-                            {!sidebarCollapsed && (
-                              <Tooltip
-                                content={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-title') : l10n.getString('settings-nav-pin-title')}
-                                fit="inline"
-                                portal
-                              >
-                                <button
-                                  type="button"
-                                  className={`settings-nav-pin-btn${pinnedSections.includes(key) ? ' pinned' : ''}`}
-                                  onClick={() => togglePin(key)}
-                                  aria-label={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-aria', { name: item.label }) : l10n.getString('settings-nav-pin-aria', { name: item.label })}
-                                >
-                                  <svg viewBox="0 0 24 24" fill={pinnedSections.includes(key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
-                                    <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
-                                  </svg>
-                                </button>
-                              </Tooltip>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                </div>
-              );
-            })
+                        {item.plus && !sidebarCollapsed && (
+                          <span className="settings-nav-plus-badge" aria-label={l10n.getString('settings-nav-plus-badge-aria')}>Plus+</span>
+                        )}
+                      </button>
+                    </Tooltip>
+                    {!sidebarCollapsed && (
+                      <Tooltip
+                        content={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-title') : l10n.getString('settings-nav-pin-title')}
+                        fit="inline"
+                        portal
+                      >
+                        <button
+                          type="button"
+                          className={`settings-nav-pin-btn${pinnedSections.includes(key) ? ' pinned' : ''}`}
+                          onClick={() => togglePin(key)}
+                          aria-label={pinnedSections.includes(key) ? l10n.getString('settings-nav-unpin-aria', { name: item.label }) : l10n.getString('settings-nav-pin-aria', { name: item.label })}
+                        >
+                          <svg viewBox="0 0 24 24" fill={pinnedSections.includes(key) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
+                            <path d="M12 2L9.5 10L2 11l6 6l-1.5 7L12 18l6.5 6L17 17l6-6l-7.5-1z" />
+                          </svg>
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -969,7 +801,7 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
             onKeyDown={(e) => {
               if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                 // The splitter owns its arrows: stop them from also reaching the
-                // sidebar disclosure arrow navigation (expand/collapse).
+                // sidebar arrow navigation.
                 e.stopPropagation();
                 e.preventDefault();
                 setSidebarWidth((prev) => e.key === 'ArrowRight'
@@ -993,6 +825,6 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
       </div>
     </>
   );
-});
+};
 
 export default SettingsNavTree;

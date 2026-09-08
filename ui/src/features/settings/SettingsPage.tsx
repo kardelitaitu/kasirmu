@@ -1,7 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 
-/** Polling cadence for the Cloud Sync status panel while its section is open. */
-const SYNC_STATUS_POLL_MS = 30_000;
 import { Localized, useLocalization } from '@fluent/react';
 import {
   setReceiptSettingsScoped,
@@ -13,26 +11,13 @@ import {
 } from '@/api/settings';
 import { setDecimalSep } from '@/utils/storage';
 import { useAuth } from '@/contexts/AuthContext';
+import { roleAtLeast } from '@/utils/role';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import {
-  type CurrencyDto,
-} from '@/api/currency';
-import {
   updateSyncSettingsScoped,
-  syncRunScoped,
-  syncPullScoped,
-  getOfflineQueueStatusSummaryScoped,
-  getSyncPlanScoped,
-  testSyncConnectionScoped,
-  requestSyncTokenScoped,
   type SyncSettingsDto,
-  type SyncAttemptResult,
-  type PullResult,
-  type PingResult,
-  type OfflineQueueSummaryDto,
-  type SyncPlanResult,
 } from '@/api/offline';
 
 import {
@@ -51,16 +36,22 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
-import { TopologyScreen } from '@/features/locations';
-import LicenseSettings from './LicenseSettings';
-import EmailReportSettings from './EmailReportSettings';
-import DiagnosticsSection from './sections/DiagnosticsSection';
-const GeneralSection = lazy(() => import('./sections/GeneralSection'));
-const AppearanceSection = lazy(() => import('./sections/AppearanceSection'));
-const ReceiptSection = lazy(() => import('./sections/ReceiptSection'));
-const SyncSection = lazy(() => import('./sections/SyncSection'));
-const LocalApiSection = lazy(() => import('./sections/LocalApiSection'));
-const AboutSection = lazy(() => import('./sections/AboutSection'));
+// ── Lazy-loaded flat-IA screens (blank scaffolds from the screens commit;
+//    selective migration fills each one in) ──
+const GeneralScreen = lazy(() => import('./screens/GeneralScreen').then((m) => ({ default: m.GeneralScreen })));
+const LicenseSubscriptionScreen = lazy(() => import('./screens/LicenseSubscriptionScreen').then((m) => ({ default: m.LicenseSubscriptionScreen })));
+const DevicesConnectivityScreen = lazy(() => import('./screens/DevicesConnectivityScreen').then((m) => ({ default: m.DevicesConnectivityScreen })));
+const BusinessDefaultsScreen = lazy(() => import('./screens/BusinessDefaultsScreen').then((m) => ({ default: m.BusinessDefaultsScreen })));
+const FeaturesModulesScreen = lazy(() => import('./screens/FeaturesModulesScreen').then((m) => ({ default: m.FeaturesModulesScreen })));
+const SecurityAccountScreen = lazy(() => import('./screens/SecurityAccountScreen').then((m) => ({ default: m.SecurityAccountScreen })));
+const DataSyncScreen = lazy(() => import('./screens/DataSyncScreen').then((m) => ({ default: m.DataSyncScreen })));
+const DataManagementScreen = lazy(() => import('./screens/DataManagementScreen').then((m) => ({ default: m.DataManagementScreen })));
+const SyncStatusScreen = lazy(() => import('./screens/SyncStatusScreen').then((m) => ({ default: m.SyncStatusScreen })));
+const OfflineQueueScreen = lazy(() => import('./screens/OfflineQueueScreen').then((m) => ({ default: m.OfflineQueueScreen })));
+const TaxConfigurationScreen = lazy(() => import('./screens/TaxConfigurationScreen').then((m) => ({ default: m.TaxConfigurationScreen })));
+const ExchangeRatesScreen = lazy(() => import('./screens/ExchangeRatesScreen').then((m) => ({ default: m.ExchangeRatesScreen })));
+const SystemDiagnosticsScreen = lazy(() => import('./screens/SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen })));
+
 import { useContextMenu, ContextMenu } from '@/frontend/shared';
 
 import SettingsNavTree, {
@@ -68,16 +59,6 @@ import SettingsNavTree, {
   NAV_L10N_KEYS as NAV_L10N_KEYS_REF,
 } from './SettingsNavTree';
 
-// ── Lazy-loaded workspace settings cards (ADR #22 Phase 3) ──
-const WorkspaceStorePosSettings = lazy(() =>
-  import('./workspace-cards/WorkspaceStorePosSettings').then((m) => ({ default: m.WorkspaceStorePosSettings })),
-);
-const WorkspaceRestaurantPosSettings = lazy(() =>
-  import('./workspace-cards/WorkspaceRestaurantPosSettings').then((m) => ({ default: m.WorkspaceRestaurantPosSettings })),
-);
-const WorkspaceInventorySettings = lazy(() =>
-  import('./workspace-cards/WorkspaceInventorySettings').then((m) => ({ default: m.WorkspaceInventorySettings })),
-);
 import './SettingsPage.css';
 import './SettingsNavTree.css';
 
@@ -89,99 +70,10 @@ import './SettingsNavTree.css';
  * and must not see a new Set on every render.
  */
 const KEPT_SECTIONS = new Set([
-  'general', 'appearance', 'receipt', 'sync', 'email',
-  'about', 'license', 'diagnostics', 'topology', 'store-pos', 'restaurant-pos', 'inventory',
+  'general', 'license-subscription', 'devices-connectivity', 'business-defaults',
+  'features-modules', 'security-account', 'data-sync', 'data-management',
+  'sync-status', 'offline-queue', 'tax-configuration', 'exchange-rates', 'system-diagnostics',
 ]);
-
-// ── Locations → Topology deep-link hints (todo-global-saas-2 §"Locations
-// and Topology navigation") ─────────────────────────────────────────────
-// The Locations dashboard routes into the scoped Topology Editor via
-// `#/settings/topology?branch=<id>` (open that location's graph) and
-// `#/settings/topology?create=1` (arm the add-location form). The query
-// must survive until the topology section mounts: applyHashSection cannot
-// clear the hash when a query is present, or the hand-off would be lost
-// between the hashchange that switched the section and this wrapper's
-// initializer. TopologySection consumes the hints once (the section body
-// is keyed by activeSection, so each fresh deep link reaches a freshly
-// mounted wrapper) and then clears the hash itself.
-
-/** Target deep-link prefix for the topology editor's scope hints. */
-const TOPOLOGY_HASH_PREFIX = '#/settings/topology';
-
-/** Scope hints carried by a `#/settings/topology?…` deep link, or null
- *  when the current hash names no hints. */
-interface TopologyHints {
-  /** Location (LocationProfile id) the editor must open scoped to. */
-  branchId: string | null;
-  /** Arm the editor's Add Branch form (creation begins from Locations). */
-  openCreate: boolean;
-}
-
-/** Parse the scope hints off the current `#/settings/topology?…` hash.
- *  Returns null for every other hash shape, including a bare
- *  `#/settings/topology` deep link (no scope requested). */
-function parseTopologyHints(): TopologyHints | null {
-  if (typeof window === 'undefined') return null;
-  const hash = window.location.hash;
-  if (!hash.startsWith(TOPOLOGY_HASH_PREFIX)) return null;
-  const query = hash.slice(TOPOLOGY_HASH_PREFIX.length);
-  if (!query.startsWith('?')) return null;
-  const params = new URLSearchParams(query.slice(1));
-  const branchId = params.get('branch');
-  const openCreate = params.get('create') === '1';
-  if (!branchId && !openCreate) return null;
-  return { branchId, openCreate };
-}
-
-/**
- * Renders the topology editor with the Locations deep-link hints applied.
- * Lives at module scope (not inside SettingsPage) so its initializer can
- * read the still-consumed hash exactly once per section mount, and so the
- * hint state survives SettingsPage's own re-renders.
- */
-function TopologySection() {
-  const [hints, setHints] = useState<TopologyHints | null>(parseTopologyHints);
-
-  // Re-parse on later hashchanges (e.g. a second location opened while the
-  // topology section is already mounted). A hash without hints does not
-  // reset the current editor — the consumed hint state is already cleared.
-  useEffect(() => {
-    const applyHashHints = () => {
-      const parsed = parseTopologyHints();
-      if (parsed) setHints(parsed);
-    };
-    window.addEventListener('hashchange', applyHashHints);
-    return () => window.removeEventListener('hashchange', applyHashHints);
-  }, []);
-
-  // Consume: clear the hash so a stale hint cannot re-arm a later remount
-  // (the deep-link intent has been handed to the editor's mount-time state).
-  useEffect(() => {
-    if (!hints) return;
-    window.history.replaceState(null, '', window.location.pathname);
-  }, [hints]);
-
-  const branchId = hints?.branchId ?? null;
-  const openCreate = hints?.openCreate ?? false;
-  // Key by the resolved scope: a second Configure topology click while the
-  // section is already mounted must remount the editor on the new branch
-  // (the same keyed-remount contract the editor's own branch switch uses).
-  const scopeKey = branchId ?? (openCreate ? 'create' : 'default');
-  return (
-    <div
-      className="settings-topology-container"
-      data-testid="topology-section"
-      {...(branchId ? { 'data-initial-branch': branchId } : {})}
-      {...(openCreate ? { 'data-open-create': 'true' } : {})}
-    >
-      <TopologyScreen
-        key={scopeKey}
-        {...(branchId ? { initialBranchId: branchId } : {})}
-        {...(openCreate ? { openCreateOnMount: true } : {})}
-      />
-    </div>
-  );
-}
 
 /** Snapshot of initial loaded values for the Revert-to-saved button. */
 interface SettingsSnapshot {
@@ -261,42 +153,6 @@ function SettingsPageContent() {
 
   const [appVersion, setAppVersion] = useState('');
 
-  // ── Updater state ─────────────────────────────────────────
-  type UpdateCheckState = 'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'error';
-  const [updateState, setUpdateState] = useState<UpdateCheckState>('idle');
-  const [updateVersion, setUpdateVersion] = useState('');
-  const updateInstanceRef = useRef<{ version?: string; downloadAndInstall(): Promise<void> } | null>(null);
-
-  const handleCheckUpdates = useCallback(async () => {
-    setUpdateState('checking');
-    setUpdateVersion('');
-    updateInstanceRef.current = null;
-    try {
-      const updater = await import('@tauri-apps/plugin-updater');
-      const update = await updater.check();
-      if (update) {
-        setUpdateVersion(update.version ?? '');
-        updateInstanceRef.current = update;
-        setUpdateState('available');
-      } else {
-        setUpdateState('up-to-date');
-      }
-    } catch {
-      setUpdateState('error');
-    }
-  }, []);
-
-  const handleInstallUpdate = useCallback(async () => {
-    const instance = updateInstanceRef.current;
-    if (!instance) return;
-    setUpdateState('installing');
-    try {
-      await instance.downloadAndInstall();
-    } catch {
-      setUpdateState('available');
-    }
-  }, []);
-
   const { l10n } = useLocalization();
   const { addToast } = useToast();
 
@@ -327,7 +183,6 @@ function SettingsPageContent() {
   });
 
   const { currency: ctxCurrency, setCurrency: setCtxCurrency } = useCurrency();
-  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   const [defaultCurrency, setDefaultCurrencyState] = useState<string>(ctxCurrency);
 
   // Sync local state when context currency changes externally.
@@ -340,22 +195,19 @@ function SettingsPageContent() {
   });
   const [syncServerUrl, setSyncServerUrl] = useState('');
   const [syncApiKey, setSyncApiKey] = useState('');
-  const [syncApiKeyVisible, setSyncApiKeyVisible] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [pulling, setPulling] = useState(false);
-  const [syncResult, setSyncResult] = useState<SyncAttemptResult | null>(null);
-  const [pullResult, setPullResult] = useState<PullResult | null>(null);
-  const [queueSummary, setQueueSummary] = useState<OfflineQueueSummaryDto | null>(null);
-  const [syncPlan, setSyncPlan] = useState<SyncPlanResult | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [pingResult, setPingResult] = useState<PingResult | null>(null);
-  const [requesting, setRequesting] = useState(false);
-  const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
+  // The visible-flag is written by the save/revert mirror below but no longer
+  // read on this page (the legacy sync section owned the read); the mirror
+  // write stays so the saved value keeps its meaning for consumers.
+  const [, setSyncApiKeyVisible] = useState(false);
 
   const { session } = useAuth();
-  const { sessionToken, terminalId } = useWorkspace();
+  // ── Role gate: Settings is admin/owner-only ──────────────────
+  // roleAtLeast fails closed (missing/blank/retired/unknown roles never
+  // clear the floor), so managers, staff, auditors — and anyone with an
+  // unrecognized role — get the locked card instead of the shell.
+  const adminUp = roleAtLeast(session?.role_name ?? null, 'admin');
+  const { sessionToken } = useWorkspace();
   const { goToWorkspacePicker } = useWorkspaceNav();
-  const userId = session?.user_id ?? 'default';
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
   const [displayFontSize, setDisplayFontSize] = useState(0);
@@ -363,6 +215,9 @@ function SettingsPageContent() {
   const [brandColour, setBrandColour] = useState('#147EFB');
   const [brandStoreName, setBrandStoreName] = useState('');
 
+  // Right-click copy/paste on the page's remaining inputs (the custom menu
+  // replaces the natively-suppressed one; migrated screens re-wire their own
+  // fields to cmInput as they come back).
   const cm = useContextMenu();
 
   // P7-4: Keyboard avoidance — scroll inputs into view on mobile
@@ -381,72 +236,35 @@ function SettingsPageContent() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ── Field validation state ────────────────────────────────
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const validateField = useCallback((field: string, value: string) => {
-    setFieldErrors((prev) => {
-      const next = { ...prev };
-      if (field === 'store-name' && !value.trim()) {
-        next[field] = l10n.getString('settings-store-name-required');
-      } else if (field === 'tax-id' && value.trim() && !/^[A-Za-z0-9-./]*$/.test(value.trim())) {
-        next[field] = l10n.getString('settings-tax-id-pattern-error');
-      } else {
-        delete next[field];
-      }
-      return next;
-    });
-  }, [l10n]);
-
-  const clearFieldError = useCallback((field: string) => {
-    setFieldErrors((prev) => {
-      if (!prev[field]) return prev;
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
-  }, []);
-
   /** Navigate to a section. */
   const navigateToSection = useCallback((key: string) => {
     setActiveSection(key);
     setMobileSidebarOpen(false);
   }, []);
 
-  // ── Read section from the URL hash (e.g. #/settings/topology) ────────
-  // Only sections that still exist in the kept hub are accepted; stale
-  // deep-links to removed management tabs (staff, audit, etc.) are ignored
-  // so the hub opens on its default (general) section instead of an empty
-  // body — the "old settings on <tab>" problem. KEPT_SECTIONS is module-scope
-  // for that reason: as a render-scoped const it would be a new Set every render, so
-  // listing it in the dependency array below would re-run the effect on every render and
-  // tear down/re-add the listener each time. Hoisting fixes the real problem instead of
-  // just silencing the lint.
-  //
-  // This used to be a mount-only effect (`[]`), which worked when the link arrived from
-  // another workspace — AppShell remounts the page and the effect reads the hash on the
-  // way in. It silently did nothing when the page was ALREADY mounted, which is the case
-  // for every tool card clicked while the user is on the admin workspace: AppShell's own
-  // hashchange listener refuses `settings/topology` because only `settings` is a
-  // registered page, so no remount happens and nothing re-reads the hash. The URL changed
-  // and the section stayed put. Listening here closes that gap; the KEPT_SECTIONS guard
-  // is unchanged, so a hashchange to a removed tab is still ignored.
+  // ── Read section from the URL hash (e.g. #/settings/general) ────────
+  // Only sections that still exist in the flat IA are accepted; stale
+  // deep-links to removed sections are ignored so the hub opens on its
+  // default (general) section instead of an empty body — the "old settings
+  // on <tab>" problem. KEPT_SECTIONS is module-scope on purpose: as a
+  // render-scoped const it would be a new Set every render, re-running the
+  // effect each time. This is deliberately NOT a mount-only effect:
+  // AppShell's own hashchange listener refuses `settings/...` (only
+  // `settings` is a registered page), so while the page is already mounted
+  // nothing else re-reads the hash — listening here closes that gap.
   useEffect(() => {
     const applyHashSection = () => {
       const hash = window.location.hash.replace(/^#\//, '');
       if (!hash.startsWith('settings/')) return;
-      // A deep link may append a query scoping the target section
-      // (`#/settings/topology?branch=<id>` / `?create=1` from the Locations
-      // dashboard): the section name is everything before the '?'.
+      // A deep link may append a query scoping the target section; the
+      // section name is everything before the '?'.
       const rawSection = hash.slice('settings/'.length);
       const queryIndex = rawSection.indexOf('?');
       const section = queryIndex === -1 ? rawSection : rawSection.slice(0, queryIndex);
       if (section && KEPT_SECTIONS.has(section)) {
         setActiveSection(section);
         // Clear the hash after consuming it so stale sections don't persist.
-        // A hint-carrying link keeps its query: TopologySection parses the
-        // scope after this listener runs, and clearing it here would lose
-        // the hand-off between the hashchange and the section mount.
+        // A query-carrying hash is left alone (scoped deep links may return).
         if (queryIndex === -1) {
           window.history.replaceState(null, '', window.location.pathname);
         }
@@ -459,7 +277,6 @@ function SettingsPageContent() {
 
   // ── Unsaved changes tracking ────────────────────────────────
   const [isDirty, setIsDirty] = useState(false);
-  const markDirty = useCallback(() => { setIsDirty(true); }, []);
 
   // Guard the window close against unsaved work. A `beforeunload` listener on
   // its own never surfaces its prompt in a Tauri build: the Rust event loop
@@ -473,7 +290,7 @@ function SettingsPageContent() {
     onDiscardAndClose,
   } = useUnsavedChangesGuard(isDirty);
 
-  // ── Accordion state moved to SettingsNavTree.tsx ──────────────
+  // ── Sidebar nav tree lives in SettingsNavTree.tsx (flat list) ──
 
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
   const clock = useClock(numLocale);
@@ -501,11 +318,8 @@ function SettingsPageContent() {
     const revertedPalette = deriveAccentPalette(snap.brandColour);
     applyAccentPalette(revertedPalette);
     setIsDirty(false);
-    setFieldErrors({});
-    setSyncResult(null);
     setSyncApiKey('');
     setSyncApiKeyVisible(false);
-    setTokenExpiresAt(null);
   // All dependencies are stable (state setters + imported functions),
   // so an empty array is correct — the callback is created once.
   }, []);
@@ -526,7 +340,6 @@ function SettingsPageContent() {
       const s = settingsCtx.settings;
       setReceipt(s.receipt);
       setStore(s.store);
-      setCurrencies(s.currencies);
       setSync(s.sync);
       setSyncServerUrl(s.sync.serverUrl ?? '');
       setDisplayCardSize(s.preferences.cardSize);
@@ -717,44 +530,8 @@ function SettingsPageContent() {
   };
 
   // ── Sidebar search filtering moved to SettingsNavTree.tsx ─────
-
-  // ── Cloud Sync diagnostics ──────────────────────────────────
-
-  // Load the full offline queue summary (pending/synced/failed/conflict
-  // counts + last-synced/oldest-pending timestamps) when the sync section
-  // is active, so the Cloud Sync panel can show detailed status.
-  const refreshQueueSummary = useCallback(async () => {
-    try {
-      const summary = await getOfflineQueueStatusSummaryScoped(sessionToken ?? '');
-      setQueueSummary(summary);
-    } catch {
-      setQueueSummary(null);
-    }
-  }, [sessionToken]);
-
-  // Poll the summary + plan while the Cloud Sync section is open so the
-  // status panel (counts + last-synced + plan) stays live without manual
-  // refreshes.
-  const refreshSyncPlan = useCallback(async () => {
-    try {
-      setSyncPlan(await getSyncPlanScoped(sessionToken ?? ''));
-    } catch {
-      setSyncPlan(null);
-    }
-  }, [sessionToken]);
-
-  useEffect(() => {
-    if (activeSection !== 'sync') {
-      return;
-    }
-    refreshQueueSummary();
-    refreshSyncPlan();
-    const id = window.setInterval(() => {
-      void refreshQueueSummary();
-      void refreshSyncPlan();
-    }, SYNC_STATUS_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [activeSection, refreshQueueSummary, refreshSyncPlan]);
+  // (The page-level Cloud Sync diagnostics poll went with the old sync
+  // section; the flat-IA screens own their own status polling.)
 
   // ── Keyboard shortcuts ────────────────────────────────────
 
@@ -776,6 +553,30 @@ function SettingsPageContent() {
     return () => document.removeEventListener('keydown', handleKeyDown);
      
   }, [saving]);
+
+  // ── Role gate render: locked card instead of the whole shell ────────
+  // Positioned AFTER every hook in this component so the locked shell and
+  // the full shell run the same hook sequence (rules of hooks). Rendered
+  // for manager/staff/auditor; admin/owner get the app.
+  if (!adminUp) {
+    return (
+      <div className="settings-page">
+        {/* role="status" (polite announcement) cannot share an element with
+            aria-disabled per jsx-a11y/role-supports-aria-props, so the card
+            keeps the disabled semantics and its immediate wrapper announces. */}
+        <div role="status">
+        <div className="settings-locked-card" aria-disabled="true" data-testid="settings-locked-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <h1><Localized id="settings-locked-title">Settings restricted</Localized></h1>
+          <p><Localized id="settings-locked-desc">Sign in with an administrator or owner account to manage settings.</Localized></p>
+        </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Loading / Error states ───────────────────────────────────
 
@@ -842,147 +643,37 @@ function SettingsPageContent() {
   function renderSection(key: string) {
     switch (key) {
       case 'general':
-        return (
-          <GeneralSection
-            store={store}
-            setStore={setStore}
-            markDirty={markDirty}
-            cmInput={cmInput}
-            fieldErrors={fieldErrors}
-            validateField={validateField}
-            clearFieldError={clearFieldError}
-            currencies={currencies}
-            defaultCurrency={defaultCurrency}
-            setDefaultCurrencyState={setDefaultCurrencyState}
-            l10n={l10n}
-          />
-        );
-
-      case 'appearance':
-        return (
-          <AppearanceSection
-            displayCardSize={displayCardSize}
-            setDisplayCardSize={setDisplayCardSize}
-            displayFontSize={displayFontSize}
-            setDisplayFontSize={setDisplayFontSize}
-            displayFontSmoothing={displayFontSmoothing}
-            setDisplayFontSmoothing={setDisplayFontSmoothing}
-            brandColour={brandColour}
-            setBrandColour={setBrandColour}
-            brandStoreName={brandStoreName}
-            setBrandStoreName={setBrandStoreName}
-            markDirty={markDirty}
-            l10n={l10n}
-          />
-        );
-
-      case 'receipt':
-        return (
-          <ReceiptSection
-            receipt={receipt}
-            setReceipt={setReceipt}
-            setDecimalSep={setDecimalSep}
-            markDirty={markDirty}
-            l10n={l10n}
-          />
-        );
-
-      case 'sync':
-        return (
-          <SyncSection
-            sync={sync}
-            setSync={setSync}
-            syncServerUrl={syncServerUrl}
-            setSyncServerUrl={setSyncServerUrl}
-            syncApiKey={syncApiKey}
-            setSyncApiKey={setSyncApiKey}
-            syncApiKeyVisible={syncApiKeyVisible}
-            setSyncApiKeyVisible={setSyncApiKeyVisible}
-            syncing={syncing}
-            setSyncing={setSyncing}
-            pulling={pulling}
-            setPulling={setPulling}
-            syncResult={syncResult}
-            setSyncResult={setSyncResult}
-            pullResult={pullResult}
-            setPullResult={setPullResult}
-            queueSummary={queueSummary}
-            syncPlan={syncPlan}
-            testing={testing}
-            setTesting={setTesting}
-            pingResult={pingResult}
-            setPingResult={setPingResult}
-            requesting={requesting}
-            setRequesting={setRequesting}
-            tokenExpiresAt={tokenExpiresAt}
-            setTokenExpiresAt={setTokenExpiresAt}
-            cmInput={cmInput}
-            markDirty={markDirty}
-            refreshQueueSummary={refreshQueueSummary}
-            testSyncConnection={() => testSyncConnectionScoped(sessionToken ?? '')}
-            syncRun={() => syncRunScoped(sessionToken ?? '')}
-            syncPull={(args: { confirmDestructive: boolean }) => syncPullScoped(sessionToken ?? '', args)}
-            requestSyncToken={() => requestSyncTokenScoped(sessionToken ?? '')}
-            l10n={l10n}
-            addToast={addToast}
-          />
-        );
-
-      case 'local-api':
-        return <LocalApiSection />;
-
-      case 'email':
-        return <EmailReportSettings />;
-
-      case 'about':
-        return (
-          <AboutSection
-            appVersion={appVersion}
-            updateState={updateState}
-            updateVersion={updateVersion}
-            handleCheckUpdates={handleCheckUpdates}
-            handleInstallUpdate={handleInstallUpdate}
-          />
-        );
-
-      case 'license':
-        return <LicenseSettings />;
-
-      case 'diagnostics':
-        return <DiagnosticsSection />;
-
-      case 'topology':
-        return <TopologySection />;
-
-      case 'store-pos':
-        return (
-          <Suspense fallback={<Skeleton variant="block" width="100%" height="12rem" />}>
-            <WorkspaceStorePosSettings variant="full-page" terminalId={terminalId} userId={userId} {...(sessionToken ? { sessionToken } : {})} />
-          </Suspense>
-        );
-
-      case 'restaurant-pos':
-        return (
-          <Suspense fallback={<Skeleton variant="block" width="100%" height="12rem" />}>
-            <WorkspaceRestaurantPosSettings variant="full-page" terminalId={terminalId} userId={userId} {...(sessionToken ? { sessionToken } : {})} />
-          </Suspense>
-        );
-
-      case 'inventory':
-        return (
-          <Suspense fallback={<Skeleton variant="block" width="100%" height="12rem" />}>
-            {/* TODO: pass locationId from workspace context when available
-                to enable the Deduction Rules card section */}
-            <WorkspaceInventorySettings variant="full-page" userId={userId} />
-          </Suspense>
-        );
-
+        return <GeneralScreen />;
+      case 'license-subscription':
+        return <LicenseSubscriptionScreen />;
+      case 'devices-connectivity':
+        return <DevicesConnectivityScreen />;
+      case 'business-defaults':
+        return <BusinessDefaultsScreen />;
+      case 'features-modules':
+        return <FeaturesModulesScreen />;
+      case 'security-account':
+        return <SecurityAccountScreen />;
+      case 'data-sync':
+        return <DataSyncScreen />;
+      case 'data-management':
+        return <DataManagementScreen />;
+      case 'sync-status':
+        return <SyncStatusScreen />;
+      case 'offline-queue':
+        return <OfflineQueueScreen />;
+      case 'tax-configuration':
+        return <TaxConfigurationScreen />;
+      case 'exchange-rates':
+        return <ExchangeRatesScreen />;
+      case 'system-diagnostics':
+        return <SystemDiagnosticsScreen />;
       default:
         return null;
     }
   }
 
-  // ── Resolve current nav item + category for breadcrumb ─────
+  // ── Resolve current nav item for the topbar icon + title ─────
 
   const currentNavItem = NAV_ITEMS_REF.find((n) => n.key === activeSection);
 
@@ -1129,7 +820,7 @@ function SettingsPageContent() {
         {/* ── Main content ──────────────────────────────── */}
         <form id="settings-form" className="settings-content" onSubmit={(e) => { e.preventDefault(); handleSave(); }} ref={settingsKeyboardRef as unknown as React.Ref<HTMLFormElement>}>
           <button type="submit" hidden aria-hidden="true" tabIndex={-1}>Save</button>
-          <div className={`settings-section-content${activeSection === 'topology' ? ' settings-section-content--full' : ''}`} key={activeSection}>
+          <div className="settings-section-content" key={activeSection}>
             <div key={activeSection}>
               <Suspense fallback={<Localized id="settings-section-loading"><div className="section-loading">Loading...</div></Localized>}>
                 {renderSection(activeSection)}

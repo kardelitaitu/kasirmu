@@ -1,5 +1,4 @@
 settings-title = Pengaturan
-settings-category-business = Bisnis
 
 # ── Sidebar navigation labels ──
 # ── Lisensi: remediasi kuota (§J) ──
@@ -39,14 +38,9 @@ settings-license-quota-remedy-suspended = { $count } register surplus disuspensi
 settings-license-quota-remedy-recovered = { $count } register yang disuspensi telah dipulihkan.
 settings-license-quota-remedy-none = Tidak ada yang berubah — tidak ada register toko ini yang melebihi batas atau sedang disuspensi.
 settings-nav-general = Umum
-settings-nav-appearance = Tampilan
-settings-nav-receipt = Nota
 settings-nav-sync = Sinkronisasi Cloud
-settings-nav-about = Tentang
 settings-nav-license = Lisensi
-settings-nav-diagnostics = Diagnostik
 settings-nav-topology = Topologi
-settings-nav-email = Laporan Email
 
 # ── Kerangka layar Setelan (penataan ulang) ──
 # Satu label navigasi untuk tiap layar kosong di features/settings/screens/.
@@ -68,20 +62,21 @@ settings-screen-placeholder = Halaman ini sedang dibangun ulang.
 settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini secara selektif.
 # Gerbang lantai halaman Setelan: roleAtLeast (utils/role.ts) menampilkan teks ini
 # untuk peran di bawah lantai admin.
-# settings-nav-plus-badge-aria sengaja TIDAK dideklarasikan di sini -- langkah
-# ke-10 pre-commit (verify-ftl-orphans.py) menolak kunci yang commitnya sendiri
-# tidak mereferensikannya, jadi kunci itu masuk bersama lencana Plus yang membaca.
+# Lencana Plus di bilah sisi: dibaca oleh item navigasi datar yang halamannya
+# digerbangi paket Plus. Masuk bersama markup lencana yang mereferensikannya
+# (gerbang orphan: kunci harus direferensikan oleh commitnya sendiri).
+settings-nav-plus-badge-aria = Memerlukan paket Plus
 settings-locked-title = Setelan dibatasi
 settings-locked-desc = Setelan hanya tersedia untuk pemilik dan administrator.
-settings-category-operations = Operasional
-settings-category-system = Sistem
 settings-sidebar-nav-aria = Navigasi pengaturan
 settings-sidebar-expand-aria = Buka bilah sisi pengaturan
 settings-sidebar-collapse-aria = Tutup bilah sisi pengaturan
 settings-back-aria = Kembali
-settings-sidebar-collapse-all-aria = Tutup semua kategori
 settings-sidebar-search-aria = Cari pengaturan
 settings-sidebar-search-clear-aria = Hapus pencarian
+# Bertahan pada IA datar: tanpa kategori, "tutup semua" melipat semua halaman
+# ke bilah ikon, artinya menutup bilah sisi.
+settings-sidebar-collapse-all-aria = Tutup semua halaman
 settings-search-placeholder = Cari
 settings-shortcut-btn-aria = Pintasan keyboard
 settings-shortcuts-title = Pintasan keyboard
@@ -91,8 +86,6 @@ settings-nav-pin-aria = Sematkan { $name }
 settings-nav-unpin-aria = Lepas sematan { $name }
 settings-nav-pin-title = Sematkan
 settings-nav-unpin-title = Lepas sematan
-settings-sidebar-count-aria = { $count } item
-settings-sidebar-count-title = { $count } item
 settings-sidebar-no-results = Tidak ada bagian yang cocok
 settings-sidebar-clear-results = Hapus pencarian
 
@@ -105,17 +98,9 @@ settings-announce-search-count =
        *[other] { $count } hasil ditemukan
     }
 settings-announce-search-cleared = Pencarian dihapus
-settings-announce-category-expanded =
-    { $category } kategori dibuka, { $count ->
-        [one] { $count } item
-       *[other] { $count } item
-    }
-settings-announce-category-collapsed = { $category } kategori ditutup
 
 # ── Keyboard shortcut descriptions (popover) ──
 settings-shortcuts-desc-navigate = Navigasi item
-settings-shortcuts-desc-expand = Buka kategori
-settings-shortcuts-desc-collapse = Tutup kategori
 settings-shortcuts-desc-firstlast = Item pertama / terakhir
 settings-shortcuts-desc-close = Tutup bilah sisi seluler
 
@@ -757,8 +742,6 @@ settings-update-retry = Coba Lagi
 settings-field-language = Bahasa
 
 # ── Field validation ──
-settings-store-name-required = Nama toko wajib diisi
-settings-tax-id-pattern-error = Hanya huruf, angka, garis, titik, dan garis miring yang diizinkan
 settings-tax-id-pattern-hint = Hanya huruf, angka, garis, titik, dan garis miring, maks 20 karakter
 
 # ── Email Report Settings ──
@@ -879,9 +862,6 @@ workspace-store-info-tax-id = NPWP
 workspace-type-selector-label = Tipe Workspace
 
 # ── Phase 3 workspace nav items ──
-settings-nav-store-pos = POS Toko
-settings-nav-restaurant-pos = POS Restoran
-settings-nav-inventory = Inventaris
 
 # ── Workspace Settings Modal (ADR #22 Phase 4) ──
 workspace-modal-title = Pengaturan Workspace
@@ -932,7 +912,6 @@ addon-hal-name = Driver HAL Kustom
 addon-hal-desc = Muat dan gunakan driver abstraction layer hardware kustom untuk perangkat POS khusus.
 
 // ── API Lokal (Pengaturan → API Lokal) ────────────────────────────
-settings-nav-local-api = API Lokal
 settings-section-local-api = API Lokal
 settings-local-api-intro = Jalankan skrip Anda sendiri ke mesin kasir ini melalui HTTP. Server hanya mendengarkan di komputer ini (127.0.0.1) dan mati secara default.
 settings-local-api-enabled = Aktifkan API Lokal

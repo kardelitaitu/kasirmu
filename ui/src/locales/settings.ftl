@@ -228,18 +228,12 @@ ws-preview-name-admin = Admin
 # Settings Page
 settings-title = Settings
 settings-page-title = Settings
-settings-category-business = Business
 
 # ── Sidebar navigation labels ──
 settings-nav-general = General
-settings-nav-appearance = Appearance
-settings-nav-receipt = Receipt
 settings-nav-sync = Cloud Sync
-settings-nav-about = About
 settings-nav-license = License
-settings-nav-diagnostics = Diagnostics
 settings-nav-topology = Topology
-settings-nav-email = Email Reports
 
 # ── Settings screens scaffold (rebuild) ──
 # One nav label per blank screen under features/settings/screens/. The General
@@ -261,20 +255,21 @@ settings-screen-placeholder = This page is being rebuilt.
 settings-screen-migrating = Existing settings content will move here selectively.
 # The settings page floor gate: roleAtLeast (utils/role.ts) shows this copy to any
 # role below the admin floor.
-# settings-nav-plus-badge-aria is deliberately NOT declared here -- pre-commit
-# step 10 (verify-ftl-orphans.py) rejects a key its own commit does not
-# reference, so it must land together with the sidebar badge that reads it.
+# Sidebar Plus badge: read by the flat nav items whose page is gated behind
+# the Plus plan. Lands together with the badge markup that references it
+# (orphan gate: a key must be referenced by its own commit).
+settings-nav-plus-badge-aria = Requires Plus plan
 settings-locked-title = Settings restricted
 settings-locked-desc = Settings are available to owners and administrators only.
-settings-category-operations = Operations
-settings-category-system = System
 settings-sidebar-nav-aria = Settings navigation
 settings-sidebar-expand-aria = Expand settings sidebar
 settings-sidebar-collapse-aria = Collapse settings sidebar
 settings-back-aria = Go back
-settings-sidebar-collapse-all-aria = Collapse all categories
 settings-sidebar-search-aria = Search settings
 settings-sidebar-search-clear-aria = Clear search
+# Survives the flat IA: with no categories left, "collapse all" folds every
+# page into the icon rail, i.e. collapses the sidebar.
+settings-sidebar-collapse-all-aria = Collapse all pages
 settings-search-placeholder = Search
 settings-shortcut-btn-aria = Keyboard shortcuts
 settings-shortcuts-title = Keyboard shortcuts
@@ -284,8 +279,6 @@ settings-nav-pin-aria = Pin { $name }
 settings-nav-unpin-aria = Unpin { $name }
 settings-nav-pin-title = Pin
 settings-nav-unpin-title = Unpin
-settings-sidebar-count-aria = { $count } items
-settings-sidebar-count-title = { $count } items
 settings-sidebar-no-results = No matching sections
 settings-sidebar-clear-results = Clear search
 
@@ -298,17 +291,9 @@ settings-announce-search-count =
        *[other] { $count } results found
     }
 settings-announce-search-cleared = Search cleared
-settings-announce-category-expanded =
-    { $category } category expanded, { $count ->
-        [one] { $count } item
-       *[other] { $count } items
-    }
-settings-announce-category-collapsed = { $category } category collapsed
 
 # ── Keyboard shortcut descriptions (popover) ──
 settings-shortcuts-desc-navigate = Navigate items
-settings-shortcuts-desc-expand = Expand category
-settings-shortcuts-desc-collapse = Collapse category
 settings-shortcuts-desc-firstlast = First / last item
 settings-shortcuts-desc-close = Close mobile sidebar
 
@@ -761,8 +746,6 @@ settings-sync-pull-toast-fail = Pull failed — check server URL and token
 settings-field-language = Language
 
 # ── Field validation ──
-settings-store-name-required = Store name is required
-settings-tax-id-pattern-error = Only letters, numbers, dashes, dots, and slashes allowed
 settings-tax-id-pattern-hint = Letters, numbers, dashes, dots, and slashes only, max 20 characters
 
 # ── Updates ──
@@ -897,9 +880,6 @@ workspace-store-info-tax-id = Tax ID
 workspace-type-selector-label = Workspace Type
 
 # ── Phase 3 workspace nav items ──
-settings-nav-store-pos = Store POS
-settings-nav-restaurant-pos = Restaurant POS
-settings-nav-inventory = Inventory
 
 # ── Workspace Settings Modal (ADR #22 Phase 4) ──
 workspace-modal-title = Workspace Settings
@@ -951,7 +931,6 @@ addon-hal-name = Custom HAL Drivers
 addon-hal-desc = Load and use custom hardware abstraction layer drivers for specialized POS peripherals.
 
 // ── Local API (Settings → Local API) ──────────────────────────────
-settings-nav-local-api = Local API
 settings-section-local-api = Local API
 settings-local-api-intro = Run your own scripts against this register over HTTP. The server listens only on this machine (127.0.0.1) and is off by default.
 settings-local-api-enabled = Enable Local API
