@@ -1,6 +1,6 @@
 # Quickstart
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (mock-gate + crate-list + drivers repaired) · FIXED 31-08: removed the false 'mock feature gate' claim (mocks always compiled — no mock feature in Cargo.toml, matches hal-drivers); crate list 11 -> 13 (added oz-crypto, oz-media); oz-payment drivers +Paddle; 'pos.ts wrapper' -> per-domain ui/src/api/<feature>.ts · verified accurate: Node >=22 / npm >=11, rust-version 1.88, edition 2024, scripts/setup-dev.ps1 + check.sh + lint-i18n.sh exist, migrations at crates/oz-core/migrations/, mlua runtime -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 command-level errors fixed, 1 config bug flagged) · FIXED 08-09: (a) the page told you to run bare `cargo tauri dev` from the repo root and `npm run tauri dev` from ui/ — there is no `tauri` script in ui/package.json (the UI scripts are dev, dev:tablet, build, build:tablet and none of them start the Tauri shell); (b) setup-dev.ps1 was described as six steps, it runs seven, and the list now comes from the script's own step -Label calls; (c) "the CI matrix runs on Linux, Windows and macOS" was false — every dev-ci.yml job is ubuntu-latest, and Windows/macOS exist only in release.yml on v* tags, so a platform-specific bug is not caught before merge; (d) `cargo fmt --check` was attributed to AGENTS.md, which says `cargo fmt --all` and re-stages. FLAGGED NOT FIXED: apps/desktop-client/tauri.conf.json beforeDevCommand is `npm run dev --prefix ../ui`, which resolves to apps/ui and does not exist — proved with npm (ENOENT on apps\ui\package.json, versus ../../ui which reaches package.json). Its own frontendDist and the tablet config both use ../../ui from the same depth, so desktop is the outlier; the workaround is documented in the page. That is a config change, not a doc change. Every bash line now carries the WSL-vs-Git-bash warning from AGENTS.md. · HISTORY 2026-08-31: removed the false 'mock feature gate' claim (mocks always compile), corrected the crate list to 13 and the HAL driver list · verified accurate this pass: rust-version 1.88 and edition 2024 in Cargo.toml, engines node>=22/npm>=11 in ui/package.json, all 13 crates, the five payment drivers, the onboarding-guide #first-time-setup anchor, and every relative link on the page -->
 
 This guide gets OZ-POS building and running on your machine in under 15 minutes. It's aimed at first-time contributors — for the deeper project conventions, see `CONTRIBUTING.md`, `AGENTS.md`, and the skills under `.agents/skills/`.
 
@@ -34,13 +34,16 @@ Run the automated setup script from the workspace root:
 powershell -ExecutionPolicy Bypass -File scripts\setup-dev.ps1
 ```
 
-This single command does everything below automatically:
-1. Checks prerequisites (Rust, Node.js, Git)
-2. Enables Git hooks (auto-format + lint on commit)
-3. Installs front-end npm dependencies
-4. Runs database migration
-5. Seeds demo data (if the CLI subcommand is available)
-6. Runs `cargo check` to verify the workspace compiles
+This single command does everything below automatically — **seven** steps, read from
+the `step -Label` calls in `scripts/setup-dev.ps1` itself (grep for them; the script's
+own `.DESCRIPTION` header still lists six and omits idempotency):
+1. Prerequisites (Rust, Node.js, Git)
+2. Git hooks (`git config core.hooksPath .githooks`)
+3. npm install
+4. database migration
+5. migration idempotency (re-runs it to prove it is safe to run twice)
+6. demo data seed (if the CLI subcommand is available)
+7. `cargo check --workspace --all-features` excluding the two app crates
 
 > **Note:** The setup script is Windows-only. Linux/macOS users follow the manual steps below.
 
@@ -60,11 +63,47 @@ cargo build --workspace
 cd ui && npm ci --no-audit --no-fund
 cd ..
 
-# 4. Run the Tauri app in development mode
-cargo tauri dev
-# or, from the ui/ folder:
-cd ui && npm run tauri dev
+# 4. Run the Tauri app in development mode — from the app directory, not the root
+cd apps/desktop-client && cargo tauri dev
+# tablet shell:
+cd apps/tablet-client && cargo tauri dev
 ```
+
+> ⚠️ **The desktop dev command currently fails at its own pre-dev step.**
+> `apps/desktop-client/tauri.conf.json` sets `beforeDevCommand` to
+> `npm run dev --prefix ../ui`, but from `apps/desktop-client` that resolves to
+> `apps/ui`, which does not exist. Proved, not inferred:
+>
+> ```text
+> $ npm run __probe__ --prefix ../ui        # as beforeDevCommand runs it
+> npm error ENOENT: no such file or directory,
+>   open 'C:\\dev\\ozpos\\0.0.35\\oz-pos\\apps\\ui\\package.json'
+> $ npm run __probe__ --prefix ../../ui     # the form that works
+> npm error Missing script: "__probe__"     # <- reached package.json fine
+> ```
+>
+> The same file's `frontendDist` is `../../ui/dist` and the tablet config uses
+> `npm run dev:tablet --prefix ../../ui` — both two levels up, from the same directory
+> depth. Desktop's `../ui` is the outlier and is almost certainly a missing `../`.
+> Until it is fixed, blank the hook with a config merge and start Vite yourself.
+> Verified against this tree — with the override the ENOENT disappears and the CLI goes
+> straight to `Running DevCommand`:
+>
+> ```bash
+> # terminal 1 — from apps/desktop-client
+> npm run dev --prefix ../../ui
+>
+> # terminal 2 — from apps/desktop-client
+> cargo tauri dev --config '{"build":{"beforeDevCommand":""}}' --no-dev-server-wait
+> ```
+>
+> `--no-dev-server-wait` alone is **not** the answer: it stops the CLI waiting for Vite
+> but still runs `beforeDevCommand`, so it fails the same way. `-c/--config` accepts JSON
+> merged over `tauri.conf.json`, which is what actually sidesteps the bad path.
+>
+> There is **no `npm run tauri` script** in `ui/package.json` (an earlier revision of
+> this page told you to run one). The UI scripts are `dev`, `dev:tablet`, `build`,
+> `build:tablet` — they start Vite only, not the Tauri shell.
 
 The first build will take several minutes (Rust crates + Tauri binaries). Subsequent builds are fast.
 
@@ -98,7 +137,10 @@ cd ui && npm run lint
 cd ui && npm run typecheck
 ```
 
-`AGENTS.md` makes `cargo fmt --check` and `cargo clippy -- -D warnings` mandatory. CI rejects PRs that fail either.
+`AGENTS.md` makes formatting and `cargo clippy -- -D warnings` mandatory. The pre-commit
+hook runs `cargo fmt --all` and **re-stages** what it changed, so a commit never carries
+unformatted Rust; `cargo fmt --all -- --check` is the non-mutating form to run yourself.
+CI's `cargo-check` job runs fmt → check → clippy and rejects a PR that fails either.
 
 ---
 
@@ -108,6 +150,20 @@ cd ui && npm run typecheck
 
 ```bash
 bash scripts/check.sh   # several minutes on a clean tree; faster on a focused subset or after `cargo build`
+
+> 🛑 **On Windows, `bash <script>` means WSL, not Git Bash.** `C:\Windows\System32\bash.exe`
+> is WSL's bash; where a distro isn't running it **hangs without output** until something
+> kills it — it does not fail, which makes it look like the script is broken. Use Git's
+> bash by full path:
+>
+> ```powershell
+> & 'C:\Program Files\Git\bin\bash.exe' -c 'bash scripts/check.sh'
+> ```
+>
+> This applies to every `bash …` line below. `AGENTS.md` §Running CLI Tools on Windows
+> records the same trap costing two agents, in two opposite-looking ways (a silent hang,
+> or a red i18n gate that is not the repo's fault, because WSL runs the Linux node against
+> a Windows-built `ui/node_modules`).
 ```
 
 For the full sub-step list and what each gate catches, see `.agents/skills/onboarding-guide/SKILL.md#first-time-setup` (canonical verbose source). Use the one-liner before opening a PR to catch 90% of issues locally before CI.
@@ -191,7 +247,10 @@ All green? Open the PR.
 
 ## Troubleshooting
 
-### "error: package `oz-core v0.0.1` cannot be built because it requires rustc 1.88 or newer"
+### "error: package `oz-core` cannot be built because it requires rustc 1.88 or newer"
+
+(The version in that message is whatever the workspace is currently locked at — the
+sentence is about the toolchain floor, not the release.)
 
 You're on an old Rust. Update:
 
@@ -206,7 +265,13 @@ Install the Tauri Linux prerequisites (see the table at the top of this file). T
 
 ### Tests pass locally but fail in CI
 
-The CI matrix runs on Linux, Windows, and macOS. If you see a failure on a platform you didn't test locally, install the platform's deps and re-run. Don't disable platform-specific tests — fix them.
+**PR CI is Linux-only.** Every job in `.github/workflows/dev-ci.yml` is
+`runs-on: ubuntu-latest` — there is no OS matrix. Windows and macOS appear only in
+`release.yml`, which builds desktop installers on `v*` tags and never runs on a PR. So a
+Windows- or macOS-specific failure is **not** caught before merge here, and a green Dev CI
+run is not proof the code works on the platform you ship to (the same caveat AGENTS.md
+makes about E2E, a11y, security and nightly). If you hit one, reproduce it locally on that
+OS and say so in the PR — CI will not surface it for you. re-run. Don't disable platform-specific tests — fix them.
 
 ### `npm install` / `npm ci` fails in `ui/`
 
@@ -238,4 +303,4 @@ Welcome to OZ-POS. Keep the curtain closed, the merchant happy, and the money in
 
 ---
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
