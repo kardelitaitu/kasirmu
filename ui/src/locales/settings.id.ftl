@@ -938,4 +938,5 @@ settings-diagnostics-detail-scope-covered = Mencakup lokasi ini
 settings-diagnostics-detail-scope-not-covered = Tidak mencakup lokasi ini
 settings-diagnostics-detail-expires = Kedaluwarsa: { $expiresAt }
 settings-diagnostics-detail-grace = Tenggang hingga: { $graceUntil }
+settings-diagnostics-deployment-version = Versi aplikasi: { $version }
 

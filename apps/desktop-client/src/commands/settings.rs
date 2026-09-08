@@ -1173,6 +1173,43 @@ pub async fn get_hardware_settings_scoped(
     get_hardware_settings(state).await
 }
 
+// ── Deployment / version read (operator tooling, saas-3 L162) ─────
+
+/// Running deployment metadata for the operator/support "About" surface in
+/// Diagnostics (todo-global-saas-3.md, L162 operator tooling). The version is
+/// organization-global — the build version is identical across every store — so
+/// there is no store to resolve; a `_scoped` variant would be an empty ceremony
+/// (category 2, per `scripts/verify-scoped-coverage.sh`, alongside
+/// `get_over_quota_report`). It is still gated on `settings:read` inline so only
+/// roles that can already read store/system settings see it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeploymentInfo {
+    /// The running build version (`CARGO_PKG_VERSION`, locked to the release
+    /// line — 0.0.37 at this writing).
+    pub app_version: String,
+}
+
+/// Read-only deployment metadata for the signed-in operator. Authenticates the
+/// session and checks `settings:read` inline (category 2 unscoped command).
+#[tauri::command]
+pub async fn get_deployment_info(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<DeploymentInfo, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    Ok(build_deployment_info())
+}
+
+/// Build the deployment-info payload. Split out so tests exercise the exact
+/// production path without standing up a session.
+fn build_deployment_info() -> DeploymentInfo {
+    DeploymentInfo {
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
 #[cfg(test)]
 #[path = "settings_tests.rs"]
 mod tests;

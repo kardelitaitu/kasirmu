@@ -10,6 +10,7 @@ import {
   type FeatureVerdictReason,
   type AvailabilityFeatureKey,
 } from '@/api/subscription';
+import { getDeploymentInfo, type DeploymentInfo } from '@/api/settings';
 import './DiagnosticsSection.css';
 
 /** The v1 verdict keys, in display order (the resolver's own feature set). */
@@ -52,6 +53,7 @@ export default function DiagnosticsSection() {
   const [verdicts, setVerdicts] = useState<Partial<Record<AvailabilityFeatureKey, FeatureVerdict>>>({});
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
 
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
@@ -72,6 +74,13 @@ export default function DiagnosticsSection() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!sessionToken) return;
+    getDeploymentInfo(sessionToken)
+      .then(setDeployment)
+      .catch(() => setDeployment(null));
+  }, [sessionToken]);
 
   return (
     <Card
@@ -105,6 +114,12 @@ export default function DiagnosticsSection() {
               </Localized>
             </span>
           )}
+        </div>
+
+        <div className="settings-field settings-field--horizontal" data-testid="diagnostics-version">
+          <Localized id="settings-diagnostics-deployment-version" vars={{ version: deployment?.appVersion ?? '' }}>
+            <span>{'App version: { $version }'}</span>
+          </Localized>
         </div>
 
         <ul className="settings-diagnostics-list" aria-label={requiredLocalized(l10n, 'settings-diagnostics-list-aria')}>

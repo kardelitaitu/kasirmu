@@ -3819,6 +3819,14 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   },
   'test_sync_connection': () => ({ ok: true, status: 'connected', latencyMs: 12 }),
   'request_sync_token': () => ({ ok: true, token: 'mock-jwt-token', status: 'issued', expiresAt: new Date(Date.now() + 86400000).toISOString() }),
+  'get_deployment_info': (_args) => {
+    // Mirrors the real command (category 2 unscoped, gated on settings:read):
+    // returns the running build version. The mock cannot read CARGO_PKG_VERSION
+    // at runtime, so it mirrors ui/package.json (the single source the real
+    // build is bumped from, per the `version` command contract in this file's
+    // header) to stay in lockstep with the shipped app.
+    return { appVersion: pkg.version };
+  },
 
 };
 

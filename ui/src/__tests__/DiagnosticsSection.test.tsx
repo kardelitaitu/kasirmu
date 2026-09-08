@@ -56,6 +56,9 @@ const { invokeMock, verdictHandler } = vi.hoisted(() => {
     if (cmd === 'get_brand_settings') {
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
+    if (cmd === 'get_deployment_info') {
+      return Promise.resolve({ appVersion: '0.0.37' });
+    }
     return Promise.resolve(undefined);
   };
   return {
@@ -504,4 +507,15 @@ describe('DiagnosticsSection', () => {
       ([cmd]) => cmd === 'explain_feature_availability_scoped',
     );
     expect(calls).toHaveLength(ALL_KEYS.length * 2);
-  });});
+  });
+
+  it('renders the running app version from get_deployment_info', async () => {
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-version')).toHaveTextContent('0.0.37');
+    });
+    const call = invokeMock.mock.calls.find(([cmd]) => cmd === 'get_deployment_info');
+    expect(call).toBeDefined();
+    expect((call?.[1] as { sessionToken: string }).sessionToken).toBe(HARNESS_SESSION_TOKEN);
+  });
+});

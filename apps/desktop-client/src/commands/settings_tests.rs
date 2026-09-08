@@ -566,3 +566,11 @@ fn run_set_setting_rejects_lan_server_keys() {
         "lan_server.* must name its owning controls: {err:?}"
     );
 }
+
+// ── Deployment info tests ───────────────────────────────────
+
+#[test]
+fn build_deployment_info_returns_pkg_version() {
+    let info = build_deployment_info();
+    assert_eq!(info.app_version, env!("CARGO_PKG_VERSION"));
+}

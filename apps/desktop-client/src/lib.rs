@@ -976,6 +976,7 @@ pub fn run() {
             commands::settings::set_user_preferences_scoped,
             commands::settings::set_setting_scoped,
             commands::settings::set_settings_scoped,
+            commands::settings::get_deployment_info,
             // Unscoped settings access for pre-login IPC callers (updater
             // banner, cloud-sync token, gateway status) — mirrors the tablet
             // registration; see review finding F-004.

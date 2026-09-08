@@ -956,4 +956,5 @@ settings-diagnostics-detail-scope-covered = Covers this location
 settings-diagnostics-detail-scope-not-covered = Does not cover this location
 settings-diagnostics-detail-expires = Expires: { $expiresAt }
 settings-diagnostics-detail-grace = Grace until: { $graceUntil }
+settings-diagnostics-deployment-version = App version: { $version }
 

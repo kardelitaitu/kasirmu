@@ -49,6 +49,18 @@ export const getStoreSettingsScoped = (sessionToken: string): Promise<StoreSetti
 export const setStoreSettingsScoped = (sessionToken: string, args: StoreSettingsDto): Promise<void> =>
   loggedInvoke<void>('set_store_settings_scoped', { sessionToken, args });
 
+// ── Deployment / version read (operator tooling, saas-3 L162) ───────────
+
+/** Running deployment metadata (build version) for the Diagnostics "About" surface. */
+export interface DeploymentInfo {
+  /** The running build version, e.g. `0.0.37`. */
+  appVersion: string;
+}
+
+/** Read the running app version (gated on `settings:read`). */
+export const getDeploymentInfo = (sessionToken: string): Promise<DeploymentInfo> =>
+  loggedInvoke<DeploymentInfo>('get_deployment_info', { sessionToken });
+
 // ── Credit Settings ───────────────────────────────────────────
 
 /** Credit / tab sale settings for the store. */
