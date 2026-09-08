@@ -146,14 +146,23 @@ in `plugin.toml` (see `plugins/example-discount/` for a complete example).
 
 Third-party hardware drivers implement the traits defined in `crates/oz-hal/`.
 
-### Available Driver Traits (v1.0)
+### Available Driver Traits
 
-| Trait | Crate | Description |
+`crates/oz-hal/src/traits/` declares **seven** public traits. This table listed four
+until 08-09-26 — the two device traits that shipped later (weight scale, EDC payment
+terminal) were never added, even though both have a mock driver in
+`crates/oz-hal/src/drivers/mock.rs` (`MockWeightScale`, `MockEdcTerminal`) and a real
+one (`drivers/scale.rs`, `drivers/edc/`), which is what the "v1.0" heading concealed.
+
+| Trait | Where | Description |
 |-------|-------|-------------|
 | `BarcodeScanner` | `oz-hal` | Connect, poll for scans, cancel pending reads |
 | `ReceiptPrinter` | `oz-hal` | Print receipts, barcodes, QR codes, cash drawer kick |
 | `CashDrawer` | `oz-hal` | Open drawer, detect drawer state |
 | `CustomerDisplay` | `oz-hal` | Show/hide messages, update totals |
+| `WeightScale` | `traits/weight_scale.rs:26` | USB HID weight scale; a reading carries a `stable` flag so the caller can wait for the item to settle |
+| `EdcTerminal` | `traits/edc.rs:76` | Card-present payment terminal. `authorize` and `capture` are **separate** because a terminal can hold a funds authorisation without taking the money; `sale` covers the common case in one call |
+| `ProtocolCodec` | `drivers/edc/protocol/mod.rs:61` | **PLANNED — do not implement against it.** Encodes/decodes a vendor-specific EDC protocol, and every method currently returns `HalError::Unsupported` until a real vendor protocol lands |
 
 ### Implementing a Custom Driver
 
