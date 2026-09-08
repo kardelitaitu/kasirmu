@@ -667,7 +667,7 @@
   transition: color 0.15s;
 }
 
-.analytics-card:hover .analytics-card-grip {
+.analytics-card-header:hover .analytics-card-grip {
   color: var(--analytics-fg-tertiary);
 }
 
@@ -680,12 +680,20 @@
   outline-offset: -2px;
 }
 
-/* Hover lift on cards */
+/* Hover lift — scoped to the header (the drag handle). The card body is
+   not interactive, so lifting the whole card on any hover implied a
+   clickable body (notes.md "Drag / hover affordances"); only the header
+   strip lifts now. The card keeps its own transition so the dragging
+   opacity fade stays animated. */
 .analytics-card {
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.analytics-card:not(.analytics-card--expanded):hover {
+.analytics-card-header {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.analytics-card:not(.analytics-card--expanded) .analytics-card-header:hover {
   box-shadow: var(--analytics-shadow-popover);
   transform: translateY(-2px);
 }

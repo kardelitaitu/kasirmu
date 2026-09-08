@@ -633,10 +633,10 @@ describe('AnalyticsScreen layout shell', () => {
     const cards = () => [...document.querySelectorAll('.analytics-card')];
     const heat = cards()[0]!;
     const staff = cards().find((c) => c.querySelector('.analytics-card-title')?.textContent === 'Staff Performance')!;
-    fireEvent.dragStart(heat);
+    fireEvent.dragStart(heat.querySelector('.analytics-card-header')!);
     fireEvent.dragOver(staff);
     fireEvent.drop(staff);
-    fireEvent.dragEnd(heat);
+    fireEvent.dragEnd(heat.querySelector('.analytics-card-header')!);
 
     expect(screen.getByRole('button', { name: 'Reset layout' })).toBeTruthy();
 
@@ -688,10 +688,10 @@ describe('AnalyticsScreen layout shell', () => {
     // Drag Revenue Overview onto Staff Performance's slot
     const heat = cards()[0]!;
     const staff = cards().find((c) => c.querySelector('.analytics-card-title')?.textContent === 'Staff Performance')!;
-    fireEvent.dragStart(heat);
+    fireEvent.dragStart(heat.querySelector('.analytics-card-header')!);
     fireEvent.dragOver(staff);
     fireEvent.drop(staff);
-    fireEvent.dragEnd(heat);
+    fireEvent.dragEnd(heat.querySelector('.analytics-card-header')!);
 
     // Order changed: Staff Performance moved before Heat Map
     expect(titles().indexOf('Staff Performance')).toBeLessThan(titles().indexOf('Heat Map'));
@@ -802,10 +802,10 @@ describe('AnalyticsScreen layout shell', () => {
     const cards = () => [...document.querySelectorAll('.analytics-card')];
     const heat = cards()[0]!;
     const staff = cards().find((c) => c.querySelector('.analytics-card-title')?.textContent === 'Staff Performance')!;
-    fireEvent.dragStart(heat);
+    fireEvent.dragStart(heat.querySelector('.analytics-card-header')!);
     fireEvent.dragOver(staff);
     fireEvent.drop(staff);
-    fireEvent.dragEnd(heat);
+    fireEvent.dragEnd(heat.querySelector('.analytics-card-header')!);
 
     expect(screen.getByText('Layout saved')).toBeTruthy();
   });

@@ -1312,23 +1312,30 @@ export default function AnalyticsScreen() {
             <div
               key={cid}
               role="group"
-              draggable={!isExpanded}
               aria-labelledby={`analytics-card-title-${cid}`}
-              onDragStart={(e) => {
-                setDragId(cid);
-                if (e.dataTransfer) {
-                  e.dataTransfer.effectAllowed = 'move';
-                  // Firefox refuses to begin a drag without setData.
-                  e.dataTransfer.setData('text/plain', cid);
-                }
-              }}
               onDragOver={(e) => { e.preventDefault(); if (overId !== cid) setOverId(cid); }}
               onDragLeave={() => setOverId((o) => (o === cid ? null : o))}
               onDrop={(e) => { e.preventDefault(); reorderCard(dragId ?? '', cid); setDragId(null); setOverId(null); }}
-              onDragEnd={() => { setDragId(null); setOverId(null); }}
               className={`analytics-card${card.size ? ` analytics-card--${card.size}` : ''}${isExpanded ? ' analytics-card--expanded' : ''}${isCollapsed ? ' analytics-card--collapsed' : ''}${isDragging ? ' analytics-card--dragging' : ''}${isDropTarget ? ' analytics-card--drop-target' : ''}`}
             >
-              <div className="analytics-card-header">
+              {/* Drag starts from the header only (the grip marks it), so the
+                  card body no longer reads as draggable/clickable; the drop
+                  target stays the whole card. Keyboard reorder lives in the
+                  card menu (Move up/down/top/bottom), so the aria-hidden grip
+                  keeps a keyboard-equivalent path (notes.md drag affordances). */}
+              <div
+                className="analytics-card-header"
+                draggable={!isExpanded}
+                onDragStart={(e) => {
+                  setDragId(cid);
+                  if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    // Firefox refuses to begin a drag without setData.
+                    e.dataTransfer.setData('text/plain', cid);
+                  }
+                }}
+                onDragEnd={() => { setDragId(null); setOverId(null); }}
+              >
                 <span className="analytics-card-grip" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
                     <circle cx="9" cy="5" r="1.4" /><circle cx="15" cy="5" r="1.4" />
