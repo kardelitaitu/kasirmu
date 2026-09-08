@@ -373,7 +373,7 @@ actual relationship mutation.
       home screen becomes an unstructured card grid. — **verified complete
       2026-09-06** (round 6). The spec's list is disjunctive ("or"); three of the
       four affordances already ship, and the fourth is premature:
-      - **stable page registration** — `platform/ui/page-registry` +
+      - **stable page registration** — `platform/ui/page-registry` + <!-- dead-ref: ok: page-registry and menu-registry are the crates this item proposes to build -->
         `menu-registry` are the single source of truth; `AppLayout` renders the
         sidebar from `getNavItems()` grouped by a canonical `SECTION_ORDER`
         accordion (Operations/Insights/Configuration preserved), never a

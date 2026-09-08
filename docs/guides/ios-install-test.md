@@ -94,7 +94,7 @@ cd ../..
 This generates `gen/apple/` (do **not** commit — it is .gitignored).
 
 > **Important:** If you see "already initialized", delete it first:
-> `rm -rf apps/tablet-client/gen/apple/` then re-run.
+> `rm -rf apps/tablet-client/gen/apple/` then re-run. <!-- dead-ref: ok: that dir is created by `tauri ios init` on the reader's machine; the command exists to remove it -->
 
 ### Option A — Quick Simulator Test (No Physical Device)
 

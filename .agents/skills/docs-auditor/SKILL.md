@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 5 — §13 now states the invariant as achieved rather than approximate: 124 stamped files, 124 stamps, zero stacked repo-wide. The five ··/SKILL.md exceptions were merged in the same pass, losslessly, and one of the five was a third stamp this session itself had appended to onboarding-guide — the rule was in this file and I still broke it, which is why the merge recipe is written out here instead of only the prohibition. Also added: do not append a "rev N" when re-stamping the same file the same day — replace; this file had reached rev 4 in four lines.) · rev 4 added .agents/skills/docs-auditor/scripts/check-audit-stamps.py and the footer-vs-stamp direction rule · rev 3 added check-api-surface.py · verified against the live tree: detect.sh Check 9/10 reads the footer only, so a footer older than the newest stamp is invisible to CI; 4 such files existed and were bumped -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 6 — added .agents/skills/docs-auditor/scripts/check-dead-refs.py with its measured baseline, its self-test requirement, and the pragma convention; the entry records the placeholder-class bug that made it falsely report zero, because a tool page that only lists strengths is how the next person trusts a clean run they should not trust. · rev 4 added .agents/skills/docs-auditor/scripts/check-audit-stamps.py and the footer-vs-stamp direction rule · rev 3 added check-api-surface.py · verified against the live tree: detect.sh Check 9/10 reads the footer only, so a footer older than the newest stamp is invisible to CI; 4 such files existed and were bumped -->
 
 # Skill: docs-auditor
 
@@ -55,6 +55,29 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   listed but never registered, listed and not defined anywhere, registered but
   undocumented. Reporting them separately is the point: a single "the numbers disagree"
   count hides that three of the four need different fixes.
+- **Unresolved path references** (any doc): run
+  `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py`. It indexes the tree
+  once (pruned) and reports path literals in markdown that resolve to nothing,
+  separating live docs from dated records, plans and active specs — which are not drift,
+  because a plan names files it intends to create. Baseline on 08-09-26:
+  **40 unresolved refs across 13 live docs** (exit 1), concentrated in the mobile guides
+  naming `.ipa`/`.xcodeproj` build outputs. **Not wired into CI** until that is burned
+  down, for the same reason as `check-api-surface.py`: a permanently red gate teaches
+  people to ignore the gate. `--verbose` for every hit, `--include-bare` to also test
+  bare filenames (noisy: `publish latest.json` names an artifact, not a repo path),
+  `--include-historical` to see what is being skipped and why.
+  ⚠️ **Give it a self-test before trusting a clean run.** Building it this session, the
+  tool reported *zero* unresolved references across 333 docs while its placeholder
+  character class contained a bare `.`, so every path with an extension was being
+  skipped as a placeholder. A deliberately-broken test file caught it: two injected dead
+  paths, a glob, a placeholder, a negative-context line. If you write a checker and its
+  first result is clean, feed it something you know is broken.
+  ⚠️ **Name every script by its full path, including inside a stamp or a sentence.**
+  `detect.sh` Check 1 re-anchors a token on its `scripts/…` segment rather than using the
+  whole path it was given, so writing `scripts/check-audit-stamps.py` in prose fails the
+  gate even though the file exists at `.agents/skills/docs-auditor/scripts/`. This bit the
+  author of this bullet twice in one session. A `CODE FINDING` for detect.sh: it should
+  take the longest path-looking run on the line, not the last `scripts/` it finds.
 - Duration: ~1-2 minutes. No per-line cross-reference.
 
 ### Full Audit

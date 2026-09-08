@@ -73,7 +73,7 @@ directory — it cannot be undone.
 4. **Run** — the NSIS installer executes silently (`/S`); `-System` uses
    `msiexec /i … /qn` for the per-machine MSI.
 
-The scripts are deliberately thin: install/uninstall/shortcut/update wiring
+The scripts are deliberately thin: install/uninstall/shortcut/update wiring <!-- dead-ref: ok: prose listing four verbs, not four paths -->
 all lives in the Tauri NSIS/MSI installers, keeping the `| iex` attack
 surface small and auditable.
 

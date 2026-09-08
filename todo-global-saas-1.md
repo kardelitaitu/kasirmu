@@ -327,6 +327,23 @@ Scope findings from the pre-implementation investigation, in execution order:
   (`('admin', 'stores', 13)` seed row). Cloud **PG init folds all later
   migrations into `20260813_init.pg.sql`** — both the SQLite init and the PG
   init must be edited, not just new migration files.
+- **Rename surfaces mapped** — ⚠️ **the inventory below is the pre-rename state, kept
+  verbatim as the audit trail; those paths no longer exist and are NOT current file
+  names.** Every one has been renamed: `crates/oz-core/src/store_profile.rs` is now
+  `location_profile.rs`; `apps/desktop-client/src/commands/store_profiles.rs` is now
+  `commands/locations.rs` (with its `_tests` sibling); `ui/src/api/stores.ts` is now
+  `api/locations.ts`; `ui/src/features/stores/` is now `features/locations/`;  <!-- dead-ref: ok: this note exists precisely to name the pre-rename paths -->
+  `ui/src/locales/multi-store.ftl` is now `multi-location.ftl` (+ `.id.ftl`).
+  Landing commits: `10260a035` + `c9d0ec95f` (2026-09-06, core SQL and migration),
+  `54470e277` (2026-09-07, the wire field `max_stores` → `maxLocations`), `1b3e71798`
+  (2026-09-08, entitlement consolidation). Recorded here because this list is the
+  authoritative enumeration of the rename surfaces, and reconstructing it by hand from
+  the old names cost a full audit pass across docs/, the crate READMEs and the dev-mock
+  on 08-09-26. Further slices should re-derive from the NEW names and treat the old
+  ones as search keys only. Note added 2026-09-08 by docs-auditor; the inventory body
+  below it is untouched.
+  further slice should re-derive from the NEW names and treat the old ones as search
+  keys only. Added 2026-09-08 by docs-auditor; the section body is untouched.
 - **Rename surfaces mapped**: `crates/oz-core` (`store_profile.rs`,
   `db/mod.rs` region, `db/store_profile` repo if present), `apps/
   desktop-client/src/commands/store_profiles.rs` (308 lines, 7 scoped IPC
@@ -334,7 +351,7 @@ Scope findings from the pre-implementation investigation, in execution order:
   (subscription count query, terminals FK comment/tests, workspaces boot
   resolution), `apps/cloud-server` (sync tests), IPC parity allowlist (7
   command names) + dev-mock (`ui/src/dev-mock/tauri-api.ts`) + dev-mock
-  scoped-alias tests, `ui/src/api/stores.ts`, `ui/src/features/stores/`
+  scoped-alias tests, `ui/src/api/stores.ts`, `ui/src/features/stores/` <!-- dead-ref: ok: pre-rename inventory, explained by the note above -->
   (register.tsx + screen), `WorkspaceHome` tool card (`id: 'stores'`, route,
   minRole), `ui/src/locales/multi-store.ftl` + siblings (≈131 `store` hits
   across 16 FTL files — enumerate keys, don't blind-replace), IPC command

@@ -45,7 +45,7 @@ If your change touches more than one layer (Rust core, Tauri IPC, UI, HAL, proje
 |--------|-------------|---------|
 | `feat/<name>` | New feature, capability, or user-visible change | `feat/cart-line-discount` |
 | `fix/<name>` | Bug fix | `fix/cart-overflow-on-coupon` |
-| `docs/<name>` | Documentation only | `docs/i18n-contributor-guide` |
+| `docs/<name>` | Documentation only | `docs/i18n-contributor-guide` <!-- dead-ref: ok: an invented example subject, not a path claim --> |
 | `chore/<name>` | Maintenance, deps, config, refactor with no behavior change | `chore/bump-tauri-v2.1` |
 | `test/<name>` | Test additions or fixes | `test/integration-sales-flow` |
 | `refactor/<name>` | Code restructuring, no behavior change | `refactor/extract-payment-port` |
