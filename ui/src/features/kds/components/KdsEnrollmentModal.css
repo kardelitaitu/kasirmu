@@ -182,7 +182,12 @@
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--kds-bg, #ffffff);
+  /* The padding around the code IS the QR's outer quiet zone, so it must be the
+     same paper-white in every theme. --color-pos-on-primary is the only
+     theme-invariant white in tokens.css (#ffffff in all three blocks); a --kds-*
+     surface goes near-black in dark mode and scanners reject a code whose quiet
+     zone is dark. Raw hex is not an option here — themeTokenCompliance baseline 0. */
+  background: var(--color-pos-on-primary);
 }
 
 .kds-enrollment-device-name {

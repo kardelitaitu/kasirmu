@@ -418,8 +418,13 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                 })}
                 size={200}
                 level="M"
-                bgColor="var(--kds-bg, #ffffff)"
-                fgColor="var(--kds-text, #111827)"
+                /* Literal hex on purpose, not var(--token): qrcode.react writes these
+                   onto SVG `fill` presentation attributes, where var() never resolves
+                   — both paths are then dropped and inherit black, so the code renders
+                   as a solid square. A pairing code must also stay dark-on-paper-white
+                   in EVERY theme; no semantic token is theme-invariant like that. */
+                bgColor="#ffffff"
+                fgColor="#111827"
                 aria-label={requiredLocalized(
                   l10n,
                   'kds-enrollment-qr-aria',
