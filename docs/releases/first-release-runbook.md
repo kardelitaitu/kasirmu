@@ -1,6 +1,6 @@
 # First-Release Runbook — OZ-POS
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE · collapses a two-stamp stack into one, keeping both predecessors’ evidence. This file was the last exception to the “replace, do not stack” rule in .agents/skills/docs-auditor/SKILL.md §13; every stamped md file in the repo now carries exactly one.
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (5 findings) · collapses a two-stamp stack into one and repairs a warning that had itself gone stale. §0's banner said "pushing a v* tag today triggers nothing" and named release.yml, android.yml and ios.yml as all retired. Only two of those are: 3b10ea3a2 restored release.yml (desktop-only, validate/build/publish on v* tags) on 2026-09-04 — the same day this banner was written, hours after it. Verified against the files today: release.yml exists with jobs release-validate / release-build / release-publish; android.yml and ios.yml exist only as .bak. · The banner is now a three-row live/retired table, and §1's Android and iOS secret headings, the §0 Mobile row, §4's “three workflows” opener and §5's asset checklist were each corrected to say nothing runs — a contributor provisioning ANDROID_KEYSTORE_BASE64 today is setting a secret no workflow will ever read. · WHY A WARNING CAN BE THE DANGEROUS KIND OF STALE: a false “this works” makes someone skip a step; a false “this does not work” makes them skip §5's signature verification on artifacts that are actually shipping. Both were live in this file at once, on opposite sides of the same table. · FROM THE 2026-08-31 STAMP (docs-auditor, “ACCURATE (0 findings)”) — re-verified today, all still true: SignPath continue-on-error: true at release.yml:272 with its “must not block a release” comment (degrades to unsigned fallback); UPDATER_CERT_PASSWORD named only in a header comment at release.yml:42 and consumed by no step; updater pubkey present in apps/desktop-client/tauri.conf.json; check-release-version.mjs, check-updater-compat.mjs, generate-latest-json.mjs exist; concurrency groups release- / release-android- / release-ios-<ref> match the files (the latter two now orphaned). · FROM THE 2026-09-04 STAMP (DSH, “STALE-BY-INFRA-CHANGE”) — its substantive repairs stand and are kept: §3 rewritten to take a $V parameter (it hardcoded 0.0.24/0.0.25, which bump-version.ps1 rejects as a backwards bump), §4/§5 preconditions, gh commands parameterized. Re-confirmed against scripts/release.sh: checks, bump, changelog, then a LOCAL tag at line 172 whose own header says it is NOT pushed — “release.sh builds and uploads nothing” remains correct. · NOTE ON THE RESTORATION COMMIT ITSELF: 3b10ea3a2 is the commit AGENTS.md cites as its cautionary example — subject “fix(website): reposition popular badge on pricing preview cards”, diff containing the restoration of the release pipeline. This file is the proof that reviewing by subject line loses real changes: the release process came back inside a badge-position commit, and no document noticed until a page that had been corrected to say “nothing runs” became wrong by becoming accurate.
   · FROM THE 2026-08-31 STAMP (docs-auditor, “ACCURATE (0 findings)”) — re-verified today, all still true: the release.yml SignPath step has continue-on-error: true at line 272, with a comment saying a SignPath failure must not block a release (it degrades to an unsigned fallback); UPDATER_CERT_PASSWORD is still named only in a header comment (release.yml:42) and consumed by no step; apps/desktop-client/tauri.conf.json still carries the updater pubkey; check-release-version.mjs, check-updater-compat.mjs and generate-latest-json.mjs exist; concurrency groups release-/release-android-/release-ios-<ref> match.
   · FROM THE 2026-09-04 STAMP (DSH, “STALE-BY-INFRA-CHANGE”) — the substantive repair, kept because it explains why §0/§3/§4/§5 read the way they do. On 2026-09-02, 23c963303 retired release.yml’s companion workflows android.yml and ios.yml to .bak, so the “whole pipeline” §3 step 4 described stopped existing. Corrected in place that day: the §0 banner, §3 rewritten to take a $V parameter (it hardcoded 0.0.24/0.0.25, which bump-version.ps1 now rejects as a backwards bump), §4/§5 preconditions, gh commands parameterized. Re-confirmed today against scripts/release.sh: it runs the checks, bumps, writes the changelog and creates a LOCAL tag at line 172, and its own header states the tag is NOT pushed — so “release.sh builds and uploads nothing” remains correct.
   · STILL OPEN, unchanged from 09-04 and not a doc problem: mobile release automation has no workflow at all, so any step here that implies an Android or iOS artifact is describing a manual process. -->
@@ -15,31 +15,51 @@
 
 ## 0. The pipeline at a glance
 
-> ### ⚠️ This pipeline is not currently live
+> ### ⚠️ Half of this pipeline is live, half is not
 >
-> Everything in this table describes `release.yml`, `android.yml` and `ios.yml` —
-> all three were **retired to `.bak` on 2026-09-02** by `23c96330` ("backup full
-> workflows to .bak and introduce streamlined Quick Dev CI"). GitHub never
-> executes a `.bak` file, so **pushing a `v*` tag today triggers nothing**. The
-> only live workflow is `dev-ci.yml` (`pull_request` → `main` +
-> `workflow_dispatch`).
+> Everything in this table describes `release.yml`, `android.yml` and `ios.yml`. All
+> three were **retired to `.bak` on 2026-09-02** by `23c96330` ("backup full workflows
+> to .bak and introduce streamlined Quick Dev CI"), and this banner said "pushing a
+> `v*` tag today triggers nothing" when it was written on 2026-09-04. **That was true
+> for a few hours.** `3b10ea3a2` restored `release.yml` the same day — desktop only,
+> validate/build/publish, running on `v*` tags — and the banner was never updated.
 >
-> The audit stamp above last re-checked this file on **2026-08-31**, when the
-> three workflows were still live — so it was accurate as written. It was
-> invalidated two days later by an infrastructure change that did not trigger a
-> re-audit. Read the table below as **the design to restore**, not the current
-> state; §3–§5 cannot be followed as written until it is.
+> Current state, verified 08-09-26 against the workflow files:
+>
+> | Workflow | Live? | What it produces |
+> |---|---|---|
+> | `release.yml` | ✅ **LIVE** (`v*` tags) | Signed desktop installers + `latest.json`/`beta.json` updater manifests + provenance |
+> | `android.yml` | ❌ retired `.bak` | nothing — APK/AAB is a manual build (`packaging/mobile/`) |
+> | `ios.yml` | ❌ retired `.bak` | nothing — IPA is a manual build |
+>
+> A stale "this does not work" warning is not the safe kind of stale: an operator who
+> believes it will not wait for the desktop artifacts a tag really does produce, and
+> will not run §5's post-publish verification at all.
+>
+> The live workflows in this repo are `dev-ci.yml` (`pull_request` → `main` +
+> `workflow_dispatch`) and `release.yml` (`v*` tags, desktop only). AGENTS.md keeps the
+> canonical list.
+>
+> History of this banner, because it is the lesson: the audit stamp above last checked
+> this file on **2026-08-31**, when all three release workflows were live, so it was
+> accurate as written. `23c963303` retired them on 09-02 and the 09-04 re-audit corrected
+> the page to say nothing runs. `3b10ea3a2` restored `release.yml` **later the same day**,
+> and nothing re-audited the correction. Two infrastructure changes, one document, and
+> the second one moved the page back into error while leaving a confident warning on it.
+> Read §1's Android/iOS secret tables as **the design to restore**, not the current
+> state — but §3–§5 describe the desktop path accurately and can be followed today.
 
-Pushing a `v*` tag triggers three workflows, all keyed to the tag by
-concurrency (`release-<tag>`, `release-android-<tag>`, `release-ios-<tag>` —
-no cancel-in-progress):
+Pushing a `v*` tag today triggers **one** workflow, `release.yml`, keyed by concurrency
+`release-<tag>` (no cancel-in-progress). The `release-android-<tag>` and
+`release-ios-<tag>` groups are still declared in the retired files and match nothing
+live:
 
 | Stage | Workflow · job | What it does |
 |---|---|---|
 | Gate | `release.yml` · `release-validate` | Tag ↔ version parity (`check-release-version.mjs`) + updater client compat check (`check-updater-compat.mjs`) |
 | Build | `release.yml` · `release-build` | Matrix: Linux AppImage+deb, Windows NSIS+MSI, macOS DMG, Docker cloud + license images; per-artifact existence gate; blocking Trivy scans |
 | Publish | `release.yml` · `release-publish` | Toolchain self-tests → signed `latest.json` + `beta.json` → signature verification → `SHA256SUMS.txt` → **draft release** → inventory gate → **auto-publish** → provenance attestation |
-| Mobile | `android.yml` / `ios.yml` | Signed APK/AAB + IPA, uploaded into the **same** release via `gh release upload --clobber` (poll up to 60 min for the release to exist) |
+| Mobile | ~~`android.yml` / `ios.yml`~~ **retired `.bak`** | ~~Signed APK/AAB + IPA uploaded into the same release~~ — nothing runs. Build mobile by hand per `packaging/mobile/README.md` and upload with `gh release upload --clobber` (poll up to 60 min for the release to exist) |
 
 `release-publish` is gated by `environment: release` (see §2).
 
@@ -94,7 +114,7 @@ Tauri signs via `signtool.exe`. Note the current import step does not pass
 export the PFX without a password, or verify the step succeeds in a
 `workflow_dispatch` dry run first.
 
-### Android (`android.yml`)
+### Android (`android.yml` — ⚠️ RETIRED `.bak`, nothing runs)
 
 | Secret | Required | Format |
 |---|---|---|
@@ -110,7 +130,7 @@ consumed by the tracked `build.gradle.kts` `signingConfigs` block (the CLI
 has no keystore flags). Without the keystore the APK/AAB build is not
 signed.
 
-### iOS (`ios.yml`)
+### iOS (`ios.yml` — ⚠️ RETIRED `.bak`, nothing runs)
 
 | Secret | Required | Format |
 |---|---|---|
@@ -258,8 +278,9 @@ between draft creation and publish. For the first release, use one of these:
    node "$VERIFY" latest.json darwin-aarch64 OZ-POS_*.dmg
    ```
    Confirm the full asset set: `latest.json`, `beta.json`, `SHA256SUMS.txt`,
-   AppImage/deb, exe/msi, dmg — and, once the mobile jobs finish, the
-   APK/AAB/IPA (they attach to the draft via `gh release upload --clobber`).
+   AppImage/deb, exe/msi, dmg. **No mobile job will ever finish** — android.yml and
+   ios.yml are retired, so APK/AAB/IPA appear here only if you build them by hand and
+   attach them with `gh release upload --clobber`.
 4. Publish when satisfied, then restore the workflow line:
    ```bash
    gh release edit v"$V" --draft=false
@@ -281,8 +302,9 @@ signing or publication, but you never see the draft itself.
 - [ ] Desktop updater endpoint resolves: `latest.json` (and `beta.json`) are
       attached and their signatures verify against the committed pubkey
       (§4 commands).
-- [ ] Mobile APK/AAB + IPA attached to the same release (android.yml / ios.yml
-      completed without `::error::`).
+- [ ] Mobile APK/AAB + IPA attached to the same release — **no CI check will ever
+      show green here**: `android.yml` and `ios.yml` are retired. Verify by build
+      provenance, not by workflow run.
 - [ ] Trivy scans green; SHA-256 checksums verified; provenance attestations
       present (`attest-build-provenance` runs on every asset class).
 - [ ] One smoke install per platform on a test terminal (see `checklist.md`).
