@@ -556,3 +556,73 @@ fn verdict_scope_denies_when_the_workspace_dimension_excludes_the_session_type()
     assert_eq!(v.reason_code(), Some("scope"));
     assert_eq!(v.detail.scope_granted, Some(false));
 }
+
+// ── Phase D1 payload feature-grant precedence (recorded debt: coder-1 ──
+// landed the verdicts without pinning the explicit-grant precedence) ──
+
+/// Seed a signed payload. Debug test builds accept the `BOOTSTRAP_FREE`
+/// sentinel signature for ANY payload, so the default seeded row's
+/// signature keeps verifying after this update — no license server needed
+/// to exercise the Phase D1 `features` block.
+fn seed_payload(conn: &rusqlite::Connection, payload: &str) {
+    conn.execute(
+        "UPDATE tenant_subscription SET signed_payload = ?1 WHERE tenant_id = 'default'",
+        [payload],
+    )
+    .unwrap();
+}
+
+#[test]
+fn verdict_payload_false_withholds_where_tier_allows() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    // Premium natively supports analytics; an explicit `false` in the
+    // signed `features` block must outrank the tier and withhold it.
+    seed_payload(&conn, r#"{"features":{"supports_analytics":false}}"#);
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(
+        !v.available,
+        "explicit false must withhold where the tier allows"
+    );
+    assert_eq!(v.reason_code(), Some("server_policy"));
+}
+
+#[test]
+fn verdict_payload_true_grants_beyond_tier() {
+    let conn = fresh_db();
+    // Plus does NOT natively support analytics (Pro+ only, no add-on here).
+    seed_tier(&conn, "plus");
+    // An explicit `true` in the signed `features` block grants the feature
+    // beyond what the tier would allow. Uses Plus (not Free) deliberately:
+    // the desktop debug Free→Premium upgrade would otherwise mask the
+    // "beyond tier" behaviour.
+    seed_payload(&conn, r#"{"features":{"supports_analytics":true}}"#);
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(v.available, "explicit true must grant beyond the tier");
+    assert_eq!(v.reason_code(), None);
+}
+
+#[test]
+fn verdict_absent_features_block_leaves_the_tier_answer() {
+    let conn = fresh_db();
+    // Premium natively supports analytics: with no `features` block the
+    // tier answer stands (available, no denial reason).
+    seed_tier(&conn, "premium");
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(
+        v.available,
+        "absent payload must not withhold a tier-granted feature"
+    );
+    assert_eq!(v.reason_code(), None);
+
+    // Plus denies analytics on the tier: with no `features` block the tier
+    // denial stands (no payload opinion, so the tier answers).
+    let conn = fresh_db();
+    seed_tier(&conn, "plus");
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(
+        !v.available,
+        "absent payload must not grant a tier-denied feature"
+    );
+    assert_eq!(v.reason_code(), Some("tier"));
+}

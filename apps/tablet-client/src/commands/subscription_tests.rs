@@ -213,3 +213,83 @@ fn over_quota_report_assesses_the_effective_tier() {
     assert!(!locations.is_over_quota());
     assert!(!report.is_over_quota());
 }
+
+// ── Phase D1 payload feature-grant precedence (recorded debt: coder-1 ──
+// landed the verdicts without pinning the explicit-grant precedence) ──
+// Mirrors the desktop slice; the tablet applies no debug Free→Premium
+// upgrade, so Free would stay Free here — we use Plus/Premium tiers that
+// agree with the desktop twin and keep the assertions symmetric.
+
+/// Set the tenant tier (mirror of the desktop test helper).
+fn seed_tier(conn: &Connection, tier_key: &str) {
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = ?1 WHERE tenant_id = 'default'",
+        [tier_key],
+    )
+    .unwrap();
+}
+
+/// Seed a signed payload. Debug test builds accept the `BOOTSTRAP_FREE`
+/// sentinel signature for ANY payload, so the default seeded row's
+/// signature keeps verifying after this update — no license server needed
+/// to exercise the Phase D1 `features` block.
+fn seed_payload(conn: &Connection, payload: &str) {
+    conn.execute(
+        "UPDATE tenant_subscription SET signed_payload = ?1 WHERE tenant_id = 'default'",
+        [payload],
+    )
+    .unwrap();
+}
+
+#[test]
+fn verdict_payload_false_withholds_where_tier_allows() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    // Premium natively supports analytics; an explicit `false` in the
+    // signed `features` block must outrank the tier and withhold it.
+    seed_payload(&conn, r#"{"features":{"supports_analytics":false}}"#);
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(
+        !v.available,
+        "explicit false must withhold where the tier allows"
+    );
+    assert_eq!(v.reason_code(), Some("server_policy"));
+}
+
+#[test]
+fn verdict_payload_true_grants_beyond_tier() {
+    let conn = fresh_db();
+    // Plus does NOT natively support analytics (Pro+ only, no add-on here).
+    seed_tier(&conn, "plus");
+    // An explicit `true` in the signed `features` block grants the feature
+    // beyond what the tier would allow.
+    seed_payload(&conn, r#"{"features":{"supports_analytics":true}}"#);
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(v.available, "explicit true must grant beyond the tier");
+    assert_eq!(v.reason_code(), None);
+}
+
+#[test]
+fn verdict_absent_features_block_leaves_the_tier_answer() {
+    let conn = fresh_db();
+    // Premium natively supports analytics: with no `features` block the
+    // tier answer stands (available, no denial reason).
+    seed_tier(&conn, "premium");
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(
+        v.available,
+        "absent payload must not withhold a tier-granted feature"
+    );
+    assert_eq!(v.reason_code(), None);
+
+    // Plus denies analytics on the tier: with no `features` block the tier
+    // denial stands (no payload opinion, so the tier answers).
+    let conn = fresh_db();
+    seed_tier(&conn, "plus");
+    let v = verdict_with_owner(&conn, "supports_analytics");
+    assert!(
+        !v.available,
+        "absent payload must not grant a tier-denied feature"
+    );
+    assert_eq!(v.reason_code(), Some("tier"));
+}

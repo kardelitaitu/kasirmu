@@ -367,3 +367,39 @@ both clients' `lib.rs` (coder-3's sweep daemons) ·
 `ui/src/components/StatusBar.tsx` · `ui/src/hooks/{useAuthConnection,useSyncConnection,connectionHealth}.ts` ·
 `ui/src/api/license.ts` · `ui/src/__tests__/*` · `coder-4-journal.md` ·
 **`todo-global-saas-2.md`**.
+
+## 2026-09-08 — D1 client-verdict precedence tests landed (finisher-A)
+
+The owed D1 client-verdict tests (recorded above: "no client-verdict test in
+BOTH apps/*/src/commands/subscription_tests.rs proving producer 1 outranks
+producer 2") were added by finisher-A and committed as
+`test(licensing): pin the per-feature grant precedence in both clients`.
+
+Files: apps/desktop-client/src/commands/subscription_tests.rs,
+apps/tablet-client/src/commands/subscription_tests.rs (each + a `seed_payload`
+helper; tablet also gained a `seed_tier` mirror).
+
+Three tests per client assert the Phase D1 `payload_feature_grant` precedence:
+* `verdict_payload_false_withholds_where_tier_allows` — premium tier (analytics
+  tier-allowed) + `features.supports_analytics:false` -> not available, reason
+  `server_policy`.
+* `verdict_payload_true_grants_beyond_tier` — plus tier (analytics tier-denied,
+  no add-on) + `features.supports_analytics:true` -> available, reason None.
+* `verdict_absent_features_block_leaves_the_tier_answer` — absent `features`
+  block leaves the tier answer both ways (premium available / plus denied,
+  reason `tier`).
+
+Per-client divergence respected deliberately: tests use Plus/Premium tiers
+(not Free) so the desktop debug Free->Premium upgrade never masks the "beyond
+tier" assertion; tablet applies no upgrade, so the same tiers stay symmetric.
+Debug `BOOTSTRAP_FREE` signature accepts any payload, so no license server is
+needed to exercise the `features` block.
+
+Gate evidence: `cargo test -p oz-pos-app --lib subscription` -> 29 passed
+(incl. 3 new); `cargo test -p oz-pos-tablet --lib subscription` -> 9 passed
+(incl. 3 new).
+
+D2 (server-side grant authoring) and the Caps DTO / dev-mock trial+grant
+projection remain open and untouched — both depend on live-server
+`Features` authoring and the hot `ui/src/dev-mock/tauri-api.ts`, which this
+landing did not touch.
