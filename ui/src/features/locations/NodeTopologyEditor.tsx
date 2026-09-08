@@ -82,6 +82,7 @@ import {
 } from './topologyCard';
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { syncBranchLocations, syncWorkspaceInstanceNames } from './topologyBranchSync';
+import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
@@ -1704,35 +1705,6 @@ export default function NodeTopologyEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceInstances, branchLocations, branchId, reloadKey]);
 
-  // ── ADR #46 §5: restore-to-draft seed ──────────────────────────────
-  // The revision browser's host screen decides WHAT to restore (it fetched
-  // the revision graph and guarded unsaved-edit loss); this effect only
-  // decides HOW the graph lands: mapped through the same helpers the
-  // authoritative load uses, transient canvas state reset, undo/redo
-  // cleared, and the PRE-RESTORE canvas committed as the dirty baseline —
-  // so the draft reads dirty against what was live, the parent's
-  // branch-switch guard stays armed, and undo-all returns to the live
-  // graph. The lifecycle state machine is NOT touched: Apply after a
-  // restore posts the LIVE revision for CAS, reuses the whole existing
-  // Apply path (validation, diff summary, publish, journal, compensation),
-  // and produces a NEW revision — §5's "loads a draft; never auto-applies".
-  // resolved_issue_keys are deliberately not carried over: the draft
-  // re-offers today's validation in full (§7 — old revisions are shown,
-  // never migrated); the merchant re-dismisses what still applies. The
-  // seed is one-shot per object identity; erasing the prop does nothing,
-  // so the post-Apply canvas is never clobbered by the screen clearing it.
-  const seededRestoreRef = useRef<unknown>(undefined);
-  useEffect(() => {
-    if (!restoreSeed || seededRestoreRef.current === restoreSeed) return;
-    seededRestoreRef.current = restoreSeed;
-    resetTransientCanvasState();
-    setHistory([]);
-    setRedo([]);
-    commitSnapshot({ nodes: nodesRef.current, wires: wiresRef.current });
-    setNodes(restoreSeed.nodes.map(diagramNodeToCanvas));
-    setWires(restoreSeed.wires.map(diagramWireToCanvas));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restoreSeed]);
 
   // ── Inline node rename on the card (Branch Location + workspace) ──
   const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
@@ -2402,6 +2374,19 @@ export default function NodeTopologyEditor({
     cancelBendDrag,
     setContextMenu,
   ]);
+
+  // ── ADR #46 §5: restore-to-draft seed ──────────────────────────────
+  // The hook owns one-shot seed identity; this callback owns the graph
+  // replacement and keeps the pre-restore canvas as the dirty baseline.
+  const applyRestoreSeed = useCallback((seed: NonNullable<NodeTopologyEditorProps['restoreSeed']>) => {
+    resetTransientCanvasState();
+    setHistory([]);
+    setRedo([]);
+    commitSnapshot({ nodes: nodesRef.current, wires: wiresRef.current });
+    setNodes(seed.nodes.map(diagramNodeToCanvas));
+    setWires(seed.wires.map(diagramWireToCanvas));
+  }, [resetTransientCanvasState, setHistory, setRedo, commitSnapshot, setNodes, setWires]);
+  useTopologyEditorRestoreSeed(restoreSeed, applyRestoreSeed);
 
   /** Align or distribute the current multi-selection. One undo entry per
    *  action; the reference geometry is the selection's own bounding box,

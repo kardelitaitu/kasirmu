@@ -69,6 +69,7 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 - [x] **Slice 1a — persisted mapping seam:** route authoritative-load node and wire payloads through the existing pure `diagramNodeToCanvas` and `diagramWireToCanvas` helpers. No effects, event handlers, or JSX moved.
 - [x] **Slice 1b — branch synchronization seam:** extract branch-location reconciliation into the pure `syncBranchLocations` helper; React state and transient interaction cleanup remain in the editor.
 - [x] **Slice 1c — workspace rename seam:** extract workspace-instance name reconciliation into the pure `syncWorkspaceInstanceNames` helper; effect timing and React state ownership remain in the editor.
+- [x] **Slice 1d — restore seed effect seam:** extract one-shot restore-seed identity tracking into `useTopologyEditorRestoreSeed`; graph replacement remains a parent callback.
 - [ ] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice.
 - [ ] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged.
 - [ ] **Slice 3 — inspector boundary:** extract the inspector drawer and branch profile fields behind typed props. Preserve the existing `BranchLocationFields` API behavior and test selectors.
@@ -244,6 +245,16 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Result:** Editor reduced from 5,972 to 5,967 lines; the shared synchronization module is 81 lines with three focused tests.
 - **Validation:** `ui/npm run typecheck` passed. Helper tests passed 3/3. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`.
 - **Next slice:** inventory imports/re-exports, then isolate the load/seed/restore lifecycle without moving JSX or input handlers.
+
+### 2026-09-08 — Slice 1d: extract restore-seed effect
+
+- **Problem:** The editor owned one-shot restore-seed identity tracking and graph replacement in the same inline effect, adding lifecycle bookkeeping to the main component.
+- **Solution:** Added `useTopologyEditorRestoreSeed` to own only seed identity and effect timing. The editor now supplies `applyRestoreSeed`, which preserves transient reset, undo/redo clearing, pre-restore snapshotting, and payload mapping exactly as before.
+- **Scope:** No restore UI, API calls, validation, Apply behavior, or persisted schema changed. Clearing the prop remains a no-op, and a seed object is still applied once by identity.
+- **Tests:** Added `nodeTopologyEditorRestoreState.test.ts` covering one-shot application, prop clearing, and effect behavior.
+- **Result:** Editor reduced from 5,967 to 5,952 lines; the new hook is 26 lines and has two focused tests.
+- **Validation:** Restore hook tests passed 2/2. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`. Full `npm run typecheck` is currently blocked by seven unrelated `SettingsNavTree.test.tsx` errors; the new restore files have no reported type errors.
+- **Next slice:** inventory imports/re-exports, then extract the remaining load lifecycle boundary without moving JSX or input handlers.
 
 ## Completion checklist
 
