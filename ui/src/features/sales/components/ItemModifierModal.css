@@ -43,6 +43,37 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ── Exit mirror keyframes (dismiss fade) ────────────
+ * modifier-overlay-out is the exact reverse of
+ * modifier-overlay-in; modifier-slide-down is the exact
+ * reverse of modifier-slide-up. The JS animDuration(200)
+ * timer in ItemModifierModal.tsx stays aligned with these.
+ * Rules are source-ordered after the entry rules so the
+ * same-specificity --exiting rules win when both classes
+ * are present (later rule wins). animation-fill-mode: both
+ * locks the TO-frame across the React unmount so there is
+ * no opacity flash between keyframe end and DOM removal;
+ * pointer-events: none on the overlay (inherited by the
+ * panel) blocks stale clicks during the fade. */
+@keyframes modifier-overlay-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes modifier-slide-down {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(0.75rem) scale(0.98); }
+}
+
+.modifier-overlay--exiting {
+  animation: modifier-overlay-out var(--duration-200) var(--ease-out) both;
+  pointer-events: none;
+}
+
+.modifier-modal--exiting {
+  animation: modifier-slide-down var(--duration-200) var(--ease-out) both;
+}
+
 /* ── Header ────────────────────────────────────────── */
 .modifier-header {
   display: flex;
@@ -313,7 +344,9 @@
 /* ── Reduced motion ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .modifier-overlay,
-  .modifier-modal {
+  .modifier-modal,
+  .modifier-overlay--exiting,
+  .modifier-modal--exiting {
     animation: none;
   }
 }
