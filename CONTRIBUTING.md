@@ -1,6 +1,6 @@
 # Contributing to OZ-POS
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (3 doc drifts fixed, 1 enforcement gap recorded) · SUPERSEDES the 2026-07-22 stamp, whose two findings are carried forward here rather than stacked below it · FIXED: (1) F1 from 2026-07-22 — found and then never repaired for 48 days: `fix` was listed as a forbidden commit prefix while .githooks/commit-msg accepts it, `fix/<name>` is a documented branch prefix, and `fix(payment):` appears as a correct example in the same section, so the doc's own example violated its own rule and every agent reading it inherited a false constraint. (2) "type matches the branch prefix" restated against the live TYPES list (10 accepted types, 6 branch prefixes; style/perf/ci/audit have no prefix). (3) the skill-anatomy list now marks which of its six items a machine actually enforces — only the footer (Check 9) — and records that 4 of 13 skills lack "When to use" and 2 lack "Common pitfalls". · FLAGGED NOT FIXED: "the skill-drift-guard script will catch the omission on the next CI run" (a new skill missing from the onboarding router) is FALSE — Check 6 is one-directional; proved by creating a valid throwaway skill and getting exit 0 with no findings. Corrected to "by hand, because nothing checks it"; adding the reverse check to Check 6 is a code change and was not made. · verified accurate: all 8 quick-link targets resolve including the ui/README.md#install-script-approvals anchor (heading at ui/README.md:36); F2 from 2026-07-22 still holds — SECURITY.md remains absent and the reference stays hedged, so it is consistent rather than correct; PR commands still match AGENTS.md -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 doc drifts fixed, 2 enforcement gaps recorded) · SUPERSEDES the 2026-07-22 stamp, whose two findings are carried forward here rather than stacked below it · FIXED: (1) F1 from 2026-07-22 — found and then never repaired for 48 days: `fix` was listed as a forbidden commit prefix while .githooks/commit-msg accepts it, `fix/<name>` is a documented branch prefix, and `fix(payment):` appears as a correct example in the same section, so the doc's own example violated its own rule and every agent reading it inherited a false constraint. (2) "type matches the branch prefix" restated against the live TYPES list (10 accepted types, 6 branch prefixes; style/perf/ci/audit have no prefix). (3) the skill-anatomy list now marks which of its six items a machine actually enforces — only the footer (Check 9) — and records that 4 of 13 skills lack "When to use" and 2 lack "Common pitfalls". · FLAGGED NOT FIXED: "the skill-drift-guard script will catch the omission on the next CI run" (a new skill missing from the onboarding router) is FALSE — Check 6 is one-directional; proved by creating a valid throwaway skill and getting exit 0 with no findings. Corrected to "by hand, because nothing checks it"; adding the reverse check to Check 6 is a code change and was not made. · verified accurate: all 8 quick-link targets resolve including the ui/README.md#install-script-approvals anchor (heading at ui/README.md:36); F2 from 2026-07-22 still holds — SECURITY.md remains absent and the reference stays hedged, so it is consistent rather than correct; PR commands still match AGENTS.md --> · REV 2 (same day): a fourth drift, found while auditing docs/operations/ci-pipeline.md — §Flaky tests told contributors that "the flaky-quarantine job (required in CI) runs scripts/verify-flaky-quarantine.py". No such job exists in either live workflow (grep -ci flaky dev-ci.yml = 0), check.sh never calls it, and gates.json records the gate as retired with no runner. The script works; nothing runs it, so an expired quarantine entry fails nothing. Item 3 rewritten to say so and the closing sentence no longer promises a gate that will fire.
 
 Thanks for your interest in OZ-POS! This project is a Rust + Tauri v2 POS framework built around a "wizard behind the curtain" philosophy: the merchant sees effortless checkout, and the lean Rust engine silently handles transactions, encryption, hardware, sync, and business logic.
 
@@ -230,15 +230,30 @@ not a permanent exclusion:
    `scripts/flaky-quarantine.json` with `test`, `owner`, `issue` (URL or
    `#NN`), `reason`, `date`, and `expiry`. Optionally tag the test with
    `#[cfg_attr(feature = "slow-tests", ignore)]` as the report suggests.
-3. **CI enforces the loop.** The `flaky-quarantine` job (required in CI)
-   runs `scripts/verify-flaky-quarantine.py`, which **fails** if an entry is
-   expired, missing an issue, or missing an owner — forcing re-investigation.
+3. **Nothing enforces the loop.** This page claimed until 08-09-26 that "the
+   `flaky-quarantine` job (required in CI) runs
+   `scripts/verify-flaky-quarantine.py`". It does not. There is no
+   `flaky-quarantine` job in either live workflow — `dev-ci.yml`'s ten jobs are
+   `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`,
+   `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`, and
+   none of their 29 `static-gates` steps is it. `grep -ci flaky
+   .github/workflows/dev-ci.yml` returns **0**, and `check.sh` does not call it
+   either. The script itself exists and works — run by hand it prints `PASS:
+   quarantine manifest valid (0 entries, none expired)` — but nothing invokes it,
+   and `scripts/gates.json` records the gate as **retired** with no CI runner.
+   **The consequence is the part to internalise:** an expired quarantine entry
+   will not fail anything. It will simply sit there, silently skipping a test
+   past the date someone decided was the deadline. The registry's expiry field is
+   a promise nobody keeps.
 4. **Critical-path tests cannot be quarantined silently.** If a test
    covers a critical path, open the issue and get review sign-off on the
    quarantine before adding it.
 
 A quarantined test is a debt item: it must be fixed before the entry's
-`expiry`, at which point the gate fails until it is renewed or resolved.
+`expiry`. Nothing will tell you when it passes — run
+`python3 scripts/verify-flaky-quarantine.py` yourself, or add the call to
+`check.sh` / `dev-ci.yml#static-gates` (a code change, deliberately not made here,
+and it needs a `gates.json` record too or the drift checker will not see it).
 
 ---
 

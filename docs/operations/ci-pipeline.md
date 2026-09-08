@@ -34,20 +34,20 @@
 | Job ID | Blocks Merge | Workflow | Notes |
 |--------|--------------|----------|-------|
 | `cargo-check` | ✅ Required | dev-ci.yml | step `cargo fmt --all -- --check` (was job `rust-fmt`) |
-| `go` | ✅ Required | ci.yml | `gofmt` + `go vet` + `go test -short` on license-server |
-| `unified-healthcheck` | ✅ Required | ci.yml | POSIX sh healthcheck script test |
-| `rust-panic-inventory` | ✅ Required | ci.yml | Scan production unwrap/expect |
-| `changes` | ✅ Required | ci.yml | Path-based change detection for PR filtering |
-| `rust-money-format` | ✅ Required | ci.yml | No hardcoded exp-2 money formatting |
-| `architecture-boundaries` | ✅ Required | ci.yml | Static boundary enforcement |
+| `static-gates` | ✅ Required | dev-ci.yml | `gofmt -l` + `go vet` + `go test -short` on license-server. gates.json names `dev-ci.yml/static-gates`; the row said `ci.yml` until 08-09-26, which made live coverage look historical |
+| `static-gates` | ✅ Required | dev-ci.yml | `sh apps/unified/test-healthcheck.sh` (dev-ci.yml:475) |
+| `static-gates` | ✅ Required | dev-ci.yml | Step "Panic inventory (ADR #33)". **No gates.json record** |
+| `changes` | ✅ Required | dev-ci.yml | Path-based change detection for PR filtering. `changes` is the FIRST job in dev-ci.yml's own job list — the `ci.yml` attribution was never ambiguous, just stale |
+| `static-gates` | ✅ Required | dev-ci.yml | `python3 scripts/verify-no-hardcoded-money-format.py`, step "No hardcoded money formatting". **No gates.json record** — see the blind-spot note below |
+| `static-gates` | ✅ Required | dev-ci.yml | Static boundary enforcement, step "Architecture boundaries" |
 | `cargo-check` | ✅ Required | dev-ci.yml | step `cargo clippy --all-targets --all-features -- -D warnings` (was job `rust-clippy`) |
-| `rust-test-fast` | ✅ Required | ci.yml | Sharded crate-group tests (PR only) |
-| `sync-slow-tests` | ⚠️ Advisory on PR, ✅ Required on push | ci.yml | Platform-sync integration suite (gated) |
-| `rust-test-full` | Push path | ci.yml | Full workspace tests (push only, Ubuntu; full matrix in nightly) |
-| `rust-test-apps` | ✅ Required | ci.yml | App crate unit tests |
+| `rust-test-fast` | Superseded | ci.yml | The sharded crate-group layout is gone; `dev-ci.yml#cargo-nextest` covers the same ground in one unsharded `--workspace --all-features` run |
+| `sync-slow-tests` | ❌ Runs nowhere | ci.yml | Platform-sync integration suite. gates.json: **retired**, no runner — "advisory" still implied it executed somewhere |
+| `cargo-nextest` | ✅ Required | dev-ci.yml | gates.json maps this gate to `dev-ci.yml/cargo-nextest`, which runs `cargo nextest run --workspace --all-features` on every PR — not push-only |
+| `cargo-nextest` | ✅ Required | dev-ci.yml | App-crate tests run inside the same workspace nextest invocation (no `--exclude`) |
 | `ui-test` | ✅ Required | dev-ci.yml | step `npm run lint` (was job `ui-lint`) |
 | `ui-test` | ✅ Required | dev-ci.yml | step `npm run typecheck` (was job `ui-typecheck`) |
-| `ui-test` | ✅ Required | ci.yml | `npm run test` (4 shards) |
+| `ui-test` | ✅ Required | dev-ci.yml | step "Run Vitest" in the live `ui-test` job. The `ci.yml` row described the 4-shard layout; the shards are gone, the coverage is not |
 | `ci-docs-drift` | ✅ Required | dev-ci.yml | step `verify-ci-docs-drift.py` — blocking since R36-10 closed the count to 0 |
 | `ci-docs-drift` | ✅ Required | dev-ci.yml | step `bash scripts/test-ci-routing.sh` — the router decides whether every other job runs, so this one blocks |
 | `website` | ✅ Required | dev-ci.yml | `cd website && npm ci && npm run check && npm test && npm run build` |
@@ -58,17 +58,38 @@
 | `release-build` | ✅ Required | release.yml | matrix `desktop-linux` / `desktop-windows` / `desktop-macos`: nextest, `cargo tauri build`, bundle-existence gate, Windows asInvoker manifest check, optional SignPath/Authenticode with a loud unsigned fallback. |
 | `release-publish` | ✅ Required | release.yml | signed `latest.json`+`beta.json`, signature verification against the committed pubkey, SHA-256 inventory, draft release, provenance attestation, then publish. Hard-fails without `UPDATER_PRIVATE_KEY`. |
 | `northflank-deploy` | ✅ Required | dev-ci.yml | Backend deploy to Northflank; `needs` every other live job except `ci-docs-drift`. **Effectively `workflow_dispatch` only**: its `if:` also tests `github.event_name == 'push'`, but `dev-ci.yml` triggers on `pull_request` and `workflow_dispatch` alone, so that half is dead code and no push ever reaches it. The workflow's own comment records this. |
-| `lighthouse` | ⚠️ Advisory | ci.yml | Lighthouse a11y audit (continue-on-error) |
-| `docker` | ✅ Required | ci.yml | Build + Trivy scan + Compose smoke |
-| `coverage` | ⚠️ Advisory | ci.yml | Coverage report (push only, continue-on-error) |
-| `audit` | ⚠️ Advisory on PR, ✅ Required on push | ci.yml | `cargo audit` + `npm audit` |
-| `security-pr` | ✅ Required | ci.yml | PR baseline security audit |
-| `fuzz` | ⚠️ Advisory | ci.yml | Fuzz tests (gated on fuzz targets) |
-| `flaky-quarantine` | ✅ Required | ci.yml | Flaky quarantine registry |
-| `windows-config` | ✅ Required | ci.yml | NSIS installMode + asInvoker check |
-| `skill-drift-tests` | ✅ Required | ci.yml | Skill drift guard bats tests |
-| `e2e-docker-image` | Push path | ci.yml | GHCR push (main only) |
-| `e2e` | ✅ Required | ci.yml | Playwright E2E (3 shards) |
+| `lighthouse` | ❌ Runs nowhere | ci.yml | Lighthouse a11y audit. gates.json: **retired** |
+| `docker` | ❌ Runs nowhere | ci.yml | No Trivy or docker-build step exists in either live workflow (verified by grep), and the gate has no gates.json record at all |
+| `coverage` | ❌ Runs nowhere | ci.yml | Coverage report. gates.json: **retired**. `scripts/coverage.sh` exists; nothing invokes it in CI |
+| `audit` | ❌ Runs nowhere | ci.yml | `cargo audit` + `npm audit`. gates.json: **retired**; `security.yml` never existed at all, only `security.yml.bak`. This is the row AGENTS.md means by "security suites are not enforced" |
+| `security-pr` | ❌ Runs nowhere | ci.yml | gates.json marks this **retired** with no CI runner. The row claimed ✅ Required until 08-09-26 |
+| `fuzz` | ❌ Runs nowhere | ci.yml | Fuzz targets exist under `fuzz/`; gates.json marks the runner **retired**, so nothing executes them |
+| `flaky-quarantine` | ❌ Runs nowhere | ci.yml | gates.json: **retired**, no runner. `scripts/verify-flaky-quarantine.py` exists and passes, but no live workflow and not `check.sh` invoke it |
+| `static-gates` | ✅ Required | dev-ci.yml | `python3 scripts/verify-windows-config.py`, step "Windows config drift" |
+| `static-gates` | ✅ Required | dev-ci.yml | `bash .agents/skills/skill-drift-guard/scripts/detect.sh --report` (dev-ci.yml:472-473), no `continue-on-error`, so it blocks. **No gates.json record** |
+| `e2e-docker-image` | ❌ Runs nowhere | ci.yml | GHCR push of the E2E image. With it gone, `npm run e2e` builds images locally on first use |
+> ⚠️ **The history exemption is a blind spot, and ten rows were living in it.**
+> `verify-ci-docs-drift.py` treats any row naming a `.bak`-only workflow as
+> documentation-of-history and does not count it as drift. That is the right rule for a
+> genuinely dead job. It is the wrong rule when the *coverage* moved into a live job and
+> only the row was left behind — which is what ten of the twenty-two `ci.yml` rows were
+> doing: `go`, `unified-healthcheck`, `architecture-boundaries` and `windows-config` run
+> today inside `#static-gates`; `rust-test-full` and `rust-test-apps` inside
+> `#cargo-nextest`; and `changes`, `ui-test`, `rust-money-format`, `rust-panic-inventory`
+> plus `skill-drift-tests` are live jobs or steps. Each named a dead file while its real
+> runner sat in a live one, so the checker waved all ten through and reported **0 drift**
+> against a table where nearly half the retired-attributed rows were misfiled. The
+> exemption asks whether the *workflow named in the row* exists; it never asks whether
+> the *gate itself* still runs somewhere.
+>
+> Four of those live steps have **no `gates.json` record at all** — `changes`,
+> `rust-money-format`, `rust-panic-inventory`, `skill-drift-tests` — so they are
+> invisible to the checker twice over. This is the same hole AGENTS.md records for the
+> migration-column-type and PG-drift gates before 0.0.37 restored them: a gate with no
+> `gates.json` entry cannot be reported as unenforced, because the tool has never seen
+> it. Adding those four records is a data change to `scripts/gates.json` and is
+> deliberately not made here.
+| `e2e` | Local only | ci.yml | gates.json: status `required`, `ci: null`, runners `check:all` — required of anyone running the full local matrix, enforced by no workflow. AGENTS.md says the same: a green Dev CI run is not proof E2E passed |
 
 ---
 
@@ -83,12 +104,12 @@
 | FTL dedupe | `i18n` | Required | `check.sh` (ftl dedupe), `check:all` (ftl dedupe) |
 | Rust fmt | `cargo-check` (dev-ci.yml step) | Required | `check.sh` (cargo fmt) |
 | Clippy | `cargo-check` (dev-ci.yml step) | Required | `check.sh` (clippy) |
-| Rust tests | `rust-test-fast` | Required | `check.sh` (test workspace, test doctests) |
-| Go (license-server) | `go` | Required | `check.sh` (go fmt, go vet, go test (short)) |
+| Rust tests | `cargo-nextest` | Required | `check.sh` (test workspace, test doctests) |
+| Go (license-server) | `static-gates` | Required | `check.sh` (go fmt, go vet, go test (short)) |
 | Website unit tests | `check` (website.yml) | Required | `check.sh` (website test) |
-| Architecture boundaries | `architecture-boundaries` | Required | `check.sh` (architecture boundaries) |
+| Architecture boundaries | `static-gates` | Required | `check.sh` (architecture boundaries) |
 | No raw params (ADR #7 Phase 4) | — | Required | `check.sh` (no-raw-params) |
-| No hardcoded money format | `rust-money-format` | Required | `check.sh` (hardcoded-money-format) |
+| No hardcoded money format | `static-gates` | Required | `check.sh` (hardcoded-money-format) |
 | Docker build smoke | — | Required | `check.sh` (docker build) |
 | Migration smoke | — | Required | `check.sh` (migration) |
 | Skill drift guard | `static-gates` | Required | `check.sh` (skill-drift) |
@@ -99,13 +120,13 @@
 | Plugin-guide parity | — | Required | `check.sh` (plugin-guide parity) |
 | CI docs drift | `ci-docs-drift` | Required | `check.sh` (ci docs drift) |
 | CI path router test | `ci-docs-drift` | Required | `check.sh` (ci routing test) |
-| Windows config drift | `windows-config` | Required | `check.sh` (windows config) |
-| Unified healthcheck | `unified-healthcheck` | Required | `check.sh` (healthcheck script test) |
+| Windows config drift | `static-gates` | Required | `check.sh` (windows config) |
+| Unified healthcheck | `static-gates` | Required | `check.sh` (healthcheck script test) |
 | Bundle budget | — | Required | `check:all` (bundle budget) |
 | E2E tests | `e2e` | Required | `check:all` (e2e) |
 | Perf smoke | — | Required | `check:all` (perf smoke) |
-| Rust test apps | `rust-test-apps` | Required | — |
-| Rust test full | `rust-test-full` | Required | — |
+| Rust test apps | `cargo-nextest` | Required | — |
+| Rust test full | `cargo-nextest` | Required | — |
 | Sync slow tests | `sync-slow-tests` | Required | — |
 | Docker build + scan | `docker` | Required | — |
 | Security PR baseline | `security-pr` | Required | — |
