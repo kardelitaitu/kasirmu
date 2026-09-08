@@ -15,9 +15,13 @@
 //
 // # What it is NOT
 //
-// Not restore. §5 requires a revision's diagram to land in the canvas as an
-// UNSAVED DRAFT, which is a different seam (the editor has no diagram-seed
-// prop) and is deliberately not faked here by pointing preview at Apply.
+// Not restore — PREVIEW is not restore. §5 requires a revision's diagram to
+// land in the canvas as an UNSAVED DRAFT, which is a different seam from the
+// compare overlay. The restore affordance therefore goes through the
+// onRestore callback the HOST screen wires to the editor's restoreSeed prop
+// (ADR #46 Phase 2): the browser only offers it and reports which revision;
+// the screen owns fetching, the unsaved-edit guard, and the arming. Nothing
+// here writes to the canvas directly, and a pruned row offers neither.
 //
 // # Deflated rows are shown, never hidden
 //
@@ -39,7 +43,14 @@ import {
 import { diffTopologyGraphs, type TopologyGraphDiff } from './topologyRevisionDiff';
 import { plainErrorMessage } from '@/utils/app-error';
 import type { TopologyData } from '@/api/topology';
+import topologySemantics from './topologySemantics.json';
 import './TopologyRevisionBrowser.css';
+
+/** The contract version TODAY'S Apply validates against — the axis §7
+ *  compares a revision's recorded contractSchemaVersion against. Sourced
+ *  from the same JSON the semantic tooling ships, so the note can never
+ *  claim a current version the contract does not have. */
+const CURRENT_CONTRACT_VERSION: number = topologySemantics.schemaVersion;
 
 export interface TopologyRevisionBrowserProps {
   sessionToken: string;
@@ -53,6 +64,15 @@ export interface TopologyRevisionBrowserProps {
   /** Draw the revision on the canvas through the existing compare overlay.
    *  `null` clears the preview. */
   onPreview: (graph: TopologyData | null) => void;
+  /** ADR #46 §5: ask the host to load this revision's diagram onto the
+   *  editor canvas as an UNSAVED DRAFT. The host owns the fetch, the
+   *  unsaved-edit guard, and the editor's restoreSeed prop; the browser
+   *  only names the revision. Undefined — standalone/test usage — and no
+   *  restore affordance renders. */
+  onRestore?: ((revision: number) => void) | undefined;
+  /** The revision the host is currently restoring (its button shows the
+   *  in-flight state). `null` = no restore in flight. */
+  restoringRevision?: number | null;
 }
 
 interface SelectedRevision {
@@ -102,6 +122,8 @@ export default function TopologyRevisionBrowser({
   currentGraph,
   onClose,
   onPreview,
+  onRestore,
+  restoringRevision = null,
 }: TopologyRevisionBrowserProps) {
   const { l10n } = useLocalization();
   const [rows, setRows] = useState<TopologyRevisionSummary[]>([]);
@@ -281,7 +303,15 @@ export default function TopologyRevisionBrowser({
           </ul>
         )}
 
-        {selected && <RevisionDetail selected={selected} onPreview={onPreview} l10n={l10n} />}
+        {selected && (
+          <RevisionDetail
+            selected={selected}
+            onPreview={onPreview}
+            onRestore={onRestore}
+            restoring={restoringRevision !== null && selected.summary.revision === restoringRevision}
+            l10n={l10n}
+          />
+        )}
       </div>
     </div>
   );
@@ -291,10 +321,15 @@ export default function TopologyRevisionBrowser({
 function RevisionDetail({
   selected,
   onPreview,
+  onRestore,
+  restoring,
   l10n,
 }: {
   selected: SelectedRevision;
   onPreview: (graph: TopologyData | null) => void;
+  onRestore?: ((revision: number) => void) | undefined;
+  /** True while THIS revision's draft is being armed by the host. */
+  restoring: boolean;
   l10n: ReturnType<typeof useLocalization>['l10n'];
 }) {
   const { summary, graph, diff } = selected;
@@ -321,6 +356,14 @@ function RevisionDetail({
           {l10n.getString('topology-rev-browser-deflated-body', {
             by: summary.publishedBy,
           })}
+        </p>
+        {/* §4's remedy, stated where the loss is visible: the retention
+            rule is count-based, and a pin exempts a row from BOTH pruning
+            and deflation without consuming a slot. Without this line the
+            merchant learns a snapshot is gone and nothing about how to
+            keep the next one. */}
+        <p className="topology-rev-browser-pruned-remedy">
+          {l10n.getString('topology-rev-browser-deflated-remedy')}
         </p>
       </div>
     );
@@ -382,13 +425,46 @@ function RevisionDetail({
         </>
       )}
 
-      <button
-        type="button"
-        className="topology-rev-browser-preview"
-        onClick={() => onPreview(graph.diagram ?? null)}
-      >
-        <Localized id="topology-rev-browser-preview">Show on canvas</Localized>
-      </button>
+      {/* §7: old revisions are shown, never migrated, never hidden. A
+          revision authored under an older contract may fail today's
+          validation — say so HERE, where the operator decides, instead of
+          letting the Apply dialog be the first to mention it. Restoring is
+          still offered: the draft loads and Apply re-validates against
+          today's contract. */}
+      {graph.contractSchemaVersion !== undefined && graph.contractSchemaVersion < CURRENT_CONTRACT_VERSION && (
+        <p className="topology-rev-browser-old-contract" role="note">
+          {l10n.getString('topology-rev-browser-old-contract', {
+            version: graph.contractSchemaVersion,
+            current: CURRENT_CONTRACT_VERSION,
+          })}
+        </p>
+      )}
+      <div className="topology-rev-browser-detail-actions">
+        <button
+          type="button"
+          className="topology-rev-browser-preview"
+          onClick={() => onPreview(graph.diagram ?? null)}
+        >
+          <Localized id="topology-rev-browser-preview">Show on canvas</Localized>
+        </button>
+        {/* §5: restore-to-draft. The host fetches and guards; this button
+            only asks. Disabled while that round trip runs. */}
+        {onRestore && (
+          <button
+            type="button"
+            className="topology-rev-browser-restore"
+            disabled={restoring}
+            onClick={() => onRestore(summary.revision)}
+            aria-label={l10n.getString('topology-rev-browser-restore-aria', {
+              revision: summary.revision,
+            })}
+          >
+            <Localized id={restoring ? 'topology-rev-browser-restoring' : 'topology-rev-browser-restore'}>
+              {restoring ? 'Loading draft…' : 'Restore to editor'}
+            </Localized>
+          </button>
+        )}
+      </div>
     </div>
   );
 }

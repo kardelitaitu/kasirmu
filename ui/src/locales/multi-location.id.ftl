@@ -65,6 +65,17 @@ topology-rev-browser-identical = Konfigurasi sama dengan sekarang
 topology-rev-browser-geometry = { $moved } dipindah, { $rerouted } dirute ulang
 topology-rev-browser-diff-summary = { $count } perubahan sejak deploy ini
 topology-rev-browser-preview = Tampilkan di kanvas
+# ── ADR #46 Fase 2: pulihkan-ke-draf (§5) + pesan snapshot terpangkas (§4, §7) ──
+topology-rev-browser-restore = Pulihkan ke editor
+topology-rev-browser-restoring = Memuat draf…
+topology-rev-browser-restore-aria = Muat revisi { $revision } ke editor sebagai draf yang belum disimpan
+topology-rev-browser-restore-notice = Dimuat sebagai draf yang belum disimpan — tinjau, lalu Terapkan untuk menerbitkan revisi baru.
+topology-rev-browser-restore-unavailable = Revisi ini tidak dapat dipulihkan lagi — snapshotnya sudah hilang.
+topology-rev-browser-deflated-remedy = Sematkan deploy (★) agar snapshotnya tetap dapat dipulihkan betapapun sibuk cabangnya.
+topology-rev-browser-old-contract = Deploy ini dicatat dengan versi kontrak { $version }; versi saat ini { $current }. Memulihkan memuatnya sebagai draf dan Terapkan memvalidasinya ulang dengan aturan hari ini.
+topology-restore-discard-title = Buang perubahan yang belum disimpan?
+topology-restore-discard-body = Kanvas editor memiliki perubahan yang belum diterapkan. Memulihkan sebuah revisi ke atasnya akan membuangnya.
+topology-restore-discard-confirm = Buang dan pulihkan
 topology-apply-permission-tooltip = Hanya manajer dan pemilik yang dapat menerapkan perubahan topologi.
 topology-readonly-note = Mode hanya-baca — hanya manajer dan pemilik yang dapat menyimpan perubahan topologi.
 topology-rename-permission-error = Hanya manajer dan pemilik yang dapat mengganti nama item topologi.

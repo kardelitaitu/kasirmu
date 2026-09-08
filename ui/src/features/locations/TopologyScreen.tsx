@@ -9,6 +9,7 @@ import {
 } from '@/api/workspaces';
 import {
   loadTopology,
+  loadTopologyRevision,
   type TopologyApplyResult,
   type TopologyData,
 } from '@/api/topology';
@@ -105,6 +106,15 @@ function TopologyScreenContent() {
    *  A revision diffed against unsaved edits would report changes the operator
    *  made locally and never deployed. */
   const [historyCurrent, setHistoryCurrent] = useState<TopologyData | null>(null);
+  // ── ADR #46 §5: restore-to-draft (Phase 2) ──
+  /** The revision graph armed onto the editor's restoreSeed prop. The
+   *  screen owns the fetch (loadTopologyRevision), the unsaved-edit guard
+   *  (same discard-confirm the branch switch uses), and clearing: after a
+   *  successful Apply (the draft became the new revision) and on branch
+   *  switch. The editor never arms itself. */
+  const [restoreDraft, setRestoreDraft] = useState<TopologyData | null>(null);
+  /** Revision currently being armed (browser button in-flight state). */
+  const [restoringRevision, setRestoringRevision] = useState<number | null>(null);
 
   /** Real workspace instances loaded from the backend, used to seed the editor. */
   const [workspaceInstances, setWorkspaceInstances] = useState<WorkspaceDto[]>([]);
@@ -123,6 +133,53 @@ function TopologyScreenContent() {
   const handleEditorDirtyChange = useCallback((dirty: boolean) => {
     editorDirtyRef.current = dirty;
   }, []);
+  // ── ADR #46 §5: restore-to-draft (Phase 2) ────────────────────────
+  /** Revision stashed when a restore is intercepted by a dirty canvas —
+   *  the discard-confirm's target. Null while no prompt is pending. */
+  const [discardPendingRestore, setDiscardPendingRestore] = useState<number | null>(null);
+  /** Fetch the revision's graph and arm it on the editor's restoreSeed
+   *  prop. §5's contract holds by construction: this only LOADS a draft —
+   *  the Apply that publishes it is the editor's existing dialog, against
+   *  the LIVE revision for CAS, producing a NEW revision. Never
+   *  auto-applies. A deflated/not-found row (pruned under us between list
+   *  and click) reports honestly instead of seeding nothing. */
+  const armRestoreDraft = useCallback(
+    async (revision: number) => {
+      if (!sessionToken) return;
+      setRestoringRevision(revision);
+      try {
+        const graph = await loadTopologyRevision(sessionToken, revision, selectedBranchId ?? undefined);
+        if (graph.status !== 'restorable' || !graph.diagram) {
+          addToast({ message: l10n.getString('topology-rev-browser-restore-unavailable'), type: 'error' });
+          return;
+        }
+        // The compare preview and the draft both own the canvas view — the
+        // draft supersedes any live preview, so clear it.
+        setCompareOverlay(null);
+        setRestoreDraft(graph.diagram);
+        setHistoryOpen(false);
+        addToast({ message: l10n.getString('topology-rev-browser-restore-notice'), type: 'info' });
+      } catch (err) {
+        addToast({ message: plainErrorMessage(err), type: 'error' });
+      } finally {
+        setRestoringRevision(null);
+      }
+    },
+    [sessionToken, selectedBranchId, addToast, l10n],
+  );
+  /** The browser's restore affordance: intercept on a dirty canvas (the
+   *  seed would silently discard unsaved edits) with the same class of
+   *  discard-confirm the branch switch uses, else arm directly. */
+  const handleRestoreDraft = useCallback(
+    (revision: number) => {
+      if (editorDirtyRef.current) {
+        setDiscardPendingRestore(revision);
+        return;
+      }
+      void armRestoreDraft(revision);
+    },
+    [armRestoreDraft],
+  );
   const [addingBranch, setAddingBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   /** Two-step branch deletion: armed state + in-flight guard. The target
@@ -421,6 +478,8 @@ function TopologyScreenContent() {
       await deleteLocationProfileScoped(sessionToken, id);
       setStores(remaining);
       setSelectedBranchId(remaining[0]?.id ?? null);
+      // The editor remounts on this switch — drop any armed restore seed.
+      setRestoreDraft(null);
       // No branches left: nothing owns the graph — clear the instances so
       // the remounted editor lands on a clean, unowned canvas.
       if (remaining.length === 0) setWorkspaceInstances([]);
@@ -556,6 +615,12 @@ function TopologyScreenContent() {
         setWorkspaceInstances(result.refreshedInstances);
       }
 
+      // §5: the restored draft was just published as a NEW revision — the
+      // seed has served its purpose. Clearing it keeps the one-shot
+      // contract honest and prevents a later editor reload from
+      // re-seeding a stale graph.
+      setRestoreDraft(null);
+
       return result;
     },
     [sessionToken, workspaceInstances, stores, addToast, l10n, licenseTier, selectedBranchId],
@@ -582,6 +647,7 @@ function TopologyScreenContent() {
         onRenameWorkspace={handleRenameWorkspace}
         allowLegacyApply={false}
         onSave={handleTopologySave}
+        restoreSeed={restoreDraft}
         canSave={canSaveTopology && !storesUnavailable && !instancesUnavailable && !topologyUnavailable}
         onDirtyChange={handleEditorDirtyChange}
         onLoadError={handleTopologyLoadError}
@@ -598,6 +664,10 @@ function TopologyScreenContent() {
                 value={selectedBranchId ?? ''}
                 onChange={(id) => {
                   if (id === selectedBranchId) return;
+                  // A branch switch drops any armed restore draft: the
+                  // editor remounts, and the seed is one-shot for the
+                  // branch it was armed on.
+                  setRestoreDraft(null);
                   if (editorDirtyRef.current) {
                     // The canvas holds unsaved edits — switching would
                     // silently discard them (the editor remounts keyed by
@@ -729,6 +799,8 @@ function TopologyScreenContent() {
               historyCurrent && graph ? buildTopologyOverlay(historyCurrent, graph) : null,
             );
           }}
+          onRestore={canSaveTopology ? handleRestoreDraft : undefined}
+          restoringRevision={restoringRevision}
         />
       )}
 
@@ -812,6 +884,9 @@ function TopologyScreenContent() {
           if (discardPendingBranchId !== null) {
             setSelectedBranchId(discardPendingBranchId);
           }
+          // The editor remounts on branch switch — a stale restore seed
+          // must not re-fire onto the new branch's graph.
+          setRestoreDraft(null);
           setDiscardPendingBranchId(null);
         }}
         title={l10n.getString('topology-discard-changes-title')}
@@ -819,6 +894,23 @@ function TopologyScreenContent() {
           name: stores.find((s) => s.id === discardPendingBranchId)?.name ?? discardPendingBranchId ?? '',
         })}
         confirmLabel={l10n.getString('topology-discard-changes-confirm')}
+      />
+
+      {/* ── §5 restore over a dirty canvas: the editor's restoreSeed would
+          silently discard unsaved edits, so the same discard-confirm class
+          intercepts first. Confirm discards and arms; cancel keeps both. ── */}
+      <ConfirmDialog
+        open={discardPendingRestore !== null}
+        variant="warning"
+        onCancel={() => setDiscardPendingRestore(null)}
+        onConfirm={() => {
+          const revision = discardPendingRestore;
+          setDiscardPendingRestore(null);
+          if (revision !== null) void armRestoreDraft(revision);
+        }}
+        title={l10n.getString('topology-restore-discard-title')}
+        message={l10n.getString('topology-restore-discard-body')}
+        confirmLabel={l10n.getString('topology-restore-discard-confirm')}
       />
     </div>
   );

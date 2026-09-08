@@ -14,9 +14,12 @@ import { parseAppError } from '@/utils/app-error';
 import { NODE_WIDTH, NODE_HEIGHT } from './nodeTopologyClamp';
 import {
   normalizeTopologyGraph,
+  normalizeWireDirection,
   validateTopologyGraph,
+  type SemanticRelationshipType,
   type TopologyValidationError,
 } from './topologyContract';
+import type { TopologyNodePayload, TopologyWirePayload } from '@/api/topology';
 import type { TopologyNodeData, TopologyWireData, PortName } from './NodeTopologyEditor';
 
 /** Convert legacy vertical anchors to the UX's canonical left/right sides.
@@ -242,4 +245,49 @@ export function validateEditorGraph(
   return hasCanonicalBranchIdentity || !allowLegacyApply
     ? validateTopologyGraph(semanticGraph, tier)
     : [];
+}
+
+// ── Diagram payload → canvas model (ADR #46 §5 restore-to-draft) ──────
+
+/** Map one persisted diagram node to the canvas node model. The exact
+ *  mapping the authoritative load has always performed — extracted here so
+ *  the restore-to-draft effect shares ONE mapping with the load path and
+ *  the two can never drift (a restored draft must look exactly like the
+ *  same graph loaded from the backend). */
+export function diagramNodeToCanvas(n: TopologyNodePayload): TopologyNodeData {
+  const node: TopologyNodeData = {
+    id: n.id,
+    type: n.type as TopologyNodeData['type'],
+    name: n.name,
+    x: n.x,
+    y: n.y,
+  };
+  if (n.subtitle !== undefined) node.subtitle = n.subtitle;
+  if (n.tier_requirement !== undefined) node.tierRequirement = n.tier_requirement as 'pro' | 'enterprise';
+  if (n.telemetry_badge !== undefined) node.telemetryBadge = n.telemetry_badge;
+  if (n.telemetry_status !== undefined) node.telemetryStatus = n.telemetry_status as 'online' | 'warning' | 'offline';
+  if (n.metadata !== undefined) node.metadata = n.metadata;
+  if (n.store_profile_id !== undefined) node.storeProfileId = n.store_profile_id;
+  return node;
+}
+
+/** Map one persisted diagram wire to the canvas wire model — same
+ *  closed-union discipline as the load path: a corrupt stored direction
+ *  folds to a legal value so the editor model (and the Apply round-trip)
+ *  never carries garbage that would render wrong markers. */
+export function diagramWireToCanvas(w: TopologyWirePayload): TopologyWireData {
+  const wire: TopologyWireData = {
+    id: w.id,
+    fromNodeId: w.from_node_id,
+    toNodeId: w.to_node_id,
+    direction: normalizeWireDirection(w.direction),
+  };
+  if (w.label !== undefined) wire.label = w.label;
+  if (w.bends !== undefined) wire.bends = w.bends;
+  if (w.from_port != null) wire.fromPort = normalizeVisualPort(w.from_port, 'right');
+  if (w.to_port != null) wire.toPort = normalizeVisualPort(w.to_port, 'left');
+  if (w.from_port_id !== undefined) wire.fromPortId = w.from_port_id;
+  if (w.to_port_id !== undefined) wire.toPortId = w.to_port_id;
+  if (w.relationship_type !== undefined) wire.relationshipType = w.relationship_type as SemanticRelationshipType;
+  return wire;
 }

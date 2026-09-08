@@ -227,4 +227,129 @@ describe('TopologyRevisionBrowser', () => {
     await waitFor(() =>
       expect(screen.getByText('Nothing has been applied to this branch yet.')).toBeInTheDocument());
   });
+
+  // ── Phase 2: restore-to-draft (§5) + pruned-snapshot messaging (§4, §7) ──
+
+  it('offers restore to a writable host and reports the revision asked for', async () => {
+    await deploy([node('a', 'Alpha')], 'restorable', BRANCH);
+    renderBrowser({ branchId: BRANCH, onRestore: vi.fn() });
+    const row = await waitFor(() => {
+      const r = document.querySelector('.topology-rev-browser-row-main');
+      expect(r).not.toBeNull();
+      return r as HTMLElement;
+    });
+    fireEvent.click(row);
+    const restore = await waitFor(() => {
+      const b = document.querySelector('.topology-rev-browser-restore');
+      expect(b).not.toBeNull();
+      return b as HTMLButtonElement;
+    });
+    expect(restore.disabled).toBe(false);
+    expect(restore.getAttribute('aria-label')).toBe('topology-rev-browser-restore-aria');
+  });
+
+  it('offers no restore affordance at all without a host callback', async () => {
+    await deploy([node('a', 'Alpha')], 'no host', BRANCH);
+    renderBrowser({ branchId: BRANCH });
+    const row = await waitFor(() => {
+      const r = document.querySelector('.topology-rev-browser-row-main');
+      expect(r).not.toBeNull();
+      return r as HTMLElement;
+    });
+    fireEvent.click(row);
+    await waitFor(() =>
+      expect(document.querySelector('.topology-rev-browser-detail-actions')).not.toBeNull());
+    expect(document.querySelector('.topology-rev-browser-restore')).toBeNull();
+  });
+
+  it('withdraws restore from a pruned row alongside the preview (§4)', async () => {
+    for (let i = 0; i < 25; i += 1) {
+      await deploy([node('a', 'Alpha')], `pruned restore ${i}`, BRANCH);
+    }
+    const list = await api.listTopologyRevisions(TOKEN, BRANCH, 50);
+    const pruned = list.find((r) => !r.restorable);
+    expect(pruned).toBeDefined();
+    renderBrowser({ branchId: BRANCH, onRestore: vi.fn() });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.topology-rev-browser-row').length).toBe(list.length));
+    const prunedRow = [...document.querySelectorAll('.topology-rev-browser-row')].find((row) =>
+      row.querySelector('.topology-rev-browser-note')?.textContent?.trim() === pruned!.changeNote);
+    expect(prunedRow).toBeDefined();
+    fireEvent.click(prunedRow!.querySelector('.topology-rev-browser-row-main')!);
+    // §4's remedy, stated where the loss is visible — not a dead end.
+    await waitFor(() =>
+      expect(document.querySelector('.topology-rev-browser-detail')?.textContent)
+        .toContain('topology-rev-browser-deflated-remedy'));
+    expect(document.querySelector('.topology-rev-browser-restore')).toBeNull();
+  });
+
+  it('flags a revision recorded under an older contract instead of hiding it (§7)', async () => {
+    // Deploy normally, then demote the reported contract axis. The dev-mock
+    // keeps its rows in module-scope memory that vi.resetModules cannot
+    // rewind once the IPC factory has resolved (see the file header), so
+    // patching storage is invisible — a wrapper mock over the api module is
+    // the honest lever: it reports exactly what the real backend would for
+    // a pre-v2 row.
+    await deploy([node('a', 'Alpha')], 'old contract', BRANCH);
+    vi.doMock('@/api/topology', async (importOriginal) => {
+      const real = await importOriginal<typeof TopologyApi>();
+      return {
+        ...real,
+        listTopologyRevisions: async (...args: Parameters<typeof real.listTopologyRevisions>) =>
+          (await real.listTopologyRevisions(...args)).map((r) => ({ ...r, contractSchemaVersion: 1 })),
+        loadTopologyRevision: async (...args: Parameters<typeof real.loadTopologyRevision>) => {
+          const g = await real.loadTopologyRevision(...args);
+          return g.status === 'restorable' ? { ...g, contractSchemaVersion: 1 } : g;
+        },
+      };
+    });
+    vi.resetModules();
+    api = await import('@/api/topology');
+    Browser = (await import('../features/locations/TopologyRevisionBrowser')).default;
+
+    renderBrowser({ branchId: BRANCH, onRestore: vi.fn() });
+    const row = await waitFor(() => {
+      const r = document.querySelector('.topology-rev-browser-row-main');
+      expect(r).not.toBeNull();
+      return r as HTMLElement;
+    });
+    fireEvent.click(row);
+    // The note renders as a NOTE (not an error) — and restore is still
+    // offered: the draft loads and Apply re-validates against today's
+    // contract. (The version numbers ride the l10n args; this test's
+    // mocked getString returns the raw template, so the element's
+    // existence is the component's contract here.)
+    await waitFor(() =>
+      expect(document.querySelector('.topology-rev-browser-old-contract')).not.toBeNull());
+    expect(document.querySelector('.topology-rev-browser-old-contract')?.getAttribute('role'))
+      .toBe('note');
+    expect(document.querySelector('.topology-rev-browser-restore')).not.toBeNull();
+  });
+
+  it('shows the in-flight label on the restoring revision only', async () => {
+    await deploy([node('a', 'Alpha')], 'slow arm', BRANCH);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    renderBrowser({
+      branchId: BRANCH,
+      onRestore: () => gate,
+      // The host reports WHICH revision is arming; only that row's button
+      // reads in-flight (a distinct key, per the file's one-English-fallback
+      // rule).
+      restoringRevision: null,
+    });
+    const row = await waitFor(() => {
+      const r = document.querySelector('.topology-rev-browser-row-main');
+      expect(r).not.toBeNull();
+      return r as HTMLElement;
+    });
+    fireEvent.click(row);
+    const restore = await waitFor(() => {
+      const b = document.querySelector('.topology-rev-browser-restore');
+      expect(b).not.toBeNull();
+      return b as HTMLButtonElement;
+    });
+    expect(restore.textContent).toBe('Restore to editor');
+    release();
+  });
 });

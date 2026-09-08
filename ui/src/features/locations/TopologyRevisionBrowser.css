@@ -211,3 +211,50 @@
   color: var(--color-accent);
   cursor: pointer;
 }
+
+/* ── ADR #46 Phase 2: restore-to-draft + pruned-snapshot messaging ── */
+
+/* The two detail actions (preview + restore) read as one row of equal
+   peers — restore is deliberately NOT styled as a primary CTA: §5 makes
+   it a load-onto-canvas, and the publish decision stays in the Apply
+   dialog where the PIN lives. */
+.topology-rev-browser-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.topology-rev-browser-restore {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: none;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.topology-rev-browser-restore:disabled {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  cursor: default;
+}
+
+/* §7: a revision authored under an older contract may fail today's
+   validation — a note, not an error: restoring is still offered. */
+.topology-rev-browser-old-contract {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+/* §4's remedy: how to keep the NEXT snapshot restorable. */
+.topology-rev-browser-pruned-remedy {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

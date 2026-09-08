@@ -67,6 +67,17 @@ topology-rev-browser-identical = Same configuration as now
 topology-rev-browser-geometry = { $moved } moved, { $rerouted } rerouted
 topology-rev-browser-diff-summary = { $count } changes since this deploy
 topology-rev-browser-preview = Show on canvas
+# ── ADR #46 Phase 2: restore-to-draft (§5) + pruned-snapshot messaging (§4, §7) ──
+topology-rev-browser-restore = Restore to editor
+topology-rev-browser-restoring = Loading draft…
+topology-rev-browser-restore-aria = Load revision { $revision } onto the editor as an unsaved draft
+topology-rev-browser-restore-notice = Loaded as an unsaved draft — review it, then Apply to publish a new revision.
+topology-rev-browser-restore-unavailable = This revision can no longer be restored — its snapshot is gone.
+topology-rev-browser-deflated-remedy = Pin a deploy (★) to keep its snapshot restorable however busy the branch gets.
+topology-rev-browser-old-contract = This deploy was recorded under contract version { $version }; today's is { $current }. Restoring loads it as a draft and Apply re-validates it against today's rules.
+topology-restore-discard-title = Discard unsaved edits?
+topology-restore-discard-body = The editor canvas has changes that are not applied. Restoring a revision onto it will discard them.
+topology-restore-discard-confirm = Discard and restore
 topology-apply-permission-tooltip = Only managers and owners can apply topology changes.
 topology-readonly-note = View-only — only managers and owners can save topology changes.
 topology-rename-permission-error = Only managers and owners can rename topology items.

@@ -4,7 +4,12 @@ import { useToast } from '@/frontend/shared/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { loadTopology, type TopologyApplyResult } from '@/api/topology';
+import {
+  loadTopology,
+  type TopologyApplyResult,
+  type TopologyNodePayload,
+  type TopologyWirePayload,
+} from '@/api/topology';
 import { useSettings } from '@/contexts/SettingsContext';
 import {
   type WorkspaceCardProps,
@@ -87,6 +92,8 @@ import {
   polylineD,
   canvasStateEqual,
   computeAlignmentGuides,
+  diagramNodeToCanvas,
+  diagramWireToCanvas,
   diagramOverflowsCanvas,
   isTopologyRevisionConflict,
   validateEditorGraph,
@@ -303,6 +310,18 @@ export interface NodeTopologyEditorProps {
    * their current behavior.
    */
   canSave?: boolean;
+  /**
+   * ADR #46 §5 restore-to-draft: a revision's diagram the PARENT (the
+   * revision browser's host screen) has decided to load onto the canvas as
+   * an unsaved draft. The editor owns no restore UI, state, or command —
+   * the parent fetches the graph, stamps this prop with a fresh object
+   * identity per restore request, and the editor replaces the canvas with
+   * the mapped diagram and clears undo/redo, exactly like the
+   * authoritative load. Changing the prop identity seeds the draft; the
+   * screen guards unsaved-edit loss before arming it. Erasing it (back to
+   * undefined/null) does nothing — a one-shot seed, not a live binding.
+   */
+  restoreSeed?: { nodes: TopologyNodePayload[]; wires: TopologyWirePayload[] } | null;
 }
 
 /** Valid workspace type keys come from the node kind registry
@@ -492,6 +511,7 @@ export default function NodeTopologyEditor({
   compareOverlay,
   compareFocus = false,
   canSave = true,
+  restoreSeed,
 }: NodeTopologyEditorProps) {
   const { sessionToken, resolvedStoreId: sessionStoreId } = useWorkspace();
   const { addToast } = useToast();
@@ -1753,6 +1773,36 @@ export default function NodeTopologyEditor({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceInstances, branchLocations, branchId, reloadKey]);
+
+  // ── ADR #46 §5: restore-to-draft seed ──────────────────────────────
+  // The revision browser's host screen decides WHAT to restore (it fetched
+  // the revision graph and guarded unsaved-edit loss); this effect only
+  // decides HOW the graph lands: mapped through the same helpers the
+  // authoritative load uses, transient canvas state reset, undo/redo
+  // cleared, and the PRE-RESTORE canvas committed as the dirty baseline —
+  // so the draft reads dirty against what was live, the parent's
+  // branch-switch guard stays armed, and undo-all returns to the live
+  // graph. The lifecycle state machine is NOT touched: Apply after a
+  // restore posts the LIVE revision for CAS, reuses the whole existing
+  // Apply path (validation, diff summary, publish, journal, compensation),
+  // and produces a NEW revision — §5's "loads a draft; never auto-applies".
+  // resolved_issue_keys are deliberately not carried over: the draft
+  // re-offers today's validation in full (§7 — old revisions are shown,
+  // never migrated); the merchant re-dismisses what still applies. The
+  // seed is one-shot per object identity; erasing the prop does nothing,
+  // so the post-Apply canvas is never clobbered by the screen clearing it.
+  const seededRestoreRef = useRef<unknown>(undefined);
+  useEffect(() => {
+    if (!restoreSeed || seededRestoreRef.current === restoreSeed) return;
+    seededRestoreRef.current = restoreSeed;
+    resetTransientCanvasState();
+    setHistory([]);
+    setRedo([]);
+    commitSnapshot({ nodes: nodesRef.current, wires: wiresRef.current });
+    setNodes(restoreSeed.nodes.map(diagramNodeToCanvas));
+    setWires(restoreSeed.wires.map(diagramWireToCanvas));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreSeed]);
 
   // ── Inline node rename on the card (Branch Location + workspace) ──
   const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
