@@ -298,4 +298,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ---
 
-> last audited 09-09-26 by docs-auditor - re-audited the PR-gate section; one CI claim corrected
+> last audited 09-09-26 by docs-auditor
