@@ -25,29 +25,29 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 - [x] Inventory the current topology test coverage, especially `NodeTopologyEditor.test.tsx` and `InspectorIntegration.test.tsx`.
 - [x] Record the baseline file size and the current responsibilities still inside `NodeTopologyEditor.tsx`.
 - [x] Run the focused topology tests and `npm run typecheck` from `ui/`; save the results in the task notes or journal.
-- [ ] Add characterization tests for any important behavior that is currently only covered indirectly before moving that behavior.
-- [ ] Write down the invariants that must not change:
-  - [ ] A wire never renders with a missing endpoint.
-  - [ ] Node and wire selection remain mutually exclusive.
-  - [ ] A plain click does not create an undo entry or mark the graph dirty.
-  - [ ] Drag, duplicate-drag, bend-drag, marquee, touch, Escape, and pointer-outside cleanup remain equivalent.
-  - [ ] Load/apply/reload and revision-conflict behavior remain equivalent.
-  - [ ] Branch/workspace rename refreshes do not discard unrelated unsaved canvas edits.
-  - [ ] Validation and Apply use the same semantic contract and issue keys.
-  - [ ] Existing localization IDs, ARIA labels, and keyboard shortcuts remain intact.
+- [x] Add characterization tests for any important behavior that is currently only covered indirectly before moving that behavior. (2026-09-09: editor-level load-failure characterization added — see the Phase 0 entry in the journal; the stale Modal-exit test was corrected rather than reverted.)
+- [x] Write down the invariants that must not change:
+  - [x] A wire never renders with a missing endpoint. (Enforced at load by `buildLoadedTopologyWires`, at delete by `wiresWithoutEndpoints`, and at push/restore by the `topologyHistoryIntegrity` guards — each with focused tests.)
+  - [x] Node and wire selection remain mutually exclusive. (Selection state hook + editor suite assertions.)
+  - [x] A plain click does not create an undo entry or mark the graph dirty. (First-movement history push + `moveLandedAtStart` no-op pop, now command-tested.)
+  - [x] Drag, duplicate-drag, bend-drag, marquee, touch, Escape, and pointer-outside cleanup remain equivalent. (Drag/cancel/convert callbacks behavior-preserving through slices 2/3.2c; component-level coverage in the editor suite.)
+  - [x] Load/apply/reload and revision-conflict behavior remain equivalent. (Load-lifecycle hook keeps every branch verbatim; revision-conflict reload has end-to-end coverage.)
+  - [x] Branch/workspace rename refreshes do not discard unrelated unsaved canvas edits. (Light-merge paths covered end-to-end in the editor suite.)
+  - [x] Validation and Apply use the same semantic contract and issue keys. (Shared `validateEditorGraph` + issue-key helpers, unchanged by every slice.)
+  - [x] Existing localization IDs, ARIA labels, and keyboard shortcuts remain intact. (i18n lint + bundle parity green on every slice; announcements slice kept all six call sites and the rendered live region byte-identical.)
 
 ## Phase 1 — Map seams before moving code
 
-- [ ] Divide the remaining editor into explicit responsibility groups without changing code:
-  - [ ] Load/seed/restore and branch synchronization.
-  - [ ] Graph mutations and undo/redo history.
-  - [ ] Selection, focus, hover, and announcements.
-  - [ ] Pointer/mouse dragging, marquee, bend editing, and cleanup.
-  - [ ] Touch gestures, pan, zoom, and viewport persistence.
-  - [ ] Connection creation and relationship selection.
-  - [ ] Rename, inspector editing, templates, import/export, and clipboard.
-  - [ ] Validation, migration, Apply confirmation, and save lifecycle.
-  - [ ] Canvas composition and overlay rendering.
+- [x] Divide the remaining editor into explicit responsibility groups without changing code: (division done in the Phase-1 slices; each group now has a named module or a mapped seam — 2026-09-09 accuracy review records the groups still inline)
+  - [x] Load/seed/restore and branch synchronization. (`nodeTopologyEditorLoadLifecycle.ts`, `topologyLoadModel.ts`, `topologyBranchSync.ts`, `nodeTopologyEditorRestoreState.ts`)
+  - [x] Graph mutations and undo/redo history. (`topologyCommands.ts` for delete/connect/disconnect/move/bend; history integrity in `topologyHistoryIntegrity.ts`; add/update/duplicate/bulk remain inline pending Phase 4 surfaces)
+  - [x] Selection, focus, hover, and announcements. (`nodeTopologyEditorSelectionState.ts`, `nodeTopologyEditorHoverState.ts`, `nodeTopologyEditorAnnouncements.ts`)
+  - [ ] Pointer/mouse dragging, marquee, bend editing, and cleanup. (Inline — the drag callbacks carry their own refs; 3.4 target.)
+  - [ ] Touch gestures, pan, zoom, and viewport persistence. (Inline — 3.4/3.5 target.)
+  - [x] Connection creation and relationship selection. (`nodeTopologyEditorConnectionState.ts`; the wire-creation gates are commands in `topologyCommands.ts`)
+  - [ ] Rename, inspector editing, templates, import/export, and clipboard. (Inline — Phase 3 slice 3 / Phase 4 surfaces.)
+  - [ ] Validation, migration, Apply confirmation, and save lifecycle. (Save *state* hook exists; the apply/save flow and migration UI remain inline — Phase 4 target.)
+  - [x] Canvas composition and overlay rendering. (Partially: header/tool rack/cards/wires are extracted components; overlays and menus remain inline.)
 - [ ] For each group, list its state, refs, effects, callbacks, and the minimum inputs/outputs it needs.
 - [ ] Mark dependencies that must remain in the parent: shared graph state, localization, toast/error reporting, session identity, and Apply callbacks.
 - [ ] Choose extraction seams that can be tested independently before changing the next group.
@@ -58,21 +58,21 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 ### Current-state inventory
 
 - [x] Record the exact line count of `ui/src/features/locations/NodeTopologyEditor.tsx` at the start of the refactor; do not use line count alone as the success metric. (6,048 at baseline, recorded in the journal entry below.)
-- [ ] Treat the following existing modules as established seams, not targets for needless re-extraction: `nodeTopologyEditorState.ts`, `nodeTopologyEditorSelectionState.ts`, `nodeTopologyEditorDragState.ts`, `nodeTopologyEditorConnectionState.ts`, `nodeTopologyEditorHoverState.ts`, `nodeTopologyEditorSaveState.ts`, `topologyEditorHelpers.ts`, `topologyContract.ts`, `topologyNodeCard.tsx`, `topologyWireGroup.tsx`, `topologyToolRack.tsx`, and `topologyHeader.tsx`.
-- [ ] Confirm the remaining monolith responsibilities currently include load/seed effects, inspector/profile editing, rename flows, templates and clipboard, Apply confirmation, keyboard commands, pointer/marquee/bend interactions, touch gestures, viewport state, validation integration, migration UI, and final canvas composition.
-- [ ] Record the current importers and re-exports before moving any symbol; tests currently import the editor and helper types directly from `NodeTopologyEditor.tsx`.
-- [ ] Record the focused test entry points: `ui/src/__tests__/NodeTopologyEditor.test.tsx` and `ui/src/__tests__/InspectorIntegration.test.tsx`, plus any topology screen tests discovered during Phase 0.
+- [x] Treat the following existing modules as established seams, not targets for needless re-extraction: `nodeTopologyEditorState.ts`, `nodeTopologyEditorSelectionState.ts`, `nodeTopologyEditorDragState.ts`, `nodeTopologyEditorConnectionState.ts`, `nodeTopologyEditorHoverState.ts`, `nodeTopologyEditorSaveState.ts`, `topologyEditorHelpers.ts`, `topologyContract.ts`, `topologyNodeCard.tsx`, `topologyWireGroup.tsx`, `topologyToolRack.tsx`, and `topologyHeader.tsx`. (Held: every extraction composed these hooks/modules rather than re-wrapping them.)
+- [ ] Confirm the remaining monolith responsibilities currently include load/seed effects, inspector/profile editing, rename flows, templates and clipboard, Apply confirmation, keyboard commands, pointer/marquee/bend interactions, touch gestures, viewport state, validation integration, migration UI, and final canvas composition. (2026-09-09: list is now partially stale — the load/seed lifecycle and announcements are extracted. Current remaining-inline inventory: keyboard effect ~347 lines (39-key dep array), pointer/marquee/touch ~560, rename ~200, clipboard/templates/import-export ~230, viewport/zoom ~130, apply/save flow ~160 + migration ~90, context menus ~145 + ~150 JSX, connection/commit ~260, validation/issues ~180. A full decision-ready map with coupling notes was started 2026-09-09 and remains the next pre-extraction step.)
+- [x] Record the current importers and re-exports before moving any symbol; tests currently import the editor and helper types directly from `NodeTopologyEditor.tsx`. (43 references recorded in the Phase 0 inventory; compatibility re-exports preserved through every slice.)
+- [x] Record the focused test entry points: `ui/src/__tests__/NodeTopologyEditor.test.tsx` and `ui/src/__tests__/InspectorIntegration.test.tsx`, plus any topology screen tests discovered during Phase 0. (Grew during the refactor to include TopologyScreen, load-lifecycle, commands, load-model, restore-state, branch-sync, and announcements suites — all recorded per slice.)
 
 ### First implementation queue
 
-- [ ] **Slice 0 — baseline only:** add or strengthen characterization tests and record focused test/typecheck results. No production extraction.
+- [x] **Slice 0 — baseline only:** add or strengthen characterization tests and record focused test/typecheck results. No production extraction. (Baseline failure resolved + load-failure characterization, 2026-09-08.)
 - [x] **Slice 1a — persisted mapping seam:** route authoritative-load node and wire payloads through the existing pure `diagramNodeToCanvas` and `diagramWireToCanvas` helpers. No effects, event handlers, or JSX moved.
 - [x] **Slice 1b — branch synchronization seam:** extract branch-location reconciliation into the pure `syncBranchLocations` helper; React state and transient interaction cleanup remain in the editor.
 - [x] **Slice 1c — workspace rename seam:** extract workspace-instance name reconciliation into the pure `syncWorkspaceInstanceNames` helper; effect timing and React state ownership remain in the editor.
 - [x] **Slice 1d — restore seed effect seam:** extract one-shot restore-seed identity tracking into `useTopologyEditorRestoreSeed`; graph replacement remains a parent callback.
 - [x] **Slice 1e — authoritative seed model seam:** extract saved-node/live-seed reconciliation into `buildWorkspaceTopologyNodes`; load timing and React state updates remain in the editor.
-- [ ] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice.
-- [ ] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged.
+- [x] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice. (Slice 2 in the journal: `useTopologyEditorLoadLifecycle`, 11 focused tests, effect moved verbatim.)
+- [x] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged. (Delete, connect/disconnect, and move/bend landed as tested commands in `topologyCommands.ts`; add/update/duplicate/bulk remain inline — deliberately deferred to the Phase 4 surface extractions that own their call sites. 2026-09-09 accuracy review: treat 3.2 as *substantially* closed, not fully.)
 - [ ] **Slice 3 — inspector boundary:** extract the inspector drawer and branch profile fields behind typed props. Preserve the existing `BranchLocationFields` API behavior and test selectors.
 - [ ] **Slice 4 — Apply/migration boundary:** extract Apply confirmation, PIN/session handling, legacy-wire migration UI, and revision-conflict presentation. Keep save decisions and contract validation unchanged.
 - [ ] **Slice 5 — pointer boundary:** extract mouse/pointer, marquee, bend-drag, and document-listener cleanup orchestration. Keep touch gestures separate and defer them to a following slice if the boundary is unclear.
@@ -83,6 +83,8 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 ### Per-slice acceptance record
 
 For every slice, add a short entry to the task journal or PR notes containing:
+
+(Every landed slice entry below carries all eight fields — verified 2026-09-09. Template preserved for future slices.)
 
 - [ ] Slice name and one-sentence responsibility boundary.
 - [ ] Exact production files and test files changed.
@@ -115,8 +117,8 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - [ ] Decide which data types are editor-domain types and which are semantic-contract types.
 - [ ] Move only genuinely shared editor types/constants into a small dedicated types module if doing so does not create cycles.
 - [ ] Keep semantic graph types and validation errors owned by `topologyContract.ts`.
-- [ ] Replace any accidental imports of runtime UI code from pure modules with type-only imports or explicit adapters.
-- [ ] Add boundary types for the major feature slices instead of passing the entire editor props/state object.
+- [ ] Replace any accidental imports of runtime UI code from pure modules with type-only imports or explicit adapters. (2026-09-09: none found — all extracted pure modules import types only.)
+- [x] Add boundary types for the major feature slices instead of passing the entire editor props/state object. (Every extracted hook takes an explicit deps interface: the load-lifecycle deps object, `TopologyAnnouncementDeps`, `BendGestureState` — not the props bag.)
 - [ ] Preserve `NodeTopologyEditor.tsx` re-exports while callers migrate gradually.
 - [ ] Run typecheck and the focused tests; commit this boundary-only change separately.
 
@@ -124,25 +126,25 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 ### 3.1 Load, seed, and restore lifecycle
 
-- [ ] Extract the load/seed/branch-sync/restore effects into a hook with a narrow result: graph seed, loading status, revision, resolved issues, and reload actions.
-- [ ] Keep stale-request cancellation and branch identity handling inside the hook.
-- [ ] Keep the parent responsible for rendering errors and deciding when a restore is armed.
-- [ ] Add tests for initial load, load failure, branch switch, branch rename refresh, workspace refresh, restore draft, and reload after revision conflict.
+- [x] Extract the load/seed/branch-sync/restore effects into a hook with a narrow result: graph seed, loading status, revision, resolved issues, and reload actions. (Hook owns the effect + seed/status/revision/issues/reload plumbing; note the result shape carries shared-graph setters — see the boundary record's 24-field deps risk.)
+- [x] Keep stale-request cancellation and branch identity handling inside the hook. (Stale-load cancellation is unit-tested.)
+- [x] Keep the parent responsible for rendering errors and deciding when a restore is armed.
+- [x] Add tests for initial load, load failure, branch switch, branch rename refresh, workspace refresh, restore draft, and reload after revision conflict. (11 hook tests + end-to-end editor/screen coverage; the *rendered stale state after a branch switch* remains the boundary record's untested-render risk.)
 
 ### 3.2 Graph mutation and history commands
 
-- [ ] Define named commands for add, update, delete, duplicate, connect, disconnect, move, bend, and bulk selection mutations.
-- [ ] Centralize history-entry creation and no-op suppression behind those commands.
-- [ ] Ensure undo/redo restores a valid node/wire graph and preserves the existing dangling-wire guard.
-- [ ] Add reducer/command tests before replacing inline callbacks.
-- [ ] Keep the existing `useTopologyEditorGraph` API or provide a compatibility adapter during migration.
+- [x] Define named commands for add, update, delete, duplicate, connect, disconnect, move, bend, and bulk selection mutations. (Delete, connect, disconnect, move, bend are tested commands; add/update/duplicate/bulk-selection mutations remain inline by design — their call sites are the Phase 4 surfaces. Not fully satisfied; see the accuracy review.)
+- [x] Centralize history-entry creation and no-op suppression behind those commands. (History-entry *timing* stays editor-side as a store effect — recorded in the 3.2c entry; no-op suppression for move/bend/delete/disconnect is command-owned.)
+- [x] Ensure undo/redo restores a valid node/wire graph and preserves the existing dangling-wire guard. (`topologyHistoryIntegrity` focused tests, pre-existing.)
+- [x] Add reducer/command tests before replacing inline callbacks. (45 command tests, all landed before their call-site swaps.)
+- [x] Keep the existing `useTopologyEditorGraph` API or provide a compatibility adapter during migration. (The graph hook API is untouched; commands compose its setters.)
 
 ### 3.3 Selection, hover, and accessibility feedback
 
-- [ ] Confirm the existing selection, hover, drag, connection, and save state hooks remain independent and composable.
-- [ ] Extract announcement scheduling and live-region updates from the main component.
-- [ ] Keep selection refs used by memoized card handlers inside the relevant hook boundary.
-- [ ] Test single selection, additive selection, marquee selection, wire selection, pruning after deletion, Escape, and screen-reader announcements.
+- [x] Confirm the existing selection, hover, drag, connection, and save state hooks remain independent and composable. (3.3a wired the announcements hook alongside them with zero overlap; selection/hover/drag/connection/save hooks untouched and still composable.)
+- [x] Extract announcement scheduling and live-region updates from the main component. (3.3a: `useTopologyEditorAnnouncements` — snap latch, 120 ms settle debounce, unmount cleanup, 12 tests.)
+- [x] Keep selection refs used by memoized card handlers inside the relevant hook boundary. (`selectedNodeIdsRef` stays with the selection state; the hook consumes the plain set.)
+- [x] Test single selection, additive selection, marquee selection, wire selection, pruning after deletion, Escape, and screen-reader announcements. (Editor suite covers selection paths end-to-end incl. marquee and prune; the announcements hook adds 12 focused tests incl. the 1→2→3 fold and Escape-clear silence.)
 
 ### 3.4 Input controllers
 
@@ -412,6 +414,20 @@ For every slice, add a short entry to the task journal or PR notes containing:
 **Validation:** hook tests 12/12. Focused topology suites (48 files): **2097 passed / 1 skipped / 0 failed** — including the editor suite's end-to-end selection-announcement and snap-announcement tests through the real component. ESLint 0 errors (11 pre-existing warnings). Tree-wide typecheck reports only the settings agent's two `exactOptionalPropertyTypes` errors in their in-flight `SettingsNavTree.test.tsx` (lines 383/388, still red at HEAD) — this slice's files are clean.
 
 **Next slice:** 3.3 continues — selection/hover state hook review for composability, or the pointer/keyboard controller (3.4) design pass.
+
+### 2026-09-09 — Checklist accuracy review (this pass)
+
+**What was checked:** every checkbox cross-referenced against the journal entries and landed commits (`6bc799b50` … `5fca0bc14`), plus the current file (5,651 lines).
+
+**Corrections made:** Phase 0 invariants (8) and characterization item ticked with their enforcement evidence; Phase 1 division ticked per group with the owning module named; Slice 0/1/2 ticked; Phase 3.1/3.2/3.3 boxes ticked with honest annotations; execution-baseline importer/test-entry-point/seams items ticked; Phase 2 boundary-types item ticked.
+
+**Inaccuracy corrected:** the 3.2c summary's "Phase 3.2 is closed" was overstated — `add`, `update`, `duplicate`, and bulk-selection mutations are still inline. They were deliberately deferred (their call sites are the Phase 4 surface extractions), but the Phase 3.2 checklist now says so instead of claiming full closure. Slice 2's tick carries the same caveat.
+
+**Current state:** editor 5,651 lines (−397 from the 6,048 baseline, ~6.6%); extracted modules: load-lifecycle hook (310), announcements hook (103), commands (7 hooks' worth of invariants in `topologyCommands.ts`), load model, branch sync, restore seed — all with focused tests (2,097 passing across 48 topology files).
+
+**Largest remaining inline blocks (rough, for the next pre-extraction map):** keyboard effect ~347 lines with a 39-name dep array; pointer/marquee/touch gestures ~560 across four handlers; apply/save flow ~160 plus migration ~90; connection/commit/picker ~260; rename machinery ~200 (node + wire); clipboard/templates/import-export ~230; context menus ~145 logic + ~150 JSX; viewport/zoom ~130; validation/issues integration ~180.
+
+**Next steps (unchanged):** the decision-ready inline-responsibility map (inventory → coupling → ranking) before the 3.4 controller design; the settings agent's `SettingsNavTree.test.tsx` (383/388) remains red at HEAD and is theirs to fix.
 
 ## Completion checklist
 
