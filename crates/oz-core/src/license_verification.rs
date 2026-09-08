@@ -14,6 +14,8 @@ next: none | perf: N/A
 //! The public key is embedded at build time via `LICENSE_PUBLIC_KEY_PEM`.
 //! The server URL is `LICENSE_SERVER_URL` with env var override.
 
+use std::collections::HashMap;
+
 use base64::Engine;
 use rsa::RsaPublicKey;
 use rsa::pkcs1v15::VerifyingKey;
@@ -355,6 +357,18 @@ pub struct SignedSubscriptionPayload {
     /// rather than here: an unparseable value fails closed to `None`.
     #[serde(default)]
     pub trial_ends_at: Option<String>,
+    /// Phase D1 (todo-global-saas-2.md): the server's explicit
+    /// per-feature instructions, keyed by the canonical
+    /// [`crate::availability::AvailabilityFeature`] wire name (e.g.
+    /// `"supports_analytics"`). `Some(false)` withholds where the tier
+    /// would allow, `Some(true)` grants beyond tier, and a key that is
+    /// simply absent leaves the tier's own answer in place.
+    ///
+    /// `serde(default)` so a payload signed before Phase D1 — or one the
+    /// current server emits today, since authoring is not yet wired —
+    /// deserializes to an empty map rather than failing.
+    #[serde(default)]
+    pub features: HashMap<String, bool>,
 }
 
 // ── Signature Verification ──────────────────────────────────────────

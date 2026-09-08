@@ -224,6 +224,32 @@ impl SubscriptionTier {
         }
     }
 
+    /// Tier audit-log retention window in days, measured from the event
+    /// timestamp (todo-global-saas-2.md §Audit baseline — the adopted
+    /// schedule the pricing page publishes).
+    ///
+    /// `None` means the tier has **no audit-log retention entitlement**:
+    /// Free keeps no tenant-facing audit logs, so the retention sweep
+    /// purges every row (and the read surface is gated off — see the
+    /// audit commands). Paid tiers retain the basic security-event set
+    /// for the published window; Enterprise's 3 years is the *default* —
+    /// a contracted override ships as a signed custom entitlement, not a
+    /// client-side fallback (same ruling as `offline_grace_days`).
+    ///
+    /// Note the deliberate inversion of `sales_history_days`' `None`
+    /// ("unlimited"): here `None` means "nothing retained", because no
+    /// tier carries an unlimited audit window.
+    #[must_use]
+    pub fn audit_retention_days(&self) -> Option<i64> {
+        match self {
+            Self::Free | Self::OneTime => None, // no retention entitlement
+            Self::Plus => Some(90),
+            Self::Pro => Some(180),
+            Self::Premium => Some(365),      // 1 year
+            Self::Enterprise => Some(1_095), // 3 years default
+        }
+    }
+
     /// Whether this tier supports PostgreSQL background cloud database sync.
     pub fn supports_cloud_sync(&self) -> bool {
         match self {
@@ -573,7 +599,7 @@ impl TenantSubscription {
 
     /// Trial state carried by the signed payload (Phase C), parsed in one
     /// pass: `(is_trial, trial_ends_at)`.
-
+    ///
     /// Read from the signed payload rather than a column — Phase C is
     /// deliberately JSON-only with no schema migration, and the payload is
     /// the signature-covered source of truth, so a tampered row cannot
@@ -621,6 +647,47 @@ impl TenantSubscription {
     #[must_use]
     pub fn trial_ends_at(&self) -> Option<String> {
         self.parsed_trial().1
+    }
+    /// The signed payload's explicit per-feature instructions (Phase D1).
+    ///
+    /// Keyed by the canonical [`crate::availability::AvailabilityFeature`]
+    /// wire name. An absent `features` block, an empty one, an unparseable
+    /// payload and a wrongly-typed value all yield NO override, leaving the
+    /// tier's own answer in place. That direction is deliberate: an
+    /// unreadable block must not hand out a feature nobody signed, and it
+    /// must not withhold one either — silence is the only safe reading of
+    /// data that cannot be trusted.
+    ///
+    /// Unknown keys are returned as-is but are inert, because every caller
+    /// looks up by `AvailabilityFeature::as_str()`. The enum therefore stays
+    /// the single source of the key vocabulary: a shortened alias such as
+    /// `"analytics"` is not a recognised key and silently does nothing.
+    ///
+    /// Parsed from the signed payload like [`Self::addons`] and
+    /// [`Self::parsed_trial`], so the signature covers it and no migration
+    /// is needed.
+    #[must_use]
+    pub fn payload_features(&self) -> std::collections::HashMap<String, bool> {
+        if self.signed_payload.is_empty() {
+            return std::collections::HashMap::new();
+        }
+        serde_json::from_str::<serde_json::Value>(&self.signed_payload)
+            .ok()
+            .and_then(|v| v.get("features").cloned())
+            .and_then(|v| serde_json::from_value::<std::collections::HashMap<String, bool>>(v).ok())
+            .unwrap_or_default()
+    }
+
+    /// The payload's instruction for one feature, or `None` when it has no
+    /// opinion and the tier's answer stands.
+    ///
+    /// Pass `AvailabilityFeature::as_str()` — anything else is a lookup miss
+    /// by design, not an error. A whole-block type error (e.g. `features`
+    /// being a string) drops every entry rather than partially trusting the
+    /// block.
+    #[must_use]
+    pub fn payload_feature_grant(&self, key: &str) -> Option<bool> {
+        self.payload_features().get(key).copied()
     }
 
     /// Whether the subscription supports analytics, accounting for add-ons.
