@@ -356,3 +356,221 @@ async fn create_session_rejects_tampered_subscription_signature() {
         other => panic!("expected AppError::Invalid/Core, got {other:?}"),
     }
 }
+// ── Basic security events on the auth paths (todo-global-saas-2.md P1) ─
+//
+// Pins that staff_login and destroy_session actually WRITE audit rows. The
+// core recorder has its own suite in oz-core; what matters here is the
+// wiring and the tablet half of the per-client divergence: the tablet passes
+// debug_upgrade: false, so unlike the desktop it records NOTHING on a Free
+// row even in a debug build.
+
+/// Move the seeded subscription onto another tier. The signature covers
+/// `signed_payload` only, never `tier_key`, so this keeps the row loaded and
+/// changes only the projected tier.
+fn set_tier(conn: &rusqlite::Connection, tier_key: &str) {
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = ?1 WHERE tenant_id = 'default'",
+        [tier_key],
+    )
+    .unwrap();
+}
+
+/// A global DB with built-in roles, one PIN-able owner, and an optional tier.
+fn login_app(tier_key: Option<&str>) -> tauri::App<tauri::test::MockRuntime> {
+    let conn = migrations::fresh_db();
+    if let Some(tier) = tier_key {
+        set_tier(&conn, tier);
+    }
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [hash],
+    )
+    .unwrap();
+    tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+/// Every audit row in the global DB.
+async fn audit_rows(
+    app: &tauri::App<tauri::test::MockRuntime>,
+) -> Vec<(String, String, String, String, String)> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().await;
+    let mut stmt = db
+        .prepare(
+            "SELECT user_id, action, outcome, COALESCE(target_id,''), COALESCE(details,'{}')
+             FROM audit_log ORDER BY created_at ASC",
+        )
+        .unwrap();
+    stmt.query_map([], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+    })
+    .unwrap()
+    .map(|r| r.unwrap())
+    .collect()
+}
+
+#[tokio::test]
+async fn staff_login_records_a_success_event_for_a_paid_tier() {
+    let app = login_app(Some("pro"));
+    staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "1234".into(),
+            device_id: Some("tablet-2".into()),
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let rows = audit_rows(&app).await;
+    assert_eq!(rows.len(), 1, "one login event, got {rows:?}");
+    let (user_id, action, outcome, target_id, details) = &rows[0];
+    assert_eq!(user_id, "user-owner");
+    assert_eq!(action, "login", "the value auditCatalog.ts already labels");
+    assert_eq!(outcome, "success");
+    assert_eq!(target_id, "user-owner");
+    assert!(
+        details.contains("tablet-2"),
+        "device id recorded: {details}"
+    );
+    assert!(
+        !details.contains("1234"),
+        "the PIN must never reach the table"
+    );
+}
+
+#[tokio::test]
+async fn staff_login_records_a_failure_event_with_its_classifier() {
+    let app = login_app(Some("pro"));
+    let err = staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "9999".into(),
+            device_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("invalid username or PIN"),
+        "the client still gets the uniform message, got {err}"
+    );
+
+    let rows = audit_rows(&app).await;
+    assert_eq!(rows.len(), 1);
+    let (_, action, outcome, _, details) = &rows[0];
+    assert_eq!(action, "login.failed");
+    assert_eq!(outcome, "failure");
+    assert!(
+        details.contains("wrong_pin"),
+        "classifier recorded: {details}"
+    );
+}
+
+#[tokio::test]
+async fn free_tier_records_nothing_even_in_a_debug_build() {
+    // The per-client divergence, pinned from the tablet side. The desktop
+    // promotes its own active Free row in debug builds; the tablet must not
+    // mirror it (dfbc41b2), so a Free tenant writes no security events here
+    // in ANY build profile. If the tablet helper ever starts passing
+    // debug_upgrade: true, this test goes red in dev where it is green today.
+    let app = login_app(Some("free"));
+    staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "1234".into(),
+            device_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        audit_rows(&app).await.len(),
+        0,
+        "the tablet never promotes Free, so nothing is recorded"
+    );
+}
+
+#[tokio::test]
+async fn destroy_session_records_a_logout_for_a_paid_tier() {
+    let app = login_app(Some("premium"));
+    {
+        let state = app.state::<AppState>();
+        state.session_store.write().unwrap().insert(
+            "tok-1".into(),
+            SessionContext::new(
+                "user-owner".into(),
+                "role-owner".into(),
+                "tablet-1".into(),
+                "default".into(),
+                "instance-1".into(),
+                "pos".into(),
+                None,
+                0,
+            ),
+        );
+    }
+
+    destroy_session(app.state(), "tok-1".into()).await.unwrap();
+
+    let rows = audit_rows(&app).await;
+    assert_eq!(rows.len(), 1, "one logout event, got {rows:?}");
+    let (user_id, action, outcome, _, details) = &rows[0];
+    assert_eq!(action, "logout");
+    assert_eq!(outcome, "success", "a logout is not a failure");
+    assert_eq!(user_id, "user-owner");
+    assert!(details.contains("tablet-1"), "terminal recorded: {details}");
+}
+
+#[tokio::test]
+async fn destroy_session_with_an_unknown_token_records_nothing() {
+    // A replayed or already-evicted logout must not manufacture phantom
+    // events — and it must still return Ok, exactly as it did before this
+    // wiring.
+    let app = login_app(Some("premium"));
+    destroy_session(app.state(), "never-issued".into())
+        .await
+        .unwrap();
+    assert!(audit_rows(&app).await.is_empty());
+}
+
+#[tokio::test]
+async fn an_unreadable_subscription_row_still_records_on_the_tablet() {
+    // Fail-open arm, reached from the client rather than the core suite: a
+    // tenant that corrupts its own subscription row must not be able to turn
+    // the security trail off. The tablet's debug_upgrade: false is irrelevant
+    // here — the gate keys on `loaded`, not on the promotion.
+    let app = login_app(Some("premium"));
+    {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().await;
+        db.execute(
+            "UPDATE tenant_subscription SET signature = 'not-a-signature' WHERE tenant_id = 'default'",
+            [],
+        )
+        .unwrap();
+    }
+    staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "1234".into(),
+            device_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(audit_rows(&app).await.len(), 1, "the trail stays on");
+}

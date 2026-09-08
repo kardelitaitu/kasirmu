@@ -58,6 +58,10 @@ use crate::money::Currency;
 pub mod analytics;
 pub mod assignments;
 pub mod audit;
+/// Basic security events on the auth paths — the authentication-outcome
+/// class of the audit baseline. Writes through the same append-only
+/// `audit_log` path as `audit`, gated on the tier retention entitlement.
+pub mod audit_security;
 /// Active cart persistence (survives restarts).
 pub mod cart;
 /// Cash payout CRUD (open / close / list).

@@ -170,3 +170,100 @@ flipped:
 OPEN, in order: emit the security-event baseline (auth + permission/role
 changes), then the contract override, then the compliance view. Flip the box
 when all three close.
+## 2026-09-08 — Audit remainder #1 LANDED: basic security events on the auth paths
+
+The first gap my own landing report named ("no security event class reaches
+`audit_log` at all"). Now closed for the authentication-outcome class.
+
+### What landed
+- **New module** `crates/oz-core/src/db/audit_security.rs` (+ sibling
+  `audit_security_tests.rs`), registered in `db/mod.rs`. A sibling rather
+  than more of `db/audit.rs` because that file is already 603 lines — past the
+  "preferably < 600" guidance — and the `db/` tree already splits `impl Store`
+  per domain (`staff.rs`, `profile.rs`, `products.rs`), so this follows the
+  house pattern instead of stretching one file.
+- **`Store::record_security_event(&SecurityEvent, debug_upgrade)`** writes
+  through the SAME `log_audit` path, so AUD-06 redaction and the append-only
+  triggers apply unchanged. No trigger carve-out was needed: 20260920 exempts
+  DELETE only, and this is an INSERT.
+- **`SecurityEvent::{login_success, login_failed, logout}`** constructors. The
+  action strings were CHOSEN from the existing UI contract, not invented:
+  `login` and `login.failed` are already in `auditCatalog.ts`, and
+  `login.failed` is already in `CRITICAL_ACTIONS`, so the screen renders it
+  with critical emphasis today.
+- **Failure classifiers**: `wrong_pin`, `unknown_user`, `account_inactive`,
+  `rate_limited`. All four refusal paths in `staff_login` record, and the
+  uniform STAFF-06 client message is unchanged — the distinction lives only in
+  the audit row, which is where it belongs.
+- **Wired in both clients**: 5 sites each (4 login arms + logout).
+  `destroy_session` now takes the `SessionContext` out with the token so the
+  event can name who left; an unknown token records nothing and still returns
+  `Ok`, exactly as before, so a replayed logout cannot manufacture phantom
+  events. A store switch destroys the old session too and is recorded as a
+  logout — it is a genuine session end.
+
+### The design decision worth keeping: fail OPEN where the sweep fails closed
+`build_entitlements` projects Free for a missing, tampered or unreadable
+subscription row. Honouring that projection here would mean an attacker who can
+write one row turns the security audit trail OFF and then acts un-audited. So
+the skip requires a CONFIRMED Free row (`loaded == true`), never the
+fail-closed guess of one — the deliberate opposite of the retention sweep,
+which skips on the same input because a purge is irreversible. Destructive
+operations fail closed, additive ones fail open. Pinned by
+`a_tampered_row_still_records_because_silencing_the_audit_is_the_attack` and
+by the tablet test that reaches the same arm through `staff_login`.
+
+The gate is expressed as `tier.audit_retention_days().is_none()` rather than a
+second tier match: no retention entitlement means the sweep would purge the row
+on the next tick anyway, so writing it would be pointless as well as against
+the rule. One schedule, one source of truth, shared with `2fb2b873`.
+
+### Per-client divergence, pinned by tests rather than prose
+Desktop passes `debug_upgrade: true` (matching `require_audit_tier`), tablet
+`false` (the `dfbc41b2` invariant). `apply_debug_upgrade` is
+`cfg!(debug_assertions)`-gated, so a production Free tenant is excluded on both
+clients and only a dev desktop promotes its own row. The desktop test asserts
+`recorded == cfg!(debug_assertions)`; the tablet one asserts `recorded == 0`
+unconditionally — so if the tablet ever mirrors the desktop flag, its test goes
+red in exactly the build where that would otherwise be invisible.
+
+### Where the events land, and the limitation that follows
+Login happens BEFORE a store is resolved, so the only `Store` reachable is the
+GLOBAL database. The audit screen reads the session store's database
+(`list_audit_log_scoped`), so these rows are not visible there today. That is
+inherent to the auth flow, not an oversight — the global DB already carries
+`api.write` and system events and is already swept by the retention daemon.
+Surfacing global security events in the audit UI is owed work.
+
+### Still owed before todo-global-saas-2.md:283 can flip
+1. **`logout` has no Fluent label.** `audit-action-logout` exists in neither
+   `shared.ftl` nor `.id.ftl`, and both are HOT FILES this session must not
+   touch, so the event renders through the catalog's unknown-action fallback.
+   Editing `auditCatalog.ts` alone would fail pre-commit step 4 (bundle
+   parity) without the FTL keys, so neither file was touched. The audit TRAIL
+   is complete; the LABEL is the gap.
+2. **Permission/role changes are still unaudited.** `user.create` and
+   `user.update` are in the UI catalog but nothing emits them —
+   `crates/oz-core/src/db/staff.rs` writes users and assignments with no audit
+   row. Sensitive READS are already covered (`staff.identity.read`,
+   `staff.payroll.read` in `db/profile.rs`); a PIN change is not.
+3. **Enterprise configurable contract override** — still deferred to a signed
+   custom entitlement.
+4. **Compliance views** — no `ui/src` audit surface exists.
+
+### Gates
+`cargo test -p oz-core --lib audit` -> **83 passed** (68 prior + 15 new).
+Regression sweeps clean: oz-core lib **2761 passed / 0 failed**, desktop lib
+**1313 passed / 0 failed**, tablet lib **520 passed / 0 failed**.
+`cargo check --lib` clean for all three crates; `cargo fmt --all --check`
+clean. 7 new desktop and 7 new tablet auth wiring tests, all green.
+
+### Process notes
+- `db/mod.rs` carried only my one module line, so it IS in this pathspec
+  (unlike the retention commit, where the same file was regional-only and was
+  excluded).
+- `crates/oz-core/src/db/tax.rs` and `tax_tests.rs` went dirty from another
+  agent mid-session and four `ui/src/*.tsx` files were staged by someone else;
+  the explicit pathspec kept all six out of this commit.
+- `commands/auth.rs` was confirmed NOT hot before editing.
+

@@ -16,6 +16,10 @@ use tauri::State;
 
 use oz_core::auth::LoginSession;
 use oz_core::db::Store;
+use oz_core::db::audit_security::{
+    SECURITY_REASON_BAD_PIN, SECURITY_REASON_INACTIVE, SECURITY_REASON_RATE_LIMITED,
+    SECURITY_REASON_UNKNOWN_USER, SecurityEvent,
+};
 use oz_core::session::SessionContext;
 use oz_core::subscription::TenantSubscription;
 use oz_security::mask::mask_token;
@@ -69,6 +73,37 @@ pub struct CheckUsernameResult {
     /// exists or is active (STAFF-06); the real state is written to the
     /// server log only, and the login endpoint reports a uniform failure.
     pub proceed: bool,
+}
+
+/// Persist one basic security event on the auth paths
+/// (todo-global-saas-2.md P1 "audit baseline").
+///
+/// Deliberately infallible from the caller's point of view: a failed audit
+/// write is not a reason to refuse a correct PIN or destroy a session, so the
+/// `Err` arm logs and drops. `Ok(false)` is the Free-tier gate — that tenant
+/// keeps no tenant-facing audit records — and is silent by design.
+///
+/// Takes a borrowed [`Store`] rather than [`AppState`] because every login
+/// site already holds the global DB lock; re-entering it would deadlock the
+/// tokio mutex.
+///
+/// `debug_upgrade: true` matches the desktop's other tier reads
+/// (`require_audit_tier`). It cannot smuggle a real Free tenant into the
+/// table: `apply_debug_upgrade` is `cfg!(debug_assertions)`-gated, so only a
+/// dev build promotes its own active Free row.
+fn record_security_event(store: &Store, event: &SecurityEvent) {
+    match store.record_security_event(event, true) {
+        Ok(true) => {}
+        Ok(false) => tracing::debug!(
+            action = event.action,
+            "security event skipped: tier carries no audit retention entitlement"
+        ),
+        Err(e) => tracing::warn!(
+            error = %e,
+            action = event.action,
+            "security event write failed — authentication continues"
+        ),
+    }
 }
 
 /// Check a username before the PIN step (STAFF-06).
@@ -185,21 +220,58 @@ pub async fn staff_login(
             retry_after,
             "staff login rate limit exceeded"
         );
+        // A lockout is the strongest brute-force signal the limiter emits, so
+        // it is recorded even though no credential was ever compared. No
+        // account resolved at this point, hence the None user id.
+        record_security_event(
+            &store,
+            &SecurityEvent::login_failed(
+                &username,
+                SECURITY_REASON_RATE_LIMITED,
+                None,
+                device_id.as_deref(),
+            ),
+        );
         return Err(AppError::Invalid(format!(
             "Too many attempts. Try again in {retry_after}s."
         )));
     }
 
     // Look up user by username.
-    let user = store
-        .get_user_by_username(&username)?
-        .ok_or_else(|| AppError::Invalid("invalid username or PIN".into()))?;
+    let user = match store.get_user_by_username(&username)? {
+        Some(u) => u,
+        None => {
+            // Recorded against the attempted name: an unknown-account probe
+            // is reconnaissance and the only identity here is the username.
+            record_security_event(
+                &store,
+                &SecurityEvent::login_failed(
+                    &username,
+                    SECURITY_REASON_UNKNOWN_USER,
+                    None,
+                    device_id.as_deref(),
+                ),
+            );
+            return Err(AppError::Invalid("invalid username or PIN".into()));
+        }
+    };
 
     // Uniform failure — do not reveal that the account is deactivated.
     if !user.is_active {
         tracing::debug!(
             username = %username,
             "staff login: account inactive (uniform error returned)"
+        );
+        // The client still hears the uniform message; the distinction lives
+        // only in the audit row, which is where it belongs.
+        record_security_event(
+            &store,
+            &SecurityEvent::login_failed(
+                &username,
+                SECURITY_REASON_INACTIVE,
+                Some(&user.id),
+                device_id.as_deref(),
+            ),
         );
         return Err(AppError::Invalid("invalid username or PIN".into()));
     }
@@ -215,6 +287,15 @@ pub async fn staff_login(
             username = %username,
             "staff login: wrong PIN (uniform error returned)"
         );
+        record_security_event(
+            &store,
+            &SecurityEvent::login_failed(
+                &username,
+                SECURITY_REASON_BAD_PIN,
+                Some(&user.id),
+                device_id.as_deref(),
+            ),
+        );
         return Err(AppError::Invalid("invalid username or PIN".into()));
     }
 
@@ -228,6 +309,14 @@ pub async fn staff_login(
     let role = store
         .get_role(&user.role_id)?
         .ok_or_else(|| AppError::Internal(format!("role {} not found", user.role_id)))?;
+
+    // Recorded only once the login is genuinely going to succeed: the role
+    // above is the last thing that can fail it. Still inside the DB lock, so
+    // the write shares the store the attempt was authenticated against.
+    record_security_event(
+        &store,
+        &SecurityEvent::login_success(&user.id, &user.username, device_id.as_deref()),
+    );
 
     drop(db);
 
@@ -532,16 +621,42 @@ pub async fn has_users(state: State<'_, AppState>) -> Result<HasUsersResult, App
 /// ADR #4 / ADR #7: Called on logout or store switch. After this
 /// call, any commands using the old token will fail with
 /// `AppError::InvalidSession`.
+///
+/// Records a `logout` security event when the token actually resolved. A
+/// store switch destroys the old session too, and that is a genuine session
+/// end worth recording; an unknown or already-evicted token records nothing,
+/// so a replayed logout cannot manufacture phantom events.
 #[tauri::command]
 pub async fn destroy_session(
     state: State<'_, AppState>,
     session_token: String,
 ) -> Result<(), AppError> {
-    let mut store = state
-        .session_store
-        .write()
-        .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
-    store.remove(&session_token);
+    // Take the context out with the token so the logout event can name who
+    // left. The std RwLock guard is scoped and dropped before the DB await —
+    // it is not Send and must never be held across it.
+    let ctx = {
+        let mut sessions = state
+            .session_store
+            .write()
+            .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
+        sessions.remove(&session_token)
+    };
+
+    if let Some(ctx) = ctx {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        let username = store
+            .get_user(&ctx.user_id)
+            .ok()
+            .flatten()
+            .map(|u| u.username)
+            .unwrap_or_default();
+        record_security_event(
+            &store,
+            &SecurityEvent::logout(&ctx.user_id, username, Some(&ctx.terminal_id)),
+        );
+    }
+
     tracing::info!("session destroyed");
     Ok(())
 }
