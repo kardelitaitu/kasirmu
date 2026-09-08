@@ -24,7 +24,7 @@
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  background: var(--color-bg-surface);
   box-shadow: var(--shadow-lg);
 }
 
@@ -39,7 +39,7 @@
 
 .topology-rev-browser-title {
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text);
 }
@@ -48,7 +48,7 @@
   border: none;
   background: none;
   padding: 0 var(--space-2);
-  font-size: var(--font-size-lg);
+  font-size: var(--text-lg);
   line-height: 1;
   color: var(--color-text-muted);
   cursor: pointer;
@@ -93,7 +93,7 @@
 
 .topology-rev-browser-note {
   overflow: hidden;
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text);
   text-overflow: ellipsis;
 }
@@ -104,7 +104,7 @@
 
 .topology-rev-browser-meta,
 .topology-rev-browser-counts {
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
@@ -113,7 +113,7 @@
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-warning) 18%, transparent);
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
   color: var(--color-warning);
 }
 
@@ -122,7 +122,7 @@
   border: none;
   border-left: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
   background: none;
-  font-size: var(--font-size-md);
+  font-size: var(--text-md);
   color: var(--color-warning);
   cursor: pointer;
 }
@@ -135,7 +135,7 @@
 
 .topology-rev-browser-detail-title {
   margin: 0 0 var(--space-2);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text);
 }
 
@@ -144,13 +144,13 @@
 .topology-rev-browser-diff-summary,
 .topology-rev-browser-pruned-detail {
   margin: 0 0 var(--space-2);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
 .topology-rev-browser-error {
   margin: var(--space-2) var(--space-4);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-danger);
 }
 
@@ -172,7 +172,7 @@
   gap: var(--space-2);
   align-items: baseline;
   padding: var(--space-1) 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
 }
 
 .topology-rev-browser-change-kind {
@@ -207,7 +207,7 @@
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-md);
   background: none;
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-accent);
   cursor: pointer;
 }
@@ -229,7 +229,7 @@
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-md);
   background: none;
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-accent);
   cursor: pointer;
 }
@@ -248,13 +248,13 @@
   border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text);
 }
 
 /* §4's remedy: how to keep the NEXT snapshot restorable. */
 .topology-rev-browser-pruned-remedy {
   margin: 0 0 var(--space-2);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }

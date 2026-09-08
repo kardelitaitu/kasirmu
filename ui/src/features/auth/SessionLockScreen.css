@@ -351,9 +351,9 @@
 
   cursor: pointer;
   transition:
-    background var(--duration-120) var(--ease-out),
-    border-color var(--duration-120) var(--ease-out),
-    transform var(--duration-120) var(--ease-out);
+    background var(--duration-100) var(--ease-out),
+    border-color var(--duration-100) var(--ease-out),
+    transform var(--duration-100) var(--ease-out);
 
   user-select: none;
   -webkit-tap-highlight-color: transparent;
