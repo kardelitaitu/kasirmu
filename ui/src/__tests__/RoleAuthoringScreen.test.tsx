@@ -253,4 +253,164 @@ describe('RoleAuthoringScreen', () => {
     }
     expect(screen.getByText('Sensitive')).toBeInTheDocument();
   });
+
+  // ── The write paths the shipped suite never fails ──────────────────
+  //
+  // The eleven tests above exercise every happy path and one failure: a
+  // load that throws. But this screen's whole design is that the backend
+  // owns the rules — preset ids, unregistered keys, duplicate names,
+  // referenced roles — and the UI only explains them. Nothing asserted
+  // what happens when the backend says no to a WRITE, which is the case
+  // where an optimistic UI does the most damage.
+
+  const NEW = roleDto({ id: 'role-trainee', name: 'Trainee' });
+
+  /** A handler with a per-command answer table and a call log. */
+  function scripted(spec: {
+    roleLists?: unknown[][];
+    keys?: unknown[];
+    fail?: 'create_role_scoped' | 'update_role_scoped' | 'delete_role_scoped';
+    hang?: boolean;
+  }) {
+    const calls: Record<string, unknown[][]> = {};
+    let listCall = 0;
+    handler.set(async (cmd, args) => {
+      calls[cmd] = [...(calls[cmd] ?? []), [args]];
+      if (cmd === 'get_brand_settings') return BRAND_SETTINGS;
+      if (cmd === 'list_permission_keys_scoped') return spec.keys ?? PERMISSION_KEYS;
+      if (cmd === 'list_roles_scoped') {
+        if (spec.hang) return new Promise(() => {});
+        const lists = spec.roleLists ?? [[AUTHORED]];
+        return lists[Math.min(listCall++, lists.length - 1)];
+      }
+      if (spec.fail === cmd) throw new Error('refused by the backend');
+      return undefined;
+    });
+    return calls;
+  }
+
+  it('surfaces a refused save without pretending the role was saved', async () => {
+    // The catch in save() has to do three things at once: show that
+    // something went wrong, keep the editor open so the admin can fix the
+    // name they just got a conflict on, and NOT report success. Swallowing
+    // the error, or toasting before the await, each pass the shipped suite.
+    scripted({ roleLists: [[AUTHORED]], fail: 'create_role_scoped' });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Create a new custom role'));
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Night Manager' } });
+    fireEvent.click(screen.getByLabelText('Save this role'));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    // The editor survives, with the name still typed in.
+    expect(screen.getByLabelText('Save this role')).toBeInTheDocument();
+    expect(screen.getByLabelText('Role name')).toHaveValue('Night Manager');
+    // And no success is claimed.
+    expect(screen.queryByText(/Saved the .* role/)).not.toBeInTheDocument();
+    expect(callsFor('create_role_scoped')).toHaveLength(1);
+  });
+
+  it('reloads the list after a successful save so the new row appears', async () => {
+    // closeEditor() then await refresh(): without the refresh the admin
+    // saves a role that does not exist on screen until they navigate away,
+    // and the natural conclusion is that the save silently did nothing.
+    scripted({ roleLists: [[AUTHORED], [AUTHORED, NEW]] });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    expect(screen.queryByText('Trainee')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Create a new custom role'));
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Trainee' } });
+    fireEvent.click(screen.getByLabelText('Save this role'));
+
+    await waitFor(() => expect(screen.getByText('Trainee')).toBeInTheDocument());
+    expect(screen.getByText('Saved the Trainee role.')).toBeInTheDocument();
+    expect(callsFor('list_roles_scoped')).toHaveLength(2);
+    // The editor closes on success.
+    expect(screen.queryByLabelText('Save this role')).not.toBeInTheDocument();
+  });
+
+  it('surfaces a refused delete and leaves the row in place', async () => {
+    // The reference count is read when the list loads, so a role can become
+    // in-use between render and click — exactly the race the pre-check in
+    // delete_role exists for. The dialog closes either way, so the only
+    // signal left is the alert and the row still being there.
+    scripted({ roleLists: [[AUTHORED]], fail: 'delete_role_scoped' });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Delete the Night Manager role'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.queryByText(/Deleted the .* role/)).not.toBeInTheDocument();
+    expect(screen.getByText('Night Manager')).toBeInTheDocument();
+    expect(callsFor('delete_role_scoped')).toHaveLength(1);
+  });
+
+  it('drops grants the registry no longer lists from the saved payload', async () => {
+    // save() derives the payload as keys.filter(k => granted.has(k.key)),
+    // not from the granted set. The registry is the vocabulary enforcement
+    // speaks (ADR #35), so a key that has left it must not be written back
+    // just because an old row still names it. Sending [...granted] would
+    // re-introduce a key the gate can never grant.
+    const stale = roleDto({
+      id: 'role-night-manager',
+      name: 'Night Manager',
+      permissions: ['sales:view', 'legacy:gone'],
+    });
+    scripted({ roleLists: [[stale]] });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Edit the Night Manager role'));
+    fireEvent.click(screen.getByLabelText('Save this role'));
+
+    await waitFor(() => expect(callsFor('update_role_scoped')).toHaveLength(1));
+    const [payload] = callsFor('update_role_scoped');
+    // The whole update payload, not only the grants: id, name and
+    // description ride the same untyped literal, so this is also the
+    // camelCase pin for the update path.
+    expect(payload?.['args']).toEqual({
+      id: 'role-night-manager',
+      name: 'Night Manager',
+      description: '',
+      permissions: ['sales:view'],
+    });
+    // And the stale key is not offered in the picker either.
+    expect(screen.queryByLabelText('legacy:gone')).not.toBeInTheDocument();
+  });
+
+  it('will not send a save for a name that is blank or only spaces', async () => {
+    // The client mirrors the backend's empty-name rule so the button says
+    // no before the round trip. The trim is the part that matters: a name
+    // of three spaces passes a .length check and is rejected server-side.
+    scripted({ roleLists: [[AUTHORED]] });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Create a new custom role'));
+    expect(screen.getByLabelText('Save this role')).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: '   ' } });
+    expect(screen.getByLabelText('Save this role')).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Trainee' } });
+    expect(screen.getByLabelText('Save this role')).toBeEnabled();
+  });
+
+  it('claims nothing about the role set while the list is loading', async () => {
+    // The screen returns a busy skeleton before anything else, which is
+    // what keeps `roles.length === 0` from rendering "No roles yet" during
+    // the fetch. Remove that early return and every admin with existing
+    // roles is told they have none for the length of one IPC round trip.
+    scripted({ roleLists: [[]], hang: true });
+    renderScreen();
+
+    expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryByText('No roles yet')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Create a new custom role')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });
