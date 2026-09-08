@@ -1,4 +1,5 @@
 # Linux Desktop Launch Test — OZ-POS
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: Tauri window size 1280x800 (apps/desktop-client/tauri.conf.json:18-19), internal doc links resolve (../releases/checklist.md; ./windows-launch-test.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md all tracked), Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82), Tauri v2 apt dependency names (libwebkit2gtk-4.1-dev etc.) valid, cargo tauri build produces .deb/.AppImage via targets=all. FLAGGED not fixed: Settings to Database to Seed Sample Data (line 88) and the login error No staff accounts found (line 98) appear only in docs - no such Settings action exists in ui/src/features/settings/DataManagementScreen.tsx and the string is absent from code; no seeder binary exists in the repo (git grep name=seeder and ls-files grep seeder both empty). These are doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Ubuntu 22.04+ or Debian 12+
@@ -83,19 +84,29 @@ Before running the launch test, ensure the database has seed data so
 the login → POS → payment → receipt flow can execute:
 
 ```bash
-# Option A: Use the Settings UI
-#   1. Launch the app
-#   2. Settings → Database → Seed Sample Data
-#   3. Creates: 1 admin staff (PIN: 1234), 50 sample products,
-#      1 workspace with default tax rates
+# Option A: demo seeder, from the repo root (the oz CLI)
+cargo run -p oz-cli -- seed-demo --all
+cargo run -p oz-cli -- seed-demo --restaurant --days 30
 
-# Option B: Copy a pre-seeded database from CI artifacts
-#   CI builds generate a seeded test database at:
-#   target/release/test-data/oz-pos.db
-```
+# Option B: first-run default settings and feature flags on a fresh DB
+cargo run -p oz-cli -- seed
 
-> If no seed data exists, the login screen will show:
-> "No staff accounts found. Please seed the database first."
+> ⚠️ **Corrected 09-09-26.** Neither option listed here existed as written. The `Settings →
+> Database → Seed Sample Data` menu is not in the app — that string appears only in these
+> launch guides, in nothing under `ui/src`. There is no CI-produced seeded database either:
+> `test-data` is absent from every workflow and from `scripts/` (0 hits), so
+> `target/release/test-data/oz-pos.db` has never existed as a build artifact. What is real is
+> the `oz` CLI: `seed-demo` (`crates/oz-cli/src/cli.rs:95`, dispatched at
+> `crates/oz-cli/src/commands/mod.rs:90`, implemented at
+> `crates/oz-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` /
+> `--days <n>` (`cli.rs:99-112`), and `seed` for default settings and feature flags
+> (`cli.rs:39`). Read the module header before relying on it: it writes ~10k time-series
+> sales rows for analytics/report development, which is not a minimal first-launch dataset.
+
+> ⚠️ With no staff rows, login cannot succeed. The exact sentence previously quoted here as
+> on-screen text (“No staff accounts found. Please seed the database first.”) is not in the
+> code and not in any `.ftl` bundle — it occurs only in these two guides — so treat it as a
+> documentation artifact, not as an expected string.
 
 ---
 
@@ -478,3 +489,5 @@ Notes:
 - [Docker Deployment Guide](../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../operations/runbook.md) — Incident response procedures
 - [QUICKSTART](./QUICKSTART.md) — Project quick start
+
+> last audited 09-09-26 by docs-auditor

@@ -1,4 +1,5 @@
 # Windows Desktop Launch Test — OZ-POS
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-client/target/release/oz-pos-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName OZ-POS (apps/desktop-client/tauri.conf.json) so installer is OZ-POS_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-client/Cargo.toml defines only oz-pos-app and oz_pos_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-20)
 > **Target audience:** QA / developers testing on Windows 10/11
@@ -26,22 +27,38 @@ Before running the launch test, ensure the database has seed data so
 the login → POS → payment → receipt flow can execute:
 
 ```powershell
-# Option A: Use the built-in seeder (if available, from apps/desktop-client)
-cargo run --bin seeder -- --seed-staff --seed-products --seed-workspace
+# Option A: demo seeder, from the repo root (the oz CLI)
+cargo run -p oz-cli -- seed-demo --all
+cargo run -p oz-cli -- seed-demo --retail --days 30
 
-# Option B: Manual seeding via Settings UI
-#   1. Launch the app
-#   2. Settings → Database → Seed Sample Data
-#   3. This creates: 1 admin staff (PIN: 1234), 50 sample products,
-#      1 workspace with default tax rates
+# Option B: first-run default settings and feature flags on a fresh DB
+cargo run -p oz-cli -- seed
 
-# Option C: Copy a pre-seeded database from CI artifacts
-#   CI builds generate a seeded test database at:
-#   target/release/test-data/oz-pos.db
+> ⚠️ **Corrected 09-09-26 — the commands and menus this section listed were not real.**
+> There is no `seeder` binary in the workspace (the 11 `[[bin]]` targets are `oz`,
+> `oz-cloud-server`, `oz-pos-app`, `oz-pos-tablet`, and seven example/test bins), and
+> `--seed-staff` / `--seed-products` / `--seed-workspace` appear nowhere. `oz seed-demo` is the
+> real thing: the `SeedDemo` variant at `crates/oz-cli/src/cli.rs:95`, dispatched at
+> `crates/oz-cli/src/commands/mod.rs:90` into `run_seed_demo`
+> (`crates/oz-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and
+> `--days <n>` (default 90) at `cli.rs:99-112`. `oz seed` (`cli.rs:39`) is the separate
+> subcommand provisioning default settings and feature flags.
+>
+> Read the module header before relying on `seed-demo`: it generates ~10k time-series sales
+> rows in about 2 seconds for analytics and report development. That is **not** a minimal
+> first-launch dataset, and it does not guarantee a staff PIN you can log in with — a launch
+> test that needs a PIN should create staff through the app.
+>
+> The `Settings → Database → Seed Sample Data` menu does not exist: that string occurs only in
+> these launch guides and in nothing under `ui/src`, so it cannot be offered as a fallback. Nor
+> is there a CI artifact — `test-data` appears in no workflow and in no file under `scripts/`
+> (0 hits), so `target/release/test-data/oz-pos.db` has never been produced by a build.
 ```
 
-> If no seed data exists, the login screen will show an error:
-> "No staff accounts found. Please seed the database first."
+> ⚠️ With no staff rows, login cannot succeed. The literal sentence once quoted here as on-screen
+> copy — “No staff accounts found. Please seed the database first.” — exists nowhere in the
+> code and in no `.ftl` bundle; it appears only in these two guides. Do not use it as an
+> expected string, and do not read its absence from the screen as a result either way.
 
 ### Installing Prerequisites
 
@@ -421,3 +438,5 @@ Notes:
 - [VPS Migration Guide](../operations/vps-migration.md) — Cloud server deployment
 - [Docker Deployment Guide](../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../operations/runbook.md) — Incident response procedures
+
+> last audited 09-09-26 by docs-auditor
