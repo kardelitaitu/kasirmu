@@ -168,7 +168,11 @@ export default function Tooltip({
     }
 
     setClamped({ left, top });
-  }, [visible, portal, position, triggerRect]);
+    // `align` is read by the top/bottom branches above (left / center / right
+    // horizontal anchoring). Without it in the array, changing `align` while a
+    // portal tooltip is visible leaves the bubble at the old offset until some
+    // other dep fires.
+  }, [visible, portal, position, triggerRect, align]);
 
   const tooltipNode = (
     <div
