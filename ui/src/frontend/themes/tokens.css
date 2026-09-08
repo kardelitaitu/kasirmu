@@ -56,6 +56,14 @@
   --color-bg-secondary:    #1e293b;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
 
+  /* --color-paper is THEME-INVARIANT on purpose (like the --text-* scale): declared
+     in this :root block only, never overridden per theme. It is the scannable-surface
+     white — QR quiet zones, printed-code surfaces — which must stay #ffffff in dark,
+     light and dark-solid alike, because a scanner rejects a code whose quiet zone
+     follows the theme into near-black. Anything printed on it takes --color-ink, not
+     --color-fg. */
+  --color-paper:           #ffffff;
+
   /* ── Semantic: Text ───────────────────────────────────────── */
   --color-fg:              #e8eaef;
   --color-fg-primary:      #f1f5f9;

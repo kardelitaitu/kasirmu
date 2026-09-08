@@ -183,11 +183,16 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   /* The padding around the code IS the QR's outer quiet zone, so it must be the
-     same paper-white in every theme. --color-pos-on-primary is the only
-     theme-invariant white in tokens.css (#ffffff in all three blocks); a --kds-*
-     surface goes near-black in dark mode and scanners reject a code whose quiet
-     zone is dark. Raw hex is not an option here — themeTokenCompliance baseline 0. */
-  background: var(--color-pos-on-primary);
+     same paper-white in every theme: a --kds-* surface goes near-black in dark mode
+     and scanners reject a code whose quiet zone is dark. --color-paper is the
+     theme-invariant scannable surface (tokens.css :root only, never overridden).
+     Before that token existed this borrowed --color-pos-on-primary — a FOREGROUND
+     token standing in for a surface, which reads as a bug to anyone auditing the
+     palette. Raw hex is not an option: themeTokenCompliance baseline 0. Note the
+     QR modules themselves are painted by qrcode.react as SVG fill PRESENTATION
+     ATTRIBUTES, where var() never resolves, so the #fff/#000 literals in
+     KdsEnrollmentModal.tsx stay (documented in 145e0265). */
+  background: var(--color-paper);
 }
 
 .kds-enrollment-device-name {
