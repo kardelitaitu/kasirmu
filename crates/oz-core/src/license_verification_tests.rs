@@ -133,10 +133,19 @@ fn ping_license_server_hits_api_health_path() {
         ok: true,
         status: "Connected (1ms)".into(),
         latency_ms: Some(1),
+        state: crate::service_health::HealthState::Operational,
+        cause: None,
     })
     .unwrap();
     assert_eq!(json["ok"], true);
     assert_eq!(json["latencyMs"], 1);
+    // The new fields ride the same camelCase convention, and the state
+    // serializes to the same snake_case string as_str/parse agree on.
+    assert_eq!(json["state"], "operational");
+    assert!(
+        json.get("cause").is_some(),
+        "cause is always present on the wire"
+    );
 }
 
 #[test]

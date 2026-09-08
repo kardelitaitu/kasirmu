@@ -116,6 +116,9 @@ pub mod refund;
 pub mod sale;
 /// Sale-deduction result types — CompleteSaleResult vs PartialStockResult (ADR-19 §2).
 pub mod sale_deduction;
+/// Service health contracts — shared state vocabulary for license, sync,
+/// payment and device connectivity, and the license-server classifier.
+pub mod service_health;
 /// Active user session state.
 pub mod session;
 /// Persistent key-value settings store.

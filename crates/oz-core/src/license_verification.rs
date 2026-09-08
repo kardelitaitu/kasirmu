@@ -50,12 +50,23 @@ pub fn license_server_url() -> String {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LicensePingResult {
-    /// Whether the server responded successfully.
+    /// Whether the server answered with a 2xx. Deliberately unchanged by
+    /// the addition of [`Self::state`]: existing callers render a connected
+    /// pill from this field, and redefining it would silently recolour a
+    /// degraded server as healthy everywhere at once. `ok` answers "did the
+    /// HTTP call succeed"; `state` answers "is the service well". They
+    /// disagree exactly when the server is up and reporting a broken
+    /// subsystem, which is the case that used to be invisible.
     pub ok: bool,
     /// Status text (e.g. "Connected", "Connection refused", ...).
     pub status: String,
     /// Round-trip latency in milliseconds, if the ping succeeded.
     pub latency_ms: Option<u64>,
+    /// The health state, from the payload rather than the status code.
+    pub state: crate::service_health::HealthState,
+    /// What is wrong, when [`Self::state`] is not
+    /// [`HealthState::Operational`](crate::service_health::HealthState::Operational).
+    pub cause: Option<String>,
 }
 
 /// Ping the license server's `/api/health` endpoint to verify reachability.
@@ -65,6 +76,8 @@ pub struct LicensePingResult {
 /// connection pill uses it so it shows green as soon as the auth server is
 /// reachable, before any license is activated.
 pub async fn ping_license_server() -> LicensePingResult {
+    use crate::service_health::{HealthState, classify_license_health};
+
     let health_url = format!("{}/api/health", license_server_url().trim_end_matches('/'));
     let start = std::time::Instant::now();
     let client = reqwest::Client::builder()
@@ -73,31 +86,56 @@ pub async fn ping_license_server() -> LicensePingResult {
     match client {
         Ok(client) => match client.get(&health_url).send().await {
             Ok(resp) => {
+                // Measured before the body read, so latency stays a
+                // round-trip figure and not a download figure.
                 let latency = start.elapsed().as_millis() as u64;
-                if resp.status().is_success() {
-                    LicensePingResult {
-                        ok: true,
-                        status: format!("Connected ({latency}ms)"),
-                        latency_ms: Some(latency),
-                    }
-                } else {
-                    LicensePingResult {
-                        ok: false,
-                        status: format!("Server returned {}", resp.status()),
-                        latency_ms: Some(latency),
-                    }
+                let code = resp.status().as_u16();
+                let ok = resp.status().is_success();
+                // Read the body on a failure too. The server answers 503
+                // *with* its full health payload when its database is down,
+                // and that body is the only thing distinguishing "up but
+                // unhealthy" from "not there". Discarding it is what made
+                // the two render identically.
+                let parsed = resp
+                    .text()
+                    .await
+                    .ok()
+                    .and_then(|t| serde_json::from_str(&t).ok());
+                let (state, cause) = classify_license_health(code, parsed.as_ref());
+                let status = match state {
+                    HealthState::Operational => format!("Connected ({latency}ms)"),
+                    HealthState::Degraded => format!(
+                        "Degraded: {} ({latency}ms)",
+                        cause.clone().unwrap_or_else(|| "reported degraded".into())
+                    ),
+                    other => format!(
+                        "{}: {}",
+                        other.as_str(),
+                        cause.clone().unwrap_or_else(|| format!("HTTP {code}"))
+                    ),
+                };
+                LicensePingResult {
+                    ok,
+                    status,
+                    latency_ms: Some(latency),
+                    state,
+                    cause,
                 }
             }
             Err(e) => LicensePingResult {
                 ok: false,
                 status: format!("Connection failed: {e}"),
                 latency_ms: None,
+                state: HealthState::Unavailable,
+                cause: Some("connection failed".into()),
             },
         },
         Err(e) => LicensePingResult {
             ok: false,
             status: format!("HTTP client init failed: {e}"),
             latency_ms: None,
+            state: HealthState::Unavailable,
+            cause: Some("http client init failed".into()),
         },
     }
 }
