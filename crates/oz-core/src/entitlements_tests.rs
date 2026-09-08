@@ -28,6 +28,8 @@ fn limits_match_the_one_limit_table_for_every_tier() {
             state: SubscriptionLifecycleState::Active,
             loaded: true,
             addons: Vec::new(),
+            is_trial: false,
+            trial_ends_at: None,
             usage: UsageCounts::default(),
         };
         assert_eq!(
@@ -149,7 +151,7 @@ fn analytics_addon_flows_only_while_active_or_grace() {
 #[test]
 fn debug_upgrade_promotes_only_active_free() {
     let conn = fresh_db();
-    let mut e = build_entitlements(&Store::new(&conn), UsageCounts::default(), true);
+    let e = build_entitlements(&Store::new(&conn), UsageCounts::default(), true);
     assert_eq!(
         e.tier,
         SubscriptionTier::Premium,
@@ -370,4 +372,101 @@ fn a_verdict_and_the_caps_payload_are_read_from_one_instance() {
             "and the verdict was promoted with it, not left on the row's Free"
         );
     }
+}
+
+// ── Phase C: trial state in the read model ──────────────────────────
+
+/// Helper: a row whose signed payload carries the given trial fields.
+fn sub_with_trial_payload(signed_payload: &str) -> TenantSubscription {
+    TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Free,
+        status: "active".into(),
+        expires_at: None,
+        max_locations: 1,
+        max_pos_instances: 1,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: signed_payload.into(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    }
+}
+
+/// The trial flag and end date are a read-model projection: they flow from
+/// the signed payload through `from_subscription` onto `Entitlements`, so a
+/// new consumer reads them from the one assembled instance instead of
+/// re-parsing the payload — Phase A's whole point applied to a new axis.
+#[test]
+fn trial_state_flows_into_the_read_model() {
+    let sub = sub_with_trial_payload(
+        r#"{"tier_key":"free","is_trial":true,"trial_ends_at":"2027-01-15T00:00:00Z"}"#,
+    );
+    let e = Entitlements::from_subscription(&sub, UsageCounts::default());
+    assert!(e.is_trial, "flag must flow through");
+    assert_eq!(
+        e.trial_ends_at.as_deref(),
+        Some("2027-01-15T00:00:00Z"),
+        "end date must flow through"
+    );
+    assert!(e.loaded, "a trial row is still a loaded row");
+}
+
+/// Carrying trial state must not change the quota answer — the tier stays
+/// the effective tier the collapse produced, and every limit still comes
+/// from the one limit table for that tier.
+#[test]
+fn trial_state_leaves_the_quota_answer_untouched() {
+    let plain = sub_with_trial_payload(r#"{"tier_key":"free"}"#);
+    let trial = sub_with_trial_payload(
+        r#"{"tier_key":"free","is_trial":true,"trial_ends_at":"2027-01-15T00:00:00Z"}"#,
+    );
+    let e_plain = Entitlements::from_subscription(&plain, UsageCounts::default());
+    let e_trial = Entitlements::from_subscription(&trial, UsageCounts::default());
+
+    assert_eq!(e_trial.tier, e_plain.tier);
+    assert_eq!(e_trial.tier, SubscriptionTier::Free);
+    assert_eq!(e_trial.state, e_plain.state);
+    for (got, want, name) in [
+        (
+            e_trial.max_locations(),
+            e_plain.max_locations(),
+            "locations",
+        ),
+        (
+            e_trial.max_pos_instances(),
+            e_plain.max_pos_instances(),
+            "pos_instances",
+        ),
+        (
+            e_trial.max_warehouses(),
+            e_plain.max_warehouses(),
+            "warehouses",
+        ),
+        (
+            e_trial.max_staff_users(),
+            e_plain.max_staff_users(),
+            "staff",
+        ),
+    ] {
+        assert_eq!(got, want, "trial must not move the {name} cap");
+    }
+    // Identity with the one limit table still holds for a trial row.
+    assert_eq!(
+        e_trial.max_locations(),
+        QuotaDimension::Locations.limit_for(&e_trial.tier)
+    );
+    // And the flag is the only difference between the two instances.
+    assert!(!e_plain.is_trial);
+    assert!(e_trial.is_trial);
+}
+
+/// Fail-closed is never a trial: an unreadable row reports Free +
+/// `unavailable` with no trial state, so a broken payload cannot make the
+/// UI promise a trial that was never signed.
+#[test]
+fn fail_closed_reports_no_trial() {
+    let e = Entitlements::fail_closed(UsageCounts::default());
+    assert!(!e.is_trial);
+    assert_eq!(e.trial_ends_at, None);
 }

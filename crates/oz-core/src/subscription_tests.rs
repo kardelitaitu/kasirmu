@@ -1552,3 +1552,110 @@ fn enforce_pos_writable_error_is_actionable() {
     assert!(err.contains("read-only"), "got: {err}");
     assert!(err.contains("grace"), "got: {err}");
 }
+// ── Phase C: trial state, client-visible ────────────────────────────
+
+/// Both trial fields present, as the server emits them for a trial key.
+#[test]
+fn trial_fields_parse_when_present() {
+    let sub = sub_with_payload(
+        r#"{"tier_key":"plus","is_trial":true,"trial_ends_at":"2027-01-15T00:00:00Z"}"#,
+    );
+    assert!(sub.is_trial());
+    assert_eq!(sub.trial_ends_at().as_deref(), Some("2027-01-15T00:00:00Z"));
+}
+
+/// A payload signed before Phase C carries neither field. It must read
+/// exactly like a paid subscription — that equivalence is why the wire
+/// change is additive and needs no dual-read on the client.
+#[test]
+fn trial_fields_absent_read_as_not_trial() {
+    let sub = sub_with_payload(r#"{"tier_key":"plus"}"#);
+    assert!(!sub.is_trial());
+    assert_eq!(sub.trial_ends_at(), None);
+}
+
+/// An explicit `false` and an explicit empty string are the paid answer,
+/// not a malformed one.
+#[test]
+fn trial_fields_explicitly_empty_read_as_not_trial() {
+    let sub = sub_with_payload(r#"{"is_trial":false,"trial_ends_at":""}"#);
+    assert!(!sub.is_trial());
+    assert_eq!(sub.trial_ends_at(), None);
+}
+
+/// `is_trial: true` with no usable deadline still reports the flag — the
+/// two fields are independent facts, not one gate.
+#[test]
+fn trial_flag_survives_a_missing_end_date() {
+    let sub = sub_with_payload(r#"{"is_trial":true,"trial_ends_at":""}"#);
+    assert!(sub.is_trial());
+    assert_eq!(sub.trial_ends_at(), None);
+}
+
+/// The fail-closed case that matters: a `trial_ends_at` that is not valid
+/// RFC3339 is dropped rather than surfaced. A trial whose deadline cannot
+/// be parsed is not a trial the client can count days against, so it is
+/// better to report no date than to report garbage as a date.
+#[test]
+fn trial_invalid_timestamp_fails_closed_to_none() {
+    for bad in [
+        "not-a-date",
+        "2027-13-45T99:99:99Z",
+        "15/01/2027",
+        "2027-01-15",
+        "2027-01-15 00:00:00",
+    ] {
+        let payload = format!(r#"{{"is_trial":true,"trial_ends_at":"{bad}"}}"#);
+        let sub = sub_with_payload(&payload);
+        assert_eq!(
+            sub.trial_ends_at(),
+            None,
+            "unparseable {bad:?} must fail closed to None"
+        );
+    }
+}
+
+/// Wrong JSON types are as untrustworthy as wrong strings.
+#[test]
+fn trial_wrongly_typed_fields_fail_closed() {
+    let sub = sub_with_payload(r#"{"is_trial":"yes","trial_ends_at":123}"#);
+    assert!(!sub.is_trial());
+    assert_eq!(sub.trial_ends_at(), None);
+}
+
+/// An unparseable payload yields the not-a-trial answer, matching the
+/// `addons()` contract in the same impl block.
+#[test]
+fn trial_unparseable_payload_fails_closed() {
+    let sub = sub_with_payload("not json at all");
+    assert!(!sub.is_trial());
+    assert_eq!(sub.trial_ends_at(), None);
+}
+
+/// Phase C's central invariant: trial-ness is carried as data ALONGSIDE
+/// the tier, and the collapse itself is untouched. `from_db("trial")`
+/// still answers Free, and adding the two fields to an otherwise
+/// identical payload moves no quota answer.
+#[test]
+fn trial_state_does_not_change_the_tier_or_quota_answer() {
+    assert_eq!(
+        SubscriptionTier::from_db("trial"),
+        SubscriptionTier::Free,
+        "the quota answer for a trial must stay Free"
+    );
+    let plain = sub_with_payload(r#"{"tier_key":"plus"}"#);
+    let trial = sub_with_payload(
+        r#"{"tier_key":"plus","is_trial":true,"trial_ends_at":"2027-01-15T00:00:00Z"}"#,
+    );
+    assert_eq!(trial.tier, plain.tier, "trial fields must not move tier");
+    assert_eq!(
+        trial.effective_tier(),
+        plain.effective_tier(),
+        "nor the grace-aware effective tier"
+    );
+    assert_eq!(trial.max_locations, plain.max_locations);
+    assert_eq!(trial.max_pos_instances, plain.max_pos_instances);
+    // ...while the flag itself is the thing that survived the collapse.
+    assert!(trial.is_trial());
+    assert!(!plain.is_trial());
+}

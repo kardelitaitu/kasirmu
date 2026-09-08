@@ -342,6 +342,19 @@ pub struct SignedSubscriptionPayload {
     pub grace_until: String,
     /// When this payload was issued.
     pub issued_at: String,
+    /// Phase C (todo-global-saas-2.md): whether this subscription period is
+    /// a trial. Defaults to `false` when the field is absent, which is both
+    /// a paid subscription and any payload signed before Phase C — the
+    /// additive wire change needs no dual-read. The tier/quota answer is
+    /// unaffected: a trial tier still resolves to Free.
+    #[serde(default)]
+    pub is_trial: bool,
+    /// When the trial ends, RFC3339, from the signed payload. `None` when
+    /// the field is absent or empty (i.e. not a trial, or a pre-Phase-C
+    /// payload). Validated by [`crate::subscription::TenantSubscription`]
+    /// rather than here: an unparseable value fails closed to `None`.
+    #[serde(default)]
+    pub trial_ends_at: Option<String>,
 }
 
 // ── Signature Verification ──────────────────────────────────────────

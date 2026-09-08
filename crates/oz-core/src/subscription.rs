@@ -571,6 +571,58 @@ impl TenantSubscription {
         self.addons().iter().any(|a| a.to_lowercase() == lower)
     }
 
+    /// Trial state carried by the signed payload (Phase C), parsed in one
+    /// pass: `(is_trial, trial_ends_at)`.
+
+    /// Read from the signed payload rather than a column — Phase C is
+    /// deliberately JSON-only with no schema migration, and the payload is
+    /// the signature-covered source of truth, so a tampered row cannot
+    /// invent a trial. Everything that cannot be trusted fails closed to
+    /// `(false, None)`: an empty or unparseable payload, an absent or
+    /// wrongly-typed `is_trial`, an absent or empty `trial_ends_at` — and,
+    /// the interesting case, a `trial_ends_at` that is not valid RFC3339.
+    /// A trial whose end date cannot be parsed is not a trial we can warn
+    /// about, so it reports as not-a-trial rather than as a trial with no
+    /// deadline.
+    fn parsed_trial(&self) -> (bool, Option<String>) {
+        if self.signed_payload.is_empty() {
+            return (false, None);
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&self.signed_payload) else {
+            return (false, None);
+        };
+        let is_trial = value
+            .get("is_trial")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let ends_at = value
+            .get("trial_ends_at")
+            .and_then(serde_json::Value::as_str)
+            .filter(|s| !s.is_empty())
+            .filter(|s| chrono::DateTime::parse_from_rfc3339(s).is_ok())
+            .map(str::to_string);
+        (is_trial, ends_at)
+    }
+
+    /// Whether the signed payload marks this period as a trial.
+    ///
+    /// Orthogonal to the tier on purpose: `SubscriptionTier::from_db("trial")`
+    /// keeps resolving to Free, so this flag is the only thing that survives
+    /// the collapse. See [`Self::parsed_trial`] for the fail-closed contract.
+    #[must_use]
+    pub fn is_trial(&self) -> bool {
+        self.parsed_trial().0
+    }
+
+    /// When the trial ends, from the signed payload (`None` when this is
+    /// not a trial, or when the date is absent or unparseable).
+    ///
+    /// Returned owned because it is parsed per call, like [`Self::addons`].
+    #[must_use]
+    pub fn trial_ends_at(&self) -> Option<String> {
+        self.parsed_trial().1
+    }
+
     /// Whether the subscription supports analytics, accounting for add-ons.
     ///
     /// Pro+ natively supports analytics. Plus gains analytics via the

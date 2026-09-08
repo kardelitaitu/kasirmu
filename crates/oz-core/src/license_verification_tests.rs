@@ -189,6 +189,78 @@ fn store_subscription_inserts_row() {
     assert_eq!(stored.api_key, "oz_test_api_key_123");
 }
 
+/// Phase C round-trip: a trial payload stored through the production path
+/// and re-loaded from the row still reports both trial fields. This is the
+/// proof that the wire change needs no migration — the fields ride inside
+/// the `signed_payload` column the table already has, so nothing new is
+/// persisted and a tampered row cannot invent a trial without breaking the
+/// signature that covers the payload.
+#[test]
+fn store_subscription_round_trips_trial_fields() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    let payload = r#"{
+        "tenant_id": "trial-tenant",
+        "tier_key": "pro",
+        "status": "active",
+        "max_locations": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["restaurant-pos", "store-pos"],
+        "starts_at": "2026-09-08T00:00:00Z",
+        "expires_at": "2026-09-22T00:00:00Z",
+        "grace_until": "2026-10-06T00:00:00Z",
+        "issued_at": "2026-09-08T00:00:00Z",
+        "is_trial": true,
+        "trial_ends_at": "2026-09-22T00:00:00Z"
+    }"#;
+
+    store_subscription(&conn, "trial-tenant", payload, "BOOTSTRAP_FREE", "k")
+        .expect("store_subscription should succeed");
+
+    let stored = TenantSubscription::load(&conn, "trial-tenant")
+        .expect("load")
+        .expect("row should exist");
+    assert!(stored.is_trial(), "trial flag must survive the round trip");
+    assert_eq!(
+        stored.trial_ends_at().as_deref(),
+        Some("2026-09-22T00:00:00Z"),
+        "trial end must survive the round trip"
+    );
+    // And the quota answer is untouched by any of it.
+    assert_eq!(stored.tier, crate::subscription::SubscriptionTier::Pro);
+}
+
+/// The mirror case: a pre-Phase-C payload (no trial fields at all) loads
+/// through the same path and reads as not-a-trial rather than erroring.
+#[test]
+fn store_subscription_trial_fields_absent_reads_as_paid() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    let payload = r#"{
+        "tenant_id": "paid-tenant",
+        "tier_key": "pro",
+        "status": "active",
+        "max_locations": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["store-pos"],
+        "starts_at": "2026-09-08T00:00:00Z",
+        "expires_at": "2027-09-08T00:00:00Z",
+        "grace_until": "2027-09-22T00:00:00Z",
+        "issued_at": "2026-09-08T00:00:00Z"
+    }"#;
+
+    store_subscription(&conn, "paid-tenant", payload, "BOOTSTRAP_FREE", "k")
+        .expect("store_subscription should succeed");
+
+    let stored = TenantSubscription::load(&conn, "paid-tenant")
+        .expect("load")
+        .expect("row should exist");
+    assert!(!stored.is_trial());
+    assert_eq!(stored.trial_ends_at(), None);
+}
+
 #[test]
 #[allow(deprecated)] // OneTime kept for DB back-compat
 fn store_subscription_handles_all_tier_keys() {

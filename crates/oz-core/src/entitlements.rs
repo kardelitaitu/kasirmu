@@ -46,6 +46,16 @@ pub struct Entitlements {
     pub loaded: bool,
     /// Add-on identifiers from the signed payload (empty when fail-closed).
     pub addons: Vec<String>,
+    /// Phase C: whether the signed payload marks this period as a trial.
+    ///
+    /// Carried alongside `tier` rather than folded into it — the tier stays
+    /// the quota answer (a trial resolves to Free), and this is the fact
+    /// that used to be lost by that collapse. `false` when fail-closed: an
+    /// unreadable row is never reported as a trial.
+    pub is_trial: bool,
+    /// When the trial ends, RFC3339, from the signed payload; `None` when
+    /// this is not a trial or the date is absent/unparseable.
+    pub trial_ends_at: Option<String>,
     /// Current usage counts (the same `count_*` the gates consult).
     pub usage: UsageCounts,
 }
@@ -59,6 +69,8 @@ impl Entitlements {
             state: sub.lifecycle_state(),
             loaded: true,
             addons: sub.addons(),
+            is_trial: sub.is_trial(),
+            trial_ends_at: sub.trial_ends_at(),
             usage,
         }
     }
@@ -75,6 +87,8 @@ impl Entitlements {
             state: SubscriptionLifecycleState::Unavailable,
             loaded: false,
             addons: Vec::new(),
+            is_trial: false,
+            trial_ends_at: None,
             usage,
         }
     }
