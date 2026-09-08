@@ -193,7 +193,12 @@ describe('RoleAuthoringScreen', () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Warehouse Lead')).toBeInTheDocument());
     expect(screen.getByLabelText('Delete the Warehouse Lead role')).toBeDisabled();
-    expect(screen.getByText('Used by 2 accounts')).toBeInTheDocument();
+    // "records", not "accounts": the number behind this label counts
+    // foreign-key rows across four tables, and create_user writes two of them
+    // for one person — so it has never been a count of accounts. See
+    // role-in-use in staff.ftl.
+    expect(screen.getByText('Referenced by 2 records')).toBeInTheDocument();
+    expect(screen.queryByText(/Used by \\d+ account/)).not.toBeInTheDocument();
   });
 
   it('creates with the camelCase wire keys Tauri binds', async () => {
@@ -560,6 +565,27 @@ describe('RoleAuthoringScreen', () => {
     await waitFor(() => expect(screen.getByText('Could not load holders.')).toBeInTheDocument());
     expect(screen.getByText('Night Manager')).toBeInTheDocument();
     expect(screen.queryByText('0 accounts')).not.toBeInTheDocument();
-    expect(screen.queryByText('No accounts hold this role.')).not.toBeInTheDocument();
+  });
+
+  it('states records on the row and accounts in the list, without contradiction', async () => {
+    // The precise false claim the reword removes. A role granted to a
+    // workspace type and held by nobody has reference_count 1: under the old
+    // copy the row asserted "Used by 1 account" and, expanded one line below,
+    // "No accounts hold this role." Both were drawn from the same screen.
+    const granted_only = roleDto({
+      id: 'role-granted-only',
+      name: 'Granted Only',
+      reference_count: 1,
+    });
+    scripted({ roleLists: [[granted_only]], holderPage: holdersPage([]) });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Granted Only')).toBeInTheDocument());
+    expect(screen.getByText('Referenced by 1 record')).toBeInTheDocument();
+    expect(screen.queryByText(/Used by \\d+ account/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Granted Only role'));
+    await waitFor(() => expect(screen.getByText('No accounts hold this role.')).toBeInTheDocument());
+    // The two sentences now describe different things and agree: one FK row,
+    // zero accounts.
+    expect(screen.getByText('Referenced by 1 record')).toBeInTheDocument();
   });
 });

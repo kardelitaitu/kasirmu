@@ -224,9 +224,17 @@ role-edit = Edit
 role-edit-aria = Edit the { $name } role
 role-delete = Delete
 role-delete-aria = Delete the { $name } role
+# Counts FOREIGN-KEY rows across four tables (users, assignments, and the two
+# workspace-grant tables), which is the right basis for disabling Delete and
+# the wrong basis for a sentence about people: create_user writes both a users
+# row and an assignments row for one person, so the old "Used by N accounts"
+# reported double for every ordinary account, and a role held by nobody but
+# granted to one workspace type reported one account that did not exist. The
+# account truth is the Holders disclosure below, which uses the resolver
+# predicate rather than a row count. So: records here, accounts there.
 role-in-use = { $count ->
-    [one] Used by 1 account
-   *[other] Used by { $count } accounts
+    [one] Referenced by 1 record
+   *[other] Referenced by { $count } records
   }
 role-editor-create-title = New role
 role-editor-edit-title = Edit role

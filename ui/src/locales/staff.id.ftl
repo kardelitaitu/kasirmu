@@ -250,9 +250,14 @@ role-edit = Ubah
 role-edit-aria = Ubah peran { $name }
 role-delete = Hapus
 role-delete-aria = Hapus peran { $name }
+# Menghitung baris FOREIGN KEY di empat tabel, bukan jumlah orang. Lihat
+# penjelasan pada staff.ftl: "Dipakai N akun" dulu menggandakan setiap akun
+# biasa, karena create_user menulis baris users DAN assignments untuk satu
+# orang. Jumlah akun yang sebenarnya ada di daftar Pemegang di bawah, yang
+# memakai predikat resolusi dan bukan hitungan baris.
 role-in-use = { $count ->
-    [one] Dipakai 1 akun
-   *[other] Dipakai { $count } akun
+    [one] Dirujuk 1 catatan
+   *[other] Dirujuk { $count } catatan
   }
 role-editor-create-title = Peran baru
 role-editor-edit-title = Ubah peran
