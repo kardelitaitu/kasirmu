@@ -1015,6 +1015,21 @@ type SubscriptionPayload struct {
 	ExpiresAt       string   `json:"expires_at"`
 	GraceUntil      string   `json:"grace_until"`
 	IssuedAt        string   `json:"issued_at"`
+	// IsTrial and TrialEndsAt publish trial state to the client
+	// (entitlements consolidation Phase C, todo-global-saas-2.md). Additive
+	// only — no existing field was renamed or removed, and both are omitted
+	// unless this subscription period actually IS a trial, so a payload
+	// signed before this change and a paid payload read identically: the
+	// client needs no dual-read. trial_ends_at is RFC3339 and is the trial's
+	// own end (the segmented-trial expiry), not the tier's billing expiry.
+	//
+	// Only the activation path can set them: is_trial lives on license_keys,
+	// and the subscriptions rows the webhook/renew/resume re-sign paths read
+	// have no such field (Phase C is deliberately JSON-only, no schema
+	// migration). Those paths therefore emit no trial fields, which is the
+	// correct answer — a period produced by a paid re-sign is not a trial.
+	IsTrial     bool   `json:"is_trial,omitempty"`
+	TrialEndsAt string `json:"trial_ends_at,omitempty"`
 }
 
 // signSubscription marshals the payload to JSON, SHA-256 hashes it,

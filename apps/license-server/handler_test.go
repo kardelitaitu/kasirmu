@@ -1896,6 +1896,151 @@ func TestTrialVerticalSegmentation(t *testing.T) {
 	}
 }
 
+// TestSignedPayload_CarriesTrialState verifies Phase C (todo-global-saas-2
+// md, "trial state, client-visible"): a trial-key activation publishes
+// is_trial and trial_ends_at INSIDE the signed payload, so the client can
+// render trial UI without the tier collapse throwing the fact away
+// (SubscriptionTier::from_db("trial") => Free stays the quota answer).
+// trial_ends_at must be valid RFC3339 and the trial's own deadline — the
+// same instant as expires_at, not a billing period.
+func TestSignedPayload_CarriesTrialState(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	mux, err := se.Router.BuildMux()
+	if err != nil {
+		t.Fatalf("BuildMux failed: %v", err)
+	}
+
+	seedTrialKey(t, app, "OZ-TRIALPC-001", "plus", "unused", "2099-12-31 23:59:59.000Z")
+	body := strings.NewReader(`{
+		"key": "OZ-TRIALPC-001",
+		"email": "trialphasec001@example.com",
+		"machine_id": "trialpcmach0001",
+		"trial_vertical": ""
+	}`)
+	req := httptest.NewRequest("POST", "/api/v1/license/activate", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	payloadStr, ok := resp["signed_payload"].(string)
+	if !ok {
+		t.Fatal("expected signed_payload in response")
+	}
+
+	// Assert on the RAW JSON, not just a decoded struct: a key that is
+	// absent and a key that is present-but-false are the same answer to the
+	// client but different claims about what the server actually emitted.
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(payloadStr), &raw); err != nil {
+		t.Fatalf("failed to parse signed_payload: %v", err)
+	}
+	if v, present := raw["is_trial"]; !present {
+		t.Error("trial payload must carry is_trial")
+	} else if v != true {
+		t.Errorf("expected is_trial=true, got %v", v)
+	}
+	endRaw, present := raw["trial_ends_at"]
+	if !present {
+		t.Fatal("trial payload must carry trial_ends_at")
+	}
+	endStr, isStr := endRaw.(string)
+	if !isStr {
+		t.Fatalf("expected trial_ends_at to be a string, got %T", endRaw)
+	}
+
+	var sp SubscriptionPayload
+	if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
+		t.Fatalf("failed to parse signed_payload: %v", err)
+	}
+	if !sp.IsTrial {
+		t.Error("decoded IsTrial must be true for a trial key")
+	}
+	endAt, err := time.Parse(time.RFC3339, endStr)
+	if err != nil {
+		t.Fatalf("trial_ends_at must be RFC3339, got %q: %v", endStr, err)
+	}
+	expAt, err := time.Parse(time.RFC3339, sp.ExpiresAt)
+	if err != nil {
+		t.Fatalf("failed to parse expires_at: %v", err)
+	}
+	if d := endAt.Sub(expAt); d > time.Second || d < -time.Second {
+		t.Errorf("trial_ends_at (%v) must be the trial's own expiry (%v), diff %v", endAt, expAt, d)
+	}
+	// Blank vertical mints a 14-day Plus trial (§4), so the deadline is
+	// ~14 days out — proving it tracked the segmented trial length rather
+	// than the key's own expiry (seeded at 2099).
+	if d := time.Until(endAt); d < 13*24*time.Hour || d > 15*24*time.Hour {
+		t.Errorf("expected trial_ends_at ~14 days out, got %v", d)
+	}
+}
+
+// TestSignedPayload_PaidKeyOmitsTrialFields verifies the other half of
+// Phase C: a paid activation carries NEITHER field. Both are omitempty, so
+// a paid payload is byte-identical to a pre-Phase-C payload and the client
+// needs no dual-read — "absent" and "not a trial" are one code path.
+func TestSignedPayload_PaidKeyOmitsTrialFields(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	mux, err := se.Router.BuildMux()
+	if err != nil {
+		t.Fatalf("BuildMux failed: %v", err)
+	}
+
+	seedLicenseKey(t, app, "OZ-PAIDPC-001", "pro", "unused", "2099-12-31 23:59:59.000Z")
+	body := strings.NewReader(`{
+		"key": "OZ-PAIDPC-001",
+		"email": "paidphasec001@example.com",
+		"machine_id": "paidpcmach0001"
+	}`)
+	req := httptest.NewRequest("POST", "/api/v1/license/activate", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	payloadStr, ok := resp["signed_payload"].(string)
+	if !ok {
+		t.Fatal("expected signed_payload in response")
+	}
+	if strings.Contains(payloadStr, "is_trial") {
+		t.Errorf("paid payload must not carry is_trial: %s", payloadStr)
+	}
+	if strings.Contains(payloadStr, "trial_ends_at") {
+		t.Errorf("paid payload must not carry trial_ends_at: %s", payloadStr)
+	}
+
+	var sp SubscriptionPayload
+	if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
+		t.Fatalf("failed to parse signed_payload: %v", err)
+	}
+	if sp.IsTrial {
+		t.Error("a paid key must never decode as a trial")
+	}
+	if sp.TrialEndsAt != "" {
+		t.Errorf("expected empty TrialEndsAt, got %q", sp.TrialEndsAt)
+	}
+	// The paid period's own expiry is untouched by the new fields.
+	if _, err := time.Parse(time.RFC3339, sp.ExpiresAt); err != nil {
+		t.Errorf("paid expires_at must still be RFC3339: %v", err)
+	}
+}
+
 // TestTrialVerticalSegmentation_PaidKeyIgnored verifies the C2.1 security
 // gate: trial_vertical is read ONLY for trial keys. A paid key activated
 // with trial_vertical="restaurant" must keep its own tier, quota block,

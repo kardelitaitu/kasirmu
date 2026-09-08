@@ -941,6 +941,22 @@ func handleActivate(app core.App) func(e *core.RequestEvent) error {
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
 
+		// ── Trial state, client-visible (Phase C) ─────────────────
+		// The client collapses a trial tier to Free for quota purposes
+		// (SubscriptionTier::from_db("trial") => Free), which is the right
+		// quota answer but throws away the fact that this tenant is on a
+		// trial and when it ends. Publish both here so trial UI/policy needs
+		// no new wire surface. expiresAt is already the segmented trial's own
+		// end (overridden above from trialDays), so trial_ends_at is the trial
+		// deadline rather than a billing period.
+		//
+		// Paid keys never enter this branch, and both fields are omitempty —
+		// a paid payload carries neither, exactly like a pre-Phase-C payload.
+		if isTrialKey {
+			sub.IsTrial = true
+			sub.TrialEndsAt = expiresAt.Format(time.RFC3339)
+		}
+
 		// ── Build and sign subscription payload ───────────────────
 		payloadStr, signature, err := signSubscription(sub)
 		if err != nil {
