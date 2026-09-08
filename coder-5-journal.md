@@ -137,6 +137,104 @@ line 180 stays `[ ]`.
 
 ---
 
+## 2026-09-08 — finisher-C: the sync-pull column gap REPAIRED (scoped rates now travel)
+
+Same day as the slice that created the hazard. The previous entry recorded it as
+"a live hazard, not a cosmetic gap"; the supervisor made it the top tax
+follow-up and it is now closed. Core-only: no UI, no IPC, no dev-mock.
+
+### Commit
+
+| sha | subject | files |
+|---|---|---|
+| *(this commit)* | `fix(sync): carry tax rate scope and window through the snapshot` | 9 + this journal |
+
+### The chain had SIX drop sites, not two
+
+The brief named `SnapshotTaxRate` and `upsert_tax_rates`. Following one payload
+row end to end found six places that dropped the columns — fixing only two
+would have produced a repair that changed nothing observable:
+
+| end | site | change |
+|---|---|---|
+| wire | `platform/sync/src/transport.rs::SnapshotTaxRate` | +4 `#[serde(default)] Option<String>` |
+| wire | `crates/oz-core/src/sync_pull.rs::SnapshotTaxRate` | the same four — the client's own copy of the contract |
+| producer | `platform/sync/src/pg_transport.rs` | SELECT + map the four |
+| producer | `apps/cloud-server/src/sync_store.rs::sqlite_snapshot_tax_rates` | SELECT + `json!` the four |
+| producer | `apps/cloud-server/src/sync_store.rs::pg_snapshot_tax_rates` | SELECT + `json!` the four |
+| consumer | `crates/oz-core/src/sync_pull.rs::upsert_tax_rates` | INSERT + ON CONFLICT the four |
+| consumer | `platform/sync/src/lib.rs::import_snapshot` | INSERT + ON CONFLICT the four |
+
+Checked and NOT a hole: `apps/cloud-server/src/bin/migrate_sqlite_to_pg.rs`
+takes `SELECT *` and intersects live column names from both sides, so it picked
+the new columns up with no edit. Worth writing down because "the migrator is
+another leak" is the obvious guess and it is wrong here.
+
+### Three rulings, each pinned by a test
+
+1. **Absence = tenant-global.** A payload carrying none of the four keys — every
+   server predating 20260921 — lands as the tenant-global legacy row, which is
+   what every such row already is. `#[serde(default)]` on all four, on BOTH wire
+   copies, plus `snapshot_tax_rate_accepts_a_payload_without_the_scope_keys`.
+   Absence is not an error and not "unknown scope".
+2. **ON CONFLICT assigns the four UNCONDITIONALLY, never
+   `COALESCE(excluded.x, tax_rates.x)`.** A pull makes the server authoritative,
+   so a scope REMOVED at the hub must clear at the branch; COALESCE would keep a
+   dead location scope alive forever. Pinned by
+   `pull_clears_a_stale_scope_when_the_server_row_is_unscoped` and its
+   platform-sync twin.
+3. **A scope this database cannot honour is REFUSED, not flattened — and that is
+   a deliberate DEVIATION from the products convention.**
+   `import_snapshot_unknown_store_id_fails_closed_and_rolls_back` establishes
+   that an unresolvable FK fails the whole import. For tax the options were:
+   (a) flatten to NULL — the exact money bug this repair exists to close;
+   (b) fail — one orphaned scope would break every pull for the tenant;
+   (c) refuse that one row. Chosen (c): the resolver's answer for "no scoped row
+   matches" is the tenant-global row, i.e. precisely what the branch had before
+   the pull, so nothing is priced with a rate meant for somewhere else. Loud via
+   `tracing::warn!` with the ids, and observable via the returned count. An
+   ambiguous row (both columns set) is refused by the same path, matching
+   `TaxRateScope::classify`.
+
+### Gates
+
+| gate | result |
+|---|---|
+| `cargo test -p oz-core --lib pull_` | **4 new / 6 passed / 0 failed** |
+| `cargo test -p platform-sync --lib import_snapshot_` | **23 passed / 0 failed** (5 new) |
+| `cargo test -p platform-sync --lib snapshot_tax_rate` | **2 passed / 0 failed** (new) |
+| `cargo test -p platform-sync --lib` | **306 passed / 0 failed** |
+| `cargo test -p oz-core --lib` | **2776 passed / 0 failed** in 132.27s |
+| `cargo test -p oz-cloud-server --bins snapshot` | **20 passed / 0 failed**, 2 ignored (new producer test + the shared fixture now asserts the four keys on both backends) |
+| `RUSTFLAGS=-D warnings cargo check -p oz-core -p platform-sync -p oz-cloud-server --all-targets` | **exit 0**, zero warnings |
+| `cargo fmt --all --check` | clean |
+
+12 new tests total. The one that would have caught the original bug is
+`pull_lands_a_scoped_rate_and_the_branch_prices_only_its_location`: it pulls a
+Jakarta rate plus a global default and asserts loc-jkt pays 1100 while loc-bali
+pays 1000 — before this repair the payload arrived unscoped and Jakarta answered
+for both.
+
+### Still owed on the tax box (unchanged, and it stays `[ ]`)
+
+Write-side IPC (blocked on the hot `ui/src/dev-mock/tauri-api.ts`), the DB-level
+one-or-the-other guard with its `TRIGGER_MAP` port, rewiring
+`resolve_best_tax_rates_for_sku` / `compute_sale_tax` through the scoped
+resolver, and per-scope `is_inclusive`. `todo-global-saas-2.md` was read, not
+written.
+
+### Note for whoever reads the tree next
+
+`cargo fmt --all --check` briefly reported drift in
+`apps/desktop-client/src/commands/audit_security_events_tests.rs` — another
+agent's in-flight file, not mine, and clean on the next pass. Two files in this
+tree (`crates/oz-core/migrations/20260813_init.pg.sql`, `coder-5-journal.md`)
+show ` M` in `git status` with an EMPTY `git diff`: stale stat entries left by
+the pre-commit hook's EOL/fmt pass, verified content-identical by
+`git hash-object` against the HEAD blob. Not dirty work — do not "recover" them.
+
+---
+
 ## D2 — Server-side per-feature grant authoring (PLAN APPROVED, implemented)
 
 **Status:** implemented; `gofmt -w` + `go vet ./...` clean; `go test -short`

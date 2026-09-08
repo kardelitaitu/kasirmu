@@ -392,6 +392,10 @@ fn typed_response() -> SyncSnapshotResponse {
             is_inclusive: false,
             created_at: None,
             updated_at: None,
+            legal_entity_id: None,
+            location_id: None,
+            effective_from: None,
+            effective_to: None,
         }],
         users: vec![SnapshotUser {
             id: "u-1".into(),
@@ -771,5 +775,45 @@ async fn health_check_fails_when_server_returns_error() {
     assert!(
         err.contains("500") || err.contains("Internal Server Error"),
         "error should mention status code, got: {err}"
+    );
+}
+
+// ── SnapshotTaxRate wire shape (tax scoping) ─────────────────────
+
+#[test]
+fn snapshot_tax_rate_accepts_a_payload_without_the_scope_keys() {
+    // The back-compat ruling, pinned at the wire: a server predating
+    // 20260921 sends seven keys, not eleven. That must deserialize — to the
+    // tenant-global shape — rather than fail the whole snapshot.
+    let legacy = r#"{"id":"t-1","name":"Tax One","rate_bps":1000}"#;
+    let rate: SnapshotTaxRate = serde_json::from_str(legacy).unwrap();
+    assert_eq!(rate.id, "t-1");
+    assert_eq!(rate.rate_bps, 1000);
+    assert_eq!(rate.legal_entity_id, None);
+    assert_eq!(rate.location_id, None);
+    assert_eq!(rate.effective_from, None);
+    assert_eq!(rate.effective_to, None);
+}
+
+#[test]
+fn snapshot_tax_rate_round_trips_scope_and_window_verbatim() {
+    // Values are carried, not re-derived: the exclusive-end rule lives in
+    // oz_core::db::tax and must not be restated per transport.
+    let json = r#"{"id":"t-2","name":"Jakarta","rate_bps":1100,
+                   "legal_entity_id":null,"location_id":"loc-jkt",
+                   "effective_from":"2026-01-01","effective_to":"2027-01-01"}"#;
+    let rate: SnapshotTaxRate = serde_json::from_str(json).unwrap();
+    assert_eq!(rate.legal_entity_id, None, "explicit null stays None");
+    assert_eq!(rate.location_id.as_deref(), Some("loc-jkt"));
+    assert_eq!(rate.effective_from.as_deref(), Some("2026-01-01"));
+    assert_eq!(rate.effective_to.as_deref(), Some("2027-01-01"));
+
+    let back = serde_json::to_value(&rate).unwrap();
+    assert_eq!(back["location_id"], "loc-jkt");
+    assert_eq!(back["effective_to"], "2027-01-01");
+    assert_eq!(
+        back["legal_entity_id"],
+        serde_json::Value::Null,
+        "an unscoped-by-entity row serializes as null, which the branch reads back as None"
     );
 }

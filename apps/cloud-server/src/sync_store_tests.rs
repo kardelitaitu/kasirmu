@@ -139,6 +139,54 @@ async fn sqlite_backend_push_pull_plan_snapshot_roundtrip() {
     assert_eq!(users.len(), 0);
 }
 
+#[tokio::test]
+async fn sqlite_snapshot_carries_tax_rate_scope_and_window() {
+    // The producer half of the repair. A hub row scoped to a location must
+    // leave the snapshot WITH that scope: the branch maps a missing key to
+    // tenant-global, so an omitted column here is precisely how one location's
+    // rate ends up pricing every location.
+    let conn = fresh_db();
+    {
+        let guard = conn.lock().await;
+        guard
+            .execute(
+                "INSERT INTO legal_entities (id, tenant_id, name) \
+                 VALUES ('ent-hub', 'tenant-hub', 'Hub Entity')",
+                [],
+            )
+            .unwrap();
+        guard
+            .execute(
+                "INSERT INTO locations (id, name, tenant_id) \
+                 VALUES ('loc-hub', 'Hub Location', 'tenant-hub')",
+                [],
+            )
+            .unwrap();
+        guard
+            .execute(
+                "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, \
+                                        tenant_id, location_id, effective_from, effective_to) \
+                 VALUES ('tax-hub', 'Hub VAT', 1100, 0, 0, 'tenant-hub', 'loc-hub', \
+                         '2026-01-01', '2027-01-01')",
+                [],
+            )
+            .unwrap();
+    }
+
+    let store = SyncStore::sqlite(conn);
+    let (_, tax_rates, _) = store.snapshot_all("tenant-hub").await.unwrap();
+    assert_eq!(tax_rates.len(), 1);
+    assert_eq!(tax_rates[0]["location_id"], "loc-hub");
+    assert_eq!(tax_rates[0]["effective_from"], "2026-01-01");
+    assert_eq!(tax_rates[0]["effective_to"], "2027-01-01");
+    assert_eq!(
+        tax_rates[0]["legal_entity_id"],
+        serde_json::Value::Null,
+        "location-scoped, not entity-scoped: the other column stays null rather than \
+         being invented"
+    );
+}
+
 /// Duplicate-id detection for the Postgres path keys on SQLSTATE 23505,
 /// not on the error message (unlike SQLite's "UNIQUE" substring).
 #[tokio::test]
@@ -330,6 +378,28 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     assert_eq!(tax_rates.len(), 1);
     assert_eq!(tax_rates[0]["is_default"], false);
     assert_eq!(tax_rates[0]["is_inclusive"], false);
+
+    // The scope + window keys must be PRESENT on every snapshot row, including
+    // an unscoped one. Their absence is what let a scoped rate reach a branch
+    // reading as tenant-global; here null means "tenant-global" and the client
+    // maps it to exactly that. Asserted for both backends because both build
+    // the payload independently.
+    for key in [
+        "legal_entity_id",
+        "location_id",
+        "effective_from",
+        "effective_to",
+    ] {
+        assert!(
+            tax_rates[0].get(key).is_some(),
+            "snapshot tax rate must carry {key:?} (null is meaningful, missing is not)"
+        );
+        assert_eq!(
+            tax_rates[0][key],
+            serde_json::Value::Null,
+            "an unscoped rate emits {key:?} as null on both backends"
+        );
+    }
 
     // Users: is_active=0 → false, and pin_hash must not leak (SYNC-06).
     assert_eq!(users.len(), 1);

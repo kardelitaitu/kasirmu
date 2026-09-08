@@ -715,3 +715,196 @@ fn format_expiry_twenty_five_hours() {
 fn format_expiry_unparseable_fallback() {
     assert_eq!(format_expiry("not-a-timestamp"), "expires not-a-timestamp");
 }
+
+// ── Scoped tax rates through the pull ────────────────────────────
+//
+// The wire shape is exercised by DESERIALIZING JSON rather than by building
+// SnapshotTaxRate in Rust, because the contract under test is the payload:
+// what an old server sends, what a new server sends, and what absence means.
+
+fn seed_scope(store: &Store<'_>, entity: &str, location: &str) {
+    store
+        .conn()
+        .execute(
+            "INSERT OR IGNORE INTO legal_entities (id, tenant_id, name) VALUES (?1, 'default', ?1)",
+            rusqlite::params![entity],
+        )
+        .unwrap();
+    store
+        .conn()
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?1)",
+            rusqlite::params![location],
+        )
+        .unwrap();
+}
+
+fn pull(store: &Store<'_>, json: &str) -> PullResult {
+    let snap: Snapshot = serde_json::from_str(json).expect("snapshot payload must deserialize");
+    apply_snapshot(store, &snap).unwrap()
+}
+
+fn stored_scope(
+    store: &Store<'_>,
+    id: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
+    store
+        .conn()
+        .query_row(
+            "SELECT legal_entity_id, location_id, effective_from, effective_to \
+             FROM tax_rates WHERE id = ?1",
+            rusqlite::params![id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap()
+}
+
+#[test]
+fn pull_lands_a_scoped_rate_and_the_branch_prices_only_its_location() {
+    // THE test that closes the hazard: before the four columns travelled, this
+    // payload arrived unscoped and the Jakarta rate answered for every
+    // location. Now the scoped row applies where it belongs and nowhere else.
+    let store = setup();
+    seed_scope(&store, "ent-a", "loc-jkt");
+    let result = pull(
+        &store,
+        r#"{"tax_rates": [
+            {"id": "r-global", "name": "Global VAT", "rate_bps": 1000, "is_default": true},
+            {"id": "r-jkt", "name": "Jakarta", "rate_bps": 1100,
+             "location_id": "loc-jkt", "effective_from": "2026-01-01", "effective_to": "2027-01-01"}
+        ]}"#,
+    );
+    assert_eq!(result.tax_rates_pulled, 2);
+    assert_eq!(
+        stored_scope(&store, "r-jkt"),
+        (
+            None,
+            Some("loc-jkt".into()),
+            Some("2026-01-01".into()),
+            Some("2027-01-01".into())
+        ),
+        "scope and window survive the wire verbatim"
+    );
+
+    let at_jkt = store
+        .resolve_tax_rate_for_location("loc-jkt", Some("ent-a"), "2026-09-08")
+        .unwrap()
+        .unwrap();
+    assert_eq!((at_jkt.id.as_str(), at_jkt.rate_bps), ("r-jkt", 1100));
+    let at_elsewhere = store
+        .resolve_tax_rate_for_location("loc-bali", Some("ent-a"), "2026-09-08")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (at_elsewhere.id.as_str(), at_elsewhere.rate_bps),
+        ("r-global", 1000),
+        "another location must NOT be priced by the pulled Jakarta rate"
+    );
+
+    // Boundary day: the exclusive effective_to survived the round trip, so the
+    // successor (here, the global row) takes over on 2027-01-01.
+    let after = store
+        .resolve_tax_rate_for_location("loc-jkt", Some("ent-a"), "2027-01-01")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.id, "r-global",
+        "window end is exclusive over the wire too"
+    );
+}
+
+#[test]
+fn pull_lands_a_legacy_payload_as_the_tenant_global_row() {
+    // Back-compat direction, pinned: a payload with NO scope keys — every
+    // server predating 20260921 — lands as the tenant-global legacy row, which
+    // is what every such row already is. Absence is not an error and not
+    // "unknown scope".
+    let store = setup();
+    seed_scope(&store, "ent-a", "loc-a");
+    let result = pull(
+        &store,
+        r#"{"tax_rates": [{"id": "r-old", "name": "Old shape", "rate_bps": 825, "is_default": true}]}"#,
+    );
+    assert_eq!(result.tax_rates_pulled, 1);
+    assert_eq!(stored_scope(&store, "r-old"), (None, None, None, None));
+    assert_eq!(
+        store
+            .resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .map(|r| r.id),
+        Some("r-old".to_string()),
+        "the legacy row is the tenant-global answer"
+    );
+}
+
+#[test]
+fn pull_refuses_a_scoped_rate_whose_target_is_absent_locally() {
+    // Skipping, not flattening: writing NULL here would promote a rate meant
+    // for one location to the tenant-global answer. The FK would reject the
+    // write anyway, and unlike the products path this does NOT roll back the
+    // whole pull — the deviation is documented on the helper in sync_pull.rs.
+    let store = setup();
+    seed_scope(&store, "ent-a", "loc-a");
+    let result = pull(
+        &store,
+        r#"{"tax_rates": [
+            {"id": "r-ghost", "name": "Ghost scope", "rate_bps": 1500, "location_id": "loc-ghost"},
+            {"id": "r-both", "name": "Ambiguous", "rate_bps": 1600,
+             "legal_entity_id": "ent-a", "location_id": "loc-a"},
+            {"id": "r-ok", "name": "Fine", "rate_bps": 1000, "is_default": true}
+        ]}"#,
+    );
+    assert_eq!(
+        result.tax_rates_pulled, 1,
+        "the unresolvable and ambiguous rows are refused, the good one lands"
+    );
+    for id in ["r-ghost", "r-both"] {
+        let present: i64 = store
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM tax_rates WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(present, 0, "{id} must not be stored at all");
+    }
+    assert_eq!(
+        stored_scope(&store, "r-ok"),
+        (None, None, None, None),
+        "the surviving row is still the tenant-global answer"
+    );
+}
+
+#[test]
+fn pull_clears_a_stale_scope_when_the_server_row_is_unscoped() {
+    // The ON CONFLICT assignments are unconditional, not COALESCE: a pull makes
+    // the server authoritative, so a scope REMOVED at the hub must clear here.
+    // COALESCE would keep a dead location scope alive forever.
+    let store = setup();
+    seed_scope(&store, "ent-a", "loc-a");
+    store
+        .conn()
+        .execute(
+            "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, is_active, location_id) \
+             VALUES ('r-x', 'Was scoped', 1100, 0, 0, 1, 'loc-a')",
+            [],
+        )
+        .unwrap();
+    assert_eq!(stored_scope(&store, "r-x").1, Some("loc-a".into()));
+
+    pull(
+        &store,
+        r#"{"tax_rates": [{"id": "r-x", "name": "Now global", "rate_bps": 1100}]}"#,
+    );
+    assert_eq!(
+        stored_scope(&store, "r-x"),
+        (None, None, None, None),
+        "the hub dropped the scope, so the branch must too"
+    );
+}

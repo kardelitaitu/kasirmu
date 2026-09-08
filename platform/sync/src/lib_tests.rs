@@ -729,6 +729,10 @@ fn product(sku: &str, name: &str, price_minor: i64) -> transport::SnapshotProduc
 }
 
 /// Build a typed snapshot tax rate (RUST-04) with valid defaults.
+///
+/// Unscoped: every field of the scope/window block is `None`, which is the
+/// tenant-global legacy shape — what a payload from a pre-20260921 server
+/// deserializes to. Scoped tests set the fields explicitly.
 fn tax_rate(id: &str, name: &str, rate_bps: i64) -> transport::SnapshotTaxRate {
     transport::SnapshotTaxRate {
         id: id.to_owned(),
@@ -738,6 +742,10 @@ fn tax_rate(id: &str, name: &str, rate_bps: i64) -> transport::SnapshotTaxRate {
         is_inclusive: false,
         created_at: None,
         updated_at: None,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
     }
 }
 
@@ -911,6 +919,10 @@ fn import_snapshot_rejects_blank_tax_rate() {
             is_inclusive: false,
             created_at: None,
             updated_at: None,
+            legal_entity_id: None,
+            location_id: None,
+            effective_from: None,
+            effective_to: None,
         }],
         users: vec![],
     };
@@ -1392,5 +1404,197 @@ fn import_snapshot_unknown_store_id_fails_closed_and_rolls_back() {
     assert_eq!(
         count, 0,
         "failed import must leave no products behind (transaction rolled back)"
+    );
+}
+
+// ── Scoped tax rates over the sync channel ───────────────────────
+//
+// The four columns added by 20260921_tax_rate_scoping.sql must travel with the
+// rate. A scoped row that arrives WITHOUT its scope lands as NULL, and NULL
+// scope IS the tenant-global answer — one location's rate would then price
+// every location that pulled it. Absence is not neutral in this table.
+
+fn seed_scope(conn: &rusqlite::Connection, entity: &str, location: &str) {
+    conn.execute(
+        "INSERT OR IGNORE INTO legal_entities (id, tenant_id, name) VALUES (?1, 'default', ?1)",
+        rusqlite::params![entity],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?1)",
+        rusqlite::params![location],
+    )
+    .unwrap();
+}
+
+/// Read back the scope + window of one stored rate.
+fn stored_scope(
+    store: &Store<'_>,
+    id: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
+    store
+        .conn()
+        .query_row(
+            "SELECT legal_entity_id, location_id, effective_from, effective_to \
+             FROM tax_rates WHERE id = ?1",
+            rusqlite::params![id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap()
+}
+
+fn scoped_rate(id: &str, bps: i64) -> transport::SnapshotTaxRate {
+    transport::SnapshotTaxRate {
+        location_id: Some("loc-a".into()),
+        effective_from: Some("2026-01-01".into()),
+        effective_to: Some("2027-01-01".into()),
+        ..tax_rate(id, "Scoped", bps)
+    }
+}
+
+#[test]
+fn import_snapshot_lands_a_scoped_tax_rate_as_scoped() {
+    let conn = oz_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    seed_scope(&conn, "ent-a", "loc-a");
+    let snapshot = transport::SyncSnapshotResponse {
+        version: 1,
+        products: vec![],
+        tax_rates: vec![scoped_rate("r-scoped", 1100)],
+        users: vec![],
+    };
+    assert_eq!(import_snapshot(&store, &snapshot).unwrap(), 1);
+    assert_eq!(
+        stored_scope(&store, "r-scoped"),
+        (
+            None,
+            Some("loc-a".into()),
+            Some("2026-01-01".into()),
+            Some("2027-01-01".into())
+        ),
+        "scope and window must survive the wire verbatim"
+    );
+}
+
+#[test]
+fn import_snapshot_lands_an_unscoped_tax_rate_as_tenant_global() {
+    // The back-compat direction, pinned: a payload with NO scope keys — which
+    // is every payload a pre-20260921 server sends — lands as the tenant-global
+    // legacy row, exactly as it did before the columns existed.
+    let conn = oz_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    let snapshot = transport::SyncSnapshotResponse {
+        version: 1,
+        products: vec![],
+        tax_rates: vec![tax_rate("r-legacy", "Legacy", 1000)],
+        users: vec![],
+    };
+    import_snapshot(&store, &snapshot).unwrap();
+    assert_eq!(
+        stored_scope(&store, "r-legacy"),
+        (None, None, None, None),
+        "no scope keys means tenant-global"
+    );
+}
+
+#[test]
+fn import_snapshot_refuses_a_scoped_rate_whose_target_is_absent_locally() {
+    // The deliberate DEVIATION from the products convention above: an
+    // unresolvable scope does NOT roll back the import. The two alternatives
+    // were "fail every pull for this tenant" and "flatten the scope", and
+    // flattening is the money bug this whole path exists to close. Refusing one
+    // row degrades to "no scoped rate here", which is what the branch had.
+    let conn = oz_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    seed_scope(&conn, "ent-a", "loc-a");
+    let mut ghost = scoped_rate("r-ghost", 1500);
+    ghost.location_id = Some("loc-ghost".into());
+    let snapshot = transport::SyncSnapshotResponse {
+        version: 1,
+        products: vec![],
+        tax_rates: vec![
+            ghost,
+            tax_rate("r-global", "Global", 1000),
+            scoped_rate("r-scoped", 1100),
+        ],
+        users: vec![],
+    };
+    let written = import_snapshot(&store, &snapshot).unwrap();
+    assert_eq!(
+        written, 2,
+        "the unresolvable row is skipped, its two siblings still import"
+    );
+    let ghost_present: i64 = store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM tax_rates WHERE id = 'r-ghost'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(ghost_present, 0, "a refused row is not written at all");
+    // And critically: it was NOT flattened into a tenant-global rate.
+    assert_eq!(
+        stored_scope(&store, "r-scoped").1,
+        Some("loc-a".into()),
+        "the sibling scoped row keeps its scope"
+    );
+}
+
+#[test]
+fn import_snapshot_refuses_a_rate_scoped_to_both_columns() {
+    // Ambiguous, not narrower. The branch refuses rather than picking whichever
+    // column it read first — the same rule TaxRateScope encodes.
+    let conn = oz_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    seed_scope(&conn, "ent-a", "loc-a");
+    let mut both = scoped_rate("r-both", 1500);
+    both.legal_entity_id = Some("ent-a".into());
+    let snapshot = transport::SyncSnapshotResponse {
+        version: 1,
+        products: vec![],
+        tax_rates: vec![both],
+        users: vec![],
+    };
+    assert_eq!(
+        import_snapshot(&store, &snapshot).unwrap(),
+        0,
+        "an ambiguous scope is never applied"
+    );
+}
+
+#[test]
+fn import_snapshot_clears_a_stale_scope_when_the_server_row_is_unscoped() {
+    // The ON CONFLICT clause assigns the four columns UNCONDITIONALLY, not via
+    // COALESCE. The server is the authoritative copy in a pull, so a scope
+    // removed at the hub must clear at the branch — COALESCE would keep a dead
+    // scope alive forever.
+    let conn = oz_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    seed_scope(&conn, "ent-a", "loc-a");
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, is_active, location_id) \
+         VALUES ('r-x', 'Was scoped', 1100, 0, 0, 1, 'loc-a')",
+        [],
+    )
+    .unwrap();
+    assert_eq!(stored_scope(&store, "r-x").1, Some("loc-a".into()));
+
+    let snapshot = transport::SyncSnapshotResponse {
+        version: 1,
+        products: vec![],
+        tax_rates: vec![tax_rate("r-x", "Now global", 1100)],
+        users: vec![],
+    };
+    import_snapshot(&store, &snapshot).unwrap();
+    assert_eq!(
+        stored_scope(&store, "r-x"),
+        (None, None, None, None),
+        "the hub cleared the scope, so the branch must too"
     );
 }

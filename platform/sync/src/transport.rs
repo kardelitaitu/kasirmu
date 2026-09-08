@@ -188,6 +188,32 @@ pub struct SnapshotTaxRate {
     /// ISO-8601 last-update timestamp.
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// Scope: the legal entity this rate applies to, or `None` when it is not
+    /// entity-scoped. With [`Self::location_id`] this is
+    /// one-or-the-other-or-neither — `oz_core::db::tax::TaxRateScope` is the
+    /// type that cannot represent both.
+    ///
+    /// These four fields exist because a scoped rate that travels WITHOUT its
+    /// scope lands as NULL, and NULL scope means **tenant-global**: a Jakarta
+    /// rate would silently price every branch that pulled it. Absence of the
+    /// keys in a payload is therefore read as tenant-global — which is exactly
+    /// what every pre-scoping row is — so an older server keeps working and
+    /// keeps the same answer.
+    #[serde(default)]
+    pub legal_entity_id: Option<String>,
+    /// Scope: the location this rate applies to, or `None` when it is not
+    /// location-scoped.
+    #[serde(default)]
+    pub location_id: Option<String>,
+    /// Validity window start, business date `YYYY-MM-DD`; `None` = no lower
+    /// bound. Compared as a DATE, never as text — see
+    /// `oz_core::db::tax::parse_effective_date`.
+    #[serde(default)]
+    pub effective_from: Option<String>,
+    /// Validity window end, business date `YYYY-MM-DD`, EXCLUSIVE; `None` =
+    /// does not expire.
+    #[serde(default)]
+    pub effective_to: Option<String>,
 }
 
 /// A user row in a server snapshot (typed, RUST-04).

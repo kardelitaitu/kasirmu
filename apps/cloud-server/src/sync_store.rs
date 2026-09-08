@@ -900,9 +900,16 @@ fn sqlite_snapshot_tax_rates(
     conn: &Connection,
     tenant_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
+    // Scope + validity window travel with the rate. A scoped row emitted
+    // WITHOUT its scope arrives at the branch as NULL scope, and NULL scope IS
+    // the tenant-global answer — one location's rate would then price every
+    // location that pulled it. Absence is not neutral in this table, so the
+    // columns are explicit here and the client maps a missing key to
+    // tenant-global (which is what every pre-20260921 row already is).
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at \
+            "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at, \
+                    legal_entity_id, location_id, effective_from, effective_to \
              FROM tax_rates WHERE tenant_id = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -914,7 +921,11 @@ fn sqlite_snapshot_tax_rates(
             "is_default": row.get::<_, bool>("is_default")?,
             "is_inclusive": row.get::<_, bool>("is_inclusive")?,
             "created_at": row.get::<_, Option<String>>("created_at")?,
-            "updated_at": row.get::<_, Option<String>>("updated_at")?
+            "updated_at": row.get::<_, Option<String>>("updated_at")?,
+            "legal_entity_id": row.get::<_, Option<String>>("legal_entity_id")?,
+            "location_id": row.get::<_, Option<String>>("location_id")?,
+            "effective_from": row.get::<_, Option<String>>("effective_from")?,
+            "effective_to": row.get::<_, Option<String>>("effective_to")?
         }))
     })
     .map_err(|e| e.to_string())?
@@ -1145,9 +1156,12 @@ async fn pg_snapshot_tax_rates(
     client: &mut impl deadpool_postgres::GenericClient,
     tenant_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
+    // See sqlite_snapshot_tax_rates: scope and window must travel, or a
+    // location-scoped rate arrives unscoped and reads as tenant-global.
     let stmt = client
         .prepare_cached(
-            "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at \
+            "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at, \
+                    legal_entity_id, location_id, effective_from, effective_to \
              FROM tax_rates WHERE tenant_id = $1",
         )
         .await
@@ -1168,6 +1182,10 @@ async fn pg_snapshot_tax_rates(
                 "is_inclusive": pg_bool(row, "is_inclusive")?,
                 "created_at": row.try_get::<_, Option<String>>("created_at").map_err(|e| e.to_string())?,
                 "updated_at": row.try_get::<_, Option<String>>("updated_at").map_err(|e| e.to_string())?,
+                "legal_entity_id": row.try_get::<_, Option<String>>("legal_entity_id").map_err(|e| e.to_string())?,
+                "location_id": row.try_get::<_, Option<String>>("location_id").map_err(|e| e.to_string())?,
+                "effective_from": row.try_get::<_, Option<String>>("effective_from").map_err(|e| e.to_string())?,
+                "effective_to": row.try_get::<_, Option<String>>("effective_to").map_err(|e| e.to_string())?,
             }),
         );
     }
