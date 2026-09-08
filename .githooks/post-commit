@@ -1,51 +1,165 @@
 #!/bin/sh
 
 # codebase-memory-mcp auto-index start
-# Run codebase memory indexing in the background for supported subdirectories.
-# Uses the CLI directly (MCP-invoked indexing does not reliably handle all folder types).
-# Note: ui/src is indexed per-subfolder because the full directory is too large for one pass.
+# Refresh the code knowledge graph in the background after every commit.
 #
-# Performance tuning for high core-count machines:
-#   RAYON_NUM_THREADS  — controls the CBM indexer's internal Rust thread pool.
-#   CBM_MEM_BUDGET_MB  — caps RAM usage (default = 50% of total RAM).
+# WHY THIS EXISTS
+#   Agents explore this repo through the codebase-memory graph, and the graph
+#   only advances when something re-indexes it. The previous version of this
+#   hook ran 535 commits (2026-09-05 01:32 -> 2026-09-08) without indexing once,
+#   and nothing anywhere revealed it: every failure path was pointed at
+#   /dev/null. A gate that fails silently is indistinguishable from a gate that
+#   was deleted, so this revision's whole design is "make the failure visible".
+#
+# TWO LIVE BUGS THIS NOW GUARDS
+#   1. Binary resolution. An indexer build refuses to act as a client while a
+#      *newer* daemon is active - it hangs 30s and dies with "CBM daemon is
+#      active or starting but could not accept this client". The copy under
+#      %LOCALAPPDATA%\Programs was exactly that stale build, and it was winning
+#      because the hook resolved via PATH first. Resolution now mirrors
+#      ~/.agents/bin/codebase-memory-mcp-launcher.py, which had already learned
+#      this and documented it; the hook simply never got the memo.
+#   2. Windows reserved-name ghosts. A file literally named `nul` in the repo
+#      root (created by a `2> nul` typo under Git bash - cmd writes to the NUL
+#      device, MSYS creates a real file) aborts the indexer's discovery pass
+#      before it writes anything, so the whole root index fails in ~2s with a
+#      generic "Pipeline failed". `.cbmignore` lists `nul` but never gets the
+#      chance to apply. The old comment here claimed those files were "now
+#      deleted", which is how the bug survived: the claim was true at the time
+#      and false forever after, with no guard to notice.
+#
+# Everything expensive runs in a backgrounded subshell: a commit must never
+# wait on the indexer, and a 30s daemon handshake must never look like a hang.
+#
+# Tunables (all optional):
+#   CBM_EXE                  pin the indexer binary, skip resolution entirely
+#   CODEBASE_MEMORY_MCP_BIN  same pin, under the name the MCP launcher honours
+#   RAYON_NUM_THREADS        indexer thread pool (default 32)
+#   CBM_MEM_BUDGET_MB        indexer RAM cap (default 16384)
+#   CBM_POST_COMMIT_LOG      override the run-log path
+#   CBM_SKIP_POST_COMMIT=1   disable for this one commit
+
 export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-32}"
 export CBM_MEM_BUDGET_MB="${CBM_MEM_BUDGET_MB:-16384}"
 
-# Resolve the repo root from git itself (portable) rather than a
-# hardcoded machine path — the hook must work when the repo is cloned
-# anywhere or the machine differs.
+if [ "${CBM_SKIP_POST_COMMIT:-0}" = "1" ]; then
+    exit 0
+fi
+
 _REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "$_REPO_ROOT" ]; then
     exit 0
 fi
 
-# Resolve the indexer binary: env override, then PATH, then the
-# standard Windows install location. Previous version hardcoded
-# C:/Users/<user>/... which silently disabled indexing on other machines.
-_CBM_EXE="${CBM_EXE:-}"
+# cbm-resolve-start -------------------------------------------------------------
+# Resolve the indexer binary. Order mirrors the MCP launcher on purpose, so the
+# binary this hook spawns and the daemon the agents talk to are the same build.
+_CBM_EXE="${CBM_EXE:-${CODEBASE_MEMORY_MCP_BIN:-}}"
+
+# 1. Newest versioned Windows install - the UI daemon runs from this root.
 if [ -z "$_CBM_EXE" ]; then
-    if command -v codebase-memory-mcp >/dev/null 2>&1; then
-        _CBM_EXE="$(command -v codebase-memory-mcp)"
-    elif command -v codebase-memory-mcp.exe >/dev/null 2>&1; then
-        _CBM_EXE="$(command -v codebase-memory-mcp.exe)"
-    else
-        for d in /c/Users/*/AppData/Local/Programs/codebase-memory-mcp; do
-            if [ -x "$d/codebase-memory-mcp.exe" ]; then
-                _CBM_EXE="$d/codebase-memory-mcp.exe"
-                break
-            fi
-        done
-    fi
+    _CBM_NEWEST="$(ls -1 "$HOME/AppData/Local/codebase-memory-mcp"/*/codebase-memory-mcp.exe 2>/dev/null | sort -V -r | head -1)"
+    [ -n "$_CBM_NEWEST" ] && _CBM_EXE="$_CBM_NEWEST"
 fi
 
-if [ -n "$_CBM_EXE" ]; then
-    # Index the entire repo as a single unified project.
-    # Root was previously broken by Windows 'nul' ghost device files (now deleted).
-    # .cbmignore at the root excludes node_modules, target, dist, logs, binaries, etc.
+# 2. Newest versioned POSIX install (macOS/Linux contributors).
+if [ -z "$_CBM_EXE" ]; then
+    _CBM_NEWEST="$(ls -1 "$HOME/.local/share/codebase-memory-mcp"/*/codebase-memory-mcp 2>/dev/null | sort -V -r | head -1)"
+    [ -n "$_CBM_NEWEST" ] && _CBM_EXE="$_CBM_NEWEST"
+fi
+
+# 3. PATH. A fallback, never a first choice: a PATH entry can point at the
+#    legacy Programs install, which is the build that refuses to join a newer
+#    daemon. This is the exact ordering mistake that cost 535 commits.
+if [ -z "$_CBM_EXE" ]; then
+    _CBM_EXE="$(command -v codebase-memory-mcp 2>/dev/null || command -v codebase-memory-mcp.exe 2>/dev/null || true)"
+fi
+
+# 4. Legacy Programs install, last. Better a stale build that may fail loudly
+#    in the log than no indexer at all.
+if [ -z "$_CBM_EXE" ]; then
+    for _CBM_D in "$HOME/AppData/Local/Programs/codebase-memory-mcp"; do
+        if [ -x "$_CBM_D/codebase-memory-mcp.exe" ]; then
+            _CBM_EXE="$_CBM_D/codebase-memory-mcp.exe"
+            break
+        fi
+    done
+fi
+
+# 5. Bare POSIX locations.
+if [ -z "$_CBM_EXE" ]; then
+    for _CBM_D in "$HOME/.local/bin" /usr/local/bin; do
+        if [ -x "$_CBM_D/codebase-memory-mcp" ]; then
+            _CBM_EXE="$_CBM_D/codebase-memory-mcp"
+            break
+        fi
+    done
+fi
+# cbm-resolve-end ---------------------------------------------------------------
+
+if [ -z "$_CBM_EXE" ]; then
+    # The only message this hook ever prints, and it prints for the one state a
+    # developer can actually act on: the indexer is not installed anywhere.
+    echo "post-commit: codebase-memory-mcp not found - graph index NOT refreshed" >&2
+    exit 0
+fi
+
+# cbm-ghosts-start ---------------------------------------------------------------
+# Relocate Windows reserved-name ghosts out of the repo root. Tracked paths are
+# never touched: only files git does not know about are moved, and they are
+# moved (not deleted), so a concurrent agent's in-flight file is recoverable.
+_cbm_quarantine_ghosts() {
+    _GQ_ROOT="${1:-}"
+    [ -n "$_GQ_ROOT" ] || return 0
+    _GQ_KEEP="$(git -C "$_GQ_ROOT" rev-parse --git-path cbm-ghosts 2>/dev/null || true)"
+    [ -n "$_GQ_KEEP" ] || return 0
+    # --git-path answers relative to the worktree, so re-anchor it: the caller
+    # may not be sitting in the repo root.
+    case "$_GQ_KEEP" in
+        /*|[A-Za-z]:/*) : ;;
+        *) _GQ_KEEP="$_GQ_ROOT/$_GQ_KEEP" ;;
+    esac
+    mkdir -p "$_GQ_KEEP" 2>/dev/null || return 0
+    for _GQ_NAME in nul nul.txt con con.txt aux aux.txt prn prn.txt com1 lpt1; do
+        _GQ_FILE="$_GQ_ROOT/$_GQ_NAME"
+        [ -e "$_GQ_FILE" ] || continue
+        if git -C "$_GQ_ROOT" ls-files --error-unmatch -- "$_GQ_NAME" >/dev/null 2>&1; then
+            continue
+        fi
+        mv -f -- "$_GQ_FILE" "$_GQ_KEEP/$(date +%s)-$_GQ_NAME" 2>/dev/null || true
+    done
+    return 0
+}
+# cbm-ghosts-end -----------------------------------------------------------------
+
+_CBM_LOG="${CBM_POST_COMMIT_LOG:-}"
+if [ -z "$_CBM_LOG" ]; then
+    _CBM_LOG="$(git rev-parse --git-path cbm-post-commit.log 2>/dev/null || true)"
+fi
+case "$_CBM_LOG" in
+    /*|[A-Za-z]:/*) : ;;
+    "") : ;;
+    *) _CBM_LOG="$_REPO_ROOT/$_CBM_LOG" ;;
+esac
+[ -n "$_CBM_LOG" ] || _CBM_LOG="${TMPDIR:-/tmp}/cbm-post-commit.log"
+
+(
+    _CBM_LOG_FILE="$_CBM_LOG"
+    # Keep the log bounded: 1679 historical runs would otherwise grow forever.
+    if [ -f "$_CBM_LOG_FILE" ] && [ "$(wc -c <"$_CBM_LOG_FILE" 2>/dev/null || echo 0)" -gt 524288 ]; then
+        mv -f -- "$_CBM_LOG_FILE" "$_CBM_LOG_FILE.old" 2>/dev/null || true
+    fi
+
+    _cbm_quarantine_ghosts "$_REPO_ROOT"
+
+    printf '%s index start exe=%s root=%s\n' "$(date -Iseconds 2>/dev/null)" "$_CBM_EXE" "$_REPO_ROOT" >>"$_CBM_LOG_FILE"
     "$_CBM_EXE" cli index_repository \
         --repo-path "$_REPO_ROOT" \
         --mode full \
-        --name "oz-pos" >/dev/null 2>&1 &
-fi
-# codebase-memory-mcp auto-index end
+        --name "oz-pos" >>"$_CBM_LOG_FILE" 2>&1
+    _CBM_STATUS=$?
+    printf '%s index exit=%s\n' "$(date -Iseconds 2>/dev/null)" "$_CBM_STATUS" >>"$_CBM_LOG_FILE"
+) &
 
+exit 0
+# codebase-memory-mcp auto-index end

@@ -578,6 +578,12 @@ jobs:
         run: bash scripts/test-typecheck-gate.sh
       - name: EOL guard self-test
         run: bash scripts/test-eol-guard.sh
+      # Gate: scripts/gates.json -> "cbm-hook-guard". Polices .githooks/post-commit,
+      # which indexes the codebase-memory graph after every commit and had been
+      # failing silently for 535 commits. Local-only failure, so CI is the only
+      # place its resolution order and ghost guard can be re-checked on a clean box.
+      - name: post-commit index guard self-test
+        run: bash scripts/test-cbm-hook.sh
       - name: Test shadow copies
         run: python3 scripts/verify-test-shadow-copies.py
       - name: IPC command parity

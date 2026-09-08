@@ -476,6 +476,14 @@
       "runners": { "check.sh": ["typecheck gate"] }
     },
     {
+      "id": "cbm-hook-guard",
+      "label": "post-commit index guard",
+      "status": "required",
+      "_note": "Added in 0.0.37. Guards .githooks/post-commit, which refreshes the codebase-memory graph every commit and had been dead for 535 commits (2026-09-05 01:32 to 2026-09-08) with nothing anywhere reporting it. Two causes, both invisible at commit time: it resolved the indexer off PATH, landing on the stale %LOCALAPPDATA%\\Programs build that refuses to join a newer running daemon (30s handshake timeout), and it sent that failure to /dev/null. A third, unrelated hazard was found while proving the fix: a file literally named 'nul' in the repo root -- what '2> nul' creates under Git bash, unlike cmd.exe -- aborts the indexer's discovery pass in ~2s before .cbmignore is consulted, so the whole root index fails with a generic 'Pipeline failed'. The test extracts the live resolve and ghost-quarantine blocks from the hook via markers rather than copying them, so it cannot drift from what it polices, and it FATALs if a marker disappears instead of passing vacuously. It asserts versioned-over-PATH precedence, numeric (not lexical) version ordering, both pin env vars, that PATH and the legacy install remain reachable as fallbacks, that untracked reserved-name ghosts are relocated to .git/cbm-ghosts while tracked paths are never touched, that no index output is pointed at /dev/null, that the hook is mode 100755 in the index, and end to end that a real 'git hook run post-commit' writes a start line, captures the indexer's stdout, records a zero exit status, clears a ghost, and honours CBM_SKIP_POST_COMMIT=1.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "runners": { "check.sh": ["cbm hook guard"] }
+    },
+    {
       "id": "agents-mirrors",
       "label": "AGENTS.md mirror truthfulness",
       "status": "required",

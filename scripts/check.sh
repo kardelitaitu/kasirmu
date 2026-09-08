@@ -395,6 +395,16 @@ step "eol guard" "bash scripts/test-eol-guard.sh" bash scripts/test-eol-guard.sh
 # Gate: scripts/gates.json -> "typecheck-gate".
 step "typecheck gate" "bash scripts/test-typecheck-gate.sh" bash scripts/test-typecheck-gate.sh
 
+# .githooks/post-commit refreshes the codebase-memory graph on every commit. It
+# ran 535 commits without indexing once and nothing reported it: it resolved the
+# indexer off PATH onto a stale build that refuses to join a newer running
+# daemon, and sent the 30s handshake failure to /dev/null. Same lesson as the two
+# guards above -- a hook step that fails silently is indistinguishable from one
+# that was deleted -- plus a second hazard: a 'nul' ghost in the repo root (what
+# '2> nul' makes under Git bash) aborts discovery before .cbmignore applies.
+# Gate: scripts/gates.json -> "cbm-hook-guard".
+step "cbm hook guard" "bash scripts/test-cbm-hook.sh" bash scripts/test-cbm-hook.sh
+
 # ── AGENTS.md mirror truthfulness ──────────────────────────────────────────
 # Three copies of the agent rules exist and `bump-version.ps1` syncs only their
 # version lines. Twice in 0.0.36 a mirror stated something the repo contradicted:
