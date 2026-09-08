@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } fro
 import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/frontend/shared/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import {
@@ -16,6 +17,7 @@ import {
 } from '@/features/settings/workspace-cards';
 import { updateLocationProfileScoped, getLocationProfileScoped, type LocationProfile } from '@/api/locations';
 import TopologyApplyConfirm, { type ApplyDiffItem, type TopologyApplyConfirmData } from './TopologyApplyConfirm';
+import { WarehouseQuotaChip } from './WarehouseQuotaChip';
 import {
   TrashIcon,
   CloseIcon,
@@ -1183,6 +1185,15 @@ export default function NodeTopologyEditor({
   // include it) — the spawn gate and the live validation must agree with
   // the Apply boundary or a Premium install blocks its second Stock Room.
   const isProAllowed = useMemo(() => ['pro', 'premium', 'enterprise'].includes(currentTier), [currentTier]);
+
+  // Slice A (saas-2 §J downgrade tail): warehouse over-limit readout. The count
+  // comes from the editor's in-graph node state (no new IPC); the cap comes from
+  // SubscriptionCapabilities.maxWarehouses via useSubscription.
+  const { caps } = useSubscription();
+  const warehouseCount = useMemo(
+    () => nodes.filter((n) => n.type === 'warehouse').length,
+    [nodes],
+  );
   /** True when adding `extra` warehouse nodes would exceed the tier cap
    *  (one warehouse per install below Pro). The palette spawn, Ctrl+D,
    *  Ctrl+V, Alt+drag, and the mid-drag Alt conversion ALL share this gate
@@ -5251,6 +5262,9 @@ export default function NodeTopologyEditor({
                 </Localized>
               </span>
             </div>
+          )}
+          {caps && warehouseCount > 0 && (
+            <WarehouseQuotaChip count={warehouseCount} maxWarehouses={caps.maxWarehouses} />
           )}
           {dirtySummary && (
             <span className="topology-dirty-chip" role="status" onMouseDown={(e) => e.stopPropagation()}>
