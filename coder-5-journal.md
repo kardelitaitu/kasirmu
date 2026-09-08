@@ -571,3 +571,83 @@ Other §J/audit follow-ups surfaced from this vantage:
 ### Next
 - Awaiting supervisor greenlight on the Slice C plan before any implementation. Do NOT start
   unprompted. Slice B (KDS-screen over-limit) REMAINS QUEUED behind dev-mock (hot file).
+
+---
+
+## 2026-09-08 — finisher-B: S-A role-CRUD fold + the create-side preset guard (saas-3 custom-roles follow-up)
+
+Closes the follow-up recorded at `todo-global-saas-3.md:136`: role authoring
+landed in `7948344e` with three of its four writes in `db/roles.rs` and the
+fourth — `create_role` — left behind in `db/staff.rs` with its own copy of the
+grant validator and no preset guard.
+
+### Why the missing guard was a real door, not tidiness
+
+`seed_default_roles` upserts every `RolePreset` id and **overwrites its
+grants**, and it is reachable from the UI via `seed_default_roles_scoped`.
+`update_role` and `delete_role` refuse those ids for exactly that reason.
+`create_role` did not — so a row minted at a preset id on a database that had
+not seeded yet was silently destroyed by the first seed, with no error to
+trace. The production caller already generates `role-<uuidv7>` and documents
+that it is "outside ROLE_PRESETS by construction", but that was a convention
+the command layer asked **of itself**; the core write path would have accepted
+a preset id from any other caller.
+
+### The fold is call-site-free by construction
+
+`Store` is one type whose `impl` blocks are split per domain, so moving the
+method between files changes **zero** call sites: desktop
+`commands/staff.rs:718`, tablet `commands/staff.rs:725`, and every test call
+compile untouched. The constraint that gated this slice was that
+`crates/oz-core/src/db/staff_tests.rs` (65 tests) and
+`crates/oz-core/tests/staff_integration.rs` (25 tests) stay byte-untouched and
+green — both verified with `git status` after the move, not assumed.
+
+`create_role` now shares the rule set instead of restating it:
+`reject_builtin_role_id`, `validate_permission_grants` (replacing a 15-line
+copy), an empty-name refusal so create and update cannot diverge on the one
+field both take, and the write inside `unchecked_transaction` with
+`map_role_conflict` — matching the module's own "writes are transactional"
+invariant and the AGENTS.md rule.
+
+### Test design worth reusing
+
+- **Refusal on an UNSEEDED database.** `fresh()` is `migrations::fresh_db()`,
+  which is schema-only — no preset rows. So a refusal cannot be a
+  primary-key collision; only the guard can cause it. That is what makes it a
+  guard test rather than a constraint test wearing a guard's name.
+- **The bite check is committed, not a ritual.** A second test proves a
+  non-preset id DOES insert on that same DB. Verified by mutation: neutering
+  `reject_builtin_role_id` in `create_role` fails both tests, and `roles.rs`
+  was restored **byte-identical (SHA256 `9CB45284…9B1652` before and after)**.
+- **Parity of refusal is not enough.** `create_and_update_share_one_rule_set`
+  drives six illegal inputs through BOTH writes asserting the same
+  `Validation.field` each time, then one legal payload accepted by both —
+  otherwise one path could simply be stricter and the test still passes.
+
+### One imprecision documented rather than silently fixed
+
+`map_role_conflict` names `field: "name"` for **any** constraint violation, so
+a duplicate `id` surfaces as a name conflict. Pre-existing, unchanged, and now
+called out in the doc comment: the error shape is what the authoring UI reads,
+so quietly moving it inside a refactor commit is the wrong place for that
+decision.
+
+### Gates
+
+`db::roles` **20 passed / 0 failed** (17 existing + 3 new) ·
+`db::staff::tests` **65 / 0**, file untouched · `staff_integration` **25 / 0**,
+file untouched · `cargo check -p oz-pos-app -p oz-pos-tablet --lib` clean ·
+full oz-core lib and both client libs re-run after landing (see below).
+
+### Process notes
+
+- `staff_tests.rs` (core) was NOT touched; new tests went into `roles_tests.rs`,
+  which is this slice's own file.
+- The tree was red three separate times during this slice, each from a
+  different half-finished save in the Slice C over-quota stream
+  (`src/downgrade.rs` / `db/downgrade.rs` / a new untracked migration). None of
+  those files were touched here, and nothing was committed over a red build.
+  A shared journal file means the journal write and the commit have to be
+  adjacent, or a pathspec commit sweeps someone else's appended entry under
+  your message.

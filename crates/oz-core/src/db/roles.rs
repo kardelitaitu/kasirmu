@@ -23,8 +23,12 @@
 //! - **Writes are transactional**, and the read that justifies a write
 //!   happens inside the same transaction.
 //!
-//! `create_role` still lives in [`super::staff`]; folding it in here so all
-//! of role CRUD shares one set of validators is the follow-up.
+//! All four operations live here, so role CRUD has exactly one rule set:
+//! [`Store::create_role`], [`Store::update_role`], [`Store::delete_role`] and
+//! [`Store::role_reference_counts`]. A fifth write, `seed_default_roles`,
+//! deliberately stays in [`super::staff`] — it is the preset upsert this
+//! module exists to keep callers away from, and it does not route through
+//! any of these four.
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -138,6 +142,71 @@ impl Store<'_> {
             };
         }
         CoreError::Db(e)
+    }
+
+    /// Insert a new authored role.
+    ///
+    /// Preset ids are refused — see [`Store::reject_builtin_role_id`]. This is
+    /// the create-side half of the rule [`Store::update_role`] and
+    /// [`Store::delete_role`] already enforce: `seed_default_roles` upserts
+    /// every `RolePreset` id and overwrites its grants, so a row minted at one
+    /// of those ids before the first seed is silently destroyed by it later,
+    /// with no error to trace. The production caller generates
+    /// `role-<uuidv7>` and documents that it is outside `ROLE_PRESETS` by
+    /// construction — but until this guard existed that was a convention the
+    /// command layer asked of itself, and the core write path would have
+    /// accepted a preset id from any other caller.
+    ///
+    /// Grants go through [`Store::validate_permission_grants`], the same rule
+    /// `update_role` applies, so create and update can never disagree about
+    /// what a legal permission list is.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Validation`] for a preset id, an empty name, or an illegal
+    /// grant set; [`CoreError::Conflict`] when `id` or `name` collides with an
+    /// existing row. Known imprecision, carried over unchanged from the
+    /// pre-fold version rather than silently fixed here: SQLite reports both
+    /// as a bare constraint violation, and [`Store::map_role_conflict`] names
+    /// `field: "name"` for either. A duplicate `id` therefore surfaces as a
+    /// name conflict. Changing that error shape is a separate call — it is
+    /// what the authoring UI reads — so this commit documents it instead of
+    /// quietly moving a contract.
+    pub fn create_role(
+        &self,
+        id: &str,
+        name: &str,
+        description: &str,
+        permissions: &str,
+    ) -> Result<Role, CoreError> {
+        Self::reject_builtin_role_id(id)?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(CoreError::Validation {
+                field: "name",
+                message: "role name must not be empty".into(),
+            });
+        }
+        Self::validate_permission_grants(permissions)?;
+
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, name, description, permissions, now, now],
+        )
+        .map_err(Self::map_role_conflict)?;
+        tx.commit()?;
+
+        Ok(Role {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            description: description.to_owned(),
+            permissions: permissions.to_owned(),
+            created_at: now.clone(),
+            updated_at: now,
+        })
     }
 
     /// Re-name, re-describe, or re-grant an authored role.

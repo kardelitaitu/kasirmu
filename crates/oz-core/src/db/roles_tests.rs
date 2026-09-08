@@ -530,3 +530,116 @@ fn role_reference_counts_enumerates_every_referrer_table_in_declared_order() {
         );
     }
 }
+
+// ── create_role: the folded-in fourth write ────────────────────────────
+
+#[test]
+fn create_role_refuses_every_builtin_preset_id() {
+    // The create-side half of the guard update_role and delete_role already
+    // had. Deliberately run on an UNSEEDED database: with no preset rows
+    // present, the primary-key constraint cannot be what stops these writes,
+    // so a refusal here can only come from the guard.
+    let conn = fresh();
+    let s = store(&conn);
+    for preset in platform_core::rbac::ROLE_PRESETS {
+        let err = s
+            .create_role(preset.id, "Renamed", "", r#"["sales:view"]"#)
+            .expect_err(&format!("{} is a preset and must be refused", preset.id));
+        assert!(
+            matches!(&err, CoreError::Validation { field, .. } if *field == "id"),
+            "preset {} rejected with a typed id error, got {err:?}",
+            preset.id
+        );
+    }
+    // Nothing landed, so there is no half-authored preset for a later seed
+    // to silently overwrite.
+    for preset in platform_core::rbac::ROLE_PRESETS {
+        assert!(
+            s.get_role(preset.id).unwrap().is_none(),
+            "a refused create must not leave a row at {}",
+            preset.id
+        );
+    }
+}
+
+#[test]
+fn the_preset_guard_is_what_refuses_create_not_a_constraint() {
+    // The mutation check, committed as a fact rather than a dev-time ritual.
+    // On the SAME unseeded database a non-preset id inserts fine — so the
+    // loop above is refusing on the guard, not on SQLite. Neuter
+    // reject_builtin_role_id and this pair splits: the preset loop starts
+    // succeeding while this test keeps passing, which is exactly the
+    // difference that has to be visible.
+    let conn = fresh();
+    let s = store(&conn);
+    assert!(
+        s.create_role(
+            platform_core::rbac::builtin_roles::OWNER,
+            "x",
+            "",
+            r#"["sales:view"]"#
+        )
+        .is_err(),
+        "a preset id must be refused even when no row exists to collide with"
+    );
+    let ok = s
+        .create_role(AUTHORED, "Night Manager", "", r#"["sales:view"]"#)
+        .expect("a non-preset id must be authorable on an unseeded DB");
+    assert_eq!(ok.name, "Night Manager");
+    assert!(
+        s.get_role(AUTHORED).unwrap().is_some(),
+        "the accepted write is durable"
+    );
+}
+
+#[test]
+fn create_and_update_share_one_rule_set() {
+    // The property the fold buys: create and update cannot disagree about
+    // what a legal role row is, because they call the same two validators.
+    // If either grows a private copy of a rule again, this test splits.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    let s = store(&conn);
+
+    let illegal: &[(&str, &str)] = &[
+        ("permissions", r#"["sales:not_a_key"]"#),
+        ("permissions", r#"["*"]"#),
+        ("permissions", r#"["staff:*"]"#),
+        ("permissions", "not json at all"),
+        ("permissions", "[42]"),
+        // Whitespace only: both writes trim, so this is the empty-name rule.
+        ("name", "   "),
+    ];
+    for (field, payload) in illegal {
+        let grants = if *field == "name" { "[]" } else { *payload };
+        let name = if *field == "name" { *payload } else { "Parity" };
+        let c = s
+            .create_role("role-create-parity", name, "", grants)
+            .expect_err("create must refuse");
+        let u = s
+            .update_role(AUTHORED, name, "", grants)
+            .expect_err("update must refuse the same input");
+        for (err, op) in [(&c, "create"), (&u, "update")] {
+            match err {
+                CoreError::Validation { field: f, .. } => assert_eq!(
+                    *f, *field,
+                    "{op} reported the wrong field for name={name:?} grants={grants:?}"
+                ),
+                other => panic!(
+                    "{op} must refuse name={name:?} grants={grants:?} with Validation, got {other:?}"
+                ),
+            }
+        }
+    }
+
+    // Parity is not only parity of refusal: the same legal payload has to be
+    // accepted by both, or one of them is stricter than the shared rule.
+    // Distinct names: role.name is unique, so reusing one across the two
+    // legs would make the second leg fail on a collision this test caused.
+    let legal = r#"["sales:process","reports:view"]"#;
+    s.create_role("role-create-parity", "Parity Created", "", legal)
+        .expect("create accepts a legal grant set");
+    s.update_role(AUTHORED, "Parity Updated", "", legal)
+        .expect("update accepts the same legal grant set");
+}
