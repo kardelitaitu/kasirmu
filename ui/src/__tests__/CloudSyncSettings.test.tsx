@@ -212,18 +212,18 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 // ── Helper: navigate to Cloud Sync section ───────────────────────
 
 function navigateToSync() {
-  fireEvent.click(screen.getByRole('treeitem', { name: /operations/i }));
-  fireEvent.click(screen.getByRole('treeitem', { name: /cloud sync/i }));
+  fireEvent.click(screen.getByRole('button', { name: /operations/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cloud Sync' }));
 }
 
 async function waitForSyncSection() {
   renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
   await waitFor(() => {
-    expect(screen.getByRole('treeitem', { name: /operations/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
   });
   navigateToSync();
   // The section body (server URL field) renders after the async settings
-  // snapshot resolves — waiting on the sidebar treeitem alone let the first
+  // snapshot resolves — waiting on the sidebar nav item alone let the first
   // label query race ahead of the section render (flaky in CI).
   await waitFor(() => {
     expect(screen.getByLabelText(/server url/i)).toBeInTheDocument();
@@ -252,7 +252,7 @@ describe('CloudSyncSettings', () => {
   it('navigates to Cloud Sync section after clicking sidebar nav item', async () => {
     renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
     await waitFor(() => {
-      expect(screen.getByRole('treeitem', { name: /operations/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
     });
 
     navigateToSync();
@@ -980,7 +980,7 @@ describe('CloudSyncSettings', () => {
 
       // Leaving the section stops the poll.
       const callsBeforeLeave = summaryCalls();
-      fireEvent.click(screen.getByRole('treeitem', { name: /general/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'General' }));
       await act(async () => {
         vi.advanceTimersByTime(60_000);
         await Promise.resolve();

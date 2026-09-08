@@ -22,6 +22,7 @@ vi.mock('@fluent/react', () => ({
           'settings-sidebar-expand-aria': 'Expand sidebar',
           'settings-sidebar-no-results': 'No matching sections',
           'settings-sidebar-clear-results': 'Clear search',
+          'settings-sidebar-pinned-group-aria': 'Pinned sections',
           'settings-category-business': 'Business',
           'settings-category-operations': 'Operations',
           'settings-category-system': 'System',
@@ -39,22 +40,11 @@ vi.mock('@fluent/react', () => ({
           'settings-nav-diagnostics': 'Diagnostics',
         };
         if (keyMap[key] !== undefined) return keyMap[key];
-        const vars = (args ?? {}) as Record<string, string | number>;
-        const announcementMap: Record<string, (v: Record<string, string | number>) => string> = {
-          'settings-announce-section-opened': (v) => `${v['section']} settings opened`,
-          'settings-announce-search-none': () => 'No settings match your search',
-          'settings-announce-search-count': (v) => `${v['count']} ${v['count'] === 1 ? 'result' : 'results'} found`,
-          'settings-announce-search-cleared': () => 'Search cleared',
-          'settings-announce-category-expanded': (v) => `${v['category']} category expanded, ${v['count']} ${v['count'] === 1 ? 'item' : 'items'}`,
-          'settings-announce-category-collapsed': (v) => `${v['category']} category collapsed`,
-          'settings-shortcuts-desc-navigate': () => 'Navigate items',
-          'settings-shortcuts-desc-expand': () => 'Expand category',
-          'settings-shortcuts-desc-collapse': () => 'Collapse category',
-          'settings-shortcuts-desc-firstlast': () => 'First / last item',
-          'settings-shortcuts-desc-close': () => 'Close mobile sidebar',
-        };
-        if (announcementMap[key]) return announcementMap[key](vars);
-        return key;
+        // Announcement + shortcut keys resolve from the REAL English bundle
+        // (settings.ftl raw import) so no assertion below re-pins English
+        // sentence structure: expectations are computed with the same
+        // resolver via announceFtl(). Rewording the .ftl keeps tests green.
+        return ftlResolve(settingsFtl, key, (args ?? {}) as Record<string, string | number>);
       },
     },
   }),
@@ -95,17 +85,66 @@ const defaultProps = {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-/** Get all nav item treeitems within the sidebar (filters out category headers). */
-function getNavItems() {
-  return screen.getAllByRole('treeitem').filter(
-    (item) => item.closest('[data-testid="settings-sidebar"]') !== null
-      && item.getAttribute('aria-level') === '2',
-  );
+/** Raw Fluent message body for a key (multi-line continuations joined). */
+function ftlMessage(ftlRaw: string, key: string): string {
+  const lines = ftlRaw.split('\n');
+  const start = lines.findIndex((l) => l.startsWith(`${key} =`) || l.startsWith(`${key}=`));
+  if (start === -1) return '';
+  const parts = [lines[start]!.slice(key.length + 1).trim()];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.startsWith('#') || /^\S/.test(line)) break;
+    parts.push(line.trim());
+  }
+  return parts.join(' ');
 }
 
-/** Get the currently active nav item by aria-selected. */
-function getActiveNavItem() {
-  return screen.getByRole('treeitem', { selected: true });
+/** Resolve a simple Fluent message: [one]/[other] selects on $count plus $var placeables. */
+function ftlResolve(ftlRaw: string, key: string, vars: Record<string, string | number>): string {
+  let text = ftlMessage(ftlRaw, key);
+  for (;;) {
+    const open = text.search(/\{\s*\$\w+\s*->/);
+    if (open === -1) break;
+    let depth = 0;
+    let close = open;
+    for (let i = open; i < text.length; i++) {
+      if (text[i] === '{') depth++;
+      else if (text[i] === '}') { depth--; if (depth === 0) { close = i; break; } }
+    }
+    const expr = text.slice(open, close + 1);
+    const m = /\{\s*\$(\w+)\s*->/.exec(expr)!;
+    const body = expr.slice(m[0].length, -1);
+    const wanted = Number(vars[m[1]!]) === 1 ? 'one' : 'other';
+    const chunks = body.split(/\[([^\]]+)\]/); // [pre, key1, text1, *key2, text2, ...]
+    let chosen = '';
+    for (let k = 1; k < chunks.length; k += 2) {
+      const rawKey = chunks[k]!.trim();
+      const keyName = rawKey.replace(/^\*/, '');
+      if (rawKey.startsWith('*')) chosen = chunks[k + 1] ?? '';
+      if (keyName === wanted) { chosen = chunks[k + 1] ?? ''; break; }
+    }
+    text = text.slice(0, open) + chosen + text.slice(close + 1);
+  }
+  text = text.replace(/\{\s*\$(\w+)\s*\}/g, (_m, name: string) => String(vars[name] ?? ''));
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+/** Expected localized announcement text, resolved from the real English bundle. */
+function announceFtl(key: string, vars: Record<string, string | number> = {}): string {
+  return ftlResolve(settingsFtl, key, vars);
+}
+
+/** Get all nav item buttons within the sidebar (disclosure-navigation items). */
+function getNavItems() {
+  const sidebar = screen.getByTestId('settings-sidebar');
+  return Array.from(sidebar.querySelectorAll<HTMLButtonElement>('button.settings-nav-item'));
+}
+
+/** Get the currently active nav item by aria-current="page". */
+function getActiveNavItem(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[data-testid="settings-sidebar"] [aria-current="page"]');
+  if (!el) throw new Error('no nav item carries aria-current="page"');
+  return el;
 }
 
 /** Fire a keyboard event on a target element (defaults to document).
@@ -155,7 +194,7 @@ describe('SettingsNavTree', () => {
     const onNavigate = vi.fn();
     render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} />);
 
-    const item = screen.getByRole('treeitem', { name: 'Diagnostics' });
+    const item = screen.getByRole('button', { name: 'Diagnostics' });
     const systemPanel = document.getElementById('settings-panel-system');
     expect(systemPanel).toBeInTheDocument();
     expect(systemPanel).toContainElement(item as HTMLElement);
@@ -208,9 +247,7 @@ describe('SettingsNavTree', () => {
     render(<SettingsNavTree {...defaultProps} activeSection="receipt" />);
 
     // Receipt is in Operations → Operations should be expanded
-    const activeItem = getActiveNavItem();
-    expect(activeItem).toBeInTheDocument();
-    expect(activeItem.closest('.settings-nav-item--active')).toBeTruthy();
+    expect(getActiveNavItem().closest('.settings-nav-item--active')).toBeTruthy();
   });
 
   it('renders sidebar with testid attribute', () => {
@@ -322,7 +359,7 @@ describe('SettingsNavTree', () => {
     render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} />);
 
     // Click on Appearance (under Business, which is expanded by default)
-    const appearanceItem = screen.getByRole('treeitem', { name: 'Appearance' });
+    const appearanceItem = screen.getByRole('button', { name: 'Appearance' });
     await user.click(appearanceItem);
 
     expect(onNavigate).toHaveBeenCalledWith('appearance');
@@ -570,7 +607,7 @@ describe('SettingsNavTree', () => {
       await user.click(operationsBtn);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('Operations category expanded, 6 items');
+      expect(region?.textContent).toBe(announceFtl('settings-announce-category-expanded', { category: 'Operations', count: 6 }));
     });
 
     it('announces category collapsed when the expanded category header is clicked again', async () => {
@@ -582,7 +619,7 @@ describe('SettingsNavTree', () => {
       await user.click(businessBtn);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('Business category collapsed');
+      expect(region?.textContent).toBe(announceFtl('settings-announce-category-collapsed', { category: 'Business' }));
     });
 
     it('announces section activated when activeSection prop changes', () => {
@@ -591,7 +628,7 @@ describe('SettingsNavTree', () => {
       rerender(<SettingsNavTree {...defaultProps} activeSection="receipt" />);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('Receipt settings opened');
+      expect(region?.textContent).toBe(announceFtl('settings-announce-section-opened', { section: 'Receipt' }));
     });
 
     it('announces search results count when query changes', () => {
@@ -600,7 +637,7 @@ describe('SettingsNavTree', () => {
       rerender(<SettingsNavTree {...defaultProps} searchQuery="general" />);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('1 result found');
+      expect(region?.textContent).toBe(announceFtl('settings-announce-search-count', { count: 1 }));
     });
 
     it('announces empty search state when no results match', () => {
@@ -609,7 +646,7 @@ describe('SettingsNavTree', () => {
       rerender(<SettingsNavTree {...defaultProps} searchQuery="xyznonexistent" />);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('No settings match your search');
+      expect(region?.textContent).toBe(announceFtl('settings-announce-search-none'));
     });
 
     it('announces search cleared when query is reset to empty', () => {
@@ -618,7 +655,35 @@ describe('SettingsNavTree', () => {
       rerender(<SettingsNavTree {...defaultProps} searchQuery="" />);
 
       const region = getLiveRegion();
-      expect(region?.textContent).toContain('Search cleared');
+      expect(region?.textContent).toBe(announceFtl('settings-announce-search-cleared'));
+    });
+
+    it('resolves every announcement + shortcut key from BOTH locale bundles', () => {
+      // The component localizes announcements through settings-announce-*;
+      // assertions above resolve expectations from the same files, so the
+      // only pinned contract is key EXISTENCE + interpolation, not wording.
+      const keys = [
+        'settings-announce-section-opened',
+        'settings-announce-search-none',
+        'settings-announce-search-count',
+        'settings-announce-search-cleared',
+        'settings-announce-category-expanded',
+        'settings-announce-category-collapsed',
+        'settings-shortcuts-desc-navigate',
+        'settings-shortcuts-desc-expand',
+        'settings-shortcuts-desc-collapse',
+        'settings-shortcuts-desc-firstlast',
+        'settings-shortcuts-desc-close',
+      ];
+      const bundles = [
+        ['settings.ftl', settingsFtl] as const,
+        ['settings.id.ftl', settingsIdFtl] as const,
+      ];
+      for (const key of keys) {
+        for (const [name, raw] of bundles) {
+          expect(ftlResolve(raw, key, { section: 'X', category: 'Y', count: 2 }), `${key} unresolvable in ${name}`).not.toBe('');
+        }
+      }
     });
   });
 
@@ -632,14 +697,67 @@ describe('SettingsNavTree', () => {
 
     const panel = document.getElementById('settings-panel-business');
     expect(panel).toBeInTheDocument();
-    expect(panel).toHaveAttribute('role', 'region');
+    expect(panel).toHaveAttribute('role', 'list');
   });
 
-  it('active nav item has aria-selected="true"', () => {
+  it('active nav item carries aria-current="page" and no tree residue', () => {
     render(<SettingsNavTree {...defaultProps} activeSection="appearance" />);
 
     const activeItem = getActiveNavItem();
-    expect(activeItem).toHaveAttribute('aria-selected', 'true');
+    expect(activeItem).toHaveAttribute('aria-current', 'page');
+    // Disclosure navigation: no tree/grid roles or attributes survive.
+    expect(screen.queryByRole('tree')).toBeNull();
+    expect(screen.queryByRole('treegrid')).toBeNull();
+    expect(screen.queryByRole('treeitem')).toBeNull();
+    expect(screen.queryByRole('grid')).toBeNull();
+    expect(screen.queryByRole('region')).toBeNull();
+    expect(document.querySelector('[data-testid="settings-sidebar"] [aria-selected]')).toBeNull();
+    expect(document.querySelector('[data-testid="settings-sidebar"] [aria-level]')).toBeNull();
+    expect(document.querySelector('[data-testid="settings-sidebar"] [aria-posinset]')).toBeNull();
+    expect(document.querySelector('[data-testid="settings-sidebar"] [aria-setsize]')).toBeNull();
+  });
+
+  // ── Pinned group (P60-blog-1) ─────────────────────────────
+
+  it('renders the pinned group as a labeled list whose items mirror their sections', () => {
+    localStorage.setItem('settings-pinned-sections', JSON.stringify(['receipt', 'general']));
+    render(<SettingsNavTree {...defaultProps} activeSection="receipt" />);
+
+    const group = document.querySelector('[data-testid="settings-sidebar"] [role="list"].settings-sidebar-pinned');
+    expect(group).not.toBeNull();
+    expect(group).toHaveAttribute('aria-label', 'Pinned sections');
+    const items = Array.from(group!.querySelectorAll('[role="listitem"]'));
+    expect(items).toHaveLength(2);
+    // Item buttons are plain disclosure items: aria-current, no tree attrs.
+    expect(items[0]!.querySelector('button.settings-nav-item')).toHaveAttribute('aria-current', 'page');
+    expect(items[1]!.querySelector('button.settings-nav-item')).not.toHaveAttribute('aria-current');
+    for (const li of items) {
+      expect(li.querySelector('button.settings-nav-item')).not.toHaveAttribute('aria-selected');
+      expect(li.querySelector('button.settings-nav-item')).not.toHaveAttribute('aria-level');
+    }
+  });
+
+  // ── Resize handle as an APG window-splitter separator ─────
+
+  it('exposes the resize handle as a keyboard-operable vertical separator', async () => {
+    const user = userEvent.setup();
+    render(<SettingsNavTree {...defaultProps} />);
+
+    const handle = document.querySelector<HTMLElement>('[data-testid="settings-sidebar"] [role="separator"]');
+    expect(handle).not.toBeNull();
+    expect(handle).toHaveAttribute('aria-orientation', 'vertical');
+    expect(handle).toHaveAttribute('aria-valuemin', '250');
+    expect(handle).toHaveAttribute('aria-valuemax', '400');
+    expect(handle).toHaveAttribute('aria-valuenow', '250'); // the CSS default width
+    expect(handle).toHaveAttribute('tabindex', '0');
+
+    handle!.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(handle).toHaveAttribute('aria-valuenow', '260');
+    // One ArrowLeft lands exactly on the minimum (the CSS default width);
+    // a further press clamps there instead of undershooting the bound.
+    await user.keyboard('{ArrowLeft}{ArrowLeft}');
+    expect(handle).toHaveAttribute('aria-valuenow', '250');
   });
 
 });
