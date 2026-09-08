@@ -33,7 +33,11 @@ const mocks = vi.hoisted(() => ({
   getSubscriptionCapabilities: vi.fn(),
 }));
 
-vi.mock('@/api/subscription', () => ({
+vi.mock('@/api/subscription', async (importOriginal) => ({
+  // Spread the real module so named imports elsewhere in the graph (e.g.
+  // OverQuotaCard's perLocationMarkers, added with the per-location quota
+  // caps) resolve even though this suite only spies on one function.
+  ...(await importOriginal<typeof import('@/api/subscription')>()),
   getSubscriptionCapabilities: (...args: unknown[]) =>
     mocks.getSubscriptionCapabilities(...args),
 }));
