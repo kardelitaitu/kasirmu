@@ -11,10 +11,25 @@ import settingsIdFtl from '@/locales/settings.id.ftl?raw';
 
 // ── Mocks ────────────────────────────────────────────────────────
 
+const { fluentState } = vi.hoisted(() => ({
+  // Shared mock locale: 'en' by default; Indonesian scenario flips it to 'id'.
+  fluentState: { locale: 'en' as string },
+}));
+
 vi.mock('@fluent/react', () => ({
   useLocalization: () => ({
     l10n: {
       getString: (key: string, args?: Record<string, unknown>) => {
+        // Indonesian scenario: serve the id bundle so the component's
+        // localized-search index is built from translated labels.
+        if (fluentState.locale === 'id') {
+          const idText = ftlResolve(
+            settingsIdFtl,
+            key,
+            (args ?? {}) as Record<string, string | number>,
+          );
+          if (idText) return idText;
+        }
         const keyMap: Record<string, string> = {
           'settings-sidebar-nav-aria': 'Settings navigation',
           'settings-sidebar-collapse-all-aria': 'Collapse all categories',
@@ -90,7 +105,10 @@ function ftlMessage(ftlRaw: string, key: string): string {
   const lines = ftlRaw.split('\n');
   const start = lines.findIndex((l) => l.startsWith(`${key} =`) || l.startsWith(`${key}=`));
   if (start === -1) return '';
-  const parts = [lines[start]!.slice(key.length + 1).trim()];
+  const rawValue = lines[start]!.slice(key.length + 1).trim();
+  // Drop the leading "=" produced when the message uses the "{key} = {value}"
+  // form so the resolver mirrors what the real Fluent bundle returns.
+  const parts = [rawValue.startsWith('=') ? rawValue.slice(1).trim() : rawValue];
   for (let i = start + 1; i < lines.length; i++) {
     const line = lines[i]!;
     if (line.startsWith('#') || /^\S/.test(line)) break;
@@ -162,6 +180,8 @@ describe('SettingsNavTree', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    // Default to English for every test unless a scenario opts into 'id'.
+    fluentState.locale = 'en';
   });
 
   // ── Render ─────────────────────────────────────────────────
@@ -758,6 +778,56 @@ describe('SettingsNavTree', () => {
     // a further press clamps there instead of undershooting the bound.
     await user.keyboard('{ArrowLeft}{ArrowLeft}');
     expect(handle).toHaveAttribute('aria-valuenow', '250');
+  });
+
+  // ── Localized (Indonesian) sidebar search (P60-i18n-search) ──
+
+  describe('localized (Indonesian) sidebar search', () => {
+    beforeEach(() => {
+      // Flip the mocked bundle to Indonesian so the component builds its Fuse
+      // index from translated labels.
+      fluentState.locale = 'id';
+    });
+
+    it('finds a section by its Indonesian label', () => {
+      render(<SettingsNavTree {...defaultProps} searchQuery="umum" />);
+
+      // The Indonesian label for General is "Umum" — only that item matches.
+      const navItems = getNavItems();
+      expect(navItems.length).toBe(1);
+      expect(screen.getByRole('button', { name: 'Umum' })).toBeInTheDocument();
+    });
+
+    it('keeps English search working alongside Indonesian labels', () => {
+      render(<SettingsNavTree {...defaultProps} searchQuery="general" />);
+
+      // Typing the English term must still resolve to General (displayed in id).
+      const navItems = getNavItems();
+      expect(navItems.length).toBe(1);
+      expect(screen.getByRole('button', { name: 'Umum' })).toBeInTheDocument();
+    });
+
+    it('finds Inventory by its Indonesian label "Inventaris"', () => {
+      render(<SettingsNavTree {...defaultProps} searchQuery="inventaris" />);
+
+      const navItems = getNavItems();
+      expect(navItems.length).toBe(1);
+      expect(screen.getByRole('button', { name: 'Inventaris' })).toBeInTheDocument();
+    });
+
+    it('navigating a search result calls onNavigate with the section key', async () => {
+      const user = userEvent.setup();
+      const onNavigate = vi.fn();
+      render(
+        <SettingsNavTree {...defaultProps} onNavigate={onNavigate} searchQuery="inventaris" />,
+      );
+
+      const item = screen.getByRole('button', { name: 'Inventaris' });
+      await user.click(item);
+
+      // Behaviour is unchanged: the result maps back to its section key.
+      expect(onNavigate).toHaveBeenCalledWith('inventory');
+    });
   });
 
 });

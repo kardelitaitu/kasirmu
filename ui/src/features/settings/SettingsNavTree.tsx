@@ -3,6 +3,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
 import Tooltip from '@/frontend/shell/Tooltip';
 import Fuse from 'fuse.js';
+import type { FuseResultMatch } from 'fuse.js';
 
 import { SettingsScopeTag, type SettingsScopeLevel } from './SettingsScopeTag';
 
@@ -208,6 +209,19 @@ const NAV_L10N_KEYS: Record<string, string> = {
 // ── Exported for SettingsPage breadcrumb ────────────────────────
 
 export { NAV_ITEMS, CATEGORIES, CATEGORY_I18N_KEYS, NAV_L10N_KEYS };
+
+// ── Localized label resolution ───────────────────────────────
+// Resolve a Fluent key to the current-locale string, falling back to the
+// English constant when the bundle returns the key itself or an empty string
+// (e.g. a key the active locale does not define yet).
+function resolveLocalizedLabel(
+  l10n: { getString: (id: string) => string },
+  key: string,
+  english: string,
+): string {
+  const translated = l10n.getString(key);
+  return translated && translated !== key ? translated : english;
+}
 
 // ── Props ────────────────────────────────────────────────────────
 
@@ -449,41 +463,84 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
   useImperativeHandle(ref, () => ({ toggleCategory }), [toggleCategory]);
 
   // ── Fuse.js fuzzy search (P60-blog-2) ────────────────────────
+  // Search must match the user's CURRENT locale, not just English. We build
+  // the index from the localized label (falling back to the English constant
+  // when the bundle has no translation) and ALSO keep englishLabel /
+  // englishCategory so typing the English term still finds the section. The
+  // index is rebuilt whenever the locale or l10n binding changes
+  // (P60-i18n-search).
   const searchData = useMemo(() => {
-    return CATEGORIES.flatMap((cat) =>
-      cat.keys.map((key) => {
+    return CATEGORIES.flatMap((cat) => {
+      const categoryKey = CATEGORY_I18N_KEYS[cat.label] ?? cat.label;
+      const categoryLabel = resolveLocalizedLabel(l10n, categoryKey, cat.label);
+      return cat.keys.map((key) => {
         const item = NAV_ITEMS.find((n) => n.key === key)!;
-        return { key: item.key, label: item.label, category: cat.label };
-      }),
-    );
-  }, []);
+        return {
+          key: item.key,
+          label: resolveLocalizedLabel(l10n, NAV_L10N_KEYS[key] ?? key, item.label),
+          category: categoryLabel,
+          englishLabel: item.label,
+          englishCategory: cat.label,
+        };
+      });
+    });
+  }, [l10n]);
 
   const fuse = useMemo(() => {
     return new Fuse(searchData, {
-      keys: ['label', 'category'],
+      keys: ['label', 'category', 'englishLabel', 'englishCategory'],
       threshold: 0.4,
       includeMatches: true,
     });
   }, [searchData]);
 
   const q = searchQuery.toLowerCase().trim();
-  const filteredCategories = useMemo(() => {
-    if (!q) return CATEGORIES;
-
+  // Map of matched section key -> Fuse match metadata (positions) for the
+  // highlight renderer. null when not searching.
+  const searchMatches = useMemo(() => {
+    if (!q) return null;
     const results = fuse.search(searchQuery.trim());
-    const matchedKeys = new Set(results.map((r) => r.item.key));
+    const map = new Map<string, readonly FuseResultMatch[]>();
+    for (const r of results) map.set(r.item.key, r.matches ?? []);
+    return map;
+  }, [q, fuse, searchQuery]);
 
+  const filteredCategories = useMemo(() => {
+    if (!searchMatches) return CATEGORIES;
+
+    const matchedKeys = new Set(searchMatches.keys());
     return CATEGORIES
       .map((cat) => ({
         ...cat,
         keys: cat.keys.filter((key) => matchedKeys.has(key)),
       }))
       .filter((cat) => cat.keys.length > 0);
-  }, [q, fuse, searchQuery]);
+  }, [searchMatches]);
 
-  /** Highlight matching characters in a label. */
-  const highlightLabel = useCallback((label: string) => {
+  /** Highlight matching characters in a label. Prefers Fuse's fuzzy match
+   *  positions (so transliterated / non-substring hits highlight correctly)
+   *  and falls back to a raw substring when no 'label' indices are present
+   *  (e.g. an English query that matched on englishLabel instead). */
+  const highlightLabel = useCallback((label: string, matches?: readonly FuseResultMatch[]) => {
     if (!q) return label;
+    const labelMatch = matches?.find((m) => m.key === 'label');
+    if (labelMatch && labelMatch.indices.length > 0) {
+      const parts: React.ReactNode[] = [];
+      let cursor = 0;
+      labelMatch.indices.forEach(([start, end], i) => {
+        const s = start;
+        const e = end + 1;
+        if (s > cursor) parts.push(label.slice(cursor, s));
+        parts.push(
+          <mark key={i} className="settings-nav-highlight">
+            {label.slice(s, e)}
+          </mark>,
+        );
+        cursor = e;
+      });
+      if (cursor < label.length) parts.push(label.slice(cursor));
+      return <>{parts}</>;
+    }
     const idx = label.toLowerCase().indexOf(q);
     if (idx === -1) return label;
     return (
@@ -856,7 +913,12 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
                               >
                                 <span className="settings-nav-icon">{item.icon}</span>
                                 <span className="settings-nav-label">
-                                  {q ? highlightLabel(l10n.getString(NAV_L10N_KEYS[item.key] ?? item.label)) : (
+                                  {q ? (
+                                    highlightLabel(
+                                      resolveLocalizedLabel(l10n, NAV_L10N_KEYS[item.key] ?? item.key, item.label),
+                                      searchMatches?.get(key),
+                                    )
+                                  ) : (
                                     <Localized id={NAV_L10N_KEYS[item.key] ?? ''}>{item.label}</Localized>
                                   )}
                                 </span>

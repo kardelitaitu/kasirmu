@@ -73,6 +73,23 @@ vi.mock('@tauri-apps/api/event', () => ({
   emitTo: vi.fn(() => Promise.resolve()),
 }));
 
+// ── Global mock: @tauri-apps/api/path ──────────────────────────
+// ui/src/api/cache.ts (getAppCacheDir) loads @tauri-apps/api/path via a
+// dynamic import (avoids bundling the full path module in dev-mock). A
+// per-file vi.mock() cannot intercept a dynamic import, but a GLOBAL mock
+// here does (same mechanism as the @tauri-apps/api/event mock above, which
+// intercepts settings.ts's dynamic import). These safe stubs let the
+// contract test for cache.ts assert getAppCacheDir's behaviour without
+// binding to the real Tauri path module (which throws outside a webview).
+vi.mock('@tauri-apps/api/path', () => ({
+  appCacheDir: vi.fn(() => Promise.resolve('/mock/appcache')),
+  join: vi.fn((...parts: string[]) => parts.join('/')),
+  resolve: vi.fn((...parts: string[]) => parts.join('/')),
+  sep: '/',
+  dirname: vi.fn((p: string) => p.split('/').slice(0, -1).join('/')),
+  basename: vi.fn((p: string) => p.split('/').slice(-1)[0] ?? ''),
+}));
+
 // ── Global mock: @/api/branding ────────────────────────────────
 // Every UI suite renders under <BrandProvider> (the shared
 // renderWithProviders helper in __tests__/test-utils/render.tsx mounts
