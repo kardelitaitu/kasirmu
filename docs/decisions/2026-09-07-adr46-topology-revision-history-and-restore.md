@@ -483,6 +483,67 @@ guarantee no merchant could actually claim. Wiring the command is what makes
 
 Remaining: restore-to-draft and the pruned-snapshot messaging (the overlay/browser module landed in a385440a).
 
+### Phase 2 completion (2026-09-08) — restore-to-draft and the messaging closed
+
+Both remaining halves are in. **§5 restore-to-draft** landed through the
+seam the browser module's header had been naming since a385440a ("the
+editor has no diagram-seed prop"):
+
+- `NodeTopologyEditor` grew ONE optional input prop, `restoreSeed`
+  (`{ nodes, wires } | null`), consumed by one additive effect. The
+  effect maps the payload through the SAME `diagramNodeToCanvas` /
+  `diagramWireToCanvas` helpers the authoritative load now uses
+  (extracted to `topologyEditorHelpers.ts` so the two mappings cannot
+  drift), resets transient canvas state, clears undo/redo, commits the
+  PRE-restore canvas as the dirty baseline (so the draft reads dirty
+  against what was live, the branch-switch guard stays armed, and
+  undo-all returns to live), then seeds the canvas. The lifecycle state
+  machine is untouched: Apply after a restore posts the LIVE revision
+  for CAS through the entire existing Apply path and produces a NEW
+  revision. `resolved_issue_keys` are deliberately not carried over —
+  §7's "shown, never migrated": the draft re-offers today's validation
+  in full. Erasing the prop does nothing (one-shot per identity), so the
+  post-Apply canvas is never clobbered when the screen clears it.
+- `TopologyScreen` owns everything the editor must not: the fetch
+  (`load_topology_revision`), the unsaved-edit guard (its own
+  discard-confirm, the same class as the branch switch), the arming, and
+  the clearing (after a successful Apply, and on every branch switch /
+  branch deletion, so a stale seed can never re-fire onto another
+  branch's graph).
+- The browser offers the affordance only for `restorable` rows with a
+  host callback present; `TopologyScreen` withholds it entirely for
+  view-only sessions (`canSaveTopology`), because a draft a merchant
+  cannot Apply is a trap. Preview and restore coexist: preview stays
+  display-only; restore supersedes any live preview.
+- **Rule 5 accounting:** Rule 5 says UI changes stay out of the editor
+  and "if a change seems to require it, the change is wrong for this
+  ADR" — but §5 mandates the draft lands in the editor canvas, and no
+  prop-less path exists. This is the same shape the Phase-1 waiver
+  adjudicated (clean seam, one labelled step): one input prop + one
+  effect, zero new state, zero panels, net-negative editor diff (the
+  two inline mapping blocks moved out to helpers). Recorded here for
+  the sole maintainer's ratification per the standing pattern; the
+  commit is independently revertible.
+
+**§4/§7 messaging** closed the remaining gaps in the browser detail:
+
+- deflated rows now state the REMEDY where the loss is visible: pinning
+  (★) keeps a snapshot restorable without consuming a keep-budget slot
+  (§4's additive-pin ruling), so the merchant learns how to keep the
+  next snapshot, not just that this one is gone;
+- restorable rows recorded under an older contract get the §7 note
+  ("recorded under contract v{N}; today is v{current}; restoring loads a
+  draft and Apply re-validates") — shown, never migrated, never hidden —
+  with the current version sourced from `topologySemantics.json` so the
+  note cannot claim a version the contract does not have.
+
+Gate: `cargo test -p oz-pos-app topology` 366 passed; UI typecheck +
+full unit suite green; the browser suite grew 5 tests (restore affordance
+wired to a host and reporting the right revision, withheld without a
+host, withdrawn from pruned rows alongside preview, the §7 note with
+restore still offered, the in-flight label keyed separately per the
+one-English-fallback rule).
+
 ### The Phase-1 gate, closed (supervisor ratification, 2026-09-07)
 
 The R36 directive made Phase-1 closure conditional on a concurrency
