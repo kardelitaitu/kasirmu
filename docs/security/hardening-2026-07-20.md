@@ -43,4 +43,6 @@ Middleware returns `429 Too Many Requests` with `Retry-After` header. Background
 
 ---
 
-> Last audited: 2026-08-29 by docs-auditor (repairs applied; `search_products` → `list_products`).
+> (repairs applied; `search_products` → `list_products`).
+>
+> last audited 29-08-26 by docs-auditor

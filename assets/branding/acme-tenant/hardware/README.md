@@ -24,3 +24,4 @@ magick convert assets/source-icon.png -resize 384x100 -threshold 50% assets/bran
 magick convert assets/source-icon.png -resize 576x150 -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-80mm.png
 `
 
+> last audited 24-07-26 by Hermes-Agent

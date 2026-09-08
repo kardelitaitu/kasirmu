@@ -85,4 +85,6 @@ Build a React context (`SettingsContext`) that acts as the single source of trut
 - `platform/kernel/src/event_bus.rs`
 - `ui/src/contexts/AuthContext.tsx` (existing context pattern to follow)
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

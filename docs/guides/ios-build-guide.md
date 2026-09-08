@@ -241,4 +241,4 @@ find apps/tablet-client/target -name "*.ipa" 2>/dev/null
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
+> last audited 08-08-26 by docs-auditor

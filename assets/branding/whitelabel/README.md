@@ -41,3 +41,5 @@ whitelabel/
 ```
 
 Each tenant brand folder under `assets/branding/` follows the exact same structure.
+
+> last audited 24-07-26 by Hermes-Agent

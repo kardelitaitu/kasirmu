@@ -145,4 +145,4 @@ Audit queries for date ranges older than 90 days use `UNION ALL SELECT … FROM 
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
+> last audited 08-08-26 by docs-auditor

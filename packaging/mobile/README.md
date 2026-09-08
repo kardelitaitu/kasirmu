@@ -457,3 +457,5 @@ the APK/AAB builds unsigned.
 - [iOS Developer Docs](https://developer.apple.com/documentation/)
 - [`apps/tablet-client/AGENTS.md`](../../apps/tablet-client/AGENTS.md) — Android-specific dev notes
 - [ADR #4: Frontend Restructure](../../docs/decisions/2026-03-01-frontend-restructure.md)
+
+> last audited 22-07-26 by Hermes-Agent

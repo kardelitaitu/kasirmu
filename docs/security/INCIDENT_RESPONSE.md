@@ -505,7 +505,6 @@ For on-call engineers: a one-page quick reference is maintained at `docs/securit
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
 
 ---
 

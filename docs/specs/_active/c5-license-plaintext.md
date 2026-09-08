@@ -196,3 +196,5 @@ cargo fmt --all -- --check
 - `docs/security/LICENSE-ENCRYPTION.md` (to be created)
 - SQLCipher: <https://www.zetetic.net/sqlcipher/>
 - `keyring` crate: <https://crates.io/crates/keyring>
+
+> last audited 22-07-26 by Hermes-Agent

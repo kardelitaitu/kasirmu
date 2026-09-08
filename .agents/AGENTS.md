@@ -153,3 +153,5 @@ Every commit message **MUST** strictly follow the conventional format:
 - **Always make a local commit after each major modification.** Whenever a logical task or feature step is completed and verified locally, commit it before moving on to the next task.
 - **Never run `git push` without an explicit, direct order from the user.** Even after committing code or completing verification, always wait for the user to explicitly instruct you to push before executing any `git push` command.
 - Never commit secrets, `.env` files, or SQLite database files (`*.db`, `*.sqlite`).
+
+> last audited 04-09-26 by DSH

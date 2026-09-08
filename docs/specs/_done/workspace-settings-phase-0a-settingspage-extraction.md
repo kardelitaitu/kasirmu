@@ -130,4 +130,6 @@ interface SectionProps {
 - `docs/specs/2026-07-23-unified-2tier-workspace-settings-architecture.md` §Pillar A, §Phase 0a
 - `ui/src/features/settings/SettingsPage.tsx`
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

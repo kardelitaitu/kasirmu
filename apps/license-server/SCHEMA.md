@@ -87,3 +87,5 @@ Tracks which specific POS hardware devices have connected to a tenant's subscrip
 
 > [!NOTE]
 > PocketBase automatically adds an `id`, `created`, and `updated` field to every collection. These internal fields do not need to be manually defined in your JSON schema.
+
+> last audited 22-07-26 by Hermes-Agent

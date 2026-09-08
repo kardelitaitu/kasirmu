@@ -125,4 +125,6 @@ Define a JSON file format for register-local hardware bindings (`terminal_profil
 - `docs/specs/2026-07-23-unified-2tier-workspace-settings-architecture.md` §Pillar B, §Edge Case #1, #10, §Phase 0c
 - `ui/src/features/terminals/TerminalManagementScreen.tsx`
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

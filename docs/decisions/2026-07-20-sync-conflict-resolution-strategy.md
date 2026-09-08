@@ -294,4 +294,4 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
+> last audited 08-08-26 by docs-auditor

@@ -92,4 +92,6 @@ Replace `RetailOptionsScreen` in `RetailPosScreen.tsx` (Store POS, F10 hotkey, f
 - `ui/src/features/retail/RetailPosScreen.tsx`
 - `ui/src/features/sales/PosScreen.tsx`
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

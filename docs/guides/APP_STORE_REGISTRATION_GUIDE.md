@@ -87,4 +87,4 @@ OZ-POS provides automated GitHub Actions workflows for continuous integration an
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
+> last audited 08-08-26 by docs-auditor

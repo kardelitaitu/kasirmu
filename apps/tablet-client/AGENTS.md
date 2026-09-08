@@ -155,3 +155,5 @@ For PRs targeting `main`, a CI job should:
 
 The CI-only trigger on `main` push/pull_request (per root `AGENTS.md`) applies;
 feature-branch pushes skip CI.
+
+> last audited 22-07-26 by Hermes-Agent

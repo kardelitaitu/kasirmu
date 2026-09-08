@@ -689,3 +689,5 @@ Alternatively, export manually from the admin UI (`/_/` → **Settings** → **E
 | Health check failing | The Go healthcheck binary pings `/api/health` with a 5s timeout. If the server is slow to start (e.g., first boot after volume attach), the container may flap as unhealthy for ~15s until PocketBase finishes initialisation. In the **unified image**, the shell healthcheck also fails the container after `OZ_HEALTH_SMTP_MAX_FAILS` (default 3) consecutive SMTP `verified:false` probes — check `docker inspect` → `State.Health` and the healthcheck stderr for `SMTP sender identity not verified`. Run `docker inspect` to check `State.Health`. |
 
 > 💡 **Tip:** The Dockerfile healthcheck uses the standalone `/pb/healthcheck` Go binary (no curl dependency). It pings `/api/health` which returns `{"status":"ok"}` when PocketBase is healthy. The healthcheck was set up correctly in the Dockerfile.
+
+> last audited 22-07-26 by Hermes-Agent

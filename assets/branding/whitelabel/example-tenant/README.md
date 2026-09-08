@@ -62,3 +62,5 @@ Use `-DryRun` first to preview what would happen:
 ```powershell
 powershell -File scripts/sync-branding.ps1 -Brand <your-tenant-id> -DryRun
 ```
+
+> last audited 24-07-26 by Hermes-Agent

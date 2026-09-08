@@ -110,4 +110,6 @@ export interface WorkspaceCardProps {
 - `ui/src/components/Card.tsx` (Card component used by settings)
 - `ui/src/features/kds/KdsSettingsPanel.tsx` (existing KDS settings — source of truth for KDS fields)
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

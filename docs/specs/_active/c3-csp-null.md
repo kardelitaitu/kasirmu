@@ -158,3 +158,5 @@ cd ..
 - Tauri v2 CSP docs: <https://tauri.app/v1/guides/distribution/security>
 - PCI-DSS §6.5.7 (cross-site scripting in custom code)
 - OWASP ASVS V5 (input/output validation)
+
+> last audited 22-07-26 by Hermes-Agent

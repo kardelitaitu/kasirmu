@@ -85,3 +85,5 @@ OZ-POS processes, transmits, and stores cardholder data when processing credit/d
 | **Coding standards** | `AGENTS.md` with security rules |
 
 > **Last updated:** 2026-08-16
+
+> last audited 22-07-26 by Hermes-Agent
