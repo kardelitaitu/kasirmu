@@ -24,7 +24,7 @@ workflow, not a silent setting change.
 
 ## P2 — future capability and operational maturity
 
-- [ ] **Implement custom roles safely.** Keep built-in roles as defaults, but
+- [x] **Implement custom roles safely.** Keep built-in roles as defaults, but
       make custom roles explicit permission sets with explicit scopes. Unknown
       roles default to deny; do not assign unknown names a numeric hierarchy
       level automatically.
@@ -58,6 +58,54 @@ workflow, not a silent setting change.
       assignment-editing UI is explicitly a separate slice per the ADR's
       non-goals (and `7f7d4ec4` already shipped scope editing for
       existing roles).
+
+  — **authoring landed 2026-09-08** (`7948344e` core write layer, `9aa5a846`
+  IPC + screen). A custom role is a named key-set row in
+  `roles.permissions` (ADR #47 ruling 4), and the assignment model already
+  resolved preset and authored roles identically, so nothing downstream
+  distinguishes them. `Store::update_role` / `delete_role` /
+  `role_reference_counts` are the write layer; four scoped commands
+  (`create_role_scoped`, `update_role_scoped`, `delete_role_scoped`,
+  `list_permission_keys_scoped`) in both clients are the surface;
+  `ui/src/features/staff/RoleAuthoringScreen.tsx` (route `roles`, gated
+  `staff:manage_roles`) is the screen.
+
+  Two constraints the implementation had to discover rather than assume:
+
+  - **Preset ids are not authorable, and `role-custom` is a preset.**
+    `seed_default_roles` upserts every `RolePreset` id and overwrites its
+    grants — deliberately, pinned by
+    `seed_default_roles_resyncs_stale_builtin_role_permissions` — and it is
+    reachable from the UI via `seed_default_roles_scoped`, not only from
+    first-run bootstrap. An accepted edit to a preset row would therefore be
+    silently destroyed later with no error to trace it. So the guard is
+    `is_builtin_role_id` (derived from `ROLE_PRESETS`, no column, nothing to
+    drift), and the UI keys off the `is_builtin` flag and never the name —
+    the role literally called "Custom" is not an authored row.
+  - **The permission vocabulary must come from the registry, not the UI.**
+    No command listed registered keys before this slice, so a picker would
+    have had to hardcode them — a copy that drifts from the keys the gate
+    actually honors, which is what ADR #35 exists to prevent.
+    `list_permission_keys_scoped` closes that; it is gated `staff:read`,
+    because knowing which keys exist is not the power to grant them.
+
+  Verification: 14 core tests (preset refusal verified to bite by neutering
+  the guard; `authored_role_survives_a_reseed` pins the justification as a
+  fact rather than a claim), 11 screen tests, and the suite caught one wrong
+  premise of mine — an orphan `assignments` row cannot be produced by
+  deleting its user, because that row cascades. Gates: ipc-parity OK (the
+  four commands left its GATED DEAD SURFACE list), bundle-parity 30 keys / 0
+  missing, ftl-orphans OK, lint-i18n clean, tsc clean, eslint 0 errors.
+
+  **Open follow-ups, recorded rather than dropped:**
+  - `create_role` still lives in `db/staff.rs` with its own copy of the grant
+    validator and no preset guard. Folding it into `db/roles.rs` so all four
+    operations share one rule set is the obvious next commit; it was left
+    because that file carried another agent's uncommitted work at the time.
+  - The screen lists roles but does not show *which accounts* hold one;
+    `role_reference_counts` gives the number, not the names.
+  - `get_over_quota_report` (from `aa420395`, different feature) has no
+    `_scoped` variant and currently fails `verify-scoped-coverage.sh`.
 - [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
 - [x] **Define data residency and retention policy.** Document where tenant data,
