@@ -97,6 +97,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--full", action="store_true",
+                    help="list EVERY name per bucket, not just examples")
     args = ap.parse_args()
     root = Path(args.root).resolve()
     try:
@@ -134,11 +136,15 @@ def main():
         'listed_not_defined': len(absent),
         'registered_not_listed': len(missing),
         'clean': total == 0,
+    # --full removes the cap. The truncation keeps the default output readable, but it
+    # also means 'five examples' is all anyone ever looks at - and a bucket of 85 is not
+    # triageable without its actual contents.
         'examples': {
-            'marker_wrong': ['%s: doc [%s] truth [%s]' % t for t in wrong[:5]],
-            'listed_not_registered': unwired[:5],
-            'listed_not_defined': absent[:10],
-            'registered_not_listed': missing[:10],
+            'marker_wrong': ['%s: doc [%s] truth [%s]' % t
+                             for t in (wrong if args.full else wrong[:5])],
+            'listed_not_registered': list(unwired if args.full else unwired[:5]),
+            'listed_not_defined': list(absent if args.full else absent[:10]),
+            'registered_not_listed': list(missing if args.full else missing[:10]),
         },
     }
     if args.json:
@@ -154,11 +160,18 @@ def main():
         print('  listed, not registered anywhere : %d' % len(unwired))
         print('  listed, not defined anywhere    : %d' % len(absent))
         print('  registered, not listed          : %d' % len(missing))
+        # 'listed_not_registered' used to be missing from this loop entirely: the largest
+        # bucket in the report (85 names) was counted, capped to 5 inside the JSON, and
+        # then never printed for humans at all. A number nobody can enumerate is not a
+        # finding, it is an alarm.
         for key, label in (('marker_wrong', 'wrong marker'),
+                           ('listed_not_registered', 'unregistered'),
                            ('listed_not_defined', 'does not exist'),
                            ('registered_not_listed', 'undocumented')):
-            for ex in out['examples'][key][:5]:
-                print("    %-14s %s" % (label, ex))
+            for ex in out['examples'][key]:
+                print("    %-18s %s" % (label, ex))
+            if args.full and len(out['examples'][key]) == 0:
+                pass
         print('')
         print('CLEAN: doc and registries agree' if total == 0
               else 'DRIFT: %d discrepancies' % total)
