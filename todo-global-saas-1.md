@@ -506,7 +506,18 @@ Scope findings from the pre-implementation investigation, in execution order:
         command families. Local variable names inside screens/tests
         (`storeProfiles`, `stores`, `mockListStores`) were intentionally left
         alone — they are not API identifiers.
-  - [ ] **Remaining UI work (re-measured 2026-09-06 after the migration).**
+  - [x] **Remaining UI work (re-measured 2026-09-06 after the migration).**
+    **CLOSED 2026-09-08 (supervisor round 1)** — the box had lagged its own body,
+    which already declares "1e is now closed" below, and every row of the table
+    is struck through as done. Re-verified against the tree and git before
+    flipping: `ui/src/features/stores/` no longer exists (renamed to
+    `features/locations/` in `a965f481`, stale deletion entries dropped in
+    `b83785b6`); both bundles are `multi-location.ftl` / `multi-location.id.ftl`
+    (`88a14c91` / `f5e191aa`); the 32 orphan `topology-*` key pairs are gone from
+    both files (zero `topology-shortcuts|sim|palette` messages remain); and
+    `07c7b0f0` deleted the shim together with its contract test. The surviving
+    `store`-worded strings are intentionally preserved per the Terminology table,
+    not leftover debt. Documentation-only flip — no code change.
     Zero live callers of the shim remain; what keeps 1e open is now
     mechanical/structural, not caller work:
 

@@ -327,9 +327,18 @@ actual relationship mutation.
 - [ ] **Add the Locations-to-Topology entry point.** Keep Locations
       status-oriented, but route location creation/details into the relevant
       scoped Topology Editor graph.
-- [ ] **Version and publish topology changes.** Preserve validation, optimistic
+- [x] **Version and publish topology changes.** Preserve validation, optimistic
       concurrency, diff review, rollback/recovery, and an explicit Apply/publish
       boundary for location/workspace/device relationships.
+      **CLOSED 2026-09-08 (supervisor round 1)** by ADR #46 Phase 2 — commits
+      `af09ff15` (restore-to-draft + pruned-snapshot messaging) and `baecb7d8`
+      (the ADR record), logged as Amendment 7 in `todo-global-saas-3.md:32`.
+      Validation, optimistic concurrency and the Apply/publish boundary pre-date
+      that work; revision history (`315c1e6f`) and the restore-to-draft browser
+      UI (`TopologyRevisionBrowser.tsx`, `TopologyScreen.tsx`) are landed.
+      **Still open, recorded so it is not dropped: the re-Apply rollback remains
+      Phase 3 future work behind its own ADR** (ADR #46 §Phase 3 — taken up only
+      on evidence that Phase 2 is insufficient).
       **SUPERVISOR NOTE 2026-09-07: this item is partially unblocked and
       partially delivered by ADR #46** (accepted, see
       `docs/decisions/2026-09-07-adr46-topology-revision-history-and-restore.md`):
