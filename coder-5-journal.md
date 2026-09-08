@@ -502,3 +502,72 @@ FTL pair only.
   AFTER Slice A. When Slice A is acknowledged, present the migration design as a
   plan-first report (marker key, write path, read path, how OverQuotaCard
   consumes it) — do NOT start it unprompted.
+
+### Slice C — Persisted per-resource over_quota marker: PLAN (plan-first, NOT started)
+
+Presented to the supervisor as a plan-first report (stop-and-report discipline). Greenlight
+still required before any code. Summary of the design:
+
+(a) WHERE IT PERSISTS — own table `over_quota_markers`, NOT a settings row.
+    Settings is key->single-value KV; markers are one-to-many (one row per over/at
+    resource) and must be queryable by resource_id + cleared on archive. Columns:
+    id, resource_id, resource_type (warehouse|pos_register|location|staff|product|kds_screen),
+    dimension (QuotaDimension key), severity ('over'|'at'), limit INTEGER (NULL=unlimited),
+    current INTEGER, marked_at TEXT (RFC3339), tenant_id TEXT NOT NULL DEFAULT 'default'.
+    No hard FKs (soft link); write path is a full-refresh (DELETE WHERE tenant_id; INSERT)
+    inside one tx -> clears stale/orphan rows without multi-parent FK complexity.
+
+(b) WRITE PATH — extend the existing downgrade gatherer. `Store::assess_downgrade`
+    (db/downgrade.rs, read-only) gathers QuotaCounts via the same count_* the enforce_*_quota
+    gates use, calls pure `evaluate()`. Add a NEW write method
+    `Store::persist_over_quota_markers(tier)` (separate, needs tx per RUST-08) that maps each
+    usage to a marker (severity 'over' when is_over_quota, 'at' when blocks_creation) and
+    full-refresh-upserts. Trigger on plan-change/downgrade (same path as get_over_quota_report).
+    Per-location dims (KDS screens / warehouses-per-location) need a sibling
+    persist_per_location_markers(store_id) -> DEFERRED to Slice B. Optional
+    `recompute_over_quota_markers` IPC (apps/*/commands/subscription.rs + lib.rs) only if a
+    manual re-scan button is wanted; not needed for the bounded slice.
+
+(c) READ PATH — extend the EXISTING `get_over_quota_report` IPC (no new IPC for Slice C).
+    Add `markers: OverQuotaMarker[]` to the returned OverQuotaReport (backward-compatible
+    field); OverQuotaCard merges markers with usages. A dedicated get_over_quota_markers IPC
+    is only for Slice B's fine-grained queries -> deferred. Slice A's chip stays live (no IPC).
+
+(d) MIGRATION — `20260922_over_quota_markers.sql` (next after 20260921). tenant_id present =>
+    reconcile with RLS: follow topology_revisions/memo_revisions precedent -> add to RLS_EXEMPT
+    in scripts/generate-pg-migration.py with a documented reason (enabling RLS is a separate
+    policy call the repo keeps out of schema). TRIGGER_MAP: none required (no FK triggers; soft
+    link). PG generator --check (pre-commit step 7) stays green. Column types are INTEGER +
+    TEXT -> passes migration column-type lint (step 6).
+
+(e) TESTS — Rust (downgrade_tests.rs / db/downgrade_tests.rs): evaluate->marker mapping
+    (over/at/unlimited->none), full-refresh clears stale, archive+recompute clears marker,
+    unlimited => 0 rows. Migration (migrations_tests.rs): applies, shape/CHECK/tenant_id correct,
+    PG --check green. UI (OverQuotaCard.test.tsx): extend the mocked report payload at the
+    api/subscription.ts boundary (NOT dev-mock/tauri-api.ts, which is hot) with markers and
+    assert merge/rendering. Gates: vitest + tsc --noEmit + eslint + all 10 pre-commit steps.
+
+(f) HOT-FILE COLLISIONS — explicit hot list: NONE (StatusBar, connection hooks, dev-mock,
+    shared.ftl/global .id.ftl, api/license.ts, features/inventory/* all untouched). Coordination
+    risks (not in hot list but concurrent-edit-prone): (1) the migration FILE is hot for the
+    rename/ADR agents -> claim 20260922 early; (2) scripts/generate-pg-migration.py is a
+    single-point edit (RLS_TABLES/TRIGGER_MAP); (3) apps/*/commands/subscription.rs + lib.rs
+    command registration is edited by multiple agents -> use explicit pathspec. No settings.rs
+    change (dedicated table).
+
+Other §J/audit follow-ups surfaced from this vantage:
+- (BLOCKER for the tax write-side IPC slice, from 20260921) sync_pull.rs::upsert_tax_rates and
+  SnapshotTaxRate use an explicit column list WITHOUT the four new scope/window cols -> a scoped
+  tax row pulled from the hub lands with NULL scope and reads as tenant-global. Fix before any
+  scoped tax row is created.
+- Slice A's chip re-derives warehouse over-limit from the in-graph node count while
+  OverQuotaReport uses DB counts via assess_downgrade; two sources can transiently disagree.
+  Optionally consult the persisted marker for consistency once Slice C lands.
+- OverQuotaCard is read-only; the §J 'archive or upgrade' remediation has no archive action
+  wired per resource -> candidate Slice D.
+- KDS screens: no FeatureVerdict, no IPC wrapper for list_kds_devices_for_restaurant, no UI
+  consumer -> unchanged Slice B queue.
+
+### Next
+- Awaiting supervisor greenlight on the Slice C plan before any implementation. Do NOT start
+  unprompted. Slice B (KDS-screen over-limit) REMAINS QUEUED behind dev-mock (hot file).
