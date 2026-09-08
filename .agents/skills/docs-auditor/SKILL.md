@@ -74,10 +74,14 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   first result is clean, feed it something you know is broken.
   ⚠️ **Name every script by its full path, including inside a stamp or a sentence.**
   `detect.sh` Check 1 re-anchors a token on its `scripts/…` segment rather than using the
-  whole path it was given, so writing `scripts/check-audit-stamps.py` in prose fails the
-  gate even though the file exists at `.agents/skills/docs-auditor/scripts/`. This bit the
-  author of this bullet twice in one session. A `CODE FINDING` for detect.sh: it should
-  take the longest path-looking run on the line, not the last `scripts/` it finds.
+  whole path it was given, so writing the short form of this skill's own scripts
+  (`check-audit-stamps.py`, `check-dead-refs.py`, `check-orphans.py`) in prose fails the
+  gate even though each file exists under `.agents/skills/docs-auditor/scripts/`. This bit
+  the author of this bullet three times in one session — the third was this very
+  sentence, which reached for the short form as its own example of the trap and tripped
+  it. That is why the names above are spelled without the prefix.
+  A `CODE FINDING` for detect.sh: it should take the longest path-looking run on the
+  line, not the last `scripts/` segment it finds.
 - Duration: ~1-2 minutes. No per-line cross-reference.
 
 ### Full Audit
