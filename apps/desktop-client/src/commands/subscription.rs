@@ -17,10 +17,12 @@ use tauri::State;
 use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
-use oz_core::downgrade::OverQuotaReport;
+use oz_core::downgrade::{OverQuotaMarker, OverQuotaReport, OverQuotaSeverity, QuotaDimension};
 use oz_core::entitlements::{Entitlements, build_entitlements};
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
+
+use platform_core::StoreDatabaseManager;
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
@@ -44,6 +46,10 @@ pub struct SubscriptionCapabilitiesDto {
     pub max_pos_instances: Option<i64>,
     /// Maximum inventory warehouses (`None` = unlimited).
     pub max_warehouses: Option<i64>,
+    /// Per-location KDS screen cap (`None` = unlimited). Not a tenant-global
+    /// quota — it governs each location separately, which is why the over-quota
+    /// report surfaces it as per-location rows rather than a usage row (§J B3).
+    pub max_kds_screens: Option<i64>,
     /// Maximum staff users (`None` = unlimited).
     pub max_staff_users: Option<i64>,
     /// Free = 3 months; Plus = 1 year; Pro = 5 years; Premium/Enterprise = unlimited (`None`).
@@ -116,6 +122,7 @@ fn project_capabilities(ent: &Entitlements) -> SubscriptionCapabilitiesDto {
         max_locations: ent.max_locations(),
         max_pos_instances: ent.max_pos_instances(),
         max_warehouses: ent.max_warehouses(),
+        max_kds_screens: ent.max_kds_screens(),
         max_staff_users: ent.max_staff_users(),
         sales_history_days: ent.sales_history_days(),
         supports_qris: ent.supports_qris(),
@@ -394,13 +401,35 @@ pub async fn get_over_quota_report(
 ) -> Result<OverQuotaReport, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let db = state.db.lock().await;
-    load_over_quota_report(&db)
+    // The global guard is dropped before the fan-out below, which opens other
+    // databases. Holding it across those opens is the hazard this file's own
+    // comments warn about elsewhere (a MutexGuard held across work that can
+    // block), and the location list is all the global DB is needed for.
+    let (mut report, tier, locations) = {
+        let db = state.db.lock().await;
+        let (report, tier) = load_over_quota_report(&db)?;
+        let locations: Vec<(String, String)> = Store::new(&db)
+            .list_locations()?
+            .into_iter()
+            .map(|l| (l.id, l.name))
+            .collect();
+        Ok::<_, AppError>((report, tier, locations))
+    }?;
+    report.markers.extend(per_location_over_quota_rows(
+        &locations,
+        &state.db_manager,
+        &tier,
+    )?);
+    Ok(report)
 }
 
 /// The synchronous body of [`get_over_quota_report`], split out so the
-/// tests exercise the exact production path.
-fn load_over_quota_report(db: &rusqlite::Connection) -> Result<OverQuotaReport, AppError> {
+/// tests exercise the exact production path. Returns the effective tier
+/// alongside the report so the per-location fan-out is not forced to
+/// re-derive entitlements a second time.
+fn load_over_quota_report(
+    db: &rusqlite::Connection,
+) -> Result<(OverQuotaReport, SubscriptionTier), AppError> {
     let store = Store::new(db);
     // The effective tier is what the gates enforce — assess against it,
     // not the nominal tier, so the report matches the next rejection.
@@ -410,7 +439,129 @@ fn load_over_quota_report(db: &rusqlite::Connection) -> Result<OverQuotaReport, 
     let markers = store.persist_over_quota_markers()?;
     let mut report = store.assess_downgrade(&ent.tier)?;
     report.markers = markers;
-    Ok(report)
+    Ok((report, ent.tier))
+}
+
+/// §J B3: per-location over-quota rows for KDS screens and warehouses.
+///
+/// # Why this is a fan-out and not one grouped query
+///
+/// `workspace_instances` carries a `location_id`, so a
+/// `GROUP BY location_id` looks like the obvious single query — but it would
+/// run against the wrong database. Every store connection is migrated with the
+/// SAME `oz_core::migrations::ALL` list (`AppState` builds
+/// `StoreDatabaseManager::new(dir, oz_core::migrations::ALL)`), and the
+/// production writers and readers both use a STORE handle:
+/// `create_workspace_instance_scoped` inserts via `open_store(&session.store_id)`,
+/// `list_workspaces_scoped` reads via `open_store(&session.store_id)`, and
+/// `enforce_instance_quota` counts via the same. The global DB's copy of the
+/// table is therefore empty for these purposes, so a grouped query on it would
+/// report no location as over quota — a clean bill of health invented out of
+/// thin air. The counts have to be read where they are written: one visit per
+/// store database.
+///
+/// # Reads never create
+///
+/// `StoreDatabaseManager::open_store` CREATES the database file when it is
+/// missing. This is a read path reached by opening a settings screen, so a
+/// location whose database does not exist yet is SKIPPED rather than opened.
+/// The skip is honest, not lossy: a store with no database has no instances by
+/// construction, so there is nothing it could be over quota on. Minting a
+/// database as a side effect of a page view would also be inconsistent with the
+/// rule this slice already applies to `store_id` input — a remediation that
+/// looks finished at 0 is the failure shape to avoid.
+///
+/// # What each row means
+/// Only rows that are over or at a finite cap are emitted, mirroring the
+/// tenant-global writer's rule that an absent marker means "fine". An unlimited
+/// cap (`None`) never produces a row. `resource_id` is the store id, so the
+/// owner-facing row carries the target its action needs; `dimension` is
+/// `kds_screens` for KDS (a per-location dimension that deliberately has no
+/// tenant-global usage row) and `warehouses` for warehouse instances, whose
+/// dimension IS tenant-global — the per-location row refines it, it does not
+/// contradict the aggregate above it.
+fn per_location_over_quota_rows(
+    locations: &[(String, String)],
+    manager: &StoreDatabaseManager,
+    tier: &SubscriptionTier,
+) -> Result<Vec<OverQuotaMarker>, AppError> {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let mut rows = Vec::new();
+    for (store_id, _name) in locations {
+        if !manager.store_db_exists(store_id) {
+            continue;
+        }
+        let conn = manager
+            .open_store(store_id)
+            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
+        let db = conn
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        // A store database that fails to answer is skipped rather than
+        // aborting the whole report: one unreadable location must not hide the
+        // others. The trade is stated rather than hidden — a skipped store can
+        // under-report, which is why the error is logged.
+        let (kds, warehouses) = match (
+            store.count_active_kds_instances(store_id),
+            store.count_active_warehouse_instances(store_id),
+        ) {
+            (Ok(k), Ok(w)) => (k, w),
+            (Err(e), _) | (_, Err(e)) => {
+                tracing::warn!(store_id = %store_id, error = %e, "per-location quota dims: store skipped");
+                continue;
+            }
+        };
+        push_dim_row(
+            &mut rows,
+            &now,
+            store_id,
+            "kds_screen",
+            QuotaDimension::KdsScreens,
+            tier.max_kds_screens(),
+            kds,
+        );
+        push_dim_row(
+            &mut rows,
+            &now,
+            store_id,
+            "warehouse",
+            QuotaDimension::Warehouses,
+            tier.max_warehouses(),
+            warehouses,
+        );
+    }
+    Ok(rows)
+}
+
+/// Emit one per-location marker row when `current` is over or exactly at a
+/// finite `limit`. Shared by both dims so the over/at/none decision exists once.
+fn push_dim_row(
+    rows: &mut Vec<OverQuotaMarker>,
+    now: &str,
+    store_id: &str,
+    resource_type: &str,
+    dimension: QuotaDimension,
+    limit: Option<i64>,
+    current: i64,
+) {
+    let Some(limit) = limit else { return };
+    let severity = if current > limit {
+        OverQuotaSeverity::Over
+    } else if current == limit {
+        OverQuotaSeverity::At
+    } else {
+        return;
+    };
+    rows.push(OverQuotaMarker {
+        resource_id: store_id.to_string(),
+        resource_type: resource_type.to_string(),
+        dimension,
+        severity,
+        limit: Some(limit),
+        current,
+        marked_at: now.to_string(),
+    });
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

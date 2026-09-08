@@ -17,6 +17,15 @@ settings-license-quota-dim-pos-registers = Terminal POS
 settings-license-quota-dim-warehouses = Titik stok gudang
 settings-license-quota-dim-staff = Akun staf
 settings-license-quota-dim-products = Produk
+# §J B3 — cap KDS per lokasi. Tidak ada baris pemakaian tingkat tenant untuk
+# ini, jadi labelnya tetap diperlukan meski dimensinya bukan kuota tenant.
+settings-license-quota-dim-kds-screens = Layar KDS (lokasi ini)
+# §J B3 — baris yang dibatasi per lokasi, bukan per tenant.
+settings-license-quota-loc-aria = Batas kuota per lokasi
+settings-license-quota-loc-title = Batas per lokasi
+# Baris kegagalan generik B1 diganti dengan yang membawa alasan dari backend,
+# karena id toko yang ditolak dan koneksi yang putus butuh jawaban berbeda.
+settings-license-quota-remedy-failed-detail = Aksi tersebut gagal: { $reason }. Angka kuota di atas tidak berubah.
 # §J B1 — dua aksi perbaikan register workspace pada kartu melebihi kuota.
 # remedy-hint menyebut nama toko karena kartu ini terbaca sebagai tingkat tenant
 # sementara kedua aksinya terikat satu toko; teksnya tidak boleh menimbulkan
@@ -29,7 +38,6 @@ settings-license-quota-remedy-recover = Pulihkan yang disuspensi
 settings-license-quota-remedy-suspended = { $count } register surplus disuspensi. Dinonaktifkan, bukan dihapus.
 settings-license-quota-remedy-recovered = { $count } register yang disuspensi telah dipulihkan.
 settings-license-quota-remedy-none = Tidak ada yang berubah — tidak ada register toko ini yang melebihi batas atau sedang disuspensi.
-settings-license-quota-remedy-failed = Aksi tersebut gagal. Angka kuota di atas tidak berubah.
 settings-nav-general = Umum
 settings-nav-appearance = Tampilan
 settings-nav-receipt = Nota

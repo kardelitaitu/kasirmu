@@ -33,6 +33,10 @@ export interface SubscriptionCapabilities {
   maxLocations: number | null;
   maxPosInstances: number | null;
   maxWarehouses: number | null;
+  /** Per-location KDS screen cap; `null` = unlimited. NOT a tenant-wide budget —
+   *  it governs each location separately, which is why the over-quota report
+   *  shows it as per-location rows instead of a usage row (§J B3). */
+  maxKdsScreens: number | null;
   maxStaffUsers: number | null;
   /** Free = 3 months; Plus = 1 year; Pro = 5 years; Premium/Enterprise = unlimited (`null`). */
   salesHistoryDays: number | null;
@@ -157,8 +161,18 @@ export interface QuotaUsageRow {
 export type OverQuotaSeverity = 'over' | 'at';
 
 /** One persisted over-quota marker (mirrors Rust `OverQuotaMarker`,
- *  serde snake_case). Tenant-global dimensions (the five tracked here) carry
- *  `resourceId` = the tenant id; per-resource markers are a later slice. */
+ *  serde snake_case).
+ *
+ *  Two shapes share this row type, told apart by `resourceType`:
+ *  - a **tenant-global** marker, where `resourceType` equals `dimension` and
+ *    `resourceId` is the tenant id (the five tracked dimensions); and
+ *  - a **per-location** marker (section J B3), where `resourceType` is a
+ *    resource kind (`kds_screen`, `warehouse`) and `resourceId` is the **store
+ *    id**, so the row carries the target its own remediation action needs.
+ *
+ *  Per-location rows are computed at read time by visiting each store
+ *  database; only the tenant-global ones are persisted. Use
+ *  `isPerLocationMarker` rather than comparing `resourceId` to a tenant id. */
 export interface OverQuotaMarkerRow {
   /** Tenant-global resource id for tenant-global dimensions (the tenant id). */
   resourceId: string;
@@ -190,6 +204,24 @@ export interface OverQuotaReport {
    *  backward-compatibility with older desktop builds; the card degrades
    *  gracefully when absent. */
   markers?: OverQuotaMarkerRow[];
+}
+
+/** Resource kinds that are capped per location rather than per tenant (section J
+ *  B3). Anything else in `markers` is a tenant-global dimension marker. */
+const PER_LOCATION_RESOURCE_TYPES: readonly string[] = ['kds_screen', 'warehouse'];
+
+/** Whether a marker row describes one location rather than the whole tenant. */
+export function isPerLocationMarker(row: OverQuotaMarkerRow): boolean {
+  return PER_LOCATION_RESOURCE_TYPES.includes(row.resourceType);
+}
+
+/** The per-location marker rows of a report, in the order the fan-out produced
+ *  them (by store, then dimension). Empty when no location is over or at a cap —
+ *  which is a real answer, not a failure to measure: the fan-out visits every
+ *  store database that exists and skips only those that do not. */
+export function perLocationMarkers(report: OverQuotaReport | null): OverQuotaMarkerRow[] {
+  if (!report?.markers) return [];
+  return report.markers.filter(isPerLocationMarker);
 }
 
 /** Whether a usage row is strictly over its cap (needs remediation). */

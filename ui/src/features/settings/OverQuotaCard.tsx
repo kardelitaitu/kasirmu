@@ -6,6 +6,8 @@ import {
   getOverQuotaReport,
   isOverQuota,
   excessOf,
+  perLocationMarkers,
+  type OverQuotaMarkerRow,
   type OverQuotaReport,
   type QuotaUsageRow,
 } from '@/api/subscription';
@@ -52,9 +54,16 @@ export default function OverQuotaCard() {
   const [report, setReport] = useState<OverQuotaReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [remedyBusy, setRemedyBusy] = useState<'suspend' | 'recover' | null>(null);
+  /** Which action is in flight, and against which store — per-location rows and
+   *  the store-level block share one busy state, so a click on one location must
+   *  not put every other row's button into its loading shape. */
+  const [remedyBusy, setRemedyBusy] = useState<
+    { action: 'suspend' | 'recover'; store: string } | null
+  >(null);
   const [remedyNote, setRemedyNote] = useState<
-    { kind: 'suspended' | 'recovered' | 'none' | 'failed'; count: number } | null
+    | { kind: 'suspended' | 'recovered' | 'none'; count: number; store: string }
+    | { kind: 'failed'; count: number; store: string; detail: string }
+    | null
   >(null);
 
   const refresh = useCallback(async () => {
@@ -88,32 +97,50 @@ export default function OverQuotaCard() {
    * the new argument rather than leaving it as a code path nothing walks.
    */
   const remediate = useCallback(
-    async (action: 'suspend' | 'recover') => {
-      if (!sessionToken || !resolvedStoreId) return;
-      setRemedyBusy(action);
+    async (action: 'suspend' | 'recover', store: string) => {
+      if (!sessionToken || !store) return;
+      setRemedyBusy({ action, store });
       setRemedyNote(null);
       try {
+        // The store is always passed explicitly, including from the store-level
+        // block below. `None` would let the backend pick the session store, which
+        // is fine until a per-location row asks for a different one and the
+        // fallback silently acts on the wrong database.
         const count =
           action === 'suspend'
-            ? await suspendSurplusWorkspaceInstancesScoped(sessionToken, resolvedStoreId)
-            : await recoverWorkspaceInstancesScoped(sessionToken, resolvedStoreId);
+            ? await suspendSurplusWorkspaceInstancesScoped(sessionToken, store)
+            : await recoverWorkspaceInstancesScoped(sessionToken, store);
         setRemedyNote({
           kind: count === 0 ? 'none' : action === 'suspend' ? 'suspended' : 'recovered',
           count,
+          store,
         });
         await refresh();
-      } catch {
-        setRemedyNote({ kind: 'failed', count: 0 });
+      } catch (err) {
+        // Surface the refusal, not just that something failed. A per-location row
+        // can legitimately be rejected — the backend validates the store id
+        // against `locations` before opening anything, and a row that no longer
+        // resolves (archived store, stale report) must say so. Swallowing that
+        // into a generic failure is how a hidden no-op comes back to life.
+        const detail =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'string'
+              ? err
+              : ((err as { message?: unknown })?.message ?? String(err));
+        setRemedyNote({ kind: 'failed', count: 0, store, detail: String(detail) });
       } finally {
         setRemedyBusy(null);
       }
     },
-    [sessionToken, resolvedStoreId, refresh],
+    [sessionToken, refresh],
   );
 
   const overRows: QuotaUsageRow[] = report
     ? report.usages.filter(isOverQuota)
     : [];
+  // Section J B3: computed per-location rows from the report's marker payload.
+  const perLocationRows: OverQuotaMarkerRow[] = perLocationMarkers(report);
 
   return (
     <Card
@@ -218,9 +245,9 @@ export default function OverQuotaCard() {
             <div className="settings-license-quota-remedy-actions">
               <Button
                 variant="secondary"
-                loading={remedyBusy === 'suspend'}
+                loading={remedyBusy?.action === 'suspend' && remedyBusy.store === resolvedStoreId}
                 disabled={remedyBusy !== null}
-                onClick={() => void remediate('suspend')}
+                onClick={() => void remediate('suspend', resolvedStoreId)}
                 data-testid="over-quota-remedy-suspend"
               >
                 <Localized id="settings-license-quota-remedy-suspend">
@@ -229,9 +256,9 @@ export default function OverQuotaCard() {
               </Button>
               <Button
                 variant="secondary"
-                loading={remedyBusy === 'recover'}
+                loading={remedyBusy?.action === 'recover' && remedyBusy.store === resolvedStoreId}
                 disabled={remedyBusy !== null}
-                onClick={() => void remediate('recover')}
+                onClick={() => void remediate('recover', resolvedStoreId)}
                 data-testid="over-quota-remedy-recover"
               >
                 <Localized id="settings-license-quota-remedy-recover">
@@ -246,6 +273,8 @@ export default function OverQuotaCard() {
                 aria-live="polite"
                 data-testid="over-quota-remedy-note"
               >
+                {/* A store id, not prose: which location the sentence is about. */}
+                <span className="settings-license-quota-remedy-store">{remedyNote.store}</span>
                 {remedyNote.kind === 'suspended' && (
                   <Localized id="settings-license-quota-remedy-suspended" vars={{ count: remedyNote.count }}>
                     <span>{'{ $count } surplus register(s) suspended. They are disabled, not deleted.'}</span>
@@ -262,12 +291,97 @@ export default function OverQuotaCard() {
                   </Localized>
                 )}
                 {remedyNote.kind === 'failed' && (
-                  <Localized id="settings-license-quota-remedy-failed">
-                    <span>That action failed. The quota numbers above are unchanged.</span>
+                  <Localized
+                    id="settings-license-quota-remedy-failed-detail"
+                    vars={{ reason: remedyNote.detail }}
+                  >
+                    <span>{'That action failed: { $reason }. The quota numbers above are unchanged.'}</span>
                   </Localized>
                 )}
               </p>
             )}
+          </div>
+        )}
+
+        {/* §J B3 — per-location caps. These rows exist because no tenant-global
+            usages row CAN express them: KDS screens and warehouse instances are
+            capped per location, so one tenant-wide number would either hide one
+            store's excess or invent another's. Each row here is at or over its
+            own cap, which is why the section is a short list rather than a full
+            one: an absent location means it is fine, not that it was skipped
+            (the fan-out visits every store database that exists).
+
+            The row is also the picker. It carries the store id its own action
+            needs, so acting on another location requires no selection UI — and
+            that is safe only because the backend validates the id against
+            locations before opening a store database (B1's choke point). If it
+            refuses, the refusal renders above rather than being swallowed. */}
+        {!failed && perLocationRows.length > 0 && (
+          <div
+            className="settings-license-quota-locations"
+            role="region"
+            aria-label={l10n.getString('settings-license-quota-loc-aria')}
+            data-testid="over-quota-locations"
+          >
+            <p className="settings-hint settings-license-quota-loc-heading">
+              <Localized id="settings-license-quota-loc-title">
+                <span>Per-location limits</span>
+              </Localized>
+            </p>
+            <ul className="settings-license-quota-list">
+              {perLocationRows.map((row) => (
+                <li
+                  key={row.resourceType + ':' + row.resourceId}
+                  className="settings-license-quota-row"
+                  data-testid="over-quota-location-row"
+                >
+                  <span className="settings-license-quota-dim">{row.resourceId}</span>
+                  <span className="settings-license-quota-dim">
+                    <Localized
+                      id={
+                        row.resourceType === 'kds_screen'
+                          ? 'settings-license-quota-dim-kds-screens'
+                          : 'settings-license-quota-dim-warehouses'
+                      }
+                    >
+                      <span>{row.resourceType}</span>
+                    </Localized>
+                  </span>
+                  <span className="settings-license-quota-detail">
+                    <Localized
+                      id="settings-license-quota-over-line"
+                      vars={{
+                        current: row.current,
+                        limit: row.limit ?? 0,
+                        excess: Math.max(0, row.current - (row.limit ?? 0)),
+                      }}
+                    >
+                      <span>{'{ $current } of { $limit } — { $excess } over'}</span>
+                    </Localized>
+                  </span>
+                  <Button
+                    variant="secondary"
+                    loading={remedyBusy?.action === 'suspend' && remedyBusy.store === row.resourceId}
+                    disabled={remedyBusy !== null}
+                    onClick={() => void remediate('suspend', row.resourceId)}
+                  >
+                    <Localized id="settings-license-quota-remedy-suspend">
+                      <span>Suspend surplus</span>
+                    </Localized>
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    loading={remedyBusy?.action === 'recover' && remedyBusy.store === row.resourceId}
+                    disabled={remedyBusy !== null}
+                    onClick={() => void remediate('recover', row.resourceId)}
+                  >
+                    <Localized id="settings-license-quota-remedy-recover">
+                      <span>Restore suspended</span>
+                    </Localized>
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>

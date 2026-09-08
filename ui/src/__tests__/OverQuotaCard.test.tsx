@@ -24,7 +24,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -364,5 +364,84 @@ describe('OverQuotaCard', () => {
     // resolved itself.
     expect(screen.getByText('5 of 2 — 3 over')).toBeInTheDocument();
     expect(screen.queryByTestId('over-quota-failed')).not.toBeInTheDocument();
+  });
+
+  it('lists per-location rows and acts on the row store, not the session store', async () => {
+    // §J B3: the row IS the picker. A location other than the session's must be
+    // remediable directly, and the payload must name THAT store. A regression
+    // here would suspend registers in one location while the owner reads a row
+    // about another, which is the exact class of wrong-target bug B1's validator
+    // exists to prevent.
+    const other: OverQuotaMarkerRow = {
+      resourceId: 'store-7',
+      resourceType: 'kds_screen',
+      dimension: 'kds_screens',
+      severity: 'over',
+      limit: 2,
+      current: 4,
+      markedAt: '2026-09-09T00:00:00.000Z',
+    };
+    const sent: unknown[] = [];
+    reportHandler.set((cmd, args) => {
+      if (cmd === 'suspend_surplus_workspace_instances_scoped') {
+        sent.push(args);
+        return Promise.resolve(2);
+      }
+      return Promise.resolve(reportWith([row('locations', 5, 1)], [other]));
+    });
+    renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-locations')).toBeInTheDocument();
+    });
+    // The dimension label resolves from the real FTL — proving the key for a
+    // dimension that has no tenant-global usage row was actually added.
+    expect(screen.getByText('KDS screens (this location)')).toBeInTheDocument();
+    expect(screen.getByTestId('over-quota-location-row')).toBeInTheDocument();
+    expect(screen.getByText('4 of 2 — 2 over')).toBeInTheDocument();
+    // Scoped to the row rather than picked out of a flat list: this also proves
+    // the affordance belongs to that location, not merely that one exists.
+    // `locRow`, not `row`: this file already has a module-level row() fixture
+    // helper, and shadowing it inside the test makes the earlier row(...) call in
+    // the same block stop typechecking.
+    const locRow = screen.getByTestId('over-quota-location-row');
+    expect(within(locRow).getByRole('button', { name: 'Suspend surplus' })).toBeInTheDocument();
+    fireEvent.click(within(locRow).getByRole('button', { name: 'Suspend surplus' }));
+    await waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+    expect(sent[0]).toEqual({ sessionToken: HARNESS_SESSION_TOKEN, storeId: 'store-7' });
+  });
+
+  it('surfaces the backend refusal when a per-location row no longer resolves', async () => {
+    // A stale report can name a store that has since been deleted. The validator
+    // rejects it rather than opening a database, and the card must show that
+    // reason instead of collapsing it into a generic failure — a hidden no-op is
+    // the failure shape this whole slice is built to avoid.
+    const ghost: OverQuotaMarkerRow = {
+      resourceId: 'store-gone',
+      resourceType: 'warehouse',
+      dimension: 'warehouses',
+      severity: 'at',
+      limit: 1,
+      current: 1,
+      markedAt: '2026-09-09T00:00:00.000Z',
+    };
+    reportHandler.set((cmd) => {
+      if (cmd === 'suspend_surplus_workspace_instances_scoped') {
+        return Promise.reject(new Error('unknown store: store-gone'));
+      }
+      return Promise.resolve(reportWith([row('locations', 5, 1)], [ghost]));
+    });
+    renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-locations')).toBeInTheDocument();
+    });
+    const locRow = screen.getByTestId('over-quota-location-row');
+    fireEvent.click(within(locRow).getByRole('button', { name: 'Suspend surplus' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-remedy-note')).toHaveTextContent(
+        'unknown store: store-gone',
+      );
+    });
   });
 });

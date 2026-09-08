@@ -2226,6 +2226,10 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     maxLocations: null,
     maxPosInstances: null,
     maxWarehouses: null,
+      // Per-location KDS cap; null = unlimited, matching the Premium fixture this
+      // block returns (SubscriptionTier::max_kds_screens: Free/Plus 0, Pro 2,
+      // Premium/Enterprise unlimited).
+      maxKdsScreens: null,
     maxStaffUsers: null,
     salesHistoryDays: null,
     supportsQris: true,
@@ -2291,6 +2295,16 @@ const handlers: Record<string, (args: unknown) => unknown> = {
       { dimension: 'staff', limit: null, current: 1 },
       { dimension: 'products', limit: null, current: 0 },
     ],
+    // section J B3: per-location marker rows are empty HERE ON PURPOSE, not
+    // omitted. This fixture reports the Premium tier, whose caps are unlimited
+    // (max_kds_screens and max_warehouses are both None), so the real fan-out
+    // cannot legally emit a single row: an unlimited cap never produces a
+    // marker. A mock that invented one to make the section visible would be worse
+    // than no preview, because it would demonstrate a state the product cannot
+    // reach. To see the section, change tierKey/tierName above to 'pro' and give
+    // the caps finite limits, then add rows whose resourceType is 'kds_screen' or
+    // 'warehouse' and whose resourceId is a mock location id.
+    markers: [],
   }),
 
   // ═══════════════════════════════════════════════════════════════

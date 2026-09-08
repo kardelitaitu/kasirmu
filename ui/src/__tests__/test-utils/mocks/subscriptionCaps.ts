@@ -12,6 +12,9 @@ export function makeSubscriptionCaps(
     maxLocations: 1,
     maxPosInstances: 1,
     maxWarehouses: 1,
+    // Free: KDS unavailable at all, so the per-location cap is 0 — matches
+    // SubscriptionTier::max_kds_screens, which returns Some(0) not None.
+    maxKdsScreens: 0,
     maxStaffUsers: 1,
     salesHistoryDays: 90, // Free = 3 months (90 days)
     supportsQris: false,

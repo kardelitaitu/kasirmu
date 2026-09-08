@@ -1483,3 +1483,133 @@ unregistered references (my two, allowlisted), and the gated dead-surface list d
 `recover_workspace_instances_scoped` and `suspend_surplus_workspace_instances_scoped`,
 which is the actual point of the slice: two permission checks that guarded nothing now
 guard something.
+
+---
+
+## 2026-09-09 — finisher-B: §J B3 — per-location quota rows, and the query that was right against the wrong database
+
+Supervisor greenlit B3 after the fork ruling (A1+A3 combined, skip stores with no
+existing file, per-instance archive deferred). Branch 0.0.37, no branch, no push.
+
+### The audit result, since it inverted my own scoping report
+
+My report proposed `SELECT location_id, COUNT(*) ... GROUP BY location_id` and called
+B3 "bounded, no new IPC" on the grounds that `workspace_instances` is an org-level
+table. **The query is correct and the handle is wrong.** Settled from the write and
+read paths, not the schema:
+
+- Every store connection is migrated with the SAME `oz_core::migrations::ALL` list
+  (`StoreDatabaseManager::new(dir, oz_core::migrations::ALL)`, `state.rs:303`), so the
+  table *exists* everywhere.
+- Production **writes** to the store DB: `create_workspace_instance_scoped` inserts via
+  `open_store(&session.store_id)`; so does `enforce_instance_quota`, which is what
+  calls `count_active_kds_instances`.
+- Production **reads** from the store DB too: `list_workspaces_scoped` takes the global
+  lock only for the subscription and the assignment, then lists via
+  `open_store(&session.store_id)`.
+
+So a grouped query on the global DB would read an empty table and report that no
+location is over quota — a clean bill of health invented out of thin air, on the one
+surface whose whole job is not lying about quota. B3 is therefore a **fan-out**, one
+visit per store database. This partly vindicates finisher-A's original SPRAWLS verdict,
+for a reason A did not give: not the IPC count, but the data being sharded per store.
+
+### The enum fork, resolved
+
+`OverQuotaMarker.dimension` is typed `QuotaDimension` — five variants, all
+tenant-global — so a per-location KDS marker had **no legal dimension value**. The
+migration was never the constraint (`dimension` is plain `TEXT NOT NULL`, no CHECK);
+the constraint was the Rust type, which is why C's "Slice B adds sibling markers"
+note sat unimplemented.
+
+- **A1:** `QuotaDimension::KdsScreens` added, deliberately absent from
+  `DIMENSION_ORDER: [QuotaDimension; 5]`. Because `evaluate()` iterates that array, a
+  variant outside it cannot reach `usages`, `is_over_quota()` or `over_quota_usages()`
+  — no tenant-global number can be contaminated, and the fixed-length array means the
+  compiler enforces the boundary rather than a reviewer remembering it. The three arms
+  it forced (`as_str`, `limit_for`, `QuotaCounts::get`) each document why they are
+  there: `get` returns 0 because there is no tenant-global KDS count to hold.
+- **A3:** warehouses-per-location reuse the existing `Warehouses` dimension with
+  `resource_type = 'warehouse'` and `resource_id = store`, so no new type for the half
+  that already has an honest dimension.
+- `QuotaDimension::from_key` added for the reader. It returns `None` on an unknown key
+  and the reader **skips** such rows with a counted `tracing::warn`, because an
+  unconstrained text column read into an enum is exactly where a newer build's row
+  would otherwise be reinterpreted under the wrong limits.
+
+### Reads never create
+
+`open_store` creates the file when missing, so a fan-out from a settings screen would
+otherwise mint a store database for any location row that has no file — a read path
+with a write side effect on N files. The manager already exposed
+`store_db_exists`, so the guard was free. A test asserts both halves: the row is
+skipped **and** `store_db_exists` is still false afterwards. The skip is honest rather
+than lossy — a store with no database has no instances by construction.
+
+Store ids in these tests are process-and-case unique, because the fan-out test writes
+real files into the temp dir: a fixed name would let one run's leftover database
+satisfy the next run's `store_db_exists` and turn the never-create test into a pass
+that proves nothing.
+
+### A zero count is not a finding
+
+`max_kds_screens` is `Some(0)` on Free/OneTime/Plus, so the natural `current >= limit`
+emission would flag **every store on those tiers** with "KDS screens 0 of 0 — at cap":
+a §J remediation card telling an owner to reduce something already empty. Rows are
+emitted only when `current > 0` and the cap is finite; `current > limit` still catches
+every real excess, since a cap of 0 makes any 1+ screen over. Covered by
+`per_location_rows_emit_at_cap_and_omit_zero_counts` and
+`per_location_rows_emit_nothing_for_an_unlimited_cap`.
+
+### The persistence finally has a reader — and the doc that admitted it was wrong
+
+`Store::over_quota_markers()` exists now. Until this slice the table had a writer, three
+indexes and three tests, and **no production reader at all**: what the UI displayed was
+the writer's in-memory return value spliced on at `subscription.rs:410-412`. Worth
+noticing that `OverQuotaMarker`'s own doc (line 169) already claimed "the owner-facing
+view reads these instead of recomputing the assessment on every render" — a sentence the
+code contradicted, since `get_over_quota_report` recomputes on every call. The claim was
+written as the plan, not as the behaviour.
+
+That said, per-location rows are **computed at read time**, not persisted —
+`persist_over_quota_markers` still runs on the global handle and writes only
+tenant-global rows, exactly as the ruling required. Persisting per-location markers
+would need a write-side fan-out, which is its own review.
+
+### The row is the picker
+
+No location selector was built. Each per-location card row carries its own store id and
+its Suspend/Restore buttons call the landed commands with `Some(store_id)` — which is
+only safe because of B1's validator (trim, `locations` lookup, no file creation). A
+refusal renders with the backend's reason: B1's generic "That action failed" key was
+**deleted** in the same commit that removed its last reference, replaced by
+`...-failed-detail` carrying `$reason`. A test asserts a row for `store-7` sends
+`storeId: 'store-7'`, and that a stale row surfaces "unknown store: store-gone".
+
+`maxKdsScreens` is now on the caps DTO in both shells (through
+`Entitlements::max_kds_screens`, which routes via `QuotaDimension::limit_for` so the
+one-limit-table invariant holds). Making it required rather than optional is what caught
+two fixtures that had to learn the field — `makeSubscriptionCaps` and
+`SubscriptionContext.test.tsx` — both filled with the tier-honest value, not a guess.
+
+### Two self-catches, recorded because they were almost shipped
+
+1. `load_over_quota_report` gained a doc line saying it returns the tier "so the
+   per-location fan-out is not forced to re-derive entitlements a second time" — while
+   the code I had just written discarded that tier and called a second function that
+   re-derived it. The comment described the fix, not the state. The helper is gone and
+   the tier now travels out of the guard, so the sentence is finally true of the code
+   sitting under it.
+2. In the card test I named a local `const row`, which shadowed this file's
+   module-level `row()` fixture helper used earlier in the same test body. tsc rejected
+   it as "HTMLElement is not callable"; the tests would not have.
+
+### Deferred, per ruling 3
+
+Per-instance **Archive** on a store other than the session's needs a scoped cross-store
+instance reader — `list_workspaces_scoped` is session-store-bound **by design**, and that
+is tenant isolation rather than an oversight, so the new reader must enforce the same
+isolation and carry its own suite. `archive_workspace_instance_scoped` remains wired to
+the api layer with zero component callers; it is one call site short, on the session's
+own store, and this slice did not add it.
+

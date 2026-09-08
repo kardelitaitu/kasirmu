@@ -43,6 +43,9 @@ pub struct SubscriptionCapabilitiesDto {
     pub max_pos_instances: Option<i64>,
     /// Maximum inventory warehouses (`None` = unlimited).
     pub max_warehouses: Option<i64>,
+    /// Per-location KDS screen cap (`None` = unlimited). Not a tenant-global
+    /// quota — it governs each location separately (parity with desktop, §J B3).
+    pub max_kds_screens: Option<i64>,
     /// Maximum staff users (`None` = unlimited).
     pub max_staff_users: Option<i64>,
     /// Free = 3 months; Plus = 1 year; Pro = 5 years; Premium/Enterprise = unlimited (`None`).
@@ -130,6 +133,7 @@ fn project_capabilities(ent: &Entitlements) -> SubscriptionCapabilitiesDto {
         max_locations: ent.max_locations(),
         max_pos_instances: ent.max_pos_instances(),
         max_warehouses: ent.max_warehouses(),
+        max_kds_screens: ent.max_kds_screens(),
         max_staff_users: ent.max_staff_users(),
         sales_history_days: ent.sales_history_days(),
         supports_qris: ent.supports_qris(),

@@ -389,7 +389,9 @@ fn verdict_addon_grant_clears_the_tier_denial_for_analytics() {
 #[test]
 fn over_quota_report_assesses_the_effective_tier() {
     let conn = fresh_db();
-    let report = load_over_quota_report(&conn).unwrap();
+    // B3: the seam now also returns the effective tier the per-location
+    // fan-out is driven by; these tenant-global tests do not need it.
+    let (report, _tier) = load_over_quota_report(&conn).unwrap();
     assert_eq!(report.tier_key, "free");
     // Locations: the seeded primary location sits at the Free cap (1) —
     // at-cap-not-over, the §J "compliant but blocks creation" distinction.
@@ -421,7 +423,9 @@ fn over_quota_report_names_dimensions_and_excess_after_downgrade() {
             ('u-2', 'b', 'h', 'B', 'role-staff', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let report = load_over_quota_report(&conn).unwrap();
+    // B3: the seam now also returns the effective tier the per-location
+    // fan-out is driven by; these tenant-global tests do not need it.
+    let (report, _tier) = load_over_quota_report(&conn).unwrap();
     assert!(
         report.is_over_quota(),
         "3 locations / 3 staff / 3 terminals on Free must report over"
@@ -625,4 +629,137 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
         "absent payload must not grant a tier-denied feature"
     );
     assert_eq!(v.reason_code(), Some("tier"));
+}
+
+// ── §J B3: per-location quota rows ───────────────────────────────────
+
+fn b3_manager() -> StoreDatabaseManager {
+    StoreDatabaseManager::new(std::env::temp_dir(), oz_core::migrations::ALL)
+}
+
+/// A store id unique to this process and test, because `b3_manager` writes into
+/// the real temp directory: a fixed name would let one run's leftover database
+/// satisfy the next run's `store_db_exists` and turn the skip test into a pass
+/// that proves nothing.
+fn b3_store_id(tag: &str) -> String {
+    format!("b3-{}-{}", std::process::id(), tag)
+}
+
+#[test]
+fn per_location_rows_skip_a_store_with_no_database_and_create_none() {
+    // The invariant the ruling asked for: this runs on the read path of a
+    // settings screen, and `open_store` CREATES the file when missing. A
+    // location row whose database does not exist yet must be skipped, and the
+    // skip must not leave a file behind.
+    let manager = b3_manager();
+    let sid = b3_store_id("ghost");
+    assert!(!manager.store_db_exists(&sid));
+    let rows = per_location_over_quota_rows(
+        &[(sid.clone(), "Ghost Store".into())],
+        &manager,
+        &SubscriptionTier::Pro,
+    )
+    .unwrap();
+    assert!(
+        rows.is_empty(),
+        "a store with no database has no instances to flag"
+    );
+    assert!(
+        !manager.store_db_exists(&sid),
+        "reads must never create a store database"
+    );
+}
+
+#[test]
+fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
+    let manager = b3_manager();
+    let sid = b3_store_id("pro-kds");
+    {
+        let conn = manager.open_store(&sid).unwrap();
+        let db = conn.lock().unwrap();
+        let store = Store::new(&db);
+        store
+            .create_location_profile(&oz_core::LocationProfile {
+                id: sid.clone(),
+                name: "Pro Store".into(),
+                address: String::new(),
+                tax_id: String::new(),
+                currency: "IDR".into(),
+                timezone: "UTC".into(),
+                is_primary: true,
+                created_at: "2026-07-01T00:00:00Z".into(),
+                updated_at: "2026-07-01T00:00:00Z".into(),
+            })
+            .unwrap();
+        // Pro caps KDS screens at 2 per location: exactly 2 is `at`, not `over`.
+        for n in 1..=2 {
+            store
+                .create_workspace_instance(
+                    &format!("{sid}-kds-{n}"),
+                    "kds",
+                    &sid,
+                    &format!("Kitchen {n}"),
+                    "",
+                    None,
+                )
+                .unwrap();
+        }
+    }
+    let rows = per_location_over_quota_rows(
+        &[(sid.clone(), "Pro Store".into())],
+        &manager,
+        &SubscriptionTier::Pro,
+    )
+    .unwrap();
+    let kds: Vec<_> = rows
+        .iter()
+        .filter(|r| r.dimension == QuotaDimension::KdsScreens)
+        .collect();
+    assert_eq!(
+        kds.len(),
+        1,
+        "exactly one KDS row for the store, got {kds:?}"
+    );
+    assert_eq!(kds[0].current, 2);
+    assert_eq!(kds[0].limit, Some(2));
+    assert_eq!(kds[0].severity, OverQuotaSeverity::At);
+    assert_eq!(
+        kds[0].resource_id, sid,
+        "the row carries its own store as target"
+    );
+    assert_eq!(kds[0].resource_type, "kds_screen");
+    // Zero warehouses is not an "at cap" row even though Pro caps warehouses:
+    // an empty category is nothing to remediate, and Free/Plus cap KDS at 0
+    // which would otherwise flag every single store.
+    assert!(
+        !rows.iter().any(|r| r.resource_type == "warehouse"),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn per_location_rows_emit_nothing_for_an_unlimited_cap() {
+    // Premium is unlimited on both dims, so no location can be at or over — the
+    // reason the dev-mock fixture legitimately returns an empty marker list
+    // rather than an invented one.
+    let mut rows = Vec::new();
+    push_dim_row(
+        &mut rows,
+        "now",
+        "store-1",
+        "kds_screen",
+        QuotaDimension::KdsScreens,
+        None,
+        9,
+    );
+    push_dim_row(
+        &mut rows,
+        "now",
+        "store-1",
+        "warehouse",
+        QuotaDimension::Warehouses,
+        None,
+        9,
+    );
+    assert!(rows.is_empty(), "an unlimited cap must never produce a row");
 }

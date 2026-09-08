@@ -48,6 +48,8 @@ const caps: SubscriptionCapabilities = {
   maxLocations: 10,
   maxPosInstances: 5,
   maxWarehouses: 3,
+  // Pro tier's per-location KDS cap (SubscriptionTier::max_kds_screens).
+  maxKdsScreens: 2,
   maxStaffUsers: 20,
   salesHistoryDays: 365,
   supportsQris: true,

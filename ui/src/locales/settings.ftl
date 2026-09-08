@@ -17,6 +17,17 @@ settings-license-quota-dim-pos-registers = POS terminals
 settings-license-quota-dim-warehouses = Warehouse stock points
 settings-license-quota-dim-staff = Staff accounts
 settings-license-quota-dim-products = Products
+# §J B3 — the per-location KDS cap. It has no tenant-global usage row, so it
+# needs a label of its own even though it is not a QuotaDimension in the
+# tenant-global sense.
+settings-license-quota-dim-kds-screens = KDS screens (this location)
+# §J B3 — rows capped per location rather than per tenant.
+settings-license-quota-loc-aria = Per-location quota limits
+settings-license-quota-loc-title = Per-location limits
+# B1's generic failure line is replaced by one that carries the backend's
+# reason, because a refused store id and a dropped connection need different
+# answers from the owner.
+settings-license-quota-remedy-failed-detail = That action failed: { $reason }. The quota numbers above are unchanged.
 # §J B1 — the two workspace-register remediation actions on the over-quota
 # card. remedy-hint names the store because the card reads as tenant-wide while
 # both actions are bound to one store; the copy must not imply otherwise.
@@ -28,7 +39,6 @@ settings-license-quota-remedy-recover = Restore suspended
 settings-license-quota-remedy-suspended = { $count } surplus register(s) suspended. They are disabled, not deleted.
 settings-license-quota-remedy-recovered = { $count } suspended register(s) restored.
 settings-license-quota-remedy-none = Nothing to change — no register of this store is over the limit or suspended.
-settings-license-quota-remedy-failed = That action failed. The quota numbers above are unchanged.
 setup-tagline = Point of Sale — Simplified
 setup-step-store-type = Store Type
 setup-step-payments = Payments

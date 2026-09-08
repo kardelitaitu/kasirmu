@@ -146,6 +146,19 @@ impl Entitlements {
         QuotaDimension::Staff.limit_for(&self.tier)
     }
 
+    /// Per-location KDS screen cap (see [`Self::max_locations`]).
+    ///
+    /// Goes through the same one limit table as every other cap, even though
+    /// `KdsScreens` is deliberately absent from `DIMENSION_ORDER`: it is a
+    /// per-location ceiling, so it belongs in a caps projection and in
+    /// per-location marker rows, but never in a tenant-global usage row.
+    /// Free/OneTime/Plus are `Some(0)` (KDS unavailable at all), Pro `Some(2)`,
+    /// Premium/Enterprise `None`.
+    #[must_use]
+    pub fn max_kds_screens(&self) -> Option<i64> {
+        QuotaDimension::KdsScreens.limit_for(&self.tier)
+    }
+
     /// Sales-history retention in days (a policy axis, not a count quota —
     /// reads the tier directly).
     #[must_use]

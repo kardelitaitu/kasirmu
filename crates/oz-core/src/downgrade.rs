@@ -56,6 +56,20 @@ pub enum QuotaDimension {
     Staff,
     /// Products / menu items (`max_products`).
     Products,
+    /// KDS screens **in one location** (`max_kds_screens`).
+    ///
+    /// Deliberately absent from [`DIMENSION_ORDER`], so it never appears in a
+    /// tenant-global [`QuotaUsage`] row: KDS screens are capped per location and
+    /// there is no honest tenant-global number for them. Summing screens across
+    /// stores against a per-store cap would report a tenant as over quota for
+    /// something no single store exceeded, which is the reasoning already
+    /// recorded at the top of this module for why KDS is excluded from `evaluate`.
+    ///
+    /// It exists so a per-location marker row can name its own dimension without
+    /// pretending to be one of the five global ones. `limit_for` answers the
+    /// per-store cap; [`QuotaCounts::get`] has no count for it, because the count
+    /// lives in each store's own database.
+    KdsScreens,
 }
 
 impl QuotaDimension {
@@ -67,6 +81,10 @@ impl QuotaDimension {
             Self::Warehouses => "warehouses",
             Self::Staff => "staff",
             Self::Products => "products",
+            // Machine key for per-location KDS marker rows; round-trips with
+            // [`QuotaDimension::from_key`], which is what lets the persisted-marker
+            // reader tell a known row from an unknown one.
+            Self::KdsScreens => "kds_screens",
         }
     }
 
@@ -82,6 +100,30 @@ impl QuotaDimension {
             Self::Warehouses => tier.max_warehouses(),
             Self::Staff => tier.max_staff_users(),
             Self::Products => tier.max_products(),
+            // The per-location cap, meaningful only once the caller knows which
+            // location it is asking about. Reached by the per-location fan-out,
+            // never by `evaluate` — see the variant doc.
+            Self::KdsScreens => tier.max_kds_screens(),
+        }
+    }
+
+    /// Inverse of [`Self::as_str`]. Needed to read a persisted marker row back,
+    /// where the dimension is stored as its machine key.
+    ///
+    /// `None` for a key this build does not know, rather than a guess: the marker
+    /// table has no CHECK constraint on `dimension`, so a row written by a newer
+    /// version or by hand must be skipped by the reader instead of coerced into a
+    /// dimension whose limits it does not obey. A marker that lies is worse than
+    /// no marker.
+    pub fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "locations" => Some(Self::Locations),
+            "pos_registers" => Some(Self::PosRegisters),
+            "warehouses" => Some(Self::Warehouses),
+            "staff" => Some(Self::Staff),
+            "products" => Some(Self::Products),
+            "kds_screens" => Some(Self::KdsScreens),
+            _ => None,
         }
     }
 }
@@ -121,6 +163,13 @@ impl QuotaCounts {
             QuotaDimension::Warehouses => self.warehouses,
             QuotaDimension::Staff => self.staff,
             QuotaDimension::Products => self.products,
+            // No field to read. A tenant-global count of KDS screens is not a
+            // meaningful quantity (the cap is per location), and the rows live in
+            // each store's own database rather than this one, so there is nothing
+            // `QuotaCounts` could hold. 0 is the honest empty answer for a
+            // structure that never carries this dimension; `evaluate` cannot reach
+            // it because `DIMENSION_ORDER` omits it.
+            QuotaDimension::KdsScreens => 0,
         }
     }
 }
