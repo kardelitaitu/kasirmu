@@ -3,7 +3,7 @@
 > **Derived from the `#[tauri::command]` definitions in both clients, NOT from
 > `generate_handler!` — the two sets differ, and the difference is the interesting
 > part.** Regenerated 31-08-26, reconciled against reality 08-09-26. The live
-> registered surface is **450 distinct commands** (425 in
+> registered surface is **450 distinct commands** (measured 08-09-26; 425 in
 > `apps/desktop-client/src/lib.rs`, 297 in `apps/tablet-client/src/lib.rs`, 272 in
 > both). This page lists **505 entries across 49 modules**; the 55-entry gap is
 > measured, not estimated, and breaks down as:

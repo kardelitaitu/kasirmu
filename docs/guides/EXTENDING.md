@@ -16,7 +16,7 @@ status of each (what is live today vs. wired-but-not-started).
 | Read/write products, stock, sales, rates from an **external process** (KDS, scanner, dashboard, sync job) | REST API (`crates/oz-api`) | Live on **cloud-server**; on the **desktop app** it runs loopback-only behind Settings → Local API (off by default, §2.1); tablet: not started |
 | Batch maintenance against the local SQLite DB (migrations, backup, import/export, CRUD) | `oz` CLI (`crates/oz-cli`) | Stable — see [oz-cli README](../../crates/oz-cli/README.md) |
 | Drive custom hardware (printer, scanner, drawer, display) | Rust HAL traits (`crates/oz-hal`) | Stable — plugin-guide §HAL |
-| Call the app's internals (450 registered Tauri IPC commands — 425 desktop, 297 tablet, 272 in both) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
+| Call the app's internals (Tauri IPC commands — 450 registered as measured 08-09-26: 425 desktop, 297 tablet, 272 in both. **This moves with every command**; re-run `.agents/skills/docs-auditor/scripts/check-api-surface.py`, which prints the current three numbers) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
 
 ## 2. REST API at a glance
 

@@ -205,7 +205,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Phase 4 (CRM, Restaurant, Accounting) in progress.** 44 migration files, 450 registered IPC commands (425 desktop / 297 tablet / 272 both), 183 feature `.tsx` files, 516 front-end test files, 8,709 Rust `#[test]` functions.
+**Phase 4 (CRM, Restaurant, Accounting) in progress.** 44 migration files, 450 registered IPC commands (as measured 08-09-26 — 425 desktop / 297 tablet / 272 both), 183 feature `.tsx` files, 516 front-end test files, 8,709 Rust `#[test]` functions.
 
 | Phase | Status | Focus |
 |---|---|---|
