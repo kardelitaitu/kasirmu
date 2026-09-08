@@ -671,3 +671,640 @@ fn set_category_tax_rates_rejects_unknown_rate_id() {
     ));
     assert!(s.get_category_tax_rates("cat-unk").unwrap().is_empty());
 }
+
+// ── Scoped resolution (tax-separation P1, slice 1) ──────────────────
+//
+// The write-side IPC is the NEXT slice, so every scoped row here is seeded
+// with raw SQL. That is the only way to test a reader before there is a
+// writer — and it is the honest statement of the slice boundary: nothing in
+// production can put a value in these four columns yet.
+
+/// Seed a legal entity + location pair so the new FKs resolve: fresh_db's
+/// snapshot runs with PRAGMA foreign_keys = ON.
+fn seed_topology(conn: &Connection, entity: &str, location: &str) {
+    conn.execute(
+        "INSERT OR IGNORE INTO legal_entities (id, tenant_id, name) VALUES (?1, 'default', ?1)",
+        rusqlite::params![entity],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?1)",
+        rusqlite::params![location],
+    )
+    .unwrap();
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_scoped_rate(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    rate_bps: i64,
+    is_default: bool,
+    legal_entity_id: Option<&str>,
+    location_id: Option<&str>,
+    effective_from: Option<&str>,
+    effective_to: Option<&str>,
+) {
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, is_active,
+                                legal_entity_id, location_id, effective_from, effective_to)
+         VALUES (?1, ?2, ?3, ?4, 0, 1, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            id,
+            name,
+            rate_bps,
+            is_default,
+            legal_entity_id,
+            location_id,
+            effective_from,
+            effective_to
+        ],
+    )
+    .unwrap();
+}
+
+#[test]
+fn every_existing_row_resolves_as_the_tenant_global_answer() {
+    // THE regression proof for this slice. A database written before scoping —
+    // one default row, both scope columns NULL — must resolve to exactly the
+    // row get_default_tax_rate returns. If this diverges, the migration has
+    // changed money math for every existing tenant.
+    let conn = fresh();
+    let s = store(&conn);
+    let legacy = s.create_tax_rate("Sales Tax", 825, true, false).unwrap();
+    let resolved = s
+        .resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+        .unwrap()
+        .expect("the legacy default must still resolve");
+    assert_eq!(resolved.id, legacy.id);
+    assert_eq!(resolved.rate_bps, 825);
+    assert_eq!(
+        s.tax_rate_scope(&legacy.id).unwrap(),
+        Some(TaxRateScope::Global),
+        "a pre-scoping row IS the tenant-global legacy default"
+    );
+}
+
+#[test]
+fn location_scoped_rate_wins_over_the_tenant_global_row() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    insert_scoped_rate(
+        &conn,
+        "r-loc",
+        "Jakarta rate",
+        1100,
+        false,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+    let resolved = s
+        .resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        resolved.id, "r-loc",
+        "the location row outranks the global one"
+    );
+    assert_eq!(resolved.rate_bps, 1100);
+}
+
+#[test]
+fn entity_scoped_rate_wins_over_global_and_loses_to_location() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    seed_topology(&conn, "ent-a", "loc-b");
+    s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    insert_scoped_rate(
+        &conn,
+        "r-ent",
+        "Entity rate",
+        1200,
+        false,
+        Some("ent-a"),
+        None,
+        None,
+        None,
+    );
+    // loc-b has no row of its own, so the entity row is the most specific match.
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-b", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-ent"
+    );
+    // loc-a has its own row, which outranks the entity row above it.
+    insert_scoped_rate(
+        &conn,
+        "r-loc",
+        "Location rate",
+        1100,
+        false,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-loc",
+        "location beats entity beats global"
+    );
+}
+
+#[test]
+fn a_rate_belonging_to_another_location_or_entity_never_leaks() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    seed_topology(&conn, "ent-b", "loc-b");
+    insert_scoped_rate(
+        &conn,
+        "r-other-loc",
+        "Other loc",
+        9999,
+        false,
+        None,
+        Some("loc-b"),
+        None,
+        None,
+    );
+    insert_scoped_rate(
+        &conn,
+        "r-other-ent",
+        "Other ent",
+        8888,
+        false,
+        Some("ent-b"),
+        None,
+        None,
+        None,
+    );
+    // No tenant-global row exists, so the correct answer for loc-a/ent-a is
+    // None — never a neighbouring scope's rate.
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap(),
+        None,
+        "another location's or another entity's rate must not be applied here"
+    );
+}
+
+#[test]
+fn a_null_entity_in_the_request_skips_the_entity_level() {
+    // NULL legal_entity_id means "not scoped to an entity", never "matches
+    // every entity-scoped row". Without this a location whose entity is not
+    // yet assigned would silently inherit some entity's rate.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    insert_scoped_rate(
+        &conn,
+        "r-ent",
+        "Entity rate",
+        1200,
+        false,
+        Some("ent-a"),
+        None,
+        None,
+        None,
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", None, "2026-09-08")
+            .unwrap(),
+        None,
+        "no entity in the request must skip level 2, not wildcard it"
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .map(|r| r.id),
+        Some("r-ent".to_string())
+    );
+}
+
+#[test]
+fn effective_from_gates_a_rate_that_has_not_started_yet() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    insert_scoped_rate(
+        &conn,
+        "r-future",
+        "Next year",
+        1500,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2027-01-01"),
+        None,
+    );
+    // Before the start date the scoped row is not live, so the walk falls
+    // through to the tenant-global row.
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-12-31")
+            .unwrap()
+            .unwrap()
+            .id,
+        global.id,
+        "the global row answers while the scoped row has not started"
+    );
+    // ON the start date it applies: effective_from is inclusive.
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2027-01-01")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-future"
+    );
+}
+
+#[test]
+fn an_expired_scoped_rate_falls_back_to_the_tenant_global_row() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    insert_scoped_rate(
+        &conn,
+        "r-expired",
+        "2025 only",
+        1500,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2025-01-01"),
+        Some("2026-01-01"),
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2025-12-31")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-expired"
+    );
+    let after = s
+        .resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-01-01")
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.id, global.id, "an expired row is ignored");
+    assert_eq!(after.rate_bps, 1000);
+}
+
+#[test]
+fn two_consecutive_periods_cannot_both_match_on_the_boundary_day() {
+    // Why effective_to is EXCLUSIVE: when a successor starts the day its
+    // predecessor ends, exactly one may match — otherwise the resolver needs a
+    // tie-break to price a sale.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    insert_scoped_rate(
+        &conn,
+        "r-old",
+        "Until 2026",
+        1000,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2025-01-01"),
+        Some("2026-01-01"),
+    );
+    insert_scoped_rate(
+        &conn,
+        "r-new",
+        "From 2026",
+        1200,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2026-01-01"),
+        None,
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-01-01")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-new",
+        "the boundary day belongs to the successor, and only to it"
+    );
+}
+
+#[test]
+fn within_a_level_the_newest_effective_from_wins() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    insert_scoped_rate(
+        &conn,
+        "r-early",
+        "2024 rate",
+        1000,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2024-01-01"),
+        None,
+    );
+    insert_scoped_rate(
+        &conn,
+        "r-late",
+        "2026 rate",
+        1200,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2026-01-01"),
+        None,
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-late",
+        "the newest start date is the current rate"
+    );
+}
+
+#[test]
+fn an_undated_row_is_the_oldest_possible_start_so_a_dated_one_wins() {
+    // NULL effective_from means "no lower bound", which sorts as the earliest
+    // start rather than the newest — otherwise adding a date to a row would
+    // silently demote it.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    insert_scoped_rate(
+        &conn,
+        "r-undated",
+        "No window",
+        900,
+        false,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+    insert_scoped_rate(
+        &conn,
+        "r-dated",
+        "Dated",
+        1100,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2020-01-01"),
+        None,
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-dated"
+    );
+}
+
+#[test]
+fn an_explicit_default_outranks_a_newer_start_within_the_same_level() {
+    // is_default is the operator's own "this one" signal and predates scoping,
+    // so it stays the primary key INSIDE a level. Precedence ACROSS levels is
+    // unaffected: a scoped row still beats a tenant-global default.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    insert_scoped_rate(
+        &conn,
+        "r-pick",
+        "Picked",
+        1000,
+        true,
+        None,
+        Some("loc-a"),
+        Some("2020-01-01"),
+        None,
+    );
+    insert_scoped_rate(
+        &conn,
+        "r-newer",
+        "Newer but unpicked",
+        1200,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2026-01-01"),
+        None,
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        "r-pick"
+    );
+}
+
+#[test]
+fn an_untrusted_row_is_skipped_and_the_walk_falls_through() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    // Ambiguous scope: both columns set, so no tier may claim it.
+    insert_scoped_rate(
+        &conn,
+        "r-ambiguous",
+        "Both scopes",
+        1500,
+        false,
+        Some("ent-a"),
+        Some("loc-a"),
+        None,
+        None,
+    );
+    // Malformed stored windows: an RFC3339 timestamp, and an empty-string end.
+    insert_scoped_rate(
+        &conn,
+        "r-ts",
+        "Timestamp",
+        1600,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2026-01-01T00:00:00Z"),
+        None,
+    );
+    insert_scoped_rate(
+        &conn,
+        "r-empty",
+        "Empty date",
+        1700,
+        false,
+        None,
+        Some("loc-a"),
+        None,
+        Some(""),
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        global.id,
+        "none of the three untrusted rows may decide the rate"
+    );
+    // The ambiguous row is REPORTED, not silently reclassified into whichever
+    // column a match happened to read first: an unresolvable scope on a row that
+    // prices sales is a loud error, never a guess.
+    let amb = s.tax_rate_scope("r-ambiguous").unwrap_err();
+    assert!(
+        matches!(
+            &amb,
+            CoreError::Validation {
+                field: "tax_rate_scope",
+                ..
+            }
+        ),
+        "expected a tax_rate_scope validation error, got {amb:?}"
+    );
+    assert!(matches!(
+        s.tax_rate_scope("r-ts").unwrap(),
+        Some(TaxRateScope::Location(_))
+    ));
+    assert!(
+        s.tax_rate_scope(&global.id)
+            .unwrap()
+            .is_some_and(|sc| sc.is_global())
+    );
+    assert_eq!(s.tax_rate_scope("no-such-rate").unwrap(), None);
+}
+
+#[test]
+fn a_malformed_as_of_is_the_callers_bug_and_errors() {
+    // Ok(None) means "no rate is configured". Returning it for a bad argument
+    // would make a typo look like an unconfigured tenant, so this is an error.
+    let conn = fresh();
+    let s = store(&conn);
+    for bad in [
+        "",
+        "2026-9-8",
+        "2026-09",
+        "2026-09-08T00:00:00Z",
+        "2026-13-01",
+        "2026-02-30",
+        "not-a-date",
+    ] {
+        let err = s
+            .resolve_tax_rate_for_location("loc-a", None, bad)
+            .unwrap_err();
+        assert!(
+            matches!(&err, CoreError::Validation { field: "as_of", .. }),
+            "{bad:?} must be rejected, got {err:?}"
+        );
+    }
+    // A well-formed date is accepted even when nothing matches.
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", None, "2026-09-08")
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
+fn an_archived_scoped_rate_is_invisible_to_the_walk() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    insert_scoped_rate(
+        &conn,
+        "r-arch",
+        "Archived",
+        1500,
+        false,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+    s.delete_tax_rate("r-arch").unwrap();
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        global.id,
+        "TAX-03: an archived rate is hidden from resolution too"
+    );
+    assert_eq!(s.tax_rate_scope("r-arch").unwrap(), None);
+}
+
+#[test]
+fn no_configured_rate_resolves_to_none() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
+fn classify_is_the_single_statement_of_the_scope_rule() {
+    assert_eq!(
+        TaxRateScope::classify(None, None),
+        Some(TaxRateScope::Global)
+    );
+    assert_eq!(
+        TaxRateScope::classify(Some("ent-a"), None),
+        Some(TaxRateScope::LegalEntity("ent-a".into()))
+    );
+    assert_eq!(
+        TaxRateScope::classify(None, Some("loc-a")),
+        Some(TaxRateScope::Location("loc-a".into()))
+    );
+    assert_eq!(TaxRateScope::classify(Some("ent-a"), Some("loc-a")), None);
+    assert!(TaxRateScope::Global.is_global());
+    assert!(!TaxRateScope::Location("loc-a".into()).is_global());
+}
+
+#[test]
+fn business_dates_parse_strictly_and_reject_every_other_shape() {
+    assert!(parse_effective_date("2026-09-08").is_some());
+    assert!(parse_effective_date("2024-02-29").is_some(), "leap year");
+    for bad in [
+        "",
+        "2026-9-08",
+        "2026-09-8",
+        "2026-09-08 ",
+        " 2026-09-08",
+        "2026-09-08T00:00:00Z",
+        "08-09-2026",
+        "2026/09/08",
+        "2026-00-08",
+        "2026-13-08",
+        "2026-09-31",
+        "2025-02-29",
+        "xxxx-xx-xx",
+    ] {
+        assert!(
+            parse_effective_date(bad).is_none(),
+            "{bad:?} must not parse"
+        );
+    }
+}

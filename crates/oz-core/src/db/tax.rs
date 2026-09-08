@@ -434,6 +434,302 @@ impl Store<'_> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ids)
     }
+    // ── Scoped resolution ─────────────────────────────────────────────
+    //
+    // tax-separation P1 slice 1 (todo-global-saas-2.md, "Separate business
+    // tax configuration from application defaults"). The four columns added by
+    // 20260921_tax_rate_scoping.sql are read here and nowhere else; nothing in
+    // the sale computation path calls this yet, because nothing can author a
+    // scoped row until the write-side slice lands. Wiring the resolver into
+    // `compute_sale_tax` before then would change money math on every sale to
+    // serve a table that can only ever hold tenant-global rows.
+
+    /// Resolve the tax rate that applies at one location on one business date.
+    ///
+    /// Walks the three applicability levels most-specific-first and returns the
+    /// first level that yields a live row:
+    ///
+    /// 1. the row scoped to `location_id`;
+    /// 2. the row scoped to `legal_entity_id` (every location under the entity);
+    /// 3. the **tenant-global** row — both scope columns NULL, which is what
+    ///    every row in this table is today.
+    ///
+    /// That last level is the fail-closed answer, and it is why this slice can
+    /// land before any writer exists: an unscoped database resolves to exactly
+    /// the row it resolves to now. Passing `None` for `legal_entity_id` skips
+    /// level 2 rather than matching rows whose entity is NULL — a NULL entity
+    /// means "not scoped to an entity", never "matches any entity".
+    ///
+    /// Within a level the winner is `is_default` first (the operator's explicit
+    /// pick, and the only applicability signal that predates scoping), then the
+    /// newest `effective_from`, then the id — so the answer never depends on
+    /// SQLite's row order.
+    ///
+    /// A row that cannot be trusted is SKIPPED, not guessed at, and the walk
+    /// continues to the next level: an ambiguous scope (both columns set), a
+    /// malformed `effective_from` / `effective_to`, or an empty-string date.
+    /// Same ruling as the signed payload's `features` block in
+    /// [`crate::subscription::TenantSubscription::payload_features`] — silence
+    /// is the only safe reading of data that cannot be trusted, and a corrupt
+    /// expiry must not get to decide a money question.
+    ///
+    /// `as_of` must be a business date, `YYYY-MM-DD`. A malformed `as_of` is
+    /// the CALLER's bug and returns `CoreError::Validation` rather than
+    /// resolving to nothing: `Ok(None)` here means "no rate is configured", so
+    /// swallowing a bad argument would make a typo look like an unconfigured
+    /// tenant.
+    ///
+    /// Returns `Ok(None)` when no level matches — the same "no tax configured"
+    /// answer [`Self::get_default_tax_rate`] gives, which the callers' existing
+    /// zero-rate path handles unchanged.
+    pub fn resolve_tax_rate_for_location(
+        &self,
+        location_id: &str,
+        legal_entity_id: Option<&str>,
+        as_of: &str,
+    ) -> Result<Option<TaxRate>, CoreError> {
+        let as_of = parse_effective_date(as_of).ok_or_else(|| CoreError::Validation {
+            field: "as_of",
+            message: format!("expected a business date 'YYYY-MM-DD', got {as_of:?}"),
+        })?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at,
+                    legal_entity_id, location_id, effective_from, effective_to
+             FROM tax_rates
+             WHERE is_active = 1
+               AND ( location_id = ?1
+                  OR (location_id IS NULL AND legal_entity_id = ?2)
+                  OR (location_id IS NULL AND legal_entity_id IS NULL) )",
+        )?;
+        let candidates = stmt
+            .query_map(params![location_id, legal_entity_id], |row| {
+                Ok(TaxRateCandidate {
+                    rate: TaxRate {
+                        id: row.get("id")?,
+                        name: row.get("name")?,
+                        rate_bps: row.get("rate_bps")?,
+                        is_default: row.get("is_default")?,
+                        is_inclusive: row.get("is_inclusive")?,
+                        created_at: row.get("created_at")?,
+                        updated_at: row.get("updated_at")?,
+                    },
+                    legal_entity_id: row.get("legal_entity_id")?,
+                    location_id: row.get("location_id")?,
+                    effective_from: row.get("effective_from")?,
+                    effective_to: row.get("effective_to")?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for tier in [
+            ScopeTier::Location,
+            ScopeTier::LegalEntity,
+            ScopeTier::Global,
+        ] {
+            let mut best: Option<&TaxRateCandidate> = None;
+            for c in candidates
+                .iter()
+                .filter(|c| c.in_tier(tier, location_id, legal_entity_id) && c.is_live(as_of))
+            {
+                let replace = match best {
+                    None => true,
+                    Some(b) => c.is_better_than(b),
+                };
+                if replace {
+                    best = Some(c);
+                }
+            }
+            if let Some(winner) = best {
+                return Ok(Some(winner.rate.clone()));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// The scope one stored rate row carries, as a type that cannot express the
+    /// ambiguous "both columns set" case.
+    ///
+    /// Outer `None` means there is no such active row (missing or archived). An
+    /// ambiguous row is an ERROR, not a silent downgrade to one of the two
+    /// scopes: the caller is told which rate is unresolvable instead of being
+    /// handed a guess about money.
+    pub fn tax_rate_scope(&self, rate_id: &str) -> Result<Option<TaxRateScope>, CoreError> {
+        let pair: Option<(Option<String>, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT legal_entity_id, location_id FROM tax_rates
+                 WHERE id = ?1 AND is_active = 1",
+                params![rate_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+        let Some((entity, location)) = pair else {
+            return Ok(None);
+        };
+        match TaxRateScope::classify(entity.as_deref(), location.as_deref()) {
+            Some(scope) => Ok(Some(scope)),
+            None => Err(CoreError::Validation {
+                field: "tax_rate_scope",
+                message: format!(
+                    "tax rate {rate_id} is scoped to both a legal entity and a location; \
+                     the two columns are one-or-the-other-or-neither"
+                ),
+            }),
+        }
+    }
+}
+
+// ── Scoped-resolution support types ─────────────────────────────────────────
+
+/// Which applicability level a tax-rate row belongs to.
+///
+/// The point of this enum is what it CANNOT hold: a row scoped to both a legal
+/// entity and a location is not a third, narrower scope — it is an ambiguous
+/// one, and there is no variant for it. SQLite cannot add a CHECK constraint by
+/// `ALTER TABLE`, so this type is where the one-or-the-other-or-neither rule
+/// lives until the write-side slice can put a guard on the only path able to
+/// create such a row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaxRateScope {
+    /// Both scope columns NULL — the tenant-global legacy default, which is
+    /// what every row in this table is today.
+    Global,
+    /// Applies to every location under this legal entity.
+    LegalEntity(String),
+    /// Applies to this location only; outranks the entity row above it.
+    Location(String),
+}
+
+impl TaxRateScope {
+    /// Classify a stored scope pair, or return `None` when the pair is
+    /// ambiguous (both set).
+    #[must_use]
+    pub fn classify(legal_entity_id: Option<&str>, location_id: Option<&str>) -> Option<Self> {
+        match (legal_entity_id, location_id) {
+            (None, None) => Some(Self::Global),
+            (Some(e), None) => Some(Self::LegalEntity(e.to_owned())),
+            (None, Some(l)) => Some(Self::Location(l.to_owned())),
+            (Some(_), Some(_)) => None,
+        }
+    }
+
+    /// Whether this is the tenant-global legacy row.
+    #[must_use]
+    pub fn is_global(&self) -> bool {
+        matches!(self, Self::Global)
+    }
+}
+
+/// One candidate row, deliberately kept out of [`TaxRate`].
+///
+/// Folding the four new columns into `TaxRate` would rewrite ten literal
+/// constructions across `oz-api`, `modules/tax` and `platform/sync` for a slice
+/// that changes no wire shape — and `TaxRate` is serialized straight into both
+/// clients' tax screens. Scope and window are resolution inputs, not part of a
+/// rate's published identity.
+struct TaxRateCandidate {
+    rate: TaxRate,
+    legal_entity_id: Option<String>,
+    location_id: Option<String>,
+    effective_from: Option<String>,
+    effective_to: Option<String>,
+}
+
+/// The three levels of the walk, most specific first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScopeTier {
+    Location,
+    LegalEntity,
+    Global,
+}
+
+impl TaxRateCandidate {
+    /// Whether this row belongs to `tier` for the requested location / entity.
+    ///
+    /// Every arm goes through [`TaxRateScope::classify`], so an ambiguous row
+    /// matches no tier and is skipped by the walk rather than being claimed by
+    /// whichever column happened to be read first.
+    fn in_tier(&self, tier: ScopeTier, location_id: &str, legal_entity_id: Option<&str>) -> bool {
+        let mine =
+            TaxRateScope::classify(self.legal_entity_id.as_deref(), self.location_id.as_deref());
+        match tier {
+            ScopeTier::Location => mine == Some(TaxRateScope::Location(location_id.to_owned())),
+            ScopeTier::LegalEntity => match legal_entity_id {
+                // No entity in the request means level 2 is skipped entirely —
+                // never "matches every entity-scoped row".
+                None => false,
+                Some(entity) => mine == Some(TaxRateScope::LegalEntity(entity.to_owned())),
+            },
+            ScopeTier::Global => mine == Some(TaxRateScope::Global),
+        }
+    }
+
+    /// Whether the row's validity window covers `as_of`.
+    ///
+    /// `effective_to` is EXCLUSIVE, so a period and its successor cannot both
+    /// match on the boundary day. A stored date that does not parse returns
+    /// false: the row is skipped, never trusted.
+    fn is_live(&self, as_of: chrono::NaiveDate) -> bool {
+        let lower_ok = match self.effective_from.as_deref() {
+            None => true,
+            Some(v) => parse_effective_date(v).is_some_and(|d| d <= as_of),
+        };
+        if !lower_ok {
+            return false;
+        }
+        match self.effective_to.as_deref() {
+            None => true,
+            Some(v) => parse_effective_date(v).is_some_and(|d| as_of < d),
+        }
+    }
+
+    /// Ordering within one tier: explicit default, then newest start, then id.
+    fn is_better_than(&self, other: &Self) -> bool {
+        if self.rate.is_default != other.rate.is_default {
+            return self.rate.is_default;
+        }
+        let mine = self
+            .effective_from
+            .as_deref()
+            .and_then(parse_effective_date)
+            .unwrap_or(chrono::NaiveDate::MIN);
+        let theirs = other
+            .effective_from
+            .as_deref()
+            .and_then(parse_effective_date)
+            .unwrap_or(chrono::NaiveDate::MIN);
+        if mine != theirs {
+            return mine > theirs;
+        }
+        self.rate.id < other.rate.id
+    }
+}
+
+/// Parse a business date, strictly: exactly `YYYY-MM-DD`.
+///
+/// Rejects RFC3339 timestamps, `YYYY-M-D`, trailing whitespace and the empty
+/// string. The window comparison is only meaningful while every stored value
+/// shares one shape, and [`chrono::NaiveDate`] ordering (not string ordering)
+/// is what decides, so a month 13 or a leap-day typo fails here instead of
+/// comparing as text.
+fn parse_effective_date(value: &str) -> Option<chrono::NaiveDate> {
+    let b = value.as_bytes();
+    let shape_ok = b.len() == 10
+        && b[..4].iter().all(|c| c.is_ascii_digit())
+        && b[4] == b'-'
+        && b[5..7].iter().all(|c| c.is_ascii_digit())
+        && b[7] == b'-'
+        && b[8..].iter().all(|c| c.is_ascii_digit());
+    if !shape_ok {
+        return None;
+    }
+    chrono::NaiveDate::from_ymd_opt(
+        value.get(0..4)?.parse().ok()?,
+        value.get(5..7)?.parse().ok()?,
+        value.get(8..10)?.parse().ok()?,
+    )
 }
 
 #[cfg(test)]
