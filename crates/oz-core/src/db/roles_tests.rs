@@ -643,3 +643,289 @@ fn create_and_update_share_one_rule_set() {
     s.update_role(AUTHORED, "Parity Updated", "", legal)
         .expect("update accepts the same legal grant set");
 }
+
+// ── role_holders ───────────────────────────────────────────────────────
+
+/// A second authored role, so holder rows can point at something other than
+/// AUTHORED and the two sets stay distinguishable.
+const OTHER: &str = "role-other-manager";
+
+fn insert_role(conn: &Connection, id: &str) {
+    conn.execute(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES (?1, ?2, '', '[]',
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        rusqlite::params![id, id.to_uppercase()],
+    )
+    .unwrap();
+}
+
+/// A user bound to a role with NO assignment row — the legacy shape the
+/// resolver still has to answer.
+fn insert_legacy_user(conn: &Connection, user_id: &str, role_id: &str) {
+    insert_user_with_role(conn, user_id, role_id);
+}
+
+/// A user whose assignment says one role and whose `users` row says another.
+/// Pass the same value twice for a synced user; different values to model
+/// drift, which nothing in the schema prevents.
+fn insert_user_with_assignment(
+    conn: &Connection,
+    user_id: &str,
+    user_role: &str,
+    assignment_role: &str,
+) {
+    insert_user_with_role(conn, user_id, user_role);
+    conn.execute(
+        "INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope)
+         VALUES (?1, ?2, 'global', 'all', 'all')",
+        rusqlite::params![user_id, assignment_role],
+    )
+    .unwrap();
+}
+
+fn holder_ids(holders: &[RoleHolder]) -> Vec<&str> {
+    holders.iter().map(|h| h.user_id.as_str()).collect()
+}
+
+#[test]
+fn role_holders_follow_the_assignment_when_it_disagrees_with_the_user_row() {
+    // The load-bearing case, and the one a naive query gets silently wrong.
+    // authorize_with resolves assignment-first, so this account can DO what
+    // OTHER grants. Listing it as an AUTHORED holder would be a false claim
+    // about permissions, which is worse than omitting it.
+    let conn = fresh();
+    insert_authored_role(&conn, "[]");
+    insert_role(&conn, OTHER);
+    insert_user_with_assignment(&conn, "drifted", AUTHORED, OTHER);
+
+    let s = store(&conn);
+    let (authored, _) = s.role_holders(AUTHORED, 50).unwrap();
+    let (other, other_total) = s.role_holders(OTHER, 50).unwrap();
+    assert!(
+        authored.is_empty(),
+        "a stale users.role_id must not list a holder"
+    );
+    assert_eq!(holder_ids(&other), vec!["drifted"]);
+    assert_eq!(other_total, 1);
+}
+
+#[test]
+fn role_holders_include_legacy_users_without_an_assignment() {
+    // The other half: an account with no assignment row resolves through
+    // users.role_id and must still be listed. Dropping it would hide a real
+    // holder behind the JOIN.
+    let conn = fresh();
+    insert_authored_role(&conn, "[]");
+    insert_legacy_user(&conn, "legacy-cashier", AUTHORED);
+
+    let (holders, total) = store(&conn).role_holders(AUTHORED, 50).unwrap();
+    assert_eq!(holder_ids(&holders), vec!["legacy-cashier"]);
+    assert_eq!(total, 1);
+    assert!(
+        !holders[0].has_assignment,
+        "flagged as resolving via the fallback"
+    );
+    assert_eq!(holders[0].scope_mode, None, "no assignment, so no scope");
+    assert_eq!(holders[0].scope_type, None);
+    assert_eq!(
+        holders[0].branch_count, None,
+        "None means unknown-by-shape, not zero-branches"
+    );
+    assert_eq!(holders[0].branch_scope, None, "no dimension either");
+    assert_eq!(holders[0].workspace_scope, None);
+}
+
+#[test]
+fn role_holders_report_the_assignment_scope() {
+    // The scope column the screen exists to show: the ADR #47 resource axis
+    // plus the 0048 list dimensions, per holder.
+    let conn = fresh();
+    insert_authored_role(&conn, "[]");
+    insert_user_with_role(&conn, "loc-mgr", AUTHORED);
+    conn.execute(
+        "INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope,
+                                  workspace_scope, scope_type, scope_id)
+         VALUES ('loc-mgr', ?1, 'scoped', 'list', 'list', 'location', 'loc-1')",
+        [AUTHORED],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO assignment_branches (assignment_user_id, branch_id)
+         VALUES ('loc-mgr', 'br-1'), ('loc-mgr', 'br-2')",
+        [],
+    )
+    .unwrap();
+    // assignment_workspaces.workspace_key has a real FK, unlike branch_id,
+    // so the workspace has to exist before it can be named in a scope.
+    conn.execute(
+        "INSERT INTO workspaces (id, key, name) VALUES ('ws-floor', 'floor', 'Floor')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO assignment_workspaces (assignment_user_id, workspace_key)
+         VALUES ('loc-mgr', 'floor')",
+        [],
+    )
+    .unwrap();
+
+    let (holders, _) = store(&conn).role_holders(AUTHORED, 50).unwrap();
+    let h = &holders[0];
+    assert!(h.has_assignment);
+    assert_eq!(h.scope_mode.as_deref(), Some("scoped"));
+    assert_eq!(h.scope_type.as_deref(), Some("location"));
+    assert_eq!(h.scope_id.as_deref(), Some("loc-1"));
+    assert_eq!(h.branch_scope.as_deref(), Some("list"));
+    assert_eq!(h.workspace_scope.as_deref(), Some("list"));
+    assert_eq!(h.branch_count, Some(2));
+    assert_eq!(h.workspace_count, Some(1));
+}
+
+#[test]
+fn role_holders_cap_at_fifty_and_still_report_the_total() {
+    // The contract the UI renders as "and N more": the cap is a display
+    // decision, so the total has to survive it or the message becomes a lie.
+    let conn = fresh();
+    insert_authored_role(&conn, "[]");
+    for i in 0..60 {
+        insert_legacy_user(&conn, &format!("user-{i:03}"), AUTHORED);
+    }
+
+    let (holders, total) = store(&conn).role_holders(AUTHORED, 50).unwrap();
+    assert_eq!(holders.len(), 50, "capped");
+    assert_eq!(total, 60, "the full count is not clipped by the cap");
+    assert_eq!(
+        total - holders.len() as i64,
+        10,
+        "this difference is the and-N-more number the screen shows"
+    );
+
+    // A smaller ask gets a smaller page; the cap is a ceiling, not a default.
+    let (small, small_total) = store(&conn).role_holders(AUTHORED, 5).unwrap();
+    assert_eq!(small.len(), 5);
+    assert_eq!(small_total, 60);
+
+    // And the order is stable, or paging would shuffle the same faces.
+    let (again, _) = store(&conn).role_holders(AUTHORED, 50).unwrap();
+    assert_eq!(holder_ids(&holders), holder_ids(&again));
+}
+
+#[test]
+fn a_deleted_user_stops_being_a_holder_and_leaves_no_orphan() {
+    // The orphan-cascade property. assignments.user_id is both the primary
+    // key and REFERENCES users(id) ON DELETE CASCADE, and both list tables
+    // cascade from the assignment. So deleting an account can never leave a
+    // phantom holder behind.
+    let conn = fresh();
+    // The migrated snapshot is cloned onto a handle where the pragma is not
+    // guaranteed on; enable it so CASCADE fires, as the app opens it.
+    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+    insert_authored_role(&conn, "[]");
+    insert_user_with_assignment(&conn, "walks-away", AUTHORED, AUTHORED);
+    conn.execute(
+        "INSERT INTO assignment_branches (assignment_user_id, branch_id)
+         VALUES ('walks-away', 'br-1')",
+        [],
+    )
+    .unwrap();
+
+    let (before, total_before) = store(&conn).role_holders(AUTHORED, 50).unwrap();
+    assert_eq!(holder_ids(&before), vec!["walks-away"]);
+    assert_eq!(total_before, 1);
+
+    conn.execute("DELETE FROM users WHERE id = 'walks-away'", [])
+        .unwrap();
+
+    let (after, total_after) = store(&conn).role_holders(AUTHORED, 50).unwrap();
+    assert!(
+        after.is_empty(),
+        "a deleted account is not a holder: {after:?}"
+    );
+    assert_eq!(total_after, 0);
+    let orphans: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM assignments WHERE user_id = 'walks-away'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(orphans, 0, "the assignment row must cascade away");
+    let orphan_branches: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM assignment_branches WHERE assignment_user_id = 'walks-away'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(orphan_branches, 0, "the scope list must cascade too");
+}
+
+#[test]
+fn role_holders_refuse_a_missing_role_rather_than_reporting_nobody() {
+    // An empty list for a role that does not exist is the shape of answer a
+    // delete decision gets made from, so a typo must not read as "unheld".
+    let conn = fresh();
+    let err = store(&conn)
+        .role_holders("role-does-not-exist", 50)
+        .expect_err("a missing role must be reported, not emptied");
+    assert!(
+        matches!(&err, CoreError::NotFound { entity, .. } if *entity == "role"),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn role_holders_agree_with_reference_counts_when_synced() {
+    // The common case, pinned rather than assumed: for users whose assignment
+    // and user row agree — every row create_user makes — the holder list and
+    // the FK referrer counts name the same number.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    for id in ["synced-a", "synced-b", "synced-c"] {
+        insert_user_with_assignment(&conn, id, AUTHORED, AUTHORED);
+    }
+
+    let s = store(&conn);
+    let (holders, total) = s.role_holders(AUTHORED, 50).unwrap();
+    assert_eq!(holders.len(), 3);
+    assert_eq!(total, 3);
+    let refs = s.role_reference_counts(AUTHORED).unwrap();
+    let users_ref = refs.iter().find(|(t, _)| *t == "users").map(|(_, c)| *c);
+    let assign_ref = refs
+        .iter()
+        .find(|(t, _)| *t == "assignments")
+        .map(|(_, c)| *c);
+    assert_eq!(users_ref, Some(3), "same set the FK view sees");
+    assert_eq!(assign_ref, Some(3));
+}
+#[test]
+fn a_zero_list_count_does_not_mean_an_unscoped_holder() {
+    // The reason branch_scope exists next to branch_count. An assignment
+    // covering EVERY branch has zero explicit rows, so a column that showed
+    // only the count would render an all-branches manager as holding no
+    // branches — the opposite of the truth, in the one list an admin reads
+    // before revoking something.
+    let conn = fresh();
+    insert_authored_role(&conn, "[]");
+    insert_user_with_role(&conn, "all-branches", AUTHORED);
+    conn.execute(
+        "INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope)
+         VALUES ('all-branches', ?1, 'scoped', 'all', 'all')",
+        [AUTHORED],
+    )
+    .unwrap();
+
+    let (holders, _) = store(&conn).role_holders(AUTHORED, 50).unwrap();
+    let h = &holders[0];
+    assert_eq!(h.scope_mode.as_deref(), Some("scoped"));
+    assert_eq!(h.branch_count, Some(0), "no rows, because none are needed");
+    assert_eq!(
+        h.branch_scope.as_deref(),
+        Some("all"),
+        "the dimension is what makes the zero mean unrestricted",
+    );
+    assert_eq!(h.workspace_scope.as_deref(), Some("all"));
+    assert_eq!(h.workspace_count, Some(0));
+}

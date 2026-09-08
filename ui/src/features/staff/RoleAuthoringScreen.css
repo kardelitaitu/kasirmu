@@ -134,3 +134,78 @@
   margin-top: var(--space-4, 1rem);
 }
 
+/* Holders: a disclosure inside each role row. Deliberately quieter than the
+   row itself — this is supporting detail, and the grant count above it stays
+   the headline. */
+.role-holders {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  margin-top: var(--space-1, 0.25rem);
+}
+
+.role-holders-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-primary, #4f46e5);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.role-holders-toggle:hover {
+  text-decoration: none;
+}
+
+.role-holders-count,
+.role-holders-loading,
+.role-holders-none,
+.role-holders-more {
+  color: var(--color-text-muted, #666);
+  font-size: var(--text-sm);
+}
+
+.role-holders-panel {
+  margin-top: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border-left: 2px solid var(--color-border, #e5e7eb);
+  background: var(--color-surface-alt, #f9fafb);
+}
+
+.role-holders-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger, #b91c1c);
+}
+
+.role-holders-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.role-holder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-1, 0.25rem) 0;
+}
+
+.role-holder-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.role-holder-user,
+.role-holder-scope {
+  color: var(--color-text-muted, #666);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+

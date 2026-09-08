@@ -268,3 +268,37 @@ role-saved = Peran { $name } tersimpan.
 role-deleted = Peran { $name } dihapus.
 role-delete-confirm-title = Hapus peran ini?
 role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Tindakan ini tidak bisa dibatalkan.
+
+# Pemegang peran. Sengaja dibedakan dari role-in-use di atas: angka itu
+# menghitung empat rujukan foreign key dan menjawab apakah peran boleh
+# dihapus, sedangkan kunci di bawah menjelaskan akun yang benar-benar
+# menyelesaikannya.
+role-holders-toggle = Pemegang
+role-holders-aria = Tampilkan akun yang memegang peran { $name }
+role-holders-list-aria = Akun yang memegang peran { $name }
+role-holders-count = { $count ->
+    [one] 1 akun
+   *[other] { $count } akun
+  }
+role-holders-loading = Memuat daftar pemegang…
+role-holders-error = Gagal memuat daftar pemegang.
+role-holders-none = Tidak ada akun yang memegang peran ini.
+role-holders-more = { $count ->
+    [one] dan 1 lainnya
+   *[other] dan { $count } lainnya
+  }
+role-holders-inactive = nonaktif
+role-holders-scope-legacy = Tanpa catatan penugasan
+role-holders-scope-organization = Seluruh organisasi
+role-holders-scope-legal-entity = Entitas hukum { $id }
+role-holders-scope-location = Lokasi { $id }
+role-holders-dims-all = semua cabang dan workspace
+role-holders-dims-branches = { $count ->
+    [one] 1 cabang
+   *[other] { $count } cabang
+  }
+role-holders-dims-workspaces = { $count ->
+    [one] 1 workspace
+   *[other] { $count } workspace
+  }
+role-holders-dims-both-lists = { $branches } cabang, { $workspaces } workspace

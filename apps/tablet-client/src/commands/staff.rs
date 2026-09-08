@@ -774,6 +774,109 @@ pub async fn delete_role_scoped(
     Ok(())
 }
 
+/// One account that holds a role, as the authoring surface shows it.
+///
+/// Mirrors `oz_core::db::roles::RoleHolder`. The scope fields are `None`
+/// together when the account has no `assignments` row at all — a different
+/// fact from "scoped to nothing", which the surface has to render apart.
+#[derive(Debug, Serialize)]
+pub struct RoleHolderDto {
+    /// Account id.
+    pub user_id: String,
+    /// Login name.
+    pub username: String,
+    /// Display name shown in the list.
+    pub display_name: String,
+    /// Whether the account is active. Carried alongside the role because an
+    /// inactive account still holds it and still blocks deleting the role.
+    pub is_active: bool,
+    /// `false` when the account has no `assignments` row and resolves through
+    /// `users.role_id`; every scope field below is then `None`.
+    pub has_assignment: bool,
+    /// `global` or `scoped` (the 0048 branch/workspace dimension).
+    pub scope_mode: Option<String>,
+    /// The ADR #47 resource axis: `organization`, `legal_entity`, `location`.
+    pub scope_type: Option<String>,
+    /// The bound resource id; `None` exactly when `scope_type` is
+    /// `organization`.
+    pub scope_id: Option<String>,
+    /// `all` or `list` — read this BEFORE the count. A scoped assignment
+    /// with `all` covers every branch and therefore has zero list rows, so a
+    /// bare count of 0 means unrestricted, not nothing.
+    pub branch_scope: Option<String>,
+    /// `all` or `list`, for `workspace_count` — same caveat.
+    pub workspace_scope: Option<String>,
+    /// Branch ids in scope; `None` when there is no assignment row.
+    pub branch_count: Option<i64>,
+    /// Workspace keys in scope; `None` when there is no assignment row.
+    pub workspace_count: Option<i64>,
+}
+
+impl From<oz_core::db::roles::RoleHolder> for RoleHolderDto {
+    fn from(h: oz_core::db::roles::RoleHolder) -> Self {
+        Self {
+            user_id: h.user_id,
+            username: h.username,
+            display_name: h.display_name,
+            is_active: h.is_active,
+            has_assignment: h.has_assignment,
+            scope_mode: h.scope_mode,
+            scope_type: h.scope_type,
+            scope_id: h.scope_id,
+            branch_scope: h.branch_scope,
+            workspace_scope: h.workspace_scope,
+            branch_count: h.branch_count,
+            workspace_count: h.workspace_count,
+        }
+    }
+}
+
+/// A capped page of holders plus the uncapped total.
+#[derive(Debug, Serialize)]
+pub struct RoleHoldersDto {
+    /// At most `cap` rows, in stable display order.
+    pub holders: Vec<RoleHolderDto>,
+    /// Every holder, including those past `cap`. `holders.len()` may be
+    /// smaller; the difference is what the surface renders as "and N more".
+    pub total: i64,
+    /// The cap actually applied, so the front end never hardcodes 50 and then
+    /// under-reports silently when the ceiling moves.
+    pub cap: i64,
+}
+
+/// List the accounts that hold one role, org-wide.
+///
+/// No store filter, deliberately: `users`, `assignments` and `roles` are
+/// tenant-global identity records (ADR #4 / #7) and a store-scoped database
+/// holds none of them, so "who holds this role" has exactly one honest
+/// answer for the whole organization. Gated on `staff:read`, the same gate
+/// [`list_staff_scoped`] uses, because that command already discloses these
+/// accounts and their role — asking for `staff:manage_roles` here would
+/// imply this reveals something the staff list does not.
+///
+/// The predicate lives in core (`Store::role_holders`) and resolves a role
+/// the way authorization does — assignment first, `users.role_id` as the
+/// fallback. A holder list that disagreed with what a user can actually do
+/// would be worse than no list, because this is the surface an admin reads
+/// before revoking something.
+#[tauri::command]
+pub async fn list_role_holders_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<RoleHoldersDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
+    let (holders, total) = store.role_holders(&id, oz_core::db::roles::ROLE_HOLDERS_MAX)?;
+    Ok(RoleHoldersDto {
+        holders: holders.into_iter().map(RoleHolderDto::from).collect(),
+        total,
+        cap: oz_core::db::roles::ROLE_HOLDERS_MAX,
+    })
+}
+
 /// Enforce role-assignment policy (STAFF-02).
 ///
 /// - Only a caller with `staff:manage_roles` (i.e. the Owner preset, which
@@ -1200,3 +1303,9 @@ mod tests;
 #[cfg(test)]
 #[path = "staff_security_events_tests.rs"]
 mod security_events_tests;
+
+/// Role-holder tests: a sibling module for the same reason the audit slice
+/// used one — `staff_tests.rs` is another stream's in-flight file.
+#[cfg(test)]
+#[path = "staff_role_holders_tests.rs"]
+mod role_holders_tests;

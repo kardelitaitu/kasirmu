@@ -251,6 +251,58 @@ export interface UpdateRoleArgs {
 }
 
 /**
+ * One account that resolves to a role. Mirrors `RoleHolderDto` (Rust).
+ *
+ * The scope fields are null TOGETHER, when the account has no assignment row
+ * at all and resolves through its `users.role_id`. That is a different fact
+ * from "scoped to nothing" — `has_assignment` is what tells them apart, so
+ * render them apart rather than collapsing nulls into a blank cell.
+ */
+export interface RoleHolderDto {
+  user_id: string;
+  username: string;
+  display_name: string;
+  /** An inactive account still holds the role and still blocks deleting it. */
+  is_active: boolean;
+  /** False for a legacy account with no assignment row. */
+  has_assignment: boolean;
+  /** `global` | `scoped` (the branch/workspace dimension). */
+  scope_mode: string | null;
+  /** `organization` | `legal_entity` | `location` (the ADR #47 axis). */
+  scope_type: string | null;
+  /** The bound resource; null exactly when scope_type is `organization`. */
+  scope_id: string | null;
+  /**
+   * `all` | `list` — read this BEFORE `branch_count`. A scoped assignment
+   * with `all` covers every branch and so carries zero list rows: a count of
+   * 0 there means UNRESTRICTED, not nothing. Rendering the count alone would
+   * show an all-branches manager as having no branches at all.
+   */
+  branch_scope: string | null;
+  /** `all` | `list`, for `workspace_count` — same caveat. */
+  workspace_scope: string | null;
+  /** Branch ids in scope; null when there is no assignment row. */
+  branch_count: number | null;
+  /** Workspace keys in scope; null when there is no assignment row. */
+  workspace_count: number | null;
+}
+
+/**
+ * A capped page of holders plus the uncapped total.
+ *
+ * `holders` may be shorter than `total` on purpose. The difference is what
+ * the surface renders as "and N more" — never render `holders.length` as if
+ * it were the whole set, and never hardcode the ceiling: `cap` carries it.
+ */
+export interface RoleHoldersDto {
+  holders: RoleHolderDto[];
+  /** Every holder, including those past `cap`. */
+  total: number;
+  /** The ceiling the backend actually applied. */
+  cap: number;
+}
+
+/**
  * One registered permission key — the vocabulary the role editor offers,
  * read from the same registry enforcement consults (ADR #35). Never hardcode
  * this list in the UI: a copy drifts from the keys the gate actually honors.
@@ -350,6 +402,21 @@ export const deleteRoleScoped = (
   sessionToken: string,
   id: string,
 ): Promise<null> => loggedInvoke<null>('delete_role_scoped', { sessionToken, id });
+
+/**
+ * The accounts that resolve to one role, org-wide, capped server-side.
+ *
+ * Not store-filtered, unlike most of this API: users, assignments and roles
+ * are tenant-global identity records (ADR #4 / #7), so a session standing in
+ * one location still sees every holder in the organization. That is the
+ * honest answer to "who holds this", and filtering it per store would
+ * under-report a role the caller is about to delete.
+ */
+export const listRoleHoldersScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<RoleHoldersDto> =>
+  loggedInvoke<RoleHoldersDto>('list_role_holders_scoped', { sessionToken, id });
 
 /** Create a new staff member (caller resolved from session token). */
 export const createStaffScoped = (

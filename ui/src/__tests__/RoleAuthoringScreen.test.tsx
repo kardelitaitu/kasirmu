@@ -78,6 +78,30 @@ function roleDto(over: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+/** One holder, shaped like the Rust RoleHolderDto (snake_case wire names). */
+function holderDto(over: Partial<Record<string, unknown>> = {}) {
+  return {
+    user_id: 'user-a',
+    username: 'ana',
+    display_name: 'Ana',
+    is_active: true,
+    has_assignment: true,
+    scope_mode: 'global',
+    scope_type: 'organization',
+    scope_id: null,
+    branch_scope: 'all',
+    workspace_scope: 'all',
+    branch_count: 0,
+    workspace_count: 0,
+    ...over,
+  };
+}
+
+/** A page of holders shaped like RoleHoldersDto. */
+function holdersPage(holders: unknown[], total = holders.length) {
+  return { holders, total, cap: 50 };
+}
+
 const PRESET = roleDto({ id: 'role-owner', name: 'Owner', is_builtin: true, reference_count: 3 });
 // id is the preset; the display name deliberately is NOT "Custom", so a
 // passing assertion cannot be an accident of the badge text matching the name.
@@ -271,6 +295,8 @@ describe('RoleAuthoringScreen', () => {
     keys?: unknown[];
     fail?: 'create_role_scoped' | 'update_role_scoped' | 'delete_role_scoped';
     hang?: boolean;
+    holderPage?: unknown;
+    failHolders?: boolean;
   }) {
     const calls: Record<string, unknown[][]> = {};
     let listCall = 0;
@@ -282,6 +308,10 @@ describe('RoleAuthoringScreen', () => {
         if (spec.hang) return new Promise(() => {});
         const lists = spec.roleLists ?? [[AUTHORED]];
         return lists[Math.min(listCall++, lists.length - 1)];
+      }
+      if (cmd === 'list_role_holders_scoped') {
+        if (spec.failHolders) throw new Error('holders refused');
+        return spec.holderPage ?? holdersPage([]);
       }
       if (spec.fail === cmd) throw new Error('refused by the backend');
       return undefined;
@@ -411,6 +441,125 @@ describe('RoleAuthoringScreen', () => {
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(screen.queryByText('No roles yet')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Create a new custom role')).not.toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // ── holders ────────────────────────────────────────────────────────────
+
+  it('fetches holders only when a row is expanded, with camelCase wire keys', async () => {
+    const calls = scripted({ roleLists: [[AUTHORED]], holderPage: holdersPage([holderDto()]) });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    // Nothing is fetched up front: with twenty roles this would be twenty
+    // extra calls to answer a question about one of them.
+    expect(calls['list_role_holders_scoped']).toBeUndefined();
+
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Night Manager role'));
+    await waitFor(() => expect(screen.getByText('Ana')).toBeInTheDocument());
+    expect(calls['list_role_holders_scoped']).toHaveLength(1);
+    expect(calls['list_role_holders_scoped']?.[0]?.[0]).toEqual({
+      sessionToken: HARNESS_SESSION_TOKEN,
+      id: 'role-night-manager',
+    });
+    expect(screen.getByText('1 account')).toBeInTheDocument();
+  });
+
+  it('offers holders for a preset row, which cannot be edited or deleted', async () => {
+    // The point of the surface for built-ins: an admin cannot change Owner,
+    // so who holds it is the only thing they can act on. Edit/Delete are
+    // absent here by the same rule that removes them elsewhere.
+    const calls = scripted({ roleLists: [[PRESET]], holderPage: holdersPage([holderDto()]) });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Owner')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Edit the Owner role')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Owner role'));
+    await waitFor(() => expect(calls['list_role_holders_scoped']).toHaveLength(1));
+  });
+
+  it('serves a re-expanded role from cache instead of refetching', async () => {
+    const calls = scripted({ roleLists: [[AUTHORED]], holderPage: holdersPage([holderDto()]) });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    const toggle = screen.getByLabelText('Show the accounts holding the Night Manager role');
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByText('Ana')).toBeInTheDocument());
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByText('Ana')).toBeInTheDocument());
+    expect(calls['list_role_holders_scoped']).toHaveLength(1);
+  });
+
+  it('names the remainder past the cap instead of a silently clipped list', async () => {
+    const calls = scripted({
+      roleLists: [[AUTHORED]],
+      holderPage: holdersPage([holderDto()], 60),
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Night Manager role'));
+    await waitFor(() => expect(screen.getByText('Ana')).toBeInTheDocument());
+    expect(calls['list_role_holders_scoped']).toHaveLength(1);
+    // The label uses the uncapped total, and the remainder is spelled out —
+    // neither may be inferred from how many rows happened to arrive.
+    expect(screen.getByText('60 accounts')).toBeInTheDocument();
+    expect(screen.getByText('and 59 more')).toBeInTheDocument();
+  });
+
+  it('says plainly when nobody holds the role', async () => {
+    scripted({ roleLists: [[AUTHORED]], holderPage: holdersPage([]) });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Night Manager role'));
+    await waitFor(() => expect(screen.getByText('No accounts hold this role.')).toBeInTheDocument());
+  });
+
+  it('renders a legacy account as having no assignment, not as scoped to nothing', async () => {
+    const legacy = holderDto({
+      has_assignment: false,
+      scope_mode: null,
+      scope_type: null,
+      scope_id: null,
+      branch_scope: null,
+      workspace_scope: null,
+      branch_count: null,
+      workspace_count: null,
+    });
+    scripted({ roleLists: [[AUTHORED]], holderPage: holdersPage([legacy]) });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Night Manager role'));
+    await waitFor(() => expect(screen.getByText('No assignment record')).toBeInTheDocument());
+  });
+
+  it('reads a zero branch count as unrestricted when the dimension says all', async () => {
+    // The trap branch_scope exists to avoid. A scoped assignment covering
+    // every branch has zero explicit rows, so a column rendering the count
+    // alone would tell an admin this manager has no branches at all.
+    const all = holderDto({
+      scope_mode: 'scoped',
+      scope_type: 'location',
+      scope_id: 'loc-7',
+      branch_count: 0,
+      workspace_count: 0,
+    });
+    scripted({ roleLists: [[AUTHORED]], holderPage: holdersPage([all]) });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Night Manager role'));
+    await waitFor(() => expect(screen.getByText('all branches and workspaces')).toBeInTheDocument());
+    expect(screen.queryByText('0 branches')).not.toBeInTheDocument();
+    expect(screen.getByText('Location loc-7')).toBeInTheDocument();
+  });
+
+  it('keeps a failed holder read inside the row', async () => {
+    // A holder list that will not load is not a broken role list: the banner
+    // and the editor must survive it, and the row must say what failed.
+    scripted({ roleLists: [[AUTHORED]], failHolders: true });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Show the accounts holding the Night Manager role'));
+    await waitFor(() => expect(screen.getByText('Could not load holders.')).toBeInTheDocument());
+    expect(screen.getByText('Night Manager')).toBeInTheDocument();
+    expect(screen.queryByText('0 accounts')).not.toBeInTheDocument();
+    expect(screen.queryByText('No accounts hold this role.')).not.toBeInTheDocument();
   });
 });

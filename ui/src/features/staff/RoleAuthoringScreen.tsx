@@ -6,8 +6,11 @@ import {
   createRoleScoped,
   updateRoleScoped,
   deleteRoleScoped,
+  listRoleHoldersScoped,
   type RoleDto,
   type PermissionKeyDto,
+  type RoleHolderDto,
+  type RoleHoldersDto,
 } from '@/api/staff';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/Card';
@@ -37,7 +40,92 @@ import './RoleAuthoringScreen.css';
  * The permission picker is fed by `list_permission_keys_scoped` rather than
  * a constant: the registry is the single source of truth (ADR #35) and a
  * hardcoded copy drifts from the keys the gate actually honors.
+ *
+ * Each row also expands to the accounts holding that role, and the scope
+ * that bounds them. That list resolves a role the way enforcement does
+ * (assignment first, users.role_id as the fallback), so it can name a
+ * different set from the `reference_count` behind the In-use label: that
+ * number is FOREIGN-KEY truth across four tables and answers "may this be
+ * deleted", while holders answers "what can these accounts do". Showing
+ * one and calling it the other is the mistake this note exists to prevent.
  */
+/**
+ * The ADR #47 resource axis for one holder, as its own message per case.
+ *
+ * Literal ids rather than a computed one, so the bundle-parity gate can
+ * resolve every key statically — a dynamic id would let a typoed axis read
+ * as a missing translation at runtime instead of failing the commit.
+ */
+function HolderResource({ h }: { h: RoleHolderDto }) {
+  if (!h.has_assignment) {
+    return (
+      <Localized id="role-holders-scope-legacy">
+        <span className="role-holder-scope">No assignment record</span>
+      </Localized>
+    );
+  }
+  if (h.scope_type === 'legal_entity') {
+    return (
+      <Localized id="role-holders-scope-legal-entity" vars={{ id: h.scope_id ?? '' }}>
+        <span className="role-holder-scope">Legal entity</span>
+      </Localized>
+    );
+  }
+  if (h.scope_type === 'location') {
+    return (
+      <Localized id="role-holders-scope-location" vars={{ id: h.scope_id ?? '' }}>
+        <span className="role-holder-scope">Location</span>
+      </Localized>
+    );
+  }
+  return (
+    <Localized id="role-holders-scope-organization">
+      <span className="role-holder-scope">Organization-wide</span>
+    </Localized>
+  );
+}
+
+/**
+ * The 0048 branch/workspace dimensions, as four exhaustive combinations.
+ *
+ * `*_scope` is consulted before `*_count`, and that ordering is the point: a
+ * scoped assignment covering every branch carries zero list rows, so a
+ * column that rendered the count alone would report an all-branches manager
+ * as having no branches — the opposite of the truth.
+ */
+function HolderDims({ h }: { h: RoleHolderDto }) {
+  const branchesList = h.branch_scope === 'list';
+  const workspacesList = h.workspace_scope === 'list';
+  if (!branchesList && !workspacesList) {
+    return (
+      <Localized id="role-holders-dims-all">
+        <span className="role-holder-dims">all branches and workspaces</span>
+      </Localized>
+    );
+  }
+  if (branchesList && !workspacesList) {
+    return (
+      <Localized id="role-holders-dims-branches" vars={{ count: h.branch_count ?? 0 }}>
+        <span className="role-holder-dims">a number of branches</span>
+      </Localized>
+    );
+  }
+  if (!branchesList && workspacesList) {
+    return (
+      <Localized id="role-holders-dims-workspaces" vars={{ count: h.workspace_count ?? 0 }}>
+        <span className="role-holder-dims">a number of workspaces</span>
+      </Localized>
+    );
+  }
+  return (
+    <Localized
+      id="role-holders-dims-both-lists"
+      vars={{ branches: h.branch_count ?? 0, workspaces: h.workspace_count ?? 0 }}>
+      <span className="role-holder-dims">branch and workspace lists</span>
+    </Localized>
+  );
+}
+
 export default function RoleAuthoringScreen() {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
@@ -54,6 +142,13 @@ export default function RoleAuthoringScreen() {
   const [granted, setGranted] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<RoleDto | null>(null);
+  // Holders are loaded per row on expand, not with the role list: a screen
+  // with twenty roles would otherwise make twenty-one calls to answer one
+  // question about one of them. Keyed by role id so two rows can be open.
+  const [openHolders, setOpenHolders] = useState<Set<string>>(new Set());
+  const [holdersById, setHoldersById] = useState<Record<string, RoleHoldersDto>>({});
+  const [holdersLoadingId, setHoldersLoadingId] = useState<string | null>(null);
+  const [holdersErrors, setHoldersErrors] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
@@ -66,6 +161,11 @@ export default function RoleAuthoringScreen() {
       ]);
       setRoles(roleList);
       setKeys(keyList);
+      // Any save or delete re-points holders, and refresh is what runs after
+      // both — a cached list would then contradict the row beside it.
+      setHoldersById({});
+      setHoldersErrors({});
+      setOpenHolders(new Set());
     } catch (e) {
       setError(l10nErrorMessage(e, l10n));
     } finally {
@@ -89,6 +189,34 @@ export default function RoleAuthoringScreen() {
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [keys]);
 
+
+  const toggleHolders = async (role: RoleDto) => {
+    const next = new Set(openHolders);
+    if (next.has(role.id)) {
+      next.delete(role.id);
+      setOpenHolders(next);
+      return;
+    }
+    next.add(role.id);
+    setOpenHolders(next);
+    if (!sessionToken || holdersById[role.id]) return; // cached per role id
+    setHoldersLoadingId(role.id);
+    setHoldersErrors((m) => {
+      const copy = { ...m };
+      delete copy[role.id];
+      return copy;
+    });
+    try {
+      const page = await listRoleHoldersScoped(sessionToken, role.id);
+      setHoldersById((m) => ({ ...m, [role.id]: page }));
+    } catch (e) {
+      // Row-local, not the screen-wide banner: a failed holder read must not
+      // look like the role list itself failed.
+      setHoldersErrors((m) => ({ ...m, [role.id]: l10nErrorMessage(e, l10n) }));
+    } finally {
+      setHoldersLoadingId((id) => (id === role.id ? null : id));
+    }
+  };
 
   const openEditor = (role: RoleDto | null) => {
     setEditingId(role ? role.id : '');
@@ -193,7 +321,10 @@ export default function RoleAuthoringScreen() {
           <EmptyState title={requiredLocalized(l10n, 'role-empty-title')} />
         ) : (
           <ul className="role-list" aria-label={l10n.getString('role-list-aria')}>
-            {roles.map((role) => (
+            {roles.map((role) => {
+              const page = holdersById[role.id];
+              const holdersOpen = openHolders.has(role.id);
+              return (
               <li key={role.id} className="role-list-item">
                 <div className="role-list-main">
                   <span className="role-list-name">{role.name}</span>
@@ -215,6 +346,93 @@ export default function RoleAuthoringScreen() {
                     <span>{role.permissions.length} permissions</span>
                   </Localized>
                 </p>
+                <div className="role-holders">
+                  <button
+                    type="button"
+                    className="role-holders-toggle"
+                    aria-expanded={holdersOpen}
+                    onClick={() => void toggleHolders(role)}
+                    aria-label={l10n.getString('role-holders-aria', { name: role.name })}>
+                    <Localized id="role-holders-toggle">
+                      <span>Holders</span>
+                    </Localized>
+                  </button>
+                  {/* Only ever the authoritative total from a completed read.
+                      role.reference_count is a different number on purpose
+                      (it spans four FK tables and answers deletion, not
+                      holding), so it is never rendered under this label. */}
+                  {page && (
+                    <Localized id="role-holders-count" vars={{ count: page.total }}>
+                      <span className="role-holders-count">{page.total} accounts</span>
+                    </Localized>
+                  )}
+                </div>
+                {holdersOpen && (
+                  <div className="role-holders-panel">
+                    {holdersLoadingId === role.id && (
+                      <Localized id="role-holders-loading">
+                        <span className="role-holders-loading">Loading holders…</span>
+                      </Localized>
+                    )}
+                    {holdersErrors[role.id] && (
+                      <p className="role-holders-error">
+                        <Localized id="role-holders-error">
+                          <span>Could not load holders.</span>
+                        </Localized>
+                        {" "}
+                        {holdersErrors[role.id]}
+                      </p>
+                    )}
+                    {page && page.total === 0 && (
+                      <Localized id="role-holders-none">
+                        <p className="role-holders-none">
+                          No accounts hold this role
+                        </p>
+                      </Localized>
+                    )}
+                    {page && page.holders.length > 0 && (
+                      <>
+                        <ul
+                          className="role-holders-list"
+                          aria-label={l10n.getString('role-holders-list-aria', {
+                            name: role.name,
+                          })}>
+                          {page.holders.map((h) => (
+                            <li key={h.user_id} className="role-holder">
+                              <span className="role-holder-name">
+                                {h.display_name}
+                                {!h.is_active && (
+                                  <Badge variant="default">
+                                    <Localized id="role-holders-inactive">
+                                      <span>inactive</span>
+                                    </Localized>
+                                  </Badge>
+                                )}
+                              </span>
+                              <span className="role-holder-user">{h.username}</span>
+                              <span className="role-holder-scope">
+                                <HolderResource h={h} />
+                                {" · "}
+                                <HolderDims h={h} />
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        {page.holders.length < page.total && (
+                          <p className="role-holders-more">
+                            <Localized
+                              id="role-holders-more"
+                              vars={{ count: page.total - page.holders.length }}>
+                              <span>
+                                and {page.total - page.holders.length} more
+                              </span>
+                            </Localized>
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="role-list-actions">
                   {/* Preset rows carry no Edit/Delete at all: the seeder owns
                       them, so an accepted edit would be silently reverted. */}
@@ -241,7 +459,8 @@ export default function RoleAuthoringScreen() {
                   )}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Card>

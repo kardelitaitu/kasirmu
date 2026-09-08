@@ -54,6 +54,54 @@ const ROLE_REFERRERS: [&str; 4] = [
     "role_workspaces",
 ];
 
+/// The largest holder list [`Store::role_holders`] returns in one call.
+///
+/// A deliberate cap, not a page size: the question asked of it is "who can
+/// do what with this role", and a role held by four hundred accounts is a
+/// list nobody reads. The total comes back regardless, so a surface can say
+/// "and 350 more" honestly instead of truncating in silence.
+pub const ROLE_HOLDERS_MAX: i64 = 50;
+
+/// One account that resolves to a role, as reported by
+/// [`Store::role_holders`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoleHolder {
+    /// The account id.
+    pub user_id: String,
+    /// Login name.
+    pub username: String,
+    /// Display name.
+    pub display_name: String,
+    /// Whether the account is active. A deactivated holder still holds the
+    /// role and still blocks deleting it, so this is shown, never filtered.
+    pub is_active: bool,
+    /// `false` when the account has no `assignments` row at all and resolves
+    /// through `users.role_id` — the legacy arm of the resolver. Every scope
+    /// field below is then `None`, which is NOT the same fact as "scoped to
+    /// nothing".
+    pub has_assignment: bool,
+    /// `global` or `scoped` (the 0048 branch/workspace dimension).
+    pub scope_mode: Option<String>,
+    /// The ADR #47 resource axis: `organization` / `legal_entity` /
+    /// `location`.
+    pub scope_type: Option<String>,
+    /// The resource the assignment is bound to; `None` exactly when
+    /// `scope_type` is `organization`.
+    pub scope_id: Option<String>,
+    /// `all` or `list` — which dimension the branch count describes. Read
+    /// this BEFORE `branch_count`: a scoped assignment with `all` covers
+    /// every branch, so its count of explicit list rows being zero means
+    /// "unrestricted", not "nothing". Reporting only the count would render
+    /// an all-branches manager as having no branches at all.
+    pub branch_scope: Option<String>,
+    /// `all` or `list`, for `workspace_count` — same caveat.
+    pub workspace_scope: Option<String>,
+    /// Branch ids in scope; `None` when there is no assignment row.
+    pub branch_count: Option<i64>,
+    /// Workspace keys in scope; `None` when there is no assignment row.
+    pub workspace_count: Option<i64>,
+}
+
 impl Store<'_> {
     /// Parse and validate a grant set — the rule every role write shares,
     /// so create and update can never disagree about what a legal
@@ -207,6 +255,103 @@ impl Store<'_> {
             created_at: now.clone(),
             updated_at: now,
         })
+    }
+
+    /// The accounts that resolve to this role, org-wide, capped at
+    /// [`ROLE_HOLDERS_MAX`].
+    ///
+    /// Returns `(holders, total)` — `holders` is at most `limit` rows
+    /// (clamped to `[1, ROLE_HOLDERS_MAX]`) in stable
+    /// `(display_name COLLATE NOCASE, id)` order, and `total` is the full
+    /// count regardless of the cap, which is what lets a caller render
+    /// "and N more" truthfully.
+    ///
+    /// # The predicate is the resolver's, not the schema's
+    ///
+    /// `WHERE COALESCE(a.role_id, u.role_id) = ?1` is the whole design. A
+    /// user resolves to a role assignment FIRST, with `users.role_id` as the
+    /// fallback (see `Store::authorize_with`). So a query over
+    /// `users.role_id` alone would list someone under a role they do not
+    /// actually hold whenever the two disagree, and a query over
+    /// `assignments.role_id` alone would silently drop every legacy account
+    /// that has no assignment row. Both states are real: `update_user` keeps
+    /// the pair in sync, but the sync is not a constraint, and a legacy row
+    /// is not a bug. This is the one place a holder list can be read, so it
+    /// reads it the way authorization resolves it.
+    ///
+    /// # Why this need not agree with [`Self::role_reference_counts`]
+    ///
+    /// Different questions. The referrer counts are FOREIGN KEY truth — "may
+    /// this role be deleted" — and an `ON DELETE NO ACTION` row blocks
+    /// deletion whether or not it decides resolution. This list is
+    /// RESOLUTION truth — "what can this account do". For a synced user they
+    /// name the same set; for a divergent one they do not, and neither is
+    /// wrong. A holder is by construction also a referrer when the two agree,
+    /// which is why `role_holders_agree_with_reference_counts_when_synced`
+    /// pins the common case rather than assuming it.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::NotFound`] when no such role — an empty list for a role
+    /// that does not exist would read as "nobody holds this" and invite a
+    /// delete decision on a typo.
+    pub fn role_holders(
+        &self,
+        role_id: &str,
+        limit: i64,
+    ) -> Result<(Vec<RoleHolder>, i64), CoreError> {
+        if self.get_role(role_id)?.is_none() {
+            return Err(CoreError::NotFound {
+                entity: "role",
+                id: role_id.to_owned(),
+            });
+        }
+        let bounded = limit.clamp(1, ROLE_HOLDERS_MAX);
+
+        const FROM_WHERE: &str = " FROM users u LEFT JOIN assignments a ON a.user_id = u.id
+                                  WHERE COALESCE(a.role_id, u.role_id) = ?1";
+        let total: i64 = self.conn.query_row(
+            &format!("SELECT COUNT(*){FROM_WHERE}"),
+            params![role_id],
+            |row| row.get(0),
+        )?;
+
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT u.id, u.username, u.display_name, u.is_active,
+                    a.user_id IS NOT NULL,
+                    a.scope_mode, a.scope_type, a.scope_id,
+                    a.branch_scope, a.workspace_scope,
+                    CASE WHEN a.user_id IS NULL THEN NULL ELSE
+                      (SELECT COUNT(*) FROM assignment_branches b
+                       WHERE b.assignment_user_id = u.id) END,
+                    CASE WHEN a.user_id IS NULL THEN NULL ELSE
+                      (SELECT COUNT(*) FROM assignment_workspaces w
+                       WHERE w.assignment_user_id = u.id) END
+             {FROM_WHERE}
+             ORDER BY u.display_name COLLATE NOCASE ASC, u.id ASC
+             LIMIT ?2"
+        ))?;
+        let rows = stmt.query_map(params![role_id, bounded], |row| {
+            Ok(RoleHolder {
+                user_id: row.get(0)?,
+                username: row.get(1)?,
+                display_name: row.get(2)?,
+                is_active: row.get(3)?,
+                has_assignment: row.get(4)?,
+                scope_mode: row.get(5)?,
+                scope_type: row.get(6)?,
+                scope_id: row.get(7)?,
+                branch_scope: row.get(8)?,
+                workspace_scope: row.get(9)?,
+                branch_count: row.get(10)?,
+                workspace_count: row.get(11)?,
+            })
+        })?;
+        let mut holders = Vec::new();
+        for row in rows {
+            holders.push(row?);
+        }
+        Ok((holders, total))
     }
 
     /// Re-name, re-describe, or re-grant an authored role.

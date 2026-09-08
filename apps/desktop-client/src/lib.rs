@@ -840,6 +840,7 @@ pub fn run() {
             commands::staff::create_role_scoped,
             commands::staff::update_role_scoped,
             commands::staff::delete_role_scoped,
+            commands::staff::list_role_holders_scoped,
             commands::staff::create_staff_scoped,
             commands::staff::update_staff_scoped,
             commands::staff::get_staff_profile_scoped,

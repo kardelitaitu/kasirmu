@@ -242,3 +242,36 @@ role-saved = Saved the { $name } role.
 role-deleted = Deleted the { $name } role.
 role-delete-confirm-title = Delete this role?
 role-delete-confirm-body = Accounts holding { $name } will lose its permissions. This cannot be undone.
+
+# Who holds a role. Deliberately worded apart from role-in-use above: that
+# count spans four foreign-key referrers and answers whether a role may be
+# deleted, while these describe the accounts that resolve to it.
+role-holders-toggle = Holders
+role-holders-aria = Show the accounts holding the { $name } role
+role-holders-list-aria = Accounts holding the { $name } role
+role-holders-count = { $count ->
+    [one] 1 account
+   *[other] { $count } accounts
+  }
+role-holders-loading = Loading holders…
+role-holders-error = Could not load holders.
+role-holders-none = No accounts hold this role.
+role-holders-more = { $count ->
+    [one] and 1 more
+   *[other] and { $count } more
+  }
+role-holders-inactive = inactive
+role-holders-scope-legacy = No assignment record
+role-holders-scope-organization = Organization-wide
+role-holders-scope-legal-entity = Legal entity { $id }
+role-holders-scope-location = Location { $id }
+role-holders-dims-all = all branches and workspaces
+role-holders-dims-branches = { $count ->
+    [one] 1 branch
+   *[other] { $count } branches
+  }
+role-holders-dims-workspaces = { $count ->
+    [one] 1 workspace
+   *[other] { $count } workspaces
+  }
+role-holders-dims-both-lists = { $branches } branches, { $workspaces } workspaces
