@@ -285,6 +285,14 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Validation:** Re-verified against the current tree after the concurrent slice landed: isolated test passes; full focused suite 511 tests — 510 passed, 1 skipped, 0 failed; `npm run typecheck` exit 0.
 - **Next slice:** the load-lifecycle hook consolidation, once the seam (`NodeTopologyEditor.tsx` / `topologyLoadModel.ts`) is committed and free.
 
+### 2026-09-09 — Slice 1f (adopted): extract authoritative wire filtering
+
+- **Provenance:** While re-checking seam availability, the concurrent session's in-flight edits were found **abandoned** — last touched 20:31 the previous day (~6.5h stale, spanning two of this session's own commits), and they implement exactly that session's stated "next slice": extract the dangling-wire filter into `topologyLoadModel.ts`. Per the concurrency policy (do not discard others' uncommitted work; unblock by verifying and adopting), this slice verifies and commits that work rather than re-deriving it or leaving the main seam blocked indefinitely.
+- **Change:** `buildLoadedTopologyWires(persistedWires, validNodeIds)` in `topologyLoadModel.ts` — keeps only persisted wires whose endpoints survived live-node reconciliation, maps survivors through the canonical `diagramWireToCanvas` converter. The editor's load effect now calls it instead of the inline `.filter(...).map(...)` pair.
+- **Scope:** `NodeTopologyEditor.tsx` (import + 4-line call-site swap only), `topologyLoadModel.ts` (+13 lines), `topologyLoadModel.test.ts` (+1 test: dangling endpoint dropped, kept wire normalized). No load-order, cancellation, transient-reset, or state behavior changed.
+- **Validation:** Load-model tests 3/3. Editor focused suite (510 passed, 1 skipped, 0 failed, 02:55) and `npm run typecheck` (exit 0, 02:56) both ran *with* these edits already in the tree.
+- **Seam status:** `NodeTopologyEditor.tsx` / `topologyLoadModel.ts` are now committed and free — the load-lifecycle hook consolidation is unblocked as the next production slice.
+
 ## Completion checklist
 
 - [ ] `NodeTopologyEditor.tsx` is a small composition root rather than the owner of unrelated state machines and event systems.

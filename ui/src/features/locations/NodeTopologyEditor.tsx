@@ -83,7 +83,7 @@ import {
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { syncBranchLocations, syncWorkspaceInstanceNames } from './topologyBranchSync';
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
-import { buildWorkspaceTopologyNodes } from './topologyLoadModel';
+import { buildLoadedTopologyWires, buildWorkspaceTopologyNodes } from './topologyLoadModel';
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
@@ -1545,9 +1545,7 @@ export default function NodeTopologyEditor({
             snap,
           );
           const validIds = new Set(mergedNodes.map((n) => n.id));
-          const loadedWires: TopologyWireData[] = (data?.wires ?? [])
-            .filter((w) => validIds.has(w.from_node_id) && validIds.has(w.to_node_id))
-            .map(diagramWireToCanvas);
+          const loadedWires = buildLoadedTopologyWires(data?.wires ?? [], validIds);
           // Reset transient state BEFORE the loaded canvas lands — the
           // resets must never act on the replacement canvas (a cancelled
           // bend-drag, for example, would otherwise restore its old start

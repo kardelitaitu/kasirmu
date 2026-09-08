@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildWorkspaceTopologyNodes } from '../features/locations/topologyLoadModel';
+import {
+  buildLoadedTopologyWires,
+  buildWorkspaceTopologyNodes,
+} from '../features/locations/topologyLoadModel';
 import type {
   BranchLocationSeed,
   TopologyNodeData,
+  TopologyWireData,
   WorkspaceInstanceSeed,
 } from '../features/locations/NodeTopologyEditor';
 
@@ -46,6 +50,39 @@ describe('buildWorkspaceTopologyNodes', () => {
       telemetryBadge: 'Paused',
       telemetryStatus: 'online',
       metadata: { persisted: true, custom: 'keep', typeKey: 'store-pos', purposeKey: 'checkout' },
+    }]);
+  });
+
+  it('filters dangling persisted wires and normalizes their canvas model', () => {
+    const persisted = [
+      {
+        id: 'wire-kept',
+        from_node_id: 'store-1',
+        to_node_id: 'workspace-1',
+        direction: 'invalid-direction',
+        from_port: 'top',
+        to_port: 'bottom',
+      },
+      {
+        id: 'wire-dangling',
+        from_node_id: 'missing',
+        to_node_id: 'workspace-1',
+        direction: 'reverse',
+      },
+    ];
+
+    const result: TopologyWireData[] = buildLoadedTopologyWires(
+      persisted,
+      new Set(['store-1', 'workspace-1']),
+    );
+
+    expect(result).toEqual([{
+      id: 'wire-kept',
+      fromNodeId: 'store-1',
+      toNodeId: 'workspace-1',
+      direction: 'one-way',
+      fromPort: 'right',
+      toPort: 'left',
     }]);
   });
 

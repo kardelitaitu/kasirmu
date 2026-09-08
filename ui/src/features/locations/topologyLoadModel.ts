@@ -1,6 +1,9 @@
+import type { TopologyWirePayload } from '@/api/topology';
+import { diagramWireToCanvas } from './topologyEditorHelpers';
 import type {
   BranchLocationSeed,
   TopologyNodeData,
+  TopologyWireData,
   WorkspaceInstanceSeed,
 } from './NodeTopologyEditor';
 
@@ -9,6 +12,19 @@ import type {
  * current seed lists. This is pure so authoritative loading can keep data
  * reconciliation separate from effects, transient cleanup, and React state.
  */
+/**
+ * Keep only persisted wires whose endpoints survived live-node reconciliation,
+ * then map them through the canonical payload-to-canvas converter.
+ */
+export function buildLoadedTopologyWires(
+  persistedWires: TopologyWirePayload[],
+  validNodeIds: ReadonlySet<string>,
+): TopologyWireData[] {
+  return persistedWires
+    .filter((wire) => validNodeIds.has(wire.from_node_id) && validNodeIds.has(wire.to_node_id))
+    .map(diagramWireToCanvas);
+}
+
 export function buildWorkspaceTopologyNodes(
   savedNodes: TopologyNodeData[],
   workspaceInstances: WorkspaceInstanceSeed[],
