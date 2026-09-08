@@ -82,6 +82,7 @@ import {
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
 import { useTopologyEditorLoadLifecycle } from './nodeTopologyEditorLoadLifecycle';
+import { deletableNodeIds, nodesWithoutIds, wiresWithoutEndpoints } from './topologyCommands';
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
@@ -2348,14 +2349,16 @@ export default function NodeTopologyEditor({
   }, [nodes]);
 
   const deleteNodes = useCallback((ids: string[]) => {
-    // Filter out Branch Location nodes — they are permanent anchors.
-    const doomed = new Set(ids.filter((id) => !isBranchLocation(id)));
+    // Filter out Branch Location nodes — they are permanent anchors. The
+    // rule lives in the shared command module (Phase 3.2); the keydown and
+    // context-menu pre-dialog pre-filters still use isBranchLocation above.
+    const doomed = new Set(deletableNodeIds(nodes, ids));
     if (doomed.size === 0) return;
     pushHistory();
-    setNodes((prev) => prev.filter((n) => !doomed.has(n.id)));
-    setWires((prev) => prev.filter((w) => !doomed.has(w.fromNodeId) && !doomed.has(w.toNodeId)));
+    setNodes((prev) => nodesWithoutIds(prev, doomed));
+    setWires((prev) => wiresWithoutEndpoints(prev, doomed));
     clearSelection();
-  }, [pushHistory, setNodes, setWires, clearSelection, isBranchLocation]);
+  }, [pushHistory, setNodes, setWires, clearSelection, nodes]);
 
   /** Fit the whole diagram into the viewport (clamped 40%..200%). */
   const zoomToFit = useCallback(() => {
