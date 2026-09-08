@@ -1,15 +1,32 @@
 # API Reference — OZ-POS
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (5 findings) · First stamp this page ever carried; it had a footer from an earlier pass and nothing machine-readable about scope or evidence. · Refreshed the measured surface, which had rotted in eight days: registered 450→454 distinct (429 desktop / 301 tablet / 276 both, from apps/desktop-client/src/lib.rs and apps/tablet-client/src/lib.rs), discrepancies 154→158. · Corrected a header that presented a "55-entry gap" above a four-class table summing to 154 and implied one explained the other. They are different quantities; the header now states the intersection (406 names) and the identity 505−99=406, 406+48=454, which closes exactly and can be re-derived. · Replaced the 7 dead *_store_profile_scoped rows: the store→location rename moved the module to apps/desktop-client/src/commands/locations.rs and all seven names to their *_location_profile_* twins, verified against the file's own 8 pub async fn and their /// summaries. That also pulled 7 of the 48 undocumented commands into the page. The old rows each said "Scoped variant of create_store_profile" etc — no such unscoped command exists in either app; the only surviving store_profile names are SQLite service methods in crates/oz-core/src/db/locations.rs. · Rewrote the "14 listed and not defined anywhere" row, which was the worst claim on the page: it said of its names "they do not exist", and for 7 of the 14 that is false. get_kds_order, get_kds_queue, list_kds_orders, update_kds_status and create_kds_order_from_sale are pub fn service methods in crates/oz-core/src/db/kds_lines.rs and kds_orders.rs, and settings_changed_sink is a helper at apps/desktop-client/src/commands/sync.rs:210 whose command twin is settings_changed_sink_scoped at :811. The checker's "defined" means "annotated #[command]"; the page borrowed the tool's vocabulary without saying what the tool counts, and asserted something its own evidence contradicted. Renamed the bucket to say what it means. · Verified the 85 "not registered" bucket by re-running the comparison per name rather than trusting the label: all 85 are the legacy unscoped twins of a registered *_scoped command, i.e. the ADR #7 convention the page already documents, not rot. · A note on the repair itself: my first draft of the new locations section claimed all eight commands are registered. They are not — get_primary_location is defined but in no handler, and check-api-surface caught it by moving its own count the wrong way (85→86) inside the same edit. Documented as found, and kept listed on purpose, because this page derives from command definitions rather than handlers. · Still open on this page, deliberately: 41 registered commands have no row (memos, payables, legal_entities, local_api, topology, roles), 7 stale rows still describe service methods as commands, All 11 wrong availability markers were corrected in this same pass, each one checked against both generate_handler! lists before editing, so that bucket is 0 and net discrepancies went 158 to 134. Every number re-derives with python .agents/skills/docs-auditor/scripts/check-api-surface.py --full, which now lists whole buckets — the 5-example cap had hidden the largest bucket entirely, and it was never printed in text mode at all. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (6 findings, 5 repaired) · First stamp this page ever carried; it had a footer from an earlier pass and nothing machine-readable about scope or evidence. · Refreshed the measured surface, which had rotted in eight days: registered 450→454 distinct (429 desktop / 301 tablet / 276 both, from apps/desktop-client/src/lib.rs and apps/tablet-client/src/lib.rs), discrepancies 154→158. · Corrected a header that presented a "55-entry gap" above a four-class table summing to 154 and implied one explained the other. They are different quantities; the header now states the intersection (406 names) and the identity 505−99=406, 406+48=454, which closes exactly and can be re-derived. · Replaced the 7 dead *_store_profile_scoped rows: the store→location rename moved the module to apps/desktop-client/src/commands/locations.rs and all seven names to their *_location_profile_* twins, verified against the file's own 8 pub async fn and their /// summaries. That also pulled 7 of the 48 undocumented commands into the page. The old rows each said "Scoped variant of create_store_profile" etc — no such unscoped command exists in either app; the only surviving store_profile names are SQLite service methods in crates/oz-core/src/db/locations.rs. · Rewrote the "14 listed and not defined anywhere" row, which was the worst claim on the page: it said of its names "they do not exist", and for 7 of the 14 that is false. get_kds_order, get_kds_queue, list_kds_orders, update_kds_status and create_kds_order_from_sale are pub fn service methods in crates/oz-core/src/db/kds_lines.rs and kds_orders.rs, and settings_changed_sink is a helper at apps/desktop-client/src/commands/sync.rs:210 whose command twin is settings_changed_sink_scoped at :811. The checker's "defined" means "annotated #[command]"; the page borrowed the tool's vocabulary without saying what the tool counts, and asserted something its own evidence contradicted. Renamed the bucket to say what it means. · Verified the 85 "not registered" bucket by re-running the comparison per name rather than trusting the label: all 85 are the legacy unscoped twins of a registered *_scoped command, i.e. the ADR #7 convention the page already documents, not rot. · A note on the repair itself: my first draft of the new locations section claimed all eight commands are registered. They are not — get_primary_location is defined but in no handler, and check-api-surface caught it by moving its own count the wrong way (85→86) inside the same edit. Documented as found, and kept listed on purpose, because this page derives from command definitions rather than handlers. · All 41 registered-but-undocumented commands were then written up on 08-09-26: each
+summary taken from the command's own /// line, each availability marker read out of the
+two generate_handler! lists rather than inferred. 17 rows folded into existing sections
+(audit, auth, settings, staff x5, subscription x2, topology x7) and 24 as five new ones
+(legal_entities 4, local_api 6, memo 7, payables 4, products_images 3), so
+registered-not-listed is 0 and the page went 506 to 547 entries across 49 to 54 modules,
+with zero duplicate rows. Net discrepancies 158 to 93, and every one that remains is
+explained above rather than left untriaged: 86 legacy unscoped ADR #7 twins of
+registered *_scoped commands, and 7 service methods in crates/oz-core/src/db/kds_lines.rs
+and kds_orders.rs that are listed as if they were IPC commands - two of those carry 80
+and 70 references, so they are live code documented at the wrong layer, not dead names.
+-->
 
 > **Derived from the `#[tauri::command]` definitions in both clients, NOT from
 > `generate_handler!` — the two sets differ, and the difference is the interesting
 > part.** Regenerated 31-08-26, reconciled against reality 08-09-26. The live
 > registered surface is **454 distinct commands** (re-measured 08-09-26; 429 in
 > `apps/desktop-client/src/lib.rs`, 301 in `apps/tablet-client/src/lib.rs`, 276 in
-> both). This page lists **506 entries across 49 modules**.
+> both). This page lists **547 entries across 54 modules**, and every one of the 454
+> registered commands now has a row: the 41 that were missing were added 08-09-26 — five
+> new sections (`commands::legal_entities`, `local_api`, `memo`, `payables`,
+> `products_images`) plus 17 rows folded into existing ones. Each summary is that command
+> own `///` line copied from the source, and each [D]/[T]/[D+T] marker was read out of the
+> two `generate_handler!` lists rather than inferred.
 >
-> The two sets overlap in **413 names**, and the arithmetic closes exactly:
-> 506 documented minus 93 that are not wired (86 + 7 below) = 413, and 413 + 41
+> The two sets now overlap completely — all 454 registered commands are listed — and the
+> arithmetic still closes:
+> 547 documented minus 93 that are not wired (86 + 7 below) = 454, and 454 + 0
 > registered-but-undocumented = 454 registered. The identity held for the old numbers
 > too, and that is the point of writing it as an equation: after each repair it either
 > still closes, or it tells you the arithmetic was never checked.
@@ -58,18 +75,20 @@
 - **`get_staff_analytics_daily_scoped`** [D+T] — Per-day shift + sales series for one staff member over `[from, to]`.
 - **`get_staff_analytics_scoped`** [D+T] — Per-staff shift + sales summary for the session's store over `[from, to]`.
 
-### `commands::audit` (4)
+### `commands::audit` (5)
 
 - **`export_audit_log_scoped`** [D+T] — Export the session store's audit log to CSV (AUD-09).
 - **`get_audit_review_status_scoped`** [D+T] — Fetch the session store's latest review checkpoint + unreviewed count
 - **`list_audit_log_scoped`** [D+T] — Fetch audit log entries scoped to the session's store (AUD-01).
+- **`list_security_events_scoped`** [D+T] — Read the ORGANIZATION-level security trail — logins, logouts and staff account changes — from the GLOBAL identity database.
 - **`mark_audit_reviewed_scoped`** [D+T] — Persist a server-side review checkpoint for the session's store (AUD-04).
 
-### `commands::auth` (8)
+### `commands::auth` (9)
 
 - **`create_session`** [D+T] — Create a new session and return an opaque session token.
 - **`destroy_session`** [D+T] — Destroy an active session, invalidating the token.
 - **`has_users`** [D] — Check whether any staff accounts exist in the database.
+- **`impersonate_user_scoped`** [D+T] — Begin an operator impersonation session for support. The caller must present a valid operator session that holds the.
 - **`refresh_picker_ticket`** [D] — Mint a fresh picker ticket for a caller who already holds a valid session token.
 - **`session_keepalive`** [D+T] — Refresh the current session's TTL so long-lived screens (analytics,
 - **`staff_check_username`** [D+T] — Check a username before the PIN step (STAFF-06).
@@ -309,6 +328,20 @@
 
 - **`resolve_kds_targets_scoped`** [D] — Resolve which KDS device IDs should receive an order based on its
 
+
+### `commands::legal_entities` (4)
+
+> Added 08-09-26. Every command in this module was registered and
+> undocumented; these summaries are the commands own /// lines, and the
+> parameter lists are in the module source.
+
+A legal entity is the contracting body an organization registers; tenants hang off it.
+
+- **`create_legal_entity_scoped`** [D+T] — Create a Legal Entity for the authenticated Organization/Tenant.
+- **`get_legal_entity_scoped`** [D+T] — Get one Legal Entity for the authenticated Organization/Tenant.
+- **`list_legal_entities_scoped`** [D+T] — List Legal Entities for the authenticated Organization/Tenant.
+- **`update_legal_entity_scoped`** [D+T] — Update a Legal Entity for the authenticated Organization/Tenant.
+
 ### `commands::license` (17)
 
 - **`activate_license`** [D] — Activates a license key for the given email, phone, and machine ID.
@@ -329,6 +362,22 @@
 - **`test_auth_connection`** [D] — Ping the license server's `/api/health` endpoint to verify reachability.
 - **`test_auth_connection_scoped`** [D] — Session-scoped variant of [`test_auth_connection`].
 
+
+### `commands::local_api` (6)
+
+> Added 08-09-26. Every command in this module was registered and
+> undocumented; these summaries are the commands own /// lines, and the
+> parameter lists are in the module source.
+
+The loopback HTTP API. Desktop-only: there is no tablet handler for any of these.
+
+- **`local_api_mint_token_scoped`** [D] — Mint a long-lived API token signed with the per-install secret.
+- **`local_api_rotate_secret_scoped`** [D] — Rotate the per-install signing secret. Every previously minted token stops validating immediately and the.
+- **`local_api_set_enabled_scoped`** [D] — Enable or disable the local API server (persisted across restarts). Enabling binds `127.0.0.1:<port>` against the PRIMARY STORE's.
+- **`local_api_set_port_scoped`** [D] — Change the listen port. When the server is running it is restarted on the new port; a failed restart returns an error and leaves the.
+- **`local_api_set_store_scoped`** [D] — Choose which store the local API serves. Empty string resets to the primary store. Running servers restart against the new target.
+- **`local_api_status_scoped`** [D] — Report whether the local API is enabled/running and on which port.
+
 ### `commands::loyalty` (8)
 
 - **`earn_loyalty_points_scoped`** [D+T] — Awards loyalty points in the store resolved by the active session.
@@ -339,6 +388,23 @@
 - **`list_loyalty_tiers_scoped`** [D+T] — Lists loyalty tiers from the store resolved by the active session.
 - **`redeem_loyalty_points_scoped`** [D+T] — Redeems loyalty points in the store resolved by the active session.
 - **`update_loyalty_tier_scoped`** [D+T] — Updates a loyalty tier in the store resolved by the active session.
+
+
+### `commands::memo` (7)
+
+> Added 08-09-26. Every command in this module was registered and
+> undocumented; these summaries are the commands own /// lines, and the
+> parameter lists are in the module source.
+
+The terminal memo board. Authoring and publishing are desktop-side; acknowledgement is per-terminal, so the read and ack commands are in both shells.
+
+- **`acknowledge_memo_scoped`** [D+T] — Acknowledge a memo on the caller's terminal. Authenticated-only.
+- **`create_memo_scoped`** [D] — Create a memo draft as the authenticated author. Requires `memo:write`.
+- **`list_active_memos_scoped`** [D+T] — List the memos the caller's terminal should display, newest tier-stacked, plus the server-issued display cadence. Authenticated-only: the recipient.
+- **`list_authored_memos_scoped`** [D] — List every memo authored by the session user, newest first — the management read behind the authoring screen. Requires `memo:write`; the.
+- **`publish_memo_scoped`** [D] — Publish a draft memo. Requires `memo:write`.
+- **`revise_memo_scoped`** [D] — Revise an existing memo with new title and body. Requires `memo:write`.
+- **`stop_memo_scoped`** [D] — Early-stop a published memo (`published → stopped`): it leaves every display surface immediately and `stopped_by` records who ended it.
 
 ### `commands::offline` (17)
 
@@ -359,6 +425,20 @@
 - **`requeue_remote_failure_scoped`** [D+T] — Requeue a dead-lettered remote item (scoped).
 - **`retry_offline_sync`** [T] — Attempt to sync all pending offline items through the real cloud sync
 - **`retry_offline_sync_scoped`** [D+T] — Attempt to sync all pending offline items (scoped).
+
+
+### `commands::payables` (4)
+
+> Added 08-09-26. Every command in this module was registered and
+> undocumented; these summaries are the commands own /// lines, and the
+> parameter lists are in the module source.
+
+Supplier debts raised outside a purchase order. Desktop-only for now.
+
+- **`create_payable_scoped`** [D] — Raise a payable (a supplier debt). Requires `payables:create`.
+- **`list_payables_scoped`** [D] — List payables, newest first. `status` optionally filters to one lifecycle state. Requires `payables:view`.
+- **`record_payable_payment_scoped`** [D] — Record a payment against a payable (partial or full settlement). Requires `payables:settle`. Returns the updated payable; the payment history is a.
+- **`write_off_payable_scoped`** [D] — Write off a payable (forgive the remaining balance). Requires `payables:writeoff` — a money-destruction action, terminal and audited.
 
 ### `commands::pos` (19)
 
@@ -420,6 +500,19 @@
 - **`record_product_search_scoped`** [D+T] — Record an acted-upon product search for the popularity index.
 - **`update_product`** [T] — Update product.
 - **`update_product_scoped`** [D+T] — Update a product within the store resolved from a session token.
+
+
+### `commands::products_images` (3)
+
+> Added 08-09-26. Every command in this module was registered and
+> undocumented; these summaries are the commands own /// lines, and the
+> parameter lists are in the module source.
+
+Product image slot assignment (slots 1..=5). The bytes live on disk; these commands move the assignment rows.
+
+- **`products_clear_image_scoped`** [D] — Remove the image at `slot` for `product_id`. Only the DB assignment is removed; the file on disk is left for the GC.
+- **`products_list_images_scoped`** [D] — List the image assignments for a product (slots 1..=5), ordered by slot. The editor flow calls this on open to show the primary + alternatives.
+- **`products_set_image_scoped`** [D] — Assign the image at `source_path` to `product_id` at `slot` (1..=5). The ingest pipeline runs entirely in Rust: `source_path` is the file.
 
 ### `commands::promotions` (14)
 
@@ -506,11 +599,12 @@
 - **`rotate_encryption_key`** [D] — Rotate (re-generate) the encryption key.
 - **`rotate_encryption_key_scoped`** [D] — Session-scoped variant of [`rotate_encryption_key`].
 
-### `commands::settings` (28)
+### `commands::settings` (29)
 
 - **`gateway_status`** [D+T] — Report which payment gateways have credentials configured.
 - **`get_credit_settings`** [T] — Get credit settings.
 - **`get_credit_settings_scoped`** [D+T] — Scoped variant of `get_credit_settings` (ADR #7).
+- **`get_deployment_info`** [D+T] — Read-only deployment metadata for the signed-in operator. Authenticates the session and checks `settings:read` inline (category 2 unscoped command).
 - **`get_hardware_settings`** [T] — Get hardware settings for the current terminal from the DB.
 - **`get_hardware_settings_scoped`** [D+T] — Get hardware settings (scoped — multi-phase with session validation).
 - **`get_receipt_settings`** [T] — Get receipt settings.
@@ -555,13 +649,18 @@
 - **`list_shifts_scoped`** [D] — List shifts for the store resolved from a session token. ADR #7.
 - **`open_shift_scoped`** [D] — Open a shift in the store resolved from a session token. ADR #7.
 
-### `commands::staff` (6)
+### `commands::staff` (11)
 
 - **`bootstrap_owner`** [D+T] — Create the first owner user in a fresh installation.
+- **`create_role_scoped`** [D+T] — Create a custom role: a named key-set row in the same vocabulary enforcement already speaks (ADR #47 ruling 4).
 - **`create_staff_scoped`** [D+T] — Create a staff member. Caller identity is resolved from the session token.
+- **`delete_role_scoped`** [D+T] — Delete an authored role. Refused for preset ids and for any role still referenced. The second guard.
 - **`get_staff_profile_scoped`** [D+T] — Load a staff member's full profile as the session user sees it (ADR #35
+- **`list_permission_keys_scoped`** [D+T] — List the registered permission keys. Without this the authoring UI would have to hardcode the vocabulary, which.
+- **`list_role_holders_scoped`** [D+T] — List the accounts that hold one role, org-wide. No store filter, deliberately: `users`, `assignments` and `roles` are.
 - **`list_roles_scoped`** [D+T] — List roles. Caller identity is resolved from the session token.
 - **`list_staff_scoped`** [D+T] — List staff members. Caller identity is resolved from the session token.
+- **`update_role_scoped`** [D+T] — Re-name, re-describe, or re-grant an authored role. Editing re-points every holder, so the grant set is validated against the.
 - **`update_staff_scoped`** [D+T] — Update a staff member. Caller identity is resolved from the session token.
 
 ### `commands::stock_transfers` (10)
@@ -607,8 +706,10 @@
 - **`set_primary_location_scoped`** [D] — Set a location as primary for the session's tenant (ADR #7).
 - **`delete_location_profile_scoped`** [D] — Delete a location profile for the session's tenant (ADR #7).
 
-### `commands::subscription` (1)
+### `commands::subscription` (3)
 
+- **`explain_feature_availability_scoped`** [D+T] — Explain WHY a feature is (un)available for the session user — the diagnostics surface behind support's "why can't I use X" question.
+- **`get_over_quota_report`** [D+T] — The tenant-level over-quota assessment for the owner-facing remediation view (todo-global-saas-2.md §J downgrade item): which.
 - **`get_subscription_capabilities`** [D+T] — Read the tenant's subscription capabilities and current usage.
 
 ### `commands::sync` (23)
@@ -696,12 +797,19 @@
 - **`update_terminal`** [T] — Update an existing terminal.
 - **`update_terminal_scoped`** [D+T] — Update a terminal in the store resolved from a session token. ADR #7.
 
-### `commands::topology` (4)
+### `commands::topology` (11)
 
 - **`apply_topology_diff`** [D] — Apply a full topology diff atomically (Critical #4).
 - **`can_save_topology`** [D] — Return whether the authenticated session can save topology changes.
+- **`delete_topology_template`** [D] — Delete one template. Returns `false` when there was nothing to delete.
+- **`list_topology_revisions`** [D] — ADR #46 §1/§8: one branch's deploy history, newest first, metadata only. Gated on `AUDIT_VIEW`, not `TOPOLOGY_WRITE`. Revision history answers the.
+- **`list_topology_templates`** [D] — Names of a branch's saved templates, sorted for display.
 - **`load_topology`** [D] — Load the persisted topology graph.
+- **`load_topology_revision`** [D] — ADR #46 §5/§7: fetch one revision's graph, to diff it or load it as a draft. Never mutates — restore-to-draft is a client-side action, and.
+- **`load_topology_template`** [D] — Load one diagram template. `None` when it never existed or is unreadable.
+- **`pin_topology_revision`** [D] — ADR #46 §4: pin or unpin one revision, exempting it from deflation. Gated on `TOPOLOGY_WRITE`, deliberately unlike its two read siblings.
 - **`recover_pending_topology_apply_at_startup`** [D] — Complete a previously interrupted cross-database Apply before accepting a
+- **`save_topology_template`** [D] — Save a diagram template under a branch, replacing any template of that name.
 
 ### `commands::void` (1)
 
