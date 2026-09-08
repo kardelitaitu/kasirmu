@@ -241,3 +241,120 @@ round are now closed by someone.
 2. Should `subscriptions` carry `is_trial` so re-sign paths preserve trial state?
    That is a schema migration and therefore out of Phase C as designed.
 3. The tablet `-D warnings` violation above — who owns tablet caps?
+
+> Closed by someone else mid-round 3: `8244df55 fix(tablet): silence the
+> pre-existing warning cargo-check fails on` took the tablet unused-`mut`.
+
+---
+
+## 2026-09-08 — finisher-C round 3: Entitlements Phase D1 LANDED (server-issued per-feature grants)
+
+Branch `0.0.37` — no branch created/switched, no push. **This round landed
+coder-1's uncommitted Phase D1 working-tree diff; that session died before it
+could commit.** Every hunk below is coder-1's text committed faithfully —
+nothing was rewritten, extended, or "improved" at landing time.
+
+### Commits
+
+| sha | subject | files |
+|---|---|---|
+| `1eb5b753` | `feat(licensing): accept per-feature grants in the signed payload` | 1 — `main.go` (+14/-0) |
+| `abda8574` | `feat(core): parse per-feature grants from the signed payload` | 2 — `license_verification.rs` (+14/-0), `subscription.rs` (+69/-1) |
+| *(this commit)* | `feat(licensing): honor per-feature grants in feature verdicts` | 3 — both clients' `commands/subscription.rs` (+17/-5 each) + this journal |
+
+### What landed — the wire and the honour, not the authoring
+
+- **Go** — `SubscriptionPayload.Features map[string]bool`, `json:"features,omitempty"`.
+  `omitempty` is what keeps the change additive: a grant-free payload marshals
+  byte-identically to a pre-D1 payload.
+- **Rust parse** — `SignedSubscriptionPayload.features: HashMap<String, bool>` with
+  `#[serde(default)]`; `TenantSubscription::payload_features()` /
+  `payload_feature_grant()` read the block off the **signed payload column** —
+  the `addons()` / `parsed_trial()` pattern: signature-covered, no migration.
+  Unparseable payload / absent block / wrongly-typed value ⇒ NO override, so an
+  unreadable block neither grants a feature nobody signed nor withholds one.
+- **Both clients** — `server_grant_for` gained a second producer, checked FIRST:
+  `sub.payload_feature_grant(feature.as_str())`. An explicit instruction
+  outranks the inferred `allows_workspace_type` answer; when the payload is
+  silent, producer 2 runs exactly as before, so every pre-D1 payload resolves
+  identically. The resolver's `Some(false)`/`Some(true)` semantics already
+  covered both directions — **no verdict DTO change, no dev-mock change, no
+  new wire surface on the client side.**
+
+Semantics per `todo-global-saas-2.md` §"Entitlement enforcement consolidation —
+design", **Phase D**: absent key = the tier's own answer, `false` = withhold even
+where the tier allows, `true` = grant beyond tier. One deliberate deviation from
+the doc's prose: keys are the canonical `AvailabilityFeature::as_str()` wire names
+(`"supports_analytics"`), not the doc's illustrative `"analytics"` — that example
+is shorthand, the enum stays the single source of the key vocabulary, and an
+unknown key is inert by construction.
+
+### Gates — all green, all run BEFORE the commits
+
+| gate | result |
+|---|---|
+| `gofmt -l .` (apps/license-server) | clean |
+| `go vet ./...` | exit 0 |
+| `go test -short -count=1 .` | **ok 111.041s** |
+| `cargo test -p oz-core --lib subscription` | **130 passed / 0 failed** |
+| `cargo test -p oz-core --lib entitlements` | **13 passed / 0 failed** |
+| `cargo test -p oz-core --lib availability` | **13 passed / 0 failed** |
+| `cargo test -p oz-pos-app --lib subscription` | **26 passed / 0 failed** |
+| `cargo test -p oz-pos-tablet --lib subscription` | **6 passed / 0 failed** |
+| `cargo fmt --all --check` | clean before and after both Rust commits |
+
+### Two coordination calls worth keeping
+
+1. **`crates/oz-core/src/subscription.rs` was a MIXED file** — coder-1's D1 block
+   (+41) and coder-3's `SubscriptionTier::audit_retention_days` (+26) in one file.
+   Git commits whole files, so exactly one commit had to carry the other's hunk.
+   Ruling: the D1 commit takes the file, and its body carries an **attribution
+   mirror** naming coder-3's hunk and its line range. The alternative — coder-3
+   committing the file — would have filed 41 lines of entitlements work under an
+   audit message, the R36-13 swept-commit failure mode.
+2. **Ordering was inverted to keep the range compiling, not to accept a wart.**
+   The audit slice hard-depends on that method (`entitlements.rs:164`,
+   `db/audit.rs:167`), so an audit commit landing BEFORE this one would not have
+   compiled at all. Landing D1 first means every commit in the range passes
+   `cargo check` — the previously-accepted red-intermediate bisect wart is gone
+   rather than papered over.
+3. **`activate.go` carries no D1 diff** — verified clean, so it stayed out of the
+   Go pathspec. `main.go` is the whole Go side of D1.
+
+### OWED WORK — do not read this entry as "Phase D done"
+
+- **The entitlements item's box in `todo-global-saas-2.md` stays open and this
+  round did not touch that file at all.** D1 is the wire plus the honour; the
+  phase is not complete.
+- **No D1 tests exist anywhere.** coder-1 wrote none, and inventing them at
+  landing time would have put words in a dead agent's mouth and collided with
+  coder-3's `subscription_tests.rs` (whose diff is 100% audit content). The
+  gates above are *regression* evidence, not *coverage* evidence: nothing
+  asserts that `{"supports_analytics": false}` withholds analytics, that `true`
+  grants beyond tier, or that an unreadable block fails silent. **Owed:** the
+  fail-silent shapes in `crates/oz-core/src/subscription_tests.rs`, plus a
+  client-verdict test in BOTH `apps/*/src/commands/subscription_tests.rs`
+  proving producer 1 outranks producer 2.
+- **D2 — server-side grant authoring.** No build site sets `Features` today:
+  neither `license_keys` nor `subscriptions` has a field to flow it from, so no
+  payload the live server emits carries the block. Enterprise custom contracts
+  become payload authoring rather than tier proliferation only once D2 lands
+  that source.
+- **Caps DTO + dev-mock projection of trial/feature state** — still owed from
+  Phase C, unchanged: `ui/src/dev-mock/tauri-api.ts` was HOT all round, so
+  `get_subscription_capabilities` carries neither trial state nor any grant
+  projection.
+
+### Hot files respected (never edited, staged, or committed)
+
+`.gitignore` · `crates/oz-core/src/service_health.rs` ·
+`apps/desktop-client/src/commands/license.rs` (external connection-health WIP —
+NOT to be confused with `subscription.rs`) · both clients' `staff_tests.rs` ·
+both clients' `lib.rs` (coder-3's sweep daemons) ·
+`crates/oz-core/src/lib.rs` + `db/mod.rs` (finisher-A's regional registration) ·
+`entitlements.rs` · `subscription_tests.rs` · `db/audit*.rs` ·
+`platform/core/src/settings/keys.rs` · `scripts/generate-pg-migration.py` ·
+`ui/src/locales/shared.ftl` / `shared.id.ftl` · `ui/src/dev-mock/tauri-api.ts` ·
+`ui/src/components/StatusBar.tsx` · `ui/src/hooks/{useAuthConnection,useSyncConnection,connectionHealth}.ts` ·
+`ui/src/api/license.ts` · `ui/src/__tests__/*` · `coder-4-journal.md` ·
+**`todo-global-saas-2.md`**.

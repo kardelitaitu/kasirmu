@@ -166,16 +166,28 @@ fn gate_permission(feature: AvailabilityFeature) -> &'static str {
     }
 }
 
-/// The server-policy question per feature: `Some(false)` when the signed
-/// server payload withholds a workspace type the feature needs — the same
-/// [`TenantSubscription::allows_workspace_type`] answer the workspace
-/// creation path enforces, so a verdict can never disagree with the gate
-/// it explains. `None` for features with no server-side withholding in v1.
+/// The server-policy question per feature, from two producers in order:
+///
+/// 1. Phase D1 — the signed payload's explicit per-feature instruction
+///    (`features: {"supports_analytics": false}`), which outranks anything
+///    inferred, because it is the server speaking about THIS feature rather
+///    than about a workspace type that merely implies something about it.
+/// 2. `Some(false)` when the payload withholds a workspace type the feature
+///    needs — the same [`TenantSubscription::allows_workspace_type`] answer
+///    the workspace creation path enforces, so a verdict can never disagree
+///    with the gate it explains.
+///
+/// `None` when the server has said nothing on either axis: the tier's own
+/// answer stands. Producer 2 is reached only when 1 has no opinion, so every
+/// payload written before Phase D1 resolves exactly as it always did.
 fn server_grant_for(
     feature: AvailabilityFeature,
     loaded: Option<&TenantSubscription>,
 ) -> Option<bool> {
     let sub = loaded?;
+    if let Some(explicit) = sub.payload_feature_grant(feature.as_str()) {
+        return Some(explicit);
+    }
     let allowed = |type_key: &str| sub.allows_workspace_type(type_key);
     match feature {
         // A warehouse workspace is an inventory-location surface; Free
