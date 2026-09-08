@@ -61,5 +61,5 @@ penjualan, void, refund, transfer, penerimaan pesanan pembelian (PO
 Diterima), stok opname, dan penyesuaian manual — dari mana stok berasal dan
 ke mana perginya.
 
-> last audited 09-09-26 by docs-auditor (Layar log ini bagian dari aplikasi, meski saat ini belum
+> last audited 09-09-26 by docs-auditor
 terhubung ke menu navigasi mana pun.)
