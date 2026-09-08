@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · scripts/generate-license-keys.{ps1,sh} verified; Dockerfile uses golang:1.25-alpine -> alpine:3.22 (was 3.20, bumped for Trivy EOL); health.go (GET /api/health, returns status: ok) + healthcheck.go present; pb_schema.json present; go.mod is go 1.25.0; all build/deploy/env-var claims match the Go code · RE-AUDITED 2026-08-31 by docs-auditor: go.mod still 1.25.0, /api/health present, oz-license.key.pub committed; env-var section confirmed current (Midtrans/ADR #39, PADDLE_PRICE_TIERS six sandbox prices catalogued 08-31); corrected the body's alpine 3.20 -> 3.22 -->
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings, 1 gate added) · Section 7 opens by claiming this section documents every variable in full, and on 09-09-26 that was false: five names the binary reads appeared in no document anywhere in the repo (LOGIN_LOCKOUT_MIN_GAP, LOGIN_LOCKOUT_MAX_COOLDOWN, LOGIN_LOCKOUT_DISABLED, OZ_ADMIN_EMAIL, OZ_ENTERPRISE_MRR_USD). Three are the login lockout, so the only control that slows credential stuffing had no operator-facing description at all; the fourth names a tenant the code deliberately refuses to let be renamed or deleted. Added section 7.7 with defaults, citing source lines. · TWO CODE FINDINGS RECORDED, NOT PATCHED: LOGIN_LOCKOUT_DISABLED is production-reachable and its off state is invisible in both logs and /api/health; OZ_ENTERPRISE_MRR_USD parses a USD price into a float64, against the AGENTS.md money rule. · NEW GATE .agents/skills/docs-auditor/scripts/check-env-docs.py: 27 names scanned, 0 undocumented, 9 self-test cases over synthetic strings only. · Two claims I nearly made and were wrong: four variables looked absent from the code because I scanned only apps/license-server while apps/unified/healthcheck.sh reads them; and OZ_SMTP_STARTTLS / OZ_SMTP_IMPLICIT_TLS appear once in this file precisely to tell the operator NOT to set them, so their absence from the code is the point. This skill own check-dead-refs.py is what caught me publishing a re-derive command for a script that did not exist yet. · SUPERSEDED, kept verbatim (rev 2026-07-22, re-audited 2026-08-31): 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · scripts/generate-license-keys.{ps1,sh} verified; Dockerfile uses golang:1.25-alpine -> alpine:3.22 (was 3.20, bumped for Trivy EOL); health.go (GET /api/health, returns status: ok) + healthcheck.go present; pb_schema.json present; go.mod is go 1.25.0; all build/deploy/env-var claims match the Go code · RE-AUDITED 2026-08-31 by docs-auditor: go.mod still 1.25.0, /api/health present, oz-license.key.pub committed; env-var section confirmed current (Midtrans/ADR #39, PADDLE_PRICE_TIERS six sandbox prices catalogued 08-31); corrected the body's alpine 3.20 -> 3.22 -->
 
 # OZ-POS License Server — Northflank Deployment Guide
 
@@ -309,6 +309,73 @@ In the Midtrans dashboard (**Settings → Configuration → Webhook Notification
 5. **Sandbox vs production:** the sandbox dashboard sends test notifications signed with the sandbox key — point the sandbox webhook at the same URL and the server answers 401 unless `MIDTRANS_SERVER_KEY` is the matching sandbox key. Test end-to-end in sandbox first (§11.7), then flip `MIDTRANS_SERVER_KEY`/`MIDTRANS_SNAP_URL` to production values.
 
 ---
+
+### 7.7 Optional tuning variables (none are required to boot)
+
+§7 opens by claiming this section documents every variable in full. Until 09-09-26 it did
+not: five names the binary reads appeared in no document in the repo — not here, not in
+`go-live-checklist.md`, not in `.env.example`. Three of them govern the login lockout, so
+the one control that slows credential stuffing had no operator-facing description at all.
+
+Read from `apps/license-server/login_lockout.go`:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `LOGIN_LOCKOUT_MIN_GAP` | `5s` | Minimum gap between login attempts for one email. Go duration string; unparseable values log and fall back to the default (`:50`). |
+| `LOGIN_LOCKOUT_MAX_COOLDOWN` | `15m` | Cap on the escalating lockout (`:66`). |
+| `LOGIN_LOCKOUT_DISABLED` | unset (= limiter **on**) | Exact string `1` turns the limiter off entirely (`:151`). |
+
+> ⚠️ **`LOGIN_LOCKOUT_DISABLED` is a production-reachable kill switch.** The function comment
+> says it exists so the window-limiter tests can run in isolation and that the production
+> default is enabled — but nothing checks the build or environment: setting it to `1` in a
+> Northflank secret group disables brute-force protection on a live server, silently, and no
+> log line or `/api/health` field reports that it is off. That asymmetry (a security control
+> whose disabled state is invisible) is recorded here rather than patched, because the fix is
+> a code decision: gate it on a non-release build, or surface it in `/api/health` next to
+> `smtp`/`paddle`, which already report gate status.
+
+Read from the admin surface:
+
+- **`OZ_ADMIN_EMAIL`** — the email of the admin tenant, falling back to
+  `defaultAdminEmail` when unset. Read in four places (`addon_admin.go:278`,
+  `admin_dashboard.go:87`, `admin_tenant_lifecycle.go:32`, `password_rotation.go:176`).
+  **This is the one environment value that must never change after first boot**: the admin
+  auth mapping resolves sessions to that tenant, so changing it orphans every existing admin
+  session, and deleting the tenant locks all of them out — `isAdminTenantRecord` exists
+  precisely to refuse both. Nothing in the deploy flow says so, which is why it is here.
+- **`OZ_ENTERPRISE_MRR_USD`** — read once in `init()` (`admin_stats.go:702`) and, when it
+  parses and is greater than zero, replaces `TierPriceUSD["enterprise"]`, so enterprise
+  MRR thresholds can be re-priced without a rebuild.
+
+> ⚠️ **CODE FINDING, recorded not fixed**: that override parses the value into a `float64`
+> and writes it into a USD price map. AGENTS.md's currency rule is that monetary values are
+> `Money` (`i64` minor units) and never `f32`/`f64`. It is a display-side threshold in the
+> admin dashboard rather than a ledger amount, so no money is mis-added today — but the rule
+> is not scoped to ledgers, and this is the kind of float that turns into an invoice.
+
+> **Re-deriving this list** (why: an env var missing from the docs is invisible to every
+> existing gate, and the drift checker only compares docs to *gates*):
+>
+> ```bash
+> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py          # 27 names, 0 undocumented
+> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py --self-test   # 9 cases, touches no files
+> ```
+>
+> It exists now. `.agents/skills/docs-auditor/scripts/check-env-docs.py` reports every
+> variable the code reads that appears in none of `DEPLOY.md`,
+> `go-live-checklist.md`, `.env.example` or `verification-*.md`, and exits 1 when it finds
+> one. Baseline 09-09-26: **27 names scanned, 0 undocumented** — which was 5 undocumented
+> before section 7.7 was written, so the count is the proof the repair landed rather than a
+> claim about it.
+>
+> Scope is **both apps on purpose**. The healthcheck variables live in `apps/unified/`, not
+> `apps/license-server/`, so scanning only the service directory reported four *false*
+> absences (`OZ_HEALTH_SMTP_MAX_FAILS`, `OZ_HEALTH_PADDLE_MAX_FAILS` and the two SMTP TLS
+> names) — and two of those four were not even env-adjacent: `OZ_SMTP_STARTTLS` and
+> `OZ_SMTP_IMPLICIT_TLS` appear once, in *this* file telling you **not** to set them.
+> Both misreads are encoded in the script: the scan covers `apps/unified/healthcheck.sh`,
+> and a line may carry `env-doc: ok: <reason>` to be exempted deliberately rather than by
+> silence.
 
 ## 8. Import the Collections Schema
 
@@ -690,4 +757,4 @@ Alternatively, export manually from the admin UI (`/_/` → **Settings** → **E
 
 > 💡 **Tip:** The Dockerfile healthcheck uses the standalone `/pb/healthcheck` Go binary (no curl dependency). It pings `/api/health` which returns `{"status":"ok"}` when PocketBase is healthy. The healthcheck was set up correctly in the Dockerfile.
 
-> last audited 22-07-26 by Hermes-Agent
+> last audited 09-09-26 by docs-auditor
