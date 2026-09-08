@@ -470,3 +470,165 @@ fn fail_closed_reports_no_trial() {
     assert!(!e.is_trial);
     assert_eq!(e.trial_ends_at, None);
 }
+
+// ── Phase B: caps-DTO consolidation parity ────────────────────────────────────────────────────────────────────────────────────────
+
+/// Helper: an in-memory subscription row for the given lifecycle status and
+/// (nominal) tier, mirroring `sub_with_trial_payload` but parametric.
+fn sub_for_state(status: &str, tier: SubscriptionTier) -> TenantSubscription {
+    TenantSubscription {
+        tenant_id: "default".into(),
+        tier,
+        status: status.into(),
+        expires_at: None,
+        max_locations: 1,
+        max_pos_instances: 1,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: "{}".into(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    }
+}
+
+/// The four consolidated gates (locations, pos, warehouses, staff) must read
+/// the same number from the read model as the gate would from
+/// `QuotaDimension::X.limit_for(tier)` - for every tier. This is the safety
+/// net: consolidation cannot change a gate's quota silently, because the
+/// read-model accessor and the gate share the one limit table.
+#[test]
+fn caps_dto_parity_matrix_every_tier_every_dim() {
+    let tiers = [
+        SubscriptionTier::Free,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+        SubscriptionTier::Premium,
+        SubscriptionTier::Enterprise,
+    ];
+    for tier in tiers {
+        let e = Entitlements {
+            tier: tier.clone(),
+            state: SubscriptionLifecycleState::Active,
+            loaded: true,
+            addons: Vec::new(),
+            is_trial: false,
+            trial_ends_at: None,
+            usage: UsageCounts::default(),
+        };
+        assert_eq!(
+            e.max_locations(),
+            QuotaDimension::Locations.limit_for(&tier),
+            "{tier:?}: locations parity"
+        );
+        assert_eq!(
+            e.max_pos_instances(),
+            QuotaDimension::PosRegisters.limit_for(&tier),
+            "{tier:?}: pos parity"
+        );
+        assert_eq!(
+            e.max_warehouses(),
+            QuotaDimension::Warehouses.limit_for(&tier),
+            "{tier:?}: warehouses parity"
+        );
+        assert_eq!(
+            e.max_staff_users(),
+            QuotaDimension::Staff.limit_for(&tier),
+            "{tier:?}: staff parity"
+        );
+    }
+}
+
+/// The fifth gate (`enforce_product_quota`) is intentionally NOT yet routed
+/// through `Entitlements`. It still feeds from `tier` directly, so this is a
+/// *visible* gap, not a silent one: the product cap is pinned to the published
+/// `SubscriptionTier::max_products` contract and to the one limit table, and
+/// the read model now exposes `max_products()` for the day its caller is
+/// consolidated. The accessor must stay equal to the gate's current source so
+/// consolidation is a no-op when it lands.
+#[test]
+fn products_gate_awaits_read_model_accessor() {
+    let tiers = [
+        SubscriptionTier::Free,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+        SubscriptionTier::Premium,
+        SubscriptionTier::Enterprise,
+    ];
+    for tier in tiers {
+        let e = Entitlements {
+            tier: tier.clone(),
+            state: SubscriptionLifecycleState::Active,
+            loaded: true,
+            addons: Vec::new(),
+            is_trial: false,
+            trial_ends_at: None,
+            usage: UsageCounts::default(),
+        };
+        assert_eq!(
+            e.max_products(),
+            QuotaDimension::Products.limit_for(&tier),
+            "{tier:?}: product cap follows the one limit table"
+        );
+        assert_eq!(
+            QuotaDimension::Products.limit_for(&tier),
+            tier.max_products(),
+            "{tier:?}: product cap matches the published SubscriptionTier contract"
+        );
+    }
+}
+
+/// Fail-closed is driven by the offline grace window (`effective_tier`), not
+/// by the lifecycle status string alone. A paid row whose grace has elapsed
+/// projects Free caps; a row still within grace (perpetual, or active inside
+/// its window) projects its nominal tier. The gates read the read model's
+/// `tier`, so this is exactly what they enforce.
+#[test]
+fn lifecycle_variants_fail_closed_to_free_caps() {
+    let free = QuotaDimension::Locations.limit_for(&SubscriptionTier::Free);
+
+    // fail_closed() constructor projects Free across every dimension.
+    let fc = Entitlements::fail_closed(UsageCounts::default());
+    assert_eq!(fc.tier, SubscriptionTier::Free);
+    assert_eq!(fc.max_locations(), free);
+    assert_eq!(
+        fc.max_pos_instances(),
+        QuotaDimension::PosRegisters.limit_for(&SubscriptionTier::Free)
+    );
+    assert_eq!(
+        fc.max_warehouses(),
+        QuotaDimension::Warehouses.limit_for(&SubscriptionTier::Free)
+    );
+    assert_eq!(
+        fc.max_staff_users(),
+        QuotaDimension::Staff.limit_for(&SubscriptionTier::Free)
+    );
+
+    // A canceled paid row is never within grace -> Free caps.
+    let canceled = sub_for_state("canceled", SubscriptionTier::Premium);
+    let c = Entitlements::from_subscription(&canceled, UsageCounts::default());
+    assert_eq!(c.tier, SubscriptionTier::Free, "canceled collapses to Free");
+    assert_eq!(c.max_locations(), free);
+
+    // A paid row with an unparseable expiry fails closed -> Free caps.
+    let mut bad_exp = sub_for_state("expired", SubscriptionTier::Premium);
+    bad_exp.expires_at = Some("not-a-date".into());
+    let b = Entitlements::from_subscription(&bad_exp, UsageCounts::default());
+    assert_eq!(b.tier, SubscriptionTier::Free, "unparseable expiry -> Free");
+    assert_eq!(
+        b.max_staff_users(),
+        QuotaDimension::Staff.limit_for(&SubscriptionTier::Free)
+    );
+
+    // A perpetual (no-expiry) paid row is within grace -> its nominal tier.
+    let active = sub_for_state("active", SubscriptionTier::Premium);
+    let a = Entitlements::from_subscription(&active, UsageCounts::default());
+    assert_eq!(
+        a.tier,
+        SubscriptionTier::Premium,
+        "perpetual paid stays Premium"
+    );
+    assert_eq!(
+        a.max_locations(),
+        QuotaDimension::Locations.limit_for(&SubscriptionTier::Premium)
+    );
+}

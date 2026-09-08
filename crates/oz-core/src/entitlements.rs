@@ -146,6 +146,19 @@ impl Entitlements {
         QuotaDimension::Staff.limit_for(&self.tier)
     }
 
+    /// Product-menu cap (see [`Self::max_locations`]).
+    ///
+    /// The fifth tenant-global quota gate (`enforce_product_quota`) still
+    /// feeds its limit from `tier` directly - through
+    /// `QuotaDimension::Products.limit_for` - until its command-layer
+    /// caller is consolidated onto this read model. This accessor exists to
+    /// complete the parity matrix and pin the product cap to the one limit
+    /// table; it does not yet back a gate.
+    #[must_use]
+    pub fn max_products(&self) -> Option<i64> {
+        QuotaDimension::Products.limit_for(&self.tier)
+    }
+
     /// Per-location KDS screen cap (see [`Self::max_locations`]).
     ///
     /// Goes through the same one limit table as every other cap, even though
