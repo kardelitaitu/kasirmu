@@ -100,7 +100,7 @@ const r = await tools.mcp__cbm__search_graph({
 | Nodes / edges | 47,026 / 238,705 |
 | Node labels / edge types | 19 / 26 (top edges: USAGE 99,372 · CALLS 56,000 · DEFINES 44,191 · DECORATES 11,192 · IMPORTS 8,159) |
 | File nodes | 3,000 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 |
-| Index generation | 2026-09-08T05:07:39Z (= 12:07 local), mode `full`, `recording_status: complete` |
+| Index generation | 2026-09-08T05:07:39Z (= 12:07 local), mode `full`, `recording_status: complete` — **already superseded**: a second refresh landed at 05:18:33Z (47,066 nodes) while this page was being written, by another agent working the same repo. Treat the generation as the volatile field, not the counts. |
 | Coverage flags | 44 `parse_partial` files, 0 `skipped`, 174 files + 20 dirs excluded by design |
 | Exclusions | `.cbmignore` (build artifacts, node_modules, images, logs) — it deliberately un-excludes `scripts/`, `docs/`, `audit/` so prose and shell are searchable |
 
