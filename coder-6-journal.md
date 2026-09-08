@@ -119,14 +119,112 @@ resolve there — use `crate::db::tax::…`.
 
 ### Still owed
 
-* **Client call sites (next commit, deliberately not here):** desktop
-  `commands/pos.rs` ×5 and tablet ×6 must switch to `*_for_location` and pass
-  `session.store_id`. No new IPC command, no DTO change, no UI surface — the
-  location is already in scope at every site. Tablet's legacy `complete_sale`
-  (no session, writes `store_id: None`) stays on the unscoped door, which is the
-  honest answer: no location known, tenant-global rate.
+* ~~Client call sites~~ — DONE, see the next section. Landed as its own commit
+  after the core one, per the supervisor's checkpoint ruling.
 * DB-level one-or-the-other scope guard (+ its `TRIGGER_MAP` plpgsql port).
 * Write-side IPC — blocked on the hot `ui/src/dev-mock/tauri-api.ts` — and it
   must satisfy the `updated_at` / `snapshot_version` cache constraint from
   `d38cb0bcb`.
 * `todo-global-saas-2.md` read, not written; the tax box at line 180 stays `[ ]`.
+
+---
+
+## 2026-09-08 — finisher-C: the clients pass a location (command-layer wiring)
+
+The core slice made the scoped door exist; this one walks through it. Every
+`*_scoped` POS command now resolves tax for the branch the cashier is signed
+into.
+
+### Commit
+
+| sha | subject | files |
+|---|---|---|
+| *(this commit)* | `feat(pos): price sales at the signed-in location` | desktop + tablet `commands/pos.rs`, both `pos_tests.rs` |
+
+### What was actually wired — 9 of 11 sites, and why two are not
+
+| client | site | scope |
+|---|---|---|
+| desktop | `pos.rs` ×4 checkout/preview paths | `Some(&tax_scope_now(&session.store_id))` |
+| desktop | `compute_cart_tax_scoped` | same |
+| tablet | `preview_promoted_total_scoped`, `…_from_lines_scoped`, `complete_sale_scoped`, `compute_cart_tax_scoped`, `complete_sale_with_resolved_shortfalls_scoped` | same |
+| tablet | legacy `complete_sale` | **stays unscoped** |
+| core | `resolve_best_tax_rates_for_sku_at` | reached only through the two compute fns |
+
+Tablet's legacy `complete_sale` takes no session token and publishes
+`SaleCompleted { store_id: None }`, so there is genuinely no location to resolve
+against. It keeps calling `compute_sale_tax` — the unscoped door — with a comment
+saying so. Inventing a location there (the primary row, the first row, the
+tenant default's own scope) would price a receipt from a branch nobody chose,
+which is the failure this whole slice exists to prevent. "No location known,
+tenant-global rate" is the honest answer, and it is also exactly what that path
+does today, so wiring it to `None` changes nothing about it.
+
+### `tax_scope_now`: the date is UTC and that is a recorded compromise
+
+Both clients got an identical private helper rather than a shared one, because
+the only shared home would be a new `platform/*` export for a two-line function —
+and because the two files already duplicate their cart/sale plumbing. The
+duplication is deliberate and each copy points at the other.
+
+`as_of` is `Utc::now().format("%Y-%m-%d")`. That is NOT the business date a
+Jakarta branch means at 20:00 UTC on 31 December; it is the date
+`sale.created_at` already records, chosen so a cart preview and its checkout
+receipt resolve on the same side of an exclusive `effective_to` instead of
+straddling it differently. The correct owner of that value is the regional
+slice's open question 1 (`locations.timezone` written as IANA, read as a fixed
+offset), and converting it here would have invented a timezone policy inside
+money math. Ratified as a deferral.
+
+### Command-layer tests, and the honest limit of them
+
+Two per client (4 new): `tax_scope_now` passes the store id through and yields a
+date the core resolver parses; and a location-scoped rate beats the tenant
+default **through the exact call shape the command uses** — `tax_scope_now` +
+`compute_sale_tax_for_location` + `Settings::get_tax_rounding_mode` — while the
+neighbouring branch keeps the default. That test also asserts what the unscoped
+door would have returned, so the number a dropped argument would silently
+produce is written down.
+
+What it does NOT do is catch someone reverting a call site back to
+`compute_sale_tax`: the test calls the function directly, not through the Tauri
+command. A real guard needs a command harness with a live session, cart and
+stock — tablet has `tauri::test::mock_builder()` for the auth-rejection path and
+nothing beyond it. The actual protection there is structural: the unscoped door
+has a different NAME, so a stale call site is visible in a diff instead of being
+a silent behaviour change. Recorded rather than oversold.
+
+### Gates
+
+| gate | result |
+|---|---|
+| `cargo test -p oz-pos-app --lib` | **1329 passed / 0 failed** in 238.41s |
+| `cargo test -p oz-pos-tablet --lib` | **538 passed / 0 failed** in 44.38s |
+| the 4 new tests by name | desktop 1+1 passed, tablet 1+1 passed |
+| `RUSTFLAGS=-D warnings cargo check -p oz-pos-app -p oz-pos-tablet --all-targets` | **exit 0**, zero warnings |
+| `cargo fmt --all --check` | clean |
+
+### Third occurrence of the same self-inflicted break, recorded so it stops
+
+A `@`-as-backtick placeholder scheme I use to keep template literals parseable
+leaked into committed Rust for the third time — here as
+`panic!("... got {`?`}: {e}")`, which is an invalid format string and again made
+`cargo fmt --all` unparseable, blocking every other agent's commit. The first
+was `transport.rs`, the second `tax.rs:744`, this is the third. The failure is
+not the leak alone but that a format string is the one place a stray backtick
+turns into a whole-workspace build error rather than a wrong comment.
+
+Standing rule for this stream going forward: **never put `@` inside a
+`format!`/`panic!`/`println!` literal.** Write those strings with the edit
+tool directly, or use `{x:?}` with no placeholder at all. And after any edit that
+touches a format string, run `cargo fmt --all --check` before walking away — it
+is two seconds and it is the only gate that catches this class before someone
+else's commit does.
+
+### Remaining on the tax box — all write-side
+
+Write-side IPC (+ the hot `ui/src/dev-mock/tauri-api.ts` it is blocked on), the
+DB-level one-or-the-other scope guard with its `TRIGGER_MAP` plpgsql port, and
+the `updated_at` / `snapshot_version` cache constraint from `d38cb0bcb` as a
+success criterion on that IPC writer. Reporting back for reassignment: the
+read side is done end to end, hub to receipt.

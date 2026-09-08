@@ -27,6 +27,22 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
+/// The tax scope for a sale rung up at `location_id` right now.
+///
+/// Mirrors the desktop helper of the same name; see
+/// `apps/desktop-client/src/commands/pos.rs` for why `as_of` is the UTC
+/// calendar date and why that is a recorded compromise rather than the answer
+/// (`locations.timezone` IANA-vs-offset is regional open question 1, so a
+/// locally-correct business date is not available yet). UTC is what
+/// `sale.created_at` already records, which keeps a cart preview and its
+/// checkout receipt resolving on the same side of an exclusive `effective_to`.
+fn tax_scope_now(location_id: &str) -> oz_core::TaxSaleScope {
+    oz_core::TaxSaleScope {
+        location_id: location_id.to_string(),
+        as_of: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+    }
+}
+
 // ── Discount ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -762,6 +778,11 @@ pub async fn complete_sale(
     let updated = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
+        // Deliberately the UNSCOPED door. This is the legacy `complete_sale`
+        // with no session token — it writes `store_id: None` on the event below,
+        // so there is no location to resolve against and inventing one would be
+        // worse than admitting the gap: no location known, tenant-global rate.
+        // Every `*_scoped` command in this file passes a real scope.
         store.compute_sale_tax(
             &mut sale,
             &[],
@@ -939,7 +960,12 @@ pub async fn preview_promoted_total_scoped(
     let (base_total_minor, discounts) = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
-        store.compute_sale_tax(&mut sale, &[], rounding_mode)?;
+        store.compute_sale_tax_for_location(
+            &mut sale,
+            &[],
+            rounding_mode,
+            Some(&tax_scope_now(&session.store_id)),
+        )?;
         let base_total_minor = sale.total.minor_units;
         let apps = store.compute_checkout_promotions(
             &mut sale,
@@ -1054,10 +1080,11 @@ pub async fn preview_promoted_total_from_lines_scoped(
             &session.user_id,
             oz_core::permissions::SALES_PROCESS,
         )?;
-        store.compute_sale_tax(
+        store.compute_sale_tax_for_location(
             &mut sale,
             &[],
             oz_core::Settings::get_tax_rounding_mode(&db)?,
+            Some(&tax_scope_now(&session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
         let apps = store.compute_checkout_promotions(
@@ -1142,10 +1169,11 @@ pub async fn complete_sale_scoped(
     let _res = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
-        store.compute_sale_tax(
+        store.compute_sale_tax_for_location(
             &mut sale,
             &[],
             oz_core::Settings::get_tax_rounding_mode(&db)?,
+            Some(&tax_scope_now(&session.store_id)),
         )?;
 
         if let Some(ref serial_numbers) = args.serial_numbers {
@@ -1260,10 +1288,11 @@ pub async fn compute_cart_tax_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
-    let tax = store.compute_cart_tax(
+    let tax = store.compute_cart_tax_for_location(
         &lines,
         parsed,
         oz_core::Settings::get_tax_rounding_mode(&db)?,
+        Some(&tax_scope_now(&session.store_id)),
     )?;
     drop(db);
     Ok(tax)
@@ -1421,10 +1450,11 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         let db = state.db.lock().await;
         let store = Store::new(&db);
 
-        store.compute_sale_tax(
+        store.compute_sale_tax_for_location(
             &mut sale,
             &[],
             oz_core::Settings::get_tax_rounding_mode(&db)?,
+            Some(&tax_scope_now(&session.store_id)),
         )?;
 
         // PROMO-3 checkout integration: engine-apply the selected

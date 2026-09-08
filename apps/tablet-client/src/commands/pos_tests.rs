@@ -428,3 +428,84 @@ async fn get_cart_deduction_location_scoped_rejects_invalid_token() {
         "an unauthenticated call must not reach the store, got: {result:?}",
     );
 }
+// ── Tax scope at the command layer (tax-separation P1) ─────────────
+
+fn single_line_cart() -> oz_core::Cart {
+    let mut cart = oz_core::Cart::new(usd());
+    cart.add_line(oz_core::CartLine::new(Sku::new("COFFEE"), 2, price(350)))
+        .unwrap();
+    cart
+}
+
+#[test]
+fn tax_scope_now_carries_the_location_and_a_date_the_resolver_accepts() {
+    // The command layer owns the business date, so it owns getting the shape
+    // right. A scope the core resolver rejects fails EVERY sale at this
+    // location — loudly, which is the intended failure mode, but loudly at
+    // checkout is still a broken checkout.
+    let scope = tax_scope_now("loc-42");
+    assert_eq!(
+        scope.location_id, "loc-42",
+        "the session's store id must pass through unchanged"
+    );
+    chrono::NaiveDate::parse_from_str(&scope.as_of, "%Y-%m-%d").unwrap_or_else(|e| {
+        panic!(
+            "as_of must be a bare business date the resolver parses, got {:?}: {e}",
+            scope.as_of
+        )
+    });
+}
+
+#[test]
+fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
+    // Core proves the resolver. This pins the exact call shape pos.rs uses —
+    // tax_scope_now + compute_sale_tax_for_location + the settings rounding
+    // mode — so a location with its own rate stops inheriting the tenant
+    // default at the command layer, and does not leak it next door.
+    let db = oz_core::migrations::fresh_db();
+    let store = Store::new(&db);
+    db.execute(
+        "INSERT INTO legal_entities (id, tenant_id, name) VALUES ('ent-1', 'default', 'Ent')",
+        [],
+    )
+    .unwrap();
+    for (id, name) in [("loc-here", "Here"), ("loc-there", "There")] {
+        db.execute(
+            "INSERT INTO locations (id, name, legal_entity_id) VALUES (?1, ?2, 'ent-1')",
+            rusqlite::params![id, name],
+        )
+        .unwrap();
+    }
+    store
+        .create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    db.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, is_active, location_id)
+         VALUES ('r-here', 'Here VAT', 1100, 0, 0, 1, 'loc-here')",
+        [],
+    )
+    .unwrap();
+    let mode = oz_core::Settings::get_tax_rounding_mode(&db).unwrap();
+
+    let mut here = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    store
+        .compute_sale_tax_for_location(&mut here, &[], mode, Some(&tax_scope_now("loc-here")))
+        .unwrap();
+    assert_eq!(here.lines[0].tax_rate_id.as_deref(), Some("r-here"));
+    assert_eq!(here.tax_total.minor_units, 77, "11% of 700");
+
+    let mut there = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    store
+        .compute_sale_tax_for_location(&mut there, &[], mode, Some(&tax_scope_now("loc-there")))
+        .unwrap();
+    assert_eq!(
+        there.tax_total.minor_units, 70,
+        "the neighbouring branch keeps the tenant default"
+    );
+
+    // The regression this exists to catch: if a future edit drops the scope
+    // argument, loc-here silently gets THIS number.
+    let mut forgot = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    store.compute_sale_tax(&mut forgot, &[], mode).unwrap();
+    assert_eq!(forgot.tax_total.minor_units, 70);
+}

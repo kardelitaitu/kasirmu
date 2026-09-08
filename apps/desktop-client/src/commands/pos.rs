@@ -28,6 +28,23 @@ use crate::commands::topology::TOPOLOGY_RUNTIME_SETTING_KEY;
 use crate::error::AppError;
 use crate::state::AppState;
 
+/// The tax scope for a sale rung up at `location_id` right now.
+///
+/// `as_of` is the UTC calendar date, and that is a recorded compromise rather
+/// than the answer: `locations.timezone` is written as an IANA name but read as
+/// a fixed offset (todo-global-saas-2.md §Regional configuration, open question
+/// 1), so a locally-correct business date is not available yet. UTC is what
+/// `sale.created_at` already records, which keeps the cart preview and the
+/// checkout receipt resolving on the SAME date instead of straddling a rate
+/// boundary differently — the failure mode that matters, because
+/// `effective_to` is exclusive and a boundary day must have exactly one answer.
+fn tax_scope_now(location_id: &str) -> oz_core::TaxSaleScope {
+    oz_core::TaxSaleScope {
+        location_id: location_id.to_string(),
+        as_of: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+    }
+}
+
 /// Select every distinct warehouse target from validated POS stock routes.
 ///
 /// Runtime-plan order is the allocation priority: the first route is the
@@ -875,10 +892,11 @@ pub async fn preview_promoted_total_scoped(
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
-        store.compute_sale_tax(
+        store.compute_sale_tax_for_location(
             &mut sale,
             &lua_overrides,
             oz_core::Settings::get_tax_rounding_mode(&db)?,
+            Some(&tax_scope_now(&session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
         let apps = store.compute_checkout_promotions(
@@ -999,10 +1017,11 @@ pub async fn preview_promoted_total_from_lines_scoped(
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
-        store.compute_sale_tax(
+        store.compute_sale_tax_for_location(
             &mut sale,
             &lua_overrides,
             oz_core::Settings::get_tax_rounding_mode(&db)?,
+            Some(&tax_scope_now(&session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
         let apps = store.compute_checkout_promotions(
@@ -1132,10 +1151,11 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         }
 
         // Compute tax (same as first command)
-        store.compute_sale_tax(
+        store.compute_sale_tax_for_location(
             &mut sale,
             &[],
             oz_core::Settings::get_tax_rounding_mode(&db)?,
+            Some(&tax_scope_now(&session.store_id)),
         )?;
 
         // PROMO-3 checkout integration: engine-apply the selected
@@ -1399,10 +1419,11 @@ pub async fn complete_sale_scoped(
             }
         }
 
-        store.compute_sale_tax(
+        store.compute_sale_tax_for_location(
             &mut sale,
             &lua_overrides,
             oz_core::Settings::get_tax_rounding_mode(&db)?,
+            Some(&tax_scope_now(&session.store_id)),
         )?;
 
         if let Some(ref serial_numbers) = args.serial_numbers {
@@ -1540,10 +1561,11 @@ pub async fn compute_cart_tax_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
-    let tax = store.compute_cart_tax(
+    let tax = store.compute_cart_tax_for_location(
         &lines,
         parsed,
         oz_core::Settings::get_tax_rounding_mode(&db)?,
+        Some(&tax_scope_now(&session.store_id)),
     )?;
     drop(db);
     Ok(tax)
