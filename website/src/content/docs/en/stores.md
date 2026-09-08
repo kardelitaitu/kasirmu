@@ -3,8 +3,10 @@ title: Stores & Topology
 description: Model branches, registers, and warehouses in one visual editor.
 category: guides
 order: 6
-updated: "2026-08-16"
+updated: "2026-09-08"
 ---
+
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Customer-facing page, first audit evidence it ever carried. · Finding: the deploy-history capability from ADR #46 shipped end to end (migration 20260915_topology_revisions.sql, three registered commands, ui/src/api/topology.ts, TopologyRevisionBrowser.tsx mounted by TopologyScreen.tsx:17 with topology-history-open as its trigger) yet this page described only apply-time diffing and Compare branches. A customer reading it would not know rollback exists. New “Deploy history” section added; every button name in it is real Fluent copy from ui/src/locales/multi-location.ftl (Show on canvas, Restore to editor, Pin this deploy, Unpin this deploy), and the preview-is-not-restore distinction plus the claim that a restored deploy becomes a NEW revision come from the component's own header comment and TopologyScreen.tsx:179, not from the ADR. · Two of my own draft claims were caught by verification before landing: “from the editor” was wrong (the host is TopologyScreen, not NodeTopologyEditor - the browser is imported in exactly two files, one of them a test), and two names I had flagged as undefined Fluent keys turned out to be CSS class names. · The id/ counterpart was NOT translated - see its own stamp. -->
 
 ## The topology editor
 
@@ -43,6 +45,29 @@ updated, archived, type-changed, with the revision number) before it is saved.
 If the topology changed on another register meanwhile, the editor loads the
 latest version and asks you to re-apply.
 
+## Deploy history
+
+Every applied change to a branch's layout is recorded, newest first, with who applied
+it, when, and the note they left. Open **Deploy history** from the topology screen to
+browse it; a branch that has never been applied says so and lists nothing.
+
+Selecting an entry can **preview** it: the past layout is drawn over your current canvas
+as a ghost overlay via **Show on canvas** — the same rendering **Compare branches**
+uses — so additions, removals and changes are visible side by side without touching your
+work. Each row tells you how many changes have landed since that deploy, or that it
+matches what is live now.
+
+**Preview is not restore.** **Restore to editor** loads that layout in as an *unsaved
+draft*, intercepted first if you have unsaved edits to lose; nothing becomes live until you
+apply it yourself, with the usual manager-or-owner permission and diff summary. Applying a
+restored draft records it as a **new** deploy — history is never rewritten, so the rollback
+itself is auditable.
+
+**Pin this deploy** keeps an entry out of retention pruning. Pruned entries stay listed
+with their who/when/why intact, flagged that the snapshot is gone, and only their preview
+and restore are withdrawn — so "what did we deploy on Tuesday" stays answerable after the
+layout itself has been discarded.
+
 ## Branches, templates, and sharing
 
 Topologies live per branch. A **Compare Branches** view shows what differs
@@ -60,3 +85,5 @@ multiple warehouses or warehouse capacity limits require a Pro tier license.
 
 Devices pull the topology when they reconnect, so a new register appears on
 every screen without manual setup.
+
+> last audited 08-09-26 by docs-auditor
