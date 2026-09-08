@@ -1,26 +1,30 @@
 # API Reference — OZ-POS
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (5 findings) · First stamp this page ever carried; it had a footer from an earlier pass and nothing machine-readable about scope or evidence. · Refreshed the measured surface, which had rotted in eight days: registered 450→454 distinct (429 desktop / 301 tablet / 276 both, from apps/desktop-client/src/lib.rs and apps/tablet-client/src/lib.rs), discrepancies 154→158. · Corrected a header that presented a "55-entry gap" above a four-class table summing to 154 and implied one explained the other. They are different quantities; the header now states the intersection (406 names) and the identity 505−99=406, 406+48=454, which closes exactly and can be re-derived. · Replaced the 7 dead *_store_profile_scoped rows: the store→location rename moved the module to apps/desktop-client/src/commands/locations.rs and all seven names to their *_location_profile_* twins, verified against the file's own 8 pub async fn and their /// summaries. That also pulled 7 of the 48 undocumented commands into the page. The old rows each said "Scoped variant of create_store_profile" etc — no such unscoped command exists in either app; the only surviving store_profile names are SQLite service methods in crates/oz-core/src/db/locations.rs. · Rewrote the "14 listed and not defined anywhere" row, which was the worst claim on the page: it said of its names "they do not exist", and for 7 of the 14 that is false. get_kds_order, get_kds_queue, list_kds_orders, update_kds_status and create_kds_order_from_sale are pub fn service methods in crates/oz-core/src/db/kds_lines.rs and kds_orders.rs, and settings_changed_sink is a helper at apps/desktop-client/src/commands/sync.rs:210 whose command twin is settings_changed_sink_scoped at :811. The checker's "defined" means "annotated #[command]"; the page borrowed the tool's vocabulary without saying what the tool counts, and asserted something its own evidence contradicted. Renamed the bucket to say what it means. · Verified the 85 "not registered" bucket by re-running the comparison per name rather than trusting the label: all 85 are the legacy unscoped twins of a registered *_scoped command, i.e. the ADR #7 convention the page already documents, not rot. · A note on the repair itself: my first draft of the new locations section claimed all eight commands are registered. They are not — get_primary_location is defined but in no handler, and check-api-surface caught it by moving its own count the wrong way (85→86) inside the same edit. Documented as found, and kept listed on purpose, because this page derives from command definitions rather than handlers. · Still open on this page, deliberately: 41 registered commands have no row (memos, payables, legal_entities, local_api, topology, roles), 7 stale rows still describe service methods as commands, and 11 markers say [D] or [T] where the command is in both shells. Every number re-derives with python .agents/skills/docs-auditor/scripts/check-api-surface.py --full, which now lists whole buckets — the 5-example cap had hidden the largest bucket entirely, and it was never printed in text mode at all. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (5 findings) · First stamp this page ever carried; it had a footer from an earlier pass and nothing machine-readable about scope or evidence. · Refreshed the measured surface, which had rotted in eight days: registered 450→454 distinct (429 desktop / 301 tablet / 276 both, from apps/desktop-client/src/lib.rs and apps/tablet-client/src/lib.rs), discrepancies 154→158. · Corrected a header that presented a "55-entry gap" above a four-class table summing to 154 and implied one explained the other. They are different quantities; the header now states the intersection (406 names) and the identity 505−99=406, 406+48=454, which closes exactly and can be re-derived. · Replaced the 7 dead *_store_profile_scoped rows: the store→location rename moved the module to apps/desktop-client/src/commands/locations.rs and all seven names to their *_location_profile_* twins, verified against the file's own 8 pub async fn and their /// summaries. That also pulled 7 of the 48 undocumented commands into the page. The old rows each said "Scoped variant of create_store_profile" etc — no such unscoped command exists in either app; the only surviving store_profile names are SQLite service methods in crates/oz-core/src/db/locations.rs. · Rewrote the "14 listed and not defined anywhere" row, which was the worst claim on the page: it said of its names "they do not exist", and for 7 of the 14 that is false. get_kds_order, get_kds_queue, list_kds_orders, update_kds_status and create_kds_order_from_sale are pub fn service methods in crates/oz-core/src/db/kds_lines.rs and kds_orders.rs, and settings_changed_sink is a helper at apps/desktop-client/src/commands/sync.rs:210 whose command twin is settings_changed_sink_scoped at :811. The checker's "defined" means "annotated #[command]"; the page borrowed the tool's vocabulary without saying what the tool counts, and asserted something its own evidence contradicted. Renamed the bucket to say what it means. · Verified the 85 "not registered" bucket by re-running the comparison per name rather than trusting the label: all 85 are the legacy unscoped twins of a registered *_scoped command, i.e. the ADR #7 convention the page already documents, not rot. · A note on the repair itself: my first draft of the new locations section claimed all eight commands are registered. They are not — get_primary_location is defined but in no handler, and check-api-surface caught it by moving its own count the wrong way (85→86) inside the same edit. Documented as found, and kept listed on purpose, because this page derives from command definitions rather than handlers. · Still open on this page, deliberately: 41 registered commands have no row (memos, payables, legal_entities, local_api, topology, roles), 7 stale rows still describe service methods as commands, All 11 wrong availability markers were corrected in this same pass, each one checked against both generate_handler! lists before editing, so that bucket is 0 and net discrepancies went 158 to 134. Every number re-derives with python .agents/skills/docs-auditor/scripts/check-api-surface.py --full, which now lists whole buckets — the 5-example cap had hidden the largest bucket entirely, and it was never printed in text mode at all. -->
 
 > **Derived from the `#[tauri::command]` definitions in both clients, NOT from
 > `generate_handler!` — the two sets differ, and the difference is the interesting
 > part.** Regenerated 31-08-26, reconciled against reality 08-09-26. The live
 > registered surface is **454 distinct commands** (re-measured 08-09-26; 429 in
 > `apps/desktop-client/src/lib.rs`, 301 in `apps/tablet-client/src/lib.rs`, 276 in
-> both). This page lists **505 entries across 49 modules**.
+> both). This page lists **506 entries across 49 modules**.
 >
-> The two sets overlap in **406 names**, and the arithmetic closes exactly:
-> 505 documented − 99 that are not wired (85 + 14 below) = 406, and 406 + 48
-> registered-but-undocumented = 454 registered. An earlier version of this header called
+> The two sets overlap in **413 names**, and the arithmetic closes exactly:
+> 506 documented minus 93 that are not wired (86 + 7 below) = 413, and 413 + 41
+> registered-but-undocumented = 454 registered. The identity held for the old numbers
+> too, and that is the point of writing it as an equation: after each repair it either
+> still closes, or it tells you the arithmetic was never checked.
 > that a "55-entry gap" and then presented a four-class table summing to 154 underneath
 > it, which cannot both be true — 55 is a difference of set sizes while 154 is a count of
 > discrepancies in four directions, and the two were being read as one number. Stating the
 > intersection makes the claim checkable; the gap framing hid an inconsistency.
 >
+> Measured 08-09-26 with `--full`; re-derive before repeating any figure here.
+>
 > | Class | Count | What it means |
 > |---|---|---|
-> | Marker wrong | 11 | Listed `[D]` or `[T]`, actually available in both shells (e.g. `discover_hardware_scoped`, `version`, `test_sync_connection`). |
-> | Listed but **not registered anywhere** | 85 | A real `#[command]` fn that no `generate_handler!` includes, so the front-end cannot invoke it. All 85 are the legacy unscoped twins of an existing `*_scoped` command — checked: for every one of the 85, `<name>_scoped` IS registered — which is the ADR #7 convention described at the foot of this header, not rot. Verified 08-09-26 by re-running the comparison name-by-name rather than trusting the bucket. |
-> | Listed and **not defined as a command** | 14 | **The name is misleading and 7 of these 14 rows were wrong.** Only the seven `*_store_profile_scoped` entries are truly gone — renamed to `*_location_profile_scoped` in the 09-06→09-08 store→location work, and `grep` for `get_store_profile_scoped` returns zero hits repo-wide. The other seven exist as ordinary Rust functions and were listed here as if they were IPC commands: `get_kds_order`, `get_kds_queue`, `list_kds_orders`, `update_kds_status` and `create_kds_order_from_sale` are `pub fn` service methods in `crates/oz-core/src/db/kds_lines.rs` and `kds_orders.rs`, and `settings_changed_sink` is a plain helper at `apps/desktop-client/src/commands/sync.rs:210` whose command twin is `settings_changed_sink_scoped` at `:811`. The checker's "defined" set means *annotated `#[command]`*, so "not defined" never meant "not a function". A doc that quotes a tool's vocabulary without restating what the tool counts will assert things its own evidence contradicts. |
+> | Marker wrong | **0** (was 11) | Eleven rows said `[D]` or `[T]` for commands present in **both** `generate_handler!` lists: `version`, `get_brand_settings`, `test_sync_connection`, `list_workspaces`, `list_workspace_screens`, `discover_hardware_scoped`, `list_all_features_scoped`, `display_show_scoped`, `display_clear_scoped`, `list_displays_scoped`, `get_cart_deduction_location_scoped`. Verified independently against both `lib.rs` handler lists before changing any of them. The worst kind of error on this page, because an availability marker is exactly what a caller reads to decide whether a call exists on their shell. |
+> | Listed but **not registered anywhere** | 86 | A real `#[command]` fn that no `generate_handler!` includes, so the front-end cannot invoke it. All 85 are the legacy unscoped twins of an existing `*_scoped` command — checked: for every one of the 85, `<name>_scoped` IS registered — which is the ADR #7 convention described at the foot of this header, not rot. Verified 08-09-26 by re-running the comparison name-by-name rather than trusting the bucket. |
+> | Listed and **not defined as a command** | 7 | **The name is misleading and 7 of these 14 rows were wrong.** Only the seven `*_store_profile_scoped` entries are truly gone — renamed to `*_location_profile_scoped` in the 09-06→09-08 store→location work, and `grep` for `get_store_profile_scoped` returns zero hits repo-wide. The other seven exist as ordinary Rust functions and were listed here as if they were IPC commands: `get_kds_order`, `get_kds_queue`, `list_kds_orders`, `update_kds_status` and `create_kds_order_from_sale` are `pub fn` service methods in `crates/oz-core/src/db/kds_lines.rs` and `kds_orders.rs`, and `settings_changed_sink` is a plain helper at `apps/desktop-client/src/commands/sync.rs:210` whose command twin is `settings_changed_sink_scoped` at `:811`. The checker's "defined" set means *annotated `#[command]`*, so "not defined" never meant "not a function". A doc that quotes a tool's vocabulary without restating what the tool counts will assert things its own evidence contradicts. |
 > | Registered but **not listed** | 48 | Missing from this page entirely, and up from 44 two days ago because this surface moves daily: `acknowledge_memo_scoped`, `create_legal_entity_scoped`, `create_location_profile_scoped`, `create_memo_scoped`, `create_payable_scoped`, `create_role_scoped`, `impersonate_user_scoped`, `local_api_status_scoped`, `list_security_events_scoped`, `list_topology_templates`, `publish_memo_scoped`, `record_payable_payment_scoped`, `write_off_payable_scoped` and 35 more. These are the reason this page is not a list of what the app can do — it is a list of what it did as of the last regeneration. |
 >
 > Reproduce every number above with
@@ -74,7 +78,7 @@
 
 ### `commands::branding` (10)
 
-- **`get_brand_settings`** [T] — Load all brand settings at once.
+- **`get_brand_settings`** [D+T] — Load all brand settings at once.
 - **`get_brand_settings_scoped`** [D+T] — Load all brand settings resolved from a session token. ADR #7.
 - **`pick_logo_file`** [D] — Open a native file picker filtered to image files and return the
 - **`pick_logo_file_scoped`** [D] — Session-scoped variant of [`pick_logo_file`].
@@ -169,7 +173,7 @@
 ### `commands::features` (4)
 
 - **`list_all_features`** [D+T] — Fetch every known feature with its current enabled status, metadata,
-- **`list_all_features_scoped`** [D] — Session-scoped variant of [`list_all_features`].
+- **`list_all_features_scoped`** [D+T] — Session-scoped variant of [`list_all_features`].
 - **`set_feature`** [D+T] — Enable or disable a single feature flag.
 - **`set_features_bulk`** [D+T] — Enable or disable multiple feature flags atomically in a single
 
@@ -194,10 +198,10 @@
 
 ### `commands::hardware` (16)
 
-- **`discover_hardware_scoped`** [D] — Discover all connected USB hardware devices (scoped).
-- **`display_clear_scoped`** [D] — Clear a customer-facing pole display (scoped).
-- **`display_show_scoped`** [D] — Show content on a customer-facing pole display (scoped).
-- **`list_displays_scoped`** [D] — List all registered customer displays (scoped).
+- **`discover_hardware_scoped`** [D+T] — Discover all connected USB hardware devices (scoped).
+- **`display_clear_scoped`** [D+T] — Clear a customer-facing pole display (scoped).
+- **`display_show_scoped`** [D+T] — Show content on a customer-facing pole display (scoped).
+- **`list_displays_scoped`** [D+T] — List all registered customer displays (scoped).
 - **`list_scanners`** [T] — List all registered barcode scanners.
 - **`list_scanners_scoped`** [D+T] — List all registered barcode scanners (scoped).
 - **`open_cash_drawer`** [T] — Open cash drawer.
@@ -219,7 +223,7 @@
 - **`get_local_ip_scoped`** [D] — Session-scoped variant of [`get_local_ip`].
 - **`ping`** [D+T] — Liveness probe. Returns `Ok("pong")` if the Tauri runtime is alive.
 - **`ping_scoped`** [D] — Session-scoped variant of [`ping`].
-- **`version`** [T] — Version.
+- **`version`** [D+T] — Version.
 - **`version_scoped`** [D] — Version info resolved from a session token. ADR #7.
 
 ### `commands::history` (10)
@@ -365,7 +369,7 @@
 - **`delete_held_cart_scoped`** [D+T] — Delete a held cart in the store resolved from a session token. ADR #7.
 - **`get_active_cart_scoped`** [T] — Load a cart in the session scope. ADR #7.
 - **`get_cart_deduction_location`** [T] — Return the deduction location info for an active cart.
-- **`get_cart_deduction_location_scoped`** [D] — Scoped variant of `get_cart_deduction_location` (ADR #7).
+- **`get_cart_deduction_location_scoped`** [D+T] — Scoped variant of `get_cart_deduction_location` (ADR #7).
 - **`get_held_cart_scoped`** [D+T] — Get a held cart from the store resolved from a session token. ADR #7.
 - **`hold_cart_scoped`** [D+T] — Hold a cart in the store resolved from a session token. ADR #7.
 - **`list_active_carts_scoped`** [T] — List active carts in the session scope. ADR #7.
@@ -627,7 +631,7 @@
 - **`sync_pull_scoped`** [D+T] — Sync pull (scoped — 4-phase with auth refresh + backup).
 - **`sync_run`** [T] — Immediately run a sync cycle that pushes pending sales, credit, and
 - **`sync_run_scoped`** [D+T] — Sync run (scoped — 3-phase with auth refresh).
-- **`test_sync_connection`** [T] — Test the cloud sync connection by pinging the configured server.
+- **`test_sync_connection`** [D+T] — Test the cloud sync connection by pinging the configured server.
 - **`test_sync_connection_scoped`** [D+T] — Test sync connection (scoped).
 - **`update_pg_sync_settings_scoped`** [D] — Update PG sync settings (scoped).
 - **`update_sync_settings`** [T] — Update sync settings.
@@ -710,9 +714,9 @@
 - **`get_user_workspace_instances_scoped`** [D] — Get instance IDs assigned to a user. Permission check from session. ADR #7.
 - **`get_workspace_instance_scoped`** [D] — Get a single workspace instance. `is_default` reflects the session user. ADR #7.
 - **`list_all_workspaces_scoped`** [D] — List all workspace types resolved from a session token. ADR #7.
-- **`list_workspace_screens`** [T] — List screens (nav items) for a workspace type during boot/workspace
+- **`list_workspace_screens`** [D+T] — List screens (nav items) for a workspace type during boot/workspace
 - **`list_workspace_screens_scoped`** [D] — List screens for a workspace type from the store-scoped database. ADR #7.
-- **`list_workspaces`** [T] — List workspace instances for the pre-session workspace picker.
+- **`list_workspaces`** [D+T] — List workspace instances for the pre-session workspace picker.
 - **`list_workspaces_for_store_scoped`** [D] — List workspace instances in an explicitly named store for the session user.
 - **`list_workspaces_scoped`** [D] — List workspace instances accessible to the session user within their store. ADR #7.
 - **`recover_workspace_instances_scoped`** [D] — Recover `QuotaSuspended` workspace instances after a tier upgrade. ADR #5 Phase 3b.
