@@ -34,6 +34,18 @@ import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 
+// Re-export the REAL @/api/branding module, overriding the global stub that
+// test-setup.ts installs to silence IPC noise for the rest of the suite. This
+// file's load/save error-path tests (e.g. "all APIs fail", "every save API
+// call fails") require branding to go through the per-file invokeMock so the
+// brand load/save fails WITH the other commands. Per-file mocks win over the
+// global one, so this keeps this file exercising the real branding IPC surface
+// (routed through loggedInvoke -> invokeMock) and the functional assertions
+// intact.
+vi.mock('@/api/branding', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/branding')>()),
+}));
+
 const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
   const SAMPLE_CURRENCIES = [
     { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
