@@ -379,3 +379,154 @@ fn reference_counts_agree_with_the_delete_decision() {
         "referrers present, so the delete is refused"
     );
 }
+
+// ── The two referrer tables nothing inserted into ─────────────────────
+//
+// ROLE_REFERRERS names four tables. The tests above reach two of them
+// (users, assignments); role_workspace_types and role_workspaces appear
+// nowhere in this file, so nothing pins that the delete guard sees them.
+// Dropping either entry from the array would let delete_role clear its
+// own pre-check and then hit a bare FK constraint violation — exactly the
+// failure the guard exists to turn into "reassign these rows first" — and
+// every test here would stay green.
+
+/// Make sure the workspace dimension has a 'retail-pos' type and
+/// workspace to point at. Both are already seeded by the migrations, so
+/// this is an idempotent guarantee rather than a fresh insert: the FK on
+/// role_workspace* needs the key to exist, and the test must not care who
+/// put it there.
+fn seed_workspace_dimension(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO workspace_types (key, name) VALUES ('retail-pos', 'Retail POS');
+         INSERT OR IGNORE INTO workspaces (id, key, name) VALUES ('ws-retail', 'retail-pos', 'Retail');",
+    )
+    .unwrap();
+}
+
+#[test]
+fn delete_role_refuses_a_role_named_only_by_a_workspace_type() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    seed_workspace_dimension(&conn);
+    conn.execute(
+        "INSERT INTO role_workspace_types (role_id, type_key) VALUES (?1, 'retail-pos')",
+        rusqlite::params![AUTHORED],
+    )
+    .unwrap();
+
+    let s = store(&conn);
+    assert_eq!(
+        s.role_reference_counts(AUTHORED).unwrap(),
+        vec![("role_workspace_types", 1)],
+        "the workspace-type grant is a referrer in its own right"
+    );
+    let err = s
+        .delete_role(AUTHORED)
+        .expect_err("a role still granting a workspace type is in use");
+    let CoreError::Validation { message, .. } = err else {
+        panic!("expected a typed Validation error, got {err:?}");
+    };
+    assert!(
+        message.contains("role_workspace_types=1"),
+        "the refusal names the referrer and its count: {message}"
+    );
+    assert!(s.get_role(AUTHORED).unwrap().is_some());
+}
+
+#[test]
+fn delete_role_refuses_a_role_named_only_by_a_workspace() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    seed_workspace_dimension(&conn);
+    conn.execute(
+        "INSERT INTO role_workspaces (role_id, workspace_key) VALUES (?1, 'retail-pos')",
+        rusqlite::params![AUTHORED],
+    )
+    .unwrap();
+
+    let s = store(&conn);
+    assert_eq!(
+        s.role_reference_counts(AUTHORED).unwrap(),
+        vec![("role_workspaces", 1)],
+        "and so is the per-workspace grant, which is a different table"
+    );
+    let err = s
+        .delete_role(AUTHORED)
+        .expect_err("a role still bound to a workspace is in use");
+    let CoreError::Validation { message, .. } = err else {
+        panic!("expected a typed Validation error, got {err:?}");
+    };
+    assert!(
+        message.contains("role_workspaces=1"),
+        "the refusal names the referrer and its count: {message}"
+    );
+    assert!(s.get_role(AUTHORED).unwrap().is_some());
+}
+
+#[test]
+fn role_reference_counts_enumerates_every_referrer_table_in_declared_order() {
+    // One role, all four referrers, distinct counts. This is the test that
+    // makes ROLE_REFERRERS itself load-bearing: it fails if an entry is
+    // dropped, if a count is summed across tables, or if the order changes
+    // (the refusal message is read by a human, so the order is part of the
+    // contract, not an accident).
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    seed_workspace_dimension(&conn);
+    insert_user_with_role(&conn, "holder-a", AUTHORED);
+    insert_user_with_role(&conn, "holder-b", AUTHORED);
+    insert_user_with_role(
+        &conn,
+        "assign-only",
+        platform_core::rbac::builtin_roles::OWNER,
+    );
+    conn.execute(
+        "INSERT INTO assignments (user_id, role_id, scope_mode, branch_scope, workspace_scope)
+         VALUES ('assign-only', ?1, 'global', 'all', 'all')",
+        rusqlite::params![AUTHORED],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO role_workspace_types (role_id, type_key) VALUES (?1, 'retail-pos')",
+        rusqlite::params![AUTHORED],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO role_workspaces (role_id, workspace_key) VALUES (?1, 'retail-pos')",
+        rusqlite::params![AUTHORED],
+    )
+    .unwrap();
+
+    let s = store(&conn);
+    assert_eq!(
+        s.role_reference_counts(AUTHORED).unwrap(),
+        vec![
+            ("users", 2),
+            ("assignments", 1),
+            ("role_workspace_types", 1),
+            ("role_workspaces", 1),
+        ],
+        "every referrer table, in ROLE_REFERRERS order, each with its own count"
+    );
+
+    let err = s
+        .delete_role(AUTHORED)
+        .expect_err("a role referenced anywhere cannot be dropped");
+    let CoreError::Validation { message, .. } = err else {
+        panic!("expected a typed Validation error, got {err:?}");
+    };
+    for named in [
+        "users=2",
+        "assignments=1",
+        "role_workspace_types=1",
+        "role_workspaces=1",
+    ] {
+        assert!(
+            message.contains(named),
+            "the refusal lists {named}: {message}"
+        );
+    }
+}
