@@ -456,3 +456,49 @@ IPC, no dev-mock") is NOT met:
 Reported the split to the supervisor; awaiting which slice to greenlight. No
 code written this turn. Nothing committed pending the supervisor's pick
 (Slice A is the only clean bounded option).
+
+### Slice A — IMPLEMENTED (supervisor greenlight, commit a33d6075a)
+
+The only bounded slice. No new IPC, no dev-mock, no hot files; feature-specific
+FTL pair only.
+
+**What it does**
+- New ui/src/features/locations/WarehouseQuotaChip.tsx: presentational
+  WarehouseQuotaChip + pure warehouseQuotaStatus(count, maxWarehouses) helper.
+- warehouseQuotaStatus: null cap => 'unlimited'; count > cap => 'over';
+  count === cap => 'at'; else 'ok'. Mirrors the S-J downgrade over-quota model.
+- Editor (NodeTopologyEditor.tsx) now calls useSubscription() for
+  caps.maxWarehouses, derives warehouseCount from the in-graph node list
+  (nodes.filter(n => n.type === 'warehouse')), and mounts the chip only when
+  (caps && warehouseCount > 0), sibling to the tier-notice (canvas status area).
+- 3 FTL keys added to BOTH multi-location.ftl and multi-location.id.ftl
+  (translated, not byte-identical):
+  - topology-warehouse-quota = Warehouses: { $count } / { $limit }
+  - topology-warehouse-quota-over = Warehouses over plan limit: { $count } / { $limit }
+  - topology-warehouse-quota-unlimited = Warehouses: { $count } (unlimited)
+- CSS: .topology-warehouse-quota + --ok/--at/--over/--unlimited modifiers
+  (top-left corner, subtle surface bg, small font) in NodeTopologyEditor.css.
+
+**Gates**
+- vitest: 8/8 pass (WarehouseQuotaChip.test.tsx 4x, warehouseQuotaStatus.test.ts 4x).
+- tsc --noEmit (typecheck gate): clean.
+- eslint: 0 errors (only pre-existing-style warnings: react-refresh for the
+  co-located helper + exhaustive-deps in the editor — same set as before).
+- Pre-commit hook (all 10 steps): i18n lint clean, bundle-parity 0 missing keys,
+  UI typecheck pass, FTL orphan OK.
+
+**Constraints respected**
+- Did NOT touch hot files (StatusBar, connection hooks, dev-mock, shared.ftl /
+  global .id.ftl, api/license.ts, features/inventory/*).
+- The existing per-node excess badge (topology-warehouse-excess-badge,
+  isProAllowed-driven) is a SEPARATE feature and was left untouched.
+- Dropped a pointer-capture onMouseDown from the chip to keep role='status'
+  a11y-clean (jsx-a11y/no-noninteractive-element-interactions); read-only region.
+
+### Next
+- Slice B (KDS-screen over-limit) REMAINS QUEUED behind dev-mock (hot file) —
+  same queue as the tax write-side IPC and caps-DTO projection.
+- Slice C (persisted per-resource over_quota marker migration) is a CANDIDATE
+  AFTER Slice A. When Slice A is acknowledged, present the migration design as a
+  plan-first report (marker key, write path, read path, how OverQuotaCard
+  consumes it) — do NOT start it unprompted.
