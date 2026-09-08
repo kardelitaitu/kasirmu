@@ -462,6 +462,10 @@ RLS_EXEMPT = {
     "topology_revisions": (
         "ADR #46 desktop-side table; no PG write path yet"
     ),
+    "over_quota_markers": (
+        "tenant_id added schema-side ahead of multi-tenant writes; "
+        "no PG write path audited yet -- cover when cloud sync lands"
+    ),
     "webhook_endpoints": (
         "no PG write path audited; cover when the admin surface "
         "writes it on PG"

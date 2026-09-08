@@ -77,6 +77,7 @@ impl Store<'_> {
                 .into());
             }
         }
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 

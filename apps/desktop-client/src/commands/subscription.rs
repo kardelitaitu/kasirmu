@@ -405,7 +405,12 @@ fn load_over_quota_report(db: &rusqlite::Connection) -> Result<OverQuotaReport, 
     // The effective tier is what the gates enforce — assess against it,
     // not the nominal tier, so the report matches the next rejection.
     let ent = build_entitlements(&store, gather_usage(&store), false);
-    Ok(store.assess_downgrade(&ent.tier)?)
+    // Refresh (and return) the persisted over-quota markers so the report the
+    // owner view renders is always in step with the live counts (Slice C §J).
+    let markers = store.persist_over_quota_markers()?;
+    let mut report = store.assess_downgrade(&ent.tier)?;
+    report.markers = markers;
+    Ok(report)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

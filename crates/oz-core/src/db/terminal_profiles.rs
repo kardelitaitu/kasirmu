@@ -94,6 +94,7 @@ impl Store<'_> {
                 id: terminal_id.to_owned(),
             });
         }
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 

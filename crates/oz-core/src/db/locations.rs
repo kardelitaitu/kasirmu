@@ -106,6 +106,9 @@ impl Store<'_> {
                 .into());
             }
         }
+        // Keep the over-quota marker table in step with every creation attempt
+        // (Slice C §J): the next read refreshes too, but this warms the cache.
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 
@@ -217,6 +220,7 @@ impl Store<'_> {
         }
         self.conn
             .execute("DELETE FROM locations WHERE id = ?1", params![id])?;
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 

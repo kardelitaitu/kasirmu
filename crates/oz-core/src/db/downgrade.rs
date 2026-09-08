@@ -12,9 +12,18 @@
 //! (RUST-08 read rule).
 
 use super::Store;
-use crate::downgrade::{OverQuotaReport, QuotaCounts, evaluate};
+use crate::downgrade::{
+    OverQuotaMarker, OverQuotaReport, OverQuotaSeverity, QuotaCounts, evaluate,
+};
 use crate::error::CoreError;
-use crate::subscription::SubscriptionTier;
+use crate::subscription::{SubscriptionTier, TenantSubscription};
+
+use chrono::Utc;
+
+/// The single-tenant id used throughout the local SQLite store. Mirrors the
+/// `"default"` literal the quota gates and `get_over_quota_report` already
+/// pass to `TenantSubscription::load`.
+const TENANT_ID: &str = "default";
 
 impl Store<'_> {
     /// Assess which tenant-level resources exceed `tier`'s quotas.
@@ -34,6 +43,95 @@ impl Store<'_> {
             products: self.count_products()?,
         };
         Ok(evaluate(tier, &counts))
+    }
+
+    /// Persist the current over-quota markers for the tenant (§J remediation).
+    ///
+    /// Full refresh inside a single transaction: delete every existing marker
+    /// for the tenant, then insert one row per dimension that is `over`
+    /// (`current > limit`) or `at` (`current == limit`) the cap. Dimensions in
+    /// no danger get no row, so an absent marker means "fine". A marker that
+    /// lies is worse than no marker, which is why the refresh is recomputed
+    /// from the live counts on every call rather than incrementally patched.
+    ///
+    /// The effective tier is computed internally
+    /// (`TenantSubscription::load` + `effective_tier`, fail-closed to `Free`),
+    /// so this can be called from any create/archive/delete path without the
+    /// caller threading a tier through. Runs in a savepoint so it nests safely
+    /// inside an outer creation transaction. Returns the markers written so the
+    /// `get_over_quota_report` read path can attach them to the report in one
+    /// round-trip.
+    pub fn persist_over_quota_markers(&self) -> Result<Vec<OverQuotaMarker>, CoreError> {
+        let tier = match TenantSubscription::load(self.conn, TENANT_ID)? {
+            Some(sub) => sub.effective_tier(),
+            None => SubscriptionTier::Free,
+        };
+        let report = self.assess_downgrade(&tier)?;
+
+        let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+        self.conn
+            .execute_batch("SAVEPOINT over_quota_markers_refresh")?;
+        let result: Result<Vec<OverQuotaMarker>, CoreError> =
+            (|| -> Result<Vec<OverQuotaMarker>, CoreError> {
+                self.conn.execute(
+                    "DELETE FROM over_quota_markers WHERE tenant_id = ?1",
+                    [TENANT_ID],
+                )?;
+
+                let mut markers = Vec::with_capacity(report.usages.len());
+                for usage in &report.usages {
+                    let (severity, severity_str) = if usage.is_over_quota() {
+                        (OverQuotaSeverity::Over, "over")
+                    } else if usage.blocks_creation() {
+                        (OverQuotaSeverity::At, "at")
+                    } else {
+                        continue;
+                    };
+                    let dimension = usage.dimension.as_str();
+                    self.conn.execute(
+                "INSERT INTO over_quota_markers \
+                 (resource_id, resource_type, dimension, severity, \"limit\", current, marked_at, tenant_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    TENANT_ID,
+                    dimension,
+                    dimension,
+                    severity_str,
+                    usage.limit,
+                    usage.current,
+                    now,
+                    TENANT_ID,
+                ],
+            )?;
+                    markers.push(OverQuotaMarker {
+                        resource_id: TENANT_ID.to_string(),
+                        resource_type: dimension.to_string(),
+                        dimension: usage.dimension,
+                        severity,
+                        limit: usage.limit,
+                        current: usage.current,
+                        marked_at: now.clone(),
+                    });
+                }
+                Ok(markers)
+            })();
+        match result {
+            Ok(markers) => {
+                self.conn
+                    .execute_batch("RELEASE over_quota_markers_refresh")?;
+                Ok(markers)
+            }
+            Err(e) => {
+                let _ = self
+                    .conn
+                    .execute_batch("ROLLBACK TO over_quota_markers_refresh");
+                let _ = self
+                    .conn
+                    .execute_batch("RELEASE over_quota_markers_refresh");
+                Err(e)
+            }
+        }
     }
 
     /// Count all products in the catalog.

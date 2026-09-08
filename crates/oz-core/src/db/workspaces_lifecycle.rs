@@ -388,6 +388,7 @@ impl Store<'_> {
             );
         }
 
+        self.persist_over_quota_markers()?;
         Ok(updated)
     }
 
@@ -410,6 +411,9 @@ impl Store<'_> {
                 id: instance_id.to_owned(),
             });
         }
+        // Archiving removes an active instance from the quota count (Slice C §J):
+        // refresh the over-quota markers so the owner view stays accurate.
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 

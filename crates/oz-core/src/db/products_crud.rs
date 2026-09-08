@@ -223,6 +223,7 @@ impl Store<'_> {
                 .into());
             }
         }
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 
@@ -653,6 +654,7 @@ impl Store<'_> {
             cache.invalidate_product(sku);
         }
 
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 

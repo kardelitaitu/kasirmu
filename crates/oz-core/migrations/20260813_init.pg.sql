@@ -506,6 +506,18 @@ CREATE TABLE IF NOT EXISTS topology_revisions (
     UNIQUE (branch_id, revision)
 );
 
+CREATE TABLE IF NOT EXISTS over_quota_markers (
+    id            BIGINT PRIMARY KEY,
+    resource_id   TEXT    NOT NULL,
+    resource_type TEXT    NOT NULL,
+    dimension     TEXT    NOT NULL,
+    severity      TEXT    NOT NULL CHECK (severity IN ('over', 'at')),
+    "limit"       BIGINT,
+    current       BIGINT NOT NULL,
+    marked_at     TEXT    NOT NULL,
+    tenant_id     TEXT    NOT NULL DEFAULT 'default'
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -1699,6 +1711,15 @@ CREATE INDEX IF NOT EXISTS idx_offline_queue_tenant_status ON offline_queue(tena
 CREATE INDEX IF NOT EXISTS idx_outbox_due
     ON outbox(status, next_attempt_at, priority DESC);
 
+CREATE INDEX IF NOT EXISTS idx_over_quota_markers_dimension
+    ON over_quota_markers(dimension, tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_over_quota_markers_resource
+    ON over_quota_markers(resource_id, tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_over_quota_markers_tenant
+    ON over_quota_markers(tenant_id);
+
 CREATE INDEX IF NOT EXISTS idx_payable_payments_payable
     ON payable_payments(payable_id);
 
@@ -2021,6 +2042,7 @@ ON CONFLICT DO NOTHING;
 --   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
 --   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
 --   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
+--   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
 --   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
 --   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG

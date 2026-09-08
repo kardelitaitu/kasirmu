@@ -164,3 +164,11 @@ fn report_carries_tier_identity() {
     assert_eq!(report.tier_key, "premium");
     assert_eq!(report.tier_name, "Premium");
 }
+
+#[test]
+fn evaluate_leaves_markers_empty_pure_path_does_not_persist() {
+    // The pure evaluator never touches the DB; the markers vec is a
+    // backward-compatible field that only the separate persistence step fills.
+    let report = evaluate(&SubscriptionTier::Free, &counts(3, 2, 2, 2, 5));
+    assert!(report.markers.is_empty());
+}

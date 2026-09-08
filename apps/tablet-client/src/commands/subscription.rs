@@ -382,7 +382,10 @@ pub async fn get_over_quota_report(
     let db = state.db.lock().await;
     let store = Store::new(&db);
     let ent = build_entitlements(&store, gather_usage(&store), false);
-    Ok(store.assess_downgrade(&ent.tier)?)
+    let markers = store.persist_over_quota_markers()?;
+    let mut report = store.assess_downgrade(&ent.tier)?;
+    report.markers = markers;
+    Ok(report)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

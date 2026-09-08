@@ -164,6 +164,41 @@ impl QuotaUsage {
     }
 }
 
+/// One persisted over-quota marker for a single resource or tenant-global
+/// dimension (section J remediation). Store::persist_over_quota_markers is the
+/// writer; the owner-facing view reads these instead of recomputing the
+/// assessment on every render.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OverQuotaMarker {
+    /// The specific resource in excess, or the tenant id for a tenant-global
+    /// dimension marker.
+    pub resource_id: String,
+    /// The kind of resource (warehouse, pos_register, location, staff,
+    /// product, kds_screen, etc). For a tenant-global dimension marker this
+    /// equals dimension.
+    pub resource_type: String,
+    /// The quota dimension this marker belongs to (serde snake_case).
+    pub dimension: QuotaDimension,
+    /// Whether the resource is strictly over quota or merely at the cap.
+    pub severity: OverQuotaSeverity,
+    /// The tier cap, or None when unlimited.
+    pub limit: Option<i64>,
+    /// The current usage count contributing to this marker.
+    pub current: i64,
+    /// RFC 3339 timestamp the marker was last (re)computed.
+    pub marked_at: String,
+}
+
+/// How far past (or up against) the cap an OverQuotaMarker resource is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OverQuotaSeverity {
+    /// current > limit - the resource must be archived or the plan upgraded.
+    Over,
+    /// current == limit - fully compliant, but the next creation is blocked.
+    At,
+}
+
 /// The full downgrade assessment for one tier: every dimension's usage
 /// plus convenience aggregates for the owner-facing view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -174,6 +209,10 @@ pub struct OverQuotaReport {
     pub tier_name: String,
     /// Per-dimension usage, in [`DIMENSION_ORDER`].
     pub usages: Vec<QuotaUsage>,
+    /// Persisted over-quota markers (see OverQuotaMarker). Mirrors usages for
+    /// the 5 tenant-global dimensions and additionally carries per-resource
+    /// markers written by persist_over_quota_markers.
+    pub markers: Vec<OverQuotaMarker>,
 }
 
 impl OverQuotaReport {
@@ -218,6 +257,7 @@ pub fn evaluate(tier: &SubscriptionTier, counts: &QuotaCounts) -> OverQuotaRepor
         tier_key: tier.tier_key().to_string(),
         tier_name: tier.name().to_string(),
         usages,
+        markers: Vec::new(),
     }
 }
 
