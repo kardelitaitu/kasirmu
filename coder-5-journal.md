@@ -651,3 +651,85 @@ full oz-core lib and both client libs re-run after landing (see below).
   A shared journal file means the journal write and the commit have to be
   adjacent, or a pathspec commit sweeps someone else's appended entry under
   your message.
+
+---
+
+## Slice C - over_quota_markers (IMPLEMENT mode, landed)
+
+**Branch:** 0.0.37 · **locked version:** 0.0.37 · **no push** (per rules).
+
+### What shipped
+
+Own a dedicated over_quota_markers table and persist a full-refresh snapshot of the tenant-global over/at-quota state after every quota-dim mutation, plus on the report read path. Backward-compatible: OverQuotaReport gains an optional markers field.
+
+- **Migration 20260922_over_quota_markers.sql** - table over_quota_markers (id, resource_id, resource_type, dimension, severity TEXT CHECK (severity IN ('over','at')), "limit", current, marked_at, tenant_id DEFAULT 'default') + 3 indexes (tenant / resource / dimension). RLS_EXEMPT, no TRIGGER_MAP entry (coordination ruling). Registered in migrations.rs.
+- **db/downgrade.rs** - new persist_over_quota_markers(&self) -> Result<Vec<OverQuotaMarker>, CoreError>; manual SAVEPOINT over_quota_markers_refresh (nests inside any outer tx, &self-safe - rusqlite savepoint() needs &mut self and Store methods are &self). Computes effective tier via TenantSubscription::load, fails closed to Free. DELETE-all then INSERT one row per dimension that is over (current > limit) or at (current == limit, blocks creation).
+- **downgrade.rs** - OverQuotaMarker / OverQuotaSeverity types; OverQuotaReport.markers: Vec<OverQuotaMarker>; evaluate() seeds it empty.
+- **Wiring (13 sites):** 5 enforce gates (locations, terminals, products, staff, inventory-warehouse) + 8 mutate paths (delete_location_profile - covers delete_store_profile delegation; delete_terminal; delete_terminal_profile; delete_product; delete_user; archive_instance; suspend_surplus_instances) each call self.persist_over_quota_markers()? before returning. Warehouse inventory-location delete not found - documented, not wired.
+- **Report read path:** both load_over_quota_report (desktop) and get_over_quota_report (tablet) now call persist_over_quota_markers()?, attach returned markers to assess_downgrade's report, and return it - so the card always renders against live counts.
+- **TS:** ui/src/api/subscription.ts adds OverQuotaMarkerRow + OverQuotaSeverity and markers?: OverQuotaMarkerRow[] on OverQuotaReport. OverQuotaCard.tsx unchanged (reads only usages, so it accepts markers with no visual change). OverQuotaCard.test.tsx payloads now carry markers; added a test asserting markers don't alter the rendered output.
+- **Tests:** db/downgrade_tests.rs adds 3 (one-marker-per-over/at, full-refresh-not-incremental, drops-when-counts-fall); downgrade_tests.rs adds 1 (evaluate seeds empty markers).
+
+### Commits (explicit pathspec; hot files NOT touched)
+
+- '006add29b67a7bf16afd2a380aeaf3f869d61d9c' - feat(core): persist over-quota markers on every quota-dim create/archive/delete (16 files).
+- 'bd9db4327bec998199071dc56e450925df21e6ce' - feat(ui): add OverQuotaMarker type and markers payload to over-quota report (2 files).
+
+### Gates (all green)
+
+- cargo check -p oz-core --lib -p oz-pos-app -p oz-pos-tablet clean.
+- cargo test -p oz-core --lib downgrade -> 19 passed / 0 failed (incl. new persistence tests).
+- npm run typecheck clean; npm run test -- OverQuotaCard -> 8 / 8.
+- PG drift generate-pg-migration.py --check ok (114 tables, 148 indexes).
+- Migration column-type lint ok (no unwhitelisted floats).
+- Pre-commit hook ran on both commits: cargo fmt, EOL normalize, i18n, bundle parity, column-type, PG drift, ui typecheck (frontend commit) - all pass.
+
+### Caveat - incident to flag
+
+I ran 'cargo fmt --all', which reformatted the **entire workspace**, including hot files owned by other in-flight agents (StatusBar.tsx, useAuthConnection / useSyncConnection / connectionHealth (+tests), dev-mock/tauri-api.ts, api/license.ts, shared(.id).ftl). These are unchanged semantically - only whitespace/line-wrap - and I deliberately did **not** stage or commit them, so the other agents' real edits (confirmed via 'git diff -w': 4-91 real changed lines each) are intact. Their next commit's own hook will re-apply the identical formatting. No recovery needed; flagged for the supervisor. Lesson: format only the files in a pathspec, never --all, on a shared branch.
+
+### Follow-ups (noted, not done)
+
+1. Slice B (KDS-screen over-limit markers) remains queued behind the dev-mock/tauri-api.ts hot file - not started.
+2. Consider an audit/cleanup pass to re-wrap those hot files to the other agents' pre-fmt style if cross-agent diff noise becomes a problem (low priority; the hook normalizes on their commit).
+
+---
+
+## Slice C follow-up - migrations surface pins + malformed commit message
+
+### Malformed landing message on 006add29b (acknowledged, no rewrite)
+
+The body of commit 006add29b was committed with the entire body embedded in the
+subject line as literal backslash-n sequences. Cause: my inline -m argument passed
+an escaped \n instead of real newlines, so git received literal \n text rather
+than line breaks. The commit-msg gate validates only the subject prefix, so it
+passed. Per supervisor ruling, history on the shared branch is NOT rewritten. The
+intended body is restated here and the full design plan already lives in the
+journal from df10a65f2, so the record is not lost. Lesson: use `git commit -F
+<file>` with a real multi-line file for any multi-line message; never hand-escape
+\n inside -m.
+
+### migrations suite was RED - fixed
+
+My Slice C landing left `cargo test -p oz-core --lib migrations` at 26 passed /
+2 FAILED because I pinned only the PG index count (the generate-pg-migration.py
+--check guard already covered that) and missed the SQLite surface pins this suite
+asserts directly. Two tests failed:
+
+- `init_sql_creates_complete_schema_surface` - table pin 113 -> 114
+  (over_quota_markers is table #114) and, masked behind it, the index pin 166 ->
+  169 (the migration adds 3 markers indexes: dimension / resource / tenant).
+  Fixing the table pin alone would have exposed the index pin as a new failure,
+  so both were bumped.
+- `existing_db_with_legacy_rows_upgrades_idempotently` - the recorded-IDs vec was
+  missing `20260922_over_quota_markers.sql` (so the equality assert on
+  schema_migrations rows failed), and its table pin 113 -> 114.
+
+A concurrent agent had already applied the first test's table-pin fix in the
+working tree (uncommitted); I layered the remaining three changes on top (index
+pin, ids vec, second test's table pin). The fix commit captures the whole file,
+so their edit is preserved.
+
+### Gates (green)
+
+- cargo test -p oz-core --lib migrations -> 28 passed / 0 failed (was 26/2).

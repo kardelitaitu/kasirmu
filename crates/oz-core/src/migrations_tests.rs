@@ -388,16 +388,17 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 113 tables,
+    // All migrations applied (init + incremental) yield 114 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
     // (20260918_payables.sql added the 112th and 113th: payables +
-    // payable_payments.)
+    // payable_payments; 20260922_over_quota_markers.sql added the 114th:
+    // over_quota_markers.)
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        113,
+        114,
         "table surface drifted"
     );
     assert_eq!(
@@ -417,10 +418,12 @@ fn init_sql_creates_complete_schema_surface() {
         // payments-by-payable, payments-by-tenant), on top of the previously
         // pinned 155; plus the 2 partial scope indexes from
         // `20260921_tax_rate_scoping.sql` (location, entity — both partial, so
-        // neither indexes the constant NULL that every pre-scoping row carries).
+        // neither indexes the constant NULL that every pre-scoping row carries),
+        // plus the 3 over_quota_markers indexes (dimension, resource, tenant)
+        // from 20260922_over_quota_markers.sql.
         // (The table's UNIQUE constraint is NOT counted: SQLite names that
         // index `sqlite_autoindex_*` and the query excludes that prefix.)
-        166,
+        169,
         "index surface drifted"
     );
     assert_eq!(
@@ -564,6 +567,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260919_regional_configuration.sql".to_string(),
             "20260920_audit_retention.sql".to_string(),
             "20260921_tax_rate_scoping.sql".to_string(),
+            "20260922_over_quota_markers.sql".to_string(),
         ]
     );
 
@@ -586,14 +590,16 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run (113 tables = the
-    // 111 pinned before 20260918, plus payables and payable_payments).
+    // Schema surface is unchanged after the no-op re-run (114 tables: the
+    // 111 pinned before 20260918, plus payables and payable_payments from
+    // 20260918, plus over_quota_markers from 20260922 - recorded once,
+    // idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        113,
+        114,
         "table surface must be unchanged after upgrade"
     );
 }
