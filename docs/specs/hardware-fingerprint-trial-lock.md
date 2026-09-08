@@ -13,7 +13,7 @@
 > anti-abuse mechanism (one trial per physical device) still applies to the
 > segmented trials to prevent reset abuse; the expiry/lock wording should be
 > read against the trial types in `subscription-tiers.md` §4 rather than a
-> single 90-day window. Tracked by `TODO.md` C2.1.
+> single 90-day window. Tracked by `docs/plans/todo.md` C2.1.
 
 ---
 

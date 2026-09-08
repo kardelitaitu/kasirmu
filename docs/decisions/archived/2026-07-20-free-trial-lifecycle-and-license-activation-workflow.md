@@ -21,7 +21,7 @@ status: Re-scoped — superseded by subscription-tiers.md §4 (FINAL, approved 2
 > sales history), and paid trials are **segmented by signup vertical** —
 > 14-day Plus trial for general signups, 14-day Pro trial for
 > restaurant/cafe signups, 30-day Pro trial for enterprise referrals.
-> `TODO.md` C2.1 tracked the implementation (license-server `trial_vertical`
+> `docs/plans/todo.md` C2.1 tracked the implementation (license-server `trial_vertical`
 > field + segmented minting, shipped 2026-08-18).
 >
 > **Deviation 1 (shipped 2026-08-18, then SUPERSEDED):** an earlier version

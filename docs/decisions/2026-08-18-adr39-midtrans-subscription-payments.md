@@ -2,13 +2,13 @@
 num: 39
 area: subscription
 title: ADR #39: Midtrans QRIS Subscription Payments (Phase 2)
-status: Approved — implementation tracked in `TODO.md` C3.1
+status: Implemented (2026-08-18) — `docs/plans/todo.md` C3.1; Phase C complete (C0-C4.3 shipped)
 ---
 # ADR #39: Midtrans QRIS Subscription Payments (Phase 2)
 
 Date: 2026-08-18
 
-Status: Approved — implementation tracked in `TODO.md` C3.1
+Status: Implemented (2026-08-18) — `docs/plans/todo.md` C3.1; Phase C complete (C0-C4.3 shipped)
 
 ## Context
 
@@ -162,7 +162,7 @@ State of the codebase:
 - [x] D4 renewal handling — recurring charges refresh the same key (keyed by `subscription_id`)
 - [x] Tests — `go test ./... -run TestMidtrans` (mint, signature 401, replay dedup, renewal, failed-charge grace, amount cross-check, snap token) + website routing tests; full Go/website/build gates green
 
-Tracked in `TODO.md` C3.1 (shipped 2026-08-18).
+Tracked in `docs/plans/todo.md` C3.1 (shipped 2026-08-18).
 
 ## Implementation Deviations (shipped 2026-08-18, verified against the code)
 
