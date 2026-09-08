@@ -62,6 +62,10 @@ fn role_dto_debug() {
         name: "Admin".into(),
         description: "Full access".into(),
         permissions: vec![],
+        // preset-guard fields (7948344e): a preset-owned builtin row with
+        // no references — the common default shape.
+        is_builtin: true,
+        reference_count: 0,
     };
     let d = format!("{dto:?}");
     assert!(d.contains("Admin"));
@@ -74,6 +78,8 @@ fn role_dto_serialize() {
         name: "Viewer".into(),
         description: String::new(),
         permissions: vec![],
+        is_builtin: false,
+        reference_count: 0,
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["name"], "Viewer");
