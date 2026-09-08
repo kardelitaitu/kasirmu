@@ -296,3 +296,13 @@ role-holders-dims-workspaces = { $count ->
    *[other] { $count } workspaces
   }
 role-holders-dims-both-lists = { $branches } branches, { $workspaces } workspaces
+
+# ── Impersonation (operator:impersonate) ───────────────────────────
+staff-impersonate-action = Impersonate
+staff-impersonate-aria =
+    .aria-label = Impersonate { $name }
+staff-impersonating-banner = Impersonating { $name }
+staff-impersonating-stop = Stop
+staff-impersonating-stop-aria = Stop impersonation
+staff-impersonate-started = Now impersonating { $name }
+staff-impersonate-failed = Could not start impersonation

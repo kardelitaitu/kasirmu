@@ -528,6 +528,7 @@ import {
   updateWorkspaceInstanceScoped,
   archiveWorkspaceInstanceScoped,
 } from '@/api/workspaces';
+import { impersonateUserScoped } from '@/api/staff';
 
 describe('workspaces.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
@@ -604,5 +605,34 @@ describe('workspaces.ts IPC contract', () => {
   it('propagates backend errors', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('conflict'));
     await expect(listWorkspacesScoped('tok')).rejects.toThrow('conflict');
+  });
+});
+
+describe('staff.ts IPC contract', () => {
+  beforeEach(() => mockInvoke.mockReset());
+
+  it('impersonateUserScoped invokes "impersonate_user_scoped" with sessionToken + targetUserId', async () => {
+    mockInvoke.mockResolvedValue({
+      session_token: 'tok-imp',
+      context: {
+        userId: 'u1',
+        roleId: 'role-owner',
+        storeId: 'store-1',
+        instanceId: 'inst-1',
+        typeKey: 'organization',
+        terminalId: 'term-1',
+      },
+    });
+    const res = await impersonateUserScoped('tok', 'u1');
+    expect(mockInvoke).toHaveBeenCalledWith('impersonate_user_scoped', {
+      sessionToken: 'tok',
+      targetUserId: 'u1',
+    });
+    expect(res.session_token).toBe('tok-imp');
+  });
+
+  it('propagates backend errors', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('denied'));
+    await expect(impersonateUserScoped('tok', 'u1')).rejects.toThrow('denied');
   });
 });

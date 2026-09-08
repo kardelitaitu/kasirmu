@@ -13,6 +13,8 @@ import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { ZoomProvider } from '@/contexts/ZoomContext';
 import { HardwareAccelProvider } from '@/contexts/HardwareAccelContext';
+import { ImpersonationProvider } from '@/contexts/ImpersonationContext';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -68,7 +70,10 @@ export function AppProviders({ children }: AppProvidersProps) {
                 <SubscriptionProvider>
                   <ZoomProvider>
                     <HardwareAccelProvider>
-                      {children}
+                      <ImpersonationProvider>
+                        <ImpersonationBanner />
+                        {children}
+                      </ImpersonationProvider>
                     </HardwareAccelProvider>
                   </ZoomProvider>
                 </SubscriptionProvider>

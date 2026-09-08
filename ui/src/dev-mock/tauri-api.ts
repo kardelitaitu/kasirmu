@@ -1983,6 +1983,21 @@ const handlers: Record<string, (args: unknown) => unknown> = {
 
   'destroy_session': () => null,
 
+  'impersonate_user_scoped': (args) => {
+    const a = args as { sessionToken: string; targetUserId: string };
+    return {
+      session_token: `mock-impersonation-${Date.now()}`,
+      context: {
+        userId: a.targetUserId,
+        roleId: 'role-owner',
+        storeId: 'store-1',
+        instanceId: 'inst-1',
+        typeKey: 'organization',
+        terminalId: 'term-1',
+      },
+    };
+  },
+
   'session_keepalive': () => ({ expires_at: Math.floor(Date.now() / 1000) + 86400 }),
 
   // ── EDC card-present terminal ──────────────────────────────────────
@@ -2060,7 +2075,17 @@ const handlers: Record<string, (args: unknown) => unknown> = {
 
   'get_license_status': () => ({ isActive: true, status: 'valid', tier: 'pro', payload: null, message: null }),
   'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
-  'test_auth_connection': () => ({ ok: true, status: 'Connected (12ms)', latencyMs: 12 }),
+  // Operational by default, matching a healthy server. `state` and `cause`
+  // ride alongside `ok` because they answer a different question: a degraded
+  // server sends ok:false AND state:'degraded'. Flip these two lines to
+  // exercise the amber pill without a broken database.
+  'test_auth_connection': () => ({
+    ok: true,
+    status: 'Connected (12ms)',
+    latencyMs: 12,
+    state: 'operational',
+    cause: null,
+  }),
   'get_machine_id': () => 'mock-machine-id-001',
   'get_hardware_fingerprint': () => 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   'get_device_id': () => 'mock-device-id-001',

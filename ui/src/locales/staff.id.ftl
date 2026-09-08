@@ -317,3 +317,13 @@ role-holders-dims-workspaces = { $count ->
    *[other] { $count } workspace
   }
 role-holders-dims-both-lists = { $branches } cabang, { $workspaces } workspace
+
+# ── Impersonation (operator:impersonate) ───────────────────────────
+staff-impersonate-action = Impersonasi
+staff-impersonate-aria =
+    .aria-label = Impersonasi { $name }
+staff-impersonating-banner = Meniru { $name }
+staff-impersonating-stop = Berhenti
+staff-impersonating-stop-aria = Hentikan impersonasi
+staff-impersonate-started = Sekarang meniru { $name }
+staff-impersonate-failed = Tidak dapat memulai impersonasi

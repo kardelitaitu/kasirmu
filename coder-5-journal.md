@@ -709,6 +709,50 @@ journal from df10a65f2, so the record is not lost. Lesson: use `git commit -F
 <file>` with a real multi-line file for any multi-line message; never hand-escape
 \n inside -m.
 
+> RULE UPGRADE (2026-09-09) — the 006add29b lesson below was advisory and did NOT hold.
+> See the 97ece0dca correction beneath it: a second identical defect landed.
+> `git commit -F <file>` is now MANDATORY for every commit with a body, with a
+> cat-back confirmation step. The advisory wording is revoked.
+
+### RULE UPGRADE (2026-09-09): `git commit -F <file>` is MANDATORY for body commits
+
+A second malformed-body occurrence (97ece0dca, identical defect to 006add29b)
+shows the advisory wording in the 006add29b note did not hold. Effective
+immediately and recorded here so it survives the next compaction:
+
+- Any commit whose message carries a body (multi-line) MUST be written to a temp
+  file and committed with `git commit -F <file> -- <pathspec...>`.
+- After writing, `cat` the file back to yourself and confirm it contains real
+  newlines (separate lines, not inline escaped text) before committing.
+- A single-line subject with no body is the ONLY acceptable `git commit -m`
+  usage.
+- The body is NEVER passed through `-m` (inline string or JS template literal):
+  the shell mangles backticks and backslash escaping, which is exactly how both
+  defects happened. The file path is the only safe channel.
+
+### Malformed landing message on 97ece0dca (acknowledged, no rewrite)
+
+The body of commit 97ece0dca was committed with the entire body embedded in the
+subject line as literal backslash-n sequences — the same defect as 006add29b.
+Cause: my inline -m argument passed an escaped backslash-n instead of real
+newlines, so git received the escaped text rather than line breaks (verified via
+`cat -A`). The commit-msg gate validates only the subject prefix, so it passed.
+Per supervisor ruling, history on the shared branch is NOT rewritten. The intended
+body is restated here; the full design plan already lives in the S2 PLAN-FIRST
+section above (operator:impersonate registry + impersonation audit events), so the
+record is not lost. Intended body:
+
+    feat(core): add operator:impersonate permission and impersonation audit events
+
+    Add the operator:impersonate capability (support impersonation, no privilege
+    amplification: the produced session carries only the target's scope/grants and
+    the key is never propagated into the token) as the 84th registry key, classified
+    sensitive and bound to the ADMIN preset. Add the impersonate.start /
+    impersonate.stop security-event actions and constructors so the impersonation
+    audit trail is written and readable by list_security_events.
+
+    The impersonation command itself lands in a follow-up commit.
+
 ### migrations suite was RED - fixed
 
 My Slice C landing left `cargo test -p oz-core --lib migrations` at 26 passed /

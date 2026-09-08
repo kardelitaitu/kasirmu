@@ -533,6 +533,18 @@ export const destroySession = (sessionToken: string): Promise<void> =>
   loggedInvoke<void>('destroy_session', { sessionToken });
 
 /**
+ * Act as another user within the operator's authorized scope, for support
+ * (operator:impersonate). Returns a fresh session token scoped to the target
+ * user — the operator's own grants are NOT merged (no privilege amplification);
+ * the produced token carries only the target's scope/grants.
+ */
+export const impersonateUserScoped = (
+  sessionToken: string,
+  targetUserId: string,
+): Promise<CreateSessionResult> =>
+  loggedInvoke<CreateSessionResult>('impersonate_user_scoped', { sessionToken, targetUserId });
+
+/**
  * Heartbeat the active session (F-007: previously invoked directly from
  * `useSessionKeepalive`, bypassing the api layer).
  *

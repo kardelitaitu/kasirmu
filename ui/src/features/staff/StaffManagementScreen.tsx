@@ -6,6 +6,7 @@ import {
   createStaffScoped,
   updateStaffScoped,
   getStaffProfileScoped,
+  impersonateUserScoped,
   type StaffMemberDto,
   type RoleDto,
   type ProfileArgs,
@@ -16,6 +17,8 @@ import { listAllWorkspacesScoped, type WorkspaceTypeDto } from '@/api/workspaces
 import { listLocationsScoped, type LocationProfile } from '@/api/locations';
 import { listLegalEntitiesScoped, type LegalEntity } from '@/api/legalEntities';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { parseMinorUnits } from '@/types/domain';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -28,6 +31,7 @@ import { SettingsPopup, requiredLocalized } from '@/frontend/shared';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { RoleIcon } from '@/components/RoleIcon';
 import { useToast } from '@/frontend/shared/Toast';
+import { hasGrantedPermission } from '@/platform/ui/page-registry';
 import { EmptyState } from '@/frontend/shared';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import SettingsSelect from '@/features/settings/SettingsSelect';
@@ -258,7 +262,10 @@ export default function StaffManagementScreen() {
   const { caps } = useSubscription();
   const atProStaffCap = caps?.tier === 'pro' && (caps.staffCount ?? 0) >= 16;
   const { sessionToken } = useWorkspace();
+  const { session } = useAuth();
   const { addToast } = useToast();
+  const { start: startImpersonation } = useImpersonation();
+  const canImpersonate = hasGrantedPermission(session?.permissions, 'operator:impersonate');
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   const [allWorkspaces, setAllWorkspaces] = useState<WorkspaceTypeDto[]>([]);
@@ -621,6 +628,24 @@ export default function StaffManagementScreen() {
     }
   }, [performActivate]);
 
+  // ── Impersonation (operator:impersonate) ────────────────────────
+  const handleImpersonate = useCallback(async (member: StaffMemberDto) => {
+    if (!sessionToken) {
+      addToast({ message: l10n.getString('staff-impersonate-failed'), type: 'error' });
+      return;
+    }
+    try {
+      const result = await impersonateUserScoped(sessionToken, member.id);
+      startImpersonation(result.session_token, member.id, member.display_name);
+      addToast({
+        type: 'success',
+        message: l10n.getString('staff-impersonate-started', { name: member.display_name }),
+      });
+    } catch {
+      addToast({ message: l10n.getString('staff-impersonate-failed'), type: 'error' });
+    }
+  }, [sessionToken, addToast, l10n, startImpersonation]);
+
   const confirmDeactivate = useCallback(async () => {
     if (!confirmTarget) return;
     setDeactivating(true);
@@ -833,6 +858,17 @@ export default function StaffManagementScreen() {
                         </Localized>
                       </button>
                     </Localized>
+                    {canImpersonate && (
+                      <Localized id="staff-impersonate-aria" attrs={{ "aria-label": true }} vars={{ name: member.display_name }}>
+                        <button
+                          type="button"
+                          className="staff-mgmt-action-btn"
+                          onClick={() => handleImpersonate(member)}
+                        >
+                          <Localized id="staff-impersonate-action"><span>Impersonate</span></Localized>
+                        </button>
+                      </Localized>
+                    )}
                     </div>
                   </td>
                 </tr>
