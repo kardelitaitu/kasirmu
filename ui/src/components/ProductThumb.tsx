@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { convertFileSrc } from '@/api/tauri';
+import { getAppCacheDir } from '@/api/cache';
 
 // ── Cache-dir resolution (lazy, once) ───────────────────────────────
 
@@ -22,19 +23,10 @@ async function resolveCacheDir(): Promise<string | null> {
   if (_cacheDir !== null) return _cacheDir;
   if (_cacheDirPromise !== null) return _cacheDirPromise;
 
-  _cacheDirPromise = (async () => {
-    try {
-      // Dynamic import avoids bundling the full path module in dev-mock.
-      const pathModule = await import('@tauri-apps/api/path');
-      const dir = await pathModule.appCacheDir();
-      _cacheDir = dir;
-      return dir;
-    } catch {
-      // Not in a Tauri webview (dev-mock, test) — cache dir is unavailable.
-      _cacheDir = null;
-      return null;
-    }
-  })();
+  _cacheDirPromise = getAppCacheDir().then((dir) => {
+    _cacheDir = dir;
+    return dir;
+  });
 
   return _cacheDirPromise;
 }

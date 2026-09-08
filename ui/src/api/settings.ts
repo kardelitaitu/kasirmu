@@ -1,6 +1,7 @@
 // ── Settings: Store, Receipt, Setup Wizard, Feature Flags ──────────
 
 import { loggedInvoke } from '@/utils/logged-invoke';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
 // ── Receipt Settings ─────────────────────────────────────────────
 
@@ -261,4 +262,35 @@ export const setSettingsScoped = (
     return Promise.reject(new Error('No session token'));
   }
   return loggedInvoke<void>('set_settings_scoped', { sessionToken, entries });
+};
+
+// ── Settings events ──────────────────────────────────────────────
+
+/** Payload broadcast on the `settings_updated` event when settings change. */
+export interface SettingsUpdatedPayload {
+  changed_keys: string[];
+  terminal_id: string;
+}
+
+/**
+ * Subscribe to `settings_updated` broadcasts (fired when any terminal
+ * changes settings). Returns an unsubscribe function.
+ *
+ * Golden rule 5: the event wiring lives here, not in components/contexts.
+ * `@tauri-apps/api/event` is loaded via dynamic import to preserve the
+ * browser-dev fallback exactly as the previous in-component wiring did:
+ * outside a Tauri webview the import fails and this resolves to a no-op
+ * unlisten (silent). A `listen()` rejection is returned unawaited, so it
+ * still surfaces to callers for logging.
+ */
+export const onSettingsUpdated = async (
+  handler: (payload: SettingsUpdatedPayload) => void,
+): Promise<UnlistenFn> => {
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<SettingsUpdatedPayload>('settings_updated', (event) => handler(event.payload));
+  } catch {
+    // @tauri-apps/api/event not available — running outside Tauri (e.g. browser dev).
+    return async () => {};
+  }
 };

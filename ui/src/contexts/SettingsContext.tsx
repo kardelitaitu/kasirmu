@@ -13,6 +13,7 @@ import {
   getReceiptSettingsScoped,
   getStoreSettingsScoped,
   getUserPreferencesScoped,
+  onSettingsUpdated,
   type ReceiptSettingsDto,
   type StoreSettingsDto,
 } from '@/api/settings';
@@ -479,36 +480,28 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
-    // Dynamic import gracefully handles non-Tauri environments (browser dev).
-    import('@tauri-apps/api/event')
-      .then(({ listen }) => {
-        listen<{ changed_keys: string[]; terminal_id: string }>(
-          'settings_updated',
-          (event) => {
-            const keys = event.payload.changed_keys;
-            const origin = event.payload.terminal_id;
-            // Skip our own change — the save handler already refetched via
-            // markSettingsUpdated (see the identity effect above).
-            const identity = localIdentityRef.current;
-            const isOwn =
-              origin !== undefined &&
-              (identity.ids.has(origin) ||
-                (origin === 'unknown' && !identity.hasRegisteredTerminal));
-            if (isOwn) return;
-            if (keys && keys.length > 0) {
-              markSettingsUpdated(keys);
-            }
-          },
-        )
-          .then((fn) => {
-            unlisten = fn;
-          })
-          .catch((err) => {
-            console.warn('Failed to register settings_updated listener:', err);
-          });
+    // onSettingsUpdated (ui/src/api/settings.ts) owns the dynamic import of
+    // the Tauri event API and degrades silently outside Tauri (browser dev).
+    onSettingsUpdated((payload) => {
+      const keys = payload.changed_keys;
+      const origin = payload.terminal_id;
+      // Skip our own change — the save handler already refetched via
+      // markSettingsUpdated (see the identity effect above).
+      const identity = localIdentityRef.current;
+      const isOwn =
+        origin !== undefined &&
+        (identity.ids.has(origin) ||
+          (origin === 'unknown' && !identity.hasRegisteredTerminal));
+      if (isOwn) return;
+      if (keys && keys.length > 0) {
+        markSettingsUpdated(keys);
+      }
+    })
+      .then((fn) => {
+        unlisten = fn;
       })
-      .catch(() => {
-        // @tauri-apps/api/event not available — running outside Tauri (e.g. browser dev)
+      .catch((err) => {
+        console.warn('Failed to register settings_updated listener:', err);
       });
 
     return () => {
