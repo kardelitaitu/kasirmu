@@ -215,6 +215,39 @@ Before starting any verification:
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
 | `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
 | `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
+| `python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py` | Reconcile every bolded **X → Y** nav path in `website/src/content/docs/{en,id}` against the nav registry |
+
+> **`.agents/skills/docs-auditor/scripts/check-nav-paths.py`** exists because a wrong menu
+> pointer is invisible to the other checks: every word in the path is real, and only their
+> *containment* is false. `website/src/content/docs/en/user-roles.md` said **Settings →
+> Staff**, but `ui/src/features/staff/register.tsx` registers that item with
+> `section: 'tools'`, and `ui/src/features/settings/` contains no reference to the staff
+> route at all. Two design rules came out of building it:
+> * **Widen the model before blaming the doc.** Version one flagged
+>   `**Settings → License**`, which is *correct* — License is a node at
+>   `ui/src/features/settings/SettingsNavTree.tsx:92`, not a `registerNavItem` entry — and it
+>   flagged all four Indonesian paths because it resolved labels from `shared.ftl` alone,
+>   missing per-domain bundles such as `settings.id.ftl` (`settings-nav-license = Lisensi`).
+>   Both were fixed in the checker and the docs were left alone: a nav checker that misfires
+>   on legitimate children is worse than none, because the reader learns to ignore it.
+> * **A self-test must not edit the tree.** The first `--self-test` mutated a tracked
+>   customer doc to prove it could fail, then died on a Python error (a missing `%`,
+>   reported as *`str` is not callable*) *between* that mutation and its restore — leaving a
+>   page that had just been repaired broken again on disk, caught only because `git status`
+>   was checked afterwards (`git checkout --` reverted it). `check_docs()` is now a pure
+>   function over `(name, text)` pairs and the self-test feeds synthetic strings, so it
+>   cannot damage what it polices.
+>
+> Two near-misses worth keeping, because both are the shallow-probe family this skill already
+> warns about. A sweep that tested whether each of the repo's 116 stamps ends in `-->`
+> reported five broken plus a SKILL.md tail reading `)>`; all six are healthy long
+> multi-line stamps, and reading only line 1 of a wrapped comment invents corruption. And
+> the same nesting cuts the other way: **this file's own stamp contains a literal
+> `<!-- … -->` example**, so any parser closing at the first `-->` reads a truncated stamp —
+> 6111 characters instead of the whole block. It costs nothing today only because the
+> parseable fields (`date · auditor · status`) sit in the first ~150 characters. **Rule:
+> keep machine-read fields before any literal comment example in a stamp**, since a stamp
+> that documents pragma syntax is documented *by* that syntax.
 
 Use fast local search and file reads first. Run the narrowest relevant validation step before stamping.
 
