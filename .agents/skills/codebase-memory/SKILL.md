@@ -3,7 +3,7 @@ name: codebase-memory
 description: "Query the OZ-POS code knowledge graph from run_code via the codebase-memory-mcp server. Use for structural discovery instead of grep/read: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, blast radius, dead code, unused functions, high fan-in, high fan-out, refactor candidates, code quality audit, hot paths, Cypher query examples, edge types, graph query syntax, how to use search_graph."
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: NEW · every number, shape, error string and latency below was produced by executing the tool in this session against the live oz-pos graph — nothing here is copied from the upstream docs. Claims that could NOT be verified are labelled "not verified" and must not be relied on. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: NEW, then RE-MEASURED the same day after `index_repository` refreshed the graph (generation 2026-09-04T18:32Z → 2026-09-08T05:07Z). Every number, shape, error string and latency below was produced by executing the tool against the live oz-pos graph — nothing is copied from the upstream docs. The re-measurement is itself a lesson: 44,213 nodes became 47,026, a tld-7 hot path became tld-4, and an unlabeled-source Cypher that returned 42 rows on the old index returned 0 on the new one. Numbers in this file are dated, not permanent. -->
 
 # Codebase Memory — OZ-POS knowledge graph
 
@@ -36,12 +36,12 @@ faster grep is how you get confident wrong answers.
 |---|------|-----|
 | 1 | **Graph first, source second.** | AGENTS.md makes it a MUST FOLLOW; measured 33 ms vs 1.3 s for the grep-backed path. |
 | 2 | **Never conclude "does not exist" from a graph result.** | Every silent-failure mode below produces an empty or near-empty answer that looks like absence. |
-| 3 | **Always label the source node in Cypher.** | Unlabeled source: 42 rows where the truth is 22,831. |
-| 4 | **Check freshness before you act, not after.** | This repo's index ran 610 commits behind HEAD when measured. |
+| 3 | **Always label the source node in Cypher.** | Unlabeled source returns 0 rows where the truth is 24,664. |
+| 4 | **Check freshness before you act, not after.** | This repo's index sat 610 commits behind HEAD until it was refreshed on 08-09-26. |
 | 5 | **Read the `in`/`out` columns for fan-in/fan-out.** | `direction` is accepted by `search_graph` and does nothing. |
 | 6 | **Filter by `label` and `file_pattern` before quoting a count.** | Markdown headings, mock registries and generated schemas are all nodes. |
 | 7 | **Never re-index, delete a project, or ingest traces without an explicit order.** | Those mutate the artifact every other agent on this branch reads. |
-| 8 | **Quote the index generation alongside any number you report.** | "44,213 nodes" is meaningless without "as of 2026-09-04T18:32Z". |
+| 8 | **Quote the index generation alongside any number you report.** | "47,026 nodes" is meaningless without "as of 2026-09-08T05:07Z". |
 
 ---
 
@@ -97,16 +97,18 @@ const r = await tools.mcp__cbm__search_graph({
 | Project name to pass | `oz-pos` |
 | Root path | `C:/dev/ozpos/0.0.35/oz-pos` |
 | Indexed branch | `0.0.37` |
-| Nodes / edges | 44,213 / 226,232 |
-| Node labels / edge types | 19 / 26 |
-| File nodes | 2,797 — TypeScript 976, Rust 924, CSS 125, Go 72, TOML 46, Python 46, Bash 43, SQL 29, YAML 24, JavaScript 8 |
-| Index generation | 2026-09-04T18:32:05Z, mode `full`, `recording_status: complete` |
-| Coverage flags | 35 `parse_partial` files, 0 `skipped`, 176 files + 18 dirs excluded by design |
+| Nodes / edges | 47,026 / 238,705 |
+| Node labels / edge types | 19 / 26 (top edges: USAGE 99,372 · CALLS 56,000 · DEFINES 44,191 · DECORATES 11,192 · IMPORTS 8,159) |
+| File nodes | 3,000 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 |
+| Index generation | 2026-09-08T05:07:39Z (= 12:07 local), mode `full`, `recording_status: complete` |
+| Coverage flags | 44 `parse_partial` files, 0 `skipped`, 174 files + 20 dirs excluded by design |
 | Exclusions | `.cbmignore` (build artifacts, node_modules, images, logs) — it deliberately un-excludes `scripts/`, `docs/`, `audit/` so prose and shell are searchable |
 
-**The index is 610 commits behind HEAD** (HEAD is dated 08-09-26; generation is
-04-09-26). That is not a defect, it is the normal state of a long-lived release
-branch, and it is why the next section is mandatory rather than advisory.
+**Expect the index to lag, by a lot.** Before it was refreshed on 08-09-26 this graph
+was 610 commits behind HEAD (generation 04-09-26). After the refresh it is already 2
+commits behind again — HEAD moves every few minutes on this branch and 30+ files are
+normally dirty. A lagging index is the normal state here, not an error state, which is
+why the next section is mandatory rather than advisory.
 
 ---
 
@@ -134,17 +136,26 @@ Real response fields per path: `status` (`no_recorded_issue` | `partial`),
 
 **Read the freshness, not just the status.** `no_recorded_issue` means "the indexer
 saw no problem", not "this file still looks like that". When freshness says
-`metadata_changed`, the graph describes the 04-09-26 tree — for anything you are about
-to *modify*, read the source.
+`metadata_changed`, the graph may describe an older tree — for anything you are about to
+*modify*, read the source.
 
-### What staleness looks like in practice
+**But do not chase a clean freshness.** `metadata_changed` +
+`recommended_action: read_source_and_reindex` was still returned one minute after a
+successful re-index, because the working tree has ~30 uncommitted files. On a dirty tree
+this field never clears, so it is a hint to read the source, not a to-do to re-index.
+The third value seen is `not_tracked` — the file is not in the index at all.
 
-Measured while writing this file: the graph places `NodeTopologyEditor.tsx` and
-`topologyContract.ts` under `features/stores/`. Neither path exists on disk any more —
-that directory is `features/locations/` now, and `git log --diff-filter=D` shows the
-deletion. Every field of the response was internally consistent and structurally valid:
-right file name, right symbol, plausible qualified name, **wrong directory**. Nothing
-errors, and nothing warns.
+### What staleness looks like in practice (before / after)
+
+On the 04-09-26 index the graph placed `NodeTopologyEditor.tsx` and
+`topologyContract.ts` under `features/stores/`. Neither path existed on disk — the
+directory had been renamed to `features/locations/`. Every field of the response was
+internally consistent and structurally valid: right file name, right symbol, plausible
+qualified name, **wrong directory**. Nothing errored, and nothing warned.
+
+After the 08-09-26 re-index the same query returns `features/locations/`, and
+`file_pattern: 'features/stores'` returns `total: 0`. Same tool, same arguments, two
+different answers four days apart.
 
 The rule that follows: a graph hit gives you a *symbol to go find*, not a *location to
 cite*. Confirm the path with `glob` or `read` before it enters a report, a commit
@@ -158,7 +169,7 @@ message, or a refactor plan.
 |---|---|---|
 | `list_projects` | — | — |
 | `index_status` | `project` | `verbose` |
-| `index_repository` | `repo_path` | `mode`, `name`, `target_projects`, `persistence` — **not executed here**, see "Re-indexing" |
+| `index_repository` | `repo_path` | `mode`, `name`, `target_projects`, `persistence` — **its success response is unreliable, see "Re-indexing"** |
 | `delete_project` | `project` | destructive — do not call without an explicit order |
 | `search_graph` | `project` | `name_pattern`, `qn_pattern`, `query`, `semantic_query` (array), `label`, `file_pattern`, `relationship`, `min_degree`, `max_degree`, `include_connected`, `exclude_entry_points`, `limit`, `offset`, `format`, `fields`, `detail` |
 | `search_code` | `pattern`, `project` | `mode` (compact/full/files), `regex`, `file_pattern`, `path_filter`, `context`, `limit` |
@@ -182,12 +193,12 @@ for. (`languages`, `packages` and `entry_points` were never requested on their o
 | `structure` | **A subset of `overview`** (node-label counts only, 345 chars). Redundant. |
 | `dependencies` | The 26 edge types with counts — same block `overview` already prints. |
 | `hotspots` | Top 10 by fan-in. Cheap and genuinely useful. |
-| `clusters` | 12 Leiden communities over CALLS edges — the real seams, which cut across the folder layout. |
-| `boundaries` | 10 cross-package call counts (`sync → oz-core` 340, `oz-payment → src` 126). Small and useful. |
+| `clusters` | 12 Leiden communities over CALLS edges — the real seams, which cut across the folder layout. Membership shifts between index generations. |
+| `boundaries` | 10 cross-package call counts (`sync → oz-core` 346, `src → public` 89). Small and useful. |
 | `layers` | 37 rows; every script lands as `internal` with fan-in 0. Low signal. |
 | `routes` | 20 rows, several of them false positives (see the noise section). |
-| `cycles` | 14 circular CALLS groups over 44,439 edges, in 99 ms. Opt-in only — never implied by `all` or `overview`. |
-| `file_tree` | **1,075 entries / 45.6 KB unscoped.** Scope it with `path` (18 entries for `modules/sales`) or do not ask for it. |
+| `cycles` | 14 circular CALLS groups over 47,467 edges, in 113 ms. Opt-in only — never implied by `all` or `overview`. |
+| `file_tree` | **1,195 entries / 51.8 KB unscoped** (1,075 / 45.6 KB on the prior index). Scope it with `path` — 18 entries for `modules/sales` — or do not ask for it. |
 | `all` | 53 KB. It includes `file_tree`. Prefer named aspects. |
 
 ---
@@ -266,7 +277,7 @@ are how you detect truncation — there is no `offset`, raise `limit` or narrow 
 await tools.mcp__cbm__detect_changes({ project: 'oz-pos', format: 'json' });
 ```
 
-Measured here: `base: main`, `changed_files: 950` — because this branch is a long-lived
+Measured here: `base: main`, `changed_files: 951` — because this branch is a long-lived
 release branch, not a feature diff. `detect_changes` answers "what does this branch
 touch relative to main", which on `0.0.37` is far too wide to be a per-change impact
 set. For a single change, scope it yourself: `trace_path(direction: 'inbound')` on the
@@ -282,11 +293,12 @@ await tools.mcp__cbm__get_architecture({ project: 'oz-pos', aspects: ['cycles'] 
 ```
 
 `path` is real scoping: `modules/sales` returned 232 nodes / 582 edges against the
-44,213-node root, plus its own hotspots. `clusters` returned 12 communities (top:
-`apps` 299 members cohesion 0.81; `ui` 241 at 0.95 around `loggedInvoke`). `cycles`
-returned 14 circular CALLS groups over 44,439 scanned edges. Measured
-`hotspots` fan-in: `Store.new` 1271, `QrisPaymentProcessor.clone` 831,
-`PluginDb.execute` 641, `loggedInvoke` 434.
+47,026-node root, plus its own hotspots. `clusters` returned 12 communities (top: 385
+members at cohesion 0.7956 around `resolve_session`/`open_store`). `cycles` returned 14
+circular CALLS groups over 47,467 scanned edges. Measured `hotspots` fan-in: `Store.new`
+1369, `license-server.lock` 1266, `QrisPaymentProcessor.clone` 870, `PluginDb.execute`
+724. Every one of those numbers moved when the index was refreshed — re-measure before
+quoting.
 
 ### 6. Hot-path and complexity sweeps
 
@@ -297,28 +309,34 @@ await tools.mcp__cbm__query_graph({
 });
 ```
 
-Returned `create_product_variant_scoped` and `update_product_variant_scoped` at tld 7.
-The sibling properties were all returned in one sweep — `complexity`, `cognitive`,
-`loop_depth`, `linear_scan_in_loop`, `alloc_in_loop`, `param_count`, `max_access_depth`.
-Top hit: `scan_file` in `scripts/verify-no-hardcoded-money-format.py` (ls=6, alloc=6,
-cx=19). Two boolean flags are worth querying directly: `f.recursive = true` → 69
-functions, and `f.unguarded_recursion = true` → exactly 2, one of them `visit` in
-`ui/src/features/locations/topologyContract.ts` — a **closure inside a function**, not a
-top-level routine. The graph indexes nested arrow functions, so a "hot path" hit may be
-ten lines inside a bigger routine; read the snippet before writing it up.
+Top of that sweep is tld 4 (`memo_tests.seed_terminal` and three siblings) — on the
+previous index generation the same query topped out at tld 7 with
+`create_product_variant_scoped`. **Interprocedural propagation is recomputed per index,
+so a ranked complexity list is only valid for the generation that produced it.**
+
+The sibling properties return in one sweep — `complexity`, `cognitive`, `loop_depth`,
+`linear_scan_in_loop`, `alloc_in_loop`, `param_count`, `max_access_depth`. The
+`linear_scan_in_loop` ranking is the one that found something real:
+`validateTopologyGraph` in `ui/src/features/locations/topologyContract.ts` at ls=9,
+alloc=21, cx=54 — a nested scan inside a loop, which `loop_depth` alone does not see.
+Two boolean flags: `f.recursive = true` → 76 functions, `f.unguarded_recursion = true`
+→ exactly 2, one of them `visit` in the same file — a **closure inside a function**, not
+a top-level routine. The graph indexes nested arrow functions, so a "hot path" hit may
+be ten lines inside a bigger routine; read the snippet before writing it up.
 
 ---
 
 ## Cypher: the trap that will burn you first
 
 **A relationship pattern needs a label on the SOURCE node, or it silently returns the
-wrong answer.** Measured on this graph, which holds 52,258 CALLS edges:
+wrong answer.** Measured on this graph, which holds 56,000 CALLS edges:
 
 | Pattern | Result |
 |---|---|
-| `MATCH (a:Function)-[r:CALLS]->(b) RETURN count(r)` | 45,418 |
-| `MATCH (a:Function)-[r:CALLS]->(b:Function) RETURN count(r)` | 22,831 |
-| `MATCH (a)-[r:CALLS]->(b:Function) RETURN count(r)` | **42** |
+| `MATCH (a:Function)-[r:CALLS]->(b) RETURN count(r)` | 48,575 |
+| `MATCH (a:Function)-[r:CALLS]->(b:Function) RETURN count(r)` | 24,664 |
+| `MATCH (a)-[r:CALLS]->(b:Function) RETURN count(r)` | **0 rows** (42 on the previous index) |
+| `MATCH ()-[r:CALLS]->() RETURN count(r)` — anonymous on both ends | **0 rows**, against a true 56,000 |
 | `MATCH (a)-[r:CALLS]->(b:Function) RETURN a.name, b.name LIMIT 3` | **0 rows** |
 | `MATCH (a)-[r:HTTP_CALLS]->(b) RETURN a.name, b.name LIMIT 3` | **0 rows** |
 | `MATCH (a:Function)-[r:HTTP_CALLS]->(b) RETURN a.name, b.name LIMIT 3` | 4 rows (`resolve → https://api.ipify.org`, `rate_limiter_allows_within_limit → /api/sync/push`) |
@@ -342,7 +360,7 @@ Other measured Cypher behavior:
 - Malformed Cypher errors properly (`expected token type 67, got 85 at pos 9`).
 - Hard 100k-row ceiling: put `LIMIT` in the query. `max_rows` caps the returned page.
 - `graph: 'missed'` queries the miss graph: `MATCH (f:File) RETURN f.file_path, f.kind`
-  → the 35 `parse_partial` files, same list `index_status` reports.
+  → the 44 `parse_partial` files, same list `index_status` reports.
 - Edge properties exist per type — CALLS carries `args`, `callee`, `candidates`,
   `confidence`, `line`, `strategy`, `url_path`, `via`. `Route` nodes carry `method`,
   `broker`, `source`.
@@ -360,7 +378,7 @@ This is the second trap. `run_code` will not complain, and the tool will not com
 |---|---|
 | `search_graph({ ..., bogus_param: 123 })` | Succeeds, param dropped |
 | `search_graph({ ..., direction: 'outbound' })` | Byte-identical to omitting it — **`direction` does nothing on `search_graph`** |
-| `search_graph({ ..., exclude_entry_points: true })` with `max_degree: 0` | `total: 356` either way — no effect in the case measured |
+| `search_graph({ ..., exclude_entry_points: true })` with `max_degree: 0` | `total: 364` either way — no effect in the case measured |
 | `trace_path({ ..., include_tests: false })` | Still returns test callers (`kds_tests` first) |
 | `trace_path({ ..., file_path: '...' })` | Ignored; ambiguity response unchanged |
 | `trace_path({ ..., mode: 'nonsense' })` | Echoes `mode: nonsense`, behaves like `calls` — **no validation** |
@@ -371,7 +389,7 @@ Consequences worth stating plainly: the widely-copied fan-in/fan-out recipe
 `search_graph(min_degree: 10, relationship: 'CALLS', direction: 'outbound')` does not
 measure fan-out. `min_degree`/`max_degree` match when **either** the `in` or the `out`
 column crosses the threshold, and `relationship` only selects which edge family those
-degrees count over (CALLS → total 32 vs 39 for the default family). For a true
+degrees count over (CALLS → total 31 vs 39 for the default family). For a true
 direction-specific number, use `trace_path` or a labeled Cypher count.
 
 Also: `trace_path` does **not** take `name` — the parameter is `function_name`
@@ -381,7 +399,7 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
 
 ## Noise you must filter before believing a result
 
-- **Markdown headings are graph nodes.** `name_pattern: '.*Money.*'` returned 144
+- **Markdown headings are graph nodes.** `name_pattern: '.*Money.*'` returned 149
   matches whose top hits were `Section` nodes in `docs/records/JOURNAL.md`. Pass
   `label` (`Function`, `Struct`, `Method`, ...) or you will audit a changelog.
 - **`name_pattern` is a substring match, not anchored.** `KdsOrder` already matches
@@ -392,7 +410,7 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
   returns `total: 0` plus a "check spelling" hint, no parse error.
 - **`ui/src/dev-mock/tauri-api.ts` dominates any zero-degree sweep.** Its mock keys are
   indexed as `Function` nodes named like `'create_kds_order_from_sale'` with in=0 and
-  out=0, so `max_degree: 0` reports 356 "dead" functions that are mostly mock registry
+  out=0, so `max_degree: 0` reports 364 "dead" functions that are mostly mock registry
   strings. Filter by `file_pattern` and by `is_test` before calling anything dead —
   and treat a dead-code claim as needing three greps, per AGENTS.md, because features
   register lazily.
@@ -405,15 +423,18 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
   `path_filter` on `search_code` returned everything (412 results, unfiltered). Lookahead
   is unsupported in one and ignored in the other. A filter that silently matches nothing
   is indistinguishable from an empty result set — confirm the `total` actually moved.
-- **`aspects: ['routes']` over-reports.** Measured output includes `/dev/ttyUSB0`,
-  `/dev/rfcomm0`, `/tmp/media`, `/nonexistent/plugin/dir` and a SQL index comment
-  parsed as a path. Route nodes are a text-mining artifact as often as a real endpoint —
-  confirm against `crates/oz-api/src/routes/` or the Tauri command registry.
+- **`aspects: ['routes']` over-reports, and its list is not stable.** On the 04-09-26
+  index the 20 rows included `/dev/ttyUSB0`, `/dev/rfcomm0`, `/tmp/media`,
+  `/nonexistent/plugin/dir` and a SQL index comment parsed as a path. On the 08-09-26
+  index the same call returns 20 mostly-real `/api/v1/...` rows plus `/freeze/i` and
+  `/unfreeze/i` — regex literals from test code. Route nodes are a text-mining artifact
+  as often as a real endpoint; confirm against `crates/oz-api/src/routes/` or the Tauri
+  command registry, and never diff two route lists across index generations.
 - **`aspects: ['layers']` classifies scripts as `internal` with fan-in 0**, which is
   true but useless. Use `clusters` for the real seams.
-- **Test code is woven into traces.** `create_kds_order` inbound returned 40 callers,
-  the first 20+ of them tests. `is_test` is a queryable property on Function nodes
-  (8,258 true here) — filter it in Cypher, since `include_tests` does nothing.
+- **Test code is woven into traces.** `create_kds_order` inbound returned 52 callers
+  (40 on the previous index), and the first group is `kds_tests`. `is_test` is a queryable property on Function nodes
+  (8,661 true here) — filter it in Cypher, since `include_tests` does nothing.
 
 ---
 
@@ -421,13 +442,18 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
 
 | Call | Latency |
 |---|---|
-| `search_graph` (any mode, incl. semantic) | 33–54 ms |
-| `trace_path` (depth 3, 205 callers) | 38 ms |
-| `get_architecture` (`cycles`, whole graph) | 99 ms |
-| `detect_changes` (950 files) | 1.17 s |
-| `search_code` (grep-backed) | 0.63–1.29 s |
-| `list_projects` (first call in a session) | 1.03 s |
-| `query_graph` unindexed full-edge count | 2.41 s |
+Re-measured warm against the 47,026-node index:
+
+| Call | Latency |
+|---|---|
+| `search_graph` (name) | 26 ms |
+| `search_graph` (semantic) | 57 ms |
+| `trace_path` (depth 3, 219 callers) | 54 ms |
+| `get_architecture` (`cycles`, whole graph) | 113 ms |
+| `detect_changes` (951 files) | 1.35 s |
+| `search_code` (grep-backed) | 1.48 s |
+| `list_projects` / `index_status` | 0.5–1.0 s each |
+| `query_graph` full-edge count | 2.07 s |
 
 Graph tools are ~30–50× cheaper than the grep-backed ones; the exception is
 `query_graph` with an unbounded aggregation. Bound it with a label and a `LIMIT`.
@@ -437,14 +463,51 @@ Graph tools are ~30–50× cheaper than the grep-backed ones; the exception is
 ## Re-indexing, and what not to touch
 
 The index is a snapshot; when it is too stale to answer your question, say so and ask
-the user before re-indexing. `index_repository` is the only refresh path
-(`repo_path`, `mode`: `fast` | `moderate` | `full` | `cross-repo-intelligence`,
-optional `name`, `persistence`, `target_projects`). **Its runtime on this repo was not
-measured in this session** — do not quote a duration for it, and do not start one
-speculatively mid-task: it rewrites the shared artifact every other agent reads.
+the user before re-indexing — it rewrites the shared artifact every other agent on this
+branch reads.
 
-`delete_project` removes the index outright and `ingest_traces` writes runtime edges
-into it. Neither is a discovery tool; both need an explicit order.
+### `index_repository` lies about failing
+
+Run against this repo on 08-09-26 with `mode: 'full'`, then `'full'` again, then
+`'fast'`. All three returned the identical error at ~2.7 s:
+
+```text
+{"project":"oz-pos","status":"error","hint":"Pipeline failed. Check repo_path exists
+and contains source files. Try mode='fast' for a quicker diagnostic run."}
+```
+
+The database was rewritten anyway: `oz-pos.db` went from 136 MB / 44,213 nodes (Sep 5)
+to 144 MB / 47,026 nodes (Sep 8 12:07), and `check_index_coverage` now reports
+generation `2026-09-08T05:07:39Z`. **The MCP call reports the handshake, not the job** —
+the supervisor keeps the worker running after the tool returns.
+
+So:
+
+1. **Never trust the return value.** Confirm with `index_status` (nodes/edges) and
+   `check_index_coverage` → `indexed_at`. Those are the ground truth.
+2. **The hint is not a diagnosis.** It told me to "try `mode='fast'`" for a call that
+   had already passed `mode: 'fast'`. Content is not the variable either: an A/B in a
+   scratch repo made `nul`-vs-no-`nul` pass/fail one way and then the exact opposite way,
+   so treat the failure as nondeterministic contention (4 client processes were live;
+   the daemon caps `physical_job_limit` at 4) rather than a repo defect.
+3. **Watch the staging file** to see whether a run is actually in flight:
+   `~/.cache/codebase-memory-mcp/oz-pos.db.stage.*` grows while indexing and vanishes on
+   swap. `logs/cbm-daemon.log` records `tool=index_repository status=error` next to
+   `index.supervisor.reap outcome=clean exit_code=0` — the reap is the real signal.
+4. **Always pass `name: 'oz-pos'`.** Without it the project is keyed from the path
+   (`C-dev-...`-style, as the other indexed projects on this machine are), which leaves
+   you with a second full graph and every tool call still reading the stale one.
+5. **Budget minutes, not hours.** The swap landed within ~7 minutes of the first
+   attempt (and another agent was probing the same repo concurrently, so do not read
+   that as a clean timing measurement for one call). Four historical
+   `tool=index_repository status=ok` entries in the daemon log ran 1.4–5.3 s — those were
+   incremental passes over an already-indexed tree.
+
+`delete_project` removes an index outright (returns `status: deleted`, or
+`status: not_found` when the failed run never registered a project). `ingest_traces`
+writes runtime edges into the graph. Neither is a discovery tool; both need an explicit
+order. Clean up any probe project you create — this machine had 6 projects and 4 stale
+subtree indexes at one point during the diagnosis.
 
 ---
 
@@ -454,7 +517,8 @@ A child agent inherits the ability to call these tools but not your findings. Be
 delegating, run the graph calls yourself and hand over: the project name, the index
 generation, the exact qualified names, the file paths with their coverage status, and
 which claims are provisional. A child that has not called `check_index_coverage` will
-report a 04-09-26 graph as current truth.
+report whatever generation it happens to be reading as current truth — and on this repo
+the generation changed mid-session, invalidating numbers an hour old.
 
 ---
 
@@ -470,20 +534,31 @@ report a 04-09-26 graph as current truth.
 3. **Reporting fan-in from `min_degree`.** It matches either direction. Read the `in`
    and `out` columns, or count with a labeled Cypher query.
 4. **Quoting a dead-code count without filtering.** `max_degree: 0` on this repo returns
-   356 functions, many of them mock-registry strings in `ui/src/dev-mock/tauri-api.ts`.
+   364 functions, many of them mock-registry strings in `ui/src/dev-mock/tauri-api.ts`.
    AGENTS.md's three-grep rule still applies — features register lazily.
 5. **Citing a graph path as a location.** See the staleness example above; the directory
    moved and the graph did not notice.
-6. **Skipping `check_index_coverage` on the files you are about to edit.** 35 files here
+6. **Skipping `check_index_coverage` on the files you are about to edit.** 44 files here
    carry `parse_partial` ranges; one migration file has a 486-line hole. A symbol that
    "has no callers" inside such a range may simply not be in the graph.
-7. **Letting `file_tree` or `all` into context unscoped.** 45.6 KB and 53 KB respectively
-   on this repo. Scope with `path`, or ask for the two or three aspects you need.
+7. **Letting `file_tree` or `all` into context unscoped.** 51.8 KB and 59.3 KB
+   respectively on this repo. Scope with `path`, or ask for the two or three aspects you
+   need.
 8. **Re-indexing to "fix" a surprising result.** A surprising result is usually a query
    bug (items 1–3). Re-indexing is a shared-artifact write; ask first.
 9. **Assuming the Python form works here.** `import codebase_memory_mcp` is prime-agent
    only. From `run_code` it is `await tools.mcp__cbm__<tool>({...})`, always with
    `project`.
+10. **Believing `index_repository` when it says it failed.** All three attempts on
+    08-09-26 returned `status: error` at ~2.7 s and the index refreshed anyway. Confirm
+    with `index_status` + `check_index_coverage.indexed_at`, never with the return value.
+11. **Carrying a number forward from a previous generation.** `transitive_loop_depth`
+    topped out at 7 before the re-index and 4 after; the unlabeled-source Cypher went
+    42 → 0; `routes` swapped most of its 20 rows. Re-measure anything you quote.
+12. **Being surprised by `__file__` nodes.** File nodes are indexed as
+    `<qn-with-extension>.__file__` (e.g. `...topologyContract.ts.__file__`) alongside the
+    extension-less Module node `...topologyContract`. They carry in=0/out=0 and will pad
+    any name search you run without a `label` filter.
 
 ---
 
@@ -505,7 +580,8 @@ report a 04-09-26 graph as current truth.
 must exist in the locale bundles, and the footer below must stay a real DD-MM-YY within
 30 days.
 The measured facts in this file (node counts, totals, latencies, error strings) are
-**not** machine-checked — they are a snapshot of the 04-09-26 index. Re-run the calls
+**not** machine-checked — they are a snapshot of the 2026-09-08T05:07Z index, and that
+index was already 2 commits behind HEAD an hour after it landed. Re-run the calls
 in "Mandatory first two calls" before repeating any of them to someone else.
 
 ---
