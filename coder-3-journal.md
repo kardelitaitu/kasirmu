@@ -327,8 +327,12 @@ Why it survived:
 
 Fix: the gate is now `async` and does `state.db.lock().await`, with a
 "Why this is async and awaits the lock" doc block at both definitions so nobody
-optimises the await away. 9 existing call sites converted + this slice's new
-10th.
+optimises the await away. All 9 pre-existing call sites converted (4 desktop +
+5 tablet). Counting note, corrected after landing: this slice's own command
+adds **two** call sites, not one — `list_security_events_scoped` exists in both
+clients — so the tree now carries 11, and the earlier "new 10th" phrasing
+undercounted by one. The `fix(audit)` commit body's "all 9" is correct as
+written: it predates the new command.
 
 The rule that made this findable: **write the IPC-layer test even when you
 think the core test already covers it.** The core tests were green for two
