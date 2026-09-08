@@ -13,6 +13,13 @@ import type { WireRelationshipOption } from './topologyCard';
  * is gated by the duplicate/cardinality rules below; and a node
  * disconnect that removes no wire must not produce a history entry.
  *
+ * The gesture commands (node move, wire bend) centralize the same kind of
+ * inline knowledge for the drag system: a completed gesture that landed
+ * exactly where it started must pop the history entry its first movement
+ * pushed (Undo never appears enabled but does nothing); an Escape cancel
+ * restores only the captured coordinates, never wholesale card objects;
+ * and a cancelled ghost bend that never moved must leave no trace.
+ *
  * The functions are pure and side-effect free: they compute the result of
  * a command against the current graph, and the editor's React setters own
  * applying it through the same updater functions the inline code used, so
@@ -190,4 +197,102 @@ export function disconnectNode(
 ): { wires: TopologyWireData[]; changed: boolean } {
   const remaining = wires.filter((w) => w.fromNodeId !== nodeId && w.toNodeId !== nodeId);
   return { wires: remaining, changed: remaining.length !== wires.length };
+}
+
+// ── Move command (Phase 3.2) ─────────────────────────────────────
+
+/** A captured pre-drag position for one node, keyed by node id. */
+export type DragStartPositions = Map<string, { x: number; y: number }>;
+
+/**
+ * No-op landing check for a COMPLETED node move: true when every dragged
+ * node's final position equals its pre-drag position. A grab-and-return
+ * (or a wiggle that snapped back onto the same grid cell) pushed a history
+ * entry on first movement that would restore identical state — the editor
+ * pops it so Undo never appears enabled but does nothing. The settle pass
+ * output, when it ran, is the final-position source: a settle that moved a
+ * dragged node means the drop DID change the canvas.
+ */
+export function moveLandedAtStart(
+  draggedIds: Iterable<string>,
+  startPositions: DragStartPositions,
+  finalPositions: Array<{ id: string; x: number; y: number }>,
+): boolean {
+  const byId = new Map(finalPositions.map((p) => [p.id, p]));
+  for (const id of draggedIds) {
+    const start = startPositions.get(id);
+    const cur = byId.get(id);
+    if (start === undefined || cur === undefined) return false;
+    if (cur.x !== start.x || cur.y !== start.y) return false;
+  }
+  return true;
+}
+
+/**
+ * Escape/cancel restore for a move: merge the captured pre-drag COORDINATES
+ * onto the live nodes by id. Only `{ x, y }` is written — a wholesale
+ * replacement would strip type/name/metadata off every card and crash the
+ * render. Nodes not in the map pass through untouched. Pure: returns a new
+ * array, never mutates.
+ */
+export function restoreNodesToStart<T extends { id: string; x: number; y: number }>(
+  nodes: T[],
+  startPositions: DragStartPositions,
+): T[] {
+  if (startPositions.size === 0) return nodes;
+  return nodes.map((n) => {
+    const start = startPositions.get(n.id);
+    return start ? { ...n, x: start.x, y: start.y } : n;
+  });
+}
+
+// ── Bend command (Phase 3.2) ─────────────────────────────────────
+
+/** Everything the bend gesture needs to decide its own cancel/no-op
+ *  behaviour — mirrors the editor's bend-drag ref shape. */
+export interface BendGestureState {
+  wireId: string;
+  index: number;
+  moved: boolean;
+  startX: number;
+  startY: number;
+  /** Ghost-created bend (inserted on first movement, not at mousedown). */
+  created: boolean;
+  /** Ghost bend not yet spliced in — a cancelled click-without-move
+   *  never inserted it, so there is nothing to remove. */
+  pendingInsert: boolean;
+}
+
+/**
+ * Cancel semantics for a bend gesture, as a pure decision: what to write
+ * back, and whether the gesture's single history entry (pushed on first
+ * movement) must be popped.
+ */
+export function cancelBendDecision(
+  gesture: BendGestureState,
+): { restore: 'remove-bend' | 'restore-position' | 'none'; popHistory: boolean } {
+  if (!gesture.moved) return { restore: 'none', popHistory: false };
+  if (gesture.created) {
+    if (gesture.pendingInsert) return { restore: 'none', popHistory: true };
+    return { restore: 'remove-bend', popHistory: true };
+  }
+  return { restore: 'restore-position', popHistory: true };
+}
+
+/**
+ * No-op landing check for a COMPLETED bend drag of an EXISTING bend: true
+ * when the dragged handle landed exactly at its pre-drag position. The
+ * gesture pushed its history entry on first movement — the editor pops it
+ * so Undo never appears enabled but does nothing. A CREATED bend ending at
+ * its ghost midpoint is NOT a no-op — the bend's existence is the edit —
+ * so created bends are never checked against their start.
+ */
+export function bendLandedAtStart(
+  wires: TopologyWireData[],
+  gesture: BendGestureState,
+): boolean {
+  if (gesture.created) return false;
+  const wire = wires.find((w) => w.id === gesture.wireId);
+  const bend = wire?.bends?.[gesture.index];
+  return bend !== undefined && bend.x === gesture.startX && bend.y === gesture.startY;
 }

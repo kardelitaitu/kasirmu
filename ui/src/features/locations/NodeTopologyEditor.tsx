@@ -83,9 +83,13 @@ import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics'
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
 import { useTopologyEditorLoadLifecycle } from './nodeTopologyEditorLoadLifecycle';
 import {
+  bendLandedAtStart,
+  cancelBendDecision,
   deletableNodeIds,
   disconnectNode,
+  moveLandedAtStart,
   nodesWithoutIds,
+  restoreNodesToStart,
   stockRoutingWires,
   wireConnectRefusal,
   WIRE_CONNECT_REFUSAL_TOAST,
@@ -1460,22 +1464,26 @@ export default function NodeTopologyEditor({
     const d = bendDragRef.current;
     if (!d) return;
     bendDragRef.current = null;
-    setWires((prev) =>
-      prev.map((w) => {
-        if (w.id !== d.wireId) return w;
-        if (d.created) {
-          // A created bend only exists once the drag MOVED (deferred
-          // insertion) — a cancelled click-without-move never inserted it.
-          if (d.pendingInsert) return w;
-          return { ...w, bends: (w.bends ?? []).filter((_, i) => i !== d.index) };
-        }
-        return {
-          ...w,
-          bends: (w.bends ?? []).map((b, i) => (i === d.index ? { x: d.startX, y: d.startY } : b)),
-        };
-      }),
-    );
-    if (d.moved) {
+    // Cancel semantics (which write-back, whether the entry pops) come from
+    // the command module's pure decision.
+    const decision = cancelBendDecision(d);
+    if (decision.restore !== 'none') {
+      setWires((prev) =>
+        prev.map((w) => {
+          if (w.id !== d.wireId) return w;
+          if (decision.restore === 'remove-bend') {
+            // A created bend only exists once the drag MOVED (deferred
+            // insertion) — a cancelled click-without-move never inserted it.
+            return { ...w, bends: (w.bends ?? []).filter((_, i) => i !== d.index) };
+          }
+          return {
+            ...w,
+            bends: (w.bends ?? []).map((b, i) => (i === d.index ? { x: d.startX, y: d.startY } : b)),
+          };
+        }),
+      );
+    }
+    if (decision.popHistory) {
       // The drag pushed exactly one entry (on first movement) — pop it so
       // Undo stays a no-op for a cancelled gesture.
       setHistory((prev) => prev.slice(0, -1));
@@ -2105,11 +2113,10 @@ export default function NodeTopologyEditor({
     duplicateCopyIdsRef.current = copies.map((c) => c.id);
     duplicateDragRef.current = true;
 
-    // Originals back to start; copies in at their current positions.
+    // Originals back to start (coordinates only, via the command helper);
+    // copies in at their current positions.
     if (copies.length > 0) {
-      setNodes((prev) => prev.map((n) => (
-        start.has(n.id) ? { ...n, ...start.get(n.id)! } : n
-      )));
+      setNodes((prev) => restoreNodesToStart(prev, start));
       setNodes((prev) => [...prev, ...copies]);
       setWires((prev) => [...prev, ...wireCopies]);
     }
@@ -2133,9 +2140,10 @@ export default function NodeTopologyEditor({
     if (dragStartRef.current.size === 0) return;
     const start = dragStartRef.current;
     dragStartRef.current = new Map();
-    // Merge the start COORDINATES only — the snapshot is { x, y }, so a
-    // wholesale replacement would strip type/name/id and crash the render.
-    setNodes((prev) => prev.map((n) => (start.has(n.id) ? { ...n, ...start.get(n.id)! } : n)));
+    // Restore the captured COORDINATES only (command helper) — the snapshot
+    // is { x, y }, so a wholesale replacement would strip type/name/id and
+    // crash the render.
+    setNodes((prev) => restoreNodesToStart(prev, start));
     if (dragHasMovedRef.current) {
       setHistory((prev) => prev.slice(0, -1));
     }
@@ -3028,13 +3036,8 @@ export default function NodeTopologyEditor({
     // nothing. The cancel paths already pop their entries; this closes the
     // one path that commits.
     if (moved && !isDuplicate && dragged.size > 0) {
-      const finalNodes = settledPositions ?? nodesRef.current;
-      const allAtOrigin = [...dragged].every((id) => {
-        const start = startPositions.get(id);
-        const cur = finalNodes.find((n) => n.id === id);
-        return start !== undefined && cur !== undefined && cur.x === start.x && cur.y === start.y;
-      });
-      if (allAtOrigin) {
+      const finalPositions = settledPositions ?? nodesRef.current;
+      if (moveLandedAtStart(dragged, startPositions, finalPositions)) {
         setHistory((prev) => prev.slice(0, -1));
       }
     }
@@ -4427,15 +4430,11 @@ export default function NodeTopologyEditor({
       // No-op bend drag: a COMPLETED drag of an EXISTING bend that landed
       // exactly at its start position pushed an entry (on first movement)
       // that restores identical state — pop it so Undo never appears but
-      // does nothing. A CREATED bend ending at the ghost midpoint is NOT a
-      // no-op — the bend's existence is the edit — so only non-created
-      // bends are checked. (Cancel already pops via cancelBendDrag.)
-      if (d && d.moved && !d.created) {
-        const wire = wiresRef.current.find((w) => w.id === d.wireId);
-        const bend = wire?.bends?.[d.index];
-        if (bend && bend.x === d.startX && bend.y === d.startY) {
-          setHistory((prev) => prev.slice(0, -1));
-        }
+      // does nothing. (bendLandedAtStart never suppresses a created bend —
+      // the bend's existence is the edit. Cancel already pops via
+      // cancelBendDrag.)
+      if (d && d.moved && bendLandedAtStart(wiresRef.current, d)) {
+        setHistory((prev) => prev.slice(0, -1));
       }
     };
     document.addEventListener('mousemove', handleMove);
