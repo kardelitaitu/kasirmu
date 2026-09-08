@@ -181,10 +181,21 @@ actual relationship mutation.
       rules, effective dates, tax-inclusive behavior, and fiscal requirements
       should be location-aware; display currency and UI preferences should not
       accidentally change tax calculation.
-- [ ] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
+- [x] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise
       contracts.
+      — **DONE 2026-09-09 (four phases, verified in-tree):** read model + one
+      limit table (`1b3e71798`, `a5479ff11`), trial state server-published and
+      client-visible (`8a13dece7`, `2eb37045a`), per-feature grants D1/D2
+      (`1eb5b753`, `abda8574`, `12443a1e`, `1aa67b745`), precedence pinned
+      (`80a2168c`). Custom Enterprise contracts closed by custom roles
+      (`7948344e`, `9aa5a846`). Enforcement consolidated onto the entitlements
+      source at the caller layer (`815ed1ba`, `e3f0a9ad`; parity test 5-tier ×
+      4-dim + lifecycle fail-closed, 16/16) — gate signatures unchanged, db
+      files untouched; this is SOURCE consolidation, not call-graph rewiring.
+      Caps-DTO projection of trial/features onto the client payload remains a
+      known dev-mock-queued item.
       — **⚠️ Read `todo-global-saas-3.md` §"Feature-flag observability" before
       starting — much of this vocabulary already exists, and a second model
       would sit beside it.** `oz_core::availability` (landed `869de0ce`)
