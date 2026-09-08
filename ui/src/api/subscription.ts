@@ -150,6 +150,33 @@ export interface QuotaUsageRow {
   current: number;
 }
 
+/** Severity of an over-quota marker (mirrors Rust `OverQuotaSeverity`,
+ *  serde snake_case). `over` = current strictly exceeds the cap (must
+ *  remediate); `at` = current equals the cap (no new resource may be
+ *  created until something is freed). */
+export type OverQuotaSeverity = 'over' | 'at';
+
+/** One persisted over-quota marker (mirrors Rust `OverQuotaMarker`,
+ *  serde snake_case). Tenant-global dimensions (the five tracked here) carry
+ *  `resourceId` = the tenant id; per-resource markers are a later slice. */
+export interface OverQuotaMarkerRow {
+  /** Tenant-global resource id for tenant-global dimensions (the tenant id). */
+  resourceId: string;
+  /** Resource type discriminator (mirrors `resource_type`; equals the
+   *  dimension key for the tenant-global dimensions). */
+  resourceType: string;
+  /** Machine dimension key (`locations`, `pos_registers`, ...). */
+  dimension: string;
+  /** `over` | `at` (see `OverQuotaSeverity`). */
+  severity: OverQuotaSeverity;
+  /** Tier cap that triggered the marker; `null` = unlimited (never flagged). */
+  limit: number | null;
+  /** Count at the moment the marker was refreshed. */
+  current: number;
+  /** RFC3339 timestamp the marker row was written. */
+  markedAt: string;
+}
+
 /** The tenant-level over-quota assessment (mirrors Rust
  *  `OverQuotaReport`, serde snake_case rows). */
 export interface OverQuotaReport {
@@ -159,6 +186,10 @@ export interface OverQuotaReport {
   tierName: string;
   /** Per-dimension usage rows, in the resolver's canonical order. */
   usages: QuotaUsageRow[];
+  /** Persisted over-quota markers (Slice C §J). Optional for
+   *  backward-compatibility with older desktop builds; the card degrades
+   *  gracefully when absent. */
+  markers?: OverQuotaMarkerRow[];
 }
 
 /** Whether a usage row is strictly over its cap (needs remediation). */

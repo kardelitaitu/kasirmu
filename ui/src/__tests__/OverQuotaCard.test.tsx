@@ -25,7 +25,7 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 import OverQuotaCard from '@/features/settings/OverQuotaCard';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
-import type { QuotaUsageRow } from '@/api/subscription';
+import type { QuotaUsageRow, OverQuotaMarkerRow } from '@/api/subscription';
 
 const { invokeMock, reportHandler } = vi.hoisted(() => {
   let handler: ((cmd: string, args?: unknown) => Promise<unknown>) | null = null;
@@ -42,6 +42,9 @@ const { invokeMock, reportHandler } = vi.hoisted(() => {
           { dimension: 'staff', limit: null, current: 1 },
           { dimension: 'products', limit: null, current: 0 },
         ],
+        // Slice C §J: optional markers array. The card ignores it for now, but
+        // the payload must carry the shape without breaking the type.
+        markers: [],
       });
     }
     if (cmd === 'get_brand_settings') {
@@ -94,8 +97,8 @@ const row = (dimension: string, limit: number | null, current: number): QuotaUsa
 });
 
 /** A report carrying exactly these rows. */
-function reportWith(usages: QuotaUsageRow[]) {
-  return { tierKey: 'premium', tierName: 'Premium', usages };
+function reportWith(usages: QuotaUsageRow[], markers: OverQuotaMarkerRow[] = []) {
+  return { tierKey: 'premium', tierName: 'Premium', usages, markers };
 }
 
 function renderWithRows(usages: QuotaUsageRow[]) {
@@ -213,6 +216,30 @@ describe('OverQuotaCard', () => {
       expect(screen.getByTestId('over-quota-ok')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('over-quota-over')).not.toBeInTheDocument();
+  });
+
+  it('accepts persisted markers in the payload without changing the display', async () => {
+    // Slice C §J adds an optional `markers` array to OverQuotaReport. The card
+    // renders only from `usages` (markers are surfaced elsewhere / later), so a
+    // payload carrying markers must render exactly as one without them.
+    reportHandler.set(() =>
+      Promise.resolve({
+        tierKey: 'premium',
+        tierName: 'Premium',
+        usages: [row('locations', 5, 7), row('staff', 10, 12)],
+        markers: [
+          { resourceId: 'default', resourceType: 'locations', dimension: 'locations', severity: 'over' as const, limit: 5, current: 7, markedAt: '2026-09-22T00:00:00.000Z' },
+          { resourceId: 'default', resourceType: 'staff', dimension: 'staff', severity: 'over' as const, limit: 10, current: 12, markedAt: '2026-09-22T00:00:00.000Z' },
+        ],
+      }),
+    );
+    renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByTestId('over-quota-over')).toBeInTheDocument();
+    });
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByText('7 of 5 — 2 over')).toBeInTheDocument();
+    expect(screen.getByText('12 of 10 — 2 over')).toBeInTheDocument();
   });
 
   it('retries the assessment from the alert and recovers', async () => {
