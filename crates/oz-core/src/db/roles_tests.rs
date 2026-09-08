@@ -929,3 +929,69 @@ fn a_zero_list_count_does_not_mean_an_unscoped_holder() {
     assert_eq!(h.workspace_scope.as_deref(), Some("all"));
     assert_eq!(h.workspace_count, Some(0));
 }
+#[test]
+fn role_holder_count_counts_accounts_and_never_referrer_rows() {
+    // The reason this is a query and not an arithmetic shortcut on
+    // role_reference_counts. create_user writes a users row AND an
+    // assignments row for the SAME person, so summing referrer rows counts
+    // every ordinary account twice — three holders would read as six, which
+    // is the exact bug the label this field exists to feed was shipping.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    for id in ["synced-a", "synced-b", "synced-c"] {
+        insert_user_with_assignment(&conn, id, AUTHORED, AUTHORED);
+    }
+
+    let s = store(&conn);
+    let summed_referrers: i64 = s
+        .role_reference_counts(AUTHORED)
+        .unwrap()
+        .iter()
+        .map(|(_, c)| *c)
+        .sum();
+    assert_eq!(
+        summed_referrers, 6,
+        "three accounts across two tables each — what the naive sum gives"
+    );
+    assert_eq!(
+        s.role_holder_count(AUTHORED).unwrap(),
+        3,
+        "the count is accounts, not rows"
+    );
+}
+
+#[test]
+fn role_holder_count_and_role_holders_cannot_disagree() {
+    // Both read the shared HOLDERS_FROM_WHERE, so the "N accounts" a surface
+    // prints beside its expanded list is the list it is beside — including
+    // through the cap, which is the point: the total is not the page length.
+    let conn = fresh();
+    insert_authored_role(&conn, "[]");
+    for i in 0..7 {
+        // Three the synced way, four the legacy way: both arms exercised.
+        if i < 3 {
+            insert_user_with_assignment(&conn, &format!("u{i}"), AUTHORED, AUTHORED);
+        } else {
+            insert_legacy_user(&conn, &format!("u{i}"), AUTHORED);
+        }
+    }
+
+    let s = store(&conn);
+    let (page, total) = s.role_holders(AUTHORED, 4).unwrap();
+    assert_eq!(page.len(), 4, "capped at the requested size");
+    assert_eq!(total, 7);
+    assert_eq!(
+        s.role_holder_count(AUTHORED).unwrap(),
+        total,
+        "the standalone count equals the list total"
+    );
+
+    let err = s
+        .role_holder_count("role-nope")
+        .expect_err("a missing role must refuse, not report zero");
+    assert!(
+        matches!(&err, CoreError::NotFound { entity, .. } if *entity == "role"),
+        "{err:?}"
+    );
+}

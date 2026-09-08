@@ -62,6 +62,17 @@ const ROLE_REFERRERS: [&str; 4] = [
 /// "and 350 more" honestly instead of truncating in silence.
 pub const ROLE_HOLDERS_MAX: i64 = 50;
 
+/// The single predicate that decides who holds a role.
+///
+/// Shared verbatim between [`Store::role_holders`] and
+/// [`Store::role_holder_count`] so a count and a list of the same thing
+/// cannot drift apart — which matters because they are rendered side by side
+/// ("N accounts" beside the expanded list). Assignment first with a
+/// `users.role_id` fallback, mirroring `Store::authorize_with`; see
+/// [`Store::role_holders`] for why neither simpler form is correct.
+const HOLDERS_FROM_WHERE: &str = " FROM users u LEFT JOIN assignments a ON a.user_id = u.id
+                                  WHERE COALESCE(a.role_id, u.role_id) = ?1";
+
 /// One account that resolves to a role, as reported by
 /// [`Store::role_holders`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,10 +319,8 @@ impl Store<'_> {
         }
         let bounded = limit.clamp(1, ROLE_HOLDERS_MAX);
 
-        const FROM_WHERE: &str = " FROM users u LEFT JOIN assignments a ON a.user_id = u.id
-                                  WHERE COALESCE(a.role_id, u.role_id) = ?1";
         let total: i64 = self.conn.query_row(
-            &format!("SELECT COUNT(*){FROM_WHERE}"),
+            &format!("SELECT COUNT(*){HOLDERS_FROM_WHERE}"),
             params![role_id],
             |row| row.get(0),
         )?;
@@ -327,7 +336,7 @@ impl Store<'_> {
                     CASE WHEN a.user_id IS NULL THEN NULL ELSE
                       (SELECT COUNT(*) FROM assignment_workspaces w
                        WHERE w.assignment_user_id = u.id) END
-             {FROM_WHERE}
+             {HOLDERS_FROM_WHERE}
              ORDER BY u.display_name COLLATE NOCASE ASC, u.id ASC
              LIMIT ?2"
         ))?;
@@ -352,6 +361,40 @@ impl Store<'_> {
             holders.push(row?);
         }
         Ok((holders, total))
+    }
+
+    /// How many accounts resolve to this role — the count, without the rows.
+    ///
+    /// Built on the same [`HOLDERS_FROM_WHERE`] as [`Self::role_holders`],
+    /// deliberately: the "N accounts" a surface prints must never disagree
+    /// with the list rendered beside it.
+    ///
+    /// It is NOT derivable from [`Self::role_reference_counts`].
+    /// `create_user` writes a `users` row AND an `assignments` row for the
+    /// same person, so summing referrer rows counts every ordinary account
+    /// twice — three holders read as six. Nor is it a matter of which table is
+    /// queried: an account resolving through the legacy `users.role_id` arm is
+    /// still exactly one holder. Counting accounts is therefore a question about
+    /// resolution, and resolution has one definition in this crate.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::NotFound`] when no such role — the same refusal as
+    /// [`Self::role_holders`], so a caller cannot get a count for a role that
+    /// would list nobody.
+    pub fn role_holder_count(&self, role_id: &str) -> Result<i64, CoreError> {
+        if self.get_role(role_id)?.is_none() {
+            return Err(CoreError::NotFound {
+                entity: "role",
+                id: role_id.to_owned(),
+            });
+        }
+        let total: i64 = self.conn.query_row(
+            &format!("SELECT COUNT(*){HOLDERS_FROM_WHERE}"),
+            params![role_id],
+            |row| row.get(0),
+        )?;
+        Ok(total)
     }
 
     /// Re-name, re-describe, or re-grant an authored role.
