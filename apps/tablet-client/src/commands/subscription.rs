@@ -273,7 +273,7 @@ fn load_feature_verdict(
     // release. The missing upgrade in the tablet's capabilities command
     // is a pre-existing gap owned by that command, not something the
     // verdict should paper over by disagreeing with the payload beside it.
-    let mut ent = loaded
+    let ent = loaded
         .as_ref()
         .map(|sub| Entitlements::from_subscription(sub, gather_usage(&store)))
         .unwrap_or_else(|| Entitlements::fail_closed(UsageCounts::default()));
