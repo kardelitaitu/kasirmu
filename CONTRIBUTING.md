@@ -1,6 +1,6 @@
 # Contributing to OZ-POS
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 doc drifts fixed, 2 enforcement gaps recorded) · SUPERSEDES the 2026-07-22 stamp, whose two findings are carried forward here rather than stacked below it · FIXED: (1) F1 from 2026-07-22 — found and then never repaired for 48 days: `fix` was listed as a forbidden commit prefix while .githooks/commit-msg accepts it, `fix/<name>` is a documented branch prefix, and `fix(payment):` appears as a correct example in the same section, so the doc's own example violated its own rule and every agent reading it inherited a false constraint. (2) "type matches the branch prefix" restated against the live TYPES list (10 accepted types, 6 branch prefixes; style/perf/ci/audit have no prefix). (3) the skill-anatomy list now marks which of its six items a machine actually enforces — only the footer (Check 9) — and records that 4 of 13 skills lack "When to use" and 2 lack "Common pitfalls". · FLAGGED NOT FIXED: "the skill-drift-guard script will catch the omission on the next CI run" (a new skill missing from the onboarding router) is FALSE — Check 6 is one-directional; proved by creating a valid throwaway skill and getting exit 0 with no findings. Corrected to "by hand, because nothing checks it"; adding the reverse check to Check 6 is a code change and was not made. · verified accurate: all 8 quick-link targets resolve including the ui/README.md#install-script-approvals anchor (heading at ui/README.md:36); F2 from 2026-07-22 still holds — SECURITY.md remains absent and the reference stays hedged, so it is consistent rather than correct; PR commands still match AGENTS.md --> · REV 2 (same day): a fourth drift, found while auditing docs/operations/ci-pipeline.md — §Flaky tests told contributors that "the flaky-quarantine job (required in CI) runs scripts/verify-flaky-quarantine.py". No such job exists in either live workflow (grep -ci flaky dev-ci.yml = 0), check.sh never calls it, and gates.json records the gate as retired with no runner. The script works; nothing runs it, so an expired quarantine entry fails nothing. Item 3 rewritten to say so and the closing sentence no longer promises a gate that will fire.
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 doc drifts fixed, 2 enforcement gaps recorded) · SUPERSEDES the 2026-07-22 stamp, whose two findings are carried forward here rather than stacked below it · FIXED: (1) F1 from 2026-07-22 — found and then never repaired for 48 days: `fix` was listed as a forbidden commit prefix while .githooks/commit-msg accepts it, `fix/<name>` is a documented branch prefix, and `fix(payment):` appears as a correct example in the same section, so the doc's own example violated its own rule and every agent reading it inherited a false constraint. (2) "type matches the branch prefix" restated against the live TYPES list (10 accepted types, 6 branch prefixes; style/perf/ci/audit have no prefix). (3) the skill-anatomy list now marks which of its six items a machine actually enforces — only the footer (Check 9) — and records that 4 of 13 skills lack "When to use" and 2 lack "Common pitfalls". · FLAGGED NOT FIXED: "the skill-drift-guard script will catch the omission on the next CI run" (a new skill missing from the onboarding router) is FALSE — Check 6 is one-directional; proved by creating a valid throwaway skill and getting exit 0 with no findings. Corrected to "by hand, because nothing checks it"; adding the reverse check to Check 6 is a code change and was not made. · verified accurate: all 8 quick-link targets resolve including the ui/README.md#install-script-approvals anchor (heading at ui/README.md:36); F2 from 2026-07-22 still holds — SECURITY.md remains absent and the reference stays hedged, so it is consistent rather than correct; PR commands still match AGENTS.md · RE-AUDITED 2026-09-09 by DSH (docs-auditor): the PR-gate section was wrong about CI and my own 09-08 pass missed it. CONTRIBUTING claimed the CI coverage job uploads coverage artifacts; no coverage job exists in either live workflow - it lived only in .github/workflows/ci.yml.bak, retired by 23c96330 on 09-02 and never restored, so nothing uploads them. The optional-and-not-a-gate sentence next to it was already correct, which is how the pair read as consistent. Warned about the near-miss too: dev-ci.yml#static-gates has a step named 'Scoped command coverage' running bash scripts/verify-scoped-coverage.sh, which checks IPC _scoped-command parity and emits no artifact - grepping the word coverage in dev-ci.yml finds it and would re-validate the false claim. Added the platform warning that bare bash on this Windows workstation is WSL and can hang rather than fail (AGENTS.md), since this section instructs bash scripts/coverage.sh, scripts/reset-dev-pg.sh and detect.sh; the pwsh reset-dev-pg.ps1 line is the unaffected Windows-native form. Re-confirmed true: scripts/coverage.sh, scripts/reset-dev-pg.sh, scripts/reset-dev-pg.ps1 and .agents/skills/skill-drift-guard/scripts/detect.sh all exist, detect.sh does accept --report (usage at :9, parsed at :38), coverage.sh takes rust|ui via target=\"${1:-all}\" as documented, and its preflight reports missing cargo-llvm-cov/llvm-cov/ui deps rather than half-running. --> · REV 2 (same day): a fourth drift, found while auditing docs/operations/ci-pipeline.md — §Flaky tests told contributors that "the flaky-quarantine job (required in CI) runs scripts/verify-flaky-quarantine.py". No such job exists in either live workflow (grep -ci flaky dev-ci.yml = 0), check.sh never calls it, and gates.json records the gate as retired with no runner. The script works; nothing runs it, so an expired quarantine entry fails nothing. Item 3 rewritten to say so and the closing sentence no longer promises a gate that will fire.
 
 Thanks for your interest in OZ-POS! This project is a Rust + Tauri v2 POS framework built around a "wizard behind the curtain" philosophy: the merchant sees effortless checkout, and the lean Rust engine silently handles transactions, encryption, hardware, sync, and business logic.
 
@@ -156,12 +156,32 @@ cd ui && npm run lint && npm run typecheck && npm run test && npm run build
 For coverage spot-checks (optional, not part of the PR gate yet):
 
 ```bash
-bash scripts/coverage.sh         # rust + ui
+bash scripts/coverage.sh         # rust + ui (default target: all)
 bash scripts/coverage.sh rust    # just rust
 bash scripts/coverage.sh ui      # just ui
 ```
 
-Reports land in `coverage/{rust,ui}/index.html`. The CI `coverage` job uploads the same artifacts on every push to `main`. Use them to spot under-tested modules after refactors.
+Reports land in `coverage/{rust,ui}/index.html`.
+
+> ⚠️ **There is no CI coverage job.** This sentence previously said the CI `coverage` job
+> uploads these artifacts. It does not: a `coverage:` job exists in exactly one workflow file,
+> `.github/workflows/ci.yml.bak`, which `23c96330` retired on 09-02 and never restored, and the
+> two live workflows (`dev-ci.yml`, `release.yml`) contain no such job. Nothing uploads coverage
+> today, which is consistent with the line above calling coverage optional and "not part of the
+> PR gate" — the gate sentence was right and the CI sentence was not.
+>
+> Do not be reassured by grepping for the word: `dev-ci.yml#static-gates` has a step named
+> **"Scoped command coverage"** (`bash scripts/verify-scoped-coverage.sh`), and that checks
+> whether every registered IPC command has a `_scoped` twin. It has nothing to do with test
+> coverage and produces no artifact.
+
+> ⚠️ **On this Windows workstation, run these through Git's bash by full path.** Bare `bash`
+> resolves to `C:\Windows\System32\bash.exe` (WSL), which can hang instead of failing — see
+> "Running CLI Tools on Windows" in `AGENTS.md`. Use
+> `& 'C:\Program Files\Git\bin\bash.exe' scripts/coverage.sh` rather than assuming a timeout
+> means the script is broken. The same applies to `scripts/reset-dev-pg.sh` and `detect.sh`
+> below; the `pwsh` line for `reset-dev-pg.ps1` is the Windows-native alternative and is
+> unaffected.s on every push to `main`. Use them to spot under-tested modules after refactors.
 
 If a PostgreSQL integration test skips with `Migration error` (the dev DB drifted from the committed `PG_INIT` schema), reset the dev container before running the suite:
 
@@ -278,4 +298,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ---
 
-> last audited 08-09-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor - re-audited the PR-gate section; one CI claim corrected
