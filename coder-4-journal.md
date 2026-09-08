@@ -74,7 +74,7 @@ by finisher-A.
   audit-retention lines (SQL, registry entry, pinned-list id
   `20260920_audit_retention.sql`) belong to coder-3's slice landing next; this
   commit only carries them through the registry so the tree stays unbroken.
-- `REGIONAL_COMMIT_SHA` (below) —
+- `d1ce3f99e37489f92b7e8bc2b54eb98ec4438003` —
   `feat(core): add regional configuration resolver and location defaults`
   (crates/oz-core/src/regional.rs + regional_tests.rs, db/regional.rs +
   db/regional_tests.rs, lib.rs + db/mod.rs wiring, platform/core/src/settings/
