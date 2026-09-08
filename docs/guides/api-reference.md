@@ -41,8 +41,8 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > |---|---|---|
 > | Marker wrong | **0** (was 11) | Eleven rows said `[D]` or `[T]` for commands present in **both** `generate_handler!` lists: `version`, `get_brand_settings`, `test_sync_connection`, `list_workspaces`, `list_workspace_screens`, `discover_hardware_scoped`, `list_all_features_scoped`, `display_show_scoped`, `display_clear_scoped`, `list_displays_scoped`, `get_cart_deduction_location_scoped`. Verified independently against both `lib.rs` handler lists before changing any of them. The worst kind of error on this page, because an availability marker is exactly what a caller reads to decide whether a call exists on their shell. |
 > | Listed but **not registered anywhere** | 86 | A real `#[command]` fn that no `generate_handler!` includes, so the front-end cannot invoke it. All 85 are the legacy unscoped twins of an existing `*_scoped` command — checked: for every one of the 85, `<name>_scoped` IS registered — which is the ADR #7 convention described at the foot of this header, not rot. Verified 08-09-26 by re-running the comparison name-by-name rather than trusting the bucket. |
-> | Listed and **not defined as a command** | 7 | **The name is misleading and 7 of these 14 rows were wrong.** Only the seven `*_store_profile_scoped` entries are truly gone — renamed to `*_location_profile_scoped` in the 09-06→09-08 store→location work, and `grep` for `get_store_profile_scoped` returns zero hits repo-wide. The other seven exist as ordinary Rust functions and were listed here as if they were IPC commands: `get_kds_order`, `get_kds_queue`, `list_kds_orders`, `update_kds_status` and `create_kds_order_from_sale` are `pub fn` service methods in `crates/oz-core/src/db/kds_lines.rs` and `kds_orders.rs`, and `settings_changed_sink` is a plain helper at `apps/desktop-client/src/commands/sync.rs:210` whose command twin is `settings_changed_sink_scoped` at `:811`. The checker's "defined" set means *annotated `#[command]`*, so "not defined" never meant "not a function". A doc that quotes a tool's vocabulary without restating what the tool counts will assert things its own evidence contradicts. |
-> | Registered but **not listed** | 48 | Missing from this page entirely, and up from 44 two days ago because this surface moves daily: `acknowledge_memo_scoped`, `create_legal_entity_scoped`, `create_location_profile_scoped`, `create_memo_scoped`, `create_payable_scoped`, `create_role_scoped`, `impersonate_user_scoped`, `local_api_status_scoped`, `list_security_events_scoped`, `list_topology_templates`, `publish_memo_scoped`, `record_payable_payment_scoped`, `write_off_payable_scoped` and 35 more. These are the reason this page is not a list of what the app can do — it is a list of what it did as of the last regeneration. |
+> | Listed and **not defined as a command** | 7 | Not commands, and the page no longer presents them as ones. Each of the 7 rows below now carries `[not an IPC command]`: five are `pub fn` service methods in `crates/oz-core/src/db/kds_lines.rs` / `kds_orders.rs` (`get_kds_order`, `get_kds_queue`, `list_kds_orders`, `update_kds_status`, `create_kds_order_from_sale`), `settings_changed_sink` is a plain helper at `apps/desktop-client/src/commands/sync.rs:210` wired at `:366`, and `recover_pending_topology_apply_at_startup` is an internal startup routine. Six of the seven have a real `*_scoped` command twin, named on the row; the seventh has none. All seven are kept listed because callers exist for them — two of the kds six carry 80 and 70 references apiece — but a reader deciding what the front end may call must look at the marker, not the name. Earlier revisions of this row asserted 'these do not exist', which was false for 7 of 14 names: the checker's `defined` set means *annotated `#[command]`*, and the page had borrowed that vocabulary without restating it. The seven genuinely-gone `*_store_profile_scoped` rows are no longer here at all — the store→location rename (09-06→09-08) replaced them with `commands::locations`. |
+> | Registered but **not listed** | **0** (was 48) | **Closed on 08-09-26.** Every registered command now has a row: 17 folded into existing sections (`commands::topology` +7, `commands::staff` +5, one each into `audit`, `auth`, `settings`, and `commands::subscription` +2) and 24 as five new sections (`commands::legal_entities`, `commands::local_api`, `commands::memo`, `commands::payables`, `commands::products_images`). Each summary is that command's own `///` line copied from source and each marker read out of the two `generate_handler!` lists, so this bucket is the one that can be re-derived rather than re-believed. It was 44 on 31-08-26 and 48 by 08-09-26 — it grows by itself, because commands land faster than the regeneration does. |
 >
 > Reproduce every number above with
 >
@@ -300,19 +300,19 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 
 ### `commands::kds` (14)
 
-- **`create_kds_order_from_sale`** [T] — Create KDS orders from a completed sale. Returns one order per kitchen zone.
+- **`create_kds_order_from_sale`** [not an IPC command] — Service method in `oz_core::db`. The callable surface is `create_kds_order_from_sale_scoped`.
 - **`create_kds_order_from_sale_scoped`** [D+T] — Create KDS orders in the store resolved from a session token. ADR #7.
-- **`get_kds_order`** [T] — Get a KDS order by id.
+- **`get_kds_order`** [not an IPC command] — Service method in `oz_core::db`. The callable surface is `get_kds_order_scoped`.
 - **`get_kds_order_lines_scoped`** [D] — Get all line items for a KDS order (scoped — ADR #7).
 - **`get_kds_order_scoped`** [D+T] — Get a KDS order from the store resolved from a session token. ADR #7.
-- **`get_kds_queue`** [T] — Get the kitchen queue (pending + preparing + ready, ordered oldest first).
+- **`get_kds_queue`** [not an IPC command] — Service method in `oz_core::db`. The callable surface is `get_kds_queue_scoped`.
 - **`get_kds_queue_scoped`** [D+T] — Get the kitchen queue for the store resolved from a session token. ADR #7.
-- **`list_kds_orders`** [T] — List KDS orders, optionally filtered by status.
+- **`list_kds_orders`** [not an IPC command] — Service method in `oz_core::db`. The callable surface is `list_kds_orders_scoped`.
 - **`list_kds_orders_scoped`** [D+T] — List KDS orders for the store resolved from a session token. ADR #7.
 - **`print_kds_chit_scoped`** [D] — Print a kitchen chit for a specific KDS order by ID (scoped — ADR #7).
 - **`update_kds_line_item_status_scoped`** [D] — Update the status of a single KDS line item in the store resolved
 - **`update_kds_order_items_scoped`** [D] — Update the items on a KDS order in the store resolved from a session token. ADR #7.
-- **`update_kds_status`** [T] — Update a KDS order's status. Sets the appropriate timestamp automatically.
+- **`update_kds_status`** [not an IPC command] — Service method in `oz_core::db`. The callable surface is `update_kds_status_scoped`.
 - **`update_kds_status_scoped`** [D+T] — Update a KDS order's status in the store resolved from a session token. ADR #7.
 
 ### `commands::kds_device` (6)
@@ -726,7 +726,7 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`pg_sync_stop_scoped`** [D] — PG sync stop (scoped).
 - **`request_sync_token`** [T] — Request a new JWT API token from the cloud server's
 - **`request_sync_token_scoped`** [D+T] — Request a sync token (scoped).
-- **`settings_changed_sink`** [D] — _signature: see commands/sync.rs_
+- **`settings_changed_sink`** [not an IPC command] — A plain helper at `apps/desktop-client/src/commands/sync.rs:210`, used by the wiring at `:366`. The callable surface is `settings_changed_sink_scoped` at `:811`.
 - **`settings_changed_sink_scoped`** [D] — Settings changed sink (scoped — no-op for session-validated callers).
 - **`sync_pull`** [T] — Pull a server snapshot and overwrite the local cache for products,
 - **`sync_pull_scoped`** [D+T] — Sync pull (scoped — 4-phase with auth refresh + backup).
@@ -808,7 +808,7 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`load_topology_revision`** [D] — ADR #46 §5/§7: fetch one revision's graph, to diff it or load it as a draft. Never mutates — restore-to-draft is a client-side action, and.
 - **`load_topology_template`** [D] — Load one diagram template. `None` when it never existed or is unreadable.
 - **`pin_topology_revision`** [D] — ADR #46 §4: pin or unpin one revision, exempting it from deflation. Gated on `TOPOLOGY_WRITE`, deliberately unlike its two read siblings.
-- **`recover_pending_topology_apply_at_startup`** [D] — Complete a previously interrupted cross-database Apply before accepting a
+- **`recover_pending_topology_apply_at_startup`** [not an IPC command] — An internal startup routine, not a `#[command]`, and unlike the other six here it has no `_scoped` twin either.
 - **`save_topology_template`** [D] — Save a diagram template under a branch, replacing any template of that name.
 
 ### `commands::void` (1)
