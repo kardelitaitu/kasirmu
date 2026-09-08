@@ -9,16 +9,21 @@
  *   - The quota detail line renders usage/limit when the verdict carries them
  *   - The scope detail line renders the covered/not-covered phrasing
  *   - The expiry/grace detail fields render when present
- *   - A failed verdict batch renders the error hint (role="alert")
+ *   - A failed verdict batch renders the error hint (role="alert"), and a
+ *     later successful refresh retires it
  *   - Session-token-less render fires no verdict calls
+ *   - Both scope phrasings, and the silence when scopeGranted is null
+ *   - The quota line stays absent when only one of usage/limit is present
+ *   - A denial with no reason code still names a cause
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, cleanup, waitFor } from '@testing-library/react';
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import DiagnosticsSection from '@/features/settings/sections/DiagnosticsSection';
+import type { VerdictDetail } from '@/api/subscription';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 
@@ -110,6 +115,43 @@ const ALL_KEYS = [
   'pos_instances',
   'warehouses',
 ];
+
+/** The default advisory payload: every optional detail field null. */
+const baseDetail: VerdictDetail = {
+  tier: 'premium',
+  state: 'active',
+  limit: null,
+  usage: null,
+  permission: null,
+  scopeGranted: null,
+  expiresAt: null,
+  graceUntil: null,
+};
+
+/** A verdict payload; `over.detail` shallow-merges over the all-null base. */
+function verdictFor(
+  feature: string,
+  over: {
+    available?: boolean;
+    reason?: string | null;
+    detail?: Partial<VerdictDetail>;
+  } = {},
+) {
+  return {
+    feature,
+    available: over.available ?? true,
+    reason: over.reason ?? null,
+    detail: { ...baseDetail, ...over.detail },
+  };
+}
+
+/** A handler answering the named features specially, the rest by default. */
+function handlerMap(overrides: Record<string, ReturnType<typeof verdictFor>>) {
+  return (_cmd: string, args?: unknown): Promise<unknown> => {
+    const key = (args as { feature?: string })?.feature ?? '';
+    return Promise.resolve(overrides[key] ?? verdictFor(key));
+  };
+}
 
 beforeEach(() => {
   cleanup();
@@ -350,4 +392,116 @@ describe('DiagnosticsSection', () => {
     // All rows stay in the pending state.
     expect(screen.getAllByText('…')).toHaveLength(ALL_KEYS.length);
   });
-});
+
+  // ── Branches the shipped suite never reaches ─────────────────────
+  //
+  // The seven tests above cover the happy row, four detail lines, the
+  // failed batch, and the token-less render. What they all have in
+  // common is that they only ever assert a detail field that is PRESENT
+  // and a reason that is SET — so every guard on this screen that exists
+  // to keep an absent field from rendering is unobserved, and the scope
+  // axis (the whole point of scopeGranted) is asserted in exactly one of
+  // its three states.
+
+  it('names the scope as covered when the verdict clears the resource axis', async () => {
+    // The other half of the axis 826ac2db made observable. This screen
+    // exists to answer "where do I stand", and only the denial is
+    // asserted today: the covered branch could be deleted and the suite
+    // would stay green.
+    verdictHandler.set(
+      handlerMap({
+        supports_loyalty: verdictFor('supports_loyalty', { detail: { scopeGranted: true } }),
+      }),
+    );
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByText('Covers this location')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Does not cover this location')).not.toBeInTheDocument();
+  });
+
+  it('renders no scope phrasing at all when the verdict has no scope answer', async () => {
+    // scopeGranted is null exactly when the user has no assignment row
+    // (ruling 5: no answer, not a denial) — the shape every default row
+    // on this screen already carries, asserted by nothing. Replace the
+    // `!= null` guard with a truthiness check and a legacy user is told
+    // their assignment "does not cover this location": a scope denial the
+    // gate would never throw, on the one screen whose job is not to
+    // invent verdicts.
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getAllByText('Available')).toHaveLength(ALL_KEYS.length);
+    });
+    expect(screen.queryByText('Covers this location')).not.toBeInTheDocument();
+    expect(screen.queryByText('Does not cover this location')).not.toBeInTheDocument();
+  });
+
+  it('omits the quota line when only one of usage/limit is present', async () => {
+    // The guard is a conjunction, and each half is load-bearing on a real
+    // payload: an unlimited feature reports a usage count with limit
+    // null, and a capped-but-unmeasured feature reports the reverse.
+    // Dropping either half renders "Usage:  / 5" (Fluent substitutes an
+    // empty string for a missing var) — a number support will read as
+    // real.
+    verdictHandler.set(
+      handlerMap({
+        locations: verdictFor('locations', { available: false, reason: 'quota', detail: { limit: 5 } }),
+        staff_users: verdictFor('staff_users', { detail: { usage: 3 } }),
+      }),
+    );
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByText('Quota reached')).toBeInTheDocument();
+    });
+    expect(screen.queryAllByText(/Usage:/)).toHaveLength(0);
+  });
+
+  it('names a cause when a denial arrives without a reason code', async () => {
+    // `reason` is null exactly when available is true, so the `??
+    // 'server_policy'` arm is the defensive one: a denial with no code
+    // must still render a label rather than an empty badge, because an
+    // unexplained lock is the bug this screen was built to end.
+    verdictHandler.set(
+      handlerMap({
+        supports_qris: verdictFor('supports_qris', { available: false }),
+      }),
+    );
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByText('Blocked by server policy')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('diagnostics-row-supports_qris')).toHaveTextContent(
+      'Blocked by server policy',
+    );
+  });
+
+  it('retires the failure hint when a later refresh succeeds', async () => {
+    // setFailed(false) at the top of refresh is the only thing that can
+    // retire the alert. Without it one dropped batch leaves a permanent
+    // role="alert" banner sitting on top of successfully loaded rows —
+    // and the retry button is the documented recovery path, so the
+    // recovery has to be the tested one too.
+    let failing = true;
+    verdictHandler.set((_cmd, args) => {
+      if (failing) return Promise.reject(new Error('ipc down'));
+      const key = (args as { feature?: string })?.feature ?? '';
+      return Promise.resolve(verdictFor(key));
+    });
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('diagnostics-failed')).toBeInTheDocument();
+    });
+    expect(screen.queryAllByText('Available')).toHaveLength(0);
+
+    failing = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('diagnostics-failed')).not.toBeInTheDocument();
+      expect(screen.getAllByText('Available')).toHaveLength(ALL_KEYS.length);
+    });
+    const calls = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === 'explain_feature_availability_scoped',
+    );
+    expect(calls).toHaveLength(ALL_KEYS.length * 2);
+  });});

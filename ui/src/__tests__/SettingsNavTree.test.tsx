@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import SettingsNavTree from '@/features/settings/SettingsNavTree';
+import SettingsNavTree, {
+  CATEGORIES,
+  NAV_ITEMS,
+  NAV_L10N_KEYS,
+} from '@/features/settings/SettingsNavTree';
+import settingsFtl from '@/locales/settings.ftl?raw';
+import settingsIdFtl from '@/locales/settings.id.ftl?raw';
 
 // ── Mocks ────────────────────────────────────────────────────────
 
@@ -30,6 +36,7 @@ vi.mock('@fluent/react', () => ({
           'settings-nav-store-pos': 'Store POS',
           'settings-nav-restaurant-pos': 'Restaurant POS',
           'settings-nav-inventory': 'Inventory',
+          'settings-nav-diagnostics': 'Diagnostics',
         };
         return keyMap[key] ?? key;
       },
@@ -115,11 +122,70 @@ describe('SettingsNavTree', () => {
   it('shows count badges with correct item counts', () => {
     render(<SettingsNavTree {...defaultProps} />);
 
-    // 2 items in Business, 6 in Operations, 4 in System (topology + local-api)
+    // 2 items in Business, 6 in Operations, 5 in System (diagnostics
+    // joined about + license + topology + local-api in 92829560).
     const badges = screen.getAllByText(/^\d+$/);
     expect(badges.length).toBe(3);
     const counts = badges.map((b) => Number(b.textContent)).sort((a, b) => a - b);
-    expect(counts).toEqual([2, 4, 6]);
+    expect(counts).toEqual([2, 5, 6]);
+  });
+
+  it('renders Diagnostics under System and navigates to it', async () => {
+    // The nav entry is the only way onto the screen, and 92829560 added it
+    // by editing three separate registries in one file. Nothing asserted
+    // any of them: the count badge above is the sole test that even
+    // notices the category grew, and it would pass just as happily if the
+    // new key had landed in Business or never reached CATEGORIES at all.
+    const onNavigate = vi.fn();
+    render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} />);
+
+    const item = screen.getByRole('treeitem', { name: 'Diagnostics' });
+    const systemPanel = document.getElementById('settings-panel-system');
+    expect(systemPanel).toBeInTheDocument();
+    expect(systemPanel).toContainElement(item as HTMLElement);
+    expect(screen.getByText('System').closest('button')).toHaveAttribute(
+      'aria-controls',
+      'settings-panel-system',
+    );
+
+    await userEvent.click(item);
+    expect(onNavigate).toHaveBeenCalledWith('diagnostics');
+  });
+
+  it('keeps every nav item in exactly one category with a label defined in both locales', () => {
+    // The invariant 92829560 had to satisfy by hand across NAV_ITEMS,
+    // CATEGORIES and NAV_L10N_KEYS, plus two .ftl files. A key missing
+    // from the l10n map renders its raw key as the label; a key missing
+    // from CATEGORIES renders nowhere at all; a key in two categories
+    // double-counts the badges. None of that is visible from a render
+    // test that only looks at one item, and the bundle-parity gate walks
+    // Localized ids, not these string maps.
+    const seen = new Map<string, number>();
+    for (const category of CATEGORIES) {
+      for (const key of category.keys) {
+        seen.set(key, (seen.get(key) ?? 0) + 1);
+      }
+    }
+
+    const itemKeys = NAV_ITEMS.map((item) => item.key);
+    expect(itemKeys).toHaveLength(new Set(itemKeys).size);
+    for (const key of itemKeys) {
+      expect(seen.get(key), `nav item ${key} is in no category`).toBe(1);
+    }
+    // And no category names an item that does not exist.
+    for (const [key, count] of seen) {
+      expect(count, `${key} appears in more than one category`).toBe(1);
+      expect(itemKeys, `${key} is categorised but not a nav item`).toContain(key);
+    }
+
+    // Every item resolves through a real FTL key that BOTH locales define.
+    for (const key of itemKeys) {
+      const l10nKey = NAV_L10N_KEYS[key];
+      expect(l10nKey, `${key} has no NAV_L10N_KEYS entry`).toBeTruthy();
+      const pattern = new RegExp(`^${l10nKey}\\s*=`, 'm');
+      expect(pattern.test(settingsFtl), `${l10nKey} missing from settings.ftl`).toBe(true);
+      expect(pattern.test(settingsIdFtl), `${l10nKey} missing from settings.id.ftl`).toBe(true);
+    }
   });
 
   it('highlights the active section nav item', () => {
