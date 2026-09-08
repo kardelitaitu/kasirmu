@@ -1321,3 +1321,61 @@ pointers without editing the original text:
 - line 28 `*(this commit)*` -> `1eb5b7533` (tax-rate resolution commit)
 - line 150 `*(this commit)*` -> `1aa67b745` (D2 sync-pull column-gap repair landing - the
   plan section named no commit; this records it)
+
+---
+
+## 2026-09-09 — supersession: two placeholder resolutions name the wrong commit
+
+Additive only. The resolved rows at :27/:28/:150 and the note at :1320-1322 stay
+exactly as they are — a superseded record gets a pointer, not a quiet rewrite.
+
+- **:150 and :1322.** The row carries `4c41f5c3a`'s **subject** under `1aa67b745`'s
+  **hash**. `1aa67b745` is
+  `feat(licensing): add server-side per-feature grant authoring (Phase D2)`;
+  `4c41f5c3a` is `fix(sync): carry tax rate scope and window through the snapshot`, the
+  separate tax sync repair. The :1322 parenthetical "D2 sync-pull column-gap repair
+  landing" fuses the same two things into one phrase, so the error appears twice in
+  different words and will not be caught by grepping for either SHA alone.
+- **:28 — the identical defect, one line above the one that was caught, and unflagged
+  by the sweep.** The row reads `1eb5b7533` beside
+  `feat(core): resolve the tax rate that applies to a location on a date`, but
+  `1eb5b7533` is `feat(licensing): accept per-feature grants in the signed payload`
+  (D1). The tax-resolution commit is **`cf935edb5`**. :1320's label "(tax-rate
+  resolution commit)" inherits the error. So the licensing chain was written into
+  **both** tax rows and only the second was noticed — fixing :150 alone would leave
+  this file asserting that a licensing commit resolved a tax bug.
+- **:27 is correct.** `dbb3aabe6` really is
+  `feat(core): scope tax rates by legal entity, location and date`.
+
+Method, since the defect was positional: resolve each placeholder by
+`git log --oneline --grep="<the subject printed in that row>"`, never by consuming a
+supplied SHA list in order. That is what surfaced `cf935edb5` and `4c41f5c3a`. There
+are exactly three placeholders in this file — searched for `*(this commit)*`,
+`*(schema)*`, `*(TBD)*`, `*(pending)*`, `TODO`, `PLACEHOLDER` — so :27/:28/:150 are
+all of them and there is no fourth quietly still unfilled.
+
+### And a correction to my own attempt at the 45-commit wave note (:1291)
+
+I set out to append a full replacement for this whole section, found :1291 already
+covered it, and discarded my 141 lines as duplicative before committing. Two things
+came out of that, one of them a mistake of mine that would have shipped:
+
+- My draft stated that "45 is not reproducible under any definition I could build".
+  **That was wrong, and the reason matters.** I measured with `git log -S'\n'`, which
+  pickaxes file **content**; :1291 documents literal `\n` in commit **messages**.
+  Different question, so my null result refuted nothing. The right instrument is
+  `git log -F --grep='\n'` — `-F` so the backslash is not a regex escape:
+
+  | window | messages containing literal backslash-n |
+  |---|---|
+  | 2026-07-12 .. 07-17 | **48** |
+  | 2026-07-12 .. 07-18 | **50** |
+  | same, `--no-merges` | 50 |
+  | entire history | 84 |
+
+  :1291's figure is right in order of magnitude, the phenomenon is repo-wide across
+  streams, and had my draft landed it would have "corrected" a true finding into a
+  false one. A count is only refutable with the instrument that produced it.
+- The proposal at the end of :1291 — extend `commit-msg` to reject a literal `\n` —
+  is supported by these numbers rather than weakened by them: 84 commits already
+  carry the defect, and none of the ten gates looks at message bodies today.
