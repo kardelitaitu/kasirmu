@@ -266,12 +266,14 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
   }
 
   useEffect(() => {
+    const pending = pendingWritesRef.current;
     return () => {
-      pendingWritesRef.current.forEach(({ timer, run }) => {
+      // Flush all pending writes on unmount instead of dropping them.
+      pending.forEach(({ timer, run }) => {
         clearTimeout(timer);
         run();
       });
-      pendingWritesRef.current.clear();
+      pending.clear();
     };
   }, []);
 
@@ -535,20 +537,46 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
   }, [expandedCategories]);
 
   // ── Treegrid keyboard navigation (P60-4c/d) ──────────────
+  // Escape-to-close-mobile-drawer stays GLOBAL (document) because focus may
+  // legitimately rest outside the sidebar while the drawer is open (e.g. on
+  // the backdrop or a trapped focus that hasn't entered the aside yet).
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape' && mobileSidebarOpen) {
+        e.preventDefault();
+        onMobileClose();
+      }
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [mobileSidebarOpen, onMobileClose]);
+
+  // Arrow / Home / End navigation is scoped to the sidebar so it never hijacks
+  // arrows while focus is on a control outside the sidebar (e.g. a detail-pane
+  // button or link). Previously it was bound on `document` with only an
+  // INPUT/SELECT/TEXTAREA exemption, so it still stole arrows from any other
+  // focused element. We keep a single document-level listener (so events
+  // dispatched anywhere on the page still reach it) but GUARD it to fire only
+  // when the event target is inside the sidebar, or when nothing specific is
+  // focused (document / body) — matching the prior page-level behaviour for the
+  // common case while fixing the real hijack. The Escape-to-close-mobile-drawer
+  // handler above remains a separate GLOBAL document listener.
   useEffect(() => {
     const flatKeys = filteredCategories.flatMap((c) => c.keys);
 
     function handleKeyDown(e: KeyboardEvent) {
-      // Escape → close mobile sidebar
-      if (e.key === 'Escape' && mobileSidebarOpen) {
-        e.preventDefault();
-        onMobileClose();
-        return;
-      }
+      const target = e.target as Node | null;
+      const tEl = target as HTMLElement | null;
+      // Skip when focus is on a form field (typing must not move the treegrid).
+      if (tEl && (tEl.tagName === 'INPUT' || tEl.tagName === 'SELECT' || tEl.tagName === 'TEXTAREA' || tEl.isContentEditable)) return;
 
-      // Skip when focused on inputs
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      // Scope: only act for events originating inside the sidebar, or when no
+      // specific control is focused (document / body). This prevents the handler
+      // from hijacking arrow keys while focus rests on a control elsewhere.
+      const sidebar = sidebarRef.current;
+      const inSidebar = !!sidebar && (target === sidebar || (target != null && sidebar.contains(target)));
+      const noFocus = target === null || target === document || target === document.body || target === document.documentElement;
+      if (!inSidebar && !noFocus) return;
 
       // P60-2b: Guard against empty search results
       if (flatKeys.length === 0) return;
@@ -605,14 +633,19 @@ const SettingsNavTree = forwardRef<SettingsNavTreeHandle, SettingsNavTreeProps>(
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeSection, expandedCategories, mobileSidebarOpen, filteredCategories, onMobileClose, onNavigate]);
+  }, [activeSection, expandedCategories, mobileSidebarOpen, filteredCategories, onNavigate]);
 
   // ── Render ────────────────────────────────────────────────────
 
   return (
     <>
-      {/* ── Mobile backdrop ─────────────────────── */}
+      {/* ── Mobile backdrop ───────────────────────
+          role="presentation" + tabIndex={-1} marks this purely decorative,
+          click-to-dismiss overlay as non-interactive for AT (antipattern fix per
+          components/FastPINOverlay.tsx, commit dc6687f3). */}
       <div
+        role="presentation"
+        tabIndex={-1}
         className={`settings-sidebar-backdrop${mobileSidebarOpen ? ' visible' : ''}`}
         onClick={onMobileClose}
         aria-hidden="true"

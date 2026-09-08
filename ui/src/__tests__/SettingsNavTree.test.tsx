@@ -423,7 +423,10 @@ describe('SettingsNavTree', () => {
       const onNavigate = vi.fn();
       render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection="general" />);
 
-      fireKey('ArrowDown');
+      // The arrow handler is scoped to the sidebar <aside>, so dispatch the
+      // event on an element inside it (it bubbles to the aside listener).
+      const sidebar = screen.getByTestId('settings-sidebar');
+      fireKey('ArrowDown', sidebar);
 
       // general → next item in Business category is appearance
       expect(onNavigate).toHaveBeenCalledWith('appearance');
@@ -433,7 +436,8 @@ describe('SettingsNavTree', () => {
       const onNavigate = vi.fn();
       render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection="appearance" />);
 
-      fireKey('ArrowUp');
+      const sidebar = screen.getByTestId('settings-sidebar');
+      fireKey('ArrowUp', sidebar);
 
       // appearance → previous item is general
       expect(onNavigate).toHaveBeenCalledWith('general');
@@ -444,7 +448,8 @@ describe('SettingsNavTree', () => {
       // Active section is local-api (last in System category, which is last)
       render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection="local-api" />);
 
-      fireKey('ArrowDown');
+      const sidebar = screen.getByTestId('settings-sidebar');
+      fireKey('ArrowDown', sidebar);
 
       // local-api → wraps around to first item: general
       expect(onNavigate).toHaveBeenCalledWith('general');
@@ -454,7 +459,8 @@ describe('SettingsNavTree', () => {
       const onNavigate = vi.fn();
       render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection="general" />);
 
-      fireKey('ArrowUp');
+      const sidebar = screen.getByTestId('settings-sidebar');
+      fireKey('ArrowUp', sidebar);
 
       // general → wraps around to last item: local-api
       expect(onNavigate).toHaveBeenCalledWith('local-api');
@@ -464,14 +470,16 @@ describe('SettingsNavTree', () => {
       const onNavigate = vi.fn();
       render(<SettingsNavTree {...defaultProps} onNavigate={onNavigate} activeSection="general" />);
 
-      // Dispatch event on an input, letting it bubble to document.
-      // The component checks event.target.tagName and skips INPUT/SELECT/TEXTAREA.
+      // The input must live INSIDE the sidebar: the arrow handler is now scoped
+      // to the <aside>, so an input outside it would never reach the listener.
+      // With the input inside, the handler still skips INPUT/SELECT/TEXTAREA.
+      const sidebar = screen.getByTestId('settings-sidebar');
       const input = document.createElement('input');
-      document.body.appendChild(input);
+      sidebar.appendChild(input);
       try {
         fireKey('ArrowDown', input);
       } finally {
-        document.body.removeChild(input);
+        sidebar.removeChild(input);
       }
 
       expect(onNavigate).not.toHaveBeenCalled();
@@ -488,7 +496,8 @@ describe('SettingsNavTree', () => {
         />,
       );
 
-      fireKey('ArrowDown');
+      const sidebar = screen.getByTestId('settings-sidebar');
+      fireKey('ArrowDown', sidebar);
 
       expect(onNavigate).not.toHaveBeenCalled();
     });
