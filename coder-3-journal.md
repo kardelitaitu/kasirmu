@@ -267,3 +267,168 @@ clean. 7 new desktop and 7 new tablet auth wiring tests, all green.
   the explicit pathspec kept all six out of this commit.
 - `commands/auth.rs` was confirmed NOT hot before editing.
 
+---
+
+## 2026-09-08 — Audit remainder #2: staff-management events + the global read path
+
+finisher-B, slice 2 of the audit baseline. Landed as TWO commits: a
+`fix(audit)` repair that this slice's own testing uncovered, then
+`feat(audit)` on top.
+
+### CORRECTION to the entry above, and to landed commit `2fb2b873`'s body
+
+That body says *"the global DB already carries api.write and system events and
+is already swept by the retention daemon"*. The **api.write half is false**.
+`StoreAuditSink` (`apps/desktop-client/src/local_api.rs`) is constructed with
+the API's **served-store** connection — `local_api.rs:91`:
+`StoreAuditSink::new(api_db.clone(), store_id)` — and its own doc says
+"writing API mutations into the SERVED store's `audit_log` table". So
+api.write is a per-store row, exactly like the rest of the business audit
+trail.
+
+That mattered, because slice 2 was scoped as "extend the read path — precedent:
+api.write already lives in the global DB". There is **no such precedent**. The
+security events are the FIRST global-DB audit rows to have any read path at
+all, which is why (b) had to be designed rather than copied. Recorded here
+rather than by editing the landed message.
+
+### The bug the tests found: `require_audit_tier` could never have run
+
+`apps/desktop-client/src/commands/audit.rs` and the tablet's both had:
+
+```rust
+fn require_audit_tier(state: &AppState) -> Result<(), AppError> {
+    let db = state.db.blocking_lock();
+```
+
+`state.db` is a **tokio** `Mutex`. In tokio 1.49 `blocking_lock` is
+`future::block_on(self.lock())`, and that function's first statement is
+(`~/.cargo/registry/.../tokio-1.49.0/src/future/block_on.rs`):
+
+```rust
+let mut e = crate::runtime::context::try_enter_blocking_region().expect(
+    "Cannot block the current thread from within a runtime...");
+```
+
+There is **no uncontended fast path** — the check fails whenever the current
+thread is driving async tasks, which is every thread that polls a Tauri
+command. So all **9** call sites (4 desktop + 5 tablet; counted at HEAD with
+`grep -c 'require_audit_tier(&state)?;'`) were a guaranteed panic on first
+real use of the Premium audit screen.
+
+Why it survived:
+- `grep` over `*_tests.rs` for `list_audit_log_scoped` /
+  `export_audit_log_scoped` / `get_audit_review_status_scoped` → **zero**
+  hits. The audit command surface had no Rust-layer test whatsoever.
+- E2E cannot reach it: `ui/src/dev-mock/tauri-api.ts:3789` answers
+  `list_audit_log_scoped` in JavaScript, so no Rust executes.
+- The repo already knew the hazard elsewhere — `local_api_command_tests.rs:94`:
+  *"no lock needed, `blocking_lock` would panic inside the test runtime"*.
+
+Fix: the gate is now `async` and does `state.db.lock().await`, with a
+"Why this is async and awaits the lock" doc block at both definitions so nobody
+optimises the await away. 9 existing call sites converted + this slice's new
+10th.
+
+The rule that made this findable: **write the IPC-layer test even when you
+think the core test already covers it.** The core tests were green for two
+slices while the command that calls them could not execute.
+
+### What landed (feature)
+
+**(a) Emissions** — `create_staff_scoped` and `update_staff_scoped` on both
+clients, through the same `record_security_event` sink as the auth paths:
+
+| event | action | classifier |
+|---|---|---|
+| account created | `user.create` | `account_created` |
+| profile/role/active edited | `user.update` | `profile_changed` |
+| PIN rotated | `user.update` | `pin_rotated` |
+
+Same confirmed-Free gate, same fail-open rule — the gate is the recorder's, not
+the event kind's, so a staff edit on a confirmed Free tenant writes nothing and
+a tampered subscription row still writes.
+
+`SecurityEvent` gained one field, `subject_id: Option<String>`, and a
+`staff_change(actor, subject, username, action, reason)` constructor. Login
+events leave it `None` (a login is self-caused); staff events set it. So
+`audit_log.user_id` is the **actor** and `target_id` the **subject** — the
+convention `staff.identity.read` in `db/profile.rs` already uses.
+
+**(b) Read path** — `Store::list_security_events(outcome, query, cursor,
+limit)`, plus `list_security_events_scoped` on both clients.
+
+### Design decisions worth keeping
+
+**A PIN rotation does not get its own action string.** The catalog
+(`ui/src/features/audit/auditCatalog.ts`) has `user.create` and
+`user.update` — both already in `CRITICAL_ACTIONS` — and no pin key.
+Inventing `user.pin_change` would strand a label and render through
+`audit-action-unknown`. So the rotation is a `user.update` whose details carry
+`reason: "pin_rotated"`: fully labelled today, still exactly separable in a
+query, and nothing queued for the FTL window. **`logout` remains the only
+security action still waiting on a label.**
+
+**Staff events are recorded INSIDE the update transaction.**
+`update_staff_scoped` wraps profile + assignment + PIN in one
+`unchecked_transaction`; the recorder is called on `Store::new(&tx)` before
+`tx.commit()`. So a rolled-back edit leaves no phantom event and a committed
+edit can never be missing its trail. The create path cannot do this —
+`create_user_with_profile` commits its own transaction — so its event is
+written just after the account exists; a failure there loses the event but can
+never strand the account. Pinned by
+`a_rejected_create_records_no_security_event`.
+
+**One SQL builder, not two.** `list_audit_entries_filtered` became a thin
+wrapper over a new `pub(crate) list_audit_entries_page(..., actions)`. The
+security page passes an action allow-list; the general page passes `None`.
+Both share the LIKE-escaping and the `(created_at, id)` keyset contract, so
+they cannot drift. An **empty** allow-list matches nothing (`1 = 0`) rather
+than falling through to an unfiltered dump — a caller that forgets to populate
+its allow-list must not be rewarded with every audit row.
+
+**Scope isolation: the objection does not bite, and the reasoning is in the
+command doc.** "Can one store's admin read another store's staff auth trail?"
+presumes a per-store partition that does not exist: users/roles are global
+records (ADR #4 / ADR #7 — the store-scoped files contain no `users` rows),
+`list_staff_scoped` already exposes that table in full to any `staff:read`
+session, and a login happens *before* a store is selected, so an auth event
+carries no store attribution to withhold. The command discloses nothing new; it
+makes an already-readable dataset queryable. Gates are unchanged: Premium+ tier
+and `audit:view`.
+
+**The client helper became the client's single sink.** `record_security_event`
+in each `commands/auth.rs` is now `pub(crate)` and shared by the auth and
+staff commands, so the per-client `debug_upgrade` policy (desktop `true`,
+tablet `false`) is stated exactly once per client and cannot drift between
+them.
+
+### Gates
+
+Core audit **94 passed** (was 83). Desktop staff **53**, tablet staff **31**,
+desktop audit **13**, tablet audit **16**. Full desktop lib **1322 passed /
+0 failed**. `cargo check -p oz-pos-app -p oz-pos-tablet --lib` clean.
+
+### Process notes
+
+- **`staff_tests.rs` is hot and was dirty on both clients**, so the staff
+  wiring tests went into NEW sibling files
+  (`commands/staff_security_events_tests.rs`) wired from `staff.rs` as a
+  second `#[cfg(test)] #[path = ...] mod`. The hot file was never opened for
+  edit. Same for the read-path tests (`audit_security_events_tests.rs`).
+- Commit splitting: the new command lives in the same `audit.rs` files as the
+  gate fix, so a pathspec-only split was impossible. I extracted the command
+  block, restored `audit.rs`/`lib.rs` to HEAD, landed `fix(audit)` with its
+  own regression tests, then re-added the command for `feat(audit)`. Two clean
+  commits instead of one `fix` that secretly adds a feature.
+- **`verify-ipc-parity.py` rejects an uninvoked scoped command** — it calls it
+  "a redundant twin" and fails the run. Registering an IPC surface without a
+  UI caller is NOT a no-op: either wire the caller or add a dated
+  `scoped_orphans` entry to `scripts/ipc-parity-allowlist.json` with a reason.
+  This is the gate that enforces the "stop at the core+IPC boundary" rule.
+- The tree broke mid-verification from another agent's in-flight tax work
+  (`db/tax.rs:744` had a backtick pasted inside a `format!`, killing the whole
+  `oz-core` crate and therefore `cargo fmt --all`, pre-commit step 1). I did
+  not touch their files and did not commit over a red build; re-verified from
+  scratch once theirs settled.
+

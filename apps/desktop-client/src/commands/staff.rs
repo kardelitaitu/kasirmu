@@ -14,6 +14,10 @@ use tauri::State;
 use oz_core::auth::hash_pin;
 use oz_core::db::Store;
 use oz_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode, ScopeType};
+use oz_core::db::audit_security::{
+    SECURITY_ACTION_USER_CREATE, SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_ACCOUNT_CREATED,
+    SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
+};
 use oz_core::db::profile::{UserProfile, mask_last4};
 use oz_core::permissions;
 use oz_core::subscription::TenantSubscription;
@@ -21,6 +25,7 @@ use oz_core::{Role, User};
 
 use foundation::{validate_min_length, validate_not_empty};
 
+use crate::commands::auth::record_security_event;
 use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::commands::picker_ticket;
 use crate::error::AppError;
@@ -808,6 +813,23 @@ pub async fn create_staff_scoped(
     )?;
     let roles = store.list_roles()?;
     let assignment = store.assignment_for_user(&user.id)?;
+    // Creating a staff account is a security event: it is how an attacker
+    // with a stolen admin session installs persistence. Actor goes in
+    // `user_id`, the new account in `target_id` — the same split
+    // `staff.identity.read` already uses. `create_user_with_profile` commits
+    // its own transaction, so this row is written just after the account
+    // exists rather than inside it; a failure here loses the event but can
+    // never strand the account.
+    record_security_event(
+        &store,
+        &SecurityEvent::staff_change(
+            &session.user_id,
+            &user.id,
+            &user.username,
+            SECURITY_ACTION_USER_CREATE,
+            SECURITY_REASON_ACCOUNT_CREATED,
+        ),
+    );
     drop(db);
 
     Ok(to_staff_dto(
@@ -979,6 +1001,35 @@ pub async fn update_staff_scoped(
             .get_user(&args.id)?
             .ok_or_else(|| AppError::Internal(format!("updated user {} vanished", args.id)))?;
         let roles = store.list_roles()?;
+        // Recorded INSIDE the transaction, so the audit row commits with the
+        // change it describes: a rolled-back edit leaves no phantom event, and
+        // a committed one can never be missing its trail.
+        record_security_event(
+            &store,
+            &SecurityEvent::staff_change(
+                &session.user_id,
+                &args.id,
+                &user.username,
+                SECURITY_ACTION_USER_UPDATE,
+                SECURITY_REASON_PROFILE_CHANGED,
+            ),
+        );
+        // A PIN rotation is a SECOND, distinct fact — it dropped every other
+        // session for the account (STAFF-03). It reuses the catalogued
+        // `user.update` action with its own classifier rather than inventing
+        // `user.pin_change`, which has no Fluent label and would strand one.
+        if pin_rotated {
+            record_security_event(
+                &store,
+                &SecurityEvent::staff_change(
+                    &session.user_id,
+                    &args.id,
+                    &user.username,
+                    SECURITY_ACTION_USER_UPDATE,
+                    SECURITY_REASON_PIN_ROTATED,
+                ),
+            );
+        }
         tx.commit()?;
         (user, roles, pin_rotated)
     };
@@ -1133,3 +1184,7 @@ fn run_bootstrap_owner(
 #[cfg(test)]
 #[path = "staff_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "staff_security_events_tests.rs"]
+mod security_events_tests;

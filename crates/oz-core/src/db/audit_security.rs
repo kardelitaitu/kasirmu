@@ -37,7 +37,38 @@ pub const SECURITY_ACTION_LOGIN: &str = "login";
 pub const SECURITY_ACTION_LOGIN_FAILED: &str = "login.failed";
 
 /// Action recorded when a session is destroyed (logout / store switch).
+///
+/// This one has NO Fluent label yet — see the module notes and
+/// `coder-3-journal.md`: it renders through the audit catalog's
+/// unknown-action fallback until the locale window opens.
 pub const SECURITY_ACTION_LOGOUT: &str = "logout";
+
+/// Action recorded when an admin creates a staff account. Already in
+/// `auditCatalog.ts`, and already in its `CRITICAL_ACTIONS` set, so the
+/// audit screen gives it critical emphasis with no front-end change.
+pub const SECURITY_ACTION_USER_CREATE: &str = "user.create";
+
+/// Action recorded when an admin changes a staff account — role, display
+/// name, active flag, or PIN. Also already catalogued and critical.
+///
+/// A PIN rotation deliberately reuses this action rather than inventing
+/// `user.pin_change`: the catalog has no such key, and adding one would
+/// strand a label. The rotation is still separable — it is the only
+/// `user.update` row carrying `reason = "pin_rotated"`.
+pub const SECURITY_ACTION_USER_UPDATE: &str = "user.update";
+
+/// The security-event action set, and the allow-list
+/// [`Store::list_security_events`] filters the audit table by.
+///
+/// A new security action must be added HERE as well as getting a
+/// constructor, or its rows are written and then never readable.
+pub const SECURITY_ACTIONS: &[&'static str] = &[
+    SECURITY_ACTION_LOGIN,
+    SECURITY_ACTION_LOGIN_FAILED,
+    SECURITY_ACTION_LOGOUT,
+    SECURITY_ACTION_USER_CREATE,
+    SECURITY_ACTION_USER_UPDATE,
+];
 
 /// `audit_log.user_id` for an event with no resolved account — the unknown
 /// username case, where there is no `users` row to point at.
@@ -52,6 +83,13 @@ pub const SECURITY_REASON_BAD_PIN: &str = "wrong_pin";
 /// Failure classifier: the attempt was refused by the STAFF-07 limiter
 /// before any credential was checked.
 pub const SECURITY_REASON_RATE_LIMITED: &str = "rate_limited";
+/// Administrative classifier: the account was created.
+pub const SECURITY_REASON_ACCOUNT_CREATED: &str = "account_created";
+/// Administrative classifier: role, display name or active flag changed.
+pub const SECURITY_REASON_PROFILE_CHANGED: &str = "profile_changed";
+/// Administrative classifier: the PIN was rotated, which also dropped every
+/// other session for the account (STAFF-03).
+pub const SECURITY_REASON_PIN_ROTATED: &str = "pin_rotated";
 
 /// One authentication outcome to persist.
 ///
@@ -76,6 +114,11 @@ pub struct SecurityEvent {
     pub reason: Option<&'static str>,
     /// Terminal the attempt came from (the STAFF-07 device id), when known.
     pub device_id: Option<String>,
+    /// The account the event is ABOUT when it is NOT the actor: an admin
+    /// changing someone else's staff record. `None` means the subject is the
+    /// actor, which is every authentication event — a login is self-caused.
+    /// Lands in `target_id` when set.
+    pub subject_id: Option<String>,
 }
 
 impl SecurityEvent {
@@ -93,6 +136,7 @@ impl SecurityEvent {
             outcome: "success",
             reason: None,
             device_id: device_id.map(Into::into),
+            subject_id: None,
         }
     }
 
@@ -114,6 +158,7 @@ impl SecurityEvent {
             outcome: "failure",
             reason: Some(reason),
             device_id: device_id.map(Into::into),
+            subject_id: None,
         }
     }
 
@@ -132,14 +177,48 @@ impl SecurityEvent {
             outcome: "success",
             reason: None,
             device_id: device_id.map(Into::into),
+            subject_id: None,
         }
     }
 
-    /// Row identity the event points at: the account when one resolved, else
-    /// the attempted username, so a brute-force pattern against a
+    /// An administrative change to ANOTHER staff account.
+    ///
+    /// `actor_id` is who made the change and lands in `audit_log.user_id`,
+    /// matching the house convention already used by `staff.identity.read`
+    /// (which records the viewer, not the viewed). `subject_id` is the account
+    /// changed and lands in `target_id`. `action` must be one of
+    /// [`SECURITY_ACTION_USER_CREATE`] / [`SECURITY_ACTION_USER_UPDATE`] and
+    /// `reason` one of the administrative `SECURITY_REASON_*` classifiers; both
+    /// are static string slices, so a call site cannot invent an uncatalogued
+    /// action at runtime.
+    #[must_use]
+    pub fn staff_change(
+        actor_id: impl Into<String>,
+        subject_id: impl Into<String>,
+        subject_username: impl Into<String>,
+        action: &'static str,
+        reason: &'static str,
+    ) -> Self {
+        Self {
+            user_id: actor_id.into(),
+            username: subject_username.into(),
+            action,
+            outcome: "success",
+            reason: Some(reason),
+            device_id: None,
+            subject_id: Some(subject_id.into()),
+        }
+    }
+
+    /// Row identity the event points at: the subject of an administrative
+    /// change, else the actor's own account, else — for an unresolved login
+    /// attempt — the attempted username, so a brute-force pattern against a
     /// non-existent account is still groupable in `target_id`.
     #[must_use]
     fn target_ref(&self) -> &str {
+        if let Some(subject) = &self.subject_id {
+            return subject;
+        }
         if self.user_id == SYSTEM_ACTOR {
             &self.username
         } else {
@@ -228,6 +307,39 @@ impl Store<'_> {
         );
         self.log_audit(&entry)?;
         Ok(true)
+    }
+
+    /// Read the security-event slice of the audit trail.
+    ///
+    /// Identical page contract to [`Store::list_audit_entries_filtered`]:
+    /// pages clamped to `[1, 200]`, a `(created_at, id)` keyset cursor, and a
+    /// total counted before the cursor — but restricted to [`SECURITY_ACTIONS`],
+    /// so an ordinary business-audit row can never appear here and a security
+    /// row cannot be hidden by a business-events view. Both share one SQL
+    /// builder, so the LIKE-escaping and cursor semantics cannot drift.
+    ///
+    /// This reads WHICHEVER database the caller opened, and that is the point.
+    /// Identity is a global record in this design (ADR #4 / ADR #7: the
+    /// store-scoped files contain no `users` rows), so the whole auth trail
+    /// lives in the global DB while the ordinary audit screen reads a per-store
+    /// file. A caller that wants both opens both connections — which is what
+    /// the `_scoped` commands do.
+    pub fn list_security_events(
+        &self,
+        outcome: Option<&str>,
+        query: Option<&str>,
+        before_created_at: Option<&str>,
+        before_id: Option<&str>,
+        limit: u64,
+    ) -> Result<(Vec<AuditEntry>, u64, bool), CoreError> {
+        self.list_audit_entries_page(
+            outcome,
+            query,
+            before_created_at,
+            before_id,
+            limit,
+            Some(SECURITY_ACTIONS),
+        )
     }
 }
 

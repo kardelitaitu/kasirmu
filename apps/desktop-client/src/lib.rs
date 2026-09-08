@@ -782,6 +782,10 @@ pub fn run() {
             commands::audit::get_audit_review_status_scoped,
             commands::audit::mark_audit_reviewed_scoped,
             commands::audit::export_audit_log_scoped,
+            // Organization-level security trail from the global identity DB
+            // (todo-global-saas-2.md P1). Reads a DIFFERENT file than the
+            // store-scoped audit list above — see the command doc.
+            commands::audit::list_security_events_scoped,
             commands::auth::staff_login,
             commands::auth::staff_check_username,
             commands::auth::has_users,

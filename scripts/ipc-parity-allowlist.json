@@ -198,6 +198,7 @@
     "list_payables_scoped",
     "list_pending_offline_scoped",
     "list_scale_devices_scoped",
+    "list_security_events_scoped",
     "list_warehouse_products_scoped",
     "pending_sync_count_scoped",
     "ping_scoped",
@@ -210,7 +211,7 @@
     "test_auth_connection_scoped",
     "write_off_payable_scoped"
   ],
-  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The memo authoring entries (create/publish/list_authored) are NOT host-only orphans \u2014 the authoring screen now invokes all three from the shared api (3fb745cf), so they left this list and moved to the tablet allowlist with a recorded product choice: authoring is desktop-only, following the legal-entity precedent. They return here only if tablet registration would leave them caller-less again. The four payables entries (create/list/record_payment/write_off) are the desktop-only AP authoring surface landed ahead of its UI: the Hutang screen is a later slice, so these commands currently have no caller at all (unlike memo authoring, which already has one). They leave this list when the payables UI wires them, exactly as the memo entries did.",
+  "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The memo authoring entries (create/publish/list_authored) are NOT host-only orphans \u2014 the authoring screen now invokes all three from the shared api (3fb745cf), so they left this list and moved to the tablet allowlist with a recorded product choice: authoring is desktop-only, following the legal-entity precedent. They return here only if tablet registration would leave them caller-less again. The four payables entries (create/list/record_payment/write_off) are the desktop-only AP authoring surface landed ahead of its UI: the Hutang screen is a later slice, so these commands currently have no caller at all (unlike memo authoring, which already has one). They leave this list when the payables UI wires them, exactly as the memo entries did. `list_security_events_scoped` is the same shape landed one slice early: the audit-baseline security events (logins, logouts, staff account changes) are written to the GLOBAL identity DB and this is their only read path, so the core+IPC half is live and gated (Premium+ tier, `audit:view`) while the screen that lists them is a later UI slice. It leaves this list when `ui/src/api/audit.ts` gains the caller.",
   "dev_mock": [
     "delete_topology_template",
     "gateway_status",

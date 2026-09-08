@@ -158,6 +158,83 @@ pub async fn list_audit_log_scoped(
     })
 }
 
+/// Arguments for the organization-level security-events query.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSecurityEventsScopedArgs {
+    /// Maximum entries per page (clamped to `[1, 200]` server-side).
+    #[serde(default = "default_limit_u64")]
+    pub limit: u64,
+    /// Optional outcome filter (`success` | `failure`).
+    pub outcome: Option<String>,
+    /// Optional free-text query over action/target/user.
+    pub query: Option<String>,
+    /// Keyset cursor: fetch entries strictly older than `(created_at, id)`,
+    /// matching the general audit page exactly.
+    pub before_created_at: Option<String>,
+    /// Keyset cursor tie-breaker.
+    pub before_id: Option<String>,
+}
+
+/// Read the ORGANIZATION-level security trail — logins, logouts and staff
+/// account changes — from the GLOBAL identity database
+/// (todo-global-saas-2.md P1 "audit baseline").
+///
+/// # Why this reads a different database than its sibling
+///
+/// `list_audit_log_scoped` reads the session store's file, which is right for
+/// sales/stock/product events. Security events cannot live there: identity is
+/// a global record in this design (ADR #4 / ADR #7 — the store-scoped files
+/// contain no `users` rows), so `staff_login` and the staff-management
+/// commands all write the global DB. A store-scoped read would find nothing.
+///
+/// # Scope isolation, and why this is not a cross-store leak
+///
+/// The obvious objection — can one store's admin read another store's staff
+/// auth trail? — does not bite, because there is no per-store partition of
+/// this data to leak across. Every row concerns the global `users` table,
+/// which the staff list already exposes in full to any session holding
+/// `staff:read`, and a login happens BEFORE a store is even selected, so an
+/// auth event carries no store attribution to withhold. This command
+/// discloses nothing the same session cannot already read; it makes an
+/// existing global dataset queryable, which is the point.
+///
+/// The gates are the audit surface's own and unchanged: Premium+ tier
+/// (`require_audit_tier`, fail-closed on an unreadable subscription row) plus
+/// `audit:view` resolved for the caller. A session that cannot open the audit
+/// screen cannot open this one either.
+///
+/// Results are restricted server-side to the security action set, so an
+/// ordinary business-audit row never appears here; the restriction is on this
+/// surface, not a hiding rule — security rows remain on the general page.
+#[command]
+pub async fn list_security_events_scoped(
+    session_token: String,
+    args: ListSecurityEventsScopedArgs,
+    state: State<'_, AppState>,
+) -> Result<AuditLogPageDto, AppError> {
+    // resolve_scope (not resolve_session) so this command fails on a session
+    // whose store cannot be opened exactly as its sibling does; the store
+    // connection itself is not read — only the caller's identity is needed.
+    let (session, _store_conn) = state.resolve_scope(&session_token)?;
+    require_audit_tier(&state).await?;
+    require_audit_permission(&state, &session.user_id, permissions::AUDIT_VIEW).await?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    let (items, total, has_more) = store.list_security_events(
+        args.outcome.as_deref(),
+        args.query.as_deref(),
+        args.before_created_at.as_deref(),
+        args.before_id.as_deref(),
+        args.limit,
+    )?;
+    Ok(AuditLogPageDto {
+        items: items.into_iter().map(AuditEntryDto::from).collect(),
+        total,
+        has_more,
+    })
+}
+
 /// Users and roles are global authentication records (ADR #4 / ADR #7);
 /// audit events are read from the store-scoped connection after this check
 /// succeeds. Mirror of `require_customer_permission` in customers.rs.
@@ -434,3 +511,7 @@ pub async fn export_audit_log_scoped(
 #[cfg(test)]
 #[path = "audit_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "audit_security_events_tests.rs"]
+mod security_events_tests;

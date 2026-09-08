@@ -75,8 +75,9 @@ pub struct CheckUsernameResult {
     pub proceed: bool,
 }
 
-/// Persist one basic security event on the auth paths
-/// (todo-global-saas-2.md P1 "audit baseline").
+/// The desktop's single security-event sink — the auth paths and the
+/// staff-management paths both route here (todo-global-saas-2.md P1
+/// "audit baseline").
 ///
 /// Deliberately infallible from the caller's point of view: a failed audit
 /// write is not a reason to refuse a correct PIN or destroy a session, so the
@@ -91,7 +92,11 @@ pub struct CheckUsernameResult {
 /// (`require_audit_tier`). It cannot smuggle a real Free tenant into the
 /// table: `apply_debug_upgrade` is `cfg!(debug_assertions)`-gated, so only a
 /// dev build promotes its own active Free row.
-fn record_security_event(store: &Store, event: &SecurityEvent) {
+///
+/// `pub(crate)` so the staff commands share this one definition: the
+/// per-client tier-promotion policy is then stated exactly once and cannot
+/// drift between the auth and staff-management paths.
+pub(crate) fn record_security_event(store: &Store, event: &SecurityEvent) {
     match store.record_security_event(event, true) {
         Ok(true) => {}
         Ok(false) => tracing::debug!(

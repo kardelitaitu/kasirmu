@@ -74,8 +74,9 @@ pub struct CheckUsernameResult {
     pub proceed: bool,
 }
 
-/// Persist one basic security event on the auth paths
-/// (todo-global-saas-2.md P1 "audit baseline").
+/// The tablet's single security-event sink — the auth paths and the
+/// staff-management paths both route here (todo-global-saas-2.md P1
+/// "audit baseline").
 ///
 /// Deliberately infallible from the caller's point of view: a failed audit
 /// write is not a reason to refuse a correct PIN or destroy a session, so the
@@ -89,7 +90,11 @@ pub struct CheckUsernameResult {
 /// `debug_upgrade: false` — the tablet never mirrors the desktop's dev
 /// Free→Premium promotion (the per-client invariant from dfbc41b2), so a dev
 /// tablet on a Free row records nothing, exactly like a production one.
-fn record_security_event(store: &Store, event: &SecurityEvent) {
+///
+/// `pub(crate)` so the staff commands share this one definition: the
+/// per-client tier-promotion policy is then stated exactly once and cannot
+/// drift between the auth and staff-management paths.
+pub(crate) fn record_security_event(store: &Store, event: &SecurityEvent) {
     match store.record_security_event(event, false) {
         Ok(true) => {}
         Ok(false) => tracing::debug!(

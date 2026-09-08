@@ -295,6 +295,29 @@ impl Store<'_> {
         before_id: Option<&str>,
         limit: u64,
     ) -> Result<(Vec<AuditEntry>, u64, bool), CoreError> {
+        self.list_audit_entries_page(outcome, query, before_created_at, before_id, limit, None)
+    }
+
+    /// The page machinery behind [`Self::list_audit_entries_filtered`], with
+    /// one extra restriction: when `actions` is `Some`, only rows whose
+    /// `action` appears in that set are considered.
+    ///
+    /// Kept as a single implementation rather than a second copy of the query
+    /// so the LIKE-escaping and the `(created_at, id)` keyset contract cannot
+    /// drift between the general audit page and the security-events page
+    /// ([`Store::list_security_events`](Self::list_security_events)) that
+    /// shares it. An EMPTY `actions` slice matches nothing rather than
+    /// falling through to an unfiltered dump — a caller that forgets to
+    /// populate its allow-list must not be rewarded with every audit row.
+    pub(crate) fn list_audit_entries_page(
+        &self,
+        outcome: Option<&str>,
+        query: Option<&str>,
+        before_created_at: Option<&str>,
+        before_id: Option<&str>,
+        limit: u64,
+        actions: Option<&[&'static str]>,
+    ) -> Result<(Vec<AuditEntry>, u64, bool), CoreError> {
         let bounded = limit.clamp(1, 200);
 
         let mut where_clauses: Vec<String> = Vec::new();
@@ -326,6 +349,25 @@ impl Store<'_> {
                 ));
                 params.push(Box::new(pattern));
                 idx += 1;
+            }
+        }
+
+        if let Some(actions) = actions {
+            if actions.is_empty() {
+                where_clauses.push("1 = 0".to_string());
+            } else {
+                let placeholders: Vec<String> = actions
+                    .iter()
+                    .map(|_| {
+                        let p = format!("?{idx}");
+                        idx += 1;
+                        p
+                    })
+                    .collect();
+                where_clauses.push(format!("action IN ({})", placeholders.join(", ")));
+                for action in actions {
+                    params.push(Box::new(action.to_string()));
+                }
             }
         }
 

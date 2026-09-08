@@ -379,3 +379,306 @@ fn debug_upgrade_records_on_a_dev_free_row() {
         .unwrap();
     assert_eq!(recorded, cfg!(debug_assertions));
 }
+
+// ── administrative security events (staff create / update / PIN) ─
+
+#[test]
+fn staff_create_records_actor_and_subject_apart() {
+    // The house convention: user_id is WHO DID IT, target_id is WHO IT WAS
+    // DONE TO — the same split staff.identity.read already uses. A trail
+    // that recorded only the created account could not answer "who made
+    // this admin?".
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    let recorded = store(&conn)
+        .record_security_event(
+            &SecurityEvent::staff_change(
+                "user-admin",
+                "user-new",
+                "jdoe",
+                SECURITY_ACTION_USER_CREATE,
+                SECURITY_REASON_ACCOUNT_CREATED,
+            ),
+            false,
+        )
+        .unwrap();
+    assert!(recorded);
+    let (user_id, action, outcome, target_id, details) = single_row(&conn);
+    assert_eq!(user_id, "user-admin", "actor");
+    assert_eq!(target_id, "user-new", "subject");
+    assert_eq!(action, "user.create", "already in auditCatalog.ts");
+    assert_eq!(outcome, "success");
+    let json: serde_json::Value = serde_json::from_str(&details).unwrap();
+    assert_eq!(
+        json["username"], "jdoe",
+        "the subject's name, not the actor's"
+    );
+    assert_eq!(json["reason"], "account_created");
+}
+
+#[test]
+fn pin_rotation_is_a_user_update_with_its_own_classifier() {
+    // No new action string is invented: the catalog has no pin key, so the
+    // rotation rides user.update and stays separable through its reason.
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    store(&conn)
+        .record_security_event(
+            &SecurityEvent::staff_change(
+                "user-admin",
+                "user-target",
+                "cashier",
+                SECURITY_ACTION_USER_UPDATE,
+                SECURITY_REASON_PIN_ROTATED,
+            ),
+            false,
+        )
+        .unwrap();
+    let (_, action, _, target_id, details) = single_row(&conn);
+    assert_eq!(action, "user.update");
+    assert_eq!(target_id, "user-target");
+    assert!(details.contains("pin_rotated"), "got {details}");
+}
+
+#[test]
+fn confirmed_free_still_excludes_staff_events() {
+    // The gate is the recorder's, not the event kind's — a staff change on a
+    // confirmed Free tenant writes nothing, exactly like a login.
+    let conn = fresh();
+    let recorded = store(&conn)
+        .record_security_event(
+            &SecurityEvent::staff_change(
+                "user-admin",
+                "user-new",
+                "jdoe",
+                SECURITY_ACTION_USER_CREATE,
+                SECURITY_REASON_ACCOUNT_CREATED,
+            ),
+            false,
+        )
+        .unwrap();
+    assert!(!recorded);
+    assert!(rows(&conn).is_empty());
+}
+
+#[test]
+fn tampered_row_still_records_staff_events() {
+    // Fail-open applies to the administrative class too: corrupting the
+    // subscription row must not silence "who created an admin account".
+    let conn = fresh();
+    conn.execute(
+        "UPDATE tenant_subscription SET signature = ?1 WHERE tenant_id = 'default'",
+        ["broken"],
+    )
+    .unwrap();
+    let recorded = store(&conn)
+        .record_security_event(
+            &SecurityEvent::staff_change(
+                "user-x",
+                "user-new",
+                "backdoor",
+                SECURITY_ACTION_USER_CREATE,
+                SECURITY_REASON_ACCOUNT_CREATED,
+            ),
+            false,
+        )
+        .unwrap();
+    assert!(recorded);
+    assert_eq!(rows(&conn).len(), 1);
+}
+
+// ── the security-events read path ────────────────────────────────
+
+/// Seed one of every interesting action, then read back.
+fn seed_mixed(conn: &rusqlite::Connection) {
+    let s = store(conn);
+    s.record_security_event(
+        &SecurityEvent::login_success("user-1", "owner", None::<String>),
+        false,
+    )
+    .unwrap();
+    s.record_security_event(
+        &SecurityEvent::login_failed("attacker", SECURITY_REASON_BAD_PIN, None, Some("term-1")),
+        false,
+    )
+    .unwrap();
+    s.record_security_event(
+        &SecurityEvent::staff_change(
+            "user-1",
+            "user-2",
+            "jdoe",
+            SECURITY_ACTION_USER_CREATE,
+            SECURITY_REASON_ACCOUNT_CREATED,
+        ),
+        false,
+    )
+    .unwrap();
+    // Business rows: must never surface on the security read.
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES ('aud-biz-1','user-1','sale.void','sale','s-1','{}','success','2099-01-01T00:00:00.000Z'),
+                ('aud-biz-2','user-1','api.write','product','p-1','{}','success','2099-01-01T00:00:01.000Z')",
+        [],
+    )
+    .unwrap();
+}
+
+#[test]
+fn list_security_events_returns_only_the_security_class() {
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    seed_mixed(&conn);
+    let (items, total, has_more) = store(&conn)
+        .list_security_events(None, None, None, None, 50)
+        .unwrap();
+    assert_eq!(total, 3, "three security rows, not five audit rows");
+    assert_eq!(items.len(), 3);
+    assert!(!has_more);
+    let actions: Vec<&str> = items.iter().map(|e| e.action.as_str()).collect();
+    for a in actions {
+        assert!(
+            SECURITY_ACTIONS.contains(&a),
+            "non-security action leaked: {a}"
+        );
+    }
+    assert!(
+        !items
+            .iter()
+            .any(|e| e.action == "sale.void" || e.action == "api.write"),
+        "business rows must not surface"
+    );
+}
+
+#[test]
+fn list_security_events_is_the_complement_of_the_business_page() {
+    // The general audit page still sees everything, including the security
+    // rows — the restriction is on the new surface, not a hiding rule.
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    seed_mixed(&conn);
+    let (all, all_total, _) = store(&conn)
+        .list_audit_entries_filtered(None, None, None, None, 50)
+        .unwrap();
+    assert_eq!(all_total, 5);
+    assert_eq!(all.len(), 5);
+}
+
+#[test]
+fn list_security_events_filters_by_outcome_and_query() {
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    seed_mixed(&conn);
+    let (fails, fail_total, _) = store(&conn)
+        .list_security_events(Some("failure"), None, None, None, 50)
+        .unwrap();
+    assert_eq!(fail_total, 1);
+    assert_eq!(fails[0].action, SECURITY_ACTION_LOGIN_FAILED);
+
+    // The query surface is action / target_type / target_id / user_id — it
+    // deliberately does NOT grep the details blob, so this matches the
+    // SUBJECT ID in target_id rather than the username carried in details.
+    let (hits, hit_total, _) = store(&conn)
+        .list_security_events(None, Some("user-2"), None, None, 50)
+        .unwrap();
+    assert_eq!(hit_total, 1, "only the staff row points at that subject");
+    assert_eq!(hits[0].action, SECURITY_ACTION_USER_CREATE);
+}
+
+#[test]
+fn list_security_events_walks_the_keyset_cursor() {
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    seed_mixed(&conn);
+    let (page1, total, has_more) = store(&conn)
+        .list_security_events(None, None, None, None, 2)
+        .unwrap();
+    assert_eq!(page1.len(), 2);
+    assert_eq!(total, 3);
+    assert!(has_more);
+    let last = &page1[1];
+    let (page2, _, _) = store(&conn)
+        .list_security_events(None, None, Some(&last.created_at), Some(&last.id), 2)
+        .unwrap();
+    assert_eq!(page2.len(), 1, "the remainder fits one page");
+    let seen: Vec<&str> = page1
+        .iter()
+        .chain(page2.iter())
+        .map(|e| e.id.as_str())
+        .collect();
+    assert_eq!(
+        seen.len(),
+        3,
+        "no row skipped or repeated across the cursor"
+    );
+}
+
+#[test]
+fn an_empty_action_allow_list_matches_nothing() {
+    // Defensive arm of the shared page builder: a caller that hands over an
+    // empty set must get zero rows, never an unfiltered dump of the whole
+    // audit table (and never a SQL syntax error from `action IN ()`).
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    seed_mixed(&conn);
+    let (items, total, _) = store(&conn)
+        .list_audit_entries_page(None, None, None, None, 50, Some(&[]))
+        .unwrap();
+    assert_eq!(total, 0);
+    assert!(items.is_empty());
+}
+
+#[test]
+fn every_security_action_is_readable_back() {
+    // The write set and the read allow-list cannot drift: for each action in
+    // SECURITY_ACTIONS, record it and assert the read returns it. Adding a
+    // constant without listing it here (or vice versa) fails this test.
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    let s = store(&conn);
+    for action in SECURITY_ACTIONS {
+        let event = match *action {
+            SECURITY_ACTION_LOGIN => {
+                SecurityEvent::login_success("user-1", "owner", None::<String>)
+            }
+            SECURITY_ACTION_LOGIN_FAILED => SecurityEvent::login_failed(
+                "owner",
+                SECURITY_REASON_BAD_PIN,
+                Some("user-1"),
+                None::<String>,
+            ),
+            SECURITY_ACTION_LOGOUT => SecurityEvent::logout("user-1", "owner", None::<String>),
+            _ => SecurityEvent::staff_change(
+                "user-1",
+                "user-2",
+                "jdoe",
+                action,
+                SECURITY_REASON_PROFILE_CHANGED,
+            ),
+        };
+        s.record_security_event(&event, false).unwrap();
+    }
+    let (items, total, _) = s.list_security_events(None, None, None, None, 50).unwrap();
+    assert_eq!(total as usize, SECURITY_ACTIONS.len());
+    assert_eq!(items.len(), SECURITY_ACTIONS.len());
+}
+
+#[test]
+fn security_events_are_swept_like_every_other_row() {
+    // The staff-management rows obey the same retention schedule; nothing here
+    // is exempt from the sweep.
+    let conn = fresh();
+    set_tier(&conn, "plus");
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES ('aud-old-create','user-admin','user.create','user','user-x','{}','success','2099-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let deleted = store(&conn)
+        .sweep_audit_retention(
+            &crate::subscription::SubscriptionTier::Plus,
+            "2100-01-01T00:00:00.000Z",
+        )
+        .unwrap();
+    assert_eq!(deleted, 1);
+}
