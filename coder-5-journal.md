@@ -1065,3 +1065,106 @@ en / 17 id, 0 stranded, 0 one-sided), `verify-ipc-parity` OK,
    then.
 3. A holder list is the natural place for a "revoke all from this role" action;
    out of scope here and unasked.
+
+---
+
+## 2026-09-09 — finisher-B: S-B follow-through — the (A) DTO split, and a commit-sweep postmortem
+
+### The work is at `1c445b897`, not in a commit of mine
+
+**Pointer, per R36-13 ("record your rationale in the relevant doc"):**
+`1c445b897 feat(locations): show workspace type and description in node body
+meta` carries **16 files — 5 topology and 11 mine.** Its subject describes a
+node-body tweak; its diff contains the entire role DTO split. Reviewing that
+commit by subject tells you nothing happened here. Files that are mine inside
+it: `apps/*/src/commands/staff.rs`, `apps/*/src/commands/staff_tests.rs`,
+`apps/*/src/commands/staff_role_holders_tests.rs`, `ui/src/api/staff.ts`,
+`ui/src/features/staff/RoleAuthoringScreen.tsx`, `ui/src/locales/staff.ftl`,
+`ui/src/locales/staff.id.ftl`, `ui/src/__tests__/RoleAuthoringScreen.test.tsx`.
+
+Nothing is broken and nothing was reverted. Verified at that HEAD:
+`role_holders` 9/9 desktop and 9/9 tablet, `db::roles` 30/0,
+RoleAuthoringScreen 26/26, typecheck and eslint clean. Supervisor ruled
+**no rewrite**: `reset --mixed` would unwind another agent's 5 legitimate
+files on a racing branch, and an attribution defect is not worth content loss.
+
+### How the sweep happened, and the rule that prevents it
+
+I ran `git add -- <my 11 paths>`, then inspected the index. Before my
+`git commit`, another agent made a **bare** commit — which commits the whole
+index. Their subject, my files, my 60-line rationale discarded.
+
+This is `3b10ea3a` from the other side, and the tell is exactly what AGENTS.md
+says it is: my own commit came back reporting nothing to commit, which reads
+like "my work vanished" and actually means "someone else took your index." The
+first move is `git show --stat HEAD`, not a re-do.
+
+**The part that was mine to prevent:** staging early turned the shared index
+into a timer. AGENTS.md already warns the index is a racing value and that a
+pre-commit inspection proves nothing — I inspected it anyway and treated a true
+reading as durable. Adopted team-wide by the supervisor as standing practice:
+
+> **No `git add` followed by deliberation.** Compose the message, then land it
+> with one `git commit -F <msgfile> -- <paths>`, which stages and commits
+> atomically. Never prepare the index and decide afterwards.
+
+A pathspec commit is immune to others sweeping my work only while nothing of
+mine is sitting in the index waiting on me. That is the whole window, and
+removing the step removes the race.
+
+### What the split actually was
+
+`RoleDto` gained `holder_count` and `grant_count` beside the existing
+`reference_count`, and `role_dto` fills them from deliberately different places:
+
+- `reference_count` — foreign-key rows across `users`, `assignments`,
+  `role_workspace_types`, `role_workspaces`. **Kept, not derived.** It is the
+  only value entitled to gate Delete, and no arithmetic over the other two
+  reproduces it.
+- `holder_count` — accounts that resolve to the role, from
+  `Store::role_holder_count` (`886d3cd22`), which shares one
+  `HOLDERS_FROM_WHERE` with `role_holders`. The number on the collapsed row and
+  the list underneath it are computed from a single WHERE clause, so they
+  cannot drift.
+- `grant_count` — workspace configuration pointing at the role. Blocks a delete
+  exactly like a holder does, while nobody holds anything.
+
+`role-in-use` was removed from both locales, replaced by
+`role-in-use-accounts` / `role-in-use-grants` / `role-in-use-grants-only` —
+three messages because there are three real cases. That retires `f3f36c846`
+(the reword that merely stopped the label lying) at its source: the conflation
+is now unrepresentable rather than merely unstated.
+
+### The crown test, because it is the one that carries the design
+
+`a_divergent_account_is_a_referrer_without_being_a_holder`: an account whose
+`users` row names this role while its assignment names another. Authorization
+sends it to the other role, so listing it as a holder would credit access that
+person does not have — yet the FK row is real, so the role must stay
+undeletable. That single state proves why `reference_count` cannot be replaced
+by `holder_count + grant_count`, which is the refactor everyone would reach
+for. Two supporting tests: one synced account yields `holder_count 1` /
+`reference_count 2` (the doubling, pinned as numbers at the boundary the UI
+reads), and the grant-only role yields `grant_count 1` / `holder_count 0`
+with Delete still blocked and no account sentence anywhere.
+
+### Standing notes from this slice
+
+- **Hot files are quiet, not safe.** `apps/*/commands/staff_tests.rs` sat
+  +6/−0 with someone else's work for most of this session; the (A) split was
+  held and reverted once purely because of that. When they went clean I
+  re-verified before and after, and their whole diff in the landing is my 18
+  lines. The green light is "no foreign lines at the moment of the commit,"
+  re-checked, not remembered.
+- **`verify-ipc-parity` is currently red repo-wide** on
+  `impersonate_user_scoped` — registered in both shells by `37de19fb1`, no UI
+  caller, no `scoped_orphans` entry. Owned by that stream; left untouched
+  because that allowlist wants a reason only its author can supply.
+- **A docs-only commit still runs `cargo fmt --all` first.** Step 1 fires
+  before anything looks at what is staged, so one broken `.rs` anywhere blocks
+  every agent's `.md` commit. Observed twice this session, both times as a
+  lost-line diagnosis for someone unrelated to the break.
+- **The 44 lines that were dirty in this file when I started writing this
+  entry** were another agent's rule upgrade about `git commit -F` hygiene —
+  a note about commit-message discipline, uncommitted in the same shared file
+  I was waiting on to record a commit-hygiene lesson.
