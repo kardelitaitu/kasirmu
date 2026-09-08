@@ -505,7 +505,7 @@ docs/decisions/2026-01-15-module-system-design.md
 docs/decisions/2026-02-01-event-bus-design.md
 docs/decisions/2026-03-01-frontend-restructure.md
 docs/decisions/2026-07-10-workspace-type-instance-design.md
-docs/decisions/2026-07-10-subscription-tier-entitlement.md
+docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md
 docs/decisions/2026-07-15-whitelabel-branding-system.md
 docs/decisions/2026-07-18-kds-multi-layout-system.md
 docs/decisions/2026-07-20-node-based-store-topology-builder.md
@@ -537,7 +537,7 @@ For the full list see the `docs/decisions/` directory.
 not hard deadlines. Every PR should move the codebase closer to the target
 architecture.*
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 
 > status: ACCURATE (5 structural majors repaired 31-08-26) · Core Traits rewritten verbatim from foundation/src/contracts.rs (invented `Integration` removed, `DomainEvent` added); Platform Core Services trimmed to the 6 real services; permission delimiter corrected to `domain:action`; Event Flow invented names replaced with real handlers; ADR #43 and foundation/src/ corrected; counts verified accurate (35 members / 13 crates / 14 modules / 61 ADRs). Minor backlog in the top audit comment (no dedicated HAL section; feature flows not shown).
 

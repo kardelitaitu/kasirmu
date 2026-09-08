@@ -206,10 +206,12 @@ pub fn course_sort_key(course: Option<&str>) -> i64 {
 
 | Step | Files | Changes |
 |------|-------|---------|
-| 1. Migration 105 | `crates/oz-core/migrations/105_kds_line_items.sql` | New `kds_line_items` table |
-| 2. Migration 106 | `crates/oz-core/migrations/106_sale_lines_course_modifier.sql` | ALTER TABLE for `course` + `modifiers_json` on `sale_lines` |
+| 1. Migration 105 | squashed into `crates/oz-core/migrations/20260813_init.sql` | New `kds_line_items` table |
+| 2. Migration 106 | squashed into the same `20260813_init.sql` | ALTER TABLE for `course` + `modifiers_json` on `sale_lines` |
+
+The 131 pre-Aug-2026 migrations were squashed into `20260813_init.sql`, so numbered files 105 and 106 no longer exist as files. The schema they created does — `kds_line_items` and `modifiers_json` are both in the init baseline. Registry order in `crates/oz-core/src/migrations.rs` is canonical, not filename order.
 | 3. Rust types | `crates/oz-core/src/kds.rs` | Add `KdsLineItem`, `KdsModifier`, `CreateKdsLineItemInput` structs |
-| 4. Enrich SaleLine | `modules/sales/src/models/sale.rs` | Add `course`, `modifiers` fields to `SaleLine` |
+| 4. Enrich SaleLine | `modules/sales/src/models.rs` (not `models/sale.rs`) | Add `course: Option<String>` and `modifiers_json: Option<String>` to `SaleLine` — both present, at lines 65 and 71 |
 | 5. Update `CreateKdsOrderInput` | `crates/oz-core/src/kds.rs` | Replace `items_summary`/`item_count` with `items: Vec<CreateKdsLineItemInput>` |
 | 6. DB: insert line items | `crates/oz-core/src/db/kds.rs` | New `create_kds_line_items` method + update `create_kds_order` to call it |
 
@@ -239,7 +241,7 @@ pub fn course_sort_key(course: Option<&str>) -> i64 {
 
 | Step | Files | Changes |
 |------|-------|---------|
-| 19. Cart: course assignment | `ui/src/features/retail/RetailCartPanel.tsx` + `ui/src/features/pos/PosCartPanel.tsx` | UI to assign course (dropdown/badge) per line item in restaurant mode |
+| 19. Cart: course assignment | `ui/src/features/retail/RetailCartPanel.tsx` + `ui/src/features/sales/PosScreen.tsx` | UI to assign course per line item in restaurant mode. **There is no `ui/src/features/pos/` directory and no `PosCartPanel.tsx` anywhere in the tree** — the course bar is `pos-cart-course-bar`, rendered from `COURSES` inside `PosScreen.tsx` (around line 1542) and styled by `ui/src/features/sales/CartPanelCourseBar.css` |
 | 20. Cart: modifiers | `ui/src/features/retail/RetailCartPanel.tsx` | "Add modifier" button per line → modal with modifier groups from product |
 | 21. Cart → SaleLine | `crates/oz-core/src/cart.rs` | Carry `course` and `modifiers` through CartLine → SaleLine |
 | 22. Sale completion | `crates/oz-core/src/db/sales.rs` | Write `course` + `modifiers_json` on `sale_lines` INSERT |
@@ -290,7 +292,7 @@ pub fn course_sort_key(course: Option<&str>) -> i64 {
 | **POS cart changes are complex** (course UI, modifier selection UX) | Medium | Can ship Phase 1–3 (KDS display only) first. Phase 4 (POS input) is additive and optional. Pre-existing sales without course data display gracefully. |
 | **Performance**: loading line items for every queue ticket | Low | KDS queue typically has <50 active tickets. Single JOIN per ticket is negligible. Could add eager loading in a single query if needed. |
 
-> last audited 09-08-26 by buffy
+> last audited 08-09-26 by buffy
 > audit: Phase 1 Core Architecture & API Docs Audit
 
 > status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid

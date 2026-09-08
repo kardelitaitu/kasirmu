@@ -218,13 +218,13 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `.tarpaulin.toml` config + coverage CI job + local coverage gate in `scripts/check.sh`
 
 ### CI/CD
-- [x] `.github/workflows/ci.yml`: lint → test → Tauri bundle
+- [x] `.github/workflows/ci.yml`: lint → test → Tauri bundle — **retired to `ci.yml.bak` by `23c96330`**; the live pipeline is `dev-ci.yml`, and `release.yml` was restored desktop-only in 0.0.36. Kept because it records what shipped, not what runs.
   - `cargo fmt --check`
   - `cargo clippy -- -D warnings`
   - `cargo test --workspace`
   - `npm run lint` + `npm run test` in `ui/`
   - Tauri build for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`
-  - `.github/workflows/security.yml`: weekly `cargo audit` + `cargo deny`
+  - `.github/workflows/security.yml`: weekly `cargo audit` + `cargo deny` — **never lived; the file exists only as `security.yml.bak`.** Security and nightly suites are not enforced in CI, so a green Dev CI run is not proof they passed.
 - [x] `.github/workflows/release.yml`: tag → build all targets → draft GitHub release
   - Verify job: fmt, clippy, tests (cargo + npm)
   - Build matrix: ubuntu-latest, windows-latest, macos-latest
@@ -289,7 +289,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 ### Transaction Lifecycle
 - [x] Audit log SQL migration + domain type (`010_audit_log.sql`, `audit.rs`)
 - [x] Store methods: `log_audit`, `list_audit_entries`, `void_sale` (atomic tx with stock restoration)
-- [x] `void_sale` Tauri IPC command (`apps/desktop-client/src/commands/sales.rs`)
+- [x] `void_sale` Tauri IPC command — lives in `apps/desktop-client/src/commands/void.rs` as `void_sale_scoped` (there is no `commands/sales.rs`)
 - [x] **Void Sale UI** — Orders screen with search, status filters, detail view, reason picker, void confirmation
 - [x] Refund / return flow (partial or full, linked to original order) — `RefundModal.tsx`, `SalesHistoryScreen.tsx` integration, previous refunds display
 - [x] Hold order (park a sale, resume later — multiple holds simultaneously)
@@ -404,7 +404,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
   - Phase 6: All 15 delegated Store methods marked `#[deprecated]`; tests annotated `#[allow(deprecated)]`
 
 ### Mobile Builds
-- [x] Android tablet build (Tauri mobile → APK, signed) — CI builds a signed `aarch64` APK on tag push (`.github/workflows/android.yml`); physical-device testing still needs infra
+- [x] Android tablet build (Tauri mobile → APK, signed) — CI **no longer** builds it: `android.yml` and `ios.yml` are retired `.bak`, and `release.yml` covers desktop only. The build path exists (`cargo tauri android build`); the automation does not.; physical-device testing still needs infra
 - [ ] iPad build (Tauri mobile → `.ipa`, TestFlight distribution)
 - [x] Touch-optimised UI layout for tablet screen sizes (tablet shell + responsive breakpoints + touch targets)
 - [x] `packaging/mobile/README.md` — Tauri v2 mobile build guide for Android & iOS
@@ -518,12 +518,12 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Plugin manifest format (`plugin.toml` — Permission enum with 8 variants, enforced at load time)
 - [x] Plugin sandbox: Lua-based, no unsafe Rust from plugins (14 dangerous globals nil, instruction limit 100k, safe env)
 - [x] Plugin discovery and hot-reload (notify-based file watcher in desktop-client, auto-reload on .lua changes)
-- [x] Developer docs: `docs/plugin-guide.md` + CONTRIBUTING.md + QUICKSTART.md + HAL example driver
+- [x] Developer docs: `docs/guides/plugin-guide.md` + CONTRIBUTING.md + `docs/guides/QUICKSTART.md` + HAL example driver (both moved out of `docs/` root into `docs/guides/`)
 
 ### Developer Experience
 - [x] `cargo doc` generated and shipped in the docs portal (hosted on Cloudflare via `website/` + `scripts/build-docs.sh`, sccache, preserves workspace index)
 - [x] `CONTRIBUTING.md` — contribution guide, PR template
-- [x] `docs/QUICKSTART.md` — local dev setup
+- [x] `docs/guides/QUICKSTART.md` — local dev setup
 - [x] Example Lua scripts in `scripts/examples/` (discount_bulk, tax_overrides, validate_order)
 - [x] Example custom HAL driver in `crates/oz-hal/examples/custom_barcode_scanner.rs`
 
@@ -593,5 +593,5 @@ On-Features can be activated at any phase once the core infrastructure is in pla
 
 *Last updated: 2026-08-31 (re-audited by docs-auditor).* (Phases 1–3 ✓. Phase 4 ~96% — R2 currency module extraction complete; Android APK CI exists but physical device testing needs infra. Phase 5 ~95% — scheduled report delivery shipped in 0.0.22; Thai locale removed (not a target market); custom report builder + cloud warehouse export remain. Phase 6 ~98% — all features implemented and verified; voice-controlled checkout research deferred.)
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 

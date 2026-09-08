@@ -170,6 +170,15 @@ machines/CI without PG the skip is still quiet (PASS) by design.
 
 ---
 
+> **Path currency (added 08-09-26).** Entries below are dated findings and are not
+> rewritten — a finding that named `ui/src/features/stores/` on 2026-08-26 named the right
+> directory then. Two renames since then make several paths dead: `ui/src/features/stores/`
+> is now `ui/src/features/locations/`, and the `StoreProfile` type (and the `store` →
+> `location` vocabulary around it) is now `LocationProfile` in
+> `crates/oz-core/src/location_profile.rs`. `docs/api-reference.md` is now
+> `docs/guides/api-reference.md`. Nothing else in these entries should be read as a
+> current path without checking.
+
 ## Topology — Editor UI (`31-topology-editor-ui.md` — ✅ ALL CLOSED 2026-08-26)
 
 **Status:** **all 7 findings repaired in one commit** (TOP-UI-01→TOP-UI-07). Audit of

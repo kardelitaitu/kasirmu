@@ -1,5 +1,7 @@
 # Fluent Page Audit — Full Journal
 
+<!-- Path currency note, added 08-09-26: paths in this journal are as-of each dated entry. Two that recur are not live pointers. `ui/locales/` appears six times as a FINDING — an orphan directory that held no bundle; the real locale path has always been `ui/src/locales/`, and the finding was that the stray dir existed. `scripts/tmp-split-spec.ps1` was a throwaway helper and has been deleted. Read either as history, not as a file to open. -->
+
 > **Provenance.** This is the working journal of the 2026-09-03 Fluent/i18n
 > page audit: an inventory of every registered page in `ui/src`, followed by
 > twelve phases of remediation, each landed as its own commit. It was kept in
