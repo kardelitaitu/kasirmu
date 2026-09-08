@@ -19,6 +19,9 @@ use foundation::validate_not_empty;
 use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::error::AppError;
 use crate::state::AppState;
+use oz_core::availability::UsageCounts;
+use oz_core::entitlements::Entitlements;
+
 use oz_core::permissions;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -438,7 +441,9 @@ pub async fn register_terminal_scoped(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    store.enforce_terminal_quota(&sub.effective_tier())?;
+    store.enforce_terminal_quota(
+        &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+    )?;
     store.create_terminal(&terminal)?;
     drop(db);
 

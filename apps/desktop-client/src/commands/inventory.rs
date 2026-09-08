@@ -3,6 +3,9 @@
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
+use oz_core::availability::UsageCounts;
+use oz_core::entitlements::Entitlements;
+
 use oz_core::{
     InventoryLocation, InventoryShift, InventoryTransaction, InventoryTransactionLine,
     StockThreshold, Store, WorkspaceInventoryLocation,
@@ -61,7 +64,10 @@ pub async fn create_inventory_location(
         let sub = oz_core::subscription::TenantSubscription::load(&identity, "default")?
             .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
         sub.verify_signature()?;
-        sub.effective_tier()
+        // Source the quota tier from the entitlements read model (Phase B one
+        // limit table) so the warehouse gate shares the caps projection's
+        // single source instead of a second subscription derivation.
+        Entitlements::from_subscription(&sub, UsageCounts::default()).tier
     };
 
     let conn = state

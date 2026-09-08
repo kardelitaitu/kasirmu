@@ -1613,3 +1613,46 @@ isolation and carry its own suite. `archive_workspace_instance_scoped` remains w
 the api layer with zero component callers; it is one call site short, on the session's
 own store, and this slice did not add it.
 
+
+### Caps-DTO consolidation — SOURCE consolidation, not call-graph rewiring (Phase B, box flip)
+
+Executed on branch 0.0.37 per supervisor greenlight. The consolidation is **source
+consolidation**: it changes where the quota `tier` *comes from* — the
+`Entitlements` read model, via
+`Entitlements::from_subscription(&sub, UsageCounts::default()).tier` — not the call
+graph. The four mapped creation gates keep their `enforce_*_quota(tier)` signatures
+unchanged; only the expression passed at the caller changed. No `enforce_*_quota`
+signature was touched, the five db files and their `*_tests.rs` siblings are
+untouched, and `products_crud` keeps its tier path.
+
+- (0) `Entitlements::max_products()` added to `crates/oz-core/src/entitlements.rs`,
+  mirroring `max_locations`. Its doc states plainly that the fifth gate
+  (`enforce_product_quota`) still feeds from `tier` directly until its
+  command-layer caller is consolidated; the accessor completes the parity matrix and pins
+  the product cap to the one limit table rather than backing a gate yet.
+- (1) Parity test added to `entitlements_tests.rs`: a 5-tier x 4-dimension matrix
+  (`Locations/Warehouses/Staff/PosRegisters`) asserting
+  `e.max_X() == QuotaDimension::X.limit_for(&tier)`; a Products assertion pinning
+  `max_products()` to `QuotaDimension::Products.limit_for` and to the published
+  `SubscriptionTier::max_products` contract (the *visible* gap, not a silent one); and
+  lifecycle variants proving fail-closed to Free caps. The test is a safety net and stays
+  GREEN — "red-on-Products" was metaphorical: Products is excluded from the consolidated
+  matrix by design, not by a failing test.
+- (2) Six caller sites now derive `tier` from `Entitlements`:
+  `desktop-client/src/commands/{inventory,locations,staff,terminals}.rs` and
+  `tablet-client/src/commands/{staff,terminals}.rs`. `locations.rs` keeps its
+  debug-Free`->`Premium` shim unchanged (no `state==Active` guard); it now
+  promotes the read-model-derived tier.
+
+Why this is behavior-preserving: `from_subscription` sets
+`tier: sub.effective_tier()`, numerically identical to what the caller passed before,
+so every gate enforces exactly the quota it enforced yesterday. The read model is now the
+single source the gates read, closing the second derivation the scoping audit found.
+
+Out of scope (deliberately): `availability.rs::tier_limit` (a diagnostic reader, not a
+creation gate) and the Products gate caller (visible gap; accessor landed for the day it
+is consolidated).
+
+Box-flip annotation must say: *this is source consolidation — the quota tier now flows
+from the Entitlements read model at the caller, not a rewire of the gate graph; gate
+signatures are unchanged and the parity test holds.*

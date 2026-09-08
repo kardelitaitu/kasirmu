@@ -15,6 +15,9 @@ use crate::commands::authz::{
 };
 use crate::error::AppError;
 use crate::state::AppState;
+use oz_core::availability::UsageCounts;
+use oz_core::entitlements::Entitlements;
+
 use oz_core::db::assignments::ScopeType;
 use oz_core::permissions;
 
@@ -175,7 +178,9 @@ pub async fn create_location_profile_scoped(
     let sub = TenantSubscription::load(&conn, "default")?
         .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
     sub.verify_signature()?;
-    let tier = sub.effective_tier();
+    // Quota tier now flows from the entitlements read model (Phase B one
+    // limit table), so the gate and the caps projection share one source.
+    let tier = Entitlements::from_subscription(&sub, UsageCounts::default()).tier;
     #[cfg(debug_assertions)]
     let tier = if tier == SubscriptionTier::Free {
         SubscriptionTier::Premium

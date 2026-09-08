@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use oz_core::auth::hash_pin;
+use oz_core::availability::UsageCounts;
 use oz_core::db::Store;
 use oz_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::db::audit_security::{
@@ -19,8 +20,10 @@ use oz_core::db::audit_security::{
     SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
 };
 use oz_core::db::profile::{UserProfile, mask_last4};
+use oz_core::entitlements::Entitlements;
 use oz_core::permissions;
 use oz_core::subscription::TenantSubscription;
+
 use oz_core::{Role, User};
 
 use foundation::{validate_min_length, validate_not_empty};
@@ -932,7 +935,8 @@ pub async fn create_staff_scoped(
     let sub = TenantSubscription::load(&db, "default")?
         .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
     sub.verify_signature()?;
-    store.enforce_staff_quota(&sub.effective_tier())?;
+    store
+        .enforce_staff_quota(&Entitlements::from_subscription(&sub, UsageCounts::default()).tier)?;
     let profile = args.profile.into_profile();
     let assignment = args.assignment.as_ref().map(assignment_spec).transpose()?;
     let user = store.create_user_with_profile(
