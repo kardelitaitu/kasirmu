@@ -434,7 +434,7 @@ CREATE TABLE IF NOT EXISTS legal_entities (
     status              TEXT NOT NULL DEFAULT 'active'
                         CHECK (status IN ('active', 'inactive')),
     created_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')), country_code TEXT NOT NULL DEFAULT '', locale TEXT NOT NULL DEFAULT '', timezone TEXT NOT NULL DEFAULT '', currency TEXT NOT NULL DEFAULT '',
     UNIQUE (tenant_id, name)
 );
 
@@ -682,7 +682,7 @@ CREATE TABLE IF NOT EXISTS "locations" (
     created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 , tenant_id TEXT NOT NULL DEFAULT 'default', legal_entity_id TEXT
-    REFERENCES legal_entities(id) ON DELETE RESTRICT);
+    REFERENCES legal_entities(id) ON DELETE RESTRICT, locale TEXT NOT NULL DEFAULT '');
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
     ON locations(is_primary) WHERE is_primary = 1;
@@ -1454,7 +1454,12 @@ CREATE TABLE IF NOT EXISTS stock_movements_archive (
 CREATE OR REPLACE FUNCTION audit_log_immutable_delete_fn() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
+    IF NOT EXISTS (
+        SELECT 1 FROM settings WHERE key = 'audit.retention_sweep_active'
+    ) THEN
+        RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
+    END IF;
+    RETURN NULL;
 END;
 $$;
 
@@ -1911,8 +1916,8 @@ INSERT INTO workspaces (id, key, name, description, icon) VALUES
     ('ws-retail-pos', 'retail-pos', 'Retail POS', 'Cashier terminal for retail checkout', 'store')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at) VALUES
-    ('default:default-legal-entity', 'default', 'Default Legal Entity', 'Default Legal Entity', '', '', 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at, country_code, locale, timezone, currency) VALUES
+    ('default:default-legal-entity', 'default', 'Default Legal Entity', 'Default Legal Entity', '', '', 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '', '', '')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_type_screens (id, type_key, screen_key, sort_order) VALUES
@@ -1987,8 +1992,8 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (30, 'admin', 'design', '', 15)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity')
+INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale) VALUES
+    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
