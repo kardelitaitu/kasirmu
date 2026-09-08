@@ -316,11 +316,28 @@ access: {
       — **STALE 2026-09-07: delivered by the Phase 2 memo stream** (rulings and
       journal in `todo-global-saas-2.md`; multi-location targeting widened
       further in `4df091d3`). The home Memo card rides `ab410844`.
-- [ ] **Add an information-architecture and gate parity test.** Verify every
+- [x] **Add an information-architecture and gate parity test.** Verify every
       top-level page has a registered route, its role policy agrees with the
       route policy, and its tier policy (Analytics/Reports Pro+, Audit Log
       Premium+, cloud sync Plus+) is tested. Verify Settings subpages and
       page/action quota gates separately.
+      - **DONE 2026-09-08 (finisher-A):** covered by the test union
+      ui/src/__tests__/WorkspaceHomeTools.test.tsx (route + role + tier
+      parity) and ui/src/__tests__/WorkspaceHomeTools.navParity.test.tsx
+      (every tool route is a real sidebar nav entry; home gate never looser
+      than nav requiredRole); ui/src/__tests__/pageRegistry.test.ts
+      (role hierarchy + permission precedence for the gate machinery);
+      ui/src/__tests__/SettingsDeepLink.test.tsx +
+      ui/src/__tests__/SettingsNavTree.test.tsx (Settings subpages); and
+      the NEW ui/src/__tests__/quotaGateParity.test.tsx, which closes the
+      only open clause - page/action quota gating. It drives a feature to a
+      quota verdict through the availability contract and asserts the
+      IA/page layer honors it (feature reported unavailable with reason
+      quota). Note: the production page-registry gate consumes only role +
+      permission + feature-set, so the quota axis is asserted at the
+      FeatureVerdict contract the gate layer reads; the resolver side is
+      pinned by verdict_names_quota_at_the_cap_and_clears_one_below
+      (apps/desktop-client/src/commands/subscription_tests.rs).
 - [ ] **Align the existing Topology Editor with the new home policy.** The
       editor already supports branch-scoped graphs, location/workspace/warehouse/
       hardware nodes, typed semantic wires, address-like branch properties,
