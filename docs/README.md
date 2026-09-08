@@ -35,9 +35,11 @@
 ## Conventions
 
 - **ADR naming (new records):** `YYYY-MM-DD-adrNN-<slug>.md` in `decisions/` — the
-  `adrNN` segment is required for anything added from here on. Only 13 of the 64 files
-  currently in `decisions/` carry it; the other 51 predate the convention and are **not
-  drift to be renamed**. Highest number in use: adr47.
+  `adrNN` segment is required for anything added from here on. Only 13 of the 66 files
+  currently in `decisions/` carry it; the other 53 predate the convention and are **not
+  drift to be renamed**. Highest number in use: adr47. (Corrected 09-09-26: this read 64/51
+  and was already wrong when written — `git ls-tree 04407b60e -- docs/decisions` counts 66
+  tracked `.md` files, 13 with the segment.)
 - **Spec phases:** `workspace-settings-phase-<N>-<slug>.md` in `specs/`
 - **Audit findings:** tracked in [`records/audit-open-findings.md`](./records/audit-open-findings.md)
 
@@ -60,13 +62,20 @@ root `audit/` directory that no longer exists (its own comment records the
 consolidation into `audit-open-findings.md`).
 - **Status vocabulary:** `Proposed / Accepted / Implemented / Partially Implemented / Superseded / Archived`
 
-> last audited 08-09-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor
 
 > Audit note (08-09-26): all 16 linked targets resolve, including the three Quick links
 > that are not in the table (`operations/ci-pipeline.md`, `security/security-audit-completion.md`,
 > `guides/EXTENDING.md`). The archived count was **stale**: this page said 27 in two places
 > and `docs/archived/` holds 26 `.md` files — a count that was true when written and false
 > ever since, which is exactly the failure mode a curated index invites. Fixed in both
-> places. The 3 unlisted dirs (`coverage/` generated report, `src/`+`theme/` retired mdbook
-> vestiges — `book.toml` now in `archived/`) remain correctly excluded from this curated
-> index. Directory set unchanged: 11 curated, 3 excluded, 14 present.
+> places. The 3 unlisted dirs (`coverage/` generated report, `src/`+`theme/` mdBook portal
+> sources) remain excluded from this curated index. Directory set unchanged: 11 curated,
+> 3 excluded, 14 present.
+>
+> **Correction (09-09-26):** the same note asserted the mdbook was retired and
+> "`book.toml` now in `archived/`". Both were false when written. `d0fe74814` did archive
+> it, but `d0607e023` (01-09-26) restored the config to `docs/book.toml`, `ec12b81d1`
+> (04-09-26) edited it again, `docs/archived/` has never held it since, and
+> `scripts/build-docs.sh`/`.ps1` still build the portal from `src/` + `theme/`. The dirs
+> stay unlisted as a curation choice, not because they are dead.
