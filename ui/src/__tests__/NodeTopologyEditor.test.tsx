@@ -7003,7 +7003,7 @@ describe('NodeTopologyEditor — wire click keeps an in-flight connection', () =
 // ── Escape on an open dialog does not touch canvas state ────────
 
 describe('NodeTopologyEditor — dialog Escape isolation', () => {
-  it('Escape cancelling the delete dialog keeps the node selected', () => {
+  it('Escape cancelling the delete dialog keeps the node selected', async () => {
     renderEditor();
 
     // Select a wired node so the delete flow opens the confirm dialog.
@@ -7014,10 +7014,13 @@ describe('NodeTopologyEditor — dialog Escape isolation', () => {
     openRackPanel('edit'); fireEvent.click(screen.getByText('Delete Selected Element'));
     expect(screen.getByText('Delete Node')).toBeInTheDocument();
 
-    // Escape closes the dialog (the Modal's focus trap owns it)...
+    // Escape closes the dialog (the Modal's focus trap owns it). The Modal
+    // primitive plays a 200ms exit fade (a986bc275) before unmounting, so
+    // the unmount is asynchronous — await it like the shared Modal and
+    // ConfirmDialog suites do.
     const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
     fireEvent.keyDown(canvas, { key: 'Escape' });
-    expect(screen.queryByText('Delete Node')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Delete Node')).not.toBeInTheDocument());
 
     // ...without the editor's window-level handler stealing the selection
     // (the dialog must own the keyboard while it is open).

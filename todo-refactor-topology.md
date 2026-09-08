@@ -21,7 +21,7 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 
 - [x] Confirm the working tree and identify unrelated edits before touching topology files. The tree already contains unrelated work in `.gitignore`, license/service-health files, connection-health UI, journals, and shared locales; these remain out of scope.
 - [x] Read the current `NodeTopologyEditor.tsx`, `TopologyScreen.tsx`, `topologyContract.ts`, and topology state modules in chunks.
-- [ ] Inventory all imports of `NodeTopologyEditor`, its exported types, and its re-exported helpers.
+- [x] Inventory all imports of `NodeTopologyEditor`, its exported types, and its re-exported helpers. (2026-09-08: 43 references — the default component plus `WorkspaceInstanceSeed`/`BranchLocationSeed` in the two main test suites, `canvasStateEqual` and helper types in `nodeTopologyEditorHelpers.test.ts`/`canvasStateEqual.test.ts`, `TopologyNodeData`/`TopologyWireData`/`PortName` type imports in ~20 sibling modules, and `TopologyScreen.tsx` runtime imports. Compatibility re-exports must stay until Phase 5.)
 - [x] Inventory the current topology test coverage, especially `NodeTopologyEditor.test.tsx` and `InspectorIntegration.test.tsx`.
 - [x] Record the baseline file size and the current responsibilities still inside `NodeTopologyEditor.tsx`.
 - [x] Run the focused topology tests and `npm run typecheck` from `ui/`; save the results in the task notes or journal.
@@ -57,7 +57,7 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 
 ### Current-state inventory
 
-- [ ] Record the exact line count of `ui/src/features/locations/NodeTopologyEditor.tsx` at the start of the refactor; do not use line count alone as the success metric.
+- [x] Record the exact line count of `ui/src/features/locations/NodeTopologyEditor.tsx` at the start of the refactor; do not use line count alone as the success metric. (6,048 at baseline, recorded in the journal entry below.)
 - [ ] Treat the following existing modules as established seams, not targets for needless re-extraction: `nodeTopologyEditorState.ts`, `nodeTopologyEditorSelectionState.ts`, `nodeTopologyEditorDragState.ts`, `nodeTopologyEditorConnectionState.ts`, `nodeTopologyEditorHoverState.ts`, `nodeTopologyEditorSaveState.ts`, `topologyEditorHelpers.ts`, `topologyContract.ts`, `topologyNodeCard.tsx`, `topologyWireGroup.tsx`, `topologyToolRack.tsx`, and `topologyHeader.tsx`.
 - [ ] Confirm the remaining monolith responsibilities currently include load/seed effects, inspector/profile editing, rename flows, templates and clipboard, Apply confirmation, keyboard commands, pointer/marquee/bend interactions, touch gestures, viewport state, validation integration, migration UI, and final canvas composition.
 - [ ] Record the current importers and re-exports before moving any symbol; tests currently import the editor and helper types directly from `NodeTopologyEditor.tsx`.
@@ -213,7 +213,7 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Problem:** `NodeTopologyEditor.tsx` is a large orchestration component and needs a slow, reversible refactor rather than a rewrite.
 - **Baseline:** `NodeTopologyEditor.tsx` 6,048 lines; `TopologyScreen.tsx` 981 lines; `nodeTopologyEditorState.ts` 74 lines; `topologyContract.ts` 1,052 lines. The focused editor test file is 11,159 lines and the inspector integration suite is 380 lines.
 - **Validation:** `ui/npm run typecheck` passed. `ui/npm run test -- --run src/__tests__/NodeTopologyEditor.test.tsx src/__tests__/InspectorIntegration.test.tsx` ran 519 tests: 517 passed, 1 skipped, and 1 failed.
-- **Known baseline failure:** `NodeTopologyEditor — dialog Escape isolation > Escape cancelling the delete dialog keeps the node selected` fails at `NodeTopologyEditor.test.tsx:7020` because the Delete Node dialog remains visible after Escape. This failure predates the refactor and must be resolved or explicitly isolated before claiming a clean refactor milestone.
+- **Known baseline failure:** `NodeTopologyEditor — dialog Escape isolation > Escape cancelling the delete dialog keeps the node selected` fails at `NodeTopologyEditor.test.tsx:7020` because the Delete Node dialog remains visible after Escape. This failure predates the refactor and must be resolved or explicitly isolated before claiming a clean refactor milestone. (Resolved 2026-09-08 — see the dialog-Escape entry below.)
 - **Decision:** Start with characterization and boundaries; do not change production topology code until the first extraction has a focused acceptance test and a clean comparison against this baseline.
 - **Next slice:** complete the import/re-export inventory, then extract only the load/seed/branch-sync/restore lifecycle.
 - **Commit:** baseline journal recorded in the current refactor-plan commit.
@@ -266,6 +266,15 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Result:** Editor reduced from 5,952 to 5,883 lines; the new builder is 77 lines and has two focused tests.
 - **Validation:** Load-model tests passed 2/2. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`. Full `npm run typecheck` remains blocked by seven unrelated `SettingsNavTree.test.tsx` errors; the new load-model files have no reported type errors.
 - **Next slice:** extract authoritative wire filtering/modeling, then consolidate the remaining load lifecycle into a hook.
+
+### 2026-09-08 — Baseline failure resolved: dialog Escape vs modal exit fade
+
+- **Context:** While preparing the load-lifecycle slice, the shared seam was found busy: Slice 1e (`buildWorkspaceTopologyNodes`, commit `b3a52cb36`) had landed from a concurrent session with uncommitted follow-up edits in `NodeTopologyEditor.tsx` and `topologyLoadModel.ts`. To avoid the swept-commit hazard, this slice deliberately touches neither file and instead clears the journal's known baseline failure — the last red test standing between the refactor and a clean focused suite.
+- **Root cause:** Commit `a986bc275` (2026-09-08, "feat(ui): add exit animation to the shared modal primitive") added a 200ms CSS exit fade to the shared `Modal` via `useExitAnimation`; Escape now unmounts the dialog asynchronously. The topology test predating that change (`e459c58f6`, 2026-08-07) asserted immediate disappearance synchronously. The editor behavior is correct and unchanged — the test was stale. `a986bc275` itself updated the shared Modal and ConfirmDialog suites to `waitFor`; the topology suite was missed.
+- **Fix:** `NodeTopologyEditor.test.tsx` "Escape cancelling the delete dialog keeps the node selected" now awaits the unmount with `waitFor` (and is `async`), matching the Modal and ConfirmDialog suites. The assertion the test exists for — Escape must not let the editor's window-level handler steal the selection — is unchanged and still runs after the dialog is gone.
+- **Scope:** `ui/src/__tests__/NodeTopologyEditor.test.tsx` only. No production code changed; `NodeTopologyEditor.tsx` and `topologyLoadModel.ts` untouched (concurrent in-flight edits preserved).
+- **Validation:** Isolated test passed. Full focused suite (`npm run test -- --run src/__tests__/NodeTopologyEditor.test.tsx src/__tests__/InspectorIntegration.test.tsx`): 519 tests, 518 passed, 1 skipped, 0 failed — the first fully green focused run of the refactor. `npm run typecheck` exit 0 (the seven unrelated `SettingsNavTree.test.tsx` errors recorded at Slice 1d have also cleared).
+- **Next slice:** the load-lifecycle hook consolidation remains the next production slice once the seam is free; the import/re-export inventory is recorded in the Phase 0 checklist above.
 
 ## Completion checklist
 
