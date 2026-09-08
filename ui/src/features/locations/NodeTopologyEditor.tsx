@@ -82,7 +82,15 @@ import {
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
 import { useTopologyEditorLoadLifecycle } from './nodeTopologyEditorLoadLifecycle';
-import { deletableNodeIds, nodesWithoutIds, wiresWithoutEndpoints } from './topologyCommands';
+import {
+  deletableNodeIds,
+  disconnectNode,
+  nodesWithoutIds,
+  stockRoutingWires,
+  wireConnectRefusal,
+  WIRE_CONNECT_REFUSAL_TOAST,
+  wiresWithoutEndpoints,
+} from './topologyCommands';
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
@@ -4202,64 +4210,29 @@ export default function NodeTopologyEditor({
     option: WireRelationshipOption,
   ) => {
     const currentWires = wiresRef.current;
-    const duplicate = currentWires.some(
-      (w) =>
-        (w.fromNodeId === source.id && w.toNodeId === target.id
-          && (w.fromPort ?? 'right') === sourcePort && (w.toPort ?? 'left') === targetPort
-          && ((w.relationshipType === undefined && w.fromPortId === undefined && w.toPortId === undefined)
-            || (w.toPortId ?? 'location-in') === option.toPortId))
-        || (w.fromNodeId === target.id && w.toNodeId === source.id
-          && (w.fromPort ?? 'right') === targetPort && (w.toPort ?? 'left') === sourcePort),
-    );
-    if (duplicate) {
-      addToast({ message: l10n.getString('topology-toast-wire-duplicate'), type: 'warning' });
-      cancelRelationshipPicker();
-      return;
-    }
-
     // The Pro-tier fallback limit covers STOCK-ROUTING wires only — a
     // transfer wire on the same pair is a different relationship and is
     // always authorable. Legacy untyped workspace→warehouse wires count
-    // as stock-routing (that is what the pair defaults to).
-    const existingStockWires = currentWires.filter((w) => {
-      const fn = nodeMap.get(w.fromNodeId);
-      const tn = nodeMap.get(w.toNodeId);
-      return fn?.type === 'workspace' && tn?.type === 'warehouse'
-        && (w.relationshipType === 'stock-routing'
-          || w.relationshipType === undefined
-          // A typed Retail POS → Warehouse Operation edge is the primary
-          // warehouse route in the preset and occupies the same fallback
-          // slot as the legacy stock route for tier gating.
-          || (w.relationshipType === 'generic' && w.toPortId === 'operation-in'));
-    });
-    if (
-      target.type === 'warehouse'
-      && (option.toPortId === 'location-in' || option.toPortId === 'operation-in')
-      && currentWires.some(
-        (w) => w.toNodeId === target.id
-          && (w.toPortId === 'location-in' || w.toPortId === 'operation-in'),
-      )
-    ) {
-      addToast({ message: l10n.getString('topology-validation-multiple-warehouse-inputs'), type: 'warning' });
-      cancelRelationshipPicker();
-      return;
-    }
-
-    // ADR #34 ticket-routing cardinality: a ticket device accepts exactly
-    // ONE ticket source. The duplicate check above only rejects the same
-    // (KDS, printer) pair — this catches a DIFFERENT KDS dropping onto an
-    // already-sourced printer. Explicit refusal, never silent replacement:
-    // no existing wire is touched and nothing is drawn.
-    if (
-      option.relationshipType === 'ticket-routing'
-      && currentWires.some((w) => w.toNodeId === target.id && w.toPortId === 'ticket-in')
-    ) {
-      addToast({ message: l10n.getString('topology-validation-multiple-ticket-inputs'), type: 'warning' });
-      cancelRelationshipPicker();
-      return;
-    }
-    if (option.relationshipType === 'stock-routing' && existingStockWires.length >= 1 && !isProAllowed) {
-      addToast({ message: l10n.getString('topology-toast-fallback-warehouse'), type: 'warning' });
+    // as stock-routing (that is what the pair defaults to). The population
+    // is computed once and shared with the stock-routing gate and the
+    // priority/label math below (Phase 3.2 command module).
+    const existingStockWires = stockRoutingWires(currentWires, nodeMap);
+    // The four creation gates — duplicate, one-input-per-warehouse,
+    // ADR #34 ticket cardinality, and the Pro-tier stock-routing limit —
+    // run in that enforced order inside wireConnectRefusal; a refusal
+    // toasts its mapped copy and draws nothing (explicit refusal, never
+    // silent replacement).
+    const refusal = wireConnectRefusal(
+      currentWires,
+      source,
+      sourcePort,
+      target,
+      targetPort,
+      option,
+      { isProAllowed, existingStockWires },
+    );
+    if (refusal) {
+      addToast({ message: l10n.getString(WIRE_CONNECT_REFUSAL_TOAST[refusal.reason]), type: 'warning' });
       cancelRelationshipPicker();
       return;
     }
@@ -4555,8 +4528,11 @@ export default function NodeTopologyEditor({
 
   const handleDisconnectNode = useCallback((nodeId: string) => {
     setWires((prev) => {
-      const remaining = prev.filter((w) => w.fromNodeId !== nodeId && w.toNodeId !== nodeId);
-      if (remaining.length !== prev.length) {
+      // The command reports `changed` so a disconnect on a wire-less node
+      // produces no history entry (no-op suppression) — identical to the
+      // inline length comparison this replaced.
+      const { wires: remaining, changed } = disconnectNode(prev, nodeId);
+      if (changed) {
         pushHistory();
         return remaining;
       }
