@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — the stamp's bare path for the orphan checker corrected to the skill-local script; negative references to nonexistent spec/adr locations reworded so the drift-guard path detector stops flagging them) · verified this pass: docs/specs/_active, docs/specs, docs/decisions, docs/guides/api-reference.md, CONTRIBUTING.md, AGENTS.md, scripts/check.sh, .agents/skills/skill-drift-guard/scripts/detect.sh, .agents/skills/docs-auditor/scripts/check-orphans.py, crates/oz-core/src/shift.rs, crates/oz-hal/src/drivers/mock.rs, apps/desktop-client/src/commands, ui/src/api, ui/src/locales all exist; source-of-truth layout confirmed (no _approved spec dir, no adr dir — specs live in docs/specs/ and docs/specs/_active/, decisions in docs/decisions/) · history: 2026-08-08 §4b shallow structural orphan check added (scripts self-tested, corpus clean after desktop-app-audit repairs); footer format matches skill-drift-guard Check 10 (DD-MM-YY + by-clause) -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 3 — added .agents/skills/docs-auditor/scripts/check-api-surface.py and wired it into §4 and the tool table; used it to audit docs/guides/api-reference.md, which turned out to be red against it by 154 discrepancies) · verified this pass: docs/specs/_active, docs/specs, docs/decisions, docs/guides/api-reference.md, CONTRIBUTING.md, AGENTS.md, scripts/check.sh, .agents/skills/skill-drift-guard/scripts/detect.sh, .agents/skills/docs-auditor/scripts/check-orphans.py, crates/oz-core/src/shift.rs, crates/oz-hal/src/drivers/mock.rs, apps/desktop-client/src/commands, ui/src/api, ui/src/locales all exist; source-of-truth layout confirmed (no _approved spec dir, no adr dir — specs live in docs/specs/ and docs/specs/_active/, decisions in docs/decisions/) · history: 2026-08-08 §4b shallow structural orphan check added (scripts self-tested, corpus clean after desktop-app-audit repairs); 2026-09-03 rev 2 corrected the stamp's bare path for the orphan checker to the skill-local script and reworded negative references to nonexistent spec/adr locations so the drift-guard path detector stops flagging them; footer format matches skill-drift-guard Check 10 (DD-MM-YY + by-clause) -->
 
 # Skill: docs-auditor
 
@@ -47,6 +47,14 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 - Check only **file existence**: do referenced files, modules, functions still exist?
 - Verify **headline claims**: does the doc say feature X exists? Does `cargo check` pass?
 - **Structural orphan pass** (automatic): run `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` — flags unversioned/orphan wrapper labels, `####` items without their `###` parent, and version headers stale against their own section body (§4b).
+- **IPC surface reconciliation** (when the doc under audit is
+  `docs/guides/api-reference.md`): run
+  `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py`. It parses
+  `generate_handler!` in both clients, every `#[command]` fn under `src/`, and the entry
+  lines of the page, then reports four separate drift classes — wrong availability marker,
+  listed but never registered, listed and not defined anywhere, registered but
+  undocumented. Reporting them separately is the point: a single "the numbers disagree"
+  count hides that three of the four need different fixes.
 - Duration: ~1-2 minutes. No per-line cross-reference.
 
 ### Full Audit
@@ -148,6 +156,7 @@ Before starting any verification:
 | `rg` over `ui/src/locales/*.ftl` | Verify Fluent IDs referenced by docs |
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
+| `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
 
 Use fast local search and file reads first. Run the narrowest relevant validation step before stamping.
 
@@ -257,4 +266,4 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 08-09-26 by DSH

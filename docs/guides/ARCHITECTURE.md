@@ -41,7 +41,7 @@ oz-pos/
 │   │   │   ├── refund.rs    # Refund domain type
 │   │   │   ├── settings.rs  # Settings persistence layer
 │   │   │   ├── features.rs  # Feature enum (39 flags), registry, presets
-│   │   │   ├── migrations.rs# Embedded SQL migration runner (19 migrations)
+│   │   │   ├── migrations.rs# Embedded SQL migration runner (44 migrations)
 │   │   │   └── error.rs     # CoreError enum
 │   │   └── migrations/      # Date-stamped SQL migration files (19, 2026-08-13 → 2026-08-27)
 │   ├─ oz-hal/               # Hardware Abstraction Layer
@@ -266,7 +266,13 @@ cargo tauri dev          # launches Tauri dev window
 - Internal developer contributions are governed under proprietary contributor agreements; all code strictly adheres to pre-commit quality gates (`cargo fmt + clippy + i18n lint + bundle parity`).
 
 ---
-*Document generated on 2026‑06‑29.*
+*Document generated on 2026‑06‑29.*  The gap between that line and the audit
+footer below is the point: the prose has been re-stamped twice since it was written while
+its own generation date stayed at June. Structural claims were re-verified 08-09-26 —
+all 49 path references in this file resolve against the tree, and the migration count in
+the layout block was corrected from 19 to 44 (the same fact is stated in
+`docs/README.md`-adjacent files; `AGENTS.md` said 28 and `README.md` said 19, so three
+documents carried three different answers).
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 

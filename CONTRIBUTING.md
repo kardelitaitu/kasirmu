@@ -1,5 +1,7 @@
 # Contributing to OZ-POS
 
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (3 doc drifts fixed, 1 enforcement gap recorded) · FIXED: (1) the F1 contradiction the 22-07-26 stamp below found and never repaired — `fix` was listed as a forbidden commit prefix while .githooks/commit-msg accepts it, `fix/<name>` is a documented branch prefix, and `fix(payment):` appears as a correct example in the same section; 48 days of an agent reading a rule the gate contradicts. (2) "type matches the branch prefix" restated against the live TYPES list (10 accepted types, 6 branch prefixes; style/perf/ci/audit have no prefix). (3) the skill-anatomy list now marks which of its six items a machine actually enforces — only the footer (Check 9) — and records that 4 of 13 skills lack "When to use" and 2 lack "Common pitfalls". · FLAGGED NOT FIXED: "the skill-drift-guard script will catch the omission on the next CI run" (new skill missing from the router) is FALSE — Check 6 is one-directional; proved by creating a valid throwaway skill and getting exit 0 with no findings. Doc corrected to say "by hand, because nothing checks it"; adding the reverse check to Check 6 is a code change and was not made. · verified accurate: all 8 quick-link targets resolve including the ui/README.md#install-script-approvals anchor (heading at ui/README.md:36); F2 still holds — SECURITY.md remains absent and the reference stays hedged -->
+
 <!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (2 noted findings) · F1 (doc bug): internal contradiction — line 45 lists `fix/<name>` as a valid branch prefix and line 79 shows `fix(payment):` as a correct example, but line 85 forbids `fix` as a commit prefix; the `fix/` type is simultaneously allowed and forbidden and the doc's own example violates its rule · F2 (minor): references SECURITY.md ("when it exists") — file still absent, but hedged so consistent · verified accurate: all referenced docs/skills/scripts exist (WHITEPAPER, QUICKSTART, ROADMAP, ARCHITECTURE, AGENTS, LICENSE, onboarding-guide, skill-drift-guard, detect.sh, coverage.sh); PR commands match AGENTS.md -->
 
 Thanks for your interest in OZ-POS! This project is a Rust + Tauri v2 POS framework built around a "wizard behind the curtain" philosophy: the merchant sees effortless checkout, and the lean Rust engine silently handles transactions, encryption, hardware, sync, and business logic.
@@ -60,7 +62,11 @@ If your change touches more than one layer (Rust core, Tauri IPC, UI, HAL, proje
 <type>(<optional scope>): <short summary> [optional body] [optional footer(s)]
 ```
 
-- `type` matches the branch prefix.
+- `type` is one of the ten the commit-msg gate accepts: `feat`, `fix`, `docs`,
+  `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `audit` — read live from
+  `.githooks/commit-msg` (`TYPES=\`), never from this page. Six of them have a matching
+  branch prefix (see above); `style`, `perf`, `ci`, `audit` do not, so "type matches the
+  branch prefix" is a guideline for feature work, not the acceptance rule.
 - Summary is ≤ 72 characters, imperative mood ("add" not "added").
 - Body explains *why*; the diff shows *what*.
 - Footer for breaking changes: `BREAKING CHANGE: <description>`.
@@ -84,7 +90,15 @@ Stripe occasionally returns 502 on authorization. A single retry with
 a 250ms backoff recovers most cases without idempotency risk.
 ```
 
-**Forbidden prefixes:** `update`, `fix`, `changes`, `wip`, `minor`. These are too vague.
+**Forbidden prefixes:** `update`, `changes`, `wip`, `minor`. These are too vague, and
+the gate rejects them.
+
+> **`fix` was on this list until 08-09-26 — it is not forbidden.** `.githooks/commit-msg`
+> accepts it (`TYPES='feat|fix|docs|style|refactor|perf|test|ci|chore|audit'`),
+> `fix/<name>` is a documented branch prefix two sections above, and `fix` is the most
+> common type in the log. The list contradicted the gate it describes, and an agent
+> following it would have reached for `refactor` or `chore` on a bug fix to avoid a
+> rejection that was never coming.
 
 ---
 
@@ -92,16 +106,32 @@ a 250ms backoff recovers most cases without idempotency risk.
 
 Skills are the project's living documentation. When you discover a pattern that the skills don't cover — a new crate convention, a new CI check, a new accessibility rule — write a new skill under `.agents/skills/<skill-name>/SKILL.md`.
 
-**Anatomy of a good skill:**
+**Anatomy of a good skill** — items 1–5 are convention, item 6 is the only one a
+machine enforces:
 
-1. **YAML frontmatter** with `name` and `description` (description is what the agent router matches against).
-2. **"When to use"** section — be explicit about the trigger conditions.
-3. **"Golden rules"** table — the non-negotiables for this area.
-4. **Concrete examples** with copy-pasteable code.
-5. **"Common pitfalls"** section at the end.
-6. **Footer**: `> last audited <DD-MM-YY> by <who>`.
+| # | Element | Enforced? |
+|---|---------|-----------|
+| 1 | YAML frontmatter with `name` and `description` (the description is what the agent router matches against) | no |
+| 2 | "When to use" section — explicit trigger conditions | no |
+| 3 | "Golden rules" table — the non-negotiables for this area | no |
+| 4 | Concrete examples with copy-pasteable code | no |
+| 5 | "Common pitfalls" section at the end | no |
+| 6 | Footer `> last audited <DD-MM-YY> by <who>` | **yes** — `detect.sh` Check 9 (shape + real calendar date + within 30 days) |
 
-After adding a skill, update `.agents/skills/onboarding-guide/SKILL.md` so the router table points to it. The `skill-drift-guard` script will catch the omission on the next CI run.
+Measured on 08-09-26, 4 of the 13 skills have no "When to use" heading and 2 have no
+"Common pitfalls", so the list above is a target, not a description of the corpus. If
+you add a skill, matching items 1–5 is still the right thing to do — just do not assume
+CI will tell you.
+
+After adding a skill, update `.agents/skills/onboarding-guide/SKILL.md` so the router
+table points to it — **by hand, because nothing checks it.** `skill-drift-guard` Check 6
+runs in one direction only: it flags a router row whose token resolves to nothing. A
+skill that exists and is never mentioned produces no token, so there is nothing to flag.
+Verified 08-09-26 by creating a throwaway `.agents/skills/zz-probe-test/SKILL.md` with a
+valid footer and running `detect.sh --check=refs`: **exit 0, no findings** (the probe was
+deleted immediately after). The claim this paragraph replaces was that the script "will
+catch the omission on the next CI run". Adding the reverse-direction check to Check 6
+would make that claim true again; it has not been added, because that is a code change.
 
 ---
 
@@ -235,4 +265,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ---
 
-> last audited 17-07-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor

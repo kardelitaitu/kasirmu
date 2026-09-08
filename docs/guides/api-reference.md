@@ -1,6 +1,41 @@
 # API Reference — OZ-POS
 
-> **Auto-derived from `tauri::generate_handler!` at HEAD (regenerated 31-08-26).** This is the authoritative Tauri IPC command surface: **505 commands across 49 modules**, reconciled against both clients' `apps/desktop-client/src/lib.rs` and `apps/tablet-client/src/lib.rs`. Each entry shows availability — **[D+T]** both clients, **[D]** desktop-only, **[T]** tablet-only — followed by the command's own `///` summary line. The `*_scoped` / unscoped split is the ADR #7 multi-store convention: the scoped variant resolves the store from the session token; the unscoped variant is the legacy global-DB path (deprecated where a scoped twin exists). For full parameter and return types, read the `#[tauri::command]` fn in `apps/desktop-client/src/commands/<module>.rs` (or the tablet equivalent). All commands return `Result<T, AppError>`.
+> **Derived from the `#[tauri::command]` definitions in both clients, NOT from
+> `generate_handler!` — the two sets differ, and the difference is the interesting
+> part.** Regenerated 31-08-26, reconciled against reality 08-09-26. The live
+> registered surface is **450 distinct commands** (425 in
+> `apps/desktop-client/src/lib.rs`, 297 in `apps/tablet-client/src/lib.rs`, 272 in
+> both). This page lists **505 entries across 49 modules**; the 55-entry gap is
+> measured, not estimated, and breaks down as:
+>
+> | Class | Count | What it means |
+> |---|---|---|
+> | Marker wrong | 11 | Listed `[D]` or `[T]`, actually available in both shells (e.g. `discover_hardware_scoped`, `version`, `test_sync_connection`). |
+> | Listed but **not registered anywhere** | 85 | A real `#[command]` fn that no `generate_handler!` includes, so the front-end cannot invoke it. Mostly the legacy unscoped twins of `*_scoped` commands (42 desktop, 124 tablet defined-but-unregistered overall). |
+> | Listed and **not defined anywhere** | 14 | Stale names. `create_kds_order_from_sale`, `get_kds_order`, `get_kds_queue`, `list_kds_orders`, `update_kds_status`, and the seven `*_store_profile_scoped` entries. These are not deprecated paths — they do not exist. |
+> | Registered but **not listed** | 44 | Missing from this page entirely: `create_role_scoped`, `delete_role_scoped`, `acknowledge_memo_scoped`, `create_legal_entity_scoped`, `create_location_profile_scoped`, `explain_feature_availability_scoped`, `get_over_quota_report`, `delete_topology_template`, and 36 more. |
+>
+> Reproduce every number above with
+>
+> ```bash
+> python .agents/skills/docs-auditor/scripts/check-api-surface.py   # exit 1 today, by design
+> ```
+>
+> It parses `generate_handler![...]` in each `lib.rs` for the registered set, every
+> `#[command]` fn under `src/` for the defined set, and the entry lines of this page for
+> the documented set, then reports the four classes separately. It is deliberately not
+> wired into `check.sh`, `gates.json` or CI: this page is red against it right now, and a
+> gate that starts life failing gets muted rather than fixed. Wiring it in needs the
+> 154 discrepancies resolved first, or an explicit baseline.
+>
+> Each entry shows availability — **[D+T]** both clients, **[D]** desktop-only,
+> **[T]** tablet-only — followed by the command's own `///` summary line. The
+> `*_scoped` / unscoped split is the ADR #7 multi-store convention: the scoped
+> variant resolves the store from the session token; the unscoped variant is the
+> legacy global-DB path (deprecated where a scoped twin exists). For full parameter
+> and return types, read the `#[tauri::command]` fn in
+> `apps/desktop-client/src/commands/<module>.rs` (or the tablet equivalent). All
+> commands return `Result<T, AppError>`.
 
 <!-- regenerate: parse generate_handler! in both lib.rs for the surface, and the /// doc comments in commands/*.rs for the summaries -->
 ### `commands::analytics` (2)
@@ -659,5 +694,5 @@
 
 ---
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 

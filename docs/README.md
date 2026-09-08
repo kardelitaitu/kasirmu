@@ -17,7 +17,7 @@
 | [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
-| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(27 files; the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index)* |
+| [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(26 files; the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index)* |
 | [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/northflank-p1-p7-plan.md) |
 
 ## Quick links
@@ -34,11 +34,21 @@
 
 ## Conventions
 
-- **ADR naming:** `YYYY-MM-DD-adrNN-<slug>.md` in `decisions/`
+- **ADR naming (new records):** `YYYY-MM-DD-adrNN-<slug>.md` in `decisions/` — the
+  `adrNN` segment is required for anything added from here on. Only 13 of the 64 files
+  currently in `decisions/` carry it; the other 51 predate the convention and are **not
+  drift to be renamed**. Highest number in use: adr47.
 - **Spec phases:** `workspace-settings-phase-<N>-<slug>.md` in `specs/`
 - **Audit findings:** tracked in [`records/audit-open-findings.md`](./records/audit-open-findings.md)
 - **Status vocabulary:** `Proposed / Accepted / Implemented / Partially Implemented / Superseded / Archived`
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 
-> Audit note: all 10 linked key files resolve; archived count (27) accurate; the 3 unlisted dirs (`coverage/` generated report, `src/`+`theme/` retired-mdbook vestiges — `book.toml` now in `archived/`) are correctly excluded from this curated index
+> Audit note (08-09-26): all 16 linked targets resolve, including the three Quick links
+> that are not in the table (`operations/ci-pipeline.md`, `security/security-audit-completion.md`,
+> `guides/EXTENDING.md`). The archived count was **stale**: this page said 27 in two places
+> and `docs/archived/` holds 26 `.md` files — a count that was true when written and false
+> ever since, which is exactly the failure mode a curated index invites. Fixed in both
+> places. The 3 unlisted dirs (`coverage/` generated report, `src/`+`theme/` retired mdbook
+> vestiges — `book.toml` now in `archived/`) remain correctly excluded from this curated
+> index. Directory set unchanged: 11 curated, 3 excluded, 14 present.

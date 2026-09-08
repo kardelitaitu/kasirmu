@@ -1,6 +1,8 @@
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/oz-pos?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/oz-pos?style=flat-square) [![CircleCI](https://dl.circleci.com/status-badge/img/circleci/HDf3r2ytbY29BkmQrjTbXh/RFZqxGUuPhYDUZBhcsjnNR/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/circleci/HDf3r2ytbY29BkmQrjTbXh/RFZqxGUuPhYDUZBhcsjnNR/tree/main)
 
 
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (7 counts corrected, all measured not estimated) · every stale figure below was replaced with a measurement taken against HEAD, and the command to reproduce it is named in the line · migrations 19 -> 44 (the column-type checker prints "44 files scanned"; AGENTS.md said 28 and docs/guides/ARCHITECTURE.md said 19 for the same fact — three docs, three numbers, none current) · IPC 505 -> 450 distinct registered (425 desktop / 297 tablet / 272 both; see docs/guides/api-reference.md for the full reconciliation) · Rust tests 5,800+ -> 8,709 #[test] fns · frontend tests ~6,700 -> 8,056 cases in 516 files (was "400+ files") · Fluent 5,700+ IDs across 50 files -> 9,146 across 52 · "55+ audited screen components" -> 183 feature .tsx files, because the audit's own unit is surfaces and key sites, not screens · NOTE the 31-08 stamp below recorded "migrations 19 re-confirmed" when the tree already held 23 — a re-confirmation that was never true · structural claims verified accurate: all 13 crates, all 10 npm scripts, all 3 scripts/*, the 5 payment drivers, ui/e2e/README.md, the ui/README.md anchor, and every path in both architecture diagrams -->
+
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (6 major + 2 minor repaired) · F1: migration count 117 -> 19 files (131 squashed into init.sql, db6198a3) · F2: repointed 3 broken links docs/archived/{QUICKSTART,ROADMAP,MODULAR_APP_PLAN}.md -> docs/guides/ · F3: crate inventory 11 -> 13 (added oz-crypto, oz-media) · F4: "future CRM module" -> CRM ships (modules/crm registered in kernel) · F5: architecture diagram "Restaurant" (no such module) -> "Promotions" (real module) · F6: HAL device lists now include EDC payment terminals + weight scales (traits/edc.rs, drivers/scale.rs) · m1: oz-payment drivers add Paddle · m2: footer version 0.0.25 -> 0.0.33 · NOTE: test-file/ID counts kept approximate (volatile — parallel session adds tests continuously) · RE-AUDITED 31-08: reconciled internally inconsistent counts (UI files listed as both 228 and 265; Rust as both 5,200+ and 5,800+) to consistent approximate figures (400+ UI files, ~6,700 UI tests, 5,800+ Rust); corrected non-volatile structural counts — IPC 435+ -> 505 unique (matches api-reference.md), locales 48 -> 50 files (25 bundles x 2, matches ROADMAP/ui-README); migrations 19 re-confirmed -->
 
 # OZ-POS
@@ -32,7 +34,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
 - **Secure by default** — Encrypted backups, PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
-- **Enterprise-grade code quality** — 5,800+ Rust tests, ~6,700 frontend tests (400+ files), strict Clippy, typed Money, transactional DB
+- **Enterprise-grade code quality** — 8,709 Rust tests, 8,056 frontend test cases across 516 files, strict Clippy, typed Money, transactional DB
 
 ---
 
@@ -119,9 +121,9 @@ oz-pos/
 │   └── src/
 │       ├── api/            # Per-domain invoke() wrappers — no invoke() in components
 │       ├── frontend/       # Shared components, shell layout, design tokens
-│       ├── features/       # 55+ audited screen components by domain
-│       ├── locales/        # Fluent (.ftl) files — 5,700+ IDs across 50 files
-│       └── __tests__/      # Vitest + testing-library (400+ files, ~6,700 tests)
+│       ├── features/       # 183 .tsx files across the domain feature dirs
+│       ├── locales/        # Fluent (.ftl) files — 9,146 IDs across 52 files
+│       └── __tests__/      # Vitest + testing-library (516 files, 8,056 cases)
 ├── docs/                   # ROADMAP.md, ADRs, specs, whitepaper
 ├── scripts/                # Example Lua business rule scripts, coverage scripts
 └── packaging/              # MSI, .deb, .AppImage build configs
@@ -136,7 +138,7 @@ oz-pos/
 | Backend | Rust | Domain logic, DB access, hardware control |
 | Desktop Shell | Tauri v2 | Native window, IPC bridge, updater |
 | Frontend | React 18 + TypeScript + Vite 6 | POS UI |
-| Database | SQLite (rusqlite) | On-device persistence, 19 migration files (131 squashed into init.sql) |
+| Database | SQLite (rusqlite) | On-device persistence, 44 migration files (the 131 pre-Aug-2026 ones squashed into `20260813_init.sql`) |
 | Localization | @fluent/react | All UI strings in `.ftl` files |
 | Hardware | oz-hal traits | USB/TCP/BT/serial/mock drivers |
 | Money | `i64` minor units | Never `f32`/`f64` — `Currency`, `Money` structs |
@@ -170,7 +172,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | `npm run build` | Production build |
 | `npm run typecheck` | TypeScript validation |
 | `npm run lint` | ESLint + jsx-a11y |
-| `npm run test` | Vitest (400+ files, ~6,700 tests) |
+| `npm run test` | Vitest (516 files, 8,056 cases) |
 | `npm run e2e` | Full E2E suite: Docker → Vite → Playwright → cleanup |
 | `npm run e2e:headed` | E2E with browser visible |
 | `npm run e2e:api` | API integration tests only |
@@ -184,7 +186,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 |---|---|
 | `cargo fmt --all` | Format Rust code |
 | `cargo clippy --all-targets -- -D warnings` | Lint |
-| `cargo test --workspace` | Run tests (5,800+) |
+| `cargo test --workspace` | Run tests (8,709 `#[test]` fns) |
 | `bash scripts/check.sh` | Full local pre-push gate (Rust + UI + migrations) |
 | `bash scripts/coverage.sh` | Rust + UI coverage reports |
 | `bash scripts/reset-dev-pg.sh` | Reset the dev PostgreSQL container to the committed PG_INIT schema (`.ps1` twin on Windows) |
@@ -205,7 +207,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Phase 4 (CRM, Restaurant, Accounting) in progress.** 19 migration files, 505 IPC commands, 55+ audited screen components, 400+ front-end test files, 5,800+ Rust tests.
+**Phase 4 (CRM, Restaurant, Accounting) in progress.** 44 migration files, 450 registered IPC commands (425 desktop / 297 tablet / 272 both), 183 feature `.tsx` files, 516 front-end test files, 8,709 Rust `#[test]` functions.
 
 | Phase | Status | Focus |
 |---|---|---|
@@ -243,5 +245,5 @@ This software (`oz-pos`) is **NOT open source**. No part of this codebase, assoc
 
 See [LICENSE](./LICENSE) for terms and restrictions. For commercial licensing and pricing inquiries, contact: **adikaradwiatmaja@gmail.com**.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 
