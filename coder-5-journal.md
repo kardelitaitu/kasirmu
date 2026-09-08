@@ -1656,3 +1656,52 @@ is consolidated).
 Box-flip annotation must say: *this is source consolidation — the quota tier now flows
 from the Entitlements read model at the caller, not a rewire of the gate graph; gate
 signatures are unchanged and the parity test holds.*
+
+### ADR #48 as_of business-date semantics — IMPLEMENTED (branch 0.0.37)
+
+Per supervisor task: implement ADR #48 (Decision 3, commit 87114abf6) as_of
+semantics at the 4 verified placeholder sites, plus the conversion helper.
+
+Conversion approach (behavior-preserving, NO new dependency):
+- Single shared helper in oz-core: `business_date_in_zone(instant:
+  DateTime<Utc>, tz_name: &str) -> String` in new
+  `crates/oz-core/src/timezone.rs` (registered in lib.rs; tests in
+  `timezone_tests.rs`, 5 tests GREEN). It maps the stored IANA zone to a
+  `FixedOffset` (`offset_for_zone`): empty/utc/gmt and unknown -> UTC
+  fallback; `asia/jakarta|asia/pontianak` -> +07; `asia/makassar` -> +08;
+  `asia/jayapura` -> +09. Indonesia has no DST, so the constant lookup is
+  correct and `chrono-tz` is deliberately avoided (it would be a
+  user-level dependency decision). The `Utc::now()` instant is kept; only the
+  IANA zone is applied before taking the local calendar YYYY-MM-DD.
+
+Sites converted (the 4 enumerated + signatures):
+- Both clients `tax_scope_now` (pos.rs): signature gained `store: &Store`;
+  resolves `store.get_location_profile(location_id).timezone` (UTC fallback)
+  and formats `business_date_in_zone(Utc::now(), &tz)`. All 5 call sites per
+  file updated to `tax_scope_now(&store, &session.store_id)`.
+- Both clients `get_latest_exchange_rate_scoped` as_of (exchange_rates.rs:
+  desktop ~238, tablet ~274): closure form derives the date from
+  `Store::new(&db).get_location_profile(&session.store_id)`. Desktop gained
+  the missing `use oz_core::db::Store;` import (tablet already had it).
+
+Tests: both clients' `tax_scope_now_carries_...` and
+`a_store_scoped_rate_wins_...` updated to the new signature (added a store in
+the first test); desktop 1/4/10 and tablet 1/1/4 pass for the affected suites.
+`cargo fmt --check` clean; no schema change (`locations.timezone` already
+IANA).
+
+Transparently out of scope (reported to supervisor):
+- `create_exchange_rate_scoped` effective_date defaults (desktop ~182 /
+  tablet ~205): left UTC — not in the enumerated set, and converting them while
+  the legacy global `create_exchange_rate` (desktop ~88 / tablet ~78, which
+  has NO location context) stays UTC would create a cross-path inconsistency.
+  Flagged for a follow-up once the legacy global create is reconciled.
+- Legacy global `create_exchange_rate` and `oz-api` route (no location
+  context) — not converted.
+- `payables.rs` aging date and `email_pg.rs` date range — different
+  semantics, not as_of.
+
+Commit: `b223de6bf` feat(regional): resolve as_of business date in location
+IANA zone per ADR #48 (9 files, +180/-22). Conventional-commit gate + all 10
+pre-commit steps green. No other agent's in-flight files swept (pathspec
+commit).
