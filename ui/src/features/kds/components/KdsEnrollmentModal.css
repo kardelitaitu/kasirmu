@@ -3,7 +3,7 @@
 .kds-enrollment-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -16,7 +16,7 @@
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: var(--kds-bg, #fff);
+  background: var(--color-bg-popover);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
@@ -27,14 +27,14 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--kds-border, #e5e7eb);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .kds-enrollment-title {
   margin: 0;
   font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--kds-text, #111827);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
 }
 
 .kds-enrollment-close {
@@ -46,13 +46,13 @@
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--kds-text-secondary, #6b7280);
+  color: var(--color-fg-secondary);
   font-size: var(--text-xl);
   cursor: pointer;
 }
 
 .kds-enrollment-close:hover {
-  background: var(--kds-hover, #f3f4f6);
+  background: var(--color-bg-hover);
 }
 
 .kds-enrollment-body {
@@ -69,24 +69,24 @@
   display: block;
   margin-bottom: var(--space-1_5);
   font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--kds-text-secondary, #6b7280);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
 }
 
 .kds-enrollment-input {
   width: 100%;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--kds-border, #d1d5db);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  color: var(--kds-text, #111827);
-  background: var(--kds-input-bg, #fff);
+  color: var(--color-fg);
+  background: var(--color-bg-input);
   outline: none;
 }
 
 .kds-enrollment-input:focus {
-  border-color: var(--kds-primary, #3b82f6);
-  box-shadow: 0 0 0 2px var(--kds-primary-ring, rgba(59, 130, 246, 0.2));
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px var(--color-accent-alpha);
 }
 
 .kds-enrollment-station-list {
@@ -104,8 +104,8 @@
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
-  background: var(--kds-tag-bg, #eff6ff);
-  color: var(--kds-tag-text, #1d4ed8);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
   font-size: var(--text-sm);
 }
 
@@ -131,7 +131,7 @@
 .kds-enrollment-station-hint {
   margin: var(--space-1_5) 0 0;
   font-size: var(--text-xs);
-  color: var(--kds-text-muted, #9ca3af);
+  color: var(--color-fg-muted);
 }
 
 /* Generating spinner */
@@ -147,8 +147,8 @@
 .kds-enrollment-spinner {
   width: var(--space-8);
   height: var(--space-8);
-  border: 3px solid var(--kds-border, #e5e7eb);
-  border-top-color: var(--kds-primary, #3b82f6);
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: kds-enrollment-spin 0.8s linear infinite;
 }
@@ -171,7 +171,7 @@
 .kds-enrollment-success-icon {
   width: var(--space-12);
   height: var(--space-12);
-  color: var(--kds-success, #10b981);
+  color: var(--color-success);
 }
 
 /* QR code wrapper */
@@ -180,7 +180,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
-  border: 1px solid var(--kds-border, #e5e7eb);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--kds-bg, #ffffff);
 }
@@ -188,21 +188,21 @@
 .kds-enrollment-device-name {
   margin: 0;
   font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--kds-text, #111827);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
 }
 
 .kds-enrollment-success-text {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--kds-text-secondary, #6b7280);
+  color: var(--color-fg-secondary);
   text-align: center;
 }
 
 .kds-enrollment-expiry-note {
   margin: var(--space-2) 0 0;
   font-size: var(--text-xs);
-  color: var(--kds-text-muted, #9ca3af);
+  color: var(--color-fg-muted);
   text-align: center;
 }
 
@@ -213,8 +213,8 @@
   gap: var(--space-2);
   padding: var(--space-2_5) var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--kds-error-bg, #fef2f2);
-  color: var(--kds-error-text, #dc2626);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
   font-size: var(--text-sm);
 }
 
@@ -222,7 +222,7 @@
   border: none;
   background: transparent;
   color: inherit;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -233,33 +233,33 @@
   justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--kds-border, #e5e7eb);
+  border-top: 1px solid var(--color-border);
 }
 
 .kds-enrollment-cancel,
 .kds-enrollment-done {
   padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--kds-border, #d1d5db);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--kds-text, #374151);
+  color: var(--color-fg);
   font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .kds-enrollment-cancel:hover,
 .kds-enrollment-done:hover {
-  background: var(--kds-hover, #f3f4f6);
+  background: var(--color-bg-hover);
 }
 
 .kds-enrollment-confirm {
   padding: var(--space-2) var(--space-4);
   border: none;
   border-radius: var(--radius-md);
-  background: var(--kds-primary, #3b82f6);
+  background: var(--color-accent);
   color: var(--color-accent-fg);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
 
@@ -269,5 +269,5 @@
 }
 
 .kds-enrollment-confirm:hover:not(:disabled) {
-  background: var(--kds-primary-hover, #2563eb);
+  background: var(--color-accent-hover);
 }
