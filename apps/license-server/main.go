@@ -1030,6 +1030,20 @@ type SubscriptionPayload struct {
 	// correct answer — a period produced by a paid re-sign is not a trial.
 	IsTrial     bool   `json:"is_trial,omitempty"`
 	TrialEndsAt string `json:"trial_ends_at,omitempty"`
+	// Features is the Phase D wire block: an explicit per-feature server
+	// instruction keyed by the client's canonical feature key — the
+	// AvailabilityFeature wire names such as "supports_analytics", NOT a
+	// shortened "analytics". Semantics: an absent key leaves the tier's own
+	// answer in place, false withholds even where the tier would allow, and
+	// true grants beyond tier. omitempty, so a payload carrying no grants
+	// marshals byte-identically to a pre-Phase-D one.
+	//
+	// AUTHORING IS DELIBERATELY NOT THIS SLICE (owed D2): neither
+	// license_keys nor subscriptions has a field to flow this from, so no
+	// build site sets it today and no payload emitted by the current server
+	// actually carries the block. The wire field is the deliverable — a
+	// payload CAN carry it, and the client already honours it.
+	Features map[string]bool `json:"features,omitempty"`
 }
 
 // signSubscription marshals the payload to JSON, SHA-256 hashes it,
