@@ -930,3 +930,138 @@ changes (c); recommend confirming before binding to ADMIN.
 
 Gates: all 10 pre-commit gates; scoped-coverage via _scoped suffix; PG parity regen if registry staged (gate 7);
 cargo check + tsc. SENT TO SUPERVISOR FOR APPROVAL — no implementation until greenlit.
+
+---
+
+## 2026-09-08 — finisher-B: S-B role holders (saas-3 custom-roles, org-wide read path)
+
+Landed `394d8c977` (15 files, +1699/−3). Follows S-A (`9c582a069`), which folded
+`create_role` into `db/roles.rs` behind the preset guard.
+
+### The predicate is the finding
+
+`Store::role_holders` answers "who holds this role" with
+`WHERE COALESCE(a.role_id, u.role_id) = ?1`, and that COALESCE is the whole
+slice. `authorize_with` resolves a user's role **assignment first, with
+`users.role_id` as the fallback** (staff.rs, the comment reads "legacy users
+without an assignment fall back"). So the two obvious queries are both wrong,
+and both look right:
+
+- `WHERE u.role_id = ?` — lists a person under a role they cannot use, whenever
+  the user row and its assignment disagree. Nothing in the schema forbids the
+  disagreement; `update_user` syncs them, and a sync is not a constraint.
+- `WHERE a.role_id = ?` via INNER JOIN — silently drops every legacy account
+  with no assignment row, i.e. hides a real holder from the one list an admin
+  reads before revoking.
+
+Each was verified by editing the predicate and re-running, not argued:
+naive-user-row fails exactly the drift test; naive-assignment-only fails the
+legacy test *and* the cap test (which builds its 60 accounts the legacy way).
+Restored byte-identical by SHA256 after both probes.
+
+### Two numbers that must not be conflated
+
+`role_reference_counts` is FOREIGN KEY truth — "may this role be deleted",
+where an `ON DELETE NO ACTION` row blocks it whether or not it decides
+resolution. `role_holders` is RESOLUTION truth — "what can this account do".
+For a synced user they coincide, and
+`role_holders_agree_with_reference_counts_when_synced` pins that, so the
+divergence is documented rather than unexplored. This matters on screen: the
+existing `role-in-use` label already reads "Used by N accounts" over a number
+that spans four FK tables, which is a wording bug in the authoring slice's key,
+not in its logic. Flagged, not changed — see the follow-up list.
+
+### branch_scope exists because a count of zero lies
+
+An assignment covering EVERY branch carries zero explicit list rows. A scope
+column reading `branch_count` alone would report an all-branches manager as
+having no branches at all — the exact inverse of the truth. So
+`branch_scope`/`workspace_scope` are returned next to their counts and the UI
+consults the dimension before the number
+(`a_zero_list_count_does_not_mean_an_unscoped_holder`).
+
+### Contract decisions, made before coding as required
+
+- **Cap 50, total uncapped, ceiling reported.** `{holders, total, cap}` — the
+  difference is the "and N more" figure; `cap` is sent so the front end never
+  hardcodes 50 and then under-reports silently when the ceiling moves. A page
+  without its total is a lie; a total without its ceiling is a hardcoded guess.
+- **No per-store filtering.** Users, assignments and roles are tenant-global
+  (ADR #4/#7); a store database holds none of them.
+  `holders_are_org_wide_even_for_a_store_bound_session` asserts it from a
+  session bound to another location, so the ruling is a test, not a comment.
+- **Gate is `staff:read`,** the same one `list_staff_scoped` uses, because that
+  command already discloses these accounts and their roles. Demanding
+  `staff:manage_roles` would imply a holder list reveals something the staff
+  page does not.
+- **Missing role is `NotFound`, not an empty list.** "Nobody holds this" is the
+  sentence that licenses a delete; it must not be reachable from a typo.
+- **Preset rows get the disclosure too.** An admin cannot edit Owner, so who
+  holds it is the only thing they can act on there.
+
+### Tests
+
+8 core (`roles_tests.rs`) including the REQUIRED orphan cascade — deleting an
+account removes the holder and leaves no orphan `assignments` or
+`assignment_branches` row, with `foreign_keys` explicitly enabled on the
+cloned handle, because the migrated snapshot does not guarantee it.
+6 desktop + 6 tablet in new sibling modules `staff_role_holders_tests.rs`, for
+the same reason the audit slice used siblings: `staff_tests.rs` is another
+stream's in-flight file. The tablet suite is deliberately IDENTICAL — the audit
+slice needed a per-client divergence test because the tablet passes
+`debug_upgrade: false` to its event sink; a holder read has no such knob, so
+sameness is the correct result and a divergence would be a bug.
+8 UI, including "nothing is fetched until a row expands", camelCase wire keys,
+cache-on-re-expand, and "a failed holder read stays inside its row".
+
+### Gates
+
+`db::roles` 28/0 · `db::staff::tests` 65/0 (untouched) · `staff_integration`
+25/0 (untouched) · oz-core full lib **2798 passed / 0 failed** · desktop
+**1336 / 0** · tablet **544 / 0** · RoleAuthoringScreen 25/25 · typecheck,
+eslint, i18n lint, bundle-parity (0 missing), FTL orphans (17 keys added, 17
+en / 17 id, 0 stranded, 0 one-sided), `verify-ipc-parity` OK,
+`verify-scoped-coverage` PASS.
+
+### Two things recorded rather than absorbed
+
+- **dev-mock gap, allowlisted not patched.** `dev-mock/tauri-api.ts` is hot and
+  owned elsewhere, and its scoped alias rule only reaches commands with an
+  unscoped twin — `list_role_holders_scoped` has none, so the browser mock
+  answers null. The command is registered, gated and callable in both shells
+  and the UI caller is live, so the entry went into the `dev_mock` section
+  with a rationale; it fails as stale the moment a handler appears, which makes
+  it self-clearing. Adding it also exposed that `dev_mock` was the only
+  section of that allowlist with no `_comment` sibling — nothing recorded WHY
+  an entry existed. It has one now.
+- **`cargo fmt --all --check` is red tree-wide** on
+  `crates/oz-core/src/db/downgrade.rs` and `downgrade_tests.rs` (Slice C). Not
+  touched, not in the pathspec, and the commit's own hook step 1 reformatted
+  them in the working tree without staging them — which is what the hook is
+  designed to do, but is worth knowing if C is mid-edit in those files.
+
+### Follow-ups this slice surfaced
+
+1. **`role-in-use` states a false number, and by the arithmetic rather than
+   in an edge case.** The label reads `reference_count`, which sums all four
+   FK referrers. But `create_user` writes BOTH a `users` row AND an
+   `assignments` row for the same person, so every ordinary account
+   contributes 2 — three synced holders render as "Used by 6 accounts". And
+   `delete_role_refuses_a_role_named_only_by_a_workspace_type`
+   (`roles_tests.rs:407`, pre-existing) constructs a state where the sum is 1
+   while **no account holds the role at all**, which after S-B sits directly
+   beside "No accounts hold this role." on the same row. Ruled: option (A),
+   split at the DTO boundary into `holder_count` (accounts, via the resolver
+   predicate) and `grant_count` (workspace grants), with `reference_count`
+   kept unchanged because the Delete refusal is correctly FK truth. Not
+   option (C): labelling a FK gate with resolution truth would tell an admin
+   they can delete a role a workspace grant still blocks.
+   A first pass at this proposed `holder_count = users + assignments`, which is
+   the same 2x error wearing a better name — a count of accounts has to use
+   the resolver predicate, so it needs `Store::role_holder_count` sharing
+   `HOLDERS_FROM_WHERE` with `role_holders` so the two cannot drift.
+2. `list_role_holders_scoped` needs a handler in `dev-mock/tauri-api.ts` before
+   the roles screen is usable in browser dev preview; entry is allowlisted until
+   then.
+3. A holder list is the natural place for a "revoke all from this role" action;
+   out of scope here and unasked.
