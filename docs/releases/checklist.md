@@ -103,4 +103,4 @@
 - [ ] Rollback verified: previous version installer reinstalls cleanly on a test terminal (see `release-process.md`)
 - [ ] Release announced to team/channel
 
-> last audited 31-08-26 by docs-auditor
+> last audited 04-09-26 by docs-auditor

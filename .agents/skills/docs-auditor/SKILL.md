@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 3 — added .agents/skills/docs-auditor/scripts/check-api-surface.py and wired it into §4 and the tool table; used it to audit docs/guides/api-reference.md, which turned out to be red against it by 154 discrepancies) · verified this pass: docs/specs/_active, docs/specs, docs/decisions, docs/guides/api-reference.md, CONTRIBUTING.md, AGENTS.md, scripts/check.sh, .agents/skills/skill-drift-guard/scripts/detect.sh, .agents/skills/docs-auditor/scripts/check-orphans.py, crates/oz-core/src/shift.rs, crates/oz-hal/src/drivers/mock.rs, apps/desktop-client/src/commands, ui/src/api, ui/src/locales all exist; source-of-truth layout confirmed (no _approved spec dir, no adr dir — specs live in docs/specs/ and docs/specs/_active/, decisions in docs/decisions/) · history: 2026-08-08 §4b shallow structural orphan check added (scripts self-tested, corpus clean after desktop-app-audit repairs); 2026-09-03 rev 2 corrected the stamp's bare path for the orphan checker to the skill-local script and reworded negative references to nonexistent spec/adr locations so the drift-guard path detector stops flagging them; footer format matches skill-drift-guard Check 10 (DD-MM-YY + by-clause) -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 4 — added .agents/skills/docs-auditor/scripts/check-audit-stamps.py and the footer-vs-stamp direction rule; §13's "do not stack stamps" now carries its measurement, 116 of 122 stamped files carry exactly one, and the note records that this session created three of the six exceptions by pattern-matching a convention that is not written here) · rev 3 added check-api-surface.py · verified against the live tree: detect.sh Check 9/10 reads the footer only, so a footer older than the newest stamp is invisible to CI; 4 such files existed and were bumped -->
 
 # Skill: docs-auditor
 
@@ -156,6 +156,7 @@ Before starting any verification:
 | `rg` over `ui/src/locales/*.ftl` | Verify Fluent IDs referenced by docs |
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
+| `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
 | `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
 
 Use fast local search and file reads first. Run the narrowest relevant validation step before stamping.
@@ -239,7 +240,20 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 - Add one audit stamp at the top of the audited document only after verification is complete and all repairs applied.
 - Format: `> last audited <DD-MM-YY> by docs-auditor` as a blockquote footer. The DD-MM-YY shape (no year prefix, `by <name>` clause) is what `skill-drift-guard` Check 10 enforces project-wide — the in-doc stamp must match `^> last audited [0-9]{2}-[0-9]{2}-[0-9]{2} by <name>$` exactly. (Note: the standalone `scripts/` folder holds no copy of the orphan checker — the script lives at `.agents/skills/docs-auditor/scripts/check-orphans.py`.)
-- Replace any existing stamp. Do not stack stamps.
+- Replace any existing stamp. **Do not stack stamps.** Measured 08-09-26: 116 of the
+  122 stamped files in this repo carry exactly one, so the rule is the practice and the
+  six exceptions are drift, not precedent. Three of those six were created by this very
+  session pattern-matching "newest-first history" from an earlier note instead of reading
+  this line — and collapsing them was the fix. When you replace a stamp, carry forward what
+  still matters from the old one *inside* the new text (what it verified, and any finding
+  that survives), because the point of the rule is a single place to look, not a shorter
+  file.
+- **The footer must never be older than the newest stamp.** They answer different questions
+  — the stamp is the evidence, the footer is the machine-read freshness signal that
+  `detect.sh` Check 9/10 parses — so a footer behind the stamp makes a freshly audited doc
+  look stale and gets its work discounted. `check-audit-stamps.py` below reports that class
+  as drift; a footer *ahead* of the stamp is legitimate (a re-check that changed nothing
+  needs no new evidence line) and is reported informationally only.
 - If the audit was not completed (blocked or ambiguous with no user answer), do not stamp.
 - If a stamp already exists, compute `git diff <last-date> -- <path>` and mention what changed in the report.
 

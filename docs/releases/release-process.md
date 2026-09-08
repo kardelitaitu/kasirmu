@@ -181,4 +181,4 @@ See [`docs/releases/checklist.md`](./checklist.md) and
 operational pre-release checks. Both are referenced from
 `scripts/release.sh`.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 04-09-26 by docs-auditor

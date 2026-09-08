@@ -353,4 +353,4 @@ Summary of the one-time setup:
    unset). The step is `continue-on-error: true`, so a SignPath outage
    degrades to the unsigned fallback upload instead of failing the release.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 04-09-26 by docs-auditor
