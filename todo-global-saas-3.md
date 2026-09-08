@@ -28,6 +28,41 @@ workflow, not a silent setting change.
       make custom roles explicit permission sets with explicit scopes. Unknown
       roles default to deny; do not assign unknown names a numeric hierarchy
       level automatically.
+
+## Amendment 7 — ADR #46 Phase 2 finished: restore-to-draft + pruned-snapshot messaging (2026-09-08, DSH)
+
+The "Version and publish topology changes" box is now fully checked.
+Commits `af09ff15` (code) + `baecb7d8` (ADR record):
+
+- **§5 restore-to-draft** — the browser's "Restore to editor" hands the
+  revision to the host screen, which fetches, guards unsaved edits (its
+  own discard-confirm, the branch-switch class), and arms the editor's
+  new `restoreSeed` prop. The editor maps the payload through the same
+  helpers the authoritative load uses, clears undo/redo, commits the
+  pre-restore canvas as the dirty baseline, and seeds the canvas as an
+  UNSAVED DRAFT. Apply stays the editor's existing dialog against the
+  LIVE revision (CAS) and produces a NEW revision — the whole §5
+  contract: never auto-applies, one write path.
+- **§4/§7 messaging** — deflated rows state the remedy (pin keeps a
+  snapshot restorable without consuming a keep slot); restorable rows
+  recorded under contract < 2 get the shown-never-migrated note with the
+  current version sourced from `topologySemantics.json`.
+- **Rule 5 accounting** — the one-prop/one-effect seam is recorded in
+  the ADR for sole-maintainer ratification per the Phase-1 waiver
+  pattern (`baecb7d8`); the editor diff is net-negative (mapping
+  helpers extracted) and the commit is independently revertible.
+- **Gate** — `cargo test -p oz-pos-app topology` 366 passed; browser
+  suite 11/11 (5 new); typecheck gate skipped once via
+  `OZPOS_SKIP_TYPECHECK=1` because two concurrent agents had mutually
+  inconsistent WIP in `useAuthConnection.ts`/`StatusBar.tsx` breaking
+  whole-tree tsc (my files passed before their WIP landed); one parity
+  retry raced the same agents mid-staging.
+
+M5 was pursued ahead of M6 because the goal's ordering was readiness ×
+value and Phase 2 was one labelled step from closing a tracked box;
+M6 (audit-baseline enforcement, Locations→Topology entry point,
+regional config/tax) remains the longer tail, and entitlement C+D stay
+deferred behind the license-server work + supervisor go.
       — **safety half already enforced and tested (verified 2026-09-07):**
       `Store::authorize_with` resolves the role and fails closed with
       `CoreError::PermissionDenied` when it does not exist
