@@ -1,6 +1,6 @@
 # Operations Runbook — OZ-POS (unified Northflank deployment)
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: apps/unified/healthcheck.sh + docs/archived/2026-08-15-unify-auth-and-sync.md exist; sync port 3099 (config.rs:61); rate limits push100/pull300/status300/snapshot50 + token 30/min/IP + license 5/IP/hr (activate.go:585) all match code; all 6 §2 metric names present in cloud-server/unified -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
 
 One Northflank service, one Docker image. Two functions behind one caddy
 reverse proxy (single public port):
@@ -401,7 +401,7 @@ docker volume prune
 | Dockerfile | `Dockerfile.unified` (repo root) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
-| Build trigger | push to `main` — `deploy.yml` triggers the Northflank API build at the exact commit (§8.5); `workflow_dispatch` for manual redeploys |
+| Build trigger | **`workflow_dispatch` only** — Actions → Dev CI → Run workflow, which runs `northflank-deploy`. There is no push-triggered build; see §8.5 for why the `push` branch of that job's `if:` is unreachable |
 
 **Single-volume layout (DOCKER-11):**
 
@@ -490,15 +490,39 @@ The **sync server URL** is per-install user config: Settings → Cloud Sync
 → enter `https://license.ozpos.my.id`. Unlike auth, it is
 stored in the local DB (never compiled in).
 
-### 8.5 Automated deploys (deploy.yml)
+### 8.5 Automated deploys — **not automated today**
 
-Merges to `main` now auto-deploy: `.github/workflows/deploy.yml` triggers a
-Northflank API build of the exact pushed commit (`POST
+> ⚠️ **This section claimed automation that does not happen.** Verified 08-09-26:
+> * `.github/workflows/deploy.yml` **does not exist** — `23c963303` retired it to
+>   `deploy.yml.bak` on 2026-09-02, and the file named in this heading has not run since.
+> * The deploy logic moved **into** `dev-ci.yml` as the `northflank-deploy` job, and that
+>   job's condition still reads
+>   `(github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/0.0.'))) || github.event_name == 'workflow_dispatch'`.
+>   But `dev-ci.yml`'s own `on:` block declares only `pull_request` and
+>   `workflow_dispatch` — **there is no `push` trigger** (AGENTS.md says the same). The
+>   first half of that condition can therefore never be true. It is dead logic, not a
+>   documentation problem: whoever moved the job carried the `if:` across and left the
+>   trigger behind.
+>
+> **What actually deploys:** `workflow_dispatch` only — Actions → Dev CI → Run workflow.
+> A merge to `main` triggers nothing deploy-related, and a PR run never deploys either
+> (the condition excludes `pull_request`). The consequence is the mirror image of what
+> this page promised: a stale deploy cannot hide, but neither can it happen by itself.
+>
+> **Code-level finding, flagged not fixed.** Adding `push: branches: [main]` to
+> `dev-ci.yml` would make the old claim true again. That reinstates automatic production
+> deploys gated only by the seven jobs `northflank-deploy` `needs`, so it is a decision
+> for whoever owns the deploy. It is also entangled with the gap AGENTS.md records: that
+> job omits `release-readiness` from its `needs`, so a re-armed push path would
+> auto-deploy without the updater-signing check having passed.
+
+The mechanism below is real and is what `northflank-deploy` does when it runs: it
+triggers a Northflank API build of the exact commit (`POST
 /v1/projects/{projectId}/services/{serviceId}/build` with `{"sha": ...}`),
 polls until the build concludes (a combined service auto-deploys after a
 successful build), then smoke-tests `$NORTHFLANK_SERVICE_URL/health` and
-`/api/health`. The whole lifecycle is one auditable check on the merge
-commit — no dashboard clicks, and a stale deploy can no longer hide.
+`/api/health`. The whole lifecycle is one auditable check on the commit — no
+dashboard clicks.
 
 **One-time setup:**
 
@@ -547,8 +571,12 @@ curl -sS -X POST "https://api.northflank.com/v1/projects/$PROJECT/services/$SERV
 
 **Alternative (zero repo code):** enable native git triggers on the service
 — Build configuration → branch restrictions → `main` — Northflank then
-auto-builds + auto-deploys on every push itself. Same outcome, but
-invisible in GitHub Actions; `deploy.yml` is the preferred, auditable path.
+auto-builds + auto-deploys on every push itself. Same outcome, but invisible in
+GitHub Actions. Until 2026-09-02 this sentence recommended `deploy.yml` as "the
+preferred, auditable path"; that workflow is retired (`deploy.yml.bak`, `23c963303`)
+and its `northflank-deploy` successor in `dev-ci.yml` cannot fire on push — see §8.5.
+So today the native git trigger is the **only** automatic option — which is the
+outcome this paragraph used to call the less auditable one.
 
 ### 8.6 Logging & Debugging
 
@@ -585,8 +613,26 @@ the request path to the filter (e.g. `/api/v1/tokens`).
 ## 9. Website Deploy Token (Cloudflare) — lifecycle & rotation
 
 The marketing site (Astro, `website/`) deploys to Cloudflare Workers static assets
-(`oz-pos` worker → `https://ozpos.my.id`) via
-`.github/workflows/website.yml` → `npx wrangler deploy`. The deploy authenticates
+(`oz-pos` worker → `https://ozpos.my.id`) via **`npm run deploy` from `website/`,
+run by hand** — `website/package.json:17` shells out to `scripts/wrangler-deploy.sh`.
+
+> ⚠️ **No workflow deploys the website.** This section named
+> `.github/workflows/website.yml` until 08-09-26; that file is retired
+> (`website.yml.bak`), and `grep -rn wrangler .github/workflows/*.yml` returns
+> **zero** hits across the live workflows. The live `dev-ci.yml#website` job does
+> asset hygiene, install, typecheck, lint, unit tests and **build** — it stops short
+> of deploying. Everything below about the token still holds; what changed is that
+> the token is consumed by a person, not a pipeline.
+>
+> ⚠️ **On Windows the documented command can hang.** `scripts/wrangler-deploy.sh` is
+> invoked as `bash ../scripts/wrangler-deploy.sh` — the only npm script in the repo
+> that calls bare `bash`. AGENTS.md's "Running CLI Tools on Windows" section records
+> that bare `bash` resolves to `C:\Windows\System32\bash.exe` (WSL), which here either
+> **hangs until killed** or runs the Linux node against the Windows-built
+> `website/node_modules`. The script's own usage header shows the same form. Until it
+> is changed, call it through Git's bash explicitly:
+> `& 'C:\Program Files\Git\bin\bash.exe' scripts/wrangler-deploy.sh`. Editing the npm
+> script is a code change and is deliberately not made here. The deploy authenticates
 with the **`CLOUDFLARE_API_TOKEN`** GitHub Actions repo secret; `CLOUDFLARE_ACCOUNT_ID`
 (the sibling secret) is not a credential — it is the account id shown in the Cloudflare
 dashboard and simply names which account the token acts on.
@@ -679,4 +725,4 @@ the ~5 min portal build — probe #3 stays the ground truth for what actually sh
 - **Treat a red `deploy` job as an incident:** add "Website Deploy `deploy` job failed"
   to §3 — the check job being green is not a signal that anything shipped.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
