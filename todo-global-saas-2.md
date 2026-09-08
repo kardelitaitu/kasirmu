@@ -483,6 +483,45 @@ before, and the verdict's addon server-grant keeps its (pre-existing,
 unowned) no-nominal-check shape, recorded here so nobody "unifies" the
 two without a ruling.
 
+## Remediation surface landed — journal (2026-09-08, DSH)
+
+The §J item's remaining open halves (owner-facing remediation view) are
+now in, commit `aa420395`:
+
+**IPC** — `get_over_quota_report` in both clients, gated
+`settings:read` (a diagnostics read echoing quota numbers, same band as
+the verdict command), read-only, registered in both `generate_handler!`
+lists so the shared UI can invoke it from either shell. It assesses
+against the **effective tier** (`build_entitlements(..., debug_upgrade)`
+→ `assess_downgrade(&ent.tier)`) — the tier the creation gates actually
+enforce — so a dimension reported over quota is exactly one whose next
+creation the gate rejects, the detection-layer contract. Desktop splits
+the body into `load_over_quota_report` so tests run the production path
+synchronously.
+
+**View** — `OverQuotaCard` mounted in LicenseSettings: all-clear line
+when nothing is over (`aria-live="polite"`), otherwise each over
+dimension renders current/limit/excess with the archive-or-upgrade
+guidance. Archiving itself stays in the resource screens — this card
+deliberately does not delete anything, matching the §J rule that a
+downgrade never silently removes resources. Upgrade CTA rides the
+existing pricing flow (C2.2 banners already link it).
+
+**Deliberately deferred, per the detection-slice note:** the persisted
+per-resource `over_quota` marker. The live report is computed from the
+same `count_*` the gates consult, so it cannot lie about a dimension's
+state; a marker would add a migration competing with the rename/ADR
+agents' hot files for a number the live assessment already answers. If
+an offline-first audit trail of over-quota states is ever needed, that
+is the slice that adds it.
+
+**Tests:** desktop 2 (effective-tier assessment incl. the
+at-cap-not-over distinction; post-downgrade excess arithmetic — 3
+locations / 2 staff / 2 terminals on Free → excess 2/1/1, total 4),
+tablet mirror 1 (assesses the same effective tier; 6/6 suite), desktop
+suite 26/26, i18nBundle 20/20, `tsc` clean, parity + orphan gates green
+on the commit.
+
 ## Phase 2 execution plan (2026-09-06)
 
 Phase 1 gates this file, so the P1 list was dependency-triaged against the
