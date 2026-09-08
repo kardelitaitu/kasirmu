@@ -233,6 +233,24 @@ show ` M` in `git status` with an EMPTY `git diff`: stale stat entries left by
 the pre-commit hook's EOL/fmt pass, verified content-identical by
 `git hash-object` against the HEAD blob. Not dirty work — do not "recover" them.
 
+### One more constraint found while auditing the chain (for the write-side slice)
+
+`SyncStore::snapshot_version` (`apps/cloud-server/src/sync_store.rs:526`) is the
+cache fingerprint that decides whether a snapshot response can be served from
+cache. On SQLite it is the per-table `(COUNT(*), MAX(updated_at))` pair; on
+Postgres it is the `snapshot_versions` counter bumped by the write hooks.
+
+Consequence: **a scoped writer that changes `legal_entity_id` / `location_id` /
+`effective_from` / `effective_to` without bumping `updated_at` in the same
+transaction will serve a STALE scope out of the hub's snapshot cache** — the
+branch then gets an unscoped row from a server that has one, which is the exact
+failure this commit closes, arriving through the cache instead of the SELECT.
+The existing `Store::update_tax_rate` does bump `updated_at`, so nothing is
+broken today; the constraint is on the writer that has not been written yet, and
+it belongs in that slice's success criteria rather than in a cache-key redesign
+here. Noted because "the payload carries it" and "the payload is allowed to
+serve it" are two different gates, and only the first was in the brief.
+
 ---
 
 ## D2 — Server-side per-feature grant authoring (PLAN APPROVED, implemented)
