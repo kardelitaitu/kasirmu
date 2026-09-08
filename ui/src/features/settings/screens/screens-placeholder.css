@@ -1,0 +1,28 @@
+/*
+ * screens-placeholder.css - the single stylesheet behind every blank Settings
+ * screen scaffold in this folder (13 screens, one <section> each). Shared on
+ * purpose: a placeholder must read the same wherever it is opened, and the
+ * migration of a real screen should replace markup, never invent styling.
+ *
+ * Design-token values only - no raw colours, no px font sizes, no invented
+ * spacing. src/frontend/themes/tokens.css is the source of truth and
+ * themeTokenCompliance.test.ts enforces it over every file under features/.
+ */
+
+.settings-screen-placeholder {
+  display: block;
+  /* The design language caps running body text at 65-75 characters a line. */
+  max-width: 68ch;
+  padding: var(--space-5);
+}
+
+.settings-screen-placeholder-title {
+  color: var(--color-fg);
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-3);
+}
+
+.settings-screen-placeholder-note {
+  color: var(--color-fg-muted);
+  font-size: var(--text-sm);
+}

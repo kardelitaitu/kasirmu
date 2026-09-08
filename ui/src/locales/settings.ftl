@@ -240,6 +240,32 @@ settings-nav-license = License
 settings-nav-diagnostics = Diagnostics
 settings-nav-topology = Topology
 settings-nav-email = Email Reports
+
+# ── Settings screens scaffold (rebuild) ──
+# One nav label per blank screen under features/settings/screens/. The General
+# scaffold reuses settings-nav-general above; the twelve below pair one-to-one
+# with the remaining files, in their own order.
+settings-nav-license-subscription = License & Subscription
+settings-nav-devices-connectivity = Devices & Connectivity
+settings-nav-business-defaults = Business Defaults
+settings-nav-features-modules = Features & Modules
+settings-nav-security-account = Security & Account
+settings-nav-data-sync = Data & Sync
+settings-nav-data-management = Data Management
+settings-nav-sync-status = Sync Status
+settings-nav-offline-queue = Offline Queue
+settings-nav-tax-configuration = Tax Configuration
+settings-nav-exchange-rates = Exchange Rates
+settings-nav-system-diagnostics = System Diagnostics
+settings-screen-placeholder = This page is being rebuilt.
+settings-screen-migrating = Existing settings content will move here selectively.
+# The settings page floor gate: roleAtLeast (utils/role.ts) shows this copy to any
+# role below the admin floor.
+# settings-nav-plus-badge-aria is deliberately NOT declared here -- pre-commit
+# step 10 (verify-ftl-orphans.py) rejects a key its own commit does not
+# reference, so it must land together with the sidebar badge that reads it.
+settings-locked-title = Settings restricted
+settings-locked-desc = Settings are available to owners and administrators only.
 settings-category-operations = Operations
 settings-category-system = System
 settings-sidebar-nav-aria = Settings navigation

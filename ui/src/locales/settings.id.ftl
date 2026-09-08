@@ -47,6 +47,32 @@ settings-nav-license = Lisensi
 settings-nav-diagnostics = Diagnostik
 settings-nav-topology = Topologi
 settings-nav-email = Laporan Email
+
+# ── Kerangka layar Setelan (penataan ulang) ──
+# Satu label navigasi untuk tiap layar kosong di features/settings/screens/.
+# Scaffold General memakai settings-nav-general di atas; dua belas kunci berikut
+# berpasangan satu-lawan-satu dengan file sisanya, dalam urutan yang sama.
+settings-nav-license-subscription = Lisensi & Langganan
+settings-nav-devices-connectivity = Perangkat & Konektivitas
+settings-nav-business-defaults = Default Bisnis
+settings-nav-features-modules = Fitur & Modul
+settings-nav-security-account = Keamanan & Akun
+settings-nav-data-sync = Data & Sinkronisasi
+settings-nav-data-management = Manajemen Data
+settings-nav-sync-status = Status Sinkronisasi
+settings-nav-offline-queue = Antrean Offline
+settings-nav-tax-configuration = Konfigurasi Pajak
+settings-nav-exchange-rates = Kurs Valuta Asing
+settings-nav-system-diagnostics = Diagnostik Sistem
+settings-screen-placeholder = Halaman ini sedang dibangun ulang.
+settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini secara selektif.
+# Gerbang lantai halaman Setelan: roleAtLeast (utils/role.ts) menampilkan teks ini
+# untuk peran di bawah lantai admin.
+# settings-nav-plus-badge-aria sengaja TIDAK dideklarasikan di sini -- langkah
+# ke-10 pre-commit (verify-ftl-orphans.py) menolak kunci yang commitnya sendiri
+# tidak mereferensikannya, jadi kunci itu masuk bersama lencana Plus yang membaca.
+settings-locked-title = Setelan dibatasi
+settings-locked-desc = Setelan hanya tersedia untuk pemilik dan administrator.
 settings-category-operations = Operasional
 settings-category-system = Sistem
 settings-sidebar-nav-aria = Navigasi pengaturan

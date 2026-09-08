@@ -594,6 +594,79 @@ const SCREENS: ScreenEntry[] = [
       'section-loading',
     ],
   },
+
+  // ── Settings screen scaffolds (rebuild) ────────────────────
+  // Blank placeholders under features/settings/screens/, one file per screen.
+  // They share screens-placeholder.css, so each entry lists that single
+  // companion sheet. The duplicate-class check is scoped to the css list of
+  // one entry, so sharing one stylesheet across entries stays clean.
+  // Each scaffold is swapped for the migrated screen during the settings
+  // campaign, at which point its entry points at that screen's own sheet.
+  {
+    name: 'GeneralScreen',
+    tsx: 'settings/screens/GeneralScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'LicenseSubscriptionScreen',
+    tsx: 'settings/screens/LicenseSubscriptionScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'DevicesConnectivityScreen',
+    tsx: 'settings/screens/DevicesConnectivityScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'BusinessDefaultsScreen',
+    tsx: 'settings/screens/BusinessDefaultsScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'FeaturesModulesScreen',
+    tsx: 'settings/screens/FeaturesModulesScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'SecurityAccountScreen',
+    tsx: 'settings/screens/SecurityAccountScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'DataSyncScreen',
+    tsx: 'settings/screens/DataSyncScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'DataManagementScreen',
+    tsx: 'settings/screens/DataManagementScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'SyncStatusScreen',
+    tsx: 'settings/screens/SyncStatusScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'OfflineQueueScreen',
+    tsx: 'settings/screens/OfflineQueueScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'TaxConfigurationScreen',
+    tsx: 'settings/screens/TaxConfigurationScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'ExchangeRatesScreen',
+    tsx: 'settings/screens/ExchangeRatesScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'SystemDiagnosticsScreen',
+    tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
