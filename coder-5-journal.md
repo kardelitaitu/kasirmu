@@ -391,3 +391,68 @@ reads; no production gate code was added.
 
 Committed with an explicit pathspec limited to the three files above; no other
 agent's dirty files swept in.
+
+## 2026-09-08 — finisher-A: scope §J per-location dims + persisted marker (saas-2 downgrade tail)
+
+Branch 0.0.37 — no branch created or switched, no push. Repo root from
+git rev-parse --show-toplevel.
+
+### Task
+
+The supervisor re-triaged the §J downgrade P1 tail: after the remediation
+view landed (OverQuotaCard.tsx, commit aa4203959 — tenant-global dims only:
+locations / pos_registers / warehouses / staff / products via
+get_over_quota_report + isOverQuota/excessOf), the remaining open halves are
+(1) per-location dims (KDS screens, topology nodes) and (2) a persisted
+per-resource over_quota marker. Scope per-location dims and decide
+bounded-vs-sprawl before writing code.
+
+### What "per-location dims" maps to
+
+- KDS screens: per-store count vs tier max_kds_screens (Free/Plus 0, Pro 2,
+  Premium/Enterprise unlimited). Enforced at topology Apply via
+  count_active_kds_instances(store_id) vs max_kds_screens.
+- Topology nodes: warehouse node count vs tier cap (Pro-tier = 1 warehouse),
+  guarded on creation in NodeTopologyEditor (wouldExceedWarehouseCap). KDS /
+  restaurant / store nodes are not count-capped.
+
+### Data gap (the decisive finding)
+
+The existing client verdict/caps data does NOT carry per-location limits or
+counts:
+- SubscriptionCapabilities exposes maxLocations / maxPosInstances /
+  maxWarehouses / maxStaffUsers / salesHistoryDays + locationCount /
+  staffCount / terminalCount. NO maxKdsScreens, NO per-store KDS count, NO
+  per-store topology node count.
+- OverQuotaReport.usages is tenant-global only (the 5 dims above); KDS screens
+  and topology nodes are deliberately excluded (downgrade.rs doc: they are
+  capped per location, no honest tenant-global row).
+- No FeatureVerdict exists for KDS screens (AvailabilityFeatureKey quota
+  families are Locations / StaffUsers / PosInstances / Warehouses only).
+- Rust has list_kds_devices_for_restaurant (kds_devices.rs) but NO IPC wrapper
+  and NO UI consumer; kds.ts exposes only KDS *orders*, not screens/devices.
+- dev-mock/tauri-api.ts carries KDS instance rows but no per-store KDS screen
+  count command.
+
+### Verdict: SPRAWLS — report the split, do not implement
+
+The bounded-slice precondition ("driven by existing verdict/caps data, no new
+IPC, no dev-mock") is NOT met:
+
+- Slice A (BOUNDED, no IPC): a warehouse-node over-limit readout inside the
+  Topology Editor, reusing its existing in-memory node graph + maxWarehouses
+  from SubscriptionCapabilities. The only per-location dim drivable from data
+  the editor already holds. Self-contained; feature-specific .ftl allowed.
+- Slice B (SPRAWL — new IPC + dev-mock): KDS-screen per-location over-limit
+  display needs a new IPC for per-store KDS device counts (wrap
+  list_kds_devices_for_restaurant / add count_kds_devices) plus max_kds_screens
+  (derivable from tier constant). A new IPC implies dev-mock must mock it for
+  local runs, which collides with the no-dev-mock hot-file rule.
+- Slice C (SPRAWL — migration/hot file): the persisted per-resource over_quota
+  marker is a migration (hot for the rename/ADR agents) + a write path.
+
+### Next
+
+Reported the split to the supervisor; awaiting which slice to greenlight. No
+code written this turn. Nothing committed pending the supervisor's pick
+(Slice A is the only clean bounded option).
