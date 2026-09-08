@@ -1212,3 +1212,7 @@ with Delete still blocked and no account sentence anywhere.
   entry** were another agent's rule upgrade about `git commit -F` hygiene —
   a note about commit-message discipline, uncommitted in the same shared file
   I was waiting on to record a commit-hygiene lesson.
+
+### RULE UPGRADE — supervisor, at S2 UI landing (commit 425b823e1)
+
+- **Re-verify a cross-stream typecheck block before reporting it as a blocker.** Before flagging a whole-tree `tsc --noEmit` failure as owned by another agent, RUN the whole-tree tsc MYSELF and paste the actual error list. A "fails only on X" snapshot ages in seconds on a racing multi-agent branch: the supervisor's own re-run one round later returned EXIT 0 while mine had shown 7 errors, because kardelitaitu fixed their in-flight `SettingsNavTree.test.tsx` in between. The skip-authorization option (`OZPOS_SKIP_TYPECHECK=1`) is the LAST resort AFTER a fresh re-run proves the error is real and still present — never the first ask. My S2 UI landing needed only that fresh clean re-run; option (a) was correctly NOT granted.
