@@ -265,6 +265,31 @@ async fn put_image_hash_match_stores_successfully() {
 }
 
 #[tokio::test]
+async fn put_image_malformed_body_with_wrong_hash_returns_400_not_409() {
+    let (state, dir) = temp_image_dir();
+    let app = router(state.clone());
+    let token = test_token(&state, "tenant-a");
+    // The body is NOT a WebP AND the supplied hash doesn't match. The
+    // malformed body must win (400, not 409) — the client-hash handshake
+    // only ever applies to a storable payload.
+    let uri = "/api/v1/images?hash=ffffffffffffffff";
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(uri)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/octet-stream")
+                .body(Body::from(Vec::from(b"not a webp image" as &[u8])))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    cleanup(&dir);
+}
+
+#[tokio::test]
 async fn get_image_returns_404_for_unknown_hash() {
     let (state, dir) = temp_image_dir();
     let app = router(state.clone());
