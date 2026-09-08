@@ -333,6 +333,7 @@ const renderEditor = (props?: {
   allowLegacyApply?: boolean;
   branchId?: string;
   onDirtyChange?: (dirty: boolean) => void;
+  onLoadError?: (error: unknown) => void;
   compareOverlay?: {
     ghosts: Array<{ id: string; name: string; x: number; y: number }>;
     onlyHere: string[];
@@ -1690,6 +1691,34 @@ describe('NodeTopologyEditor Component', () => {
     });
 
     expect(screen.getByText('Downtown Branch')).toBeInTheDocument();
+  });
+
+  it('surfaces a load failure via toast + onLoadError and keeps the preset canvas', async () => {
+    // Characterization for the load lifecycle boundary (Phase 3.1): a
+    // THROWN load error (corrupt DB, serialisation failure — distinct from
+    // the expected null result above) must (1) toast the localized
+    // load-error category with the USER-SAFE fallback copy appended (the
+    // ERR-06 policy: raw backend messages never render), (2) notify the
+    // parent with the ORIGINAL error through onLoadError (TopologyScreen
+    // drops canSave in response and logs the raw detail), and (3) leave
+    // the canvas untouched — a failed load must never wipe or half-replace
+    // the rendered graph.
+    mockLoadTopology.mockRejectedValueOnce(new Error('corrupt topology'));
+    const onLoadError = vi.fn();
+
+    renderEditor({ onLoadError });
+
+    await waitFor(() => expect(onLoadError).toHaveBeenCalledTimes(1));
+    expect(onLoadError).toHaveBeenCalledWith(expect.any(Error));
+    // The toast carries the localized category AND the user-safe fallback
+    // copy — never the raw backend message.
+    expect(await screen.findByText(/Failed to load topology/)).toBeInTheDocument();
+    expect(screen.getByText(/Something went wrong/)).toBeInTheDocument();
+    expect(screen.queryByText(/corrupt topology/)).not.toBeInTheDocument();
+    // The canvas is untouched: the seed graph is still rendered.
+    expect(screen.getByText('Downtown Branch')).toBeInTheDocument();
+    expect(screen.getByText('Retail POS #1')).toBeInTheDocument();
+    expect(screen.getByText('Main Warehouse')).toBeInTheDocument();
   });
 
   // ── Save topology ─────────────────────────────────────────────

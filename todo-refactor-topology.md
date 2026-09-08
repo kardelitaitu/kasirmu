@@ -276,6 +276,15 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Validation:** Isolated test passed. Full focused suite (`npm run test -- --run src/__tests__/NodeTopologyEditor.test.tsx src/__tests__/InspectorIntegration.test.tsx`): 519 tests, 518 passed, 1 skipped, 0 failed — the first fully green focused run of the refactor. `npm run typecheck` exit 0 (the seven unrelated `SettingsNavTree.test.tsx` errors recorded at Slice 1d have also cleared).
 - **Next slice:** the load-lifecycle hook consolidation remains the next production slice once the seam is free; the import/re-export inventory is recorded in the Phase 0 checklist above.
 
+### 2026-09-08 — Phase 0: editor-level load-failure characterization test
+
+- **Gap:** The load-failure catch path was covered only at the screen level (`TopologyScreen` asserts `canSave` drops). No editor-level test exercised a *thrown* `loadTopology` rejection (corrupt DB / serialisation failure — distinct from the expected `null` result), so the load-lifecycle hook extraction (next production slice) had no safety net for the error branch.
+- **Characterized contract:** a thrown load error must (1) toast the localized "Failed to load topology" category with the USER-SAFE fallback copy (`plainErrorMessage`) — the ERR-06 redaction policy means the raw backend message never renders anywhere; (2) notify the parent with the ORIGINAL error via `onLoadError` (TopologyScreen drops `canSave` and logs the raw detail); (3) leave the canvas untouched — a failed load must never wipe or half-replace the rendered graph.
+- **Correction made during characterization:** the first draft asserted the raw detail in the toast; that is wrong by design — the toast carries only the localized category plus fallback copy. The test now asserts the raw message is *absent*.
+- **Scope:** `ui/src/__tests__/NodeTopologyEditor.test.tsx` only — `renderEditor` harness gains an optional `onLoadError` prop; one new test. No production code changed; `NodeTopologyEditor.tsx` and `topologyLoadModel.ts` untouched (concurrent in-flight edits preserved).
+- **Validation:** Re-verified against the current tree after the concurrent slice landed: isolated test passes; full focused suite 511 tests — 510 passed, 1 skipped, 0 failed; `npm run typecheck` exit 0.
+- **Next slice:** the load-lifecycle hook consolidation, once the seam (`NodeTopologyEditor.tsx` / `topologyLoadModel.ts`) is committed and free.
+
 ## Completion checklist
 
 - [ ] `NodeTopologyEditor.tsx` is a small composition root rather than the owner of unrelated state machines and event systems.
