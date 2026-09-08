@@ -1,6 +1,6 @@
 # Admin Guide — OZ-POS
 
-<!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: ACCURATE (1 observation) · O1: doc lists KDS as a top-level "Workspace" alongside Store POS / Inventory / Admin, but the seed (migration 035_workspaces.sql) registers KDS as a screen (workspace_key='kds') under restaurant-pos, not a standalone workspace type; user-facing simplification, not a code error · verified accurate: workspace_types seeded store-pos/inventory/restaurant-pos/admin (035_workspaces.sql:30-33); roles Owner/Manager/Cashier/Kitchen match staff.rs:408-419; scripts/backup-db.sh + scripts/restore-db.sh exist; shift open/close + cash payout + offline-queue + reports (sales/eod/menu-engineering/custom/inventory) all map to real features; setup wizard presets (simple retail/restaurant/custom) are user-facing guidance consistent with workspace seeds -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (3 findings) · SUPERSEDES the 2026-07-26 stamp; its observation O1 still stands and is carried forward here: this doc lists KDS as a top-level "Workspace" beside Store POS / Inventory / Admin, while the seed registers workspace_key='kds' as a SCREEN under restaurant-pos rather than a standalone workspace type — a deliberate user-facing simplification, not a code error, but a reader who administers the DB will not find a kds workspace_type row. Re-verified accurate this pass: workspace_types seeded store-pos / inventory / restaurant-pos / admin; roles Owner / Manager / Cashier / Kitchen; shift open/close, cash payout, offline queue, and the five reports (sales, eod, menu-engineering, custom, inventory) all map to real features; scripts/backup-db.sh and scripts/restore-db.sh exist; the upgrade path via PUT /api/v1/tenants/{tenant_id}/plan matches the live handler, which really is free|pro only. Repaired: (1) the setup wizard offers SIX presets (Simple Retail, Restaurant, Full Store, Cafe / Bakery, Franchise, Custom) and the page listed three — and the stamp it sat under had certified the shortened list as "consistent with workspace seeds", which is the failure mode this whole audit keeps finding: a check that confirms a summary rather than comparing it to the source; (2) PIN is 4-8 digits, not 4-6 — min 4 enforced twice (CreatePinScreen.tsx:44 and commands/auth.rs:192), max 8 applied by silent truncation in digitsOnly() (slice(0, 8)), so a long paste is cut rather than rejected; (3) removed a shadow stamp from the footer block — a "status: ACCURATE (0 findings)" line sitting outside the <!-- Audit stamp --> comment, contradicting the real stamp's 1 observation and unfindable by check-audit-stamps.py. -->
 
 ## Installation
 
@@ -9,7 +9,12 @@
 3. On first launch, follow the setup wizard to:
    - Set store name, currency, and tax settings
    - Create the owner account (username + PIN)
-   - Choose a workspace preset (simple retail, restaurant, or custom)
+   - Choose a workspace preset — the wizard offers **six**: Simple Retail, Restaurant,
+     Full Store, Cafe / Bakery, Franchise, and Custom
+     (`ui/src/features/setup/SetupWizard.tsx`, `PRESETS`). This line listed three until
+     08-09-26, and the 2026-07-26 audit stamp below actively certified it as "user-facing
+     guidance consistent with workspace seeds" — certifying a shortened list as correct is
+     worse than not checking it, because the check is what a later reader trusts.
 
 ## Workspace Management
 
@@ -27,7 +32,12 @@ Navigate to **Admin → Workspaces** to manage workspace types:
 1. Go to **Admin → Staff**
 2. Click **+ Add Staff** to create a new user
 3. Set **role** (owner, manager, cashier, kitchen)
-4. Assign a **PIN** (4-6 digits) for quick login
+4. Assign a **PIN** (**4–8 digits**) for quick login. The minimum is 4, enforced twice:
+   `CreatePinScreen.tsx:44` and again server-side at
+   `apps/desktop-client/src/commands/auth.rs:192`. The maximum is 8, and it is not an
+   error — `digitsOnly()` at `CreatePinScreen.tsx:36` does `.slice(0, 8)`, so a longer
+   paste is silently truncated rather than rejected. "4-6" was wrong at the top end and
+   described a bound nothing enforces.
 
 ### Roles
 
@@ -92,8 +102,15 @@ Cloud sync is a paid feature (ADR sync-plan-gating). When the server has
   `X-Admin-Key` header when `OZ_ADMIN_KEY` is configured) or automatically
   via a paid Stripe subscription.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
+> last audited 08-09-26 by docs-auditor
 
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+<!-- The two blockquote lines that used to sit under the footer — "audit: Phase 1 Core
+Architecture & API Docs Audit" and "status: ACCURATE (0 findings) · verified accurate:
+cargo check passed, no structural orphans, no stale version headers, all file references
+valid" — were removed. The second is a shadow stamp: it has the shape and authority of an
+audit stamp but sits in footer position, outside the <!-- Audit stamp --> comment, so no
+tool looks for it and no rule governs it. It also contradicted the real stamp on this page,
+which reported 1 observation, and its "0 findings" claim is contradicted by the preset
+error it sat above. If you want to record an audit pass, write a stamp; a status line in
+the footer is invisible to the stamp checker and misleading to a reader. -->
 
