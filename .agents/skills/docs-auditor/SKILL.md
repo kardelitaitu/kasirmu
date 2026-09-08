@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 4 — added .agents/skills/docs-auditor/scripts/check-audit-stamps.py and the footer-vs-stamp direction rule; §13's "do not stack stamps" now carries its measurement, 116 of 122 stamped files carry exactly one, and the note records that this session created three of the six exceptions by pattern-matching a convention that is not written here) · rev 3 added check-api-surface.py · verified against the live tree: detect.sh Check 9/10 reads the footer only, so a footer older than the newest stamp is invisible to CI; 4 such files existed and were bumped -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 5 — §13 now states the invariant as achieved rather than approximate: 124 stamped files, 124 stamps, zero stacked repo-wide. The five ··/SKILL.md exceptions were merged in the same pass, losslessly, and one of the five was a third stamp this session itself had appended to onboarding-guide — the rule was in this file and I still broke it, which is why the merge recipe is written out here instead of only the prohibition. Also added: do not append a "rev N" when re-stamping the same file the same day — replace; this file had reached rev 4 in four lines.) · rev 4 added .agents/skills/docs-auditor/scripts/check-audit-stamps.py and the footer-vs-stamp direction rule · rev 3 added check-api-surface.py · verified against the live tree: detect.sh Check 9/10 reads the footer only, so a footer older than the newest stamp is invisible to CI; 4 such files existed and were bumped -->
 
 # Skill: docs-auditor
 
@@ -240,14 +240,19 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 - Add one audit stamp at the top of the audited document only after verification is complete and all repairs applied.
 - Format: `> last audited <DD-MM-YY> by docs-auditor` as a blockquote footer. The DD-MM-YY shape (no year prefix, `by <name>` clause) is what `skill-drift-guard` Check 10 enforces project-wide — the in-doc stamp must match `^> last audited [0-9]{2}-[0-9]{2}-[0-9]{2} by <name>$` exactly. (Note: the standalone `scripts/` folder holds no copy of the orphan checker — the script lives at `.agents/skills/docs-auditor/scripts/check-orphans.py`.)
-- Replace any existing stamp. **Do not stack stamps.** Measured 08-09-26: 116 of the
-  122 stamped files in this repo carry exactly one, so the rule is the practice and the
-  six exceptions are drift, not precedent. Three of those six were created by this very
+- Replace any existing stamp. **Do not stack stamps.** Measured 08-09-26 after repair:
+  **124 stamped files, 124 stamps, zero stacked** — the invariant now holds across the whole
+  repo, so treat any stack you meet as a defect to merge, not a style to continue. The
+  earlier reading was 116 of 122; the six exceptions were five §SKILL.md files under
+  `.agents/skills/··/SKILL.md that a 2026-09-03 audit had stamped as "rev 2" *beneath* the
+  2026-08-31 original, plus one in docs/releases/, and three more had been created by this
   session pattern-matching "newest-first history" from an earlier note instead of reading
-  this line — and collapsing them was the fix. When you replace a stamp, carry forward what
-  still matters from the old one *inside* the new text (what it verified, and any finding
-  that survives), because the point of the rule is a single place to look, not a shorter
-  file.
+  this line. Merging is mechanical and lossless: parse every stamp, sort by date, keep the
+  newest as the stamp, and append the superseded bodies verbatim under
+  "STAMPS MERGED INTO THIS ONE". Never delete an older audit's evidence to satisfy the
+  count — the rule asks for one place to look, not a shorter file.
+- If you re-stamp a file you already stamped earlier the same day, replace again; do not
+  append a "rev 5". `.agents/skills/docs-auditor/SKILL.md itself had accumulated four.
 - **The footer must never be older than the newest stamp.** They answer different questions
   — the stamp is the evidence, the footer is the machine-read freshness signal that
   `detect.sh` Check 9/10 parses — so a footer behind the stamp makes a freshly audited doc
