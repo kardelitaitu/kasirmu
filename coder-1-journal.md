@@ -223,6 +223,18 @@ allowlist entries) on top of my round-1 gate work, and `1cec6306` resynced the
 multi-location key-count figure I flagged in round 1 — both open items from last
 round are now closed by someone.
 
+### Standing rules learned this round (read me before committing)
+
+- **Journals are versioned** (supervisor ruling 2026-09-08, `f9a22948`): append the
+  task entry to `coder-1-journal.md` and put it in the **same pathspec as the
+  landing commit**. Do not leave it to a follow-up commit — that is what happened
+  here only because the landing commits were already made and amending is forbidden
+  on this shared branch. Getting it right the first time costs nothing.
+- Two pre-existing `-D warnings` violations were found on this branch; one was
+  fixed because it was inside a file already in my commit (`entitlements_tests.rs`),
+  one was left for its owner (`apps/tablet-client/src/commands/subscription.rs:276`).
+  Check `cargo check --workspace --all-targets` before blaming a red CI on new work.
+
 ### Open questions
 
 1. Caps DTO + dev-mock still owed (above).
