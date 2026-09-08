@@ -112,6 +112,10 @@ pub mod rate_limiter;
 pub mod recipe;
 /// Refund and return processing.
 pub mod refund;
+/// Regional configuration — the market facts a location trades under
+/// (locale / timezone / currency) and the Location → Legal Entity →
+/// Organization → built-in chain that resolves them.
+pub mod regional;
 /// Completed sale records and sale-line items.
 pub mod sale;
 /// Sale-deduction result types — CompleteSaleResult vs PartialStockResult (ADR-19 §2).
@@ -242,6 +246,7 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLine
 pub use rate_limiter::LoginRateLimiter;
 pub use recipe::RecipeItem;
 pub use refund::{Refund, RefundLine};
+pub use regional::{ConfigScope, RegionalConfig, RegionalLayer, RegionalValue};
 pub use sale::{Sale, SaleLine};
 pub use sale_deduction::{
     CompleteSaleResult, LocationAllocation, LocationStock, PartialStockResult, ResolvedShortfall,

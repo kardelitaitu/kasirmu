@@ -165,3 +165,10 @@ pub const MEDIA_MAX_PIXELS: &str = "media.max_pixels";
 /// Default EDC terminal ID used when the cashier flow picks a card
 /// terminal. Empty string = no default (user is prompted).
 pub const EDC_DEFAULT_TERMINAL: &str = "edc.default_terminal";
+
+// ── Regional defaults ─────────────────────────────────────
+/// Organization-default BCP-47 locale, written by the Settings → General
+/// language selector. Named here because the literal previously had no reader
+/// anywhere in the repo; `oz_core::regional` now consumes it as the
+/// organization layer of the locale chain.
+pub const UI_LOCALE: &str = "ui.locale";

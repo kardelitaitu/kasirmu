@@ -114,6 +114,9 @@ pub mod purchase_orders;
 pub mod recipes;
 /// Refund CRUD.
 pub mod refunds;
+/// Regional-configuration reads — the effective locale / timezone / currency
+/// for a location, resolved across the §H scopes.
+pub mod regional;
 /// Report generation queries.
 pub mod reports;
 /// Role authoring — update / delete for custom roles (ADR #47 ruling 4).
