@@ -67,6 +67,7 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 
 - [ ] **Slice 0 — baseline only:** add or strengthen characterization tests and record focused test/typecheck results. No production extraction.
 - [x] **Slice 1a — persisted mapping seam:** route authoritative-load node and wire payloads through the existing pure `diagramNodeToCanvas` and `diagramWireToCanvas` helpers. No effects, event handlers, or JSX moved.
+- [x] **Slice 1b — branch synchronization seam:** extract branch-location reconciliation into the pure `syncBranchLocations` helper; React state and transient interaction cleanup remain in the editor.
 - [ ] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice.
 - [ ] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged.
 - [ ] **Slice 3 — inspector boundary:** extract the inspector drawer and branch profile fields behind typed props. Preserve the existing `BranchLocationFields` API behavior and test selectors.
@@ -222,6 +223,16 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Result:** Editor reduced from 6,048 to 5,996 lines. The remaining load effect is intentionally still in the parent for the next lifecycle slice.
 - **Validation:** `ui/npm run typecheck` passed. Focused topology tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`.
 - **Rollback:** Revert commit `refactor(ui): reuse topology mapping helpers` without affecting unrelated work.
+
+### 2026-09-08 — Slice 1b: extract branch synchronization
+
+- **Problem:** The load effect mixed pure branch-list reconciliation with React setters and transient hover/connection cleanup, making the first lifecycle seam too broad.
+- **Solution:** Added `topologyBranchSync.ts` with pure `syncBranchLocations`. It preserves canonical branch nodes, updates live names, adds new branches at the existing snapped spawn position, filters wires for removed branches, and returns removed IDs for the parent’s transient cleanup.
+- **Scope:** `NodeTopologyEditor.tsx` now delegates only the pure reconciliation result; it still owns refs, setters, connection cancellation, hover cleanup, and effect control flow.
+- **Tests:** Added `topologyBranchSync.test.ts` covering rename/add/delete reconciliation and legacy store nodes without canonical identity.
+- **Result:** Editor reduced from 5,996 to 5,972 lines; the new pure helper is 63 lines and has two focused tests.
+- **Validation:** `ui/npm run typecheck` passed. Helper tests passed 2/2. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`.
+- **Next slice:** inventory imports/re-exports, then isolate the load/seed/restore lifecycle without moving JSX or input handlers.
 
 ## Completion checklist
 

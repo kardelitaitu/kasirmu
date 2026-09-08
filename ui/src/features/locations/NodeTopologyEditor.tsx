@@ -81,6 +81,7 @@ import {
   sanitizeCopiedNode,
 } from './topologyCard';
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
+import { syncBranchLocations } from './topologyBranchSync';
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
@@ -1451,42 +1452,17 @@ export default function NodeTopologyEditor({
     prevBranchLocationsRef.current = branchLocations;
     prevInstancesRef.current = workspaceInstances;
     if (prevLocations !== branchLocations && prevInstances === workspaceInstances) {
-      // Store node ids equal location ids (seeding uses loc.id), so the
-      // removed set can be derived from the location delta alone and applied
-      // to BOTH the node and wire states in lockstep.
-      const locationIds = new Set((branchLocations ?? []).map((l) => l.id));
-      const removedLocationIds = new Set(
-        (prevLocations ?? []).map((l) => l.id).filter((id) => !locationIds.has(id)),
+      const synced = syncBranchLocations(
+        nodesRef.current,
+        wiresRef.current,
+        branchLocations,
+        prevLocations,
+        snap,
       );
-      setNodes((prev) => {
-        const nameById = new Map((branchLocations ?? []).map((l) => [l.id, l.name]));
-        const next = prev
-          .filter((n) => !(n.type === 'store' && n.storeProfileId && !locationIds.has(n.storeProfileId)))
-          .map((n) => {
-            if (n.type !== 'store' || !n.storeProfileId) return n;
-            const name = nameById.get(n.storeProfileId);
-            return name !== undefined && name !== n.name ? { ...n, name } : n;
-          });
-        for (const loc of branchLocations ?? []) {
-          if (!next.some((n) => n.type === 'store' && n.storeProfileId === loc.id)) {
-            next.push({
-              id: loc.id,
-              type: 'store',
-              name: loc.name,
-              subtitle: 'Branch Location',
-              x: snap(80),
-              y: snap(140),
-              storeProfileId: loc.id,
-            });
-          }
-        }
-        return next;
-      });
+      setNodes(synced.nodes);
       // Wires to a removed branch card must go with it.
-      setWires((prev) =>
-        prev.filter((w) => !removedLocationIds.has(w.fromNodeId) && !removedLocationIds.has(w.toNodeId)),
-      );
-      if (removedLocationIds.size > 0) {
+      setWires(synced.wires);
+      if (synced.removedLocationIds.size > 0) {
         // A removed branch card may host an in-flight wire preview — cancel
         // it like the rebuild path does, so no stale preview can complete.
         cancelConnection();
