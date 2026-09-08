@@ -141,6 +141,32 @@
   to { opacity: 1; }
 }
 
+/* Exit animation (exit-animation-pattern): fadeOut mirrors the overlay's
+   fadeIn entry and is applied to both overlay and modal card so the whole
+   dialog fades as one surface. Declared inside prefers-reduced-motion:
+   no-preference -- reduced-motion users skip the fade entirely because
+   useExitAnimation schedules the unmount with animDuration(200), which
+   returns 0 there, so dismissal stays instant. fill-mode both locks the
+   TO-frame across the React unmount (no opacity flash); pointer-events:
+   none blocks stale clicks mid-fade. Source order: entry rule, entry
+   keyframe (above), exit keyframe, exit rule -- so --exiting wins the
+   cascade at equal specificity. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes shift-summary-fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  .shift-summary-overlay--exiting {
+    animation: shift-summary-fade-out var(--duration-200) var(--ease-out) both;
+    pointer-events: none;
+  }
+
+  .shift-summary-modal--exiting {
+    animation: shift-summary-fade-out var(--duration-200) var(--ease-out) both;
+  }
+}
+
 .shift-summary-modal {
   background: var(--color-pos-modal-bg);
   border: 1px solid var(--color-pos-modal-border);

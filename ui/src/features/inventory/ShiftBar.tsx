@@ -4,6 +4,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
@@ -49,8 +50,15 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Exit-animation-pattern: hold the modal in the DOM through a mirrored
+  // fade-out before unmounting (exit-animation-pattern skill; timing
+  // matches the 200ms entry animation of .shift-summary-overlay).
+  const summaryExit = useExitAnimation(showSummary, () => setShowSummary(false), 200);
+  const trapActive = summaryExit.shouldRender && !summaryExit.exiting;
+
   // A11Y-02: complete dialog semantics for the shift-summary modal.
-  useFocusTrap(summaryRef, showSummary, () => setShowSummary(false));
+  // Focus trap suspends while the exit fade plays (trapActive == !exiting).
+  useFocusTrap(summaryRef, trapActive, summaryExit.requestClose);
 
   // Load locations and active shift
   useEffect(() => {
@@ -206,9 +214,9 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
         )}
       </div>
 
-      {showSummary && (
-        <div className="shift-summary-overlay">
-          <div className="shift-summary-modal" ref={summaryRef} role="dialog" aria-modal="true">
+      {summaryExit.shouldRender && (
+        <div className={`shift-summary-overlay${summaryExit.exiting ? ' shift-summary-overlay--exiting' : ''}`}>
+          <div className={`shift-summary-modal${summaryExit.exiting ? ' shift-summary-modal--exiting' : ''}`} ref={summaryRef} role="dialog" aria-modal="true">
             <Localized id="inv-shift-summary-title">
               <h3>Shift Summary</h3>
             </Localized>
@@ -235,7 +243,7 @@ export default function ShiftBar({ onShiftChange }: ShiftBarProps) {
               )}
             </ul>
 
-            <Button variant="primary" size="sm" className="shift-btn shift-btn-primary summary-close-btn" onClick={() => setShowSummary(false)}>
+            <Button variant="primary" size="sm" className="shift-btn shift-btn-primary summary-close-btn" onClick={summaryExit.requestClose}>
               <Localized id="inv-cancel">
                 <span>Close</span>
               </Localized>
