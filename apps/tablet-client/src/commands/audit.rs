@@ -86,7 +86,7 @@ pub async fn list_audit_log(
     args: ListAuditLogArgs,
     state: State<'_, AppState>,
 ) -> Result<Vec<AuditEntryDto>, AppError> {
-    require_audit_tier(&state)?;
+    require_audit_tier(&state).await?;
     let db = state.db.lock().await;
     let store = Store::new(&db);
     let entries = store.list_audit_entries(args.limit, args.offset)?;
@@ -138,7 +138,7 @@ pub async fn list_audit_log_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditLogPageDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
-    require_audit_tier(&state)?;
+    require_audit_tier(&state).await?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_VIEW).await?;
     let db = conn
         .lock()
@@ -187,8 +187,23 @@ async fn require_audit_permission(
 /// passes `debug_upgrade: false` — the per-client divergence the
 /// consolidation design preserves, so a dev machine never widens the
 /// tablet's audit gate.
-fn require_audit_tier(state: &AppState) -> Result<(), AppError> {
-    let db = state.db.blocking_lock();
+/// ## Why this is `async` and awaits the lock
+///
+/// It was a plain `fn` doing `state.db.blocking_lock()`. `state.db` is a
+/// `tokio::sync::Mutex`, and in tokio 1.49 `blocking_lock` is
+/// `future::block_on(self.lock())`, whose first act is
+/// `context::try_enter_blocking_region().expect("Cannot block the current
+/// thread from within a runtime...")`. There is NO uncontended fast path:
+/// the check fails whenever the thread is driving async tasks — which is
+/// every thread that polls a Tauri command. So each call site was a
+/// guaranteed panic on first use, on a surface that had no Rust-layer test
+/// and a dev-mock that answers the invoke in JavaScript, so E2E never
+/// reached it either.
+///
+/// Keep it `async`. Reintroducing `blocking_lock()` to "avoid an await in a
+/// hot path" reintroduces the panic.
+async fn require_audit_tier(state: &AppState) -> Result<(), AppError> {
+    let db = state.db.lock().await;
     let store = Store::new(&db);
     let ent = build_entitlements(&store, UsageCounts::default(), false);
     drop(db);
@@ -264,7 +279,7 @@ pub async fn get_audit_review_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditReviewStatusDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
-    require_audit_tier(&state)?;
+    require_audit_tier(&state).await?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_VIEW).await?;
     let db = conn
         .lock()
@@ -294,7 +309,7 @@ pub async fn mark_audit_reviewed_scoped(
     state: State<'_, AppState>,
 ) -> Result<ReviewCheckpointDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
-    require_audit_tier(&state)?;
+    require_audit_tier(&state).await?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_VIEW).await?;
     let db = conn
         .lock()
@@ -360,7 +375,7 @@ pub async fn export_audit_log_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditExportDto, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
-    require_audit_tier(&state)?;
+    require_audit_tier(&state).await?;
     require_audit_permission(&state, &session.user_id, permissions::AUDIT_EXPORT).await?;
     // Read + export-event write happen on the SAME store connection (matching
     // every other scoped audit mutation, e.g. mark_audit_reviewed_scoped), so
