@@ -81,7 +81,7 @@ import {
   sanitizeCopiedNode,
 } from './topologyCard';
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
-import { syncBranchLocations } from './topologyBranchSync';
+import { syncBranchLocations, syncWorkspaceInstanceNames } from './topologyBranchSync';
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
@@ -1485,12 +1485,7 @@ export default function NodeTopologyEditor({
       && (prevInstances?.length ?? 0) === (workspaceInstances?.length ?? 0)
       && (prevInstances ?? []).every((i, idx) => (workspaceInstances?.[idx]?.instanceId ?? '') === i.instanceId);
     if (instancesSameIds && !skipNextLoadRef.current) {
-      const nameById = new Map((workspaceInstances ?? []).map((i) => [i.instanceId, i.name]));
-      setNodes((prev) => prev.map((n) => {
-        if (n.type !== 'workspace') return n;
-        const name = nameById.get(n.id);
-        return name !== undefined && name !== n.name ? { ...n, name } : n;
-      }));
+      setNodes(syncWorkspaceInstanceNames(nodesRef.current, workspaceInstances ?? []));
       return;
     }
     let cancelled = false;

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { syncBranchLocations } from '../features/locations/topologyBranchSync';
+import {
+  syncBranchLocations,
+  syncWorkspaceInstanceNames,
+} from '../features/locations/topologyBranchSync';
 import type { BranchLocationSeed, TopologyNodeData, TopologyWireData } from '../features/locations/NodeTopologyEditor';
 
 const snap = (value: number) => Math.round(value / 24) * 24;
@@ -66,5 +69,21 @@ describe('syncBranchLocations', () => {
     );
 
     expect(result.nodes).toContainEqual(legacy);
+  });
+
+  it('updates only workspace names while preserving every other node object', () => {
+    const branch = node({ id: 'store-1', type: 'store', name: 'Branch' });
+    const workspace = node({ id: 'workspace-1', type: 'workspace', name: 'Old POS' });
+    const result = syncWorkspaceInstanceNames(
+      [branch, workspace],
+      [{ instanceId: 'workspace-1', typeKey: 'store-pos', name: 'Renamed POS' }],
+    );
+
+    expect(result).toEqual([
+      branch,
+      { ...workspace, name: 'Renamed POS' },
+    ]);
+    expect(result[0]).toBe(branch);
+    expect(result[1]).not.toBe(workspace);
   });
 });

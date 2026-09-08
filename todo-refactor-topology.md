@@ -68,6 +68,7 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
 - [ ] **Slice 0 — baseline only:** add or strengthen characterization tests and record focused test/typecheck results. No production extraction.
 - [x] **Slice 1a — persisted mapping seam:** route authoritative-load node and wire payloads through the existing pure `diagramNodeToCanvas` and `diagramWireToCanvas` helpers. No effects, event handlers, or JSX moved.
 - [x] **Slice 1b — branch synchronization seam:** extract branch-location reconciliation into the pure `syncBranchLocations` helper; React state and transient interaction cleanup remain in the editor.
+- [x] **Slice 1c — workspace rename seam:** extract workspace-instance name reconciliation into the pure `syncWorkspaceInstanceNames` helper; effect timing and React state ownership remain in the editor.
 - [ ] **Slice 1 — load boundary:** extract only load, seed, branch synchronization, restore seed, reload, and load lifecycle state into a hook. Do not move event handlers or JSX in this slice.
 - [ ] **Slice 2 — graph commands:** introduce typed commands around existing node/wire/history setters for add, update, delete, duplicate, connect, move, bend, undo, and redo. Keep the existing state hook and rendering unchanged.
 - [ ] **Slice 3 — inspector boundary:** extract the inspector drawer and branch profile fields behind typed props. Preserve the existing `BranchLocationFields` API behavior and test selectors.
@@ -232,6 +233,16 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - **Tests:** Added `topologyBranchSync.test.ts` covering rename/add/delete reconciliation and legacy store nodes without canonical identity.
 - **Result:** Editor reduced from 5,996 to 5,972 lines; the new pure helper is 63 lines and has two focused tests.
 - **Validation:** `ui/npm run typecheck` passed. Helper tests passed 2/2. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`.
+- **Next slice:** inventory imports/re-exports, then isolate the load/seed/restore lifecycle without moving JSX or input handlers.
+
+### 2026-09-08 — Slice 1c: extract workspace rename reconciliation
+
+- **Problem:** The load effect also contained a second pure synchronization path for parent refreshes that changed workspace names without changing instance IDs. Keeping it inline mixed data reconciliation with effect control flow.
+- **Solution:** Added `syncWorkspaceInstanceNames` beside the branch helper. It updates only changed workspace names and preserves object identity for unchanged nodes, including all non-workspace nodes.
+- **Scope:** `NodeTopologyEditor.tsx` still owns the same-ID detection, skip-after-Apply guard, and React setter; only the pure map operation moved.
+- **Tests:** Extended `topologyBranchSync.test.ts` with identity and rename assertions.
+- **Result:** Editor reduced from 5,972 to 5,967 lines; the shared synchronization module is 81 lines with three focused tests.
+- **Validation:** `ui/npm run typecheck` passed. Helper tests passed 3/3. Focused editor/inspector tests ran 519 tests: 517 passed, 1 skipped, and the same baseline Delete Node Escape failure remained at `NodeTopologyEditor.test.tsx:7020`.
 - **Next slice:** inventory imports/re-exports, then isolate the load/seed/restore lifecycle without moving JSX or input handlers.
 
 ## Completion checklist
