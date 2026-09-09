@@ -123,3 +123,27 @@ Concurrent agent ran git reset --mixed twice (35cf7fa3=reset HEAD~1, then reset 
 - Typecheck: not yet run (ui/node_modules present)
 - Scoped tests: not yet run
 - Git audit: baseline dirty tree = other agent's; do not include in our commits
+
+## GOAL 2 — DIRTY-TREE REDUCTION (user-directed, 2026-09-09 07:33)
+- Goal ID: goal-f467c075-c199-4a2a-9b0b-426d35104dfb (rev 1, max 8 rounds)
+- Objective: reduce the 30-entry dirty tree to minimum — classify all dirty files, commit coherent completed work (explicit pathspec, conventional subjects), delete garbage, leave only intentionally-kept files dirty. No push, no branch switch, no version changes.
+- BASELINE (07:32): 30 entries = 22 M + 2 MM (exchange_rates.rs pair, 6-line hunks staged) + 6 ??. Stash empty. Branch 0.0.37 @ 441625145.
+- LIVE-WRITER ASSESSMENT: another session landed 18 commits 05:00–07:25:48 today (regional ADR#48 feature, api hardening, settings-nav rebuild 3c76e6c97, topology refactor, docs). Hot files (minutes-old mtimes): NodeTopologyEditor.tsx 07:29, exchange_rates.rs pair 07:11, DSH.md 07:25, SettingsNavTree.test 07:19. STALE (15h+): connection-health cluster (8 files, mtime 09-08 16:19), =100/40 root files (09-08 00:27/01:24), pg.sql 09-08 21:13. STRATEGY: stale groups first, hot files last, re-probe mtimes before every commit, stop if a target moves.
+- SCOUTS (open): s1=8ac5858c backend rust diffs · s2=ea61df11 connection-health cluster · s3=e3e5ad47 ui-misc/i18n/docs · s4=e5966e95 root garbage + index state. Read-only, fences disjoint, ≤80-line dossiers.
+- BASELINE GATES (background): pwsh-9 = ui npm run typecheck; pwsh-10 = cargo check oz-api/oz-core/currency/desktop-client.
+- COMMIT DISCIPLINE (unchanged): explicit pathspec only; no -a/-amend/stash; re-check status before+after; if pre-commit fails on foreign files STOP and report; OZPOS_SKIP_TYPECHECK forbidden unless user orders.
+
+### OUTCOME (07:55) — 30 dirty entries -> 3
+- LANDED (pathspec commits, 10-gate hook green each, audited via git show --stat):
+  cf9743ad6 feat(licensing): report degraded auth health instead of offline (license.rs + service_health.rs)
+  787dc742a fix(currency): canonicalise exchange-rate codes to uppercase on write (repository.rs + pg.rs)
+  52b5c4124 test(ui): rewrite settings tests for flat nav IA and role gate (2 files, 804+/1315-)
+  067d27eeb test(e2e): migrate settings e2e specs to flat settings nav (3 specs)
+  8a8737dde test(ui): bracket-access index args in topology announcements test
+  aac85736a feat(ui): report degraded service health in the status pills (10 files ATOMIC incl. shared.ftl pair; 470+/43-)
+- NON-COMMIT REDUCTIONS: unstaged rustfmt-non-canonical index churn on the exchange_rates.rs pair (worktree==HEAD, verified twice); deleted root junk 40 (0 B) and =100 (byte-identical to committed blob 6c58b76ee); DSH.md + 20260813_init.pg.sql were FALSE-dirty (blobs == HEAD, stat/CRLF noise) — add no-op cleared flags.
+- LEFT DIRTY INTENTIONALLY: crates/oz-api/src/routes/validate.rs (writer's unwired 14-line stall — zero refs, never compiled; deletion loses author work, committing dead code is worse) · coder-5-journal.md (live writer's journal, their commit cadence).
+- FOLLOW-UPS recorded: exchange-rate read-path normalisation + lowercase backfill (s1); stale prose service_health_tests.rs:301 + pg_tests.rs:1331; validate.rs wiring (mod decl + plans.rs:26 + settings.rs:135 repoint).
+- VERIFICATION: vitest 110/110 over all 6 dirty test files; tsc --noEmit exit 0 x3; cargo check oz-api/oz-core/modules-currency/oz-pos-app exit 0; bundle-parity 0 missing; ftl orphans OK.
+- METHOD NOTE: git commit --only pathspec + -F message files (bare -m construction broke bash quoting on parentheses — exit 2, zero tree change, retried correctly). Writer session stayed LIVE throughout (a4ed7a511, b5376a3ab landed mid-sweep) — zero collisions, zero sweeps; every commit preceded by porcelain re-probe, followed by show --stat audit.
+
