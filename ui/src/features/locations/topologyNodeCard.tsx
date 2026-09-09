@@ -250,7 +250,6 @@ function TopologyNodeCardImpl({
                       type="button"
                       className="node-validation-note-dismiss"
                       aria-label={topologyUiString(l10n, 'topology-validation-dismiss', null)}
-                      title={topologyUiString(l10n, 'topology-validation-dismiss', null)}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={() => onDismissNodeIssue(node.id, nodeErrors[0]!.messageId)}
                     >
@@ -359,7 +358,6 @@ function TopologyNodeCardImpl({
                 className={`node-action-btn node-action-btn--toggle ${isEnabled ? 'is-active' : 'is-disabled'}`}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onSetNodeEnabled(node.id, !isEnabled)}
-                title={isEnabled ? topologyUiString(l10n, 'topology-action-active') : topologyUiString(l10n, 'topology-action-disabled')}
                 aria-label={isEnabled ? topologyUiString(l10n, 'topology-action-active') : topologyUiString(l10n, 'topology-action-disabled')}
                 aria-pressed={isEnabled}
               >
@@ -375,7 +373,6 @@ function TopologyNodeCardImpl({
                 className="node-action-btn node-action-btn--properties"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onSelect(node.id)}
-                title={topologyUiString(l10n, 'topology-action-properties')}
                 aria-label={topologyUiString(l10n, 'topology-action-properties')}
               >
                 <SettingsIcon size={12} />
@@ -407,7 +404,6 @@ function TopologyNodeCardImpl({
                 className="node-action-btn node-action-btn--disconnect"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onDisconnect?.(node.id)}
-                title={topologyUiString(l10n, 'topology-action-disconnect')}
                 aria-label={topologyUiString(l10n, 'topology-action-disconnect')}
               >
                 <UnlinkIcon size={12} />
