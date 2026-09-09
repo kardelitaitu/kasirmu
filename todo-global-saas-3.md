@@ -165,6 +165,25 @@ deferred behind the license-server work + supervisor go.
 - [ ] **Define service health contracts.** Add user-visible status for license
       server, sync service, payment service, and device connectivity, with clear
       retry and degraded-mode behavior.
+      — **partial 2026-09-08, NOT flipped.** Core contracts landed in `255719cfc`
+      (`crates/oz-core/src/service_health.rs`: `ServiceKind` = LicenseServer, Sync,
+      Payment, DeviceConnectivity; `HealthState` keeps `degraded` distinct from
+      `down`). The UI half landed in `48e799df9` (auth health over IPC, not browser
+      fetch) and `aac85736a` (degraded surfaced in the status pills), and
+      `ui/src/hooks/connectionHealth.ts` mirrors the Rust states exactly —
+      `degraded` renders `warn`, not `bad`, which is the point of the distinction.
+      30 tests pass across StatusBarDegraded / connectionHealth / useAuthConnection.
+      Three clauses of the box remain unmet, so the box stays open:
+      (a) **payment service has no user-visible status** — `ServiceKind::Payment`
+      exists in core and greps zero hits in the UI; (b) **device connectivity
+      likewise** — no UI surface either. The bar renders three pills: auth, sync,
+      version — and version is not one of the four named services, so two of four
+      are surfaced; (c) **no user-triggered retry.** `StatusBar.tsx:148-150` wires
+      every pill's `onClick` to `notify(<the tooltip text>)`, a toast repeating what
+      the tooltip already says. Retry exists only as the probe loop's automatic
+      backoff (`useAuthConnection.ts:70`), which is not 'clear retry' — an operator
+      watching a degraded pill has no action. Degraded-mode behaviour is genuinely
+      met; the surface is two of four services and the retry is informational only.
 - [x] **Make feature flags and entitlements observable.** Support diagnostics
       should show why a feature is unavailable: role, scope, tier, quota, expiry,
       or server policy.
