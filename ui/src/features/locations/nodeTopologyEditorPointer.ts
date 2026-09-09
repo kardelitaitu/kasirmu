@@ -3,9 +3,11 @@
 //! Slice 3.4c-1 folded in the node-drag trio — beginNodeDrag, applyDragMove,
 //! finalizeNodeDrag and handleNodeMouseDown — because the canvas mousemove/mouseup
 //! already fed the first two, and leaving them parent-side forced the parent to
-//! forward them back in as deps. Their bodies, comments and useCallback dep arrays
-//! are byte-identical to the inline originals; every gesture ref they read or write
-//! stays PARENT-declared (the touch loop and the unmount sweep still share them).
+//! forward them back in as deps. Their bodies and comments are byte-identical to
+//! the inline originals; every gesture ref they read or write stays PARENT-declared
+//! (the touch loop and the unmount sweep still share them). The useCallback dep
+//! arrays LIST those parent-owned refs/setters — stable identities, so identity
+//! churn is unchanged (precedent 68a29a1e7) — instead of suppressing the rule.
 //! Slice 3.4c-2 folded the duplicate cluster in as well — commitDuplicateDrag,
 //! cancelDuplicateDrag, convertDragToDuplicate and cancelNodeMove — which is what
 //! finally let the call site move: `commitDuplicateDrag` is now INTERNAL (the trio
@@ -350,11 +352,9 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     }
     document.body.style.cursor = '';
   // commitDuplicateDrag reads duplicateDragRef / duplicateCopyIdsRef /
-  // duplicateHistoryPushedRef / nodesRef / wiresRef.
-  // in this scope. Their identity never changes across renders, so listing them
-  // would be a no-op.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [setHistory, setRedo, selectMany, setLiveAnnouncement]);
+  // duplicateHistoryPushedRef / nodesRef / wiresRef / l10nRef — all stable
+  // parent-owned identities, listed in the array below (churn unchanged).
+  }, [setHistory, setRedo, selectMany, setLiveAnnouncement, duplicateDragRef, duplicateCopyIdsRef, duplicateHistoryPushedRef, nodesRef, wiresRef, l10nRef]);
 
   /** Escape during an Alt+drag: discard the preview copies and the drag
    *  itself (originals stay selected, no history entry). When the drag was
@@ -385,11 +385,9 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     dragCleanupRef.current?.();
   // cancelDuplicateDrag reads duplicateDragRef / duplicateCopyIdsRef /
   // duplicateHistoryPushedRef / dragHasMovedRef / dragOffsetsRef / dragStartRef /
-  // dragCleanupRef / setAlignmentGuide / l10nRef.
-  // in this scope. Their identity never changes across renders, so listing them
-  // would be a no-op.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [setHistory, setNodes, setWires, cancelDrag, setLiveAnnouncement]);
+  // dragCleanupRef / setAlignmentGuide / l10nRef — all stable parent-owned
+  // identities, listed in the array below (churn unchanged).
+  }, [setHistory, setNodes, setWires, cancelDrag, setLiveAnnouncement, duplicateDragRef, duplicateCopyIdsRef, duplicateHistoryPushedRef, dragHasMovedRef, dragOffsetsRef, dragStartRef, dragCleanupRef, setAlignmentGuide, l10nRef]);
 
   /** Alt pressed MID-move (Figma semantics): the drag becomes a duplicate
    *  drag. The originals snap back to their pre-drag positions, fresh copies
@@ -456,11 +454,9 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     document.body.style.cursor = 'copy';
   // convertDragToDuplicate reads duplicateDragRef / duplicateCopyIdsRef /
   // duplicateHistoryPushedRef / dragStartRef / dragHasMovedRef / dragOffsetsRef /
-  // nodesRef / wiresRef.
-  // in this scope. Their identity never changes across renders, so listing them
-  // would be a no-op.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [duplicateRefusal, addToast, l10n, setNodes, setWires, beginDrag]);
+  // nodesRef / wiresRef — all stable parent-owned identities, listed in the
+  // array below (churn unchanged).
+  }, [duplicateRefusal, addToast, l10n, setNodes, setWires, beginDrag, duplicateDragRef, duplicateCopyIdsRef, duplicateHistoryPushedRef, dragStartRef, dragHasMovedRef, dragOffsetsRef, nodesRef, wiresRef]);
 
   /** Escape mid-MOVE (Figma semantics): the dragged nodes snap back to
    *  their pre-drag positions, the move's single history entry is popped
@@ -483,11 +479,9 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     setAlignmentGuide(null);
     dragCleanupRef.current?.();
   // cancelNodeMove reads dragStartRef / dragHasMovedRef / dragOffsetsRef /
-  // dragCleanupRef / setAlignmentGuide.
-  // in this scope. Their identity never changes across renders, so listing them
-  // would be a no-op.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [setHistory, setNodes, cancelDrag]);
+  // dragCleanupRef / setAlignmentGuide — all stable parent-owned identities,
+  // listed in the array below (churn unchanged).
+  }, [setHistory, setNodes, cancelDrag, dragStartRef, dragHasMovedRef, dragOffsetsRef, dragCleanupRef, setAlignmentGuide]);
 
   /** End an in-flight node drag (release / document mouseup / touch up):
    *  commit any Alt-drag copies, clear the drag set and offsets, and drop
@@ -552,11 +546,9 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
       }
     }
     // The gesture refs/setters above (duplicateDragRef, dragHasMovedRef, dragStartRef, dragOffsetsRef, lastDragMovePosRef,
-    // nodesRef, setAlignmentGuide) arrive through the deps object, so the rule cannot
-    // see they are the editor's own useRef/useState objects — it only trusts useRef() created in this
-    // scope. Their identity never changes across renders, so listing them would be a no-op.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [commitDuplicateDrag, endDrag, setNodes, setHistory, draggingNodeIdsRef]);
+    // nodesRef, setAlignmentGuide) are stable parent-owned identities; they are
+    // listed in the array below, so the callback's identity churn is unchanged.
+  }, [commitDuplicateDrag, endDrag, setNodes, setHistory, draggingNodeIdsRef, duplicateDragRef, dragHasMovedRef, dragStartRef, dragOffsetsRef, lastDragMovePosRef, nodesRef, setAlignmentGuide]);
 
   /** Arm a node drag (mouse mousedown or the touch gesture loop): set the
    *  dragging set, compute each node's grip offset from the pointer, and —
@@ -685,11 +677,9 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     }
     // The gesture refs/setters above (userInteractedRef, nodesRef, wiresRef, duplicateDragRef, duplicateCopyIdsRef,
     // dragHasMovedRef, lastDragMovePosRef, dragCleanupRef, canvasRef, panRef, zoomRef, dragOffsetsRef,
-    // dragStartRef) arrive through the deps object, so the rule cannot
-    // see they are the editor's own useRef/useState objects — it only trusts useRef() created in this
-    // scope. Their identity never changes across renders, so listing them would be a no-op.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [duplicateRefusal, addToast, l10n, finalizeNodeDrag, beginDrag, dismissPicker, setNodes, setWires, clearWire]);
+    // dragStartRef) are stable parent-owned identities; they are listed in the
+    // array below, so the callback's identity churn is unchanged.
+  }, [duplicateRefusal, addToast, l10n, finalizeNodeDrag, beginDrag, dismissPicker, setNodes, setWires, clearWire, userInteractedRef, nodesRef, wiresRef, duplicateDragRef, duplicateCopyIdsRef, dragHasMovedRef, lastDragMovePosRef, dragCleanupRef, canvasRef, panRef, zoomRef, dragOffsetsRef, dragStartRef]);
 
   const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
     e.stopPropagation();
@@ -715,11 +705,10 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
       selection = new Set(currentSelection);
     }
     beginNodeDrag(e.clientX, e.clientY, selection, e.altKey, 'mouse');
-    // The gesture refs/setters above (selectedNodeIdsRef) arrive through the deps object, so the rule cannot
-    // see they are the editor's own useRef/useState objects — it only trusts useRef() created in this
-    // scope. Their identity never changes across renders, so listing them would be a no-op.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [selectOnly, beginNodeDrag, dismissPicker, addToSelection]);
+    // The gesture refs/setters above (selectedNodeIdsRef) are stable parent-owned
+    // identities; selectedNodeIdsRef is listed in the array below, so the
+    // memoized-card prop pin (referential stability) is preserved.
+  }, [selectOnly, beginNodeDrag, dismissPicker, addToSelection, selectedNodeIdsRef]);
 
   /** Apply one drag-move to the dragged group (mouse canvas mousemove and
    *  the touch gesture loop share this). Reads the dragging set and nodes
