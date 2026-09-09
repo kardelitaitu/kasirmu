@@ -1,5 +1,22 @@
-//! Canvas pointer-core callbacks for the topology editor (Phase 3.4b).
+//! Canvas pointer-core callbacks for the topology editor (Phase 3.4b + 3.4c-1).
 //!
+//! Slice 3.4c-1 folded in the node-drag trio — beginNodeDrag, applyDragMove,
+//! finalizeNodeDrag and handleNodeMouseDown — because the canvas mousemove/mouseup
+//! already fed the first two, and leaving them parent-side forced the parent to
+//! forward them back in as deps. Their bodies, comments and useCallback dep arrays
+//! are byte-identical to the inline originals; every gesture ref they read or write
+//! stays PARENT-declared (the duplicate cluster at 3.4c-2, cancelNodeMove, the touch
+//! loop and the unmount sweep all share them), and `commitDuplicateDrag` still comes
+//! in as a dep, so the duplicate cluster did not move with them.
+//!
+//! The trio are returned: `handleNodeMouseDown` is the memoized card's
+//! `onCardMouseDown` prop and the touch loop drives `beginNodeDrag` /
+//! `applyDragMove` / `finalizeNodeDrag` directly. The trio were the ONLY hooks
+//! between the parent's `executeDelete` and the original canvas-handler block, so
+//! calling them first inside this hook at that same call site keeps the component's
+//! hook order — and therefore its effect order — exactly as it was. The call site
+//! itself is deliberately NOT relocated in this slice: that move is fused with the
+//! duplicate cluster (3.4c-2), which still owns `commitDuplicateDrag`.
 //! Owns the seven gestures the canvas element itself receives: handleCanvasMouseMove
 //! (node-drag feed + marquee rect tracking + connection snap-to-port, including the
 //! hoveredTarget identity-preserve rule that keeps memoized cards from re-rendering),
@@ -22,11 +39,22 @@
 //! gesture across two owners. The call site sits at the exact position of the original
 //! block, so hook order — and therefore effect order — is unchanged.
 
-import type { MutableRefObject, SetStateAction } from 'react';
-import type { PortName, TopologyNodeData } from './NodeTopologyEditor';
-import { NODE_HEIGHT, NODE_WIDTH } from './nodeTopologyClamp';
-import { socketSemanticIds } from './topologyCard';
+import { useCallback, type MutableRefObject, type SetStateAction } from 'react';
+import type { useLocalization } from '@fluent/react';
+import type { ToastType } from '@/frontend/shared/Toast';
+import type { PortName, TopologyNodeData, TopologyWireData } from './NodeTopologyEditor';
+import {
+  clampNodeToViewport,
+  edgeAutoPanDelta,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+  resolveDropOverlaps,
+} from './nodeTopologyClamp';
+import type { TopologyHistoryEntry } from './nodeTopologyEditorState';
+import { socketSemanticIds, sanitizeCopiedNode } from './topologyCard';
 import { portRowCenterY } from './topologyMetrics';
+import { moveLandedAtStart } from './topologyCommands';
+import { computeAlignmentGuides } from './topologyEditorHelpers';
 
 /** Selection box in container-relative screen px (identity pan/zoom space). */
 export interface MarqueeRect {
@@ -95,10 +123,68 @@ export interface TopologyPointerDeps {
   setZoom: (value: SetStateAction<number>) => void;
   /** Mirrors an active pan into state so the cursor class and HUD follow it. */
   setPanGestureActive: (value: SetStateAction<boolean>) => void;
-  /** Parent node-drag move feed (slice 3.4c): every canvas mousemove drives it. */
-  applyDragMove: (clientX: number, clientY: number) => void;
-  /** Parent node-drag commit (slice 3.4c): canvas mouseup finalizes it. */
-  finalizeNodeDrag: () => void;
+  // ── Node-drag trio (slice 3.4c-1): beginNodeDrag / applyDragMove /
+  // finalizeNodeDrag / handleNodeMouseDown now live in this hook, so their
+  // gesture refs and the parent callbacks they call arrive here instead of
+  // being forwarded as `applyDragMove` / `finalizeNodeDrag` function deps
+  // (those two fields are gone — the hook produces them and returns them).
+  // Every ref stays parent-declared: the duplicate cluster (3.4c-2),
+  // cancelNodeMove, the touch loop and the unmount sweep all read/write them.
+  /** Live drag set — reducer mirror, read by the move feed and the commit. */
+  draggingNodeIdsRef: MutableRefObject<Set<string>>;
+  /** Selection mirror read at card mousedown so the handler stays stable. */
+  selectedNodeIdsRef: MutableRefObject<Set<string>>;
+  /** Live node mirror: drag offsets, alignment candidates, drop-overlap pass. */
+  nodesRef: MutableRefObject<TopologyNodeData[]>;
+  /** Live wire mirror — the Alt+drag copy set is built from it. */
+  wiresRef: MutableRefObject<TopologyWireData[]>;
+  /** Pan mirror: the drag math must read the CURRENT pan mid-auto-pan. */
+  panRef: MutableRefObject<{ x: number; y: number }>;
+  /** Zoom mirror, paired with panRef for the same reason. */
+  zoomRef: MutableRefObject<number>;
+  /** Per-node grip offset (canvas units) for every id in the drag set. */
+  dragOffsetsRef: MutableRefObject<Map<string, { x: number; y: number }>>;
+  /** Pre-drag positions, keyed by dragged id: the no-op landing check. */
+  dragStartRef: MutableRefObject<Map<string, { x: number; y: number }>>;
+  /** First-movement latch: history pushes once, and the no-op pop is gated. */
+  dragHasMovedRef: MutableRefObject<boolean>;
+  /** True while an in-flight drag is an Alt+drag duplicate. */
+  duplicateDragRef: MutableRefObject<boolean>;
+  /** Ids of the live duplicate copies (the drag set on the duplicate path). */
+  duplicateCopyIdsRef: MutableRefObject<string[]>;
+  /** Last pointer fed to applyDragMove — edge auto-pan's direction gate. */
+  lastDragMovePosRef: MutableRefObject<{ x: number; y: number } | null>;
+  /** Document mouseup teardown for the in-flight mouse drag; also fired by
+   *  the parent unmount sweep, so it stays parent-declared. */
+  dragCleanupRef: MutableRefObject<(() => void) | null>;
+  /** Drag reducer: arm the set (writes the mirror synchronously). */
+  beginDrag: (ids: Set<string>) => void;
+  /** Drag reducer: end the drag at release/cancel. */
+  endDrag: () => void;
+  /** Duplicate-cluster commit: turns live Alt+drag copies into real nodes. */
+  commitDuplicateDrag: () => void;
+  /** History push — once on the first real movement of a drag. */
+  pushHistory: (snapshot?: { nodes: TopologyNodeData[]; wires: TopologyWireData[] }) => void;
+  /** Node graph setter — every drag write goes through it. */
+  setNodes: (value: SetStateAction<TopologyNodeData[]>) => void;
+  /** Wire graph setter: the Alt+drag path inserts its wire copies. */
+  setWires: (value: SetStateAction<TopologyWireData[]>) => void;
+  /** History setter — used only to pop a no-op drag's identical entry. */
+  setHistory: (value: SetStateAction<TopologyHistoryEntry<TopologyNodeData, TopologyWireData>[]>) => void;
+  /** Live alignment guide state (null hides the guides); cleared on finalize. */
+  setAlignmentGuide: (value: SetStateAction<{ x?: number; y?: number } | null>) => void;
+  /** Selection reducers the card mousedown routes through. */
+  selectOnly: (id: string) => void;
+  addToSelection: (id: string) => void;
+  /** Tier-cap gate shared by every duplicate path ( refuses over-cap). */
+  duplicateRefusal: (copies: TopologyNodeData[]) => string | null;
+  addToast: (toast: { message: string; type: ToastType }) => unknown;
+  /** Only `getString` is needed — for the refusal toast copy. */
+  l10n: { getString: ReturnType<typeof useLocalization>['l10n']['getString'] };
+  /** Grid-snap toggle state, read per move by the drag feed. */
+  snapEnabled: boolean;
+  /** 24px grid snap, shared with the seed/merge builders. */
+  snap: (value: number) => number;
   /** Selection reducer: the marquee commits its hit set through it. */
   selectMany: (ids: string[], primary: string | null) => void;
   /** Selection reducer: a background press and a hitless marquee clear it. */
@@ -120,6 +206,18 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
   finalizeMarquee: () => void;
   startPan: (e: React.MouseEvent, clearSelectionFirst: boolean) => void;
   handleContextMenu: (e: React.MouseEvent) => void;
+  /** Node-drag trio (slice 3.4c-1) — returned because the parent's touch
+   *  gesture loop and the memoized card prop still consume them. */
+  handleNodeMouseDown: (e: React.MouseEvent, nodeId: string) => void;
+  beginNodeDrag: (
+    clientX: number,
+    clientY: number,
+    selection: Set<string>,
+    isDuplicateDrag: boolean,
+    gesture: 'mouse' | 'touch',
+  ) => void;
+  applyDragMove: (clientX: number, clientY: number) => void;
+  finalizeNodeDrag: () => void;
 } {
   const {
     pan,
@@ -147,13 +245,378 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     setPan,
     setZoom,
     setPanGestureActive,
-    applyDragMove,
-    finalizeNodeDrag,
+    draggingNodeIdsRef,
+    selectedNodeIdsRef,
+    nodesRef,
+    wiresRef,
+    panRef,
+    zoomRef,
+    dragOffsetsRef,
+    dragStartRef,
+    dragHasMovedRef,
+    duplicateDragRef,
+    duplicateCopyIdsRef,
+    lastDragMovePosRef,
+    dragCleanupRef,
+    beginDrag,
+    endDrag,
+    commitDuplicateDrag,
+    pushHistory,
+    setNodes,
+    setWires,
+    setHistory,
+    setAlignmentGuide,
+    selectOnly,
+    addToSelection,
+    duplicateRefusal,
+    addToast,
+    l10n,
+    snapEnabled,
+    snap,
     selectMany,
     clearSelection,
     clearWire,
     dismissPicker,
   } = deps;
+
+  /** End an in-flight node drag (release / document mouseup / touch up):
+   *  commit any Alt-drag copies, clear the drag set and offsets, and drop
+   *  the alignment guide. Shared by the mouse document listener, the canvas
+   *  onMouseUp, and the touch gesture loop. */
+  const finalizeNodeDrag = useCallback(() => {
+    // Capture the dragged set + duplicate flag BEFORE commit/end clear them.
+    const dragged = new Set(draggingNodeIdsRef.current);
+    const isDuplicate = duplicateDragRef.current;
+    const moved = dragHasMovedRef.current;
+    // The pre-drag positions, captured before the drag start map is cleared
+    // below — the no-op-drag pop compares each dragged node's final resting
+    // spot against these.
+    const startPositions = new Map(dragStartRef.current);
+    commitDuplicateDrag();
+    endDrag();
+    dragHasMovedRef.current = false;
+    dragOffsetsRef.current.clear();
+    dragStartRef.current.clear();
+    setAlignmentGuide(null);
+    lastDragMovePosRef.current = null;
+    // Drop-overlap resolution (round 140): the editor's invariant is that
+    // node cards never overlap (spawns settle, loads spread on a grid), but
+    // a drag can stack a node on top of another card, hiding it. Settle
+    // each MOVED node into the nearest collision-free spot. Gated on the
+    // drag actually moving: a plain click (no move) must never yank a card
+    // that merely overlaps a neighbour — pre-existing overlap from a loaded
+    // diagram is data quality, not a gesture. Skipped for Alt+drag
+    // duplicates — the copies start at the originals' positions and their
+    // landing spot IS the intent (a deliberate creation gesture with its
+    // own pinned contract). Flush alignment (0 gap, guide landing) is not
+    // an overlap and survives. The resolution is part of the drag's own
+    // undo entry (the drag already pushed history on first movement).
+    // The drop-overlap resolution output, if it ran — used as the final
+    // position source for the no-op check below (a settle that moved a
+    // dragged node means the drop DID change the canvas).
+    let settledPositions: Array<{ id: string; x: number; y: number }> | null = null;
+    if (!isDuplicate && dragged.size > 0 && moved) {
+      const resolved = resolveDropOverlaps(nodesRef.current, dragged);
+      if (resolved) {
+        settledPositions = resolved;
+        // Merge only the resolved positions back onto the full nodes — the
+        // helper is position-focused, and replacing the objects wholesale
+        // would strip type/name/metadata off every card.
+        const byId = new Map(resolved.map((p) => [p.id, p]));
+        setNodes((prev) => prev.map((n) => {
+          const p = byId.get(n.id);
+          return p ? { ...n, x: p.x, y: p.y } : n;
+        }));
+      }
+    }
+    // No-op drag: a COMPLETED drag whose every dragged node landed exactly
+    // at its pre-drag position (a grab-and-return, or a wiggle that snapped
+    // back onto the same grid cell) pushed a history entry that restores
+    // identical state — pop it so Undo never appears enabled but does
+    // nothing. The cancel paths already pop their entries; this closes the
+    // one path that commits.
+    if (moved && !isDuplicate && dragged.size > 0) {
+      const finalPositions = settledPositions ?? nodesRef.current;
+      if (moveLandedAtStart(dragged, startPositions, finalPositions)) {
+        setHistory((prev) => prev.slice(0, -1));
+      }
+    }
+    // The gesture refs/setters above (duplicateDragRef, dragHasMovedRef, dragStartRef, dragOffsetsRef, lastDragMovePosRef,
+    // nodesRef, setAlignmentGuide) arrive through the deps object, so the rule cannot
+    // see they are the editor's own useRef/useState objects — it only trusts useRef() created in this
+    // scope. Their identity never changes across renders, so listing them would be a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
+  }, [commitDuplicateDrag, endDrag, setNodes, setHistory, draggingNodeIdsRef]);
+
+  /** Arm a node drag (mouse mousedown or the touch gesture loop): set the
+   *  dragging set, compute each node's grip offset from the pointer, and —
+   *  for mouse — attach the document mouseup that finalizes the drag when
+   *  the pointer releases outside the canvas. The duplicate (Alt+drag) setup
+   *  lives here so every creation path shares one gate and one history
+   *  contract. Touch passes gesture='touch': the touch loop owns its own
+   *  pointermove/pointerup listeners, so only the drag STATE is armed. */
+  const beginNodeDrag = useCallback((
+    clientX: number,
+    clientY: number,
+    selection: Set<string>,
+    isDuplicateDrag: boolean,
+    gesture: 'mouse' | 'touch',
+  ) => {
+    userInteractedRef.current = true;
+    // Dismissing an open picker by grabbing a node cancels the whole
+    // gesture; a plain armed connection (no picker) survives the drag.
+    dismissPicker();
+    clearWire();
+    // Alt+drag = Figma-style DUPLICATE drag: the dragged set is replaced by
+    // fresh copies (new ids, starting at the originals' positions) that
+    // follow the cursor while the originals stay put; the drop commits them
+    // as ONE undo entry, Escape discards them. Wires copy only when BOTH
+    // endpoints are in the selection (mirrors duplicateSelection).
+    // The creation-path gate applies to the duplicate path too: an Alt+drag
+    // that would duplicate a warehouse past the tier cap is refused up front
+    // (no copies, no drag, no history entry). A Branch Location copy is
+    // allowed but sanitized below into a diagram-only card.
+    // All reads go through refs so this handler stays referentially stable
+    // across nodes/wires/pan/zoom changes — the memoized cards receive it as
+    // a prop, and a churn here would re-render every card on any edit or
+    // viewport move. The refs mirror the latest committed state, which is
+    // exactly what a mousedown needs.
+    const currentNodes = nodesRef.current;
+    const currentWires = wiresRef.current;
+    if (isDuplicateDrag) {
+      const refusal = duplicateRefusal(currentNodes.filter((n) => selection.has(n.id)));
+      if (refusal) {
+        addToast({ message: l10n.getString(refusal), type: 'warning' });
+        return;
+      }
+    }
+    duplicateDragRef.current = isDuplicateDrag;
+    const originalToCopy = new Map<string, string>();
+    let dragIds: string[];
+    if (isDuplicateDrag) {
+      const copies = currentNodes
+        .filter((n) => selection.has(n.id))
+        .map((n) => {
+          const newId = `${n.type}-${crypto.randomUUID()}`;
+          originalToCopy.set(n.id, newId);
+          // sanitizeCopiedNode strips a Branch Location copy's canonical
+          // identity — the copy is a diagram-only card, never a second
+          // branch impersonating the original.
+          return { ...sanitizeCopiedNode(n), id: newId };
+        });
+      const wireCopies = currentWires
+        .filter((w) => selection.has(w.fromNodeId) && selection.has(w.toNodeId))
+        .map((w) => ({
+          ...w,
+          id: `wire-${crypto.randomUUID()}`,
+          fromNodeId: originalToCopy.get(w.fromNodeId)!,
+          toNodeId: originalToCopy.get(w.toNodeId)!,
+        }));
+      duplicateCopyIdsRef.current = copies.map((c) => c.id);
+      dragIds = duplicateCopyIdsRef.current;
+      if (copies.length > 0) {
+        setNodes((prev) => [...prev, ...copies]);
+        setWires((prev) => [...prev, ...wireCopies]);
+      }
+      document.body.style.cursor = 'copy';
+    } else {
+      dragIds = [...selection];
+    }
+    // Copy: the drag set must never share identity with the live selection
+    // state (a future mutation of one would corrupt the other). Mirror the
+    // ref SYNCHRONOUSLY too — the touch path calls applyDragMove in the same
+    // event handler, before React re-renders and the render-time mirror
+    // (draggingNodeIdsRef.current = draggingNodeIds) would catch up.
+    const nextDragSet = new Set(dragIds);
+    beginDrag(nextDragSet);
+    dragHasMovedRef.current = false;
+    // Seed the edge auto-pan direction baseline at the grip point.
+    lastDragMovePosRef.current = { x: clientX, y: clientY };
+
+    if (gesture === 'mouse') {
+      // Cancel any in-flight drag listener from a previous drag, then arm a
+      // document-level mouseup so releasing the pointer outside the canvas
+      // still ends the drag (the canvas onMouseUp is unreachable there).
+      dragCleanupRef.current?.();
+      const handleDocumentMouseUp = () => {
+        finalizeNodeDrag();
+        document.removeEventListener('mouseup', handleDocumentMouseUp);
+        dragCleanupRef.current = null;
+      };
+      document.addEventListener('mouseup', handleDocumentMouseUp);
+      dragCleanupRef.current = () => {
+        document.removeEventListener('mouseup', handleDocumentMouseUp);
+        dragCleanupRef.current = null;
+      };
+    }
+    // Touch: the touch gesture loop's document pointer listeners own the
+    // moves and the finalize — nothing to arm here beyond the drag state.
+
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const canvasX = (clientX - (rect?.left ?? 0) - panRef.current.x) / zoomRef.current;
+    const canvasY = (clientY - (rect?.top ?? 0) - panRef.current.y) / zoomRef.current;
+    dragOffsetsRef.current.clear();
+    dragStartRef.current.clear();
+    const copyToOriginal = new Map([...originalToCopy].map(([k, v]) => [v, k]));
+    // Position lookup via a fresh map from the ref — `nodeMap`'s identity
+    // tracks nodes, and taking it as a dep would re-key this handler (and
+    // every card prop) on any node edit.
+    const nodeMapNow = new Map(currentNodes.map((n) => [n.id, n]));
+    for (const id of dragIds) {
+      // Duplicate-drag offsets come from the ORIGINALS (the copies start at
+      // their positions and aren't in the map until the state flush), but
+      // are keyed by the copy ids the drag actually moves.
+      const srcId = isDuplicateDrag ? copyToOriginal.get(id) : id;
+      const n = srcId ? nodeMapNow.get(srcId) : null;
+      if (n) {
+        dragOffsetsRef.current.set(id, { x: canvasX - n.x, y: canvasY - n.y });
+        dragStartRef.current.set(id, { x: n.x, y: n.y });
+      }
+    }
+    // The gesture refs/setters above (userInteractedRef, nodesRef, wiresRef, duplicateDragRef, duplicateCopyIdsRef,
+    // dragHasMovedRef, lastDragMovePosRef, dragCleanupRef, canvasRef, panRef, zoomRef, dragOffsetsRef,
+    // dragStartRef) arrive through the deps object, so the rule cannot
+    // see they are the editor's own useRef/useState objects — it only trusts useRef() created in this
+    // scope. Their identity never changes across renders, so listing them would be a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
+  }, [duplicateRefusal, addToast, l10n, finalizeNodeDrag, beginDrag, dismissPicker, setNodes, setWires, clearWire]);
+
+  const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    dismissPicker();
+    if (e.button !== 0) return;
+    // Multi-select rules: shift+mousedown ADDS the node to the selection;
+    // a plain mousedown on an unselected node collapses to just it; a
+    // mousedown on a node already inside a multi-selection keeps the group
+    // so it can be dragged as a whole. The selection is read via the ref so
+    // this handler stays stable across selection changes (the memoized
+    // cards all receive it as a prop).
+    const currentSelection = selectedNodeIdsRef.current;
+    const wasSelected = currentSelection.has(nodeId);
+    let selection: Set<string>;
+    if (e.shiftKey && !wasSelected) {
+      selection = new Set(currentSelection);
+      selection.add(nodeId);
+      addToSelection(nodeId);
+    } else if (!wasSelected) {
+      selection = new Set([nodeId]);
+      selectOnly(nodeId);
+    } else {
+      selection = new Set(currentSelection);
+    }
+    beginNodeDrag(e.clientX, e.clientY, selection, e.altKey, 'mouse');
+    // The gesture refs/setters above (selectedNodeIdsRef) arrive through the deps object, so the rule cannot
+    // see they are the editor's own useRef/useState objects — it only trusts useRef() created in this
+    // scope. Their identity never changes across renders, so listing them would be a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
+  }, [selectOnly, beginNodeDrag, dismissPicker, addToSelection]);
+
+  /** Apply one drag-move to the dragged group (mouse canvas mousemove and
+   *  the touch gesture loop share this). Reads the dragging set and nodes
+   *  via refs so the touch path — which runs in the document-listener
+   *  closure armed at pointerdown — always sees the CURRENT drag state, not
+   *  the stale render-time snapshot. */
+  const applyDragMove = (clientX: number, clientY: number) => {
+    if (draggingNodeIdsRef.current.size === 0) return;
+    // Push history once, on the first real movement — a plain click that
+    // never moves must not create a no-op undo entry. An Alt+drag defers
+    // its entry to the drop (one undo for the whole duplicate).
+    if (!dragHasMovedRef.current) {
+      dragHasMovedRef.current = true;
+      if (!duplicateDragRef.current) pushHistory();
+    }
+    // Edge auto-pan: a pointer inside an edge band pans the viewport so a
+    // drag can keep moving across a large diagram instead of stalling at
+    // the viewport clamp. Reads the CURRENT pan via panRef (the touch
+    // gesture loop runs in a down-time closure; the mouse path is equally
+    // fresh) and derives the drag math from the POST-pan view, so the
+    // dragged node tracks the pointer through the scroll. Pointers OUTSIDE
+    // the canvas produce no delta — the clamp below then holds the node at
+    // the edge (the never-lose-a-node invariant).
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    const curPan = panRef.current;
+    const curZoom = zoomRef.current;
+    let auto = edgeAutoPanDelta(
+      clientX - (rect?.left ?? 0),
+      clientY - (rect?.top ?? 0),
+      canvas?.clientWidth ?? 0,
+      canvas?.clientHeight ?? 0,
+    );
+    // Direction gate: only pan toward the edge the pointer is pushing
+    // against. A drag drifting AWAY from the edge (or holding still) must
+    // not scroll — proximity alone would pan while dragging toward the
+    // diagram's interior near a corner.
+    const lastPos = lastDragMovePosRef.current;
+    if (lastPos) {
+      const moveDx = clientX - lastPos.x;
+      const moveDy = clientY - lastPos.y;
+      if (auto.dx !== 0 && Math.sign(auto.dx) !== Math.sign(moveDx)) auto = { ...auto, dx: 0 };
+      if (auto.dy !== 0 && Math.sign(auto.dy) !== Math.sign(moveDy)) auto = { ...auto, dy: 0 };
+    }
+    lastDragMovePosRef.current = { x: clientX, y: clientY };
+    const nextPan = auto.dx === 0 && auto.dy === 0
+      ? curPan
+      : { x: curPan.x + auto.dx, y: curPan.y + auto.dy };
+    if (nextPan !== curPan) setPan(nextPan);
+    const rawX = (clientX - (rect?.left ?? 0) - nextPan.x) / curZoom;
+    const rawY = (clientY - (rect?.top ?? 0) - nextPan.y) / curZoom;
+    // Dynamic edge clamp: every node in the dragged group may travel
+    // north/west until its box nearly leaves the visible canvas, but can
+    // never be pushed off-screen and lost. Pan/zoom aware, so the reachable
+    // edge follows the current view. Each node clamps independently; the
+    // group delta is otherwise identical (same raw cursor → same per-node
+    // offset).
+    const targets = new Map<string, { x: number; y: number }>();
+    for (const [id, off] of dragOffsetsRef.current) {
+      if (!draggingNodeIdsRef.current.has(id)) continue;
+      targets.set(id, clampNodeToViewport(rawX - off.x, rawY - off.y, {
+        panX: nextPan.x,
+        panY: nextPan.y,
+        zoom: curZoom,
+        canvasW: canvas?.clientWidth ?? 0,
+        canvasH: canvas?.clientHeight ?? 0,
+      }));
+    }
+    // Figma-style COLLECTIVE alignment: every dragged node's edges/centers
+    // snap to stationary nodes' edges/centers within a small threshold; the
+    // closest match across the whole group wins per axis and the delta
+    // applies to the group so it stays rigid (a non-grabbed member's edge
+    // can snap the group — Figma semantics). The aligned axis skips grid
+    // snapping (guides beat the grid); the other axis still snaps as
+    // configured.
+    const align = targets.size > 0
+      ? computeAlignmentGuides(targets, draggingNodeIdsRef.current, nodesRef.current)
+      : { dx: 0, dy: 0, alignedX: false, alignedY: false };
+    setAlignmentGuide(
+      align.x !== undefined || align.y !== undefined
+        ? { ...(align.x !== undefined ? { x: align.x } : {}), ...(align.y !== undefined ? { y: align.y } : {}) }
+        : null,
+    );
+    setNodes((prev) =>
+      prev.map((n) => {
+        const off = dragOffsetsRef.current.get(n.id);
+        if (!off) return n;
+        const clamped = clampNodeToViewport(rawX - off.x, rawY - off.y, {
+          panX: nextPan.x,
+          panY: nextPan.y,
+          zoom: curZoom,
+          canvasW: canvas?.clientWidth ?? 0,
+          canvasH: canvas?.clientHeight ?? 0,
+        });
+        // The delta is the dragged axis MINUS the reference (pAxis − rAxis),
+        // so SUBTRACTING it lands the edge exactly on the line — a drag that
+        // raw-lands 3px off snaps onto it, never parking 2× the miss away.
+        let fx = clamped.x - align.dx;
+        let fy = clamped.y - align.dy;
+        if (snapEnabled) {
+          if (!align.alignedX) fx = snap(fx);
+          if (!align.alignedY) fy = snap(fy);
+        }
+        return { ...n, x: fx, y: fy };
+      }),
+    );
+  };
 
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
     mousePosRef.current = { x: e.clientX, y: e.clientY };
@@ -407,5 +870,10 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     finalizeMarquee,
     startPan,
     handleContextMenu,
+    handleNodeMouseDown,
+    beginNodeDrag,
+    applyDragMove,
+    finalizeNodeDrag,
   };
 }
+
