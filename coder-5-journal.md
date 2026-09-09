@@ -2405,3 +2405,87 @@ l194_switch_organization_happy_path_returns_label_and_token.
   My Rust/TS changes are fmt/EOL-clean and reference no UI keys.
 - payment_methods.rs + 20260924_local_payment_methods.sql + LocalPaymentSettingsCard.*
   are peer-in-flight and were NOT swept (recovered after accidental d35ff7240 sweep).
+
+## 2026-09-26 — Regional slice 6: local payment methods rail surface (feat)
+
+**Decision-first (constraint a): NOT the KV.** The design map's own row says
+'local payment | legal entity → location | **new scoped rows** (Slice 6)'
+(todo-global-saas-2.md:2623) — the KV note (L2646) belongs to receipt format.
+`regional_settings` has ZERO refs in core (that design slice never shipped under
+this numbering). And rails are a LIST of multi-attribute rows with per-scope
+UNIQUE(rail_code) + per-rail inheritance-with-explicit-disable — resource
+language (§H), not preference language. Dedicated table, supervisor ratified
+all three reasons. Full migration constraints re-fired.
+
+**Migration 20260924_local_payment_methods.sql:** local_payment_methods
+(scope_type CHECK(legal_entity|location), scope_id, rail_code, label, is_enabled,
+parameters JSON '{}', UNIQUE(scope_type, scope_id, rail_code),
+idx_local_payment_methods_scope). tenant_id from birth → RLS_EXEMPT entry in the
+generator (same slice-5 posture; cover = list-move later). Pins: tables 117,
+indexes 171, registry +1, idempotency 117 — all bumped pre-test, all documented.
+
+**Core (db/payment_methods.rs + 11 tests):** replace_local_payment_methods
+(transactional whole-list write, omission = deletion, validates before tx opens:
+blank codes/labels, dup rail_codes, credential-shaped parameter keys) +
+local_payment_methods_for_location (entity rows = market defaults; location rows
+win PER RAIL — an explicit disable is a FACT, not absence: pinned by
+location_disable_survives_entity_reenable, survives until the LOCATION row is
+cleared).
+
+**Supervisor additions, both done:** (1) the survival test above; (2)
+credential separation as documentation-as-test — module doc states parameters
+NEVER carries gateway credentials (payment_gateways owns those) and the write
+boundary rejects credential/secret/api_key/token/password/private_key fragments
+(fails closed on unparseable JSON too; test covers gateway_credential + 4 sneaky
+variants + not-json).
+
+**Tier separation (constraint b), pinned both directions:** the read DTO carries
+no tier field and serializes nothing entitlement-shaped (direction 1); the store
+DB has no entitlements table at all — the tier source is the license layer, a
+different subsystem that rail writes cannot reach (direction 2, structural).
+supports_qris stays a tier answer; 'plan includes QRIS' ≠ 'site offers QRIS'.
+
+**IPC (constraint d):** get/set_local_payment_methods_scoped in BOTH shells,
+slice-2/3 shape: settings:read/edit, explicit location_id, dev-mock +
+registrations, IPC parity 0 violations on my commands. Desktop adds the
+ADR #47 location-resource gate. Return shape = the read model (read-after-write)
+so the card re-renders provenance without a second round-trip. Tests: desktop 4
+(round-trip, typed Validation rejection, empty read, staff denial), tablet 3.
+CoreError::Validation maps through AppError::Core; set returns typed Validation
+on credential rejection.
+
+**Card (constraint e):** LocalPaymentSettingsCard beside RegionalSettingsCard on
+Business Defaults — per-rail toggle + provenance tag (site/market-default),
+add-rail flow (code+label, client dup guard mirrors the UNIQUE), read-after-save,
+empty states, Fluent-only settings-localpay-* keys in BOTH ftl bundles, CSS
+theme-var driven. Follows the slice-3 precedent (no dedicated card test file).
+
+**INCIDENT — dev-mock block destroyed by a foreign checkout.** finisher-B ran
+`git checkout -- ui/src/dev-mock/tauri-api.ts` during their stale-index fix; my
+in-flight block (~80 lines + 2 registrations) was discarded. Supervisor
+preserved recovery material (FOREIGN_delta_inflight.diff +
+DAMAGED_worktree_backup.ts); re-applied verbatim at single-occurrence anchors
+and verified single-impl/single-registration. THEN a second loss surfaced: the
+COMMITTED payment_methods.rs carried a STALE PRE-FLATTEN buffer (missing the
+`.optional()?.flatten()` NULL-link fix my tests had passed against) — caught by
+the supervisor's compile gate, fixed in c444523e8. Same class as B's shorter-
+buffer warning. STANDING RULE (proposed): after ANY checkout/clean/snapshot
+event on the shared tree, re-derive verification from HEAD (`git show
+HEAD:<path>`), never from disk mtime — tests that passed against the newer
+buffer will not save you when the stale one lands.
+
+**Commits:** `13b042037` feat(regional) — 21 files +1865/−11 (hook 10/10);
+`c444523e8` fix(regional) flatten. Gates: migration pins pass, PG --check clean
+(117/150), column-type lint clean, fmt, typecheck/lint clean at commit window
+(waited out A's mid-flight org files), parity/coverage red-count is foreign
+debt only. Linkage: supervisor — slice-6 report + recovery report sent.
+### FOLLOW-UP (named, not dropped) — audit org_switch event
+- Supervisor ruling (L194 v1 acceptance, ruling 3): the org_switch audit event was
+  DEFERRED in v1 to avoid a core SessionContext edit; tracing::info! was substituted.
+  This is acceptable for v1 but the audit event MUST NOT be forgotten — org switches
+  are security-relevant (tenant/assignment re-scope). 
+- ACTION: when a core edit to SessionContext (or the audit-event plumbing) is safe to
+  make, add a dedicated `audit org_switch` event recording: session_token (old, now
+  dead), org_id chosen, assignment coverage verdict, and integrity-check outcome. Wire it
+  into switch_organization immediately after the new session is minted. Track under
+  SaaS-3 L194 follow-ups.
