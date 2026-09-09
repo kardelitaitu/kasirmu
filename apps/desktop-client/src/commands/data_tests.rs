@@ -353,3 +353,108 @@ fn import_gate_proceeds_under_cap_and_pins_the_boundary() {
         "200 + 1 must refuse"
     );
 }
+
+// ── W6-A / S2.1: users-arm batch gate (Staff dimension) ─────────────
+
+/// One importable user row as `payload.users` carries them (a serialized
+/// `oz_core::User`), keyed by the row id.
+fn user_value(id: &str, username: &str) -> serde_json::Value {
+    let mut user = oz_core::User::new(username, "", username, "role-staff");
+    user.id = id.into();
+    serde_json::to_value(&user).unwrap()
+}
+
+/// Seed `n` ACTIVE staff users (the rows `count_staff_users` consults) with
+/// ids `u-seed-0..n-1`.
+fn seed_staff(conn: &rusqlite::Connection, store: &Store<'_>, n: i64) {
+    store.seed_default_roles().unwrap();
+    for i in 0..n {
+        conn.execute(
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+             VALUES (?1, ?2, 'h', ?3, 'role-staff', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            rusqlite::params![format!("u-seed-{i}"), format!("seed-{i}"), format!("Seed {i}")],
+        )
+        .unwrap();
+    }
+}
+
+fn staff_count(conn: &rusqlite::Connection) -> i64 {
+    conn.query_row("SELECT COUNT(*) FROM users WHERE is_active = 1", [], |r| {
+        r.get(0)
+    })
+    .unwrap()
+}
+
+#[test]
+fn import_gate_users_counts_only_unseen_ids() {
+    // Batch arithmetic mirrors the product gate: existing ids are updates,
+    // not creations — only unseen ids count toward the staff quota. The
+    // seed row is INACTIVE (0 active staff) so the batch stays under the
+    // Free staff cap of 1: 0 + 1 new = allowed.
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    store.seed_default_roles().unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('u-seed-0', 'seed-0', 'h', 'Seed 0', 'role-staff', 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let payload = vec![
+        user_value("u-seed-0", "seed-0"), // update, not counted
+        user_value("u-new-1", "new-1"),   // new — the only counted row
+    ];
+    let counted = gate_import_user_batch(&store, &payload).unwrap();
+    assert_eq!(counted, 1, "existing id must not count as a creation");
+    assert_eq!(staff_count(&conn), 0, "the gate itself never writes rows");
+}
+
+#[test]
+fn import_gate_users_rejects_at_cap_and_writes_nothing() {
+    // Fail-closed tier (subscription row deleted -> Free, staff cap 1):
+    // 1 active staff present + 1 new = 2 > 1. The refusal happens BEFORE
+    // the transaction opens, so nothing is partially imported.
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    conn.execute("DELETE FROM tenant_subscription", []).unwrap();
+    seed_staff(&conn, &store, 1);
+    let payload = vec![user_value("u-new-1", "new-1")];
+    let err = gate_import_user_batch(&store, &payload).unwrap_err();
+    match err {
+        AppError::Core { message, .. } => {
+            assert!(message.contains("maximum 1 staff users"), "got: {message}");
+            assert!(message.contains("currently have 1"), "got: {message}");
+        }
+        other => panic!("expected typed quota refusal, got {other:?}"),
+    }
+    assert_eq!(
+        staff_count(&conn),
+        1,
+        "a refused import must not write anything"
+    );
+}
+
+#[test]
+fn import_gate_users_proceeds_under_cap_and_pins_the_boundary() {
+    // Free staff cap 1: zero active staff -> 1 new user is exactly at the
+    // cap (allowed); materialize it, then the next new id must refuse.
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    conn.execute("DELETE FROM tenant_subscription", []).unwrap();
+    seed_staff(&conn, &store, 0);
+    let first = vec![user_value("u-new-1", "new-1")];
+    let counted = gate_import_user_batch(&store, &first).unwrap();
+    assert_eq!(counted, 1, "0 + 1 == cap 1 is allowed");
+    // Materialize the approved row exactly as the import loop would.
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('u-new-1', 'new-1', 'h', 'Imported', 'role-staff', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let over = vec![user_value("u-new-2", "new-2")];
+    assert!(
+        gate_import_user_batch(&store, &over).is_err(),
+        "1 + 1 over the Free staff cap must refuse"
+    );
+}

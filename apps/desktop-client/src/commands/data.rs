@@ -390,6 +390,43 @@ pub(crate) fn gate_import_product_batch(
     Ok(new_products)
 }
 
+/// The users-arm quota gate for `import_data` (W6-A / S2.1), mirroring
+/// `gate_import_product_batch` exactly.
+///
+/// Counts the payload rows that will CREATE a user — rows whose id is not
+/// already present, mirroring the import loop's keying — and refuses via
+/// `Store::ensure_quota_allows(Staff, tier, n)` when the tier's staff cap
+/// would be exceeded. The tier resolves fail-closed to Free when no
+/// subscription row exists. Returns the counted new rows.
+///
+/// A duplicate NEW id appearing twice in one payload is counted twice while
+/// the loop would insert it once: overcounting fails closed, never open,
+/// which is the safe direction for a statutory quota.
+pub(crate) fn gate_import_user_batch(
+    store: &Store<'_>,
+    users: &[serde_json::Value],
+) -> Result<i64, AppError> {
+    let tier = store.resolve_tier_fail_closed()?;
+    let new_users = users
+        .iter()
+        .filter_map(|val| serde_json::from_value::<oz_core::User>(val.clone()).ok())
+        .filter(|user| {
+            !store
+                .conn()
+                .query_row(
+                    "SELECT 1 FROM users WHERE id = ?1",
+                    rusqlite::params![user.id],
+                    |_| Ok(()),
+                )
+                .is_ok()
+        })
+        .count() as i64;
+    store
+        .ensure_quota_allows(oz_core::downgrade::QuotaDimension::Staff, &tier, new_users)
+        .map_err(AppError::from)?;
+    Ok(new_users)
+}
+
 #[tauri::command]
 /// Import data.
 pub async fn import_data(
@@ -413,6 +450,13 @@ pub async fn import_data(
     // product cap (a rejected import writes nothing; nothing is
     // partially gated).
     gate_import_product_batch(&store, &payload.products)?;
+    // W6-A / S2.1: the users arm rides the same pre-tx batch gate (the
+    // Staff dimension is tenant-global like Products). The customers and
+    // sales arms stay un-gated BY RULING: QuotaDimension has no Customers
+    // or Sales/Transactions variant, and inventing a cap is a schema +
+    // entitlements change reserved for the owner — recorded as the S2.1
+    // residue, not papered over here.
+    gate_import_user_batch(&store, payload.users.as_deref().unwrap_or(&[]))?;
 
     // Use a transaction for atomic import
     let tx = conn
