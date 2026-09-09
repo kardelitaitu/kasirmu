@@ -50,6 +50,7 @@ impl Store<'_> {
             items_summary: row.get("items_summary")?,
             item_count: row.get("item_count")?,
             display_number: row.get("display_number")?,
+            ticket_prefix: row.get("ticket_prefix")?,
             received_at: row.get("received_at")?,
             started_at: row.get("started_at")?,
             ready_at: row.get("ready_at")?,
@@ -190,7 +191,7 @@ impl Store<'_> {
         let mut stmt = tx.prepare(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders WHERE id = ?1",
         )?;
         let order = stmt.query_row(params![id], Self::row_to_kds_order)?;

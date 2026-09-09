@@ -78,6 +78,11 @@ pub struct KdsOrder {
     pub item_count: i64,
     /// Human-readable display number (auto-increment per day).
     pub display_number: Option<i64>,
+    /// Ticket prefix frozen onto the row at insert time from the location's
+    /// config (D16) — the chit renders it as `#{prefix}{n}` when non-empty.
+    /// Empty for legacy rows (no backfill) and prefix-less locations.
+    #[serde(default)]
+    pub ticket_prefix: String,
     /// ISO-8601 timestamp of when the order was received.
     pub received_at: String,
     /// ISO-8601 timestamp of when preparation started.

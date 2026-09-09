@@ -54,7 +54,7 @@ impl Store<'_> {
         let mut sql = String::from(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders",
         );
         let params: Vec<Box<dyn rusqlite::types::ToSql>> = if let Some(s) = status_filter {
@@ -125,7 +125,7 @@ impl Store<'_> {
         let mut sql = String::from(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders",
         );
         sql.push_str(" WHERE ");
@@ -211,7 +211,7 @@ impl Store<'_> {
         let mut stmt = self.conn.prepare(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders WHERE id = ?1",
         )?;
         let result = stmt.query_row(params![id], Self::row_to_kds_order);
@@ -228,7 +228,7 @@ impl Store<'_> {
         let mut stmt = self.conn.prepare(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders WHERE sale_id = ?1",
         )?;
         let rows = stmt.query_map(params![sale_id], Self::row_to_kds_order)?;
@@ -490,7 +490,7 @@ impl Store<'_> {
         let mut sql = String::from(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders
              WHERE status IN ('pending', 'preparing', 'ready')",
         );
@@ -535,7 +535,7 @@ impl Store<'_> {
         let mut sql = String::from(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders
              WHERE status IN ('pending', 'preparing', 'ready')",
         );

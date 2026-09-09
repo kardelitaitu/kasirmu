@@ -52,7 +52,7 @@ impl Store<'_> {
         let mut sql = String::from(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders WHERE received_at > ?1",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(since.to_owned())];
