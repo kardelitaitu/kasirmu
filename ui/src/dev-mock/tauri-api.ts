@@ -786,6 +786,38 @@ function listMockFiscalSchemes(args: unknown): MockFiscalScheme[] {
   );
 }
 
+/** The over-quota assessment fixture — one body shared by the unscoped and
+ *  scoped command names (W6-C): the mock tenant is Premium with unlimited
+ *  quotas, so nothing is over and no remediation row is legally possible. */
+function getMockOverQuotaReport(): {
+  tierKey: string;
+  tierName: string;
+  usages: { dimension: string; limit: number | null; current: number }[];
+  markers: never[];
+} {
+  return {
+    tierKey: 'premium',
+    tierName: 'Premium',
+    usages: [
+      { dimension: 'locations', limit: null, current: 1 },
+      { dimension: 'pos_registers', limit: null, current: 1 },
+      { dimension: 'warehouses', limit: null, current: 0 },
+      { dimension: 'staff', limit: null, current: 1 },
+      { dimension: 'products', limit: null, current: 0 },
+    ],
+    // section J B3: per-location marker rows are empty HERE ON PURPOSE, not
+    // omitted. This fixture reports the Premium tier, whose caps are unlimited
+    // (max_kds_screens and max_warehouses are both None), so the real fan-out
+    // cannot legally emit a single row: an unlimited cap never produces a
+    // marker. A mock that invented one to make the section visible would be worse
+    // than no preview, because it would demonstrate a state the product cannot
+    // reach. To see the section, change tierKey/tierName above to 'pro' and give
+    // the caps finite limits, then add rows whose resourceType is 'kds_screen' or
+    // 'warehouse' and whose resourceId is a mock location id.
+    markers: [],
+  };
+}
+
 /** Make a location primary and persist the choice in the mock list. */
 function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
   const { id } = unwrapArgs<{ id?: string }>(args);
@@ -3031,27 +3063,12 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // Over-quota assessment (§J remediation): the mock tenant is Premium
   // with unlimited quotas, so nothing is over — mirrors the premium caps
   // above and keeps the remediation view renderable in browser mode.
-  'get_over_quota_report': () => ({
-    tierKey: 'premium',
-    tierName: 'Premium',
-    usages: [
-      { dimension: 'locations', limit: null, current: 1 },
-      { dimension: 'pos_registers', limit: null, current: 1 },
-      { dimension: 'warehouses', limit: null, current: 0 },
-      { dimension: 'staff', limit: null, current: 1 },
-      { dimension: 'products', limit: null, current: 0 },
-    ],
-    // section J B3: per-location marker rows are empty HERE ON PURPOSE, not
-    // omitted. This fixture reports the Premium tier, whose caps are unlimited
-    // (max_kds_screens and max_warehouses are both None), so the real fan-out
-    // cannot legally emit a single row: an unlimited cap never produces a
-    // marker. A mock that invented one to make the section visible would be worse
-    // than no preview, because it would demonstrate a state the product cannot
-    // reach. To see the section, change tierKey/tierName above to 'pro' and give
-    // the caps finite limits, then add rows whose resourceType is 'kds_screen' or
-    // 'warehouse' and whose resourceId is a mock location id.
-    markers: [],
-  }),
+  // W6-C: the UI now calls the SCOPED variant (real session-side tenant
+  // resolution + fail-closed SETTINGS_READ re-check); both names share the
+  // one fixture because the two commands return the same OverQuotaReport
+  // serde (the scoped one being the path the UI actually drives).
+  'get_over_quota_report': getMockOverQuotaReport,
+  'get_over_quota_report_scoped': getMockOverQuotaReport,
 
   // ═══════════════════════════════════════════════════════════════
   // LOCATIONS / DEPRECATED STORE PROFILE ALIASES

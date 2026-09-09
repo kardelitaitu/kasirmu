@@ -81,10 +81,12 @@ describe('subscription.ts IPC contract', () => {
     });
   });
 
-  it('getOverQuotaReport → get_over_quota_report with sessionToken', async () => {
+  it('getOverQuotaReport → get_over_quota_report_scoped with sessionToken (W6-C re-wire)', async () => {
     mockInvoke.mockResolvedValue({ tierKey: 'plus', tierName: 'Plus', usages: [] });
     await getOverQuotaReport('tok_sub');
-    expect(mockInvoke).toHaveBeenCalledWith('get_over_quota_report', { sessionToken: 'tok_sub' });
+    expect(mockInvoke).toHaveBeenCalledWith('get_over_quota_report_scoped', {
+      sessionToken: 'tok_sub',
+    });
   });
 
   it('propagates backend errors', async () => {

@@ -236,6 +236,12 @@ export const excessOf = (row: QuotaUsageRow): number =>
  * The owner-facing over-quota assessment (§J remediation view): which
  * resources exceed the effective tier's quota and by how much.
  * Read-only; session-gated on `permissions::SETTINGS_READ`.
+ *
+ * W6-C: calls the SCOPED variant — the same session token resolves the
+ * tenant's store server-side and the backend re-checks SETTINGS_READ
+ * fail-closed (ADR #7), instead of trusting the client to hit the right
+ * tenant on the unscoped path. DTO is byte-identical (the scoped command
+ * returns the same OverQuotaReport serde as b81ac5356-era).
  */
 export const getOverQuotaReport = (sessionToken: string): Promise<OverQuotaReport> =>
-  loggedInvoke<OverQuotaReport>('get_over_quota_report', { sessionToken });
+  loggedInvoke<OverQuotaReport>('get_over_quota_report_scoped', { sessionToken });
