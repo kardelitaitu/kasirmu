@@ -1826,3 +1826,70 @@ effective_date where a store is in scope.
 - Commit used git commit -F msgfile with an explicit 4-file pathspec; all
   leftover dirty files are foreign work (SettingsNavTree.test.tsx,
   announcements test, shared*.ftl, exchange_rates.rs, etc.).
+
+## 2026-09-09 - finisher-F: regional slice 2 LANDED (f0a4e5b51) - read-side IPC
+
+### What was committed
+- f0a4e5b51 feat(regional): add get_regional_config_scoped read-side IPC
+  (slice 2) - 11 files, 746 insertions: commands/regional.rs +
+  regional_tests.rs on BOTH clients (byte-identical twin per the
+  legal_entities.rs precedent), both mod.rs + lib.rs registrations,
+  ui/src/api/regional.ts, ui/src/__tests__/api-regional-contract.test.ts,
+  and the dev-mock handler (parity gate hard-requires it).
+
+### Design decisions recorded
+- The wire payload is the core RegionalConfig AS-IS: its serde fields are
+  documented "snake_case so the IPC DTOs of later slices reuse these names
+  verbatim" - a shell-side mirror DTO (I drafted a camelCase one first)
+  would have contradicted that contract and drifted; deleted it before
+  commit. ConfigScope names (location/legal_entity/organization/built_in)
+  ride along unchanged.
+- ADR #48 note honored: timezone.value is the STORED IANA name; no offset
+  is derived on either side of the read boundary (pinned by
+  wire_timezones_are_stored_iana_names_not_derived_offsets test).
+- location_id is explicit (not a primary-default): the caller knows which
+  location it is asking about, so a read can never silently answer for a
+  different location than the caller meant; slice 3 can default the UI
+  side via get_primary_location_scoped.
+- Open question 2 respected: ui.locale is only READ (org layer, slice-1
+  behavior); no delete, no migration, no settings writes in this slice.
+- verify-scoped-coverage: NO allowlist entry needed - the command is
+  _scoped-shaped (session token + store db), the exact opposite of the
+  unscoped-shaped category-2 precedents.
+
+### Tests (6 per shell, 12 total)
+- Wire shape at the IPC boundary (snake_case fields + ConfigScope names).
+- Seeded-default resolution (UTC/USD at location provenance, en-US
+  built_in locale, entity link surfaced).
+- Entity-level timezone inheritance (location blank -> Asia/Makassar from
+  the legal entity) - the mixed-provenance case the resolver docs call the
+  normal case.
+- Typed CoreErrorKind::NotFound for unknown ids.
+- settings:read PermissionDenied gate (lite role with sales:view).
+- ui contract test: canonical command string + arg shape + IANA
+  pass-through.
+
+### Gates (all green)
+- cargo check -p oz-pos-app / -p oz-pos-tablet: both Finished, 0 errors.
+- cargo test -p oz-pos-app --lib commands::regional: 6 passed.
+- cargo test -p oz-pos-tablet commands::regional: 6 passed.
+- MANUAL verify-ipc-parity.py: IPC parity OK, exit 0 (435 UI command
+  strings; the new command registered on both shells, dev-mock answers it,
+  and it has a UI caller so it is not a scoped_orphan).
+- MANUAL verify-scoped-coverage.sh (Git bash full path): PASS, exit 0.
+- Pre-commit hook: all ten steps green (ui typecheck ran on the 3 staged
+  ui/src files; fmt re-staged; i18n/bundle-parity/ftl steps clean or
+  not-applicable).
+- Targeted vitest api-regional-contract: 1/1.
+- Hot-file check: shared.ftl / shared.id.ftl untouched (not in the
+  pathspec, not edited).
+
+### Incident note (resolved, no loss)
+- The hook's fmt re-stage left the INDEX holding the pre-fmt wide content
+  of the two regional_tests.rs while HEAD+worktree held the fmt'd compact
+  content (git diff HEAD was empty; git status showed MM). A bare commit
+  from that index would have filed a no-op revert under someone's message,
+  so I refreshed the index with git add on the two files (worktree == HEAD,
+  so nothing changed and no commit was needed) and verified
+  worktree-identical-to-HEAD afterward. The first follow-up commit attempt
+  correctly refused (nothing to commit).
