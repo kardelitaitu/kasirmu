@@ -62,6 +62,10 @@ tax-config-delete-deps-products = { $count ->
     [one] 1 penugasan produk
    *[other] { $count } penugasan produk
 }
+# F1: badge provenance cakupan (resolver berjalan Lokasi → Badan hukum → Global)
+tax-config-scope-location = Lokasi · { $id }
+tax-config-scope-legal-entity = Badan hukum · { $id }
+tax-config-scope-global = Global
 tax-config-delete-deps-categories = { $count ->
     [one] 1 penugasan kategori
    *[other] { $count } penugasan kategori

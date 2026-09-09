@@ -64,6 +64,10 @@ tax-config-delete-deps-products = { $count ->
     [one] 1 product assignment
    *[other] { $count } product assignments
 }
+# F1: scope provenance badge (resolver walks Location → Legal entity → Global)
+tax-config-scope-location = Location · { $id }
+tax-config-scope-legal-entity = Legal entity · { $id }
+tax-config-scope-global = Global
 tax-config-delete-deps-categories = { $count ->
     [one] 1 category assignment
    *[other] { $count } category assignments

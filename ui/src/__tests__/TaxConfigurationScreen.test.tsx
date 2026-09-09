@@ -12,8 +12,8 @@ import taxFtl from '@/locales/tax.ftl?raw';
 import TaxConfigurationScreen from '@/features/tax/TaxConfigurationScreen';
 
 const SAMPLE_TAX_RATES = [
-  { id: 'tax-1', name: 'Sales Tax', rate_bps: 825, is_default: true, display_rate: '8.25%', is_inclusive: false, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
-  { id: 'tax-2', name: 'VAT', rate_bps: 2000, is_default: false, display_rate: '20%', is_inclusive: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+  { id: 'tax-1', name: 'Sales Tax', rate_bps: 825, is_default: true, display_rate: '8.25%', is_inclusive: false, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', scope: { scope: 'location', legalEntityId: null, locationId: 'loc-1' }, window: { effectiveFrom: '2026-01-01', effectiveTo: null } },
+  { id: 'tax-2', name: 'VAT', rate_bps: 2000, is_default: false, display_rate: '20%', is_inclusive: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', scope: null, window: null },
 ];
 
 const SAMPLE_CATEGORIES = [
@@ -89,6 +89,21 @@ describe('TaxConfigurationScreen', () => {
     // Sales Tax is default, VAT is not
     const defaultBadges = screen.getAllByText('Default');
     expect(defaultBadges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows the scope provenance badge for a location-scoped rate', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    // Sales Tax carries scope { location, loc-1 } from the side-channel join.
+    expect(screen.getByText('Location · loc-1')).toBeInTheDocument();
+  });
+
+  it('shows the Global badge when the scope entry is absent', async () => {
+    // A null scope entry is the tenant-global tier — the resolver walk ends
+    // there, so the badge must say Global, not hide the row's provenance.
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    expect(screen.getByText('Global')).toBeInTheDocument();
   });
 
   it('shows empty state when no tax rates exist', async () => {

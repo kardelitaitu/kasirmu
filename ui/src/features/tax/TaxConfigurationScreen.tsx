@@ -363,6 +363,24 @@ export default function TaxConfigurationScreen() {
                             </Localized>
                           </Badge>
                         )}
+                        {(() => {
+                          // F1: provenance from the Option-B side-channel join.
+                          // A null scope entry is the tenant-global tier — the
+                          // resolver walk Location → Legal entity → Global ends
+                          // there, and unconfigured = no tax is a legitimate
+                          // state (the global tier is deliberately unguarded).
+                          const s = r.scope?.scope;
+                          const label = s === 'location'
+                            ? l10n.getString('tax-config-scope-location', { id: r.scope?.locationId ?? '' })
+                            : s === 'legal_entity'
+                              ? l10n.getString('tax-config-scope-legal-entity', { id: r.scope?.legalEntityId ?? '' })
+                              : l10n.getString('tax-config-scope-global');
+                          return (
+                            <Badge variant="default" size="sm" style={{ marginLeft: 'var(--space-2)' }}>
+                              {label}
+                            </Badge>
+                          );
+                        })()}
                       </td>
                       <td>{r.display_rate}</td>
                       <td>
