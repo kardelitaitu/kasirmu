@@ -6,8 +6,10 @@
 //! ("Regional configuration — design"). This slice covers the three axes that
 //! already have a storage home — locale, timezone, currency. Fiscalization,
 //! numbering, receipt format and local payment settings join the same chain in
-//! later slices; tax regime is deliberately absent (the adjacent "separate
-//! business tax configuration from application defaults" item owns it).
+//! later slices; tax regime joins as a DERIVED seam
+//! ([`RegionalConfig::tax_regime`]) rather than a stored axis — it composes
+//! the entity market anchor with the landed tax resolver's winning row, so
+//! the two configurations cannot drift into two stored truths.
 //!
 //! # Resolution order
 //!
@@ -34,6 +36,9 @@
 //! rebuild, not a resolver change, and it is why this slice is read-only.
 
 use serde::{Deserialize, Serialize};
+
+use crate::db::tax::TaxRateScope;
+use crate::tax_rate::TaxRate;
 
 /// Built-in locale used when no scope in the chain sets one. Matches the
 /// pre-regional behaviour, where the UI negotiated purely from the browser.
@@ -341,6 +346,102 @@ impl RegionalConfig {
             && self.timezone.scope == ConfigScope::BuiltIn
             && self.currency.scope == ConfigScope::BuiltIn
             && self.country_code.is_none()
+    }
+
+    /// Derive the location's tax regime (todo-global-saas-2.md regional
+    /// axis, D1 row): the market the location trades under — this config's
+    /// entity `country_code` — plus the winning tax-rate row and the tier
+    /// that supplied it, with provenance.
+    ///
+    /// `resolved` pairs the two read-only outputs of the landed tax
+    /// resolver: the winner of
+    /// `Store::resolve_tax_rate_for_location` and that row's scope from
+    /// `Store::tax_rate_scope`. The resolver returns the row alone, and
+    /// the tier it won is exactly the provenance a diagnostics surface
+    /// needs; pairing them is the caller's one-line job, because
+    /// re-deriving the tier inside this method would need a second query
+    /// this pure type must not make. `None` means the resolver found no
+    /// active rate covering the location at the query date — the regime
+    /// still carries the market, with no rate attached.
+    ///
+    /// Derived, never stored: the regional migration deliberately refused
+    /// to share a column with tax, so the two configurations cannot drift.
+    pub fn tax_regime(&self, resolved: Option<(&TaxRate, &TaxRateScope)>) -> TaxRegime {
+        let rate = resolved.map(|(rate, scope)| TaxRegimeRate {
+            rate_id: rate.id.clone(),
+            rate_name: rate.name.clone(),
+            rate_bps: rate.rate_bps,
+            scope: match scope {
+                TaxRateScope::Location(_) => TaxRegimeScope::Location,
+                TaxRateScope::LegalEntity(_) => TaxRegimeScope::LegalEntity,
+                TaxRateScope::Global => TaxRegimeScope::Global,
+            },
+        });
+        TaxRegime {
+            country_code: self.country_code.clone(),
+            rate,
+        }
+    }
+}
+
+/// The derived tax regime for one location: the market it trades under and
+/// the tax rate the resolver currently picks, with the provenance of the
+/// rate. Composed by [`RegionalConfig::tax_regime`] from the landed
+/// regional chain and the landed tax resolver — never stored, so it cannot
+/// drift from either source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaxRegime {
+    /// ISO-3166 alpha-2 market code the location trades under, from the
+    /// legal-entity layer of the regional chain. `None` when no entity
+    /// declares a market — the same honesty rule as
+    /// [`RegionalConfig::country_code`]: guessing a country would silently
+    /// apply its fiscal expectations to a tenant that never chose one.
+    pub country_code: Option<String>,
+    /// The winning tax rate and where it came from. `None` when no active
+    /// rate resolves for the location at the query date.
+    pub rate: Option<TaxRegimeRate>,
+}
+
+/// The resolver's winning rate, with the provenance a consumer needs to say
+/// WHY that rate applies: which tier of the resolver walk supplied it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaxRegimeRate {
+    /// The winning rate's id — the reference a consumer re-reads or links to.
+    pub rate_id: String,
+    /// The winning rate's display name.
+    pub rate_name: String,
+    /// The winning rate in basis points (825 = 8.25%).
+    pub rate_bps: i64,
+    /// Which tier of the resolver walk supplied this row.
+    pub scope: TaxRegimeScope,
+}
+
+/// Which scope tier of the tax resolver supplied the winning rate.
+///
+/// Mirrors `db::tax::TaxRateScope` tier-for-tier (Location outranks
+/// LegalEntity outranks Global) without embedding it: the db enum is a
+/// write-side shape that also names the owning id, while this one is the
+/// provenance answer a regime carries. Serialized snake_case like
+/// [`ConfigScope`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaxRegimeScope {
+    /// The location's own scoped row won.
+    Location,
+    /// The legal entity's scoped row won.
+    LegalEntity,
+    /// The tenant-global row won.
+    Global,
+}
+
+impl TaxRegimeScope {
+    /// Stable wire name, mirroring the serde representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Location => "location",
+            Self::LegalEntity => "legal_entity",
+            Self::Global => "global",
+        }
     }
 }
 

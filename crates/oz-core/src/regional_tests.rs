@@ -231,3 +231,184 @@ fn non_preset_location_timezones_are_rejected() {
     // IANA names are case-sensitive.
     assert!(!is_preset_location_timezone("asia/jakarta"));
 }
+
+// -- tax_regime derivation seam (regional axis, D1 row) ---------------
+
+fn rate(id: &str, name: &str, bps: i64) -> crate::tax_rate::TaxRate {
+    crate::tax_rate::TaxRate {
+        id: id.into(),
+        name: name.into(),
+        rate_bps: bps,
+        is_default: false,
+        is_inclusive: false,
+        created_at: "2026-09-26T00:00:00.000Z".into(),
+        updated_at: "2026-09-26T00:00:00.000Z".into(),
+    }
+}
+
+#[test]
+fn tax_regime_without_a_resolved_rate_still_carries_the_market() {
+    let cfg = RegionalConfig::resolve(
+        "loc-1",
+        Some("ent-1".into()),
+        &[layer(
+            ConfigScope::LegalEntity,
+            None,
+            None,
+            None,
+            Some("ID"),
+        )],
+    );
+    let regime = cfg.tax_regime(None);
+    assert_eq!(
+        regime.country_code.as_deref(),
+        Some("ID"),
+        "the market anchor survives even with no resolvable rate"
+    );
+    assert!(
+        regime.rate.is_none(),
+        "no active rate covering the location means no rate, never a guess"
+    );
+}
+
+#[test]
+fn tax_regime_maps_every_resolver_tier_to_its_provenance() {
+    let cfg = RegionalConfig::resolve(
+        "loc-1",
+        Some("ent-1".into()),
+        &[layer(
+            ConfigScope::LegalEntity,
+            None,
+            None,
+            None,
+            Some("ID"),
+        )],
+    );
+    let r = rate("rate-1", "PBJT", 1100);
+    use crate::db::tax::TaxRateScope;
+    for (scope, expected) in [
+        (
+            TaxRateScope::Location("loc-1".into()),
+            TaxRegimeScope::Location,
+        ),
+        (
+            TaxRateScope::LegalEntity("ent-1".into()),
+            TaxRegimeScope::LegalEntity,
+        ),
+        (TaxRateScope::Global, TaxRegimeScope::Global),
+    ] {
+        let regime = cfg.tax_regime(Some((&r, &scope)));
+        let got = regime.rate.expect("a resolved rate must carry one");
+        assert_eq!(got.scope, expected);
+        assert_eq!(got.rate_id, "rate-1");
+        assert_eq!(got.rate_name, "PBJT");
+        assert_eq!(got.rate_bps, 1100, "basis points pass through unchanged");
+        assert_eq!(regime.country_code.as_deref(), Some("ID"));
+    }
+}
+
+fn regime_seed(conn: &rusqlite::Connection) {
+    conn.execute(
+        "INSERT INTO legal_entities (id, tenant_id, name, legal_name, country_code)
+         VALUES ('ent-1', 'default', 'Entity One', 'Entity One', 'ID')",
+        [],
+    )
+    .unwrap();
+    // A distinct id: fresh_db already seeds the 'default' primary location,
+    // so the fixture must not collide with it.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id, legal_entity_id)
+         VALUES ('loc-main', 'Main', 'default', 'ent-1')",
+        [],
+    )
+    .unwrap();
+}
+
+fn insert_rate(
+    conn: &rusqlite::Connection,
+    id: &str,
+    entity: Option<&str>,
+    location: Option<&str>,
+    is_default: bool,
+) {
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, tenant_id, is_active, legal_entity_id, location_id)
+         VALUES (?1, ?2, 1100, ?3, 0, 'default', 1, ?4, ?5)",
+        rusqlite::params![id, format!("Rate {id}"), is_default as i32, entity, location],
+    )
+    .unwrap();
+}
+
+#[test]
+fn tax_regime_derivation_matches_the_landed_resolver_end_to_end() {
+    // The whole point of the seam: the regime the pure type derives is the
+    // regime the STORE resolver actually answers, tier for tier. Location
+    // outranks entity outranks global, exactly as
+    // Store::resolve_tax_rate_for_location walks them.
+    let conn = crate::migrations::fresh_db();
+    regime_seed(&conn);
+    insert_rate(&conn, "rate-g", None, None, true);
+    insert_rate(&conn, "rate-e", Some("ent-1"), None, false);
+    insert_rate(&conn, "rate-l", None, Some("loc-main"), false);
+    let store = crate::db::Store::new(&conn);
+
+    let win = |store: &crate::db::Store| {
+        let won = store
+            .resolve_tax_rate_for_location("loc-main", Some("ent-1"), "2026-09-26")
+            .unwrap()
+            .expect("a live rate must resolve");
+        let scope = store
+            .tax_rate_scope(&won.id)
+            .unwrap()
+            .expect("winner carries a scope");
+        RegionalConfig::resolve(
+            "default",
+            Some("ent-1".into()),
+            &[layer(
+                ConfigScope::LegalEntity,
+                None,
+                None,
+                None,
+                Some("ID"),
+            )],
+        )
+        .tax_regime(Some((&won, &scope)))
+    };
+
+    let regime = win(&store);
+    assert_eq!(
+        regime.rate.as_ref().unwrap().rate_id,
+        "rate-l",
+        "the location-scoped row wins while it is active"
+    );
+    assert_eq!(
+        regime.rate.as_ref().unwrap().scope,
+        TaxRegimeScope::Location
+    );
+    assert_eq!(regime.country_code.as_deref(), Some("ID"));
+
+    // Deactivate the location row: the entity tier takes over.
+    conn.execute("UPDATE tax_rates SET is_active = 0 WHERE id = 'rate-l'", [])
+        .unwrap();
+    let regime = win(&store);
+    assert_eq!(regime.rate.as_ref().unwrap().rate_id, "rate-e");
+    assert_eq!(
+        regime.rate.as_ref().unwrap().scope,
+        TaxRegimeScope::LegalEntity
+    );
+
+    // Deactivate the entity row too: the tenant-global default answers.
+    conn.execute("UPDATE tax_rates SET is_active = 0 WHERE id = 'rate-e'", [])
+        .unwrap();
+    let regime = win(&store);
+    assert_eq!(regime.rate.as_ref().unwrap().rate_id, "rate-g");
+    assert_eq!(regime.rate.as_ref().unwrap().scope, TaxRegimeScope::Global);
+
+    // And with nothing active, the market stays and the rate drops out.
+    conn.execute("UPDATE tax_rates SET is_active = 0 WHERE id = 'rate-g'", [])
+        .unwrap();
+    let none = store
+        .resolve_tax_rate_for_location("loc-main", Some("ent-1"), "2026-09-26")
+        .unwrap();
+    assert!(none.is_none());
+}
