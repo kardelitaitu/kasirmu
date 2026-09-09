@@ -2414,6 +2414,51 @@ fn enforce_product_quota_allows_under_limit() {
 }
 
 #[test]
+fn create_product_tx_veto_closes_limit_race() {
+    // W4-S4: Free caps at 200. Seed 199 rows (un-gated raw SQL), then the
+    // 200th ARMED create passes (current 199 -> 200) and the 201st is vetoed
+    // inside its transaction — the over-cap row never commits.
+    let conn = fresh();
+    let store = Store::new(&conn);
+    for i in 0..199 {
+        conn.execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",
+            rusqlite::params![format!("seed-{i:03}"), format!("SEED{i:03}"), "Seed"],
+        )
+        .unwrap();
+    }
+    let tier = crate::subscription::SubscriptionTier::Free;
+    store.arm_creation_quota(crate::downgrade::QuotaDimension::Products, tier.clone());
+    store
+        .create_product("SKU-199", "P199", Money::zero(usd()), None, None, 0, None)
+        .expect("200th product is at the cap, not over it");
+    store.arm_creation_quota(crate::downgrade::QuotaDimension::Products, tier);
+    let err = store
+        .create_product("SKU-200", "P200", Money::zero(usd()), None, None, 0, None)
+        .expect_err("201st product must be refused in-tx");
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Free at 200/200 must be refused in-tx: {err:?}"
+    );
+    assert_eq!(store.count_products().unwrap(), 200);
+}
+
+#[test]
+fn create_product_unarmed_is_ungated() {
+    // Arm-once: without an armed gate verdict the create keeps the exact
+    // legacy behavior, even past the tier cap (policy stays at the gate).
+    let conn = fresh();
+    let store = Store::new(&conn);
+    store
+        .create_product("SKU-1", "P1", Money::zero(usd()), None, None, 0, None)
+        .unwrap();
+    store
+        .create_product("SKU-2", "P2", Money::zero(usd()), None, None, 0, None)
+        .unwrap();
+    assert_eq!(store.count_products().unwrap(), 2);
+}
+
+#[test]
 fn enforce_product_quota_rejects_at_limit() {
     let conn = fresh();
     let store = Store::new(&conn);

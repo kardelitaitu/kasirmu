@@ -145,6 +145,11 @@ impl Store<'_> {
         // attempt (Slice C §J): the next read refreshes too, but this warms
         // the cache.
         self.persist_over_quota_markers()?;
+        // W4-S4: arm the authoritative in-tx re-check for the creation this
+        // gate is fast-pathing. The create fn consumes it inside its
+        // transaction, so the veto commits-or-rolls-back atomically with the
+        // insert (this pre-tx pass alone leaves a WAL-snapshot TOCTOU).
+        self.arm_creation_quota(dimension, tier.clone());
         Ok(())
     }
 
@@ -158,6 +163,32 @@ impl Store<'_> {
         tier: &SubscriptionTier,
     ) -> Result<(), CoreError> {
         self.ensure_quota_allows(dimension, tier, 1)
+    }
+
+    /// Arm the in-tx creation gate for `dimension` (W4-S4 TOCTOU closure).
+    ///
+    /// The NEXT `create_location_profile` / `create_product_with_attributes`
+    /// on this Store re-checks the quota INSIDE its transaction using this
+    /// tier and consumes the arm — so the check and the write commit
+    /// atomically, closing the race where two concurrent IPC calls both pass
+    /// this pre-tx gate at `current == limit - 1`. Arm-once by design: each
+    /// IPC call constructs its own Store, and a second creation on the same
+    /// Store is deliberately not double-gated.
+    pub fn arm_creation_quota(&self, dimension: QuotaDimension, tier: SubscriptionTier) {
+        if let Ok(mut slot) = self.armed_quota.lock() {
+            *slot = Some((dimension, tier));
+        }
+    }
+
+    /// Consume the armed quota verdict for `dimension` (see
+    /// [`Store::arm_creation_quota`]). Returns `None` — no veto — when the
+    /// Store was not armed for that dimension; a poisoned lock also reads as
+    /// disarmed, which degrades to the legacy pre-tx-only gate, never to a
+    /// wrong refusal.
+    pub(crate) fn take_armed_quota(&self, dimension: QuotaDimension) -> Option<SubscriptionTier> {
+        let mut slot = self.armed_quota.lock().ok()?;
+        let (armed_dim, tier) = slot.take()?;
+        (armed_dim == dimension).then_some(tier)
     }
 }
 

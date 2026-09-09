@@ -345,6 +345,31 @@ impl Store<'_> {
             Ok(_) => {}
         }
 
+        // W4-S4: authoritative in-tx quota re-check. The row above is visible
+        // to this same connection inside the transaction, so `current >
+        // limit` is exactly the legacy `pre-insert current >= limit`
+        // predicate — and the write lock is already held, which is what
+        // closes the TOCTOU the pre-tx fast-path gate cannot (under WAL a
+        // pre-insert count would read only its snapshot). The tier is the one
+        // the caller's pre-tx gate armed on this Store — a core-side
+        // re-resolution could diverge (desktop dev Free→Premium shim).
+        let tier = self.take_armed_quota(QuotaDimension::Products);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::Products.limit_for(t))
+        {
+            let current: i64 = tx.query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::ProductLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
+
         // Service products never get inventory rows — they have unlimited stock.
         if initial_stock > 0 && product_type != "service" {
             tx.execute(

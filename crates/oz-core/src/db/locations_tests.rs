@@ -509,6 +509,72 @@ fn enforce_location_quota_allows_within_limit() {
 }
 
 #[test]
+fn create_location_profile_tx_veto_closes_limit_race() {
+    // W4-S4: the gate arms the tier; the create consumes it inside its own
+    // transaction, so the second create at the cap is refused IN-TX and the
+    // over-cap row never commits.
+    fn profile(id: &str, name: &str) -> LocationProfile {
+        LocationProfile {
+            id: id.into(),
+            name: name.into(),
+            address: "456 Oak Ave".into(),
+            tax_id: "TAX-002".into(),
+            currency: "IDR".into(),
+            timezone: "Asia/Jakarta".into(),
+            is_primary: false,
+            created_at: "2026-07-01T10:00:00Z".into(),
+            updated_at: "2026-07-01T10:00:00Z".into(),
+        }
+    }
+    let (store, _) = setup();
+    let tier = SubscriptionTier::Pro; // limit 2; the seed is location #1.
+    store.arm_creation_quota(QuotaDimension::Locations, tier.clone());
+    store
+        .create_location_profile(&profile("store-2", "Branch 2"))
+        .unwrap();
+    assert_eq!(store.count_locations().unwrap(), 2);
+    // Re-arm (one-shot by design) — now at the cap, the next create vetoes.
+    store.arm_creation_quota(QuotaDimension::Locations, tier.clone());
+    let err = store
+        .create_location_profile(&profile("store-3", "Branch 3"))
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Pro at 2/2 must be refused in-tx: {err:?}"
+    );
+    assert_eq!(
+        store.count_locations().unwrap(),
+        2,
+        "the over-cap row must not persist"
+    );
+}
+
+#[test]
+fn create_location_profile_unarmed_is_ungated() {
+    // The race closure arms only through the central gate; direct
+    // programmatic creates keep the exact legacy un-gated behavior (quota
+    // policy stays at the gate layer).
+    fn profile(id: &str, name: &str) -> LocationProfile {
+        LocationProfile {
+            id: id.into(),
+            name: name.into(),
+            address: "456 Oak Ave".into(),
+            tax_id: "TAX-002".into(),
+            currency: "IDR".into(),
+            timezone: "Asia/Jakarta".into(),
+            is_primary: false,
+            created_at: "2026-07-01T10:00:00Z".into(),
+            updated_at: "2026-07-01T10:00:00Z".into(),
+        }
+    }
+    let (store, _) = setup();
+    store
+        .create_location_profile(&profile("store-2", "Branch 2"))
+        .unwrap();
+    assert_eq!(store.count_locations().unwrap(), 2);
+}
+
+#[test]
 fn enforce_location_quota_blocks_at_limit() {
     let (store, _) = setup();
     // Free allows 1 store; we already have 1 → must be blocked.

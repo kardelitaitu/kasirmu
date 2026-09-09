@@ -201,6 +201,16 @@ pub struct Store<'a> {
     /// Passed through to `Cache::publish_inventory_change` so other
     /// terminals can skip their own messages.
     pub terminal_id: Option<String>,
+    /// W4-S4 TOCTOU closure: the tier a pre-tx quota gate armed for the NEXT
+    /// creation on this Store, consumed inside the create transaction (so the
+    /// check and the write commit atomically). Mutex keeps `Store` Sync;
+    /// un-armed stores behave exactly as before W4-S4.
+    armed_quota: std::sync::Mutex<
+        Option<(
+            crate::downgrade::QuotaDimension,
+            crate::subscription::SubscriptionTier,
+        )>,
+    >,
 }
 
 impl<'a> Store<'a> {
@@ -210,6 +220,7 @@ impl<'a> Store<'a> {
             conn,
             cache: None,
             terminal_id: None,
+            armed_quota: std::sync::Mutex::new(None),
         }
     }
 
@@ -219,6 +230,7 @@ impl<'a> Store<'a> {
             conn,
             cache: Some(cache),
             terminal_id: None,
+            armed_quota: std::sync::Mutex::new(None),
         }
     }
 

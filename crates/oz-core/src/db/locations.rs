@@ -163,11 +163,24 @@ impl Store<'_> {
     /// The new store will be **non-primary** by default. Use
     /// [`set_primary_location`](Self::set_primary_location) to promote it after
     /// creation.
+    ///
+    /// W4-S4: the quota decision rides INSIDE the insert transaction when the
+    /// caller's pre-tx gate armed this Store ([`Self::enforce_location_quota`]
+    /// does): the row goes in first, then the count is re-read under the same
+    /// write lock — under WAL a count read BEFORE the insert only sees the
+    /// pre-commit snapshot, so post-insert is the ordering that makes check
+    /// and write atomic. Two concurrent IPC creates can no longer both pass at
+    /// `current == limit - 1`: the loser's tx sees the winner's committed row
+    /// and vetoes with the tier's legacy `StoreLimit` error (reported with
+    /// the PRE-insert count, mirroring the gate's contract). Un-armed callers
+    /// — programmatic seeds, imports, tests — keep the exact legacy un-gated
+    /// behavior; quota policy stays at the gate layer.
     pub fn create_location_profile(
         &self,
         profile: &LocationProfile,
     ) -> Result<LocationProfile, CoreError> {
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
@@ -182,6 +195,26 @@ impl Store<'_> {
                 profile.updated_at,
             ],
         )?;
+        // Authoritative in-tx re-check: current already includes the row just
+        // written on THIS connection, so `current > limit` is exactly the
+        // legacy `pre-insert current >= limit` predicate.
+        let tier = self.take_armed_quota(QuotaDimension::Locations);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::Locations.limit_for(t))
+        {
+            let current: i64 = tx.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::StoreLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
+        tx.commit()?;
         Ok(profile.clone())
     }
 
