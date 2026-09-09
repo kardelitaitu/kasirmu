@@ -1,22 +1,27 @@
-//! Canvas pointer-core callbacks for the topology editor (Phase 3.4b + 3.4c-1).
+//! Canvas pointer-core callbacks for the topology editor (Phase 3.4b + 3.4c).
 //!
 //! Slice 3.4c-1 folded in the node-drag trio — beginNodeDrag, applyDragMove,
 //! finalizeNodeDrag and handleNodeMouseDown — because the canvas mousemove/mouseup
 //! already fed the first two, and leaving them parent-side forced the parent to
 //! forward them back in as deps. Their bodies, comments and useCallback dep arrays
 //! are byte-identical to the inline originals; every gesture ref they read or write
-//! stays PARENT-declared (the duplicate cluster at 3.4c-2, cancelNodeMove, the touch
-//! loop and the unmount sweep all share them), and `commitDuplicateDrag` still comes
-//! in as a dep, so the duplicate cluster did not move with them.
+//! stays PARENT-declared (the touch loop and the unmount sweep still share them).
+//! Slice 3.4c-2 folded the duplicate cluster in as well — commitDuplicateDrag,
+//! cancelDuplicateDrag, convertDragToDuplicate and cancelNodeMove — which is what
+//! finally let the call site move: `commitDuplicateDrag` is now INTERNAL (the trio
+//! call it) instead of a dep the parent had to forward back in.
 //!
 //! The trio are returned: `handleNodeMouseDown` is the memoized card's
 //! `onCardMouseDown` prop and the touch loop drives `beginNodeDrag` /
 //! `applyDragMove` / `finalizeNodeDrag` directly. The trio were the ONLY hooks
 //! between the parent's `executeDelete` and the original canvas-handler block, so
 //! calling them first inside this hook at that same call site keeps the component's
-//! hook order — and therefore its effect order — exactly as it was. The call site
-//! itself is deliberately NOT relocated in this slice: that move is fused with the
-//! duplicate cluster (3.4c-2), which still owns `commitDuplicateDrag`.
+//! hook order — and therefore its effect order — exactly as it was. 3.4c-2 then
+//! relocated the call site UP to the duplicate cluster's vacated position, so the
+//! parent keydown effect (which sits below it) can name the three returned cancels.
+//! The cluster were the ONLY hooks in that span and this hook registers no effect of
+//! its own, so the move re-slots useCallbacks only — every pre-existing parent effect
+//! keeps the relative order it had before.
 //! Owns the seven gestures the canvas element itself receives: handleCanvasMouseMove
 //! (node-drag feed + marquee rect tracking + connection snap-to-port, including the
 //! hoveredTarget identity-preserve rule that keeps memoized cards from re-rendering),
@@ -32,12 +37,14 @@
 //! so wrapping them would change identity churn for the memoized TopologyNodeCard /
 //! TopologyWireGroup props.
 //!
-//! The hook owns only these callbacks. Every ref, state setter and node-drag callback
-//! they read stays parent-owned and arrives through deps: the editor cancelMarquee,
-//! cancelBendDrag, resetTransientCanvasState, the load-lifecycle call and the unmount
-//! listener sweep all consume those refs, so hoisting any of them here would split one
-//! gesture across two owners. The call site sits at the exact position of the original
-//! block, so hook order — and therefore effect order — is unchanged.
+//! The hook owns these callbacks plus the duplicate cluster. Every ref, state setter
+//! and drag reducer they read stays parent-owned and arrives through deps: the editor
+//! cancelMarquee, cancelBendDrag, resetTransientCanvasState, the load-lifecycle call
+//! and the unmount listener sweep all consume those refs, so hoisting any of them here
+//! would split one gesture across two owners. The one parent declaration that DID move
+//! is `userInteractedRef` — hoisted above the relocated call in the editor because a
+//! hook call evaluates its args at render time; it stays parent-owned, only its
+//! declaration site changed.
 
 import { useCallback, type MutableRefObject, type SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
@@ -51,10 +58,16 @@ import {
   resolveDropOverlaps,
 } from './nodeTopologyClamp';
 import type { TopologyHistoryEntry } from './nodeTopologyEditorState';
+import { historyEntry } from './topologyHistoryIntegrity';
 import { socketSemanticIds, sanitizeCopiedNode } from './topologyCard';
 import { portRowCenterY } from './topologyMetrics';
-import { moveLandedAtStart } from './topologyCommands';
+import { moveLandedAtStart, restoreNodesToStart } from './topologyCommands';
 import { computeAlignmentGuides } from './topologyEditorHelpers';
+
+/** Mirrors the editor-local alias of the same name so the moved duplicate-commit
+ *  body keeps its type annotation byte-for-byte.
+ *  (NodeTopologyEditor.tsx declares the identical alias.) */
+type HistoryEntry = TopologyHistoryEntry<TopologyNodeData, TopologyWireData>;
 
 /** Selection box in container-relative screen px (identity pan/zoom space). */
 export interface MarqueeRect {
@@ -161,8 +174,12 @@ export interface TopologyPointerDeps {
   beginDrag: (ids: Set<string>) => void;
   /** Drag reducer: end the drag at release/cancel. */
   endDrag: () => void;
-  /** Duplicate-cluster commit: turns live Alt+drag copies into real nodes. */
-  commitDuplicateDrag: () => void;
+  /** Drag reducer: drop the drag set without the end-of-gesture bookkeeping —
+   *  both Escape cancels route through it. */
+  cancelDrag: () => void;
+  /** True when the mid-drag conversion already pushed the history entry that the
+   *  commit reuses and the cancel pops. */
+  duplicateHistoryPushedRef: MutableRefObject<boolean>;
   /** History push — once on the first real movement of a drag. */
   pushHistory: (snapshot?: { nodes: TopologyNodeData[]; wires: TopologyWireData[] }) => void;
   /** Node graph setter — every drag write goes through it. */
@@ -185,6 +202,12 @@ export interface TopologyPointerDeps {
   snapEnabled: boolean;
   /** 24px grid snap, shared with the seed/merge builders. */
   snap: (value: number) => number;
+  /** Latest l10n, read at announce time by the duplicate commit/cancel. */
+  l10nRef: { current: { getString: ReturnType<typeof useLocalization>['l10n']['getString'] } };
+  /** Live-region writer: the duplicate commit/cancel announce through it. */
+  setLiveAnnouncement: (message: string) => void;
+  /** Redo-stack setter — a duplicate commit invalidates the redo branch. */
+  setRedo: (value: SetStateAction<TopologyHistoryEntry<TopologyNodeData, TopologyWireData>[]>) => void;
   /** Selection reducer: the marquee commits its hit set through it. */
   selectMany: (ids: string[], primary: string | null) => void;
   /** Selection reducer: a background press and a hitless marquee clear it. */
@@ -218,6 +241,12 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
   ) => void;
   applyDragMove: (clientX: number, clientY: number) => void;
   finalizeNodeDrag: () => void;
+  /** Duplicate cluster (slice 3.4c-2) — returned because the parent keydown
+   *  effect's Escape ladder and its Alt mid-move branch consume them.
+   *  commitDuplicateDrag deliberately is NOT returned: it is internal now. */
+  cancelDuplicateDrag: () => void;
+  convertDragToDuplicate: () => void;
+  cancelNodeMove: () => void;
 } {
   const {
     pan,
@@ -260,7 +289,11 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     dragCleanupRef,
     beginDrag,
     endDrag,
-    commitDuplicateDrag,
+    cancelDrag,
+    duplicateHistoryPushedRef,
+    l10nRef,
+    setLiveAnnouncement,
+    setRedo,
     pushHistory,
     setNodes,
     setWires,
@@ -278,6 +311,183 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     clearWire,
     dismissPicker,
   } = deps;
+
+  /** Commit an in-flight Alt+drag: the copies stay where they dropped,
+   *  become the selection, and the whole duplicate-drop lands as ONE undo
+   *  entry (undo removes the copies entirely). The entry is the PRE-drag
+   *  state — exactly the current state minus the copy ids, since the
+   *  originals never moved during an Alt+drag. When the drag was converted
+   *  MID-move, the move's own entry already IS that pre-drag state — skip
+   *  the push. Idempotent — both the document and canvas mouseup paths can
+   *  fire for the same release. */
+  const commitDuplicateDrag = useCallback(() => {
+    if (!duplicateDragRef.current) return;
+    duplicateDragRef.current = false;
+    const copyIds = duplicateCopyIdsRef.current;
+    duplicateCopyIdsRef.current = [];
+    const entryAlreadyPushed = duplicateHistoryPushedRef.current;
+    duplicateHistoryPushedRef.current = false;
+    if (copyIds.length > 0) {
+      if (!entryAlreadyPushed) {
+        const copySet = new Set(copyIds);
+        setRedo([]); // new edit invalidates the redo branch
+        setHistory((prev) => {
+          // The one FILTERED entry in the whole history (current state
+          // minus the copy ids). historyEntry re-validates it at push time
+          // so the entry stays endpoint-consistent even if the filter above
+          // ever regresses.
+          const entry: HistoryEntry = historyEntry(
+            nodesRef.current.filter((n) => !copySet.has(n.id)),
+            wiresRef.current.filter((w) => !copySet.has(w.fromNodeId) && !copySet.has(w.toNodeId)),
+          );
+          const next = [...prev, entry];
+          if (next.length > 50) next.shift();
+          return next;
+        });
+      }
+      selectMany(copyIds, copyIds[0] ?? null);
+      setLiveAnnouncement(l10nRef.current.getString('topology-duplicate-announce'));
+    }
+    document.body.style.cursor = '';
+  // commitDuplicateDrag reads duplicateDragRef / duplicateCopyIdsRef /
+  // duplicateHistoryPushedRef / nodesRef / wiresRef.
+  // in this scope. Their identity never changes across renders, so listing them
+  // would be a no-op.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
+  }, [setHistory, setRedo, selectMany, setLiveAnnouncement]);
+
+  /** Escape during an Alt+drag: discard the preview copies and the drag
+   *  itself (originals stay selected, no history entry). When the drag was
+   *  converted MID-move, the state after cancel equals the move's history
+   *  entry (originals restored to start, no copies) — pop it so Undo is not
+   *  a no-op. */
+  const cancelDuplicateDrag = useCallback(() => {
+    if (!duplicateDragRef.current) return;
+    duplicateDragRef.current = false;
+    const copyIds = new Set(duplicateCopyIdsRef.current);
+    duplicateCopyIdsRef.current = [];
+    const entryPushed = duplicateHistoryPushedRef.current;
+    duplicateHistoryPushedRef.current = false;
+    if (copyIds.size > 0) {
+      setNodes((prev) => prev.filter((n) => !copyIds.has(n.id)));
+      setWires((prev) => prev.filter((w) => !copyIds.has(w.fromNodeId) && !copyIds.has(w.toNodeId)));
+    }
+    if (entryPushed) {
+      setHistory((prev) => prev.slice(0, -1));
+    }
+    document.body.style.cursor = '';
+    cancelDrag();
+    dragHasMovedRef.current = false;
+    dragOffsetsRef.current.clear();
+    dragStartRef.current.clear();
+    setAlignmentGuide(null);
+    setLiveAnnouncement(l10nRef.current.getString('topology-duplicate-cancel-announce'));
+    dragCleanupRef.current?.();
+  // cancelDuplicateDrag reads duplicateDragRef / duplicateCopyIdsRef /
+  // duplicateHistoryPushedRef / dragHasMovedRef / dragOffsetsRef / dragStartRef /
+  // dragCleanupRef / setAlignmentGuide / l10nRef.
+  // in this scope. Their identity never changes across renders, so listing them
+  // would be a no-op.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
+  }, [setHistory, setNodes, setWires, cancelDrag, setLiveAnnouncement]);
+
+  /** Alt pressed MID-move (Figma semantics): the drag becomes a duplicate
+   *  drag. The originals snap back to their pre-drag positions, fresh copies
+   *  take over the cursor from the current mid-drag positions, and the drag
+   *  offsets re-key to the copies. If the move had already pushed its
+   *  history entry, that entry IS the pre-drag state — the commit reuses it
+   *  (no duplicate entry) and the cancel pops it. */
+  const convertDragToDuplicate = useCallback(() => {
+    if (duplicateDragRef.current) return;
+    const start = dragStartRef.current;
+    if (start.size === 0) return;
+    const draggedIds = new Set(start.keys());
+    // Refuse the mid-drag conversion when it would duplicate a warehouse past
+    // the tier cap — the move simply stays a move. A Branch Location copy is
+    // allowed but sanitized below into a diagram-only card (never a second
+    // branch impersonating the original).
+    const refusal = duplicateRefusal(nodesRef.current.filter((n) => draggedIds.has(n.id)));
+    if (refusal) {
+      addToast({ message: l10n.getString(refusal), type: 'warning' });
+      return;
+    }
+    duplicateHistoryPushedRef.current = dragHasMovedRef.current;
+
+    // Copies of the dragged set at their CURRENT (mid-drag) positions;
+    // wires copy when BOTH endpoints are dragged.
+    const originalToCopy = new Map<string, string>();
+    const copies = nodesRef.current
+      .filter((n) => draggedIds.has(n.id))
+      .map((n) => {
+        const newId = `${n.type}-${crypto.randomUUID()}`;
+        originalToCopy.set(n.id, newId);
+        // sanitizeCopiedNode strips a Branch Location copy's canonical
+        // identity — the copy is a diagram-only card, never a second
+        // branch impersonating the original.
+        return { ...sanitizeCopiedNode(n), id: newId };
+      });
+    const wireCopies = wiresRef.current
+      .filter((w) => draggedIds.has(w.fromNodeId) && draggedIds.has(w.toNodeId))
+      .map((w) => ({
+        ...w,
+        id: `wire-${crypto.randomUUID()}`,
+        fromNodeId: originalToCopy.get(w.fromNodeId)!,
+        toNodeId: originalToCopy.get(w.toNodeId)!,
+      }));
+    duplicateCopyIdsRef.current = copies.map((c) => c.id);
+    duplicateDragRef.current = true;
+
+    // Originals back to start (coordinates only, via the command helper);
+    // copies in at their current positions.
+    if (copies.length > 0) {
+      setNodes((prev) => restoreNodesToStart(prev, start));
+      setNodes((prev) => [...prev, ...copies]);
+      setWires((prev) => [...prev, ...wireCopies]);
+    }
+
+    // Re-key the drag offsets to the copies (same cursor-relative offsets).
+    const offsets = new Map<string, { x: number; y: number }>();
+    for (const [id, off] of dragOffsetsRef.current) {
+      const copyId = originalToCopy.get(id);
+      if (copyId) offsets.set(copyId, off);
+    }
+    dragOffsetsRef.current = offsets;
+    beginDrag(new Set(duplicateCopyIdsRef.current));
+    document.body.style.cursor = 'copy';
+  // convertDragToDuplicate reads duplicateDragRef / duplicateCopyIdsRef /
+  // duplicateHistoryPushedRef / dragStartRef / dragHasMovedRef / dragOffsetsRef /
+  // nodesRef / wiresRef.
+  // in this scope. Their identity never changes across renders, so listing them
+  // would be a no-op.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
+  }, [duplicateRefusal, addToast, l10n, setNodes, setWires, beginDrag]);
+
+  /** Escape mid-MOVE (Figma semantics): the dragged nodes snap back to
+   *  their pre-drag positions, the move's single history entry is popped
+   *  (undo would otherwise restore the same state — a no-op entry), and the
+   *  selection survives. Idempotent. */
+  const cancelNodeMove = useCallback(() => {
+    if (dragStartRef.current.size === 0) return;
+    const start = dragStartRef.current;
+    dragStartRef.current = new Map();
+    // Restore the captured COORDINATES only (command helper) — the snapshot
+    // is { x, y }, so a wholesale replacement would strip type/name/id and
+    // crash the render.
+    setNodes((prev) => restoreNodesToStart(prev, start));
+    if (dragHasMovedRef.current) {
+      setHistory((prev) => prev.slice(0, -1));
+    }
+    dragHasMovedRef.current = false;
+    cancelDrag();
+    dragOffsetsRef.current.clear();
+    setAlignmentGuide(null);
+    dragCleanupRef.current?.();
+  // cancelNodeMove reads dragStartRef / dragHasMovedRef / dragOffsetsRef /
+  // dragCleanupRef / setAlignmentGuide.
+  // in this scope. Their identity never changes across renders, so listing them
+  // would be a no-op.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
+  }, [setHistory, setNodes, cancelDrag]);
 
   /** End an in-flight node drag (release / document mouseup / touch up):
    *  commit any Alt-drag copies, clear the drag set and offsets, and drop
@@ -874,6 +1084,9 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     beginNodeDrag,
     applyDragMove,
     finalizeNodeDrag,
+    cancelDuplicateDrag,
+    convertDragToDuplicate,
+    cancelNodeMove,
   };
 }
 

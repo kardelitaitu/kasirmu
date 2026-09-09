@@ -88,7 +88,6 @@ import {
   deletableNodeIds,
   disconnectNode,
   nodesWithoutIds,
-  restoreNodesToStart,
   stockRoutingWires,
   wireConnectRefusal,
   WIRE_CONNECT_REFUSAL_TOAST,
@@ -1986,160 +1985,96 @@ export default function NodeTopologyEditor({
     setTemplatesOpen((v) => !v);
   }, []);
 
-  /** Commit an in-flight Alt+drag: the copies stay where they dropped,
-   *  become the selection, and the whole duplicate-drop lands as ONE undo
-   *  entry (undo removes the copies entirely). The entry is the PRE-drag
-   *  state — exactly the current state minus the copy ids, since the
-   *  originals never moved during an Alt+drag. When the drag was converted
-   *  MID-move, the move's own entry already IS that pre-drag state — skip
-   *  the push. Idempotent — both the document and canvas mouseup paths can
-   *  fire for the same release. */
-  const commitDuplicateDrag = useCallback(() => {
-    if (!duplicateDragRef.current) return;
-    duplicateDragRef.current = false;
-    const copyIds = duplicateCopyIdsRef.current;
-    duplicateCopyIdsRef.current = [];
-    const entryAlreadyPushed = duplicateHistoryPushedRef.current;
-    duplicateHistoryPushedRef.current = false;
-    if (copyIds.length > 0) {
-      if (!entryAlreadyPushed) {
-        const copySet = new Set(copyIds);
-        setRedo([]); // new edit invalidates the redo branch
-        setHistory((prev) => {
-          // The one FILTERED entry in the whole history (current state
-          // minus the copy ids). historyEntry re-validates it at push time
-          // so the entry stays endpoint-consistent even if the filter above
-          // ever regresses.
-          const entry: HistoryEntry = historyEntry(
-            nodesRef.current.filter((n) => !copySet.has(n.id)),
-            wiresRef.current.filter((w) => !copySet.has(w.fromNodeId) && !copySet.has(w.toNodeId)),
-          );
-          const next = [...prev, entry];
-          if (next.length > 50) next.shift();
-          return next;
-        });
-      }
-      selectMany(copyIds, copyIds[0] ?? null);
-      setLiveAnnouncement(l10nRef.current.getString('topology-duplicate-announce'));
-    }
-    document.body.style.cursor = '';
-  }, [setHistory, setRedo, selectMany, setLiveAnnouncement]);
+  /** Sticky "user touched the canvas" flag: suppresses the auto-fit-viewport
+   *  pass. Hoisted above the relocated pointer-hook call (slice 3.4c-2) — that
+   *  call evaluates its args at render time, so a declaration below it would be
+   *  a temporal-dead-zone reference (same reason resetTransientCanvasState is
+   *  hoisted above the load-lifecycle call). Its sibling autoFitKeyRef stays
+   *  down there: it is not a hook dep. */
+  const userInteractedRef = useRef(false);
 
-  /** Escape during an Alt+drag: discard the preview copies and the drag
-   *  itself (originals stay selected, no history entry). When the drag was
-   *  converted MID-move, the state after cancel equals the move's history
-   *  entry (originals restored to start, no copies) — pop it so Undo is not
-   *  a no-op. */
-  const cancelDuplicateDrag = useCallback(() => {
-    if (!duplicateDragRef.current) return;
-    duplicateDragRef.current = false;
-    const copyIds = new Set(duplicateCopyIdsRef.current);
-    duplicateCopyIdsRef.current = [];
-    const entryPushed = duplicateHistoryPushedRef.current;
-    duplicateHistoryPushedRef.current = false;
-    if (copyIds.size > 0) {
-      setNodes((prev) => prev.filter((n) => !copyIds.has(n.id)));
-      setWires((prev) => prev.filter((w) => !copyIds.has(w.fromNodeId) && !copyIds.has(w.toNodeId)));
-    }
-    if (entryPushed) {
-      setHistory((prev) => prev.slice(0, -1));
-    }
-    document.body.style.cursor = '';
-    cancelDrag();
-    dragHasMovedRef.current = false;
-    dragOffsetsRef.current.clear();
-    dragStartRef.current.clear();
-    setAlignmentGuide(null);
-    setLiveAnnouncement(l10nRef.current.getString('topology-duplicate-cancel-announce'));
-    dragCleanupRef.current?.();
-  }, [setHistory, setNodes, setWires, cancelDrag, setLiveAnnouncement]);
+  const {
+    handleCanvasMouseMove,
+    handleCanvasMouseUp,
+    handleCanvasMouseDown,
+    handleWheel,
+    handleContextMenu,
+    handleNodeMouseDown,
+    beginNodeDrag,
+    applyDragMove,
+    finalizeNodeDrag,
+    cancelDuplicateDrag,
+    convertDragToDuplicate,
+    cancelNodeMove,
+  } = useTopologyEditorPointer({
+    pan,
+    zoom,
+    nodes,
+    connectingFromNodeId,
+    selectedNodeIds,
+    panToolActive,
+    canvasRef,
+    mousePosRef,
+    marqueeRef,
+    marqueeStartRef,
+    marqueeAdditiveRef,
+    marqueeCleanupRef,
+    panMovedRef,
+    panStartRef,
+    panCleanupRef,
+    isPanningRef,
+    spaceDownRef,
+    userInteractedRef,
+    setMarquee,
+    setPreviewCursor,
+    setHoveredTarget,
+    setContextMenu,
+    setPan,
+    setZoom,
+    setPanGestureActive,
+    // Node-drag inputs (slices 3.4c-1 / 3.4c-2). Every ref below stays
+    // declared here: the touch loop and the unmount sweep still share this
+    // gesture state with the hook, which now owns the drag trio AND the
+    // duplicate cluster (commitDuplicateDrag is internal; the other three
+    // are returned for the keydown Escape ladder and the Alt mid-move).
+    draggingNodeIdsRef,
+    selectedNodeIdsRef,
+    nodesRef,
+    wiresRef,
+    panRef,
+    zoomRef,
+    dragOffsetsRef,
+    dragStartRef,
+    dragHasMovedRef,
+    duplicateDragRef,
+    duplicateCopyIdsRef,
+    lastDragMovePosRef,
+    dragCleanupRef,
+    beginDrag,
+    endDrag,
+    cancelDrag,
+    duplicateHistoryPushedRef,
+    l10nRef,
+    setLiveAnnouncement,
+    setRedo,
+    pushHistory,
+    setNodes,
+    setWires,
+    setHistory,
+    setAlignmentGuide,
+    selectOnly,
+    addToSelection,
+    duplicateRefusal,
+    addToast,
+    l10n,
+    snapEnabled,
+    snap,
+    selectMany,
+    clearSelection,
+    clearWire,
+    dismissPicker,
+  });
 
-  /** Alt pressed MID-move (Figma semantics): the drag becomes a duplicate
-   *  drag. The originals snap back to their pre-drag positions, fresh copies
-   *  take over the cursor from the current mid-drag positions, and the drag
-   *  offsets re-key to the copies. If the move had already pushed its
-   *  history entry, that entry IS the pre-drag state — the commit reuses it
-   *  (no duplicate entry) and the cancel pops it. */
-  const convertDragToDuplicate = useCallback(() => {
-    if (duplicateDragRef.current) return;
-    const start = dragStartRef.current;
-    if (start.size === 0) return;
-    const draggedIds = new Set(start.keys());
-    // Refuse the mid-drag conversion when it would duplicate a warehouse past
-    // the tier cap — the move simply stays a move. A Branch Location copy is
-    // allowed but sanitized below into a diagram-only card (never a second
-    // branch impersonating the original).
-    const refusal = duplicateRefusal(nodesRef.current.filter((n) => draggedIds.has(n.id)));
-    if (refusal) {
-      addToast({ message: l10n.getString(refusal), type: 'warning' });
-      return;
-    }
-    duplicateHistoryPushedRef.current = dragHasMovedRef.current;
-
-    // Copies of the dragged set at their CURRENT (mid-drag) positions;
-    // wires copy when BOTH endpoints are dragged.
-    const originalToCopy = new Map<string, string>();
-    const copies = nodesRef.current
-      .filter((n) => draggedIds.has(n.id))
-      .map((n) => {
-        const newId = `${n.type}-${crypto.randomUUID()}`;
-        originalToCopy.set(n.id, newId);
-        // sanitizeCopiedNode strips a Branch Location copy's canonical
-        // identity — the copy is a diagram-only card, never a second
-        // branch impersonating the original.
-        return { ...sanitizeCopiedNode(n), id: newId };
-      });
-    const wireCopies = wiresRef.current
-      .filter((w) => draggedIds.has(w.fromNodeId) && draggedIds.has(w.toNodeId))
-      .map((w) => ({
-        ...w,
-        id: `wire-${crypto.randomUUID()}`,
-        fromNodeId: originalToCopy.get(w.fromNodeId)!,
-        toNodeId: originalToCopy.get(w.toNodeId)!,
-      }));
-    duplicateCopyIdsRef.current = copies.map((c) => c.id);
-    duplicateDragRef.current = true;
-
-    // Originals back to start (coordinates only, via the command helper);
-    // copies in at their current positions.
-    if (copies.length > 0) {
-      setNodes((prev) => restoreNodesToStart(prev, start));
-      setNodes((prev) => [...prev, ...copies]);
-      setWires((prev) => [...prev, ...wireCopies]);
-    }
-
-    // Re-key the drag offsets to the copies (same cursor-relative offsets).
-    const offsets = new Map<string, { x: number; y: number }>();
-    for (const [id, off] of dragOffsetsRef.current) {
-      const copyId = originalToCopy.get(id);
-      if (copyId) offsets.set(copyId, off);
-    }
-    dragOffsetsRef.current = offsets;
-    beginDrag(new Set(duplicateCopyIdsRef.current));
-    document.body.style.cursor = 'copy';
-  }, [duplicateRefusal, addToast, l10n, setNodes, setWires, beginDrag]);
-
-  /** Escape mid-MOVE (Figma semantics): the dragged nodes snap back to
-   *  their pre-drag positions, the move's single history entry is popped
-   *  (undo would otherwise restore the same state — a no-op entry), and the
-   *  selection survives. Idempotent. */
-  const cancelNodeMove = useCallback(() => {
-    if (dragStartRef.current.size === 0) return;
-    const start = dragStartRef.current;
-    dragStartRef.current = new Map();
-    // Restore the captured COORDINATES only (command helper) — the snapshot
-    // is { x, y }, so a wholesale replacement would strip type/name/id and
-    // crash the render.
-    setNodes((prev) => restoreNodesToStart(prev, start));
-    if (dragHasMovedRef.current) {
-      setHistory((prev) => prev.slice(0, -1));
-    }
-    dragHasMovedRef.current = false;
-    cancelDrag();
-    dragOffsetsRef.current.clear();
-    setAlignmentGuide(null);
-    dragCleanupRef.current?.();
-  }, [setHistory, setNodes, cancelDrag]);
 
   // ── ADR #46 §5: restore-to-draft seed ──────────────────────────────
   // The hook owns one-shot seed identity; this callback owns the graph
@@ -2448,7 +2383,7 @@ export default function NodeTopologyEditor({
    *  preset swap), never for in-place edits, and never after the user has
    *  interacted (a click or key press hands the view to the user). */
   const autoFitKeyRef = useRef('');
-  const userInteractedRef = useRef(false);
+  // (userInteractedRef was hoisted above the pointer-hook call — 3.4c-2.)
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -2972,80 +2907,6 @@ export default function NodeTopologyEditor({
     }
     setConfirmDelete(null);
   }, [confirmDelete, confirmDeleteMany, selectedWireId, connectingFromNodeId, connectingFromPort, wires, pushHistory, deleteNodes, setWires, cancelConnection, clearWire]);
-
-
-  const {
-    handleCanvasMouseMove,
-    handleCanvasMouseUp,
-    handleCanvasMouseDown,
-    handleWheel,
-    handleContextMenu,
-    handleNodeMouseDown,
-    beginNodeDrag,
-    applyDragMove,
-    finalizeNodeDrag,
-  } = useTopologyEditorPointer({
-    pan,
-    zoom,
-    nodes,
-    connectingFromNodeId,
-    selectedNodeIds,
-    panToolActive,
-    canvasRef,
-    mousePosRef,
-    marqueeRef,
-    marqueeStartRef,
-    marqueeAdditiveRef,
-    marqueeCleanupRef,
-    panMovedRef,
-    panStartRef,
-    panCleanupRef,
-    isPanningRef,
-    spaceDownRef,
-    userInteractedRef,
-    setMarquee,
-    setPreviewCursor,
-    setHoveredTarget,
-    setContextMenu,
-    setPan,
-    setZoom,
-    setPanGestureActive,
-    // Node-drag trio inputs (slice 3.4c-1). Every ref below stays declared
-    // here: the duplicate cluster, cancelNodeMove, the touch loop and the
-    // unmount sweep all share this gesture state.
-    draggingNodeIdsRef,
-    selectedNodeIdsRef,
-    nodesRef,
-    wiresRef,
-    panRef,
-    zoomRef,
-    dragOffsetsRef,
-    dragStartRef,
-    dragHasMovedRef,
-    duplicateDragRef,
-    duplicateCopyIdsRef,
-    lastDragMovePosRef,
-    dragCleanupRef,
-    beginDrag,
-    endDrag,
-    commitDuplicateDrag,
-    pushHistory,
-    setNodes,
-    setWires,
-    setHistory,
-    setAlignmentGuide,
-    selectOnly,
-    addToSelection,
-    duplicateRefusal,
-    addToast,
-    l10n,
-    snapEnabled,
-    snap,
-    selectMany,
-    clearSelection,
-    clearWire,
-    dismissPicker,
-  });
 
   // Clear hoveredTarget when connection mode ends
   useEffect(() => {

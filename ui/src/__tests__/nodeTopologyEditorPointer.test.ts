@@ -11,7 +11,7 @@
  * rule is one-shot.
  *
  * Deps are passed by the exact names at the editor call site
- * (NodeTopologyEditor.tsx:3307) and wired to small in-memory stores, so the
+ * (NodeTopologyEditor.tsx:2009) and wired to small in-memory stores, so the
  * setters behave like real state: a SetStateAction updater is applied against
  * the value the previous write produced, and the stored value can be read
  * back for an identity check (hoveredTarget) rather than a call-count proxy.
@@ -21,7 +21,15 @@
  * Characterization, not TDD-red: every expectation was read off the behaviour
  * of the bodies at 7201d806f, which copied the inline originals byte-for-byte.
  * Types come through Parameters<typeof hook> so this file never imports the
- * 5.5k-line component, not even for a name.
+ * component, not even for a name.
+ *
+ * The `deps` literal below is exhaustive-typed against PointerDeps, which makes it a
+ * deliberate tripwire: any rename, addition or removal in TopologyPointerDeps fails
+ * typecheck HERE. Slice 3.4c-2 fired it as designed — commitDuplicateDrag left the dep
+ * surface (it became internal to the hook when the duplicate cluster moved in) and
+ * cancelDrag / duplicateHistoryPushedRef / l10nRef / setLiveAnnouncement / setRedo
+ * arrived with it. No assertion changed for that; the cluster's inert stubs simply
+ * moved with the dep shape.
  */
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -257,7 +265,11 @@ const setup = (
     dragCleanupRef,
     beginDrag: () => {},
     endDrag: () => {},
-    commitDuplicateDrag: () => {},
+    cancelDrag: () => {},
+    duplicateHistoryPushedRef: { current: false },
+    l10nRef: { current: l10n },
+    setLiveAnnouncement: () => {},
+    setRedo: () => {},
     pushHistory: () => {},
     setNodes: () => {},
     setWires: () => {},
