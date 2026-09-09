@@ -281,6 +281,7 @@ nav-locations = Locations
 nav-features = Features
 nav-data = Data
 nav-audit-log = Audit Log
+nav-security-trail = Security Trail
 nav-memos = Memos
 nav-offline-queue = Offline Queue
 nav-shifts = Shifts
@@ -402,6 +403,18 @@ audit-log-outcome-success = Success
 audit-log-outcome-failure = Failure
 audit-log-outcome-unknown = Unknown
 audit-log-table-label = Audit log entries
+# ── Security trail (audit baseline) ───────────────────────────────
+# The tenant-global half of the audit surface. Its labels live here beside the
+# store audit log's because that is where the action catalog resolves — see
+# auditCatalog.test.ts.
+security-trail-title = Security Trail
+security-trail-scope-note = Sign-ins, sign-outs, impersonation and staff account changes for every location in this organization.
+# Deliberately not reusing audit-log-empty-none: that sentence names sales and
+# voids, the store log's vocabulary, which is wrong for a trail of access events.
+security-trail-empty = No security events match these filters.
+audit-action-logout = Logged out
+audit-action-impersonate-start = Impersonation started
+audit-action-impersonate-stop = Impersonation stopped
 audit-log-search-placeholder = Search actions, targets, or users…
 audit-log-search-label = Search audit log
 audit-log-filter-label = Filter by outcome

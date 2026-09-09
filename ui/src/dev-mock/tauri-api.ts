@@ -4034,6 +4034,34 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     total: 2,
     has_more: false,
   }),
+  // The organization security trail: tenant-global authentications, so these
+  // entries name no store. Filtering is honored rather than ignored — the
+  // screen's outcome chips and search box are wired to the ARGS, and a mock that
+  // returns the same list regardless would preview a filter that does nothing
+  // while the real command filters server-side. That is the failure this file's
+  // own header warns about: a browser preview that passes while the IPC is wrong.
+  //
+  // Actions are the seven SECURITY_ACTION_* strings the backend emits, so every
+  // row here has a catalog label — including logout and impersonate.*, which are
+  // why the action catalog grew three entries alongside this screen.
+  'list_security_events_scoped': (args: unknown) => {
+    const a = (args as { args?: { outcome?: string; query?: string } } | undefined)?.args ?? {};
+    const securitySeed = [
+      { id: 'sec-1', user_id: 'admin-1', action: 'login', target_type: 'session', target_id: 'sess-1', details: 'PIN login', outcome: 'success', created_at: new Date(Date.now() - 90000).toISOString() },
+      { id: 'sec-2', user_id: 'cashier-1', action: 'login.failed', target_type: 'session', target_id: 'sess-2', details: 'Wrong PIN', outcome: 'failure', created_at: new Date(Date.now() - 120000).toISOString() },
+      { id: 'sec-3', user_id: 'admin-1', action: 'impersonate.start', target_type: 'user', target_id: 'cashier-1', details: 'Support session', outcome: 'success', created_at: new Date(Date.now() - 300000).toISOString() },
+      { id: 'sec-4', user_id: 'admin-1', action: 'impersonate.stop', target_type: 'user', target_id: 'cashier-1', details: 'Support session ended', outcome: 'success', created_at: new Date(Date.now() - 400000).toISOString() },
+      { id: 'sec-5', user_id: 'admin-1', action: 'user.update', target_type: 'user', target_id: 'cashier-1', details: 'Role changed', outcome: 'success', created_at: new Date(Date.now() - 500000).toISOString() },
+      { id: 'sec-6', user_id: 'cashier-1', action: 'logout', target_type: 'session', target_id: 'sess-2', details: 'Lock screen', outcome: 'success', created_at: new Date(Date.now() - 600000).toISOString() },
+    ];
+    const q = (a.query ?? '').toLowerCase();
+    const filtered = securitySeed.filter((e) => {
+      if (a.outcome && e.outcome !== a.outcome) return false;
+      if (!q) return true;
+      return (e.action + ' ' + e.user_id + ' ' + (e.target_id ?? '') + ' ' + e.details).toLowerCase().includes(q);
+    });
+    return { items: filtered, total: filtered.length, has_more: false };
+  },
   'get_audit_review_status_scoped': () => ({ checkpoint: null, unreviewed_count: 0 }),
   'mark_audit_reviewed_scoped': () => null,
   'export_audit_log_scoped': () => '',

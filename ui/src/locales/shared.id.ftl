@@ -251,6 +251,7 @@ nav-locations = Lokasi
 nav-features = Fitur
 nav-data = Data
 nav-audit-log = Log Audit
+nav-security-trail = Jejak Keamanan
 nav-memos = Memo
 nav-offline-queue = Antrian Offline
 nav-shifts = Shift
@@ -310,7 +311,18 @@ audit-log-export = Ekspor CSV
 audit-log-export-error = Ekspor gagal. Silakan coba lagi.
 audit-log-export-progress = Mengekspor log audit…
 audit-log-table-label = Entri log audit
+# ── Jejak keamanan (audit baseline) ───────────────────────────────
+# Setengah permukaan audit yang berlaku untuk seluruh tenant. Labelnya ditaruh
+# di sini, berdekatan dengan log audit toko, karena katalog aksi juga dibaca di
+# sana — lihat auditCatalog.test.ts.
+security-trail-title = Jejak Keamanan
+security-trail-scope-note = Masuk, keluar, impersonasi, dan perubahan akun staf di semua lokasi pada organisasi ini.
+security-trail-empty = Tidak ada peristiwa keamanan yang cocok dengan filter ini.
+audit-action-logout = Keluar dari sesi
+audit-action-impersonate-start = Impersonasi dimulai
+audit-action-impersonate-stop = Impersonasi dihentikan
 audit-log-search-placeholder = Cari tindakan, target, atau pengguna…
+
 audit-log-search-label = Cari log audit
 audit-log-filter-label = Saring berdasarkan hasil
 
