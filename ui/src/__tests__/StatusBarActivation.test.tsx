@@ -132,12 +132,10 @@ describe('StatusBar (activation screen unified status area)', () => {
     expect(mockAddToast).toHaveBeenCalledWith({ type: 'info', message: 'Retrying Auth…' });
   });
 
-  it('clicks sync icon to show toast with latency info', () => {
-    // Sync's probe loop lives in useSyncConnection, which has no manual
-    // trigger yet — its pill stays informational until that hook gains one.
+  it('clicks sync icon to re-probe now (saas-3 user-triggered retry)', () => {
     renderBar();
     fireEvent.click(screen.getByLabelText('Sync'));
-    expect(mockAddToast).toHaveBeenCalledWith({ type: 'info', message: 'Sync · 42ms' });
+    expect(mockAddToast).toHaveBeenCalledWith({ type: 'info', message: 'Retrying Sync…' });
   });
 
   // ── Color / tone classes ───────────────────────────────────────

@@ -138,4 +138,13 @@ describe('user-triggered retry (click = re-probe now)', () => {
     expect(mocks.retryNow).not.toHaveBeenCalled();
     expect(mockAddToast).toHaveBeenCalledTimes(1);
   });
+
+  it('clicking the sync pill re-probes immediately (wiring pinned)', () => {
+    renderBar();
+    fireEvent.click(screen.getByLabelText('Sync'));
+    expect(mocks.retryNow).toHaveBeenCalledTimes(1);
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('Retrying') }),
+    );
+  });
 });

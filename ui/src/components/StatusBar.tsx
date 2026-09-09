@@ -239,7 +239,8 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
         tone={syncTone}
         label={syncLabel}
         tooltip={syncTooltip}
-        onClick={() => notify(syncTooltip)}
+        hint={sync.state === 'checking' ? undefined : retryHint}
+        onClick={() => handleRetry(syncLabel, sync.state, syncTooltip, sync.retryNow)}
       />
       <StatusItem
         kind="card"
