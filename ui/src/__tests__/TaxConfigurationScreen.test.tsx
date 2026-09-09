@@ -151,6 +151,74 @@ describe('TaxConfigurationScreen', () => {
     // Modal should have the tax name input pre-filled
     const nameInput = within(dialog).getByDisplayValue('Sales Tax');
     expect(nameInput).toBeInTheDocument();
+    // F1: window + scope fields seeded from the joined DTO
+    expect(within(dialog).getByLabelText('Effective from')).toHaveValue('2026-01-01');
+    expect(within(dialog).getByLabelText('Legal entity id')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Location id')).toHaveValue('loc-1');
+  });
+
+  it('sends scope and window args through the scoped create command', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+
+    await userEvent.type(screen.getByLabelText('Tax Name'), 'Room Tax');
+    await userEvent.type(screen.getByLabelText('Rate (%)'), '500');
+    await userEvent.type(screen.getByLabelText('Location id'), 'loc-1');
+    await userEvent.type(screen.getByLabelText('Effective from'), '2026-10-01');
+    await userEvent.type(screen.getByLabelText('Effective to (exclusive)'), '2027-10-01');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('create_tax_rate_scoped', expect.objectContaining({
+        args: expect.objectContaining({
+          name: 'Room Tax',
+          rateBps: 500,
+          locationId: 'loc-1',
+          effectiveFrom: '2026-10-01',
+          effectiveTo: '2027-10-01',
+        }),
+      }));
+    });
+  });
+
+  it('warns when editing changes the rate tier', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    const salesTaxRow = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(salesTaxRow).getByRole('button', { name: /edit/i }));
+
+    const dialog = screen.getByRole('dialog');
+    // F1 debt: tier move silently empties the vacated tier — warn on change.
+    expect(within(dialog).queryByText(/leaves the vacated tier/i)).toBeNull();
+
+    await userEvent.type(within(dialog).getByLabelText('Location id'), '-2');
+    expect(within(dialog).getByText(/leaves the vacated tier/i)).toBeInTheDocument();
+  });
+
+  it('offers the replacement path when the delete guard refuses', async () => {
+    // A3 guard: delete_tax_rate refuses with Validation when the rate is the
+    // last row covering a live tier; the refusal dialog offers the remedy.
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    const salesTaxRow = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(salesTaxRow).getByRole('button', { name: /delete/i }));
+    const confirm = await screen.findByRole('dialog', { name: /delete sales tax/i });
+    // Queue the rejection only for the delete call — the initial list/counts
+    // calls must still resolve for the screen to render.
+    invokeMock.mockRejectedValueOnce({
+      kind: 'invalid',
+      message: 'location loc-1 needs a replacement rate first',
+    });
+    await userEvent.click(within(confirm).getByRole('button', { name: /delete/i }));
+
+    // The refusal dialog names the rate and offers the remedy path.
+    const refusal = await screen.findByRole('dialog', { name: /cannot delete sales tax/i });
+    expect(within(refusal).getByText(/last rate covering its tier/i)).toBeInTheDocument();
+    await userEvent.click(within(refusal).getByRole('button', { name: /create replacement/i }));
+
+    // Remedy: the create modal opens for the replacement authoring.
+    expect(await screen.findByText(/tax name/i)).toBeInTheDocument();
   });
 
   it('deletes a tax rate after confirming the destructive dialog', async () => {

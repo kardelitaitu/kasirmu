@@ -20,6 +20,7 @@ import { Badge } from '@/components/Badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/Skeleton';
 import { SettingsPopup, requiredLocalized } from '@/frontend/shared';
+import { parseAppError } from '@/utils/app-error';
 import './TaxConfigurationScreen.css';
 
 /** Maximum supported rate in basis points — mirrored from the backend (TAX-04). */
@@ -30,6 +31,14 @@ interface TaxFormData {
   rateBps: string;
   isDefault: boolean;
   isInclusive: boolean;
+  // F1: scope + window authoring. Empty scope ids = the tenant-global tier;
+  // the two arms are mutually exclusive (both set is refused with a typed
+  // validation error, so the UI clears its counterpart on input).
+  legalEntityId: string;
+  locationId: string;
+  // Strict YYYY-MM-DD; exclusive end. Empty = unbounded on that arm.
+  effectiveFrom: string;
+  effectiveTo: string;
 }
 
 const EMPTY_TAX_FORM: TaxFormData = {
@@ -37,6 +46,10 @@ const EMPTY_TAX_FORM: TaxFormData = {
   rateBps: '',
   isDefault: false,
   isInclusive: false,
+  legalEntityId: '',
+  locationId: '',
+  effectiveFrom: '',
+  effectiveTo: '',
 };
 
 /** Tax configuration screen — CRUD for tax rates, inclusive/exclusive toggle, and per-category tax rate assignment. */
@@ -64,6 +77,12 @@ export default function TaxConfigurationScreen() {
   const [loadingDeleteCounts, setLoadingDeleteCounts] = useState(false);
   // Guards against a stale counts response if the user switches rate mid-flight.
   const pendingDeleteIdRef = useRef<string | null>(null);
+  // F1: the tier the edit dialog opened with, so a changed tier can warn —
+  // the backend move leaves the vacated tier without a default silently.
+  const originalScopeRef = useRef<{ legalEntityId: string; locationId: string } | null>(null);
+  // F1: the delete guard refused (the tier's last covering row). The dialog
+  // offers the replacement path the backend's remedy text prescribes.
+  const [deleteRefusal, setDeleteRefusal] = useState(false);
 
   // Refs for the Inclusive/Exclusive radio options so arrow-key navigation can
   // move focus to the newly-selected option (roving tabindex, WAI-ARIA radio).
@@ -127,6 +146,7 @@ export default function TaxConfigurationScreen() {
   const openCreate = useCallback(() => {
     setForm(EMPTY_TAX_FORM);
     setEditingId(null);
+    originalScopeRef.current = null;
     setShowModal(true);
   }, []);
 
@@ -136,7 +156,15 @@ export default function TaxConfigurationScreen() {
       rateBps: String(r.rate_bps),
       isDefault: r.is_default,
       isInclusive: r.is_inclusive,
+      legalEntityId: r.scope?.scope === 'legal_entity' ? (r.scope?.legalEntityId ?? '') : '',
+      locationId: r.scope?.scope === 'location' ? (r.scope?.locationId ?? '') : '',
+      effectiveFrom: r.window?.effectiveFrom ?? '',
+      effectiveTo: r.window?.effectiveTo ?? '',
     });
+    originalScopeRef.current = {
+      legalEntityId: r.scope?.scope === 'legal_entity' ? (r.scope?.legalEntityId ?? '') : '',
+      locationId: r.scope?.scope === 'location' ? (r.scope?.locationId ?? '') : '',
+    };
     setEditingId(r.id);
     setShowModal(true);
   }, []);
@@ -156,12 +184,29 @@ export default function TaxConfigurationScreen() {
         return;
       }
 
+      // Scope + window are additive and optional: omitting every scope arm
+      // writes the tenant-global tier, omitting a date arm leaves it unbounded.
       const args = {
         name: form.name.trim(),
         rateBps,
         isDefault: form.isDefault,
         isInclusive: form.isInclusive,
+        ...(form.legalEntityId.trim() ? { legalEntityId: form.legalEntityId.trim() } : {}),
+        ...(form.locationId.trim() ? { locationId: form.locationId.trim() } : {}),
+        ...(form.effectiveFrom ? { effectiveFrom: form.effectiveFrom } : {}),
+        ...(form.effectiveTo ? { effectiveTo: form.effectiveTo } : {}),
       };
+      // F1 debt: moving a rate between tiers empties the vacated tier's
+      // default silently — warn before the write, not after the damage.
+      if (
+        editingId &&
+        originalScopeRef.current &&
+        (originalScopeRef.current.legalEntityId !== (form.legalEntityId.trim() || '') ||
+          originalScopeRef.current.locationId !== (form.locationId.trim() || ''))
+      ) {
+        const proceed = window.confirm(requiredLocalized(l10n, 'tax-config-tier-change-warning'));
+        if (!proceed) return;
+      }
       if (editingId) {
         await updateTaxRateScoped(sessionToken, { id: editingId, ...args });
       } else {
@@ -215,16 +260,33 @@ export default function TaxConfigurationScreen() {
       setLoadingDeleteCounts(false);
       pendingDeleteIdRef.current = null;
       await loadAll();
-    } catch {
-      addToast({ message: requiredLocalized(l10n, 'tax-config-delete-error'), type: 'error' });
-      setPendingDelete(null);
-      setPendingDeleteCounts(null);
-      setLoadingDeleteCounts(false);
-      pendingDeleteIdRef.current = null;
+    } catch (err) {
+      // F1 debt: the delete guard refuses when the rate is the last row
+      // covering a live tier — the backend's remedy is "author a replacement
+      // first", so the dialog offers exactly that path instead of a toast.
+      if (parseAppError(err)?.kind === 'invalid') {
+        setDeleteRefusal(true);
+      } else {
+        addToast({ message: requiredLocalized(l10n, 'tax-config-delete-error'), type: 'error' });
+        setPendingDelete(null);
+        setPendingDeleteCounts(null);
+        setLoadingDeleteCounts(false);
+        pendingDeleteIdRef.current = null;
+      }
     } finally {
       setDeleting(null);
     }
   }, [pendingDelete, sessionToken, loadAll, l10n, addToast]);
+
+  // F1: leave the refusal, open the create dialog for the replacement rate.
+  const replaceAfterRefusal = useCallback(() => {
+    setDeleteRefusal(false);
+    setPendingDelete(null);
+    setPendingDeleteCounts(null);
+    setLoadingDeleteCounts(false);
+    pendingDeleteIdRef.current = null;
+    openCreate();
+  }, [openCreate]);
 
   // ── Category tax rates ──────────────────────────────────────────
 
@@ -609,6 +671,85 @@ export default function TaxConfigurationScreen() {
           />
           {l10n.getString('tax-config-set-default')}
         </label>
+
+        {/* F1: scope + validity window (both optional — omit = global tier / unbounded) */}
+        <div className="tax-config-field tax-config-field--horizontal">
+          {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- @fluent/react Localized wrapper */}
+          <label htmlFor="tax-field-legal-entity" className="tax-config-label">
+            <Localized id="tax-config-field-legal-entity">
+              <span>Legal entity id</span>
+            </Localized>
+          </label>
+          <input
+            className="tax-config-input"
+            type="text"
+            id="tax-field-legal-entity"
+            value={form.legalEntityId}
+            onChange={(e) => setForm((prev) => ({ ...prev, legalEntityId: e.target.value, locationId: '' }))}
+            placeholder={l10n.getString('tax-config-field-legal-entity-placeholder')}
+          />
+        </div>
+        <div className="tax-config-field tax-config-field--horizontal">
+          {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- @fluent/react Localized wrapper */}
+          <label htmlFor="tax-field-location" className="tax-config-label">
+            <Localized id="tax-config-field-location">
+              <span>Location id</span>
+            </Localized>
+          </label>
+          <input
+            className="tax-config-input"
+            type="text"
+            id="tax-field-location"
+            value={form.locationId}
+            onChange={(e) => setForm((prev) => ({ ...prev, locationId: e.target.value, legalEntityId: '' }))}
+            placeholder={l10n.getString('tax-config-field-location-placeholder')}
+          />
+          <Localized id="tax-config-scope-hint">
+            <span className="tax-config-hint">Fill one scope arm — or neither for the tenant-global tier.</span>
+          </Localized>
+        </div>
+        <div className="tax-config-field tax-config-field--horizontal">
+          {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- @fluent/react Localized wrapper */}
+          <label htmlFor="tax-field-from" className="tax-config-label">
+            <Localized id="tax-config-field-from">
+              <span>Effective from</span>
+            </Localized>
+          </label>
+          <input
+            className="tax-config-input"
+            type="date"
+            id="tax-field-from"
+            value={form.effectiveFrom}
+            onChange={(e) => setForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))}
+          />
+        </div>
+        <div className="tax-config-field tax-config-field--horizontal">
+          {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- @fluent/react Localized wrapper */}
+          <label htmlFor="tax-field-to" className="tax-config-label">
+            <Localized id="tax-config-field-to">
+              <span>Effective to (exclusive)</span>
+            </Localized>
+          </label>
+          <input
+            className="tax-config-input"
+            type="date"
+            id="tax-field-to"
+            value={form.effectiveTo}
+            onChange={(e) => setForm((prev) => ({ ...prev, effectiveTo: e.target.value }))}
+          />
+        </div>
+        {editingId !== null && originalScopeRef.current !== null && (
+          <p className="tax-config-tier-warning" role="alert">
+            {(() => {
+              const nowE = form.legalEntityId.trim();
+              const nowL = form.locationId.trim();
+              const wasE = originalScopeRef.current.legalEntityId;
+              const wasL = originalScopeRef.current.locationId;
+              if (nowE === wasE && nowL === wasL) return null;
+              return l10n.getString('tax-config-tier-change-warning');
+            })()}
+          </p>
+        )}
       </SettingsPopup>
 
       {/* ── Delete confirmation (TAX-03/07) ──────────────────────── */}
@@ -654,6 +795,24 @@ export default function TaxConfigurationScreen() {
         loading={deleting !== null}
         disabled={(pendingDeleteCounts?.sale_lines ?? 0) > 0}
         confirmLabel={l10n.getString('tax-config-btn-delete')}
+        cancelLabel={l10n.getString('tax-config-btn-cancel')}
+      />
+
+      {/* ── Delete refusal (F1: last-covering-row guard remedy) ──── */}
+      <ConfirmDialog
+        open={deleteRefusal && pendingDelete !== null}
+        onCancel={() => {
+          setDeleteRefusal(false);
+          setPendingDelete(null);
+          setPendingDeleteCounts(null);
+          setLoadingDeleteCounts(false);
+          pendingDeleteIdRef.current = null;
+        }}
+        onConfirm={replaceAfterRefusal}
+        title={l10n.getString('tax-config-delete-refusal-title', { name: pendingDelete?.name ?? '' })}
+        message={l10n.getString('tax-config-delete-refusal-message', { name: pendingDelete?.name ?? '' })}
+        variant="warning"
+        confirmLabel={l10n.getString('tax-config-delete-refusal-replace')}
         cancelLabel={l10n.getString('tax-config-btn-cancel')}
       />
 

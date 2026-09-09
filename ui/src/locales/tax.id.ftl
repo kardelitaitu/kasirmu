@@ -66,6 +66,19 @@ tax-config-delete-deps-products = { $count ->
 tax-config-scope-location = Lokasi · { $id }
 tax-config-scope-legal-entity = Badan hukum · { $id }
 tax-config-scope-global = Global
+# F1: penulisan cakupan + jangka waktu berlaku
+tax-config-field-legal-entity = Id badan hukum
+tax-config-field-legal-entity-placeholder = mis. default:default-legal-entity
+tax-config-field-location = Id lokasi
+tax-config-field-location-placeholder = mis. default
+tax-config-scope-hint = Isi satu bidang cakupan — atau kosongkan keduanya untuk tier global tenant.
+tax-config-field-from = Berlaku mulai
+tax-config-field-to = Berlaku sampai (eksklusif)
+tax-config-tier-change-warning = Memindahkan tarif ini ke tier lain membuat tier yang ditinggalkan tanpa tarif default — buat penggantinya di sana terlebih dahulu.
+# F1: dialog penolakan hapus (penjaga baris-penutup-terakhir)
+tax-config-delete-refusal-title = Tidak dapat menghapus { $name }
+tax-config-delete-refusal-message = “{ $name }” adalah tarif terakhir yang menutup tier-nya — menghapusnya membuat tier itu tanpa pajak. Buat tarif pengganti dengan cakupan yang sama terlebih dahulu, lalu hapus.
+tax-config-delete-refusal-replace = Buat pengganti
 tax-config-delete-deps-categories = { $count ->
     [one] 1 penugasan kategori
    *[other] { $count } penugasan kategori

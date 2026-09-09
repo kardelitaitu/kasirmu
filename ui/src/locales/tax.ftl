@@ -68,6 +68,19 @@ tax-config-delete-deps-products = { $count ->
 tax-config-scope-location = Location · { $id }
 tax-config-scope-legal-entity = Legal entity · { $id }
 tax-config-scope-global = Global
+# F1: scope + validity-window authoring
+tax-config-field-legal-entity = Legal entity id
+tax-config-field-legal-entity-placeholder = e.g. default:default-legal-entity
+tax-config-field-location = Location id
+tax-config-field-location-placeholder = e.g. default
+tax-config-scope-hint = Fill one scope arm — or neither for the tenant-global tier.
+tax-config-field-from = Effective from
+tax-config-field-to = Effective to (exclusive)
+tax-config-tier-change-warning = Moving this rate to another tier leaves the vacated tier without a default — author a replacement there first.
+# F1: delete-refusal remedy dialog (last-covering-row guard)
+tax-config-delete-refusal-title = Cannot delete { $name }
+tax-config-delete-refusal-message = “{ $name }” is the last rate covering its tier — deleting it would leave that tier without tax. Author a replacement covering the same scope first, then delete.
+tax-config-delete-refusal-replace = Create replacement
 tax-config-delete-deps-categories = { $count ->
     [one] 1 category assignment
    *[other] { $count } category assignments
