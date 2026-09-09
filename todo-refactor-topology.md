@@ -658,3 +658,18 @@ Six tests (c6d626f20, +152, single test file) pin the touch contract that 3.4e's
 - **Next:** G13-a+b templates/import-export (anchors re-pinned; l10nRef read inside two template handlers is the deps-design input), then G18 menus LAST.
 
 
+### 2026-09-09 — Slice G13-a+b: import/export + template handlers extracted
+
+- **Responsibility boundary:** handleExport (clipboard-JSON envelope), handleImport (canvas replacement under one undo entry), and the template quartet (save/load/delete/openTemplates) move into useTopologyEditorIo (NEW nodeTopologyEditorIo.ts, deps 11, returns 6). The four popover state slots stay PARENT-owned by construction (pushHistory TDZ pins the hook below :1312; the state's only consumers are TopologyHeader props — G4-a precedent); the setters cross as stable deps.
+- **Files:** NodeTopologyEditor.tsx (3,387 -> 3,329); nodeTopologyEditorIo.ts NEW. ui-coder-53-journal.md carries the dated record. Provenance: manager-as-executor (delegation infrastructure unavailable — see G13-c note).
+- **Public imports/re-exports:** unchanged. All six topologyExport symbols leave the editor's import block (sole consumers moved). TopologyHeader props identical.
+- **Byte-identity proof:** 75-line span (1365-1439) excised by scripted splice with boundary assertions; all 70 non-blank lines verbatim in the hook (0 missing). The splice script refused to write on two boundary re-pins before the correct one (1368->1367->1365) and on an over-broad uniqueness guard — every refusal was a guard firing, not a silent write.
+- **Accepted deviation:** dep arrays gain l10nRef (stable ref) + the four popover setters (React-guaranteed dispatches); openTemplates' [] gains its two setters. Identity churn unchanged; +6 disables rejected (ratchet). Documented in the hook header.
+- **Deps interface:** real TopologyNodeData/TopologyWireData via type-only import from './NodeTopologyEditor' (keyboard pattern; no runtime cycle). A structural-stand-in draft was rejected before verification (index-signature mismatch under strict mode).
+- **Focused tests:** post-splice 564/1/0 across editor + Inspector + memo — identical to the G13-c post-slice baseline, ZERO test edits. Protection recorded pre-extraction per the Phase-0 rule: the "topology export / import / templates (clipboard + localStorage)" describe (NodeTopologyEditor.test.tsx:10447, 4 tests).
+- **Typecheck:** exit 0 tree-wide. **ESLint:** 0 errors; io hook 0 warnings; editor warnings unchanged (pre-existing react-refresh block, 9).
+- **Rollback point:** revert 0b2d86e72 alone.
+- **Next:** G18 context menus LAST (scout-14 flagged the pointer setContextMenu coupling — recon before extraction), then the unmount-sweep eslint-disable retirement and Phase 5.
+
+
+
