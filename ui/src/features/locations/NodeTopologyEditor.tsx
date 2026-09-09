@@ -1580,10 +1580,37 @@ export default function NodeTopologyEditor({
     (document.querySelector(`.topology-node[data-node-id="${nodeId}"]`) as HTMLElement | null)?.focus();
   }, [renamingNodeId]);
 
-  const startNodeRename = useCallback((nodeId: string, currentName: string) => {
+  /** Rename-capability mirrors for the type gate inside startNodeRename.
+   *  The gate only reads PRESENCE of the two optional props, and they cannot
+   *  be useCallback deps without churning the callback identity — every
+   *  memoized node card receives startNodeRename as a prop, so a prop-side
+   *  re-render would defeat the React.memo contract (same stale-closure
+   *  reason as nodesRef / panRef above). */
+  const canRenameBranchRef = useRef(!!onRenameBranch);
+  canRenameBranchRef.current = !!onRenameBranch;
+  const canRenameWorkspaceRef = useRef(!!onRenameWorkspace);
+  canRenameWorkspaceRef.current = !!onRenameWorkspace;
+
+  /** The single entry point into inline node rename: the F2 keyboard branch,
+   *  the card pencil + double-click, and the context-menu Rename item all
+   *  arrive here. Resolves the node from the live canvas mirror and applies
+   *  the renameable type gate (a Branch Location needs onRenameBranch, a
+   *  Workspace needs onRenameWorkspace), then silently no-ops when the node
+   *  is gone or its type has no rename handler — which is exactly what F2 on
+   *  a Warehouse always did, and why the card/menu hide the control.
+   *  Callers still pass a second `currentName` argument (the card and
+   *  context-menu prop signatures are `(nodeId, currentName)`, untouched in
+   *  their own files); it is ignored by design — the name is re-read from the
+   *  same array their `node` prop came from. Deps stay empty: the callback is
+   *  referentially stable, so the memoized cards never re-render for it. */
+  const startNodeRename = useCallback((nodeId: string) => {
+    const node = nodesRef.current.find((n) => n.id === nodeId);
+    if (!node) return;
+    if (!((node.type === 'store' && canRenameBranchRef.current)
+      || (node.type === 'workspace' && canRenameWorkspaceRef.current))) return;
     renameCancelledRef.current = false;
     renameFocusReturnRef.current = null;
-    setRenameDraft(currentName);
+    setRenameDraft(node.name);
     setRenamingNodeId(nodeId);
   }, []);
 
@@ -2737,15 +2764,12 @@ export default function NodeTopologyEditor({
       // The typing guard above already keeps F2 inert inside text fields.
       if (e.key === 'F2' && selectedNodeIds.size === 1) {
         e.preventDefault();
-        const nodeId = [...selectedNodeIds][0]!;
-        const node = nodes.find((n) => n.id === nodeId);
-        if (node
-          && ((node.type === 'store' && !!onRenameBranch) || (node.type === 'workspace' && !!onRenameWorkspace))) {
-          renameCancelledRef.current = false;
-          renameFocusReturnRef.current = null;
-          setRenameDraft(node.name);
-          setRenamingNodeId(nodeId);
-        }
+        // The renameable type gate and the node lookup now live in
+        // startNodeRename, shared with the card and context-menu entry points
+        // (slice R2). preventDefault keeps its old unconditional placement —
+        // F2 is swallowed for a single selection even when the node is not
+        // renameable, which is what the browser-inert behavior was before.
+        startNodeRename([...selectedNodeIds][0]!);
         return;
       }
       if (selectedNodeIds.size > 0 && !e.repeat && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -2864,7 +2888,7 @@ export default function NodeTopologyEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedNodeIds, selectedWireId, wires, pushHistory, popUndo, popRedo, confirmDelete, confirmDeleteMany, pan, zoom, deleteNodes, relationshipPicker, cancelRelationshipPicker, selectAllNodes, duplicateSelection, copySelection, pasteClipboard, nodes, onRenameBranch, onRenameWorkspace, zoomToFit, zoomBy, resetView, snapEnabled, cancelDuplicateDrag, cancelNodeMove, convertDragToDuplicate, cancelBendDrag, finderOpen, clearSelection, setNodes, migrationOpen, cancelConnection, cancelMarquee, clearAll]);
+  }, [selectedNodeIds, selectedWireId, wires, pushHistory, popUndo, popRedo, confirmDelete, confirmDeleteMany, pan, zoom, deleteNodes, relationshipPicker, cancelRelationshipPicker, selectAllNodes, duplicateSelection, copySelection, pasteClipboard, nodes, startNodeRename, zoomToFit, zoomBy, resetView, snapEnabled, cancelDuplicateDrag, cancelNodeMove, convertDragToDuplicate, cancelBendDrag, finderOpen, clearSelection, setNodes, migrationOpen, cancelConnection, cancelMarquee, clearAll]);
 
   const executeDelete = useCallback(() => {
     if (confirmDeleteMany) {
