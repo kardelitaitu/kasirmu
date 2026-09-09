@@ -11,9 +11,11 @@
 //! snap).
 //!
 //! Nothing about that behavior changed. The effect is a VERBATIM line-slice of
-//! the inline original — same body, same comments, same 34-name dependency
-//! array — so the listener is torn down and re-armed on exactly the renders it
-//! was before, and the preserved guards stay preserved: the
+//! the inline original — same body, same comments — and its dependency array
+//! lists every identity the rule demands: the original 34 plus the stable
+//! refs/setters, the isBranchLocation primitive and the module constants, so
+//! re-arm parity is preserved (the primitive flag adds a re-arm only when it
+//! itself flips), and the preserved guards stay preserved: the
 //! `.topology-apply-confirm-overlay` closest() shield (an open Apply dialog must
 //! never be shortcut from the canvas) and the F2 form
 //! `startNodeRename([...selectedNodeIds][0]!)`, which is the slice R2 dedupe
@@ -580,9 +582,10 @@ export function useTopologyEditorKeyboard(deps: TopologyKeyboardDeps): void {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-    // The array below is the inline original's, byte-for-byte (34 names, same order). Everything
-    // else the body reads — the gesture refs, the parent state setters, isBranchLocation, and the
-    // GRID_SIZE / NUDGE_COALESCE_MS / snap module constants — arrives through the deps object.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [selectedNodeIds, selectedWireId, wires, pushHistory, popUndo, popRedo, confirmDelete, confirmDeleteMany, pan, zoom, deleteNodes, relationshipPicker, cancelRelationshipPicker, selectAllNodes, duplicateSelection, copySelection, pasteClipboard, nodes, startNodeRename, zoomToFit, zoomBy, resetView, snapEnabled, cancelDuplicateDrag, cancelNodeMove, convertDragToDuplicate, cancelBendDrag, finderOpen, clearSelection, setNodes, migrationOpen, cancelConnection, cancelMarquee, clearAll]);
+    // The array below lists every identity the body reads, transcribed from the
+    // rule's own report: the stable gesture/parent refs, the parent state setters,
+    // isBranchLocation (a boolean, value-compared) and the GRID_SIZE /
+    // NUDGE_COALESCE_MS / snap module constants (module-stable). All are stable or
+    // primitive, so re-arm parity with the inline original is unchanged.
+  }, [selectedNodeIds, selectedWireId, wires, pushHistory, popUndo, popRedo, confirmDelete, confirmDeleteMany, pan, zoom, deleteNodes, relationshipPicker, cancelRelationshipPicker, selectAllNodes, duplicateSelection, copySelection, pasteClipboard, nodes, startNodeRename, zoomToFit, zoomBy, resetView, snapEnabled, cancelDuplicateDrag, cancelNodeMove, convertDragToDuplicate, cancelBendDrag, finderOpen, clearSelection, setNodes, migrationOpen, cancelConnection, cancelMarquee, clearAll, GRID_SIZE, NUDGE_COALESCE_MS, bendDragRef, canvasRef, dragHasMovedRef, dragStartRef, duplicateDragRef, handleAddNodeRef, isBranchLocation, marqueeStartRef, migrationDismissedRef, nudgeSessionRef, setAlignmentGuide, setConfirmDelete, setConfirmDeleteMany, setFinderOpen, setMigrationOpen, snap, userInteractedRef]);
 }
