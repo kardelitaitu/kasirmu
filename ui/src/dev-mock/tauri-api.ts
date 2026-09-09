@@ -654,6 +654,83 @@ function deleteMockTaxRate(args: unknown): null {
   return null;
 }
 
+// -- Mock statutory number series (W2-B: management half of the landed
+//    fiscal core; claim_statutory_number_for_sale stays internal) ------
+
+interface MockDocSequence {
+  id: string;
+  legalEntityId: string;
+  documentKind: string;
+  prefix: string;
+  currentValue: number;
+  resetPeriod: string;
+  periodKey: string;
+  padding: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const mockDocSequences = new Map<string, MockDocSequence>();
+let mockDocSeq = 0;
+const MOCK_RESET_PERIODS = ["never", "daily", "monthly", "yearly"];
+
+function mockDocKey(legalEntityId: string, documentKind: string): string {
+  return legalEntityId + "|" + documentKind;
+}
+
+/** Read one series (null when the pair is unconfigured — the honest "no
+ *  statutory numbering" answer). */
+function getMockDocumentNumberSequence(args: unknown): MockDocSequence | null {
+  const a = unwrapArgs<{ legalEntityId?: string; documentKind?: string }>(args);
+  return mockDocSequences.get(mockDocKey(a.legalEntityId ?? "", a.documentKind ?? "")) ?? null;
+}
+
+/** Upsert one series: validates reset period + padding like the core, and
+ *  NEVER touches current_value on reconfiguration (a statutory series
+ *  must not gap). */
+function upsertMockDocumentNumberSequence(args: unknown): null {
+  const a = unwrapArgs<{
+    legalEntityId?: string;
+    documentKind?: string;
+    prefix?: string;
+    resetPeriod?: string;
+    padding?: number;
+  }>(args);
+  const entity = a.legalEntityId ?? "";
+  const kind = a.documentKind ?? "";
+  const resetPeriod = a.resetPeriod ?? "";
+  if (!MOCK_RESET_PERIODS.includes(resetPeriod)) {
+    throw new Error("reset_period must be never, daily, monthly or yearly; got " + resetPeriod);
+  }
+  if ((a.padding ?? 0) < 0) {
+    throw new Error("padding must not be negative, got " + (a.padding ?? 0));
+  }
+  const key = mockDocKey(entity, kind);
+  const existing = mockDocSequences.get(key);
+  if (existing != null) {
+    existing.prefix = a.prefix ?? "";
+    existing.resetPeriod = resetPeriod;
+    existing.padding = a.padding ?? 0;
+    existing.updatedAt = new Date().toISOString();
+    return null;
+  }
+  mockDocSeq += 1;
+  const now = new Date().toISOString();
+  mockDocSequences.set(key, {
+    id: "doc-seq-" + mockDocSeq,
+    legalEntityId: entity,
+    documentKind: kind,
+    prefix: a.prefix ?? "",
+    currentValue: 0,
+    resetPeriod,
+    periodKey: resetPeriod === "never" ? "" : now.slice(0, 7),
+    padding: a.padding ?? 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return null;
+}
+
 /** Make a location primary and persist the choice in the mock list. */
 function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
   const { id } = unwrapArgs<{ id?: string }>(args);
@@ -4425,6 +4502,8 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'create_tax_rate_scoped': createMockTaxRate,
   'update_tax_rate_scoped': updateMockTaxRate,
   'delete_tax_rate_scoped': deleteMockTaxRate,
+  'get_document_number_sequence_scoped': getMockDocumentNumberSequence,
+  'upsert_document_number_sequence_scoped': upsertMockDocumentNumberSequence,
   'get_tax_rate_dependency_counts_scoped': () => ({ products: 0, categories: 0, sale_lines: 0 }),
   'list_category_tax_rates_scoped': () => [],
   'set_category_tax_rates_scoped': () => null,

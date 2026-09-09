@@ -35,6 +35,8 @@ pub mod email;
 pub mod exchange_rates;
 /// Feature-flag commands.
 pub mod features;
+/// Fiscal scheme + statutory numbering commands.
+pub mod fiscal;
 /// Gift-card management commands.
 pub mod gift_cards;
 /// Hardware / peripheral commands.

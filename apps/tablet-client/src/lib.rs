@@ -731,6 +731,8 @@ pub fn run() {
                 commands::scale::read_scale_weight_scoped,
                 commands::settings::get_credit_settings_scoped,
                 commands::settings::get_hardware_settings_scoped,
+                commands::fiscal::get_document_number_sequence_scoped,
+                commands::fiscal::upsert_document_number_sequence_scoped,
                 commands::settings::get_receipt_settings_scoped,
                 commands::settings::get_setting_scoped,
                 commands::settings::get_store_settings_scoped,

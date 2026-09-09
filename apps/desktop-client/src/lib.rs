@@ -969,6 +969,8 @@ pub fn run() {
             commands::history::export_eod_report_scoped,
             commands::void::void_sale_scoped,
             commands::hardware::print_sales_receipt_scoped,
+            commands::fiscal::get_document_number_sequence_scoped,
+            commands::fiscal::upsert_document_number_sequence_scoped,
             commands::settings::get_receipt_settings_scoped,
             commands::settings::set_receipt_settings_scoped,
             commands::settings::get_store_settings_scoped,
