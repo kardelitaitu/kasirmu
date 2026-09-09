@@ -12,23 +12,77 @@ export interface TaxRateDto {
   display_rate: string;
   created_at: string;
   updated_at: string;
+  /** The rate's authoring scope (Option B side-channel join — the
+   *  backend composes it from list_tax_rate_scopes, it is not stored on
+   *  the core struct). null when the active row has no scope entry. */
+  scope: TaxRateScope | null;
+  /** The rate's validity window, joined the same way. */
+  window: TaxRateWindow | null;
 }
 
-/** Arguments for creating a new tax rate. */
+/** The authoring scope of a tax-rate row. Mirrors the backend's
+ *  TaxRateScopeDto (camelCase wire). */
+export interface TaxRateScope {
+  /** "global" | "legal_entity" | "location". */
+  scope: string;
+  /** The owning legal entity, for entity-scoped rows. */
+  legalEntityId: string | null;
+  /** The owning location, for location-scoped rows. */
+  locationId: string | null;
+}
+
+/** The validity window of a tax-rate row. Mirrors the backend's
+ *  TaxRateWindowDto (camelCase wire). */
+export interface TaxRateWindow {
+  /** Inclusive first business date, "YYYY-MM-DD". null = no lower bound. */
+  effectiveFrom: string | null;
+  /** EXCLUSIVE last business date, "YYYY-MM-DD". null = never expires. */
+  effectiveTo: string | null;
+}
+
+/** Arguments for creating a new tax rate.
+ *
+ *  Scope/window fields are OPTIONAL and mutually exclusive:
+ *  legalEntityId XOR locationId (sending both is refused with a typed
+ *  validation error); omitting every scope/window field keeps the legacy
+ *  tenant-global write. Dates are strict "YYYY-MM-DD"; the exclusive end
+ *  must be after the start. */
 export interface CreateTaxRateArgs {
   name: string;
   rateBps: number;
   isDefault: boolean;
   isInclusive: boolean;
+  /** Scope the rate to this legal entity (mutually exclusive with
+   *  locationId; omit both for the tenant-global arm). */
+  legalEntityId?: string;
+  /** Scope the rate to this location (mutually exclusive with
+   *  legalEntityId). */
+  locationId?: string;
+  /** Inclusive first business date, "YYYY-MM-DD". undefined = no bound. */
+  effectiveFrom?: string;
+  /** EXCLUSIVE last business date, "YYYY-MM-DD". undefined = never
+   *  expires. */
+  effectiveTo?: string;
 }
 
-/** Arguments for updating an existing tax rate. */
+/** Arguments for updating an existing tax rate. Optional scope/window
+ *  fields follow the same routing rule as {@link CreateTaxRateArgs}.
+ *  NOTE: moving a rate between tiers silently empties the vacated tier's
+ *  default — the configuration UI must warn before saving. */
 export interface UpdateTaxRateArgs {
   id: string;
   name: string;
   rateBps: number;
   isDefault: boolean;
   isInclusive: boolean;
+  /** New legal-entity scope (mutually exclusive with locationId). */
+  legalEntityId?: string;
+  /** New location scope (mutually exclusive with legalEntityId). */
+  locationId?: string;
+  /** New inclusive first business date, "YYYY-MM-DD". */
+  effectiveFrom?: string;
+  /** New exclusive last business date, "YYYY-MM-DD". */
+  effectiveTo?: string;
 }
 
 /** A product category and its assigned tax rate identifiers. */

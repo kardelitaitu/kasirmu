@@ -506,6 +506,154 @@ function setMockLocationTicketPrefix(args: unknown): string | null {
   return normalized || null;
 }
 
+// -- Mock tax rates (B1 contract: session-local, scope/window echo) ----
+
+interface MockTaxScope {
+  scope: string;
+  legalEntityId: string | null;
+  locationId: string | null;
+}
+
+interface MockTaxWindow {
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+}
+
+interface MockTaxRate {
+  id: string;
+  name: string;
+  rate_bps: number;
+  is_default: boolean;
+  is_inclusive: boolean;
+  display_rate: string;
+  created_at: string;
+  updated_at: string;
+  scope: MockTaxScope | null;
+  window: MockTaxWindow | null;
+}
+
+let mockTaxRates: MockTaxRate[] = [];
+let mockTaxSeq = 0;
+
+const GLOBAL_MOCK_SCOPE: MockTaxScope = {
+  scope: "global",
+  legalEntityId: null,
+  locationId: null,
+};
+
+function mockTaxDisplayRate(rateBps: number): string {
+  return (rateBps / 100).toFixed(2) + "%";
+}
+
+/** Map the optional scope args to a mock scope, refusing the both-set
+ *  combination exactly like the typed backend validation. */
+function mockScopeFromArgs(args: {
+  legalEntityId?: string;
+  locationId?: string;
+}): MockTaxScope {
+  if (args.legalEntityId != null && args.locationId != null) {
+    throw new Error(
+      "legal_entity_id and location_id are mutually exclusive: a tax rate is entity-scoped OR location-scoped OR tenant-global",
+    );
+  }
+  if (args.legalEntityId != null) {
+    return { scope: "legal_entity", legalEntityId: args.legalEntityId, locationId: null };
+  }
+  if (args.locationId != null) {
+    return { scope: "location", legalEntityId: null, locationId: args.locationId };
+  }
+  return GLOBAL_MOCK_SCOPE;
+}
+
+/** Echo a stored rate row as the list DTO (top-level snake_case, inner
+ *  scope/window camelCase — mirroring the Rust serde attributes). */
+function mockTaxRateDto(row: MockTaxRate): MockTaxRate {
+  return { ...row };
+}
+
+function createMockTaxRate(args: unknown): MockTaxRate | null {
+  const a = unwrapArgs<{
+    name?: string;
+    rateBps?: number;
+    isDefault?: boolean;
+    isInclusive?: boolean;
+    legalEntityId?: string;
+    locationId?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+  }>(args);
+  const scope = mockScopeFromArgs(a);
+  const now = new Date().toISOString();
+  mockTaxSeq += 1;
+  const row: MockTaxRate = {
+    id: "tax-rate-" + mockTaxSeq,
+    name: a.name ?? "Rate " + mockTaxSeq,
+    rate_bps: a.rateBps ?? 0,
+    is_default: a.isDefault ?? false,
+    is_inclusive: a.isInclusive ?? false,
+    display_rate: mockTaxDisplayRate(a.rateBps ?? 0),
+    created_at: now,
+    updated_at: now,
+    scope,
+    window: {
+      effectiveFrom: a.effectiveFrom ?? null,
+      effectiveTo: a.effectiveTo ?? null,
+    },
+  };
+  mockTaxRates.push(row);
+  return mockTaxRateDto(row);
+}
+
+function listMockTaxRates(args: unknown): MockTaxRate[] {
+  void args;
+  return mockTaxRates.map(mockTaxRateDto);
+}
+
+function updateMockTaxRate(args: unknown): MockTaxRate | null {
+  const a = unwrapArgs<{
+    id?: string;
+    name?: string;
+    rateBps?: number;
+    isDefault?: boolean;
+    isInclusive?: boolean;
+    legalEntityId?: string;
+    locationId?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+  }>(args);
+  const row = mockTaxRates.find((r) => r.id === (a.id ?? ""));
+  if (row == null) {
+    throw new Error("tax rate " + (a.id ?? "") + " not found");
+  }
+  if (a.name != null) row.name = a.name;
+  if (a.rateBps != null) {
+    row.rate_bps = a.rateBps;
+    row.display_rate = mockTaxDisplayRate(a.rateBps);
+  }
+  if (a.isDefault != null) row.is_default = a.isDefault;
+  if (a.isInclusive != null) row.is_inclusive = a.isInclusive;
+  // Scope/window args present route to the tier-scoped write; absent
+  // keeps the row's stored scope, mirroring the legacy global-arm update.
+  const hasScopeArgs =
+    a.legalEntityId != null || a.locationId != null ||
+    a.effectiveFrom != null || a.effectiveTo != null;
+  if (hasScopeArgs) {
+    row.scope = mockScopeFromArgs(a);
+    row.window = {
+      effectiveFrom: a.effectiveFrom ?? null,
+      effectiveTo: a.effectiveTo ?? null,
+    };
+  }
+  row.updated_at = new Date().toISOString();
+  return mockTaxRateDto(row);
+}
+
+function deleteMockTaxRate(args: unknown): null {
+  const a = unwrapArgs<{ id?: string }>(args);
+  mockTaxRates = mockTaxRates.filter((r) => r.id !== (a.id ?? ""));
+  return null;
+}
+
 /** Make a location primary and persist the choice in the mock list. */
 function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
   const { id } = unwrapArgs<{ id?: string }>(args);
@@ -4273,10 +4421,10 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // ═══════════════════════════════════════════════════════════════
 
   'compute_cart_tax_scoped': () => ({ taxMinor: 0, hasExclusive: false }),
-  'list_tax_rates_scoped': () => [],
-  'create_tax_rate_scoped': () => null,
-  'update_tax_rate_scoped': () => null,
-  'delete_tax_rate_scoped': () => null,
+  'list_tax_rates_scoped': listMockTaxRates,
+  'create_tax_rate_scoped': createMockTaxRate,
+  'update_tax_rate_scoped': updateMockTaxRate,
+  'delete_tax_rate_scoped': deleteMockTaxRate,
   'get_tax_rate_dependency_counts_scoped': () => ({ products: 0, categories: 0, sale_lines: 0 }),
   'list_category_tax_rates_scoped': () => [],
   'set_category_tax_rates_scoped': () => null,
