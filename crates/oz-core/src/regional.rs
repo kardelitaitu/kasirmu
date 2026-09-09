@@ -41,6 +41,22 @@ pub const DEFAULT_LOCALE: &str = "en-US";
 /// Built-in timezone used when no scope sets one. Matches the
 /// locations.timezone column default.
 pub const DEFAULT_TIMEZONE: &str = "UTC";
+/// The three Indonesian IANA timezones the slice-4 regional editor offers
+/// (ADR #48, Decision 2). Indonesia spans exactly these zones and observes no
+/// DST, so this is the complete, closed set the editor presents - a native
+/// dropdown of three options, no free-text entry, no search box.
+pub const LOCATION_TIMEZONES: &[&str] = &["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"];
+/// Whether tz is one of the three preset Indonesian location timezones.
+///
+/// This is the authoritative enumerable set the slice-4 editor validates
+/// against at the regional write boundary. The UTC column default is *not* a
+/// preset: it is the legacy unset sentinel for un-migrated rows and is accepted
+/// separately by the write path, so an unrelated field edit can still save on a
+/// location that has not yet had its timezone set.
+#[must_use]
+pub fn is_preset_location_timezone(tz: &str) -> bool {
+    LOCATION_TIMEZONES.contains(&tz)
+}
 /// Built-in ISO-4217 currency code used when no scope sets one. Matches the
 /// locations.currency column default.
 pub const DEFAULT_CURRENCY: &str = "USD";

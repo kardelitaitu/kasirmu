@@ -214,3 +214,20 @@ fn scope_wire_names_are_stable() {
         "\"legal_entity\""
     );
 }
+
+#[test]
+fn preset_location_timezones_are_recognized() {
+    assert!(is_preset_location_timezone("Asia/Jakarta"));
+    assert!(is_preset_location_timezone("Asia/Makassar"));
+    assert!(is_preset_location_timezone("Asia/Jayapura"));
+}
+
+#[test]
+fn non_preset_location_timezones_are_rejected() {
+    // UTC is the legacy column default, not a preset.
+    assert!(!is_preset_location_timezone("UTC"));
+    assert!(!is_preset_location_timezone("Europe/Berlin"));
+    assert!(!is_preset_location_timezone(""));
+    // IANA names are case-sensitive.
+    assert!(!is_preset_location_timezone("asia/jakarta"));
+}

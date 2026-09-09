@@ -228,6 +228,20 @@ pub async fn update_location_profile_scoped(
         &args.id,
     )
     .await?;
+    // ADR #48 (Decision 2): the slice-4 editor offers exactly the three
+    // Indonesian IANA zones. Reject anything else at the regional write
+    // boundary, fail-closed, so a malformed or legacy payload cannot persist an
+    // unparseable timezone. UTC is the column default for un-migrated rows and
+    // is allowed through so an unrelated field edit still saves; the editor UI
+    // never offers it, so every new write carries a real zone.
+    if !oz_core::regional::is_preset_location_timezone(&args.timezone)
+        && !args.timezone.eq_ignore_ascii_case("UTC")
+    {
+        return Err(AppError::Invalid(format!(
+            "timezone must be one of Asia/Jakarta, Asia/Makassar, Asia/Jayapura (got {})",
+            args.timezone
+        )));
+    }
     let conn = _conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

@@ -371,3 +371,31 @@ async fn update_location_profile_scoped_allows_manager_of_own_location() {
     let updated = result.expect("own-location update must pass the resource gate");
     assert_eq!(updated.name, "Renamed Flagship");
 }
+
+/// Slice-4 (ADR #48, Decision 2): the regional write boundary rejects any
+/// timezone outside the three Indonesian IANA presets. UTC is the only accepted
+/// non-preset value, as the legacy column default for un-migrated rows.
+#[tokio::test]
+async fn update_location_profile_scoped_rejects_unsupported_timezone() {
+    let conn = migrations::fresh_db();
+    seed_location_scoped_manager(&conn, "default");
+    let state = flow_state(conn);
+    manager_session(&state, "mgr-tok");
+    let app = mock_app(state);
+
+    let result = update_location_profile_scoped(
+        UpdateLocationArgs {
+            id: "default".into(),
+            name: "Renamed Flagship".into(),
+            address: "1 Main St".into(),
+            tax_id: String::new(),
+            currency: "USD".into(),
+            timezone: "Europe/Berlin".into(),
+        },
+        "mgr-tok".into(),
+        app.state(),
+    )
+    .await;
+
+    assert!(matches!(result, Err(AppError::Invalid(_))));
+}

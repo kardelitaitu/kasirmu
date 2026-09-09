@@ -65,7 +65,15 @@ fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), AppErr
 }
 
 #[command]
-/// Create exchange rate.
+/// Create a global exchange rate.
+///
+/// Legacy compatibility command: it operates on the global catalog database,
+/// which carries no store or location context, so effective_date defaults to
+/// the UTC business date (Utc::now()). That is the deliberate, documented
+/// contract for the global path - see ADR #48 (Decision 3). Location-scoped
+/// callers must use create_exchange_rate_scoped, which resolves the business
+/// date in the store's IANA zone instead. Do not fix this to a timezone: with
+/// no store in scope there is no location whose zone could apply.
 pub async fn create_exchange_rate(
     args: CreateExchangeRateArgs,
     state: State<'_, AppState>,
@@ -200,9 +208,17 @@ pub async fn create_exchange_rate_scoped(
         oz_core::permissions::SETTINGS_EDIT,
     )?;
     let repo = CurrencyRepository::new(&db);
+    // ADR #48 (Decision 3): default the effective date to the business date in
+    // the store's IANA zone, not raw UTC.
+    let timezone = Store::new(&db)
+        .get_location_profile(&session.store_id)
+        .ok()
+        .flatten()
+        .map(|p| p.timezone)
+        .unwrap_or_else(|| "UTC".to_string());
     let date = args
         .effective_date
-        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+        .unwrap_or_else(|| oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
     let source = args.source.unwrap_or_else(|| "manual".to_string());
     let row = repo.create_exchange_rate(
         &args.from_currency,
