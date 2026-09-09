@@ -83,8 +83,8 @@ import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics'
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
 import { useTopologyEditorLoadLifecycle } from './nodeTopologyEditorLoadLifecycle';
 import { useTopologyEditorAnnouncements } from './nodeTopologyEditorAnnouncements';
+import { useTopologyEditorBendDrag } from './topologyEditorBendDrag';
 import {
-  bendLandedAtStart,
   cancelBendDecision,
   deletableNodeIds,
   disconnectNode,
@@ -2336,6 +2336,10 @@ export default function NodeTopologyEditor({
       panCleanupRef.current?.();
       dragCleanupRef.current?.();
       marqueeCleanupRef.current?.();
+      // bendDragCleanupRef now holds a closure installed by
+      // useTopologyEditorBendDrag, not a rendered node — copying it into a local
+      // inside the effect would capture the (empty) value at setup and defeat the sweep.
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup ref, assigned by the bend-drag hook.
       bendDragCleanupRef.current?.();
       touchCleanupRef.current?.();
       timers.forEach(clearTimeout);
@@ -4351,115 +4355,19 @@ export default function NodeTopologyEditor({
     );
   }, [setWires]);
 
-  /** Arm a document-level drag that moves bend `index` on `wireId`.
-   *  Canvas coords are derived from client coords with the same pan/zoom
-   *  transform as node drags, so bends stay glued to the cursor while
-   *  panning/zoomed. History is pushed once, on the first movement. */
-  const startBendDrag = useCallback((e: React.MouseEvent, wireId: string, index: number, startX: number, startY: number, created = false) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    e.preventDefault();
-    selectWire(wireId);
-    bendDragCleanupRef.current?.();
-    // `created` (ghost) bends are INSERTED by the first movement, not at
-    // mousedown — a click without drag on a midpoint ghost must leave no
-    // trace (no phantom bend, no dirty, no entry). pendingInsert flips
-    // false the moment the bend is spliced in.
-    const drag = { wireId, index, moved: false, startX, startY, created, pendingInsert: created };
-    bendDragRef.current = drag;
-    // Pre-gesture snapshot captured at mousedown: for a ghost-created bend
-    // the insertion is deferred to the first movement (pendingInsert), so
-    // the refs hold the UNBENT wires — the exact undo target (one entry,
-    // restores the pre-gesture state). For an existing bend they hold the
-    // wire with the bend at its original position. Immutable discipline:
-    // each setWires replaces the bends array, so the history entry keeps
-    // the old array reference.
-    const snapshot = { nodes: nodesRef.current, wires: wiresRef.current };
-    const handleMove = (ev: MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      const bx = (ev.clientX - (rect?.left ?? 0) - pan.x) / zoom;
-      const by = (ev.clientY - (rect?.top ?? 0) - pan.y) / zoom;
-      const d = bendDragRef.current;
-      if (!d) return;
-      if (!d.moved) {
-        d.moved = true;
-        pushHistoryRef.current(snapshot);
-        if (d.pendingInsert) {
-          // Deferred ghost insertion: splice the fresh bend in at the
-          // CURRENT cursor position. The snapshot above still holds the
-          // UNBENT wires (the refs flush after this handler), so one undo
-          // removes the whole creation gesture. The splice also places the
-          // bend at the cursor, so return without the update pass below.
-          d.pendingInsert = false;
-          setWires((prev) =>
-            prev.map((w) => {
-              if (w.id !== d.wireId) return w;
-              const bends = [...(w.bends ?? [])];
-              bends.splice(d.index, 0, { x: bx, y: by });
-              return { ...w, bends };
-            }),
-          );
-          return;
-        }
-      }
-      setWires((prev) =>
-        prev.map((w) =>
-          w.id !== d.wireId
-            ? w
-            : { ...w, bends: (w.bends ?? []).map((b, i) => (i === d.index ? { x: bx, y: by } : b)) },
-        ),
-      );
-    };
-    const handleUp = () => {
-      const d = bendDragRef.current;
-      document.removeEventListener('mousemove', handleMove);
-      document.removeEventListener('mouseup', handleUp);
-      bendDragCleanupRef.current = null;
-      bendDragRef.current = null;
-      // No-op bend drag: a COMPLETED drag of an EXISTING bend that landed
-      // exactly at its start position pushed an entry (on first movement)
-      // that restores identical state — pop it so Undo never appears but
-      // does nothing. (bendLandedAtStart never suppresses a created bend —
-      // the bend's existence is the edit. Cancel already pops via
-      // cancelBendDrag.)
-      if (d && d.moved && bendLandedAtStart(wiresRef.current, d)) {
-        setHistory((prev) => prev.slice(0, -1));
-      }
-    };
-    document.addEventListener('mousemove', handleMove);
-    document.addEventListener('mouseup', handleUp);      bendDragCleanupRef.current = () => {
-      document.removeEventListener('mousemove', handleMove);
-      document.removeEventListener('mouseup', handleUp);
-      bendDragCleanupRef.current = null;
-      bendDragRef.current = null;
-    };
-  }, [pan, zoom, selectWire, canvasRef, setWires, setHistory]);
-
-  /** Drag on a midpoint ghost: one gesture creates and positions a fresh
-   *  bend. The insertion is DEFERRED to the first drag movement (the
-   *  startBendDrag pendingInsert flow) — a mousedown+mouseup without
-   *  movement is a pure no-op instead of leaving a phantom midpoint bend
-   *  that dirties the canvas with no undo entry to remove it. */
-  const startGhostBendDrag = useCallback((e: React.MouseEvent, wireId: string, segmentIndex: number, mx: number, my: number) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    e.preventDefault();
-    selectWire(wireId);
-    startBendDrag(e, wireId, segmentIndex, mx, my, true);
-  }, [selectWire, startBendDrag]);
-
-  /** Double-click a bend handle to remove it (one undo entry). Stable so
-   *  the memoized wire groups can receive it as a prop. */
-  const removeBend = useCallback((wireId: string, index: number) => {
-    pushHistoryRef.current();
-    setWires((prev) =>
-      prev.map((w) =>
-        w.id !== wireId
-          ? w
-          : { ...w, bends: (w.bends ?? []).filter((_, i) => i !== index) },
-      ),
-    );
-  }, [setWires]);
+  const { startBendDrag, startGhostBendDrag, removeBend } = useTopologyEditorBendDrag({
+    pan,
+    zoom,
+    selectWire,
+    canvasRef,
+    setWires,
+    setHistory,
+    nodesRef,
+    wiresRef,
+    bendDragRef,
+    bendDragCleanupRef,
+    pushHistoryRef,
+  });
 
   /** Node card context menu (right-click): select the object and open the
    *  NODE menu (rename/duplicate/delete) instead of the canvas menu.
