@@ -13,6 +13,8 @@ import {
   validateTopologyGraph,
   firstTopologyValidationError,
   orderTopologyValidationErrors,
+  topologyIssueKey,
+  topologyGraphIssueKey,
   type TopologyValidationError,
 } from '@/features/locations/topologyContract';
 
@@ -1422,5 +1424,17 @@ describe('validation error priority table', () => {
       return Number(re.exec(tierBlock)?.[1]);
     }))].sort((a, b) => a - b);
     expect(tiers).toEqual(tiers.map((_, i) => i + 1));
+  });
+});
+
+// ── Mark-issue-resolved key formats (ADR #34 / #45) ───────────────────────
+// Both prefixes are persisted into resolved_issue_keys, so a rename would silently
+// mis-resolve saved dismissals instead of failing; the node half is also pinned
+// incidentally by NodeTopologyEditor.test.tsx:4933's fixture, the graph half only here.
+
+describe('topology issue-key formats', () => {
+  it('pins both formats the dismissal store persists', () => {
+    expect(topologyIssueKey('n1', 'm2')).toBe('node:n1:m2');
+    expect(topologyGraphIssueKey('m2')).toBe('graph:m2');
   });
 });
