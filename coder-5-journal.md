@@ -1779,3 +1779,50 @@ effective_date where a store is in scope.
   B therefore uses OZPOS_SKIP_TYPECHECK=1 for step 9 alone (not --no-verify);
   steps 3/4/5/10 (i18n, bundle-parity, ftl-dedupe, ftl-orphan) cover the staged
   files and are expected to pass.
+
+## 2026-09-09 - finisher-F: slice-4 Commit B LANDED (a4ed7a511)
+
+### What was committed
+- a4ed7a511 feat(ui): complete bounded 3-zone timezone select in NodeTopologyEditor
+  (NodeTopologyEditor.tsx, multi-location.ftl, multi-location.id.ftl, and new
+  nodeTopologyEditorTimezoneSelect.test.tsx). This supersedes the plan above:
+  Commit B landed WITHOUT OZPOS_SKIP_TYPECHECK=1 - the skip was never needed.
+
+### Decision: complete, not replace
+- The interrupted dirty NodeTopologyEditor.tsx was finisher-A's partial
+  timezone select matching the 3-zone contract, so it was completed rather
+  than replaced. One defect fixed in passing: the placeholder option
+  (value "") was selectable and would submit an empty timezone the server
+  fail-closes; it is now disabled and only rendered on legacy UTC/unset rows,
+  plus an onChange guard rejects non-preset values client-side. Option labels
+  moved from <Localized>-wrapped <option> to the file's established
+  l10n.getString pattern (same as the workspace purpose select).
+- LOCATION_TIMEZONE_PRESETS module constant mirrors
+  oz_core::regional::LOCATION_TIMEZONES (extend both together); the dropped
+  eslint-disable directive was dead (select + aria-label satisfies jsx-a11y).
+
+### Tests
+- New standalone ui/src/__tests__/nodeTopologyEditorTimezoneSelect.test.tsx
+  (4 pass): exactly the 3 preset options render with real bundle labels
+  (WIB/WITA/WIT); UTC sentinel row shows a disabled placeholder with preset
+  values intact; change+blur writes the selected zone through
+  updateLocationProfileScoped in the full-overwrite payload; a programmatic
+  non-preset change is refused with no write. Standalone file (not appended
+  to the 11k-line NodeTopologyEditor.test.tsx) so the active topology stream
+  never races this test module.
+
+### Gates (all green, no skips)
+- cargo check -p oz-core --lib: Finished, 0 errors (hook step 1 requirement).
+- npm run typecheck (whole tree): exit 0. Earlier runs failed ONLY on foreign
+  in-flight files (SettingsNavTree.test.tsx; nodeTopologyEditorAnnouncements.test.ts,
+  whose bracket-notation fix landed in the worktree mid-session). The brief's
+  "wait and re-run" resolved clean without intervention, so no skip was used.
+- Pre-commit hook: all ten steps green (i18n lint clean; bundle parity 0
+  missing keys across 116 key sites / 8 surfaces; ftl dedupe clean; staged
+  ftl check 4 keys added en+id, 0 stranded, 0 one-sided; ftl orphans OK; ui
+  typecheck ran on staged files).
+- Targeted vitest 4/4; eslint on touched files: 0 errors (pre-existing
+  warnings only).
+- Commit used git commit -F msgfile with an explicit 4-file pathspec; all
+  leftover dirty files are foreign work (SettingsNavTree.test.tsx,
+  announcements test, shared*.ftl, exchange_rates.rs, etc.).
