@@ -1054,3 +1054,37 @@ settings-diagnostics-detail-expires = Expires: { $expiresAt }
 settings-diagnostics-detail-grace = Grace until: { $graceUntil }
 settings-diagnostics-deployment-version = App version: { $version }
 
+
+# ── Receipt format (receipt-format axis, Business Defaults screen) ──
+settings-rcptfmt-title = Receipt format
+settings-rcptfmt-subtitle = How receipts print at this location.
+settings-rcptfmt-content-label = Statutory content
+settings-rcptfmt-content-none = No market content configured.
+settings-rcptfmt-paper-width = Paper width (mm, 20–120)
+settings-rcptfmt-margin-top = Top margin (mm)
+settings-rcptfmt-margin-bottom = Bottom margin (mm)
+settings-rcptfmt-show-table = Show table number
+settings-rcptfmt-show-logo = Print store logo
+settings-rcptfmt-save = Save receipt format
+settings-rcptfmt-saving = Saving…
+settings-rcptfmt-saved = Receipt format saved.
+settings-rcptfmt-error-save = Could not save the receipt format.
+settings-rcptfmt-error-load = Could not load the receipt format.
+settings-rcptfmt-no-location = No location to configure yet.
+settings-rcptfmt-source-legal-entity = Market-mandated (legal entity)
+settings-rcptfmt-source-terminal = Set at this terminal
+settings-rcptfmt-source-workspace = Set at this location
+settings-rcptfmt-source-legacy = Inherited from store defaults
+settings-rcptfmt-source-unset = Not configured
+settings-rcptfmt-element-store_name = Store name
+settings-rcptfmt-element-store_address = Store address
+settings-rcptfmt-element-tax_id = Tax registration
+settings-rcptfmt-element-date = Date
+settings-rcptfmt-element-receipt_number = Receipt number
+settings-rcptfmt-element-items = Items
+settings-rcptfmt-element-subtotal = Subtotal
+settings-rcptfmt-element-tax = Tax
+settings-rcptfmt-element-total = Total
+settings-rcptfmt-element-payments = Payments
+
+

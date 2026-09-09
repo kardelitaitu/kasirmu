@@ -394,13 +394,14 @@ fn init_sql_creates_complete_schema_surface() {
     // payable_payments; 20260922_over_quota_markers.sql added the 114th:
     // over_quota_markers; 20260923_fiscal_numbering.sql added the 115th
     // and 116th: fiscal_schemes + document_number_sequences;
-    // 20260924_local_payment_methods.sql added the 117th.)
+    // 20260924_local_payment_methods.sql added the 117th;
+    // 20260925_receipt_formats.sql added the 118th.)
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        117,
+        118,
         "table surface drifted"
     );
     assert_eq!(
@@ -426,11 +427,13 @@ fn init_sql_creates_complete_schema_surface() {
         // index `idx_fiscal_schemes_entity` from
         // `20260923_fiscal_numbering.sql`, plus the scope lookup index
         // `idx_local_payment_methods_scope` from
-        // `20260924_local_payment_methods.sql`. (The document_number_sequences
+        // `20260924_local_payment_methods.sql`, plus the scope lookup index
+        // `idx_receipt_formats_scope` from
+        // `20260925_receipt_formats.sql`. (The document_number_sequences
         // and local_payment_methods UNIQUE constraints are NOT counted: SQLite
         // names those indexes `sqlite_autoindex_*` and the query excludes that
         // prefix.)
-        171,
+        172,
         "index surface drifted"
     );
     assert_eq!(
@@ -577,6 +580,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260922_over_quota_markers.sql".to_string(),
             "20260923_fiscal_numbering.sql".to_string(),
             "20260924_local_payment_methods.sql".to_string(),
+            "20260925_receipt_formats.sql".to_string(),
         ]
     );
 
@@ -609,7 +613,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        117,
+        118,
         "table surface must be unchanged after upgrade"
     );
 }

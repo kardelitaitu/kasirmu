@@ -10,6 +10,7 @@
 import { Localized } from '@fluent/react';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
 import { LocalPaymentSettingsCard } from './LocalPaymentSettingsCard';
+import { ReceiptFormatSettingsCard } from './ReceiptFormatSettingsCard';
 import './screens-placeholder.css';
 
 /** Settings → Business Defaults. */
@@ -21,6 +22,7 @@ export function BusinessDefaultsScreen() {
       </h1>
       <RegionalSettingsCard />
       <LocalPaymentSettingsCard />
+      <ReceiptFormatSettingsCard />
       <p className="settings-screen-placeholder-note">
         <Localized id="settings-screen-migrating">
           Existing settings content will move here selectively.

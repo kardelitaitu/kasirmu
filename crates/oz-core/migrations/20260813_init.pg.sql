@@ -532,6 +532,18 @@ CREATE TABLE IF NOT EXISTS local_payment_methods (
     UNIQUE (scope_type, scope_id, rail_code)
 );
 
+CREATE TABLE IF NOT EXISTS receipt_formats (
+    id             TEXT PRIMARY KEY,
+    tenant_id      TEXT NOT NULL DEFAULT 'default',
+    scope_type     TEXT NOT NULL CHECK (scope_type IN ('legal_entity', 'workspace', 'terminal')),
+    scope_id       TEXT NOT NULL,
+    config         TEXT NOT NULL DEFAULT '{}',
+    paper_width_mm BIGINT CHECK (paper_width_mm IS NULL OR (paper_width_mm BETWEEN 20 AND 120)),
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    UNIQUE (scope_type, scope_id)
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -1820,6 +1832,9 @@ CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_barcode ON receipt_barcodes(barc
 
 CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_sale_id ON receipt_barcodes(sale_id);
 
+CREATE INDEX IF NOT EXISTS idx_receipt_formats_scope
+    ON receipt_formats(scope_type, scope_id);
+
 CREATE INDEX IF NOT EXISTS idx_refunds_sale_id ON refunds(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
@@ -2094,6 +2109,7 @@ ON CONFLICT DO NOTHING;
 --   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
 --   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
 --   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
+--   receipt_formats — regional receipt-format axis; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
 --   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive
 --   topology_revisions — ADR #46 desktop-side table; no PG write path yet

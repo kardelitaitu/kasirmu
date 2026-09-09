@@ -1036,3 +1036,37 @@ settings-diagnostics-detail-expires = Kedaluwarsa: { $expiresAt }
 settings-diagnostics-detail-grace = Tenggang hingga: { $graceUntil }
 settings-diagnostics-deployment-version = Versi aplikasi: { $version }
 
+
+# ── Format struk (receipt-format axis, layar Business Defaults) ──
+settings-rcptfmt-title = Format struk
+settings-rcptfmt-subtitle = Bagaimana struk dicetak di lokasi ini.
+settings-rcptfmt-content-label = Konten wajib
+settings-rcptfmt-content-none = Belum ada konten pasar yang dikonfigurasi.
+settings-rcptfmt-paper-width = Lebar kertas (mm, 20–120)
+settings-rcptfmt-margin-top = Margin atas (mm)
+settings-rcptfmt-margin-bottom = Margin bawah (mm)
+settings-rcptfmt-show-table = Tampilkan nomor meja
+settings-rcptfmt-show-logo = Cetak logo toko
+settings-rcptfmt-save = Simpan format struk
+settings-rcptfmt-saving = Menyimpan…
+settings-rcptfmt-saved = Format struk tersimpan.
+settings-rcptfmt-error-save = Tidak dapat menyimpan format struk.
+settings-rcptfmt-error-load = Tidak dapat memuat format struk.
+settings-rcptfmt-no-location = Belum ada lokasi untuk dikonfigurasi.
+settings-rcptfmt-source-legal-entity = Wajib pasar (badan hukum)
+settings-rcptfmt-source-terminal = Diatur di terminal ini
+settings-rcptfmt-source-workspace = Diatur di lokasi ini
+settings-rcptfmt-source-legacy = Diwarisi dari default toko
+settings-rcptfmt-source-unset = Belum dikonfigurasi
+settings-rcptfmt-element-store_name = Nama toko
+settings-rcptfmt-element-store_address = Alamat toko
+settings-rcptfmt-element-tax_id = NPWP
+settings-rcptfmt-element-date = Tanggal
+settings-rcptfmt-element-receipt_number = Nomor struk
+settings-rcptfmt-element-items = Item
+settings-rcptfmt-element-subtotal = Subtotal
+settings-rcptfmt-element-tax = Pajak
+settings-rcptfmt-element-total = Total
+settings-rcptfmt-element-payments = Pembayaran
+
+

@@ -432,6 +432,13 @@ RLS_TABLES = [
 # closed in both directions). Remove an entry the moment the table's
 # write path stamps tenant_id and it joins RLS_TABLES.
 RLS_EXEMPT = {
+    "receipt_formats": (
+        "regional receipt-format axis; desktop-local write paths only "
+        "(Store CRUD via the scoped commands) — tenant_id stamped "
+        "schema-side from birth, cover when its PG write path lands; "
+        "parent legal_entities is itself exempt pending the cloud-sync "
+        "decision"
+    ),
     "local_payment_methods": (
         "regional slice 6; desktop-local write paths only (Store CRUD via "
         "the scoped commands) — tenant_id stamped schema-side from birth, "

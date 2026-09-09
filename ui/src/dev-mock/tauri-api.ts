@@ -718,6 +718,134 @@ function setMockLocalPaymentMethods(args: unknown): Array<{
   return getMockLocalPaymentMethods(args);
 }
 
+
+// ── Receipt format (regional receipt-format axis) ───────────────────
+// One closed record per scope: content on the entity (statutory),
+// layout on workspace/terminal (presentational, terminal over
+// workspace over legacy). Session-local maps — the mock mirrors the
+// core `Store::effective_receipt_format` semantics loosely, enough
+// for the card's states.
+interface MockReceiptLayout {
+  paper_width_mm: number | null;
+  margin_top_mm: number | null;
+  margin_bottom_mm: number | null;
+  margin_left_mm: number | null;
+  margin_right_mm: number | null;
+  show_logo: boolean | null;
+  print_copies: number | null;
+  show_table_number: boolean | null;
+  footer_note: string | null;
+}
+interface MockReceiptContent {
+  required_fields: string[];
+  footer_text: string;
+  show_tax: boolean;
+  show_currency: boolean;
+  decimal_separator: string;
+}
+const mockReceiptLayouts = new Map<string, MockReceiptLayout>();
+
+/** The effective read: content is unset in the mock (entity-layer
+ *  authoring is a management surface), layout resolves terminal →
+ *  workspace → built-in defaults with the same provenance names. */
+function getMockReceiptFormat(args: unknown): {
+  content: MockReceiptContent | null;
+  content_source: string;
+  layout: {
+    paperWidthMm: number | null;
+    marginTopMm: number | null;
+    marginBottomMm: number | null;
+    marginLeftMm: number | null;
+    marginRightMm: number | null;
+    showLogo: boolean | null;
+    printCopies: number | null;
+    showTableNumber: boolean | null;
+    footerNote: string | null;
+  };
+  layout_source: string;
+} {
+  const { terminalId, workspaceId } = unwrapArgs<{
+    terminalId?: string;
+    workspaceId?: string;
+  }>(args);
+  const location =
+    mockStores.find((loc) => loc.id === workspaceId) ?? mockStores[0] ?? MOCK_STORE;
+  const terminalKey = terminalId ? `terminal:${terminalId}` : null;
+  const workspaceKey = `workspace:${workspaceId ?? location.id}`;
+  const terminal = terminalKey ? mockReceiptLayouts.get(terminalKey) : undefined;
+  const workspace = mockReceiptLayouts.get(workspaceKey);
+  const layer = terminal ?? workspace;
+  const source = terminal ? 'terminal' : workspace ? 'workspace' : 'unset';
+  const pick = <T,>(terminalValue: T | null | undefined, workspaceValue: T | null | undefined): T | null =>
+    terminal ? (terminalValue ?? null) : (workspaceValue ?? null);
+  return {
+    content: null,
+    content_source: 'unset',
+    layout: {
+      paperWidthMm: layer ? pick(terminal?.paper_width_mm, workspace?.paper_width_mm) : null,
+      marginTopMm: pick(terminal?.margin_top_mm, workspace?.margin_top_mm),
+      marginBottomMm: pick(terminal?.margin_bottom_mm, workspace?.margin_bottom_mm),
+      marginLeftMm: pick(terminal?.margin_left_mm, workspace?.margin_left_mm),
+      marginRightMm: pick(terminal?.margin_right_mm, workspace?.margin_right_mm),
+      showLogo: pick(terminal?.show_logo, workspace?.show_logo),
+      printCopies: pick(terminal?.print_copies, workspace?.print_copies),
+      showTableNumber: pick(terminal?.show_table_number, workspace?.show_table_number),
+      footerNote: pick(terminal?.footer_note, workspace?.footer_note),
+    },
+    layout_source: source,
+  };
+}
+
+/** The card's write: replace the workspace-layer layout record (the card
+ *  edits the whole record) and return the fresh effective read. */
+function setMockReceiptLayout(args: unknown): {
+  content: MockReceiptContent | null;
+  content_source: string;
+  layout: {
+    paperWidthMm: number | null;
+    marginTopMm: number | null;
+    marginBottomMm: number | null;
+    marginLeftMm: number | null;
+    marginRightMm: number | null;
+    showLogo: boolean | null;
+    printCopies: number | null;
+    showTableNumber: boolean | null;
+    footerNote: string | null;
+  };
+  layout_source: string;
+} {
+  const { workspaceId, layout } = unwrapArgs<{
+    workspaceId?: string;
+    layout?: {
+      paperWidthMm?: number | null;
+      marginTopMm?: number | null;
+      marginBottomMm?: number | null;
+      marginLeftMm?: number | null;
+      marginRightMm?: number | null;
+      showLogo?: boolean | null;
+      printCopies?: number | null;
+      showTableNumber?: boolean | null;
+      footerNote?: string | null;
+    };
+  }>(args);
+  const location =
+    mockStores.find((loc) => loc.id === workspaceId) ?? mockStores[0] ?? MOCK_STORE;
+  if (layout) {
+    mockReceiptLayouts.set(`workspace:${location.id}`, {
+      paper_width_mm: layout.paperWidthMm ?? null,
+      margin_top_mm: layout.marginTopMm ?? null,
+      margin_bottom_mm: layout.marginBottomMm ?? null,
+      margin_left_mm: layout.marginLeftMm ?? null,
+      margin_right_mm: layout.marginRightMm ?? null,
+      show_logo: layout.showLogo ?? null,
+      print_copies: layout.printCopies ?? null,
+      show_table_number: layout.showTableNumber ?? null,
+      footer_note: layout.footerNote ?? null,
+    });
+  }
+  return getMockReceiptFormat(args);
+}
+
 /** A memo as the dev mock serves it. Mirrors `ui/src/api/memos.ts` `Memo`
  *  (camelCase wire shape). */
 interface MockMemo {
@@ -2596,6 +2724,10 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // Local payment methods (regional slice 6) — same parity rule.
   'get_local_payment_methods_scoped': getMockLocalPaymentMethods,
   'set_local_payment_methods_scoped': setMockLocalPaymentMethods,
+
+  // Receipt format (regional receipt-format axis) — same parity rule.
+  'get_receipt_format_scoped': getMockReceiptFormat,
+  'set_receipt_layout_scoped': setMockReceiptLayout,
 
   'list_active_memos_scoped': listMockActiveMemos,
   'acknowledge_memo_scoped': acknowledgeMockMemo,

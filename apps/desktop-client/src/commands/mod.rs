@@ -87,6 +87,8 @@ pub mod products_images;
 pub mod promotions;
 /// Purchasing / purchase-order commands.
 pub mod purchasing;
+/// Receipt format commands (receipt-format axis).
+pub mod receipt_format;
 /// Refund commands.
 pub mod refunds;
 /// Regional-configuration read commands (settings:read).

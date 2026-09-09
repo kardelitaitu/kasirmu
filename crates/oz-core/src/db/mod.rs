@@ -120,6 +120,10 @@ pub mod profile;
 pub mod promotions;
 /// CRUD for purchase orders.
 pub mod purchase_orders;
+/// Receipt formats — statutory content on the entity, presentational layout
+/// on workspace/terminal, with the pinned legacy-settings fallback (the last
+/// missing L167 axis).
+pub mod receipt_formats;
 /// Recipe / modifier CRUD.
 pub mod recipes;
 /// Refund CRUD.
