@@ -3266,9 +3266,16 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'list_permission_keys_scoped': () => MOCK_PERMISSION_KEYS.map((k) => ({ ...k })),
 
   'create_role_scoped': (args) => {
-    const a =
-      (args as { args?: { name?: string; description?: string; permissions?: string[] } })?.args ??
-      {};
+    // mockHandlerPayload, not `args.args`: invoke() hands a handler
+    // `args?.['args'] ?? args`, so the envelope is already gone by the time this
+    // runs. Reading `.args` here returned undefined, `name` became '', and the
+    // handler then threw 'role name must not be empty' on EVERY browser-mode
+    // role create — a live-screen failure that looked like operator error.
+    const a = mockHandlerPayload<{
+      name?: string;
+      description?: string;
+      permissions?: string[];
+    }>(args);
     const name = (a.name ?? '').trim();
     if (!name) throw new Error('role name must not be empty');
     const role: MockAuthoredRole = {
@@ -3284,11 +3291,14 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   },
 
   'update_role_scoped': (args) => {
-    const a = (
-      args as {
-        args?: { id?: string; name?: string; description?: string; permissions?: string[] };
-      }
-    )?.args ?? {};
+    // Same envelope trap as create_role_scoped: without the unwrap, `id` was
+    // undefined and the update silently matched no role.
+    const a = mockHandlerPayload<{
+      id?: string;
+      name?: string;
+      description?: string;
+      permissions?: string[];
+    }>(args);
     // Mirrors the backend refusal: a preset row is owned by the seeder.
     if (a.id && MOCK_BUILTIN_ROLE_IDS.has(a.id)) {
       throw new Error(`${a.id} is a built-in preset role and cannot be authored`);
