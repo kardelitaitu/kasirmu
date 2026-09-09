@@ -8,7 +8,7 @@ next: none | perf: N/A
 
 use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
-use crate::subscription::{QuotaError, SubscriptionTier};
+use crate::subscription::SubscriptionTier;
 use crate::{
     InventoryLocation, InventoryShift, InventoryTransaction, InventoryTransactionLine,
     StockThreshold, Store, WorkspaceInventoryLocation,

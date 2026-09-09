@@ -14,7 +14,7 @@ use rusqlite::params;
 
 use super::Store;
 use crate::downgrade::QuotaDimension;
-use crate::subscription::{QuotaError, SubscriptionTier};
+use crate::subscription::SubscriptionTier;
 use crate::{CoreError, LocationProfile};
 
 impl Store<'_> {

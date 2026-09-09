@@ -11,7 +11,7 @@
 //! units; writes run inside transactions; version CAS returns Conflict.
 use super::*;
 use crate::downgrade::QuotaDimension;
-use crate::subscription::{QuotaError, SubscriptionTier};
+use crate::subscription::SubscriptionTier;
 
 // ── Product CRUD ─────────────────────────────────────────────────────
 

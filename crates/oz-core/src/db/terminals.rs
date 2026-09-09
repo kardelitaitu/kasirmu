@@ -11,7 +11,7 @@ use rusqlite::params;
 use crate::Terminal;
 use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
-use crate::subscription::{QuotaError, SubscriptionTier};
+use crate::subscription::SubscriptionTier;
 
 use super::Store;
 

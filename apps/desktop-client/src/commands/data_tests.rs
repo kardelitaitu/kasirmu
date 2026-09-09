@@ -223,3 +223,133 @@ fn import_data_result_serialize() {
     assert_eq!(json["products_imported"], 0);
     assert_eq!(json["settings_imported"], 0);
 }
+
+// ── W4-S2: import batch quota gate ──────────────────────────────────
+
+fn fresh_conn() -> rusqlite::Connection {
+    oz_core::migrations::fresh_db()
+}
+
+/// One importable product row as `payload.products` carries them (a
+/// serialized `oz_core::Product`), keyed by SKU.
+fn product_value(sku: &str) -> serde_json::Value {
+    let product = oz_core::Product::new(
+        sku,
+        format!("Product {sku}"),
+        oz_core::Money {
+            minor_units: 100,
+            currency: oz_core::Currency(*b"USD"),
+        },
+    );
+    serde_json::to_value(&product).unwrap()
+}
+
+/// Seed `n` catalog rows with SKUs `seed-0..n-1` via the same table the
+/// gate's existence probe reads.
+fn seed_catalog(conn: &rusqlite::Connection, n: i64) {
+    for i in 0..n {
+        conn.execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",
+            rusqlite::params![format!("p-{i}"), format!("seed-{i}"), format!("Seed {i}")],
+        )
+        .unwrap();
+    }
+}
+
+fn catalog_count(conn: &rusqlite::Connection) -> i64 {
+    conn.query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))
+        .unwrap()
+}
+
+#[test]
+fn import_gate_counts_only_unseen_skus() {
+    // Batch arithmetic: existing-SKU rows are updates/merges, not new
+    // creations — only rows whose SKU is NOT in the catalog count toward
+    // the quota.
+    let conn = fresh_conn();
+    seed_catalog(&conn, 2); // seed-0, seed-1 present
+    let store = Store::new(&conn);
+    let payload = vec![
+        product_value("seed-0"), // update, not counted
+        product_value("new-1"),  // new
+        product_value("new-2"),  // new
+    ];
+    let counted = gate_import_product_batch(&store, &payload).unwrap();
+    assert_eq!(counted, 2, "existing SKU must not count as a creation");
+    assert_eq!(catalog_count(&conn), 2, "the gate itself never writes rows");
+}
+
+#[test]
+fn import_gate_rejects_at_cap_and_writes_nothing() {
+    // Fail-closed tier (no subscription row -> Free, cap 200): 199 present
+    // + 3 new = 202 > 200. The refusal happens BEFORE the transaction
+    // opens, so nothing is partially imported.
+    let conn = fresh_conn();
+    conn.execute("DELETE FROM tenant_subscription", []).unwrap();
+    seed_catalog(&conn, 199);
+    let store = Store::new(&conn);
+    let payload = vec![
+        product_value("new-1"),
+        product_value("new-2"),
+        product_value("new-3"),
+    ];
+    let err = gate_import_product_batch(&store, &payload).unwrap_err();
+    match err {
+        AppError::Core { message, .. } => {
+            assert!(message.contains("maximum 200 products"), "got: {message}");
+            assert!(message.contains("currently have 199"), "got: {message}");
+        }
+        other => panic!("expected typed quota refusal, got {other:?}"),
+    }
+    assert_eq!(
+        catalog_count(&conn),
+        199,
+        "a refused import must not write anything"
+    );
+}
+
+#[test]
+fn import_gate_proceeds_under_cap_and_pins_the_boundary() {
+    let conn = fresh_conn();
+    conn.execute("DELETE FROM tenant_subscription", []).unwrap();
+    seed_catalog(&conn, 2);
+    let store = Store::new(&conn);
+    // 2 + 2 new = 4, well under the Free cap of 200.
+    let counted = gate_import_product_batch(
+        &store,
+        &vec![product_value("new-1"), product_value("new-2")],
+    )
+    .unwrap();
+    assert_eq!(counted, 2);
+    // Simulate the import loop's inserts, then pin the exact edge: a batch
+    // landing exactly ON the cap (196 more = 200) is the last allowed one;
+    // one more row over it is refused.
+    seed_catalog(&conn, 0);
+    for i in 0..2 {
+        conn.execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",
+            rusqlite::params![format!("imp-{i}"), format!("new-{}", i + 1), "Imported"],
+        )
+        .unwrap();
+    }
+    let edge: Vec<_> = (0..196)
+        .map(|i| product_value(&format!("bulk-{i}")))
+        .collect();
+    gate_import_product_batch(&store, &edge).unwrap(); // 200 == limit: allowed
+    // The gate only counts; the caller inserts. Materialize the approved
+    // batch exactly as the import loop would, THEN ask again.
+    for (i, v) in edge.iter().enumerate() {
+        let p: oz_core::Product = serde_json::from_value(v.clone()).unwrap();
+        conn.execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",
+            rusqlite::params![p.id, p.sku.to_string(), p.name],
+        )
+        .unwrap();
+    }
+    assert_eq!(catalog_count(&conn), 200);
+    let over = vec![product_value("bulk-over")];
+    assert!(
+        gate_import_product_batch(&store, &over).is_err(),
+        "200 + 1 must refuse"
+    );
+}

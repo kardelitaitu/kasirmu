@@ -29,7 +29,7 @@ use rusqlite::params;
 
 use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
-use crate::subscription::{QuotaError, SubscriptionTier};
+use crate::subscription::SubscriptionTier;
 use crate::{Role, User};
 use platform_core::rbac::ROLE_PRESETS;
 

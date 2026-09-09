@@ -347,6 +347,49 @@ pub async fn import_preview(
     })
 }
 
+/// The batch quota gate for `import_data` (W4-S2), extracted so tests
+/// drive the exact production decision.
+///
+/// Counts the payload rows that will CREATE a product — rows whose SKU is
+/// not already in the catalog, mirroring the import loop's keying
+/// (existing-SKU rows are updates/merges, not new creations; unparseable
+/// rows are skipped by the loop and therefore not counted either) — and
+/// refuses via `Store::ensure_quota_allows(Products, tier, n)` when the
+/// tier's cap would be exceeded. The tier resolves fail-closed to Free
+/// when no subscription row exists. Returns the counted new rows.
+///
+/// A duplicate NEW SKU appearing twice in one payload is counted twice
+/// while the loop would insert it once: overcounting fails closed, never
+/// open, which is the safe direction for a statutory quota.
+pub(crate) fn gate_import_product_batch(
+    store: &Store<'_>,
+    products: &[serde_json::Value],
+) -> Result<i64, AppError> {
+    let tier = store.resolve_tier_fail_closed()?;
+    let new_products = products
+        .iter()
+        .filter_map(|val| serde_json::from_value::<oz_core::Product>(val.clone()).ok())
+        .filter(|product| {
+            !store
+                .conn()
+                .query_row(
+                    "SELECT 1 FROM products WHERE sku = ?1",
+                    rusqlite::params![product.sku.to_string()],
+                    |_| Ok(()),
+                )
+                .is_ok()
+        })
+        .count() as i64;
+    store
+        .ensure_quota_allows(
+            oz_core::downgrade::QuotaDimension::Products,
+            &tier,
+            new_products,
+        )
+        .map_err(AppError::from)?;
+    Ok(new_products)
+}
+
 #[tauri::command]
 /// Import data.
 pub async fn import_data(
@@ -364,6 +407,12 @@ pub async fn import_data(
 
     let conn = state.db.lock().await;
     let store = Store::new(&conn);
+
+    // W4-S2: close the batch door — refuse the whole import BEFORE the
+    // transaction opens when it would push the catalog past the tier's
+    // product cap (a rejected import writes nothing; nothing is
+    // partially gated).
+    gate_import_product_batch(&store, &payload.products)?;
 
     // Use a transaction for atomic import
     let tx = conn
