@@ -95,7 +95,6 @@ The home Tools area is grouped into Operations, Insights, and Configuration:
 ```text
 Tools
 ├── Operations
-│   ├── Topology Editor (admin/owner; all active tiers)
 │   ├── Staff (manager+; all active tiers)
 │   ├── Locations (manager+; status view)
 │   ├── Terminals (manager+; registration/status)
@@ -111,9 +110,9 @@ Tools
     └── Settings (admin/owner only; manager sees locked card)
         ├── General
         ├── License & Subscription
-        ├── POS Behavior
         ├── Devices & Connectivity
         ├── Business Defaults
+        ├── Topology Editor
         ├── Features & Modules
         ├── Security & Account
         ├── Data & Sync
