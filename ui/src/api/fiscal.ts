@@ -60,3 +60,48 @@ export const upsertDocumentNumberSequenceScoped = (
   args: UpsertDocumentNumberSequenceArgs,
 ): Promise<void> =>
   loggedInvoke<void>('upsert_document_number_sequence_scoped', { sessionToken, args });
+
+/** A legal entity's fiscal scheme — the statutory-configuration anchor the
+ *  number series hang off. Mirrors the backend's FiscalScheme (camelCase
+ *  wire). */
+export interface FiscalScheme {
+  id: string;
+  legalEntityId: string;
+  /** Stable scheme identifier within the entity (e.g. "id-faktur-pajak"). */
+  schemeCode: string;
+  name: string;
+  /** JSON bag of scheme parameters (consumer slices define the keys). */
+  parameters: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** List every statutory number series configured for the tenant, ordered
+ *  by (legal entity, document kind). `currentValue` is the LIVE counter —
+ *  it never resets on reconfiguration, so what this reports is what the
+ *  next statutory number continues from. Gated settings:read. */
+export const listDocumentNumberSequencesScoped = (
+  sessionToken: string,
+): Promise<DocumentNumberSequence[]> =>
+  loggedInvoke<DocumentNumberSequence[]>('list_document_number_sequences_scoped', {
+    sessionToken,
+  });
+
+/** The configured series for ONE legal entity (the overview's per-entity
+ *  drill-down), ordered by document kind. Gated settings:read. */
+export const listDocumentNumberSequencesForEntityScoped = (
+  sessionToken: string,
+  legalEntityId: string,
+): Promise<DocumentNumberSequence[]> =>
+  loggedInvoke<DocumentNumberSequence[]>('list_document_number_sequences_for_entity_scoped', {
+    sessionToken,
+    legalEntityId,
+  });
+
+/** List the tenant's fiscal schemes, ordered by (legal entity, scheme
+ *  code). INACTIVE schemes are included — the overview shows the full
+ *  configuration surface; filter by `isActive` per your contract. Gated
+ *  settings:read. */
+export const listFiscalSchemesScoped = (sessionToken: string): Promise<FiscalScheme[]> =>
+  loggedInvoke<FiscalScheme[]>('list_fiscal_schemes_scoped', { sessionToken });

@@ -13,7 +13,7 @@
 use tauri::State;
 
 use oz_core::db::Store;
-use oz_core::db::fiscal::{DocumentNumberSequence, ResetPeriod};
+use oz_core::db::fiscal::{DocumentNumberSequence, FiscalScheme, ResetPeriod};
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
@@ -90,6 +90,71 @@ pub async fn upsert_document_number_sequence_scoped(
         &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
     )?;
     Ok(())
+}
+
+/// List every statutory number series configured for the tenant, ordered by
+/// (legal entity, document kind), in the store resolved from a session
+/// token. ADR #7. W5-C: the management overview's read surface.
+///
+/// `settings:read` on the backend; entity-scope resource, so no
+/// location-resource gate. `current_value` is the LIVE counter — it never
+/// resets on reconfiguration, so what this reports is what the next
+/// statutory number continues from.
+#[tauri::command]
+pub async fn list_document_number_sequences_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<DocumentNumberSequence>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
+    let conn = state.resolve_store(&session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    Ok(store.list_document_number_sequences()?)
+}
+
+/// The configured series for ONE legal entity (the overview's per-entity
+/// drill-down), in the store resolved from a session token. ADR #7.
+///
+/// `settings:read` on the backend; ordered by document kind.
+#[tauri::command]
+pub async fn list_document_number_sequences_for_entity_scoped(
+    session_token: String,
+    legal_entity_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<DocumentNumberSequence>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
+    let conn = state.resolve_store(&session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    Ok(store.document_number_sequences_for_entity(&legal_entity_id)?)
+}
+
+/// List the tenant's fiscal schemes — the entity-level statutory
+/// configuration anchor the number series hang off — ordered by
+/// (legal entity, scheme code). ADR #7. W5-C.
+///
+/// `settings:read` on the backend. INACTIVE schemes are included: the
+/// overview shows the full configuration surface; consumers filter by
+/// `is_active` per their own contract.
+#[tauri::command]
+pub async fn list_fiscal_schemes_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<FiscalScheme>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
+    let conn = state.resolve_store(&session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    Ok(store.list_fiscal_schemes()?)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

@@ -731,6 +731,61 @@ function upsertMockDocumentNumberSequence(args: unknown): null {
   return null;
 }
 
+/** Session-local mock fiscal schemes (camelCase, mirroring the real
+ *  client's serde — the 2be251ce2 snake/camel read-bug lesson). */
+interface MockFiscalScheme {
+  id: string;
+  legalEntityId: string;
+  schemeCode: string;
+  name: string;
+  parameters: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const mockFiscalSchemes: MockFiscalScheme[] = [
+  {
+    id: "scheme-1",
+    legalEntityId: "default:default-legal-entity",
+    schemeCode: "id-faktur-pajak",
+    name: "Faktur Pajak",
+    parameters: "{}",
+    isActive: true,
+    createdAt: "2026-09-09T00:00:00.000Z",
+    updatedAt: "2026-09-09T00:00:00.000Z",
+  },
+];
+
+/** List all series, ordered (legalEntityId, documentKind) like the core. */
+function listMockDocumentNumberSequences(args: unknown): MockDocSequence[] {
+  void args;
+  return [...mockDocSequences.values()].sort((a, b) =>
+    a.legalEntityId === b.legalEntityId
+      ? a.documentKind.localeCompare(b.documentKind)
+      : a.legalEntityId.localeCompare(b.legalEntityId),
+  );
+}
+
+/** One entity's series, ordered by document kind. */
+function listMockDocumentNumberSequencesForEntity(args: unknown): MockDocSequence[] {
+  const a = unwrapArgs<{ legalEntityId?: string }>(args);
+  const entity = a.legalEntityId ?? "";
+  return listMockDocumentNumberSequences(args).filter(
+    (s) => s.legalEntityId === entity,
+  );
+}
+
+/** All schemes, ordered (legalEntityId, schemeCode); inactive included. */
+function listMockFiscalSchemes(args: unknown): MockFiscalScheme[] {
+  void args;
+  return [...mockFiscalSchemes].sort((a, b) =>
+    a.legalEntityId === b.legalEntityId
+      ? a.schemeCode.localeCompare(b.schemeCode)
+      : a.legalEntityId.localeCompare(b.legalEntityId),
+  );
+}
+
 /** Make a location primary and persist the choice in the mock list. */
 function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
   const { id } = unwrapArgs<{ id?: string }>(args);
@@ -4504,6 +4559,9 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'delete_tax_rate_scoped': deleteMockTaxRate,
   'get_document_number_sequence_scoped': getMockDocumentNumberSequence,
   'upsert_document_number_sequence_scoped': upsertMockDocumentNumberSequence,
+  'list_document_number_sequences_scoped': listMockDocumentNumberSequences,
+  'list_document_number_sequences_for_entity_scoped': listMockDocumentNumberSequencesForEntity,
+  'list_fiscal_schemes_scoped': listMockFiscalSchemes,
   'get_tax_rate_dependency_counts_scoped': () => ({ products: 0, categories: 0, sale_lines: 0 }),
   'list_category_tax_rates_scoped': () => [],
   'set_category_tax_rates_scoped': () => null,
