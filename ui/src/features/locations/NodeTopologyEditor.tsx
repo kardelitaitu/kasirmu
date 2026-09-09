@@ -84,6 +84,7 @@ import { useTopologyEditorPointer } from './nodeTopologyEditorPointer';
 import { useTopologyEditorTouch } from './nodeTopologyEditorTouch';
 import { useTopologyEditorViewport, useTopologyEditorViewPrefs } from './nodeTopologyEditorViewport';
 import { useTopologyEditorKeyboard } from './nodeTopologyEditorKeyboard';
+import { useTopologyEditorNodeRename } from './nodeTopologyEditorRename';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -1466,151 +1467,27 @@ export default function NodeTopologyEditor({
   });
 
 
-  // ── Inline node rename on the card (Branch Location + workspace) ──
-  const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
-  const renamingNodeIdRef = useRef<string | null>(renamingNodeId);
-  renamingNodeIdRef.current = renamingNodeId;
-  const [renameDraft, setRenameDraft] = useState('');
-  const [renameSaving, setRenameSaving] = useState(false);
-  const renameInputRef = useRef<HTMLInputElement>(null);
-  /** Guards the blur-commit against a concurrent Escape/close. */
-  const renameCancelledRef = useRef(false);
-  /** Focus-time name snapshot for the live-bound rename inputs (body config
-   *  / inspector Node Name). They already carry the edited value on blur, so
-   *  the baseline is what tells an unedited blur from a real rename. */
-  const renameBaselineRef = useRef<string | null>(null);
-  /** Focus target when the rename form closes: the node id for keyboard
-   *  closes (Enter/Escape), null for blur-commits — a click-away must not
-   *  steal focus back from wherever the user actually clicked. */
-  const renameFocusReturnRef = useRef<string | null>(null);
-
-  // Move keyboard focus into the card's rename input the moment it opens
-  // (autoFocus is banned by jsx-a11y/no-autofocus).
-  useEffect(() => {
-    if (renamingNodeId) renameInputRef.current?.focus();
-  }, [renamingNodeId]);
-
-  // Return focus to the node card after a keyboard-driven close, so the
-  // keyboard user lands back on the node they just renamed instead of the
-  // canvas body.
-  useEffect(() => {
-    if (renamingNodeId !== null) return;
-    const nodeId = renameFocusReturnRef.current;
-    if (nodeId === null) return;
-    renameFocusReturnRef.current = null;
-    (document.querySelector(`.topology-node[data-node-id="${nodeId}"]`) as HTMLElement | null)?.focus();
-  }, [renamingNodeId]);
-
-  /** Rename-capability mirrors for the type gate inside startNodeRename.
-   *  The gate only reads PRESENCE of the two optional props, and they cannot
-   *  be useCallback deps without churning the callback identity — every
-   *  memoized node card receives startNodeRename as a prop, so a prop-side
-   *  re-render would defeat the React.memo contract (same stale-closure
-   *  reason as nodesRef / panRef above). */
-  const canRenameBranchRef = useRef(!!onRenameBranch);
-  canRenameBranchRef.current = !!onRenameBranch;
-  const canRenameWorkspaceRef = useRef(!!onRenameWorkspace);
-  canRenameWorkspaceRef.current = !!onRenameWorkspace;
-
-  /** The single entry point into inline node rename: the F2 keyboard branch,
-   *  the card pencil + double-click, and the context-menu Rename item all
-   *  arrive here. Resolves the node from the live canvas mirror and applies
-   *  the renameable type gate (a Branch Location needs onRenameBranch, a
-   *  Workspace needs onRenameWorkspace), then silently no-ops when the node
-   *  is gone or its type has no rename handler — which is exactly what F2 on
-   *  a Warehouse always did, and why the card/menu hide the control.
-   *  Callers still pass a second `currentName` argument (the card and
-   *  context-menu prop signatures are `(nodeId, currentName)`, untouched in
-   *  their own files); it is ignored by design — the name is re-read from the
-   *  same array their `node` prop came from. Deps stay empty: the callback is
-   *  referentially stable, so the memoized cards never re-render for it. */
-  const startNodeRename = useCallback((nodeId: string) => {
-    const node = nodesRef.current.find((n) => n.id === nodeId);
-    if (!node) return;
-    if (!((node.type === 'store' && canRenameBranchRef.current)
-      || (node.type === 'workspace' && canRenameWorkspaceRef.current))) return;
-    renameCancelledRef.current = false;
-    renameFocusReturnRef.current = null;
-    setRenameDraft(node.name);
-    setRenamingNodeId(nodeId);
-  }, []);
-
-  const cancelNodeRename = useCallback(() => {
-    renameCancelledRef.current = true;
-    // Escape is a keyboard close — return focus to the card. Reads the
-    // current renaming node via the ref so the callback stays stable (the
-    // memoized cards all receive it as a prop).
-    renameFocusReturnRef.current = renamingNodeIdRef.current;
-    setRenamingNodeId(null);
-    setRenameDraft('');
-  }, []);
-
-  /** Persist a live-bound rename (the body config input / inspector Node
-   *  Name field) through the same parent callback the titlebar F2 rename
-   *  uses, so a committed rename survives the authoritative instance/
-   *  location refresh instead of being silently reverted by the merge.
-   *  Harnesses without the callback keep the local-only path (Apply
-   *  persists the diff). A false return means the parent toasted — keep
-   *  the local name for a retry, mirroring commitNodeRename. */
-  const persistNodeRename = useCallback(async (nodeId: string, name: string) => {
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    // Live-bound inputs already carry the edited value on blur — compare
-    // against the focus-time baseline so an unedited blur never round-trips
-    // a redundant rename through the parent.
-    if (trimmed === renameBaselineRef.current) return;
-    const persist = node.type === 'store' ? onRenameBranch : onRenameWorkspace;
-    if (!persist) return;
-    const ok = await persist(nodeId, trimmed);
-    if (ok === false) {
-      // The parent refused (it toasts the error) — revert the live-bound name
-      // to the focus-time (authoritative) baseline so the canvas never holds
-      // a name the backend rejected. commitNodeRename keeps its draft open
-      // for a retry; a blurred input has no draft to keep, so reverting is
-      // the honest state — the alternative (keep the edited name) would
-      // silently revert on the next authoritative refresh instead.
-      setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, name: renameBaselineRef.current ?? n.name } : n)));
-      return;
-    }
-    renameBaselineRef.current = trimmed;
-  }, [nodes, onRenameBranch, onRenameWorkspace, setNodes]);
-
-  const commitNodeRename = useCallback(async (nodeId: string, fromKeyboard = false) => {
-    if (renameSaving || renameCancelledRef.current) return;
-    const node = nodes.find((n) => n.id === nodeId);
-    const name = renameDraft.trim();
-    // Empty or unchanged input is a no-op: close the form silently rather
-    // than round-tripping a redundant update. A false return from the
-    // parent is reserved for genuine errors (it toasts and we keep the
-    // draft open for a retry).
-    if (!node || !name || name === node.name) {
-      renameCancelledRef.current = true;
-      renameFocusReturnRef.current = fromKeyboard ? nodeId : null;
-      setRenamingNodeId(null);
-      setRenameDraft('');
-      return;
-    }
-    setRenameSaving(true);
-    try {
-      const persist = node.type === 'store' ? onRenameBranch : onRenameWorkspace;
-      const ok = await persist?.(nodeId, name);
-      if (ok !== false) {
-        // Belt & suspenders: reflect the new name locally AND let the seed
-        // refresh (profile / instance is authoritative) confirm it on the
-        // next reload.
-        setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, name } : n)));
-        renameCancelledRef.current = true;
-        renameFocusReturnRef.current = fromKeyboard ? nodeId : null;
-        setRenamingNodeId(null);
-        setRenameDraft('');
-      }
-      // ok === false → parent toasts; keep the draft open for a retry.
-    } finally {
-      setRenameSaving(false);
-    }
-  }, [renameSaving, renameDraft, nodes, onRenameBranch, onRenameWorkspace, setNodes]);
+  // ── Inline node rename (slice R1: extracted to useTopologyEditorNodeRename) ──
+  // The node half of the old G5 rename block, moved verbatim; the call sits at
+  // the block's original position so hook order — and effect order — is what
+  // the component already had. The wire half below stays inline until slice R1b.
+  const {
+    renamingNodeId,
+    renameDraft,
+    setRenameDraft,
+    renameInputRef,
+    renameBaselineRef,
+    startNodeRename,
+    cancelNodeRename,
+    persistNodeRename,
+    commitNodeRename,
+  } = useTopologyEditorNodeRename({
+    nodes,
+    setNodes,
+    nodesRef,
+    onRenameBranch,
+    onRenameWorkspace,
+  });
 
   // ── Inline wire rename: floating input at the wire's midpoint ──
   const [renamingWireId, setRenamingWireId] = useState<string | null>(null);
