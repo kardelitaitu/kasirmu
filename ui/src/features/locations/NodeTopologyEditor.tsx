@@ -26,6 +26,7 @@ import { TopologyInspectorDrawer } from './topologyInspectorDrawer';
 import { TopologyNodeCard } from './topologyNodeCard';
 import { TopologyNodeFinder } from './topologyNodeFinder';
 import { TopologyMinimap } from './topologyMinimap';
+import { TopologyMigrationDialog } from './topologyMigrationDialog';
 import { TopologyRelationshipPicker } from './topologyRelationshipPicker';
 import { TopologyValidationWidget } from './topologyValidationWidget';
 import type { TopologyOverlay } from './topologyBranchCompare';
@@ -2372,70 +2373,14 @@ export default function NodeTopologyEditor({
             />
           )}
           {migrationOpen && migrationEntries.length > 0 && (
-            <div
-              className="topology-migration-dialog"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="topology-migration-title"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <h2 id="topology-migration-title">
-                <Localized id="topology-migration-title">Migrate legacy connections</Localized>
-              </h2>
-              <p className="topology-migration-description">
-                <Localized id="topology-migration-description">
-                  These older connections cannot be identified safely. Choose what each one means
-                  so the diagram can be applied. Connections with no compatible meaning must be
-                  deleted and recreated with the labeled ports.
-                </Localized>
-              </p>
-              <ul className="topology-migration-list">
-                {migrationEntries.map((entry) => (
-                  <li key={entry.wire.id} className="topology-migration-entry">
-                    <span className="topology-migration-names">
-                      {entry.from.name} → {entry.to.name}
-                    </span>
-                    <select
-                      aria-label={l10n.getString('topology-migration-select-aria', {
-                        from: entry.from.name,
-                        to: entry.to.name,
-                      })}
-                      value={String(migrationSelectionFor(entry.wire.id, entry.options.length))}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setMigrationSelections((prev) => ({
-                          ...prev,
-                          [entry.wire.id]: value === 'delete' ? 'delete' : Number(value),
-                        }));
-                      }}
-                    >
-                      {entry.options.map((opt, i) => (
-                        <option key={`${opt.fromPortId}|${opt.toPortId}`} value={String(i)}>
-                          {l10n.getString(opt.labelId)}
-                        </option>
-                      ))}
-                      <option value="delete">{l10n.getString('topology-migration-delete')}</option>
-                    </select>
-                  </li>
-                ))}
-              </ul>
-              <footer className="topology-migration-actions">
-                <button
-                  type="button"
-                  className="topology-migration-later"
-                  onClick={handleLaterMigration}
-                >
-                  <Localized id="topology-migration-later">Later</Localized>
-                </button>
-                <button
-                  type="button"
-                  className="topology-migration-resolve"
-                  onClick={handleResolveMigration}
-                >
-                  <Localized id="topology-migration-resolve">Resolve</Localized>
-                </button>
-              </footer>
-            </div>
+            <TopologyMigrationDialog
+              entries={migrationEntries}
+              selectionFor={migrationSelectionFor}
+              setMigrationSelections={setMigrationSelections}
+              onLater={handleLaterMigration}
+              onResolve={handleResolveMigration}
+              l10n={l10n}
+            />
           )}
           <div
             className="node-canvas-viewport"
