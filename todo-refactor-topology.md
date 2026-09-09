@@ -86,31 +86,31 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 (Every landed slice entry below carries all eight fields — verified 2026-09-09. Template preserved for future slices.)
 
-- [ ] Slice name and one-sentence responsibility boundary.
-- [ ] Exact production files and test files changed.
-- [ ] Public imports/re-exports intentionally preserved or migrated.
-- [ ] Focused test command and result.
-- [ ] `npm run typecheck` result from `ui/`.
-- [ ] Behavior explicitly checked manually or through tests.
-- [ ] Rollback point: the commit can be reverted without reverting an unrelated slice.
-- [ ] Remaining coupling or follow-up work, if any.
+- Slice name and one-sentence responsibility boundary.
+- Exact production files and test files changed.
+- Public imports/re-exports intentionally preserved or migrated.
+- Focused test command and result.
+- `npm run typecheck` result from `ui/`.
+- Behavior explicitly checked manually or through tests.
+- Rollback point: the commit can be reverted without reverting an unrelated slice.
+- Remaining coupling or follow-up work, if any.
 
 ### Dependency direction
 
-- [ ] Pure modules may depend on types, constants, and pure contract helpers, but not React context, toasts, browser globals, or API clients.
-- [ ] State hooks may depend on pure modules and typed domain actions, but should not render JSX.
-- [ ] Feature components may depend on state hooks and pure modules, but API/session access should remain behind the existing screen/editor boundary or a named hook.
-- [ ] `TopologyScreen.tsx` remains responsible for branch selection, permission gating, backend loading around the editor, revision browser ownership, and dirty-switch confirmation unless a later slice explicitly changes that boundary.
-- [ ] `NodeTopologyEditor.tsx` remains the compatibility entry point until all importers have moved.
-- [ ] Do not introduce circular imports between the editor, contract, card, and state modules; use type-only imports or a small shared types module when necessary.
+- Pure modules may depend on types, constants, and pure contract helpers, but not React context, toasts, browser globals, or API clients.
+- State hooks may depend on pure modules and typed domain actions, but should not render JSX.
+- Feature components may depend on state hooks and pure modules, but API/session access should remain behind the existing screen/editor boundary or a named hook.
+- `TopologyScreen.tsx` remains responsible for branch selection, permission gating, backend loading around the editor, revision browser ownership, and dirty-switch confirmation unless a later slice explicitly changes that boundary.
+- `NodeTopologyEditor.tsx` remains the compatibility entry point until all importers have moved.
+- Do not introduce circular imports between the editor, contract, card, and state modules; use type-only imports or a small shared types module when necessary.
 
 ### Stop and reassess conditions
 
-- [ ] Stop the current slice if it requires changing persisted schema, backend APIs, localization IDs, or interaction semantics.
-- [ ] Stop if the proposed module needs most of the parent component's state, refs, effects, and callbacks; the seam is too broad and needs to be split.
-- [ ] Stop if the extraction requires more than one compatibility adapter or causes broad test rewrites unrelated to the moved responsibility.
-- [ ] Stop if focused tests become less specific, require timing sleeps, or lose coverage of cleanup and cancellation paths.
-- [ ] Record the coupling problem and choose a smaller seam before continuing; do not solve uncertainty with a large rewrite.
+- Stop the current slice if it requires changing persisted schema, backend APIs, localization IDs, or interaction semantics.
+- Stop if the proposed module needs most of the parent component's state, refs, effects, and callbacks; the seam is too broad and needs to be split.
+- Stop if the extraction requires more than one compatibility adapter or causes broad test rewrites unrelated to the moved responsibility.
+- Stop if focused tests become less specific, require timing sleeps, or lose coverage of cleanup and cancellation paths.
+- Record the coupling problem and choose a smaller seam before continuing; do not solve uncertainty with a large rewrite.
 
 ## Phase 2 — Stabilize shared types and boundaries
 
@@ -201,12 +201,12 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 ## Explicit non-goals during this refactor
 
-- [ ] Do not redesign the topology UI or change the node/wire interaction model.
-- [ ] Do not change persisted topology schema, migration behavior, or backend APIs as part of a front-end extraction.
-- [ ] Do not replace the editor with a new graph library while extracting it.
-- [ ] Do not make broad naming or formatting changes across `ui/src/features/locations`.
-- [ ] Do not remove tests because an implementation moved; move or strengthen them instead.
-- [ ] Do not optimize rendering based on intuition; measure first and keep performance work separate.
+- Do not redesign the topology UI or change the node/wire interaction model.
+- Do not change persisted topology schema, migration behavior, or backend APIs as part of a front-end extraction.
+- Do not replace the editor with a new graph library while extracting it.
+- Do not make broad naming or formatting changes across `ui/src/features/locations`.
+- Do not remove tests because an implementation moved; move or strengthen them instead.
+- Do not optimize rendering based on intuition; measure first and keep performance work separate.
 
 ## Refactor journal
 
@@ -438,3 +438,47 @@ For every slice, add a short entry to the task journal or PR notes containing:
 - [ ] UI lint, typecheck, focused tests, and the agreed broader UI validation pass.
 - [ ] Compatibility re-exports and transitional adapters have been removed only after a verified usage search.
 - [ ] The final change log or journal records the slices completed, verification performed, and any follow-up work intentionally deferred.
+
+### 2026-09-09 — Decision-ready inline-responsibility map delivered (Phase 1 closure input)
+
+**Method:** two read-only scout passes against the current tree (5,681 lines at fc5038fec): (1) a full-file G1-G21 responsibility-group map with line ranges, owned hooks, cross-group deps, JSX blocks, and risk notes; (2) a Phase 3.4 input-controller deep-dive (handler inventory, gesture refs, listener lifecycle, memo hazards, coverage audit, proposed hook boundaries with deps interfaces, TDZ ordering constraints). Full dossiers recorded in orchestrator-journal.md (GOAL 3 section).
+
+**Corrections to earlier review entries:** keyboard dep array is 36 names, not 39; editor is 5,681 lines (the 5,651 figure pre-dates a4ed7a511's timezone select); one unlisted inline group exists (G1 serialized blur-persist profile, 383-455 + module-scope inspector helpers 456-536 — folds into the Phase-3 inspector boundary).
+
+**Stop-and-split verdicts (binding for slice design):** the keyboard effect (G14, 36-name deps) breaches the doc's stop condition if extracted whole — it must be extracted only as a per-action dispatch after rename/duplicate/delete/clipboard own their callbacks. The pointer/duplicate cluster (G15+G9) shares dragOffsetsRef/duplicateDragRef/dragStartRef + pushHistory timing — split finalize/commit from begin/mousedown, keep ref-stable identities for memoized cards. The unmount sweep + resetTransientCanvasState + cancel* (G6+G20) form a cleanup knot owned atomically with the gesture controllers.
+
+**Slice ladder adopted (Phase 3.4, sequential on the editor fence):** 3.4a bend trio -> topologyEditorBendDrag.ts (in progress, coder-20); parallel test-only slice adds the 4 missing input-controller regression tests (visibilitychange / pointercancel / unmount teardown beyond marquee / wheel pan component — coder-21); then 3.4b pointer core (marquee/pan/wheel/inline contextmenu -> nodeTopologyEditorPointer.ts), 3.4c node-drag+duplicate cluster, 3.4d keyboard, 3.4e touch (separate hook per the doc's rule) + remaining tests. After 3.4: 3.5 viewport (G2, lowest coupling) -> G5 rename -> Phase 4 G8 ApplyPanelProps -> G4 migration -> G7/G13 -> G18 menus last.
+
+
+### 2026-09-09 — Slice 3.4a: bend-drag gesture hook extracted
+
+- **Responsibility boundary:** the wire bend-drag gesture (startBendDrag / startGhostBendDrag / removeBend) moves to `useTopologyEditorBendDrag` (topologyEditorBendDrag.ts, 200 lines); the parent keeps cancelBendDrag, the Escape path, and the unmount listener sweep.
+- **Files:** NodeTopologyEditor.tsx (5,681 -> 5,589 lines); topologyEditorBendDrag.ts NEW (200 lines). ui-coder-20-journal.md carries the dated record.
+- **Public imports/re-exports:** unchanged. `bendLandedAtStart` left the editor's topologyCommands import list (the trio was its only consumer there; noUnusedLocals). Wire JSX props untouched.
+- **Focused tests:** NodeTopologyEditor + InspectorIntegration + nodeTopologyMemo = 523 passed / 1 skipped / 0 failed — the bend matrix is bit-identical to the pre-slice baseline; re-run independently by the orchestrator (exit 0).
+- **Typecheck:** exit 0 (coder twice + pre-commit gate).
+- **Behavior checked:** all 74 non-comment code lines byte-identical including the three useCallback dep arrays; hook called at the exact vacated position so hook/effect order is unchanged; parent-owned refs (bendDragRef, bendDragCleanupRef, nodesRef, wiresRef, pushHistoryRef) arrive through one explicit deps object with per-field doc comments.
+- **Rollback point:** revert 20f7e4dfc alone.
+- **Remaining coupling / follow-up:** react-hooks v7 counts a ref only when useRef runs in the same scope, so passing parent refs through deps re-flagged 3 exhaustive-deps sites (2 hook, 1 parent unmount sweep); suppressed with targeted reasoned eslint-disables (ratchet cap 4 held, 7 would have breached). These dissolve when the unmount sweep + remaining gesture systems move with 3.4b/c. G6+G20 cleanup-knot rule unchanged: sweep moves atomically with the gesture controllers.
+
+
+### 2026-09-09 — Phase 3.4 regression-coverage gaps closed (test-only slice, parallel)
+
+All four previously-missing input-controller coverage items landed in one additive describe block ("input controller disarm and teardown", +163 lines): (1) visibilitychange disarms held Space with marquee follow-through; (2) pointercancel on a one-finger touch drag restores position — characterized as PRE-threshold only, because a post-move cancel delegates to finalizeNodeDrag (cancel == release semantics; documented for the 3.4e touch hook); (3) unmount tears down pan/node-drag/bend-drag/touch document listeners with a fresh-mount identity-transform proof; (4) wheel zoom-to-cursor pan invariance asserted via parsed transform floats (floats need toBeCloseTo, not string equality). Commit 98e208d3f, single test file, ran green against both the pre- and post-3.4a shapes (514 passed / 1 skipped, typecheck exit 0). These tests protect every remaining 3.4 extraction.
+
+
+### 2026-09-09 — Slice 3.4b: canvas pointer core extracted
+
+- **Responsibility boundary:** background mousedown/move/up, wheel zoom-to-cursor, marquee finalize, middle/right pan start, and the inline canvas context-menu handler move to `useTopologyEditorPointer(deps: TopologyPointerDeps)` (nodeTopologyEditorPointer.ts, 411 lines, 31-field deps object with per-field doc comments). The parent keeps all gesture refs, cancelMarquee/cancelBendDrag, resetTransientCanvasState, the Space-pan effect, touch, bend, and the node-drag cluster.
+- **Files:** NodeTopologyEditor.tsx (5,589 -> 5,389); nodeTopologyEditorPointer.ts NEW (411). ui-coder-22-journal.md carries the dated record.
+- **Public imports/re-exports:** unchanged; canvas JSX changed on exactly one line (onContextMenu={handleContextMenu}).
+- **Focused tests:** 3 suites 527 passed / 1 skipped / 0 failed (+4 vs prior baseline = the newly landed input-controller regression block, not failures); typecheck exit 0; exhaustive-deps ratchet at cap 4.
+- **Behavior checked:** all six moved blocks byte-identical against HEAD~1 by script (56+8+55+36+52+18 lines); nothing newly wrapped in useCallback (per-render identities preserved for memoized card/wire props); hook call at the original block position registering no internal hooks; onContextMenu arrow lifted byte-identical modulo 8-space dedent.
+- **Rollback point:** revert 7201d806f alone.
+- **Remaining coupling / follow-up:** +2 targeted eslint-disables in the parent unmount sweep (panCleanupRef/marqueeCleanupRef reads; react-hooks v7 ref-scope rule — the refs' only writers moved into the hook); all five sweep disables (3 from 3.4a + these) retire when the sweep moves atomically with the gesture systems at 3.4c-e. Handoff notes: finalizeMarquee/startPan returned but not destructured (noUnusedLocals); applyDragMove/finalizeNodeDrag are already hook deps, which forces the 3.4c split order (trio first, call-site relocation with the cluster last) — see the scout-4 dossier in orchestrator-journal.md.
+
+
+### 2026-09-09 — Extraction-protection test wave (parallel test-only slices)
+
+Two guard layers landed while the extraction ladder advanced, both strictly additive and green at HEAD: (1) ui-coder-24's memo churn tripwire (nodeTopologyMemo.test.tsx +104, 3 tests): pan and wheel zoom re-key the wire props (onStartBendDrag/onStartGhostBend identities differ) while node-card drag/selection props stay referentially stable and the memoized cards render zero times — with throwing never-captured accessors so a silently-stopped render layer cannot pass vacuously. This pins the contract 3.4c-e and 3.5 must preserve; if a slice legitimately drops pan from the bend hook deps, the assertion flips deliberately, never silently. (2) ui-coder-23's hook-in-isolation suite for the 3.4a bend seam (NEW topologyEditorBendDrag.test.ts +404, 8 tests): arming/disposer re-arm (a leaked listener is only observable by re-arming the ref and pinning setWires to one call — handleMove early-returns on a null ref), no-trace release, the existing-bend-suppressed vs created-bend-never-suppressed matrix, client->canvas mapping (client - rect - pan) / zoom, and removeBend identity preservation. Pinned finding: the ghost path double-fires selectWire/stopPropagation/preventDefault (startGhostBendDrag delegates to startBendDrag) — idempotent and correct today, so removing it is now a deliberate, test-visible decision.
+
