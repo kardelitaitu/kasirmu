@@ -48,7 +48,6 @@ import {
 } from './topologyContract';
 import {
   rowRelationshipOptions,
-  type WireRelationshipOption,
   workspaceTypeLabel,
   topologyUiString,
 } from './topologyCard';
@@ -67,14 +66,12 @@ import { useTopologyEditorMigration } from './nodeTopologyEditorMigration';
 import { useTopologyEditorClipboard } from './nodeTopologyEditorClipboard';
 import { useTopologyEditorIo } from './nodeTopologyEditorIo';
 import { useTopologyEditorContextMenu } from './nodeTopologyEditorContextMenu';
+import { useTopologyEditorWireCommit } from './nodeTopologyEditorWireCommit';
 import {
   cancelBendDecision,
   deletableNodeIds,
   disconnectNode,
   nodesWithoutIds,
-  stockRoutingWires,
-  wireConnectRefusal,
-  WIRE_CONNECT_REFUSAL_TOAST,
   wiresWithoutEndpoints,
 } from './topologyCommands';
 import './NodeTopologyEditor.css';
@@ -2160,153 +2157,32 @@ export default function NodeTopologyEditor({
   }, [liveValidation, topologyLoaded]);
 
 
-  /** Create one wire from an ADR #34 relationship option — the single path
-   *  for both unambiguous drops (auto-commit) and picker choices.
-   *  Duplicate detection compares the CHOSEN toPortId (two relationships
-   *  may share a socket pair, and a fully-untyped legacy wire occupies the
-   *  pair regardless), and the Pro-tier fallback limit applies only to
-   *  stock-routing wires — a transfer is a different relationship. */
-  const commitWire = useCallback((
-    source: TopologyNodeData,
-    sourcePort: PortName,
-    target: TopologyNodeData,
-    targetPort: PortName,
-    option: WireRelationshipOption,
-  ) => {
-    const currentWires = wiresRef.current;
-    // The Pro-tier fallback limit covers STOCK-ROUTING wires only — a
-    // transfer wire on the same pair is a different relationship and is
-    // always authorable. Legacy untyped workspace→warehouse wires count
-    // as stock-routing (that is what the pair defaults to). The population
-    // is computed once and shared with the stock-routing gate and the
-    // priority/label math below (Phase 3.2 command module).
-    const existingStockWires = stockRoutingWires(currentWires, nodeMap);
-    // The four creation gates — duplicate, one-input-per-warehouse,
-    // ADR #34 ticket cardinality, and the Pro-tier stock-routing limit —
-    // run in that enforced order inside wireConnectRefusal; a refusal
-    // toasts its mapped copy and draws nothing (explicit refusal, never
-    // silent replacement).
-    const refusal = wireConnectRefusal(
-      currentWires,
-      source,
-      sourcePort,
-      target,
-      targetPort,
-      option,
-      { isProAllowed, existingStockWires },
-    );
-    if (refusal) {
-      addToast({ message: l10n.getString(WIRE_CONNECT_REFUSAL_TOAST[refusal.reason]), type: 'warning' });
-      cancelRelationshipPicker();
-      return;
-    }
-
-    pushHistoryRef.current();
-
-    const newWireId = `wire-${crypto.randomUUID()}`;
-    const isWarehouseWire = source.type === 'workspace' && target.type === 'warehouse';
-    const priority = existingStockWires.length === 0 ? 1 : existingStockWires.length + 1;
-    const label = isWarehouseWire
-      ? option.relationshipType === 'inventory-transfer'
-        ? l10n.getString('topology-wire-label-transfer')
-        : existingStockWires.length === 0
-          ? l10n.getString('topology-wire-label-stock-deduct', { priority })
-          : l10n.getString('topology-wire-label-fallback', { priority })
-      : option.relationshipType === 'ticket-routing'
-        ? l10n.getString('topology-wire-label-ticket')
-        : l10n.getString('topology-wire-label-connected');
-
-    setWires((prev) => [
-      ...prev,
-      {
-        id: newWireId,
-        fromNodeId: source.id,
-        fromPort: sourcePort,
-        toNodeId: target.id,
-        toPort: targetPort,
-        direction: 'one-way',
-        label,
-        fromPortId: option.fromPortId,
-        toPortId: option.toPortId,
-        relationshipType: option.relationshipType,
-      },
-    ]);
-    cancelRelationshipPicker();
-  }, [nodeMap, addToast, l10n, isProAllowed, cancelRelationshipPicker, setWires]);
-
-  /** Commit the relationship the user picked, looking up the endpoint nodes
-   *  at click time — a node deleted mid-dialog cancels instead of crashing. */
-  const commitPickerOption = useCallback((option: WireRelationshipOption) => {
-    if (!relationshipPicker) return;
-    const from = nodeMap.get(relationshipPicker.fromNodeId);
-    const to = nodeMap.get(relationshipPicker.toNodeId);
-    if (!from || !to) {
-      cancelRelationshipPicker();
-      return;
-    }
-    commitWire(from, relationshipPicker.fromPort, to, relationshipPicker.toPort, option);
-  }, [relationshipPicker, nodeMap, cancelRelationshipPicker, commitWire]);
-
-  const handlePortClick = useCallback((e: React.MouseEvent, nodeId: string, port: PortName, variantIndex = 0) => {
-    e.stopPropagation();
-
-    if (!connectingFromNodeId) {
-      if (portDirection(port) !== 'output') {
-        addToast({ message: l10n.getString('topology-port-input-only'), type: 'info' });
-        return;
-      }
-      beginConnection(nodeId, port, variantIndex);
-      setPreviewCursor(null);
-      return;
-    }
-
-    if (connectingFromNodeId === nodeId) {
-      cancelConnection();
-      return;
-    }
-
-    if (!isPortCompatible(nodeId, port, variantIndex)) {
-      addToast({ message: l10n.getString('topology-wire-incompatible'), type: 'warning' });
-      cancelConnection();
-      return;
-    }
-
-    const fromNode = nodeMap.get(connectingFromNodeId);
-    const toNode = nodeMap.get(nodeId);
-    if (!fromNode || !toNode) {
-      cancelConnection();
-      return;
-    }
-
-    // With stacked per-semantic port rows (round 174), both source and
-    // target rows are known — resolve the specific pair. The picker is
-    // only needed for the rare case where a single semantic pair maps to
-    // multiple relationships (currently none in the pairing table).
-    const options = rowRelationshipOptions(
-      fromNode, connectingFromPort!, connectingFromVariantIndex,
-      toNode, port, variantIndex,
-    );
-    if (options.length === 0) {
-      addToast({ message: l10n.getString('topology-wire-incompatible'), type: 'warning' });
-      cancelConnection();
-      return;
-    }
-
-    if (options.length > 1) {
-      openPicker({
-        fromNodeId: connectingFromNodeId,
-        fromPort: connectingFromPort!,
-        fromVariantIndex: connectingFromVariantIndex,
-        toNodeId: nodeId,
-        toPort: port,
-        toVariantIndex: variantIndex,
-        options,
-      });
-      return;
-    }
-
-    commitWire(fromNode, connectingFromPort!, toNode, port, options[0]!);
-  }, [connectingFromNodeId, connectingFromPort, connectingFromVariantIndex, nodeMap, isPortCompatible, commitWire, addToast, l10n, beginConnection, cancelConnection, openPicker, setPreviewCursor, portDirection]);
+  /** Wire-commit controller (slice P5-B/S3): commitWire (internal),
+   *  commitPickerOption and handlePortClick moved verbatim into
+   *  nodeTopologyEditorWireCommit; the call sits at the slot the three
+   *  callbacks occupied, so hook order — and therefore effect order — is
+   *  unchanged. Every mirror, setter and port-pair they read stays
+   *  parent-owned and arrives through the deps object. */
+  const { commitPickerOption, handlePortClick } = useTopologyEditorWireCommit({
+    wiresRef,
+    pushHistoryRef,
+    nodeMap,
+    isProAllowed,
+    addToast,
+    l10n,
+    cancelRelationshipPicker,
+    setWires,
+    relationshipPicker,
+    connectingFromNodeId,
+    connectingFromPort,
+    connectingFromVariantIndex,
+    beginConnection,
+    cancelConnection,
+    openPicker,
+    setPreviewCursor,
+    portDirection,
+    isPortCompatible,
+  });
 
   /** Cycle a wire's visual flow: one-way → reverse → two-way → one-way.
    *  Clicking the wire itself is the affordance; the from/to ownership is
