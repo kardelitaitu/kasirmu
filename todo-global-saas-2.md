@@ -249,6 +249,34 @@ actual relationship mutation.
       and :193), which un-defaults the tenant-global rate as soon as scoped
       rows exist. The adjacent regional box's tax-regime axis routes here, so
       this stays the owner of that axis; box stays open.
+      — **WRITE-SIDE GUARD LANDED 2026-09-09 (`f4a763aca`** *feat(core): add
+      tax_rate scoped-authoring guard and per-tier default indexes*`), THE
+      AUTHORING PATH HAS NOT.** `20260926_tax_rate_scoped_authoring.sql` does
+      two things `20260921_tax_rate_scoping.sql` had recorded as owed here
+      rather than skipped there: a `CHECK (legal_entity_id IS NULL OR
+      location_id IS NULL)` so a row cannot set both scope columns — attached
+      by table rebuild, because SQLite cannot add a CHECK by `ALTER`, and the
+      rebuild also covers the sync upsert shape a trigger would miss — and
+      default uniqueness that means something once scope exists. **A real bug
+      this surfaced, recorded because nothing else would:** the legacy
+      `idx_tax_rates_single_default` was `UNIQUE (is_default) WHERE
+      is_default = 1` with no tenant column (`20260813_init.sql:1334-1336`),
+      i.e. one default row for the whole table ACROSS TENANTS — in the shared
+      cloud database tenant B's default rate was refused because tenant A
+      already had one. The scoping slice did not catch it. It is now dropped
+      and deliberately not recreated, replaced by three per-tier partial
+      unique indexes keyed on `tenant_id`: `idx_tax_rates_default_tenant_global`
+      `(tenant_id)`, `idx_tax_rates_default_entity (tenant_id,
+      legal_entity_id)`, `idx_tax_rates_default_location (tenant_id,
+      location_id)`. Strictly looser than the index it replaces, so no
+      existing row can fail the migration. Two consequences to carry forward:
+      the device write path still authors tenant-global-only rows (the scoped
+      columns remain unreachable until `create_tax_rate_scoped` /
+      `update_tax_rate_scoped` ship, and hub-only authoring is the current
+      ruling), and until that slice scopes the default-clear the
+      tax.rs:150/:193 behaviour is unchanged — the migration's own header says
+      so. The dev PostgreSQL mirror needs `scripts/reset-dev-pg.sh` (Docker)
+      before it has the CHECK or the new indexes. Box stays open.
 - [x] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise

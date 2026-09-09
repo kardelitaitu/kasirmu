@@ -170,16 +170,19 @@ deferred behind the license-server work + supervisor go.
     `dev-mock-role-holders.test.ts`, and `RoleAuthoringScreen.tsx:221`
     renders the page — capped page plus uncapped total, so the list says
     "and N more" rather than passing `holders.length` off as the count.
-  - **`get_over_quota_report` `_scoped` → NOT landed, IN FLIGHT** (Wave 1, C2
-    under manager-2; `git grep get_over_quota_report_scoped` is zero at HEAD,
-    the command is still declared unscoped in
-    `apps/{desktop,tablet}-client/src/commands/subscription.rs`). One clause
-    of this bullet has been overtaken and should not be repeated as a live
-    gate failure: the command no longer fails `verify-scoped-coverage.sh` —
-    `7a9a0cdab` allowed it as a genuinely-global quota assessment and
-    `3f7092371` then required a written category justification for any new
-    allowlist entry. The gate is green; the scoped variant remains the real
-    fix.
+  - **`get_over_quota_report` `_scoped` → CLOSED by `443c08bfa`**
+    *feat(licensing): add get_over_quota_report_scoped to both Tauri clients*
+    (09-09): the scoped variant now exists in both
+    `apps/{desktop,tablet}-client/src/commands/subscription.rs` (desktop :418,
+    tablet :402) and is registered in both handlers (desktop `lib.rs:1124`,
+    tablet `lib.rs:498`). The gap was the IPC surface alone — the assessment
+    logic already lived in `oz_core::downgrade`, so core needed no change —
+    and the gate now passes on real enforcement rather than on the `7a9a0cdab`
+    allowlist entry, which `3f7092371` had made a justified exception and
+    which was deliberately left in place. NOT closed by this, and still
+    deferred behind the owner: the persisted per-resource `over_quota` marker
+    and the per-location KDS/topology dimensions tracked by the downgrade box
+    in todo-global-saas-2.md.
 - [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
 - [x] **Define data residency and retention policy.** Document where tenant data,
@@ -225,13 +228,36 @@ deferred behind the license-server work + supervisor go.
       asks for — an operator watching a degraded pill has no action.
       Degraded-mode behaviour is genuinely met; the surface is two-thirds of the
       services and the retry is informational only.
-      — **UI completion in flight (2026-09-09, Wave 1 / manager-2 C1)** for
-      clauses (a), (b) and (c) — the Payment and DeviceConnectivity pills and a
-      user-triggered retry on the StatusBar / `connectionHealth` surface.
-      **NOT flipped by this note, deliberately:** at HEAD neither pill exists
-      and no pill carries a retry action, so the three clauses above are still
-      true as written. Whoever lands the pills flips this box in that commit,
-      with the suite output, per the same rule that kept it open here.
+      — **Superseded 2026-09-09 by `7d644ecfa`** *feat(ui): surface payment
+      and device pills with user-triggered retry* — clauses (a), (b) and most
+      of (c) are now MET. `ui/src/components/StatusBar.tsx` renders the four
+      named services as pills (auth, sync, **payment**, **devices**) plus the
+      version icon, which the file's own comment records as "not one of the
+      four named services". (a) is met by `ui/src/hooks/usePaymentConnection.ts`
+      over the `gateway_status` IPC (booleans kept server-side so raw
+      credentials never reach the renderer); (b) by
+      `ui/src/hooks/useDevicesConnection.ts` over `discover_hardware_scoped`;
+      (c) by `retryNow` in `useAuthConnection.ts` — a sequence bump that
+      supersedes the in-flight poll instead of dropping to the 5 s backoff —
+      wired at `StatusBar.tsx:235/:250/:258` through `handleRetry`, with
+      `toneForBinaryHealth` (`connectionHealth.ts:68`) for the two probes that
+      carry no latency signal. New suites: `StatusBarServices.test.tsx`,
+      `usePaymentConnection.test.ts`, `useDevicesConnection.test.ts`.
+
+      Two honest gaps, by ruling rather than oversight. **Payment is gateway
+      CONFIGURATION status, not transaction health** — the EDC-terminal
+      handshake has no pollable IPC surface yet, as
+      `usePaymentConnection.ts:8` says outright, and the hook's `latencyMs`
+      and `cause` are documented always-null because a config probe measures no
+      round-trip and names no subsystem. And **both new pills read red on an
+      empty result**: zero configured gateways, and `list.length === 0`
+      devices → `disconnected` (`useDevicesConnection.ts:89`) — because green
+      would lie about a till that cannot see its printer or drawer.
+
+      **Box stays unchecked, one clause short:** `useSyncConnection.ts` returns
+      `{ state, latencyMs, cause }` with no `retryNow`, so the sync pill is the
+      only service pill whose click does not re-probe. That follow-up is in
+      flight with the same worker; the box flips in the commit that lands it.
 - [x] **Make feature flags and entitlements observable.** Support diagnostics
       should show why a feature is unavailable: role, scope, tier, quota, expiry,
       or server policy.
@@ -270,8 +296,19 @@ deferred behind the license-server work + supervisor go.
       pre-login OrgSelector + post-login OrgSwitcher UI (`146059535`);
       isolation suite 11 tests per client (cross-tenant escape blocked, old
       token dead, no grant carryover, enumerated-list-only, tampered-DB
-      rejected). Deferred: audit org_switch event (named follow-up);
-      cross-tenant "all orgs for this email" broker (explicitly later).
+      rejected). **audit org_switch event — LANDED 2026-09-09 (`bd78d7eb6`**
+      *feat(auth): emit org.switch security audit event on organization
+      switch*`):** `SecurityEvent::org_switch` (`audit_security.rs:289`) over
+      `SECURITY_ACTION_ORG_SWITCH = "org.switch"` (:61), added to
+      `SECURITY_ACTIONS` (:90) — the list `Store::list_security_events` filters
+      by, whose own doc comment warns that an action missing there has "rows
+      written and then never readable", which is exactly how this follow-up
+      would have failed silently. Both clients emit it on the SUCCESS path only
+      (desktop `commands/auth.rs:851`, tablet `:803`); failure paths
+      re-authenticate, so there is no misshaped event to emit. The UI renders
+      it through the unknown-action fallback, per the `logout` precedent, so no
+      catalog or `.ftl` key was added for it. Still deferred: the cross-tenant
+      "all orgs for this email" broker (explicitly later).
 - [x] **Extend Location Memos to multiple selected locations.** The first
       version targets one location per Location Memo; a later capability lets
       one Memo target several locations at once.
