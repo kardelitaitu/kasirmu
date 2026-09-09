@@ -44,6 +44,7 @@ use oz_core::export::{REPORT_SCHEDULE_SETTINGS_KEY, ReportScheduleConfig};
 
 use crate::AppState;
 use crate::routes::tokens::admin_key_authorised;
+use crate::routes::validate::valid_tenant;
 
 /// Store-name settings key (bare form; scoped as `store.name:{tenant}`).
 const STORE_NAME_SETTINGS_KEY: &str = "store.name";
@@ -128,16 +129,6 @@ pub struct SettingsView {
     pub report_schedule: Option<ReportScheduleConfig>,
     /// Effective last-sent dedup timestamp or `null`.
     pub last_report_sent_at: Option<String>,
-}
-
-/// A tenant id must be a non-empty string of `[a-zA-Z0-9_-]` (max 64) so
-/// scoped keys stay sane and unambiguous (`{base}:{tenant}`).
-fn valid_tenant(tenant: &str) -> bool {
-    !tenant.is_empty()
-        && tenant.len() <= 64
-        && tenant
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 fn scoped_key(base: &str, tenant: &str) -> String {

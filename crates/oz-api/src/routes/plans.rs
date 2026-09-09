@@ -19,17 +19,7 @@ use oz_core::db::Store;
 use crate::AppState;
 use crate::auth::ApiTokenClaims;
 use crate::routes::tokens::admin_key_authorised;
-
-/// Reject tenant IDs that are empty, oversized, or carry non-`[a-zA-Z0-9_-]`
-/// characters — the same charset policy `settings.rs` enforces on its URL
-/// tenant path segment.
-fn valid_tenant(tenant: &str) -> bool {
-    !tenant.is_empty()
-        && tenant.len() <= 64
-        && tenant
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-}
+use crate::routes::validate::valid_tenant;
 
 /// Request body for setting a tenant's plan.
 #[derive(Deserialize)]
