@@ -114,13 +114,13 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 ## Phase 2 — Stabilize shared types and boundaries
 
-- [ ] Decide which data types are editor-domain types and which are semantic-contract types.
-- [ ] Move only genuinely shared editor types/constants into a small dedicated types module if doing so does not create cycles.
+- [x] Decide which data types are editor-domain types and which are semantic-contract types. (2026-09-09 P5-A/S2a: the nine editor-domain declarations now live in `nodeTopologyEditorTypes.ts`; `topologyContract.ts` keeps the semantic layer. One duplication survived the decision — `SemanticRelationshipType` is declared in BOTH files — recorded in the S2a entry below rather than quietly left as a tick.)
+- [x] Move only genuinely shared editor types/constants into a small dedicated types module if doing so does not create cycles. (P5-A/S2a landed `nodeTopologyEditorTypes.ts`: types only, zero imports, so no cycle is possible by construction; `WIRE_DIRECTION_CYCLE` was deliberately NOT moved — the editor is its only reader.)
 - [x] Keep semantic graph types and validation errors owned by `topologyContract.ts`.
 - [ ] Replace any accidental imports of runtime UI code from pure modules with type-only imports or explicit adapters. (2026-09-09: none found — all extracted pure modules import types only.)
 - [x] Add boundary types for the major feature slices instead of passing the entire editor props/state object. (Every extracted hook takes an explicit deps interface: the load-lifecycle deps object, `TopologyAnnouncementDeps`, `BendGestureState` — not the props bag.)
 - [x] Preserve `NodeTopologyEditor.tsx` re-exports while callers migrate gradually.
-- [ ] Run typecheck and the focused tests; commit this boundary-only change separately.
+- [x] Run typecheck and the focused tests; commit this boundary-only change separately. (P5-A/S2a+S2b committed alone as 124d07918 — new module +104, editor +18/−93, no runtime line touched; `tsc --noEmit` exit 0 and the gate battery 18 files / 735 passed / 1 skipped / 0 failed.)
 
 ## Phase 3 — Extract orchestration hooks in small slices
 
@@ -683,8 +683,60 @@ Six tests (c6d626f20, +152, single test file) pin the touch contract that 3.4e's
 - **Coverage recorded pre-extraction (Phase-0 rule):** dedicated editor-suite describes — canvas menu (right-click spawn, select-all, authoritative-reload-closes-menu), node menu (select+rename), wire menu (select+label title), edge clamp, right-button-pan swallow, strict-mode store omission, conditional zoom-to-selection.
 - **Focused tests:** post-splice 564/1/0 across editor + Inspector + memo — identical baseline, ZERO test edits. Typecheck exit 0. ESLint 0 errors; hook file 0 warnings.
 - **Rollback point:** revert 664e8a815 alone.
-- **Next:** the unmount-sweep + resetTransientCanvasState relocation retires the ref-scope eslint-disable set, then Phase 5 (reduce parent to composition).
+- **Next:** the unmount-sweep + resetTransientCanvasState relocation retires the ref-scope eslint-disable set, then Phase 5 (reduce parent to composition). **(SUPERSEDED 2026-09-09 — the relocation premise was measured false; see the P4-sweep entry at the end of this journal for what replaced it.)**
 - **Checkbox-sync pass (2026-09-09, this edit):** Phase 1 (:51-54), Phase 2 (:119, :122), 3.4 (:151, :152, :154, :155), 3.5 (:160, :161) and Phase 4 (:166, :167, :169, :171, :172) boxes ticked against the landed-slice records above; deliberately still open — :117/:118/:123 (no shared-types module ever landed; cycles were avoided by type-only imports instead), :153 (unmount sweep + `resetTransientCanvasState` still parent-side = the next slice), :159 (auto-fit deliberately parent-side; the cursor readout was already its own component), :165 (Phase 5 work), :168 (migration dialog JSX and its state trio still inline), :170 (menu JSX mount, guides and selection overlays still inline).
+
+
+### 2026-09-09 — Slice P4-sweep: the unmount-sweep ref-scope disables retired IN PLACE (relocation premise measured FALSE)
+
+- **Responsibility boundary:** the parent's unmount sweep still disarms the five document-level gesture cleanups and the fresh-node timers; only HOW it reads them changed. Nothing moved, no hook was created — the briefed G6+G20 "cleanup knot" relocation was not performed, because STEP 0 measured it to be pointless.
+- **The measurement that killed the premise:** eslint-plugin-react-hooks is 7.1.1 (flat config `ui/eslint.config.js:13`, the strict v7 rule set off at `:50-54`). A `lintText` probe settled two things: same-scope `useRef` values satisfy `missing-deps` while prop/arg-arriving refs do NOT; and decisively, the sweep's five suppressions are for "ref value will likely have changed by cleanup", which fires EVEN for same-scope refs (proof: delete the five disable lines and the rule emits 5 warnings at the access lines, 0 at the dep array). **So relocating the sweep into a hook retires 0 disables and ADDS at least 1.** The rule's own remedy — capture the stable ref OBJECT in a local inside the effect, keep reading `.current` when the cleanup runs — retires all five with zero new suppressions, and that is what landed.
+- **Files:** `NodeTopologyEditor.tsx` only (+17/−13; editor 3,305 -> 3,309). Zero test files touched, no new module.
+- **Public imports/re-exports:** unchanged.
+- **Focused tests:** 17 topology test files, 727 passed / 1 skipped / 0 failed at the f2dfd05bb gate; the manager re-ran the same filter against a quiet tree and got the identical numbers (44.7 s). The teardown pins added by 98e208d3f (the "input controller disarm and teardown" block, :465-:467 above) pass unedited — that block is what actually protects this effect.
+- **Typecheck / lint:** `npm run typecheck` exit 0; ESLint 0 errors. Ref-scope disable tally moved 27 -> 22 in `features/locations` and 35 -> 30 across `ui/src`; **editor 6 -> 1** (the survivor is the auto-fit dep-set choice at :1634, not a ref; the jsx-a11y block at :2484 is unrelated and was never in the tally).
+- **Behavior checked:** the sweep still calls pan / node-drag / marquee / bend-drag / touch disarms and clears the timer Set in the same order; the five locals hold what the hooks assigned (the ref object for the four cleanup refs, the live Set for the timers), so a closure installed AFTER setup is still reached at cleanup time — copying `.current` into a local would have frozen the empty setup-time value and silently disarmed the whole sweep, which is now written down in the file at :1567-:1573.
+- **Rollback point:** revert f2dfd05bb alone.
+- **Remaining coupling / follow-up:** the last 10 in-fence ref-scope disables (pointer 7, keyboard 1, bend 2) are a HOOK-OWNERSHIP problem, not a sweep problem — retiring them means moving each cleanup ref's `useRef` into the hook that arms it (`nodeTopologyEditorTouch.ts` is granted to that slice; it currently carries 0). A transient-reset hook for `resetTransientCanvasState` is now a pure size move with a 0 disable delta, so it belongs to Phase 5 ordering, not to a "cleanup knot".
+
+
+### 2026-09-09 — Slice P5-A/S1a: helper tests re-pointed to their own module
+
+- **Responsibility boundary:** two suites stop importing pure helpers through the editor and name their module directly; no assertion, fixture or expectation was edited.
+- **Files:** `ui/src/__tests__/canvasStateEqual.test.ts` (:15-:16) and `ui/src/__tests__/nodeTopologyEditorHelpers.test.ts` (:12 + the :13-:22 import block) — 11 lines, TEST-only, zero production edits. This is the doc's own :179 item executed.
+- **Public imports/re-exports:** the helper VALUES (`canvasStateEqual`, `elbowPoints`, `polylineD`, `diagramOverflowsCanvas`, `validateEditorGraph`, …) now resolve to `../features/locations/topologyEditorHelpers`; the type names still resolve through `NodeTopologyEditor` because at that commit that was still the deliberate entry point (S2b keeps it true for types only). Verified at HEAD: no test file imports a pure helper value from the editor any more.
+- **Focused tests:** none run standalone — an import-path-only change fails at module resolution, not at an assertion, so a pass would have proved little. It is covered by the P5-A gate battery (see S2a+S2b below).
+- **Typecheck:** exit 0; that IS the meaningful check here, since an unresolved specifier is a `tsc` error (TS2307) and `tsc --noEmit` covers `ui/src/__tests__`.
+- **Behavior checked:** none possible — nothing under `ui/src/features` was edited.
+- **Rollback point:** revert 29853b6e2 alone.
+- **Remaining coupling / follow-up:** other suites still reach TYPE names through the editor's re-export (`nodeTopologyEditorLoadLifecycle.test.tsx:6-:11` is one); migrating those is :180's business and is only worth doing when the type ownership settles.
+
+
+### 2026-09-09 — Slice P5-A/S1b: the compatibility re-export block is retired
+
+- **Responsibility boundary:** the editor's module-scope compat shim (the block at :102-:115 at the time, kept alive since Phase 0 because tests and siblings imported through it) is deleted now that every consumer names the real module.
+- **Files:** `NodeTopologyEditor.tsx` (−14: the shim plus its header comment rewritten to state the new rule — now :82-:85, "this module keeps no compat re-export shim; only its own type surface is re-exported below"); `topologyEditorHelpers.ts:8-11` (its header now says importers and tests name it directly).
+- **Public imports/re-exports:** MIGRATED, deliberately — the runtime surface the shim carried is gone; the TYPE surface stays and is re-exported by S2b, because :181 still wants a public entry point. Read this against the earlier ticks: :24/:63's inventories and :122 describe the shim while it existed, so :122 is now a completed-duration claim, not a live constraint.
+- **Focused tests:** no standalone run — see the typecheck note, which is the real gate for a removal of this kind; the P5-A battery below covers it.
+- **Typecheck / lint:** `tsc --noEmit` clean at the gate (a still-needed re-export would be TS2305/TS2724 at the importer, not a runtime surprise); ESLint editor react-refresh warnings **9 -> 0**, exactly as the Phase 5 dossier predicted — the warnings were caused by those value exports sitting in a component file.
+- **Behavior checked:** zero runtime and zero JSX lines changed; the only observable effect is in the lint output.
+- **Rollback point:** revert 3fd7dc61d alone.
+- **Remaining coupling / follow-up:** none for the refactor; the doc's Phase 0 inventory lines now describe a state of the tree that no longer exists and should be read as dated.
+
+
+### 2026-09-09 — Slice P5-A/S2a+S2b: editor-domain types get a home (Phase 2 :117/:118/:123 close)
+
+- **Responsibility boundary:** the nine editor-domain type declarations (`NodeType` through `WorkspaceInstanceSeed`) move into a new types-only module, with the editor re-exporting them as its public type surface; the semantic contract and the cycle constant deliberately stay put.
+- **Files:** NEW `ui/src/features/locations/nodeTopologyEditorTypes.ts` (+104 — 9 export markers, exactly the 9 prescribed names, zero imports); `NodeTopologyEditor.tsx` +18/−93.
+- **Public imports/re-exports:** migrated behind a door that stays open on purpose — the editor imports the nine names for local use (:96-:106) and re-exports them type-only (:125), so nothing new is required of importers. Measured at this HEAD: 57 files under `ui/src` still name `…/NodeTopologyEditor` as their import path (31 siblings in `features/locations` + 26 test files) and all compile — the dossier's "55 in-dir type importers" is the same population counted by edges rather than by file. `NodeTopologyEditorProps` remains declared and exported in the editor (:130): it is the component's props, not a domain type.
+- **Focused tests:** 18 files / 735 passed / 1 skipped / 0 failed at the manager-run P5-A gate on a quiet tree.
+- **Typecheck / lint:** `tsc --noEmit` exit 0; ESLint tree-wide 0 errors / 40 warnings (all pre-existing, other files), 0 problems on the editor + types pair.
+- **Behavior checked:** none — types erase at compile time. The move was verbatim (line-slice, not retyped) and the boundary that mattered held: `WIRE_DIRECTION_CYCLE` has 0 occurrences in the new module and remains editor module-local (:128, single consumer :2320), because moving it would have exported a value from a types-only file and re-litigated the react-refresh rule S1b had just cleared.
+- **Editor size:** 3,309 -> 3,220 (S1b −14, S2 net −75). Two measurement notes for anyone re-counting: a direct total-line count of the file reads 3,219, the 1-line delta being the trailing-newline convention; and the "3,066 / 3,149" mid-audit readings earlier in the session were PowerShell non-blank counts, not lost code.
+- **Rollback point:** revert 124d07918 alone.
+- **Remaining coupling / follow-up:** three findings, none of them a behavior bug — (1) two comment blocks crossed over WITHOUT their subjects: the 11-line "Restore-boundary integrity guard for Undo/Redo" doc now sits at `nodeTopologyEditorTypes.ts:21-:31` describing `validWiresForNodes` (which lives in `topologyHistoryIntegrity.ts`), and "Node types offered by the right-click canvas context menu" sits at :33 directly above `SemanticRelationshipType` (:35), which therefore has no doc of its own — orphan text in a types-only file is exactly the :178 stale-comment class, one cheap follow-up commit; (2) `SemanticRelationshipType` is now declared identically in BOTH `nodeTopologyEditorTypes.ts:35-:41` and `topologyContract.ts:53-:59` (the duplication pre-dates this slice — the editor already kept its own copy), so :117's decision should name a winner before a third copy appears; (3) `PortName` (:19) arrived without the doc comment its neighbours kept.
+
+- **Next:** with the relocation premise dead and P5-A landed, the remaining ladder is: (a) Phase 5 P5-B logic slices — S3 wire-commit (~180 ln), S4 validation (~160), S5 delete-confirm (~110), S6 add-node — whose deferral reason ("inside the sweep's disable-retirement blast radius") is now OBSOLETE, so re-read the ordering argument before scheduling; (b) hook-ownership disable retirement for the last 10 in-fence (pointer 7 + keyboard 1 + bend 2), the slice that holds the granted `nodeTopologyEditorTouch.ts` fence; (c) the out-of-fence ref-scope retirements (viewport x5, applyPanel x2, rename x1, migration x1) — IN FLIGHT at the time of writing. Box bookkeeping: :178/:179/:180/:181 are now backed by S1a/S1b/S2 above but are still UNCHECKED here — ticking Phase 5 was not this pass's authority; same for the stale Phase 1 parentheticals at :45/:46/:48/:49, which need a prose pass, not a tick.
 
 
 
