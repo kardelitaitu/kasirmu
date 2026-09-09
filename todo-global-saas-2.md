@@ -211,7 +211,14 @@ actual relationship mutation.
       half (`git grep ticket_prefix` → zero source hits at HEAD) and the
       fiscal/numbering **management surfaces** (core-only today —
       `upsert_document_number_sequence` and `claim_statutory_number_for_sale`
-      have no command or settings card). One trap for whoever continues this
+      have no command or settings card). Within slice 7 the two halves also
+      landed unevenly (verified 16:05): the **workspace/terminal layout** half
+      has its surface (`ReceiptFormatSettingsCard.tsx` +
+      `ui/src/api/receipt-format.ts` + the two registered commands), while the
+      **statutory entity content** half is core-only —
+      `Store::set_receipt_content_for_entity` (`receipt_formats.rs:271`) has no
+      command and no card, so entity receipt content is not authorable from
+      the UI yet. One trap for whoever continues this
       axis: the 10 legacy `receipt.*` keys are a LIVE fallback by design
       (`LEGACY_RECEIPT_KEYS`, `receipt_formats.rs:66`; the migration backfills
       nothing) and the print path still reads them, so retiring those keys
@@ -220,6 +227,28 @@ actual relationship mutation.
       rules, effective dates, tax-inclusive behavior, and fiscal requirements
       should be location-aware; display currency and UI preferences should not
       accidentally change tax calculation.
+      — **READ HALF LANDED / WRITE HALF OPEN (2026-09-09, W1 sweep, verified
+      against `crates/oz-core/src/db/tax.rs` at HEAD):** the location- and
+      date-aware *resolution* side exists — scope+window schema
+      (`dbb3aabe6` *feat(core): scope tax rates by legal entity, location and
+      date*), `resolve_tax_rate_for_location` (`cf935edb5`, tax.rs:485) with
+      `tax_rate_scope` (:558) and `window_covers` (:757), carried through the
+      sync snapshot (`4c41f5c3a` *fix(sync): carry tax rate scope and window
+      through the snapshot*), and sales priced by entity/location/business-date
+      (`f5c64bf49`, then `1cf9d7ef8` *feat(pos): price sales at the signed-in
+      location*), with the as_of date resolved in the location's IANA zone per
+      ADR #48 (`b223de6bf`). **What the box still asks for and does not exist:
+      authoring.** `create_tax_rate` (tax.rs:135) and `update_tax_rate` (:177)
+      still take five arguments and INSERT seven columns — `id, name, rate_bps,
+      is_default, is_inclusive, created_at, updated_at` — with no
+      entity/location scope and no effective window, so nothing an operator
+      can create is location-aware; the scoped columns are reachable only by
+      migration/sync, never by the write path. Consequence recorded rather
+      than glossed: both writes clear the previous default with an UNSCOPED
+      `UPDATE tax_rates SET is_default = 0 WHERE is_default = 1` (tax.rs:150
+      and :193), which un-defaults the tenant-global rate as soon as scoped
+      rows exist. The adjacent regional box's tax-regime axis routes here, so
+      this stays the owner of that axis; box stays open.
 - [x] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise

@@ -154,7 +154,12 @@ deferred behind the license-server work + supervisor go.
     `db/staff.rs` has no `fn create_role` at HEAD. The preset refusal the
     bullet describes as missing is now enforced in core, not by the command
     layer's self-discipline, and `roles_tests.rs` pins it
-    (`create_role_refuses_every_builtin_preset_id`).
+    (`create_role_refuses_every_builtin_preset_id`). The fold's residue is
+    closed too: `da20aa607` *test(core): move create_role tests beside the
+    folded-in create_role* (09-09) relocated the five `create_role` unit tests
+    verbatim into `roles_tests.rs`, leaving in `staff_tests.rs` only the two
+    gate tests that use `create_role` as fixture setup — so grepping
+    `create_role` under `db/staff*` no longer points at an emptied module.
   - **role-holder names → closed by `394d8c977`** *feat(roles): list the
     accounts that hold a role, org-wide, with their scope* (09-08), with
     `886d3cd22` adding `role_holder_count` against the identical predicate.
