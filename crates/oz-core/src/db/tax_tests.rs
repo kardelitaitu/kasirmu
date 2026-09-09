@@ -1123,17 +1123,19 @@ fn an_untrusted_row_is_skipped_and_the_walk_falls_through() {
     let s = store(&conn);
     seed_topology(&conn, "ent-a", "loc-a");
     let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
-    // Ambiguous scope: both columns set, so no tier may claim it.
+    // Malformed stored window: an impossible calendar day as the end date.
+    // This used to be an ambiguous-scope row (both columns set), which the
+    // schema now refuses outright — see the CHECK assertion below.
     insert_scoped_rate(
         &conn,
-        "r-ambiguous",
-        "Both scopes",
+        "r-badend",
+        "Bad end",
         1500,
         false,
-        Some("ent-a"),
+        None,
         Some("loc-a"),
         None,
-        None,
+        Some("2026-02-30"),
     );
     // Malformed stored windows: an RFC3339 timestamp, and an empty-string end.
     insert_scoped_rate(
@@ -1166,20 +1168,31 @@ fn an_untrusted_row_is_skipped_and_the_walk_falls_through() {
         global.id,
         "none of the three untrusted rows may decide the rate"
     );
-    // The ambiguous row is REPORTED, not silently reclassified into whichever
-    // column a match happened to read first: an unresolvable scope on a row that
-    // prices sales is a loud error, never a guess.
-    let amb = s.tax_rate_scope("r-ambiguous").unwrap_err();
+    // A both-set row can no longer be written at all: migration
+    // 20260926_tax_rate_scoped_authoring rebuilt tax_rates with
+    // CHECK (legal_entity_id IS NULL OR location_id IS NULL). That makes the
+    // resolver's ambiguous-scope error unreachable-by-construction on a guarded
+    // database, and it is KEPT as defense-in-depth — it is the answer a row
+    // gives on a hub whose schema predates the guard. What is asserted here is
+    // therefore the SCHEMA's refusal, not the type's.
+    let amb_err = conn
+        .execute(
+            "INSERT INTO tax_rates (id, name, rate_bps, is_default,
+                                    legal_entity_id, location_id)
+             VALUES ('r-ambiguous', 'Both scopes', 1500, 0, 'ent-a', 'loc-a')",
+            [],
+        )
+        .unwrap_err();
     assert!(
-        matches!(
-            &amb,
-            CoreError::Validation {
-                field: "tax_rate_scope",
-                ..
-            }
-        ),
-        "expected a tax_rate_scope validation error, got {amb:?}"
+        amb_err.to_string().contains("CHECK constraint failed"),
+        "the schema itself must refuse a both-set row, got {amb_err}"
     );
+    // An untrusted WINDOW is not a scope problem: the row keeps its real scope
+    // and is skipped by the walk rather than reclassified or reported ambiguous.
+    assert!(matches!(
+        s.tax_rate_scope("r-badend").unwrap(),
+        Some(TaxRateScope::Location(_))
+    ));
     assert!(matches!(
         s.tax_rate_scope("r-ts").unwrap(),
         Some(TaxRateScope::Location(_))

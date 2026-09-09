@@ -429,11 +429,15 @@ fn init_sql_creates_complete_schema_surface() {
         // `idx_local_payment_methods_scope` from
         // `20260924_local_payment_methods.sql`, plus the scope lookup index
         // `idx_receipt_formats_scope` from
-        // `20260925_receipt_formats.sql`. (The document_number_sequences
+        // `20260925_receipt_formats.sql`, plus the 3 per-tier default indexes
+        // from `20260926_tax_rate_scoped_authoring.sql` minus the table-wide
+        // `idx_tax_rates_single_default` it drops (that one refused a second
+        // default row across EVERY tenant and tier, which stops being the rule
+        // once scope exists) — net +2. (The document_number_sequences
         // and local_payment_methods UNIQUE constraints are NOT counted: SQLite
         // names those indexes `sqlite_autoindex_*` and the query excludes that
         // prefix.)
-        172,
+        174,
         "index surface drifted"
     );
     assert_eq!(
@@ -581,6 +585,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260923_fiscal_numbering.sql".to_string(),
             "20260924_local_payment_methods.sql".to_string(),
             "20260925_receipt_formats.sql".to_string(),
+            "20260926_tax_rate_scoped_authoring.sql".to_string(),
         ]
     );
 

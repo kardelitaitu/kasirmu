@@ -814,21 +814,6 @@ CREATE TABLE IF NOT EXISTS "customers" (
     store_id        TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS tax_rates (
-    id          TEXT PRIMARY KEY,                            -- UUID v4
-    name        TEXT NOT NULL,                               -- e.g. "Sales Tax"
-    rate_bps    BIGINT NOT NULL CHECK(rate_bps >= 0),       -- basis points (e.g. 825 = 8.25%)
-    is_default  BIGINT NOT NULL DEFAULT 0,                  -- 1 if this is the default rate
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, is_inclusive BIGINT NOT NULL DEFAULT 0, tenant_id TEXT NOT NULL DEFAULT 'default', is_active BIGINT NOT NULL DEFAULT 1, legal_entity_id TEXT
-    REFERENCES legal_entities(id) ON DELETE RESTRICT, location_id TEXT
-    REFERENCES locations(id) ON DELETE RESTRICT, effective_from TEXT, effective_to TEXT);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_single_default
-  ON tax_rates(is_default)
-  WHERE is_default = 1;
-
 CREATE TABLE IF NOT EXISTS terminals (
     id              TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -906,6 +891,42 @@ CREATE TABLE IF NOT EXISTS memo_locations (
     tenant_id    TEXT NOT NULL DEFAULT 'default',
     PRIMARY KEY (memo_id, location_id)
 );
+
+CREATE TABLE IF NOT EXISTS "tax_rates" (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    rate_bps        BIGINT NOT NULL CHECK (rate_bps >= 0),
+    is_default      BIGINT NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    is_inclusive    BIGINT NOT NULL DEFAULT 0,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    is_active       BIGINT NOT NULL DEFAULT 1,
+    legal_entity_id TEXT REFERENCES legal_entities(id) ON DELETE RESTRICT,
+    location_id     TEXT REFERENCES locations(id) ON DELETE RESTRICT,
+    effective_from  TEXT,
+    effective_to    TEXT,
+    -- One scope, never both: see the header. NULL means "not scoped at this
+    -- tier", so (NULL, NULL) is the tenant-global row and stays legal.
+    CHECK (legal_entity_id IS NULL OR location_id IS NULL)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_default_entity
+    ON tax_rates(tenant_id, legal_entity_id)
+    WHERE is_default = 1
+      AND legal_entity_id IS NOT NULL
+      AND location_id IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_default_location
+    ON tax_rates(tenant_id, location_id)
+    WHERE is_default = 1
+      AND location_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_default_tenant_global
+    ON tax_rates(tenant_id)
+    WHERE is_default = 1
+      AND legal_entity_id IS NULL
+      AND location_id IS NULL;
 
 CREATE TABLE IF NOT EXISTS assignment_branches (
     assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
@@ -990,13 +1011,6 @@ CREATE TABLE IF NOT EXISTS "sales" (
     payment_reference   TEXT,
     captured_at         TEXT
 , tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0, statutory_number TEXT);
-
-CREATE TABLE IF NOT EXISTS category_taxes (
-    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    tax_rate_id TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    PRIMARY KEY (category_id, tax_rate_id)
-);
 
 CREATE TABLE IF NOT EXISTS inventory_shifts (
     id          TEXT PRIMARY KEY,                              -- UUID v7
@@ -1203,15 +1217,6 @@ CREATE TABLE IF NOT EXISTS "product_variants" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_product_variants_barcode ON product_variants(barcode);
 
-CREATE TABLE IF NOT EXISTS "product_taxes" (
-    product_sku  TEXT NOT NULL,
-    tax_rate_id  TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
-    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    tenant_id TEXT NOT NULL DEFAULT 'default',
-    PRIMARY KEY (product_sku, tax_rate_id),
-    FOREIGN KEY (tenant_id, product_sku) REFERENCES products(tenant_id, sku) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS "product_bundles" (
     id          TEXT PRIMARY KEY,
     bundle_sku  TEXT NOT NULL UNIQUE,
@@ -1233,6 +1238,22 @@ CREATE TABLE IF NOT EXISTS product_images (
     position   BIGINT NOT NULL DEFAULT 0,   -- display order of alternatives
     updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     PRIMARY KEY (product_id, slot)
+);
+
+CREATE TABLE IF NOT EXISTS category_taxes (
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    tax_rate_id TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (category_id, tax_rate_id)
+);
+
+CREATE TABLE IF NOT EXISTS "product_taxes" (
+    product_sku  TEXT NOT NULL,
+    tax_rate_id  TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (product_sku, tax_rate_id),
+    FOREIGN KEY (tenant_id, product_sku) REFERENCES products(tenant_id, sku) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS payable_payments (
