@@ -23,7 +23,7 @@ import {
 } from './nodeTopologyClamp';
 import { computeAutoLayout } from './nodeTopologyLayout';
 import { TopologyInspectorDrawer } from './topologyInspectorDrawer';
-import { TopologyNodeCard } from './topologyNodeCard';
+import { TopologyNodeMapLayer } from './topologyNodeMapLayer';
 import { TopologyNodeFinder } from './topologyNodeFinder';
 import { TopologyMinimap } from './topologyMinimap';
 import { TopologyMigrationDialog } from './topologyMigrationDialog';
@@ -2378,57 +2378,46 @@ export default function NodeTopologyEditor({
               );
             })}
 
-                        {nodes.map((node) => {
-              // Pre-compute per-port hover booleans so React.memo can
-              // skip re-rendering unaffected cards when the target moves.
-              const _htn = hoveredTarget?.nodeId === node.id ? hoveredTarget : null;
-              return (
-              <TopologyNodeCard
-                key={node.id}
-                node={node}
-                isSelected={selectedNodeIds.has(node.id)}
-                isConnectingSource={connectingFromNodeId === node.id}
-                connectingFromNodeId={connectingFromNodeId}
-                connectingFromPort={connectingFromPort}
-                connectingFromVariantIndex={connectingFromVariantIndex}
-                hoveredTarget={_htn ? { port: _htn.port, variantIndex: _htn.variantIndex } : null}
-                nodeErrors={nodeErrorsByNode.get(node.id) ?? EMPTY_ERRORS}
-                countBadge={excessBadgeByNode.get(node.id) ?? null}
-                hasOverlap={overlappingNodeIds.has(node.id)}
-                stockWireHint={addStockWireHintId === node.id}
-                onDismissNodeIssue={handleDismissNodeIssue}
-                isFresh={freshNodeIds.has(node.id)}
-                /* Hover focus is the transient, specific intent: while it is
-                   active it fully takes over, so the inspected card and its
-                   connections light up even when compare focus would dim
-                   them (round 163). Compare dimming applies outside hover. */
-                isDimmed={(hoverConnections !== null && !hoverConnections.has(node.id))
-                  || (compareDimSet.has(node.id) && hoverConnections === null)}
-                isRenameable={(node.type === 'store' && !!onRenameBranch) || (node.type === 'workspace' && !!onRenameWorkspace)}
-                renaming={renamingNodeId === node.id}
-                renameDraft={renameDraft}
-                l10n={l10n}
-                renameInputRef={renameInputRef}
-                renameBaselineRef={renameBaselineRef}
-                onSelect={selectOnly}
-                onOpenNodeMenu={openNodeMenu}
-                onCardMouseDown={handleNodeMouseDown}
-                onStartRename={startNodeRename}
-                onCommitRename={commitNodeRename}
-                onCancelRename={cancelNodeRename}
-                onRenameDraftChange={setRenameDraft}
-                onPersistRename={persistNodeRename}
-                onSetNodeName={handleSetNodeName}
-                onSetNodeEnabled={handleSetNodeEnabled}
-                onPortClick={handlePortClick}
-                onHoverNode={hoverNode}
-                getTelemetry={getTelemetry}
-                isPortCompatible={isPortCompatible}
-                overlayMarker={overlayMarkerById.get(node.id) ?? null}
-                onDisconnect={handleDisconnectNode}
-              />
-              );
-            })}
+            <TopologyNodeMapLayer
+              nodes={nodes}
+              selectedNodeIds={selectedNodeIds}
+              nodeErrorsByNode={nodeErrorsByNode}
+              excessBadgeByNode={excessBadgeByNode}
+              overlappingNodeIds={overlappingNodeIds}
+              compareDimSet={compareDimSet}
+              overlayMarkerById={overlayMarkerById}
+              emptyErrors={EMPTY_ERRORS}
+              hoveredTarget={hoveredTarget}
+              hoverConnections={hoverConnections}
+              connectingFromNodeId={connectingFromNodeId}
+              connectingFromPort={connectingFromPort}
+              connectingFromVariantIndex={connectingFromVariantIndex}
+              freshNodeIds={freshNodeIds}
+              addStockWireHintId={addStockWireHintId}
+              renamingNodeId={renamingNodeId}
+              renameDraft={renameDraft}
+              renameInputRef={renameInputRef}
+              renameBaselineRef={renameBaselineRef}
+              l10n={l10n}
+              onSelect={selectOnly}
+              onOpenNodeMenu={openNodeMenu}
+              onCardMouseDown={handleNodeMouseDown}
+              onStartRename={startNodeRename}
+              onCommitRename={commitNodeRename}
+              onCancelRename={cancelNodeRename}
+              onRenameDraftChange={setRenameDraft}
+              onPersistRename={persistNodeRename}
+              onSetNodeName={handleSetNodeName}
+              onSetNodeEnabled={handleSetNodeEnabled}
+              onPortClick={handlePortClick}
+              onHoverNode={hoverNode}
+              onDismissNodeIssue={handleDismissNodeIssue}
+              onDisconnect={handleDisconnectNode}
+              getTelemetry={getTelemetry}
+              isPortCompatible={isPortCompatible}
+              onRenameBranch={onRenameBranch}
+              onRenameWorkspace={onRenameWorkspace}
+            />
 
             <TopologyGhostLayer
               laidOutGhosts={laidOutGhosts}
