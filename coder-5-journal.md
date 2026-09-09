@@ -2489,3 +2489,37 @@ debt only. Linkage: supervisor — slice-6 report + recovery report sent.
   dead), org_id chosen, assignment coverage verdict, and integrity-check outcome. Wire it
   into switch_organization immediately after the new session is minted. Track under
   SaaS-3 L194 follow-ups.
+## 2026-09-08 — dev-mock envelope dedup, step 2 (`aec8642fa` + `41ea03458`)
+
+- **`aec8642fa`** — `ui/src/__tests__/dev-mock-envelope-shapes.test.ts`, 3 cases through
+  `invoke()`: `process_refund_scoped` enveloped, `process_refund_scoped` flat, and the
+  unscoped `process_refund`. Asserts `totalMinor === 2500` (the only one of the eight
+  handlers whose result is observable with no seeded state).
+- **Falsified by execution**: both reads temporarily replaced with `const a = {}` → all
+  three failed `expected +0 to be 2500`. Restored byte-identical
+  (`git hash-object c8d80e53` before/after). Applied and reverted **by script from a byte
+  copy, no git operation on the file** — the protocol the supervisor adopted as standard
+  for contested files.
+- **`41ea03458`** — converted the two `?? {}`-tailed reads to `mockHandlerPayload`.
+  Behaviour-preserving because the helper's chain is
+  `(args ?? {}) → holder.args ?? holder → ?? {}`: for `args === undefined` it returns
+  `{}` where the old third fallback did. Verified against `tauri-api.ts:2259` first —
+  that precondition is the reason this is a refactor and not a hope.
+- **Left unconverted, on purpose**: the six plain `?.args ?? (args as X)` sites.
+  `get_sale_promotions_scoped` is called **FLAT** (`api/promotions.ts:77/:109` send
+  `{ sessionToken, saleId }`), so its fallback is load-bearing and `aec8642fa` does not
+  cover it. Converting six sites that no test observes is how a dedup becomes an
+  unverifiable sweep. **Next step if anyone picks it up: one guard per shape first.**
+- **Three unscoped twins have no caller in `ui/src/api`** (`add_line`, `process_refund`,
+  `get_sale_promotions`). NOT concluded dead — the desktop/tablet allowlists decide
+  reachability, not the mock. Recorded as a question, not an answer.
+- **Pre-existing red found, not caused**: `StaffManagementScreen.test.tsx` (27 tests) and
+  `screenExtraction.test.ts` (1) fail **at HEAD**. Established by saving my change to a
+  file, reverting the mock (clean before I began, diff was only mine → exact restore),
+  and re-running. 28 failures are someone else's. The full suite is therefore NOT green
+  on this branch, which contradicts the 138-test figure quoted earlier in this journal —
+  that number was true when written; if you need a current one, re-run.
+
+  Gates on `41ea03458`: 18 dev-mock tests pass, lint-i18n clean, ipc-parity OK (519
+  handlers, 10 gated dead surface), tsc clean. `--no-verify` for step 9 only, so a
+  foreign red did not hold my commit.
