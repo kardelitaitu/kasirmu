@@ -495,6 +495,7 @@ pub fn run() {
                 commands::subscription::get_subscription_capabilities,
                 commands::subscription::explain_feature_availability_scoped,
                 commands::subscription::get_over_quota_report,
+                commands::subscription::get_over_quota_report_scoped,
                 commands::categories::list_categories,
                 commands::categories::create_category_scoped,
                 commands::categories::update_category_scoped,

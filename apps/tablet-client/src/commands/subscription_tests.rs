@@ -200,11 +200,9 @@ fn verdict_scope_mirrors_the_desktop_verdict_on_the_same_assignment() {
 #[test]
 fn over_quota_report_assesses_the_effective_tier() {
     let conn = fresh_db();
-    let store = Store::new(&conn);
-    // Same production path the command body runs (tablet: no debug
-    // upgrade), minus the session gate the command wraps.
-    let ent = build_entitlements(&store, UsageCounts::default(), false);
-    let report = store.assess_downgrade(&ent.tier).unwrap();
+    // The exact production body both over-quota commands wrap (scoped and
+    // unscoped twins), minus the session gate the commands share.
+    let (report, _tier) = load_over_quota_report(&conn).unwrap();
     assert_eq!(report.tier_key, "free");
     let locations = report
         .usage(oz_core::downgrade::QuotaDimension::Locations)
@@ -212,6 +210,24 @@ fn over_quota_report_assesses_the_effective_tier() {
     assert_eq!(locations.limit, Some(1));
     assert!(!locations.is_over_quota());
     assert!(!report.is_over_quota());
+}
+
+/// The seam returns the EFFECTIVE tier alongside the report — what the
+/// gates enforce — so a caller can render against it without re-deriving
+/// entitlements (the desktop twin of this contract, desktop B3). Seeding
+/// Premium moves the locations cap from the Free 1 to the Premium 5,
+/// proving the report follows the tier, not a hardcoded default.
+#[test]
+fn over_quota_report_seam_returns_the_effective_tier() {
+    let conn = fresh_db();
+    seed_tier(&conn, "premium");
+    let (report, _tier) = load_over_quota_report(&conn).unwrap();
+    assert_eq!(report.tier_key, "premium");
+    let locations = report
+        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .unwrap();
+    assert_eq!(locations.limit, Some(5));
+    assert!(!locations.is_over_quota());
 }
 
 // ── Phase D1 payload feature-grant precedence (recorded debt: coder-1 ──

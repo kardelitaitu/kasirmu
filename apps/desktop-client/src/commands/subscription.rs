@@ -401,6 +401,35 @@ pub async fn get_over_quota_report(
 ) -> Result<OverQuotaReport, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    compute_over_quota_report(&state).await
+}
+
+/// The `_scoped` twin of [`get_over_quota_report`] (todo-global-saas-3.md
+/// L142 recorded the surface as lacking one and failing
+/// `verify-scoped-coverage.sh`). Same report, same `settings:read` gate,
+/// and the scope is the authenticated session: an unknown `session_token`
+/// fails closed via `resolve_session`. The dimensions the report assesses
+/// are tenant ceilings (locations, registers, warehouses, staff, products)
+/// rather than per-store ones — the reasoning that keeps the topology
+/// commands in the scoped-coverage allowlist's category 2 — so there is
+/// deliberately no store connection to resolve here, exactly like
+/// `list_permission_keys_scoped` scopes the session without a store.
+#[tauri::command]
+pub async fn get_over_quota_report_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<OverQuotaReport, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    compute_over_quota_report(&state).await
+}
+
+/// The shared production body of both over-quota commands, split out so
+/// the scoped and unscoped twins cannot drift (the same pattern
+/// [`load_over_quota_report`] uses for the synchronous half).
+async fn compute_over_quota_report(
+    state: &State<'_, AppState>,
+) -> Result<OverQuotaReport, AppError> {
     // The global guard is dropped before the fan-out below, which opens other
     // databases. Holding it across those opens is the hazard this file's own
     // comments warn about elsewhere (a MutexGuard held across work that can

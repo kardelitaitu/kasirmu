@@ -1121,6 +1121,7 @@ pub fn run() {
             commands::subscription::get_subscription_capabilities,
             commands::subscription::explain_feature_availability_scoped,
             commands::subscription::get_over_quota_report,
+            commands::subscription::get_over_quota_report_scoped,
             // The legacy unscoped save_topology command is intentionally not
             // registered. All production writes use the authenticated,
             // revision-aware apply_topology_diff command.

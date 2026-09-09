@@ -384,12 +384,46 @@ pub async fn get_over_quota_report(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db = state.db.lock().await;
-    let store = Store::new(&db);
+    let (report, _tier) = load_over_quota_report(&db)?;
+    Ok(report)
+}
+
+/// The `_scoped` twin of [`get_over_quota_report`] (todo-global-saas-3.md
+/// L142 recorded the surface as lacking one and failing
+/// `verify-scoped-coverage.sh`). Same report, same `settings:read` gate,
+/// and the scope is the authenticated session: an unknown `session_token`
+/// fails closed via `resolve_session`. The dimensions the report assesses
+/// are tenant ceilings (locations, registers, warehouses, staff, products)
+/// rather than per-store ones — the reasoning that keeps the topology
+/// commands in the scoped-coverage allowlist's category 2 — so there is
+/// deliberately no store connection to resolve here, exactly like
+/// `list_permission_keys_scoped` scopes the session without a store.
+#[command]
+pub async fn get_over_quota_report_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<OverQuotaReport, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let db = state.db.lock().await;
+    let (report, _tier) = load_over_quota_report(&db)?;
+    Ok(report)
+}
+
+/// The synchronous body of both tablet over-quota commands, split out so
+/// the tests exercise the exact production path (the desktop twin of this
+/// helper carries the same rationale). Returns the effective tier
+/// alongside the report so callers can render against the gates-enforced
+/// tier without re-deriving entitlements.
+fn load_over_quota_report(
+    db: &rusqlite::Connection,
+) -> Result<(OverQuotaReport, SubscriptionTier), AppError> {
+    let store = Store::new(db);
     let ent = build_entitlements(&store, gather_usage(&store), false);
     let markers = store.persist_over_quota_markers()?;
     let mut report = store.assess_downgrade(&ent.tier)?;
     report.markers = markers;
-    Ok(report)
+    Ok((report, ent.tier))
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
