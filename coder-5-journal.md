@@ -2031,3 +2031,71 @@ missing). Reported to supervisor with SHAs, the constraint-(d) assessment, the
 failure-neutrality evidence, and the junction incident.
 
 **Linkage:** supervisor message — slice-4 report.
+
+## 2026-09-26 — Regional slice 5: fiscalization + statutory numbering (feat)
+
+**Assignment:** plan-summary-first protocol (supervisor approved). Migration slice:
+fiscal_schemes / document_number_sequences (multi-row-per-entity), statutory sequence
+writes INSIDE the sale transaction, RLS decision mine to make, PG regeneration +
+registry + column-type lint all fire.
+
+**Note-3 design check (supervisor's ask) — RESULT: sibling path FOUND and covered.**
+complete_sale_deduction delegates to complete_sale_deduction_with_locations (single
+code path for it); offline.rs has zero `INSERT INTO sales`; but
+complete_sale_with_resolved_shortfalls (sales_lifecycle.rs, ADR-19 §6b shortfall-retry
+checkout) is a genuine second checkout write path. Stamping wired into BOTH — a
+statutory number on one path but not its sibling would be the invented-inconsistency
+class the supervisor named.
+
+**Migration `20260923_fiscal_numbering.sql`:** fiscal_schemes (id, tenant_id,
+legal_entity_id FK, scheme_code, name, parameters JSON bag, is_active, timestamps;
+idx_fiscal_schemes_entity) + document_number_sequences (…, document_kind, prefix,
+current_value, reset_period, period_key, padding; UNIQUE(legal_entity_id,
+document_kind)) + nullable sales.statutory_number. IF NOT EXISTS dialect (the
+registry test enforces it — caught by pg_init_declares_same_table_surface_as_sqlite).
+No seed rows; an entity with no schemes/sequences is the normal §G small-customer
+state.
+
+**RLS decision (constraint b, ratified):** both tables RLS_EXEMPT with documented
+reasons — only desktop-local write paths (the generator's own rule: add to RLS_TABLES
+only after the REST/sync write path demonstrably stamps tenant_id), and the PARENT
+legal_entities is itself RLS_EXEMPT pending the cloud-sync decision; covering children
+while the parent is uncovered is incoherent. tenant_id stamped from birth so the
+future cover is a generator list-move, not a migration.
+
+**Concurrency contract (constraint e), documented on claim_statutory_number_for_sale:**
+the counter advances through exactly ONE statement — UPDATE … SET current_value =
+CASE WHEN period_key = bucket THEN current_value + 1 ELSE 1 END, period_key = bucket,
+updated_at = now WHERE id = row RETURNING current_value, prefix, padding — no
+SELECT-then-UPDATE anywhere, two interleaved claims can never observe the same
+ordinal, rollover restarts at 1 atomically with the first claim of the new period.
+claim_statutory_number_for_sale(tx, sale_id, location_id, kind, now) stamps the sale
+row inside the caller's transaction; unconfigured entity/kind → None → stamp stays
+NULL (today's behavior).
+
+**Constraint (c):** claim runs inside the existing unchecked_transaction of both
+checkout paths, before commit — rollback of the sale rolls the counter back with it
+(no gaps). CompleteSaleResult gained statutory_number: Option<String> (serde camelCase
+wire-shape consistent with the struct; shells have their own local DTOs, no
+shell-side change needed).
+
+**Tests (11 fiscal + pin bumps):** THE KILLER TEST (rollback of the sale transaction
+consumes no number — counter back to 0 and next sale reissues 0001), the note-2
+sibling (sequential claims WITHIN ONE transaction draw distinct numbers — runs on a
+single tx handle), period rollover, unconfigured/unknown-location stamp nothing,
+policy-rewrite-keeps-counter, never-series format, padding/reset validation. Pin
+bumps: tables 114→116, indexes 169→170, registry list +1, idempotency pin 114→116.
+
+**MID-SLICE BUG — mine, caught by foreign tests:** my joined-lines edit into
+sales_checkout.rs duplicated the persist_checkout_applications block; the promotion
+tests' duplicate-guard then failed 3 suites. Proven foreign-independent via a clean
+HEAD worktree baseline (test passed at HEAD, failed in my tree → my tree's bug),
+traced to the duplication, removed. Worktree removed cleanly this time (no junction —
+last session's lesson applied; main node_modules verified intact).
+
+**Gates:** core 2828/2828 (fiscal 11/11); generate-pg-migration.py re-run + --check
+clean (116 tables, 149 indexes); verify-migration-column-types --staged-only OK (5
+float hits all pre-exempt); verify-ipc-parity.py OK; verify-scoped-coverage.sh PASS;
+both shells cargo check green; fmt applied. Two commits: code + journal.
+
+**Linkage:** supervisor message — slice-5 report (SHAs, lint + drift results).
