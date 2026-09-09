@@ -33,7 +33,7 @@ import { TopologyWireRenameOverlay } from './topologyWireRenameOverlay';
 import { TopologyValidationWidget } from './topologyValidationWidget';
 import type { TopologyOverlay } from './topologyBranchCompare';
 import { layoutGhosts, buildGhostWireStubs, compareFocusDimIds, GHOST_WIDTH, GHOST_HEIGHT } from './topologyBranchCompare';
-import { TopologyWireGroup } from './topologyWireGroup';
+import { TopologyWiresLayer } from './topologyWiresLayer';
 import { cubicBezier, polylinePoint, wireUnderCardSegments } from './topologyWireGeometry';
 import { useTopologyEditorGraph, type TopologyHistoryEntry } from './nodeTopologyEditorState';
 import { historyEntry, validWiresForNodes } from './topologyHistoryIntegrity';
@@ -2303,68 +2303,25 @@ export default function NodeTopologyEditor({
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             }}
           >
-            <svg className="node-wires-svg" style={{ width: svgBounds.width, height: svgBounds.height }}>
-              <defs>
-                <marker
-                  id="arrow-end"
-                  viewBox="0 0 6 6"
-                  refX="5"
-                  refY="3"
-                  markerWidth="4"
-                  markerHeight="4"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M 0 0 L 6 3 L 0 6 z" fill="var(--color-accent, #5a9fd4)" />
-                </marker>
-
-                <marker
-                  id="arrow-start"
-                  viewBox="0 0 6 6"
-                  refX="5"
-                  refY="3"
-                  markerWidth="4"
-                  markerHeight="4"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M 0 0 L 6 3 L 0 6 z" fill="var(--color-accent, #5a9fd4)" />
-                </marker>
-              </defs>
-
-              {wires.map((wire) => {
-                const geo = wireGeometries.get(wire.id);
-                if (!geo) return null;
-                return (
-                  <TopologyWireGroup
-                    key={wire.id}
-                    wire={wire}
-                    x1={geo.x1}
-                    y1={geo.y1}
-                    x2={geo.x2}
-                    y2={geo.y2}
-                    dx={geo.dx}
-                    pathD={geo.pathD}
-                    polyline={geo.polyline}
-                    errors={liveValidation.byWire.get(wire.id) ?? EMPTY_ERRORS}
-                    selected={selectedWireId === wire.id}
-                    dimmed={hoverConnections !== null
-                      && wire.fromNodeId !== hoveredNodeId
-                      && wire.toNodeId !== hoveredNodeId}
-                    hovered={hoveredWireId === wire.id}
-                    l10n={l10n}
-                    onHoverWire={hoverWire}
-                    onWireClick={handleWireClick}
-                    onOpenWireMenu={openWireMenu}
-                    onStartGhostBend={startGhostBendDrag}
-                    onStartBendDrag={startBendDrag}
-                    onRemoveBend={removeBend}
-                  />
-                );
-              })}
-
-              {wirePreviewLine && (
-                <path d={wirePreviewLine.d} className="wire-path" opacity="0.5" pointerEvents="none" />
-              )}
-            </svg>
+            <TopologyWiresLayer
+              wires={wires}
+              wireGeometries={wireGeometries}
+              svgBounds={svgBounds}
+              hoveredWireId={hoveredWireId}
+              selectedWireId={selectedWireId}
+              hoverConnections={hoverConnections}
+              hoveredNodeId={hoveredNodeId}
+              liveValidation={liveValidation}
+              emptyErrors={EMPTY_ERRORS}
+              wirePreviewLine={wirePreviewLine}
+              l10n={l10n}
+              onHoverWire={hoverWire}
+              onWireClick={handleWireClick}
+              onOpenWireMenu={openWireMenu}
+              onStartGhostBend={startGhostBendDrag}
+              onStartBendDrag={startBendDrag}
+              onRemoveBend={removeBend}
+            />
 
             <TopologyAlignmentGuides alignmentGuide={alignmentGuide} />
 
