@@ -129,8 +129,7 @@ export function useTopologyEditorViewport(deps: TopologyViewportDeps) {
     const cw = canvas?.clientWidth ?? 0;
     const ch = canvas?.clientHeight ?? 0;
     setPan({ x: cw / 2 - cx * zoom, y: ch / 2 - cy * zoom });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; canvasRef arrives through the deps object.
-  }, [zoom, setPan]);
+  }, [zoom, setPan, canvasRef]);
 
   /** Nudge the viewport by a canvas-space delta — the minimap's arrows. */
   const nudgeViewport = useCallback((dx: number, dy: number) => {
@@ -160,8 +159,7 @@ export function useTopologyEditorViewport(deps: TopologyViewportDeps) {
     const appliedZoom = Math.max(0.4, Math.min(2.0, fitZoom));
     setZoom(appliedZoom);
     setPan({ x: padding - minX * appliedZoom, y: padding - minY * appliedZoom });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; canvasRef/setZoom/setPan arrive through the deps object.
-  }, [nodes]);
+  }, [nodes, canvasRef, setZoom, setPan]);
 
   /** Fit the current multi-selection — same bounds math as zoomToFit but
    *  scoped to the selected nodes (context menu action). */
@@ -186,15 +184,13 @@ export function useTopologyEditorViewport(deps: TopologyViewportDeps) {
     const appliedZoom = Math.max(0.4, Math.min(2.0, fitZoom));
     setZoom(appliedZoom);
     setPan({ x: padding - minX * appliedZoom, y: padding - minY * appliedZoom });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; canvasRef/setZoom/setPan arrive through the deps object.
-  }, [nodes, selectedNodeIds]);
+  }, [nodes, selectedNodeIds, canvasRef, setZoom, setPan]);
 
   /** Step the zoom by a factor, clamped to the same 40%..200% range the
    *  wheel uses — the floating − / + buttons share one code path. */
   const zoomBy = useCallback((factor: number) => {
     setZoom((prev) => Math.min(2.0, Math.max(0.4, prev * factor)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; setZoom arrives through the deps object.
-  }, []);
+  }, [setZoom]);
 
   /** Reset the view: 100% zoom, pan so the Branch Location node sits at
    *  the top-left of the visible canvas (with a fixed margin). That way
@@ -208,8 +204,7 @@ export function useTopologyEditorViewport(deps: TopologyViewportDeps) {
     setPan(storeNode
       ? { x: margin - storeNode.x, y: margin - storeNode.y }
       : { x: 0, y: 0 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; setZoom/setPan arrive through the deps object.
-  }, [nodes]);
+  }, [nodes, setZoom, setPan]);
 
   return {
     /** The zoom cluster the central keydown effect and the zoom popover consume. */
