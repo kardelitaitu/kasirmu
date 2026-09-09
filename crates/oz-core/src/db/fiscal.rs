@@ -216,6 +216,101 @@ impl crate::db::Store<'_> {
         Ok(row)
     }
 
+    /// List every statutory number series configured for the tenant,
+    /// ordered by (legal entity, document kind) so a management overview
+    /// renders without re-sorting.
+    ///
+    /// Read-only (RUST-08 read rule). `current_value` is the LIVE counter
+    /// — it never resets on reconfiguration (the upsert's contract), so
+    /// what this reports is exactly what the next claim continues from.
+    pub fn list_document_number_sequences(&self) -> Result<Vec<DocumentNumberSequence>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, legal_entity_id, document_kind, prefix, current_value,
+                    reset_period, period_key, padding, created_at, updated_at
+             FROM document_number_sequences
+             WHERE tenant_id = 'default'
+             ORDER BY legal_entity_id, document_kind",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(DocumentNumberSequence {
+                id: row.get(0)?,
+                legal_entity_id: row.get(1)?,
+                document_kind: row.get(2)?,
+                prefix: row.get(3)?,
+                current_value: row.get(4)?,
+                reset_period: row.get(5)?,
+                period_key: row.get(6)?,
+                padding: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, rusqlite::Error>>()
+            .map_err(CoreError::from)
+    }
+
+    /// The configured series for ONE legal entity (the overview's
+    /// per-entity drill-down), ordered by document kind.
+    pub fn document_number_sequences_for_entity(
+        &self,
+        legal_entity_id: &str,
+    ) -> Result<Vec<DocumentNumberSequence>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, legal_entity_id, document_kind, prefix, current_value,
+                    reset_period, period_key, padding, created_at, updated_at
+             FROM document_number_sequences
+             WHERE tenant_id = 'default' AND legal_entity_id = ?1
+             ORDER BY document_kind",
+        )?;
+        let rows = stmt.query_map(params![legal_entity_id], |row| {
+            Ok(DocumentNumberSequence {
+                id: row.get(0)?,
+                legal_entity_id: row.get(1)?,
+                document_kind: row.get(2)?,
+                prefix: row.get(3)?,
+                current_value: row.get(4)?,
+                reset_period: row.get(5)?,
+                period_key: row.get(6)?,
+                padding: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, rusqlite::Error>>()
+            .map_err(CoreError::from)
+    }
+
+    /// The tenant's fiscal schemes — the entity-level statutory
+    /// configuration anchor the number series hang off — ordered by
+    /// (legal entity, scheme code).
+    ///
+    /// INACTIVE schemes are returned too: a management overview must show
+    /// the full configuration surface, not a silently filtered one;
+    /// consumers filter by `is_active` per their own contract.
+    pub fn list_fiscal_schemes(&self) -> Result<Vec<FiscalScheme>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, legal_entity_id, scheme_code, name, parameters,
+                    is_active, created_at, updated_at
+             FROM fiscal_schemes
+             WHERE tenant_id = 'default'
+             ORDER BY legal_entity_id, scheme_code",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(FiscalScheme {
+                id: row.get(0)?,
+                legal_entity_id: row.get(1)?,
+                scheme_code: row.get(2)?,
+                name: row.get(3)?,
+                parameters: row.get(4)?,
+                is_active: row.get::<_, i64>(5)? != 0,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, rusqlite::Error>>()
+            .map_err(CoreError::from)
+    }
+
     /// Issue the next statutory number for one entity/kind and stamp it onto
     /// the given sale row — INSIDE the caller's transaction.
     ///

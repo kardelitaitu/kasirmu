@@ -296,3 +296,90 @@ fn reset_period_rejects_unknown_keywords() {
     let err = ResetPeriod::parse("weekly");
     assert!(matches!(err, Err(CoreError::Validation { .. })));
 }
+
+// ── management readers (W5-A — the D44 gap) ─────────────────────────
+
+fn seed_scheme(store: &Store<'_>, id: &str, entity: &str, code: &str, active: i64) {
+    store
+        .conn
+        .execute(
+            "INSERT INTO fiscal_schemes (id, tenant_id, legal_entity_id, scheme_code, name,
+                    parameters, is_active, created_at, updated_at)
+             VALUES (?1, 'default', ?2, ?3, ?3, '{}', ?4, ?5, ?5)",
+            params![id, entity, code, active, NOW],
+        )
+        .unwrap();
+}
+
+#[test]
+fn list_sequences_is_empty_before_configuration() {
+    let store = store();
+    assert!(store.list_document_number_sequences().unwrap().is_empty());
+    assert!(store.list_fiscal_schemes().unwrap().is_empty());
+}
+
+#[test]
+fn list_sequences_orders_and_reports_the_live_counter() {
+    let store = store();
+    seed_entity(&store, "ent-1");
+    store
+        .upsert_document_number_sequence("ent-1", "receipt", "INV/", ResetPeriod::Monthly, 4, NOW)
+        .unwrap();
+    store
+        .upsert_document_number_sequence("ent-1", "invoice", "F/", ResetPeriod::Never, 0, NOW)
+        .unwrap();
+    // Simulate an issued ordinal the way a claim would leave the row.
+    store
+        .conn
+        .execute(
+            "UPDATE document_number_sequences SET current_value = 41
+             WHERE legal_entity_id = 'ent-1' AND document_kind = 'receipt'",
+            [],
+        )
+        .unwrap();
+    let list = store.list_document_number_sequences().unwrap();
+    assert_eq!(list.len(), 2);
+    // Stable (entity, kind) order: invoice sorts before receipt.
+    assert_eq!(list[0].document_kind, "invoice");
+    assert_eq!(list[1].document_kind, "receipt");
+    // current_value is the LIVE counter (never resets on reconfiguration).
+    assert_eq!(list[1].current_value, 41);
+    assert_eq!(list[1].prefix, "INV/");
+    assert_eq!(list[1].padding, 4);
+}
+
+#[test]
+fn per_entity_reader_isolates_its_entity() {
+    let store = store();
+    seed_entity(&store, "ent-1");
+    seed_entity(&store, "ent-2");
+    store
+        .upsert_document_number_sequence("ent-1", "receipt", "INV/", ResetPeriod::Never, 0, NOW)
+        .unwrap();
+    store
+        .upsert_document_number_sequence("ent-2", "invoice", "B/", ResetPeriod::Yearly, 2, NOW)
+        .unwrap();
+    let own = store.document_number_sequences_for_entity("ent-1").unwrap();
+    assert_eq!(own.len(), 1);
+    assert_eq!(own[0].legal_entity_id, "ent-1");
+    assert_eq!(own[0].document_kind, "receipt");
+    let all = store.list_document_number_sequences().unwrap();
+    assert_eq!(all.len(), 2, "tenant-wide list sees both entities");
+}
+
+#[test]
+fn fiscal_scheme_reader_reports_active_and_inactive() {
+    let store = store();
+    seed_entity(&store, "ent-1");
+    seed_scheme(&store, "sch-1", "ent-1", "id-faktur-pajak", 1);
+    seed_scheme(&store, "sch-2", "ent-1", "legacy-e-faktur", 0);
+    let schemes = store.list_fiscal_schemes().unwrap();
+    // The overview shows the FULL configuration surface — inactive schemes
+    // included; consumers filter by is_active per their contract.
+    assert_eq!(schemes.len(), 2);
+    assert_eq!(schemes[0].scheme_code, "id-faktur-pajak");
+    assert!(schemes[0].is_active);
+    assert_eq!(schemes[1].scheme_code, "legacy-e-faktur");
+    assert!(!schemes[1].is_active);
+    assert_eq!(schemes[0].legal_entity_id, "ent-1");
+}
