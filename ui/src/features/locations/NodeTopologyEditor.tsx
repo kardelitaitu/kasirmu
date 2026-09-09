@@ -360,6 +360,19 @@ const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
 const issueKey = topologyIssueKey;
 const graphIssueKey = (messageId: string) => `graph:${messageId}`;
 
+/** Bounded preset list the slice-4 regional editor offers for
+ *  `locations.timezone` (ADR #48 Decision 2): exactly the three Indonesian
+ *  IANA zones, rendered as a native select — no free-text entry, no search
+ *  box. Mirrors `oz_core::regional::LOCATION_TIMEZONES`, which the write
+ *  boundary (`update_location_profile_scoped`) enforces fail-closed
+ *  alongside the legacy `UTC` column-default sentinel, so the editor must
+ *  never send anything else. A future zone extends both lists together. */
+const LOCATION_TIMEZONE_PRESETS = ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura'] as const;
+type LocationTimezonePreset = (typeof LOCATION_TIMEZONE_PRESETS)[number];
+/** Whether tz is one of the three preset Indonesian location timezones. */
+const isLocationTimezonePreset = (tz: string): tz is LocationTimezonePreset =>
+  (LOCATION_TIMEZONE_PRESETS as readonly string[]).includes(tz);
+
 /** Branch Location profile fields — fetched lazily from the backend. */
 function BranchLocationFields({ nodeId, sessionToken, l10n, beginInspectorEdit }: {
   nodeId: string;
@@ -477,16 +490,33 @@ function BranchLocationFields({ nodeId, sessionToken, l10n, beginInspectorEdit }
             onBlur={persist}
           />
         </label>
-        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
         <label className="inspector-field inspector-field--half">
           <span><Localized id="topology-inspector-timezone">Timezone</Localized></span>
-          <input
-            type="text"
-            value={active.timezone}
-            placeholder="UTC"
-            onChange={(e) => { beginInspectorEdit(nodeId); setDraft((d) => ({ ...d ?? {}, timezone: e.target.value })); }}
+          <select
+            aria-label={l10n.getString('topology-inspector-timezone')}
+            value={isLocationTimezonePreset(active.timezone) ? active.timezone : ''}
+            onChange={(e) => {
+              // Fail-closed client side: only a preset may enter the draft.
+              // The placeholder option is disabled, so this guard also
+              // rejects the programmatic '' case — mirroring the server
+              // boundary, which accepts presets plus the legacy UTC sentinel
+              // only (08faea6f0).
+              const tz = e.target.value;
+              if (!isLocationTimezonePreset(tz)) return;
+              beginInspectorEdit(nodeId);
+              setDraft((d) => ({ ...d ?? {}, timezone: tz }));
+            }}
             onBlur={persist}
-          />
+          >
+            {/* Legacy sentinel rows (column default 'UTC') show a disabled
+                placeholder instead of a fake preset; preset rows hide it. */}
+            {!isLocationTimezonePreset(active.timezone) && (
+              <option value="" disabled>{l10n.getString('topology-inspector-timezone-placeholder')}</option>
+            )}
+            <option value="Asia/Jakarta">{l10n.getString('topology-inspector-timezone-asia-jakarta')}</option>
+            <option value="Asia/Makassar">{l10n.getString('topology-inspector-timezone-asia-makassar')}</option>
+            <option value="Asia/Jayapura">{l10n.getString('topology-inspector-timezone-asia-jayapura')}</option>
+          </select>
         </label>
       </div>
       {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
