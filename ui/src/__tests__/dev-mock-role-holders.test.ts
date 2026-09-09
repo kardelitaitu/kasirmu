@@ -147,3 +147,66 @@ describe('dev-mock role holders surface', () => {
     }
   });
 });
+/**
+ * Regression for 3da6a6226. Both handlers used to read `args.args`, and invoke()
+ * dispatches `handler(args?.['args'] ?? args)` — the envelope is unwrapped before a
+ * handler runs. So each got undefined: create hit its own
+ * `if (!name) throw new Error('role name must not be empty')` on EVERY browser-mode
+ * create, and update matched no role and returned quietly.
+ *
+ * Nothing caught that because every existing test in this family calls FLAT helpers
+ * (`holders(id)`, `roleRows()`), which never exercises the enveloped path the screens
+ * actually use. These two go through `invoke()` with `{ sessionToken, args }` exactly
+ * as ui/src/api/staff.ts:410/:417 sends it — under the old code the first assertion
+ * rejects and the second silently renames nothing.
+ */
+type MockRoleResult = {
+  id: string;
+  name: string;
+  description?: string;
+  permissions: string[];
+  is_builtin: boolean;
+};
+
+const createRole = (name: string, permissions: string[] = []) =>
+  invoke<MockRoleResult>('create_role_scoped', {
+    sessionToken: 'mock-token',
+    args: { name, description: `mock ${name}`, permissions },
+  });
+
+describe('dev-mock role authoring through the invoke envelope', () => {
+  it('creates the role the payload names, not a validation error', async () => {
+    const created = await createRole('Floor Supervisor', ['sales:void']);
+    expect(created.name).toBe('Floor Supervisor');
+    expect(created.permissions).toEqual(['sales:void']);
+    expect(created.is_builtin).toBe(false);
+    // And it lands in the list the screen reads back, so the create is not just
+    // echoing an argument.
+    const rows = (await roleRows()) as unknown as Array<{ id: string; name: string }>;
+    expect(rows.some((r) => r.id === created.id && r.name === 'Floor Supervisor')).toBe(
+      true,
+    );
+  });
+
+  it('targets the id in the payload and leaves sibling roles alone', async () => {
+    const kept = await createRole('Shift Lead A', ['reports:view']);
+    const target = await createRole('Shift Lead B');
+    // The mock mints ids as `role-${Date.now()}`; two creates in the same
+    // millisecond would collide and the update would rename the wrong row. invoke()
+    // delays 50ms per call so these cannot collide, and the assertion makes that
+    // dependency visible instead of trusting it silently.
+    expect(target.id).not.toBe(kept.id);
+
+    const updated = await invoke<MockRoleResult>('update_role_scoped', {
+      sessionToken: 'mock-token',
+      args: { id: target.id, name: 'Shift Lead B renamed', permissions: [] },
+    });
+    expect(updated.id).toBe(target.id);
+    expect(updated.name).toBe('Shift Lead B renamed');
+
+    const rows = (await roleRows()) as unknown as Array<{ id: string; name: string }>;
+    expect(rows.find((r) => r.id === kept.id)?.name).toBe('Shift Lead A');
+    expect(rows.find((r) => r.id === target.id)?.name).toBe('Shift Lead B renamed');
+  });
+});
+
