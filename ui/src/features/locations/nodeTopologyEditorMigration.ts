@@ -132,15 +132,11 @@ export function useTopologyEditorMigration(deps: TopologyMigrationDeps) {
    *  ambiguity returns — an undo of a migration, or a later edit recreating
    *  the same legacy wire. */
   useEffect(() => {
-    if (ambiguousLegacyWireIds.length > 0 && !migrationDismissedRef.current) {
+    const dismissed = migrationDismissedRef;
+    if (ambiguousLegacyWireIds.length > 0 && !dismissed.current) {
       setMigrationOpen(true);
     }
-    // The effect above reads migrationDismissedRef and setMigrationOpen, which
-    // arrive through the deps object; the rule cannot see they are the editor's own
-    // useRef value and useState setter. Their identity never changes across renders,
-    // so listing them would be a no-op.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [ambiguousLegacyWireIds.length]);
+  }, [ambiguousLegacyWireIds.length, migrationDismissedRef, setMigrationOpen]);
 
   /** Apply the migration: each wire keeps its chosen relationship (semantic
    *  fields + a label mirroring commitWire's first-wire choices, legacy
