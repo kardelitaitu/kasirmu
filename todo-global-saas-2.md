@@ -177,6 +177,20 @@ actual relationship mutation.
       `oz_core::regional` resolver, core-only) is the one landing this round;
       slices 2–7 are queued below. Box stays open until the axis set is
       complete.
+      — **AXIS STATUS 2026-09-09 (slices 1–6 landed; PARTIAL — box stays open):**
+      ✓ locale, language, timezone (ADR #48: IANA storage, 3-zone preset editor,
+      business-date as_of — `87114abf6`, `b223de6bf`, `08faea6f0`, `a4ed7a511`),
+      currency, local payment settings (dedicated `local_payment_methods` table,
+      entity→location inheritance with disable-as-fact — `13b042037`),
+      ✓ fiscalization + numbering CORE-ONLY (fiscal_schemes +
+      document_number_sequences, statutory numbers stamped inside BOTH checkout
+      transactions race-free — `12c55c8ad`; management surfaces + the numbering
+      row's location-ticket-prefix half outstanding). Tax regime → deliberately
+      routed to the adjacent tax box (L180). **RECEIPT FORMAT: absent** (zero
+      core references; the design's scoped-KV receipt-format slice never
+      shipped) — principal remaining blocker with the location ticket prefix.
+      Residency (§K) is outside this box's axis set. Box stays open per its own
+      clause.
 - [ ] **Separate business tax configuration from application defaults.** Tax
       rules, effective dates, tax-inclusive behavior, and fiscal requirements
       should be location-aware; display currency and UI preferences should not
