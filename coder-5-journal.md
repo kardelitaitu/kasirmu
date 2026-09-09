@@ -1893,3 +1893,73 @@ effective_date where a store is in scope.
   so nothing changed and no commit was needed) and verified
   worktree-identical-to-HEAD afterward. The first follow-up commit attempt
   correctly refused (nothing to commit).
+
+## 2026-09-26 — Regional slice 3: set_regional_config_scoped write IPC + Regional card (feat)
+
+**Assignment:** supervisor greenlight (after slice-2 acceptance `f0a4e5b51`): write-side IPC
+(`settings:edit`, transactional, validation AT THE CORE BOUNDARY not React) + a Regional
+card in the Settings hub with its §H scope tag; card must be usable when only ONE entity
+exists (open question 3); shared.ftl hot-file wait protocol.
+
+**shared.ftl wait outcome — RESOLVED BY DISCOVERY:** checked `shared.ftl`/`shared.id.ftl`
+first — both clean. Then discovered the card's labels are **not** shared.ftl's family at
+all: Settings hub copy lives in `settings.ftl`/`settings.id.ftl` (`settings-section-store`,
+`settings-scope-*` precedents), so all new keys went there and shared.ftl was never
+touched. Wait protocol satisfied trivially; flagged to supervisor.
+
+**Design decisions:**
+1. Card placed on the existing **Business Defaults** screen (§H row: location with
+   organization defaults inherited) — no nav/router/registration edits needed.
+2. Binding: session **primary location** via `getPrimaryLocationScoped` (same source as
+   AnalyticsScreen) — single-entity tenants work with zero pickers (open question 3).
+3. Legal-entity axes are NOT editable on this card (§H separates the scopes); only the
+   **country anchor** propagates through the link, because `locations` has no country
+   column and the read resolver takes it from the entity layer. The entity UPDATE is
+   tenant-filtered to mirror the read walk's fail-closed posture.
+4. Timezone validation = ADR #48 contract exactly (three IANA presets or the `UTC`
+   sentinel; `Europe/Berlin` and `+07:00` rejected on writes, matching
+   `update_location_profile_scoped`). Locale = BCP-47 shape; currency via
+   `Currency::from_str` (787dc742a precedent, uppercase canonicalisation); country =
+   ISO-3166 alpha-2 shape, uppercased.
+5. Wire: `set_regional_config_scoped(locationId, config{locale,timezone,currency,
+   country_code})` returns core `RegionalConfig` read-after-write (same snake_case
+   verbatim contract as slice 2).
+
+**Core** (`crates/oz-core`): `regional::{is_valid_bcp47_locale, is_valid_iso3166_alpha2,
+validate_regional_axis_value}` (axis param `&'static str` — `CoreError::Validation.field`
+is `&'static str`, caught by compile); `db/regional.rs update_regional_config_for_location`
+— validators before `unchecked_transaction`, location UPDATE + optional tenant-filtered
+entity UPDATE, commit, read-back on the same conn. 19 db tests green (persistence/
+provenance, blank-clears-to-inherit, preset+UTC accepted, Europe/Berlin + +07:00 + US1 +
+id_ID + IDN rejected with the correct typed field, cross-tenant country write lands
+nothing, unknown location NotFound).
+
+**IPC twins:** desktop `set_regional_config_scoped` = `resolve_scope` + `settings:edit`
+session gate + **ADR #47 resource gate** (`ScopeType::Location`) + core write (tablet has
+no resource-gate helper — plain `settings:edit`, matching its scoped write precedent,
+documented). Registered in both `lib.rs`. Desktop 10 regional tests green (persist +
+read-back agreement, blank-clears-to-entity, typed Validation rejection with row
+untouched, staff PermissionDenied); tablet 9 green. fmt re-stage MM artifact handled
+with a pure `git add` refresh as documented twice before.
+
+**UI:** `api/regional.ts` `setRegionalConfigScoped` + `REGIONAL_TIMEZONE_PRESETS`
+presentation constant (validation stays in core); dev-mock write handler with
+session-local override map + registration (parity rule); `RegionalSettingsCard.tsx/.css`
+(own CSS — screenExtraction gate only scans listed screens; card not added to its list;
+placeholder classes kept in the screen file); mounted in `BusinessDefaultsScreen.tsx`;
+21 `settings-regional-*` keys in BOTH bundles after the scope-key block (en + id).
+Vitest: card 4/4 (provenance render, single-entity no-picker, save + read-after-write,
+typed error copy), contract 3/3 (write payload shape, presets constant). Whole-tree
+typecheck + targeted eslint clean after fixing consistent-type-imports (slice-4 lesson)
+and one unescaped apostrophe.
+
+**Gates:** cargo fmt --all (verified only my Rust files moved), oz-core 19 + desktop 10 +
+tablet 9 regional tests green post-fmt, `verify-ipc-parity.py` OK
+(`set_regional_config_scoped` covered, no new allowlist entries — scoped-shaped, not a
+scoped_orphan), Git-Bash `verify-scoped-coverage.sh` PASS, whole-tree
+`npm run typecheck` clean, targeted vitest green. `RUST_MIN_STACK=33554432` workaround
+needed: three deterministic STATUS_STACK_BUFFER_OVERRUN crashes linking the desktop test
+binary (15 GB free — foreign-agent build contention, not memory).
+
+**Linkage:** supervisor message — slice-3 report (SHAs, gates, shared.ftl discovery).
+
