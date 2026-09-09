@@ -1,49 +1,84 @@
-// ── SettingsPage tests ────────────────────────────────────────────
+// ── SettingsPage tests — flat-IA rebuild (role gate first) ───────
 //
-// Covers: loading, error recovery, store/receipt/currency/display/cloud
-// sections, sidebar, accordion, validation, revert, keyboard shortcuts.
+// The settings hub is now: roleAtLeast(session.role_name, 'admin') gates the
+// whole shell (owner/admin see it, everyone else gets the locked card), and
+// the shell renders the FLAT 13-page sidebar IA whose bodies are the blank
+// screens in features/settings/screens/ (SettingsNavTree commit 3c76e6c97).
 //
-// Uses fireEvent.click for all button clicks (~1ms vs userEvent ~60ms),
-// fireEvent.change for form fields (~1ms vs userEvent.type ~20ms/char),
-// and fireEvent.blur for validation triggers (~1ms vs userEvent.tab ~50ms).
-// 26 tests.
-//
-// Note: SettingsPage requires API data to load before any form/navigation
-// elements appear. Tests that interact with the page must wait for the
-// initial data load via await waitFor / await screen.findByText before
-// using fireEvent.
+// Deliberately NOT covered here anymore (behavior removed with the old
+// section bodies — see the rebuild commit):
+//   * Store/Currency/Display/Receipt/About/Cloud-Sync form fields and their
+//     validateField/markDirty errors (inputs left the page).
+//   * dirty-dependent Revert visibility, beforeunload dirty prompts (nothing
+//     on the page can become dirty; the guard itself is covered with direct
+//     hook tests in useUnsavedChangesGuard.test.tsx).
+//   * the category accordion toggle (categories are gone; flat-nav coverage
+//     lives in SettingsNavTree.test.tsx).
+//   * deep props into the old sync section (converted to direct SyncSection
+//     mounts in CloudSyncSettings.test.tsx).
+// What remains of the old save/load flow IS still on the page (handleSave,
+// SettingsContext lifecycle, topbar) and stays covered below.
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, cleanup, fireEvent, configure } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen, waitFor, cleanup, fireEvent, within, configure } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 
-// The page mounts many IPC-driven sections; under parallel CI load a full
-// render + microtask flush can exceed the default 1s waitFor timeout, which
-// surfaced as intermittent flakes. Give this file's waitFor/findBy calls a
-// comfortable 5s window (vitest isolates module state per file, so this
-// does not leak into other suites).
+// The page mounts IPC-driven context + lazy screens; under parallel CI load a
+// full render + microtask flush can exceed the default 1s waitFor timeout.
+// Give this file's waitFor/findBy calls a comfortable 5s window.
 configure({ asyncUtilTimeout: 5000 });
+
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import SettingsPage from '@/features/settings/SettingsPage';
-import { AuthProvider } from '@/contexts/AuthContext';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
+import { NAV_ITEMS, NAV_L10N_KEYS } from '@/features/settings/SettingsNavTree';
+import { withSyncDefaults } from '@/contexts/SettingsContext';
 
 // Re-export the REAL @/api/branding module, overriding the global stub that
-// test-setup.ts installs to silence IPC noise for the rest of the suite. This
-// file's load/save error-path tests (e.g. "all APIs fail", "every save API
-// call fails") require branding to go through the per-file invokeMock so the
-// brand load/save fails WITH the other commands. Per-file mocks win over the
-// global one, so this keeps this file exercising the real branding IPC surface
-// (routed through loggedInvoke -> invokeMock) and the functional assertions
-// intact.
+// test-setup.ts installs: the load/save error-path tests need branding to go
+// through the per-file invokeMock so brand calls fail WITH the other commands.
 vi.mock('@/api/branding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/branding')>()),
+}));
+
+// ── Session under test: the role gate reads session.role_name ──────
+const { authState, sessions } = vi.hoisted(() => ({
+  authState: {
+    session: { username: 'ada', role_name: 'admin', display_name: 'Ada' } as
+      { username: string; role_name: string; display_name: string } | null,
+  },
+  // Defaults map — every floor and the fail-closed spellings.
+  sessions: {
+    owner: { username: 'boss', role_name: 'owner', display_name: 'Boss' },
+    admin: { username: 'ada', role_name: 'admin', display_name: 'Ada' },
+    'role-admin': { username: 'preset', role_name: 'role-admin', display_name: 'Preset admin' },
+    manager: { username: 'mo', role_name: 'manager', display_name: 'Mo' },
+    'role-manager': { username: 'pm', role_name: 'role-manager', display_name: 'PM' },
+    staff: { username: 'sam', role_name: 'staff', display_name: 'Sam' },
+    auditor: { username: 'aud', role_name: 'auditor', display_name: 'Aud' },
+    cashier: { username: 'retired', role_name: 'cashier', display_name: 'R' },
+  },
+}));
+
+vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  useAuth: () => ({
+    session: authState.session,
+    pickerTicket: null,
+    loading: false,
+    error: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+    clearError: vi.fn(),
+    isManager: true,
+    isOwner: false,
+    swapSession: vi.fn(),
+  }),
 }));
 
 const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
@@ -56,9 +91,8 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
   const impl = (_cmd: string, _args?: unknown): Promise<unknown> => {
     const cmd = _cmd;
     if (failCommands.has(cmd)) {
-      return Promise.reject(new Error(`Mock failure: ${cmd}`));
+      return Promise.reject(new Error('Mock failure: ' + cmd));
     }
-    // Scoped GET commands (used by SettingsContext with sessionToken)
     if (cmd === 'get_store_settings_scoped') {
       return Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '' });
     }
@@ -87,7 +121,9 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
     if (cmd === 'version_scoped') {
       return Promise.resolve({ name: 'oz-pos', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
     }
-    // Also support unscoped legacy commands for backward compat
+    // Unscoped legacy twins — BrandProvider/SettingsContext hit these when no
+    // session token is present (and BrandContext.tsx:54 always uses the
+    // unscoped GET on boot). Returning undefined here crashes ThemeProvider.
     if (cmd === 'get_store_settings') {
       return Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '' });
     }
@@ -113,61 +149,6 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
     if (cmd === 'version') {
       return Promise.resolve({ name: 'oz-pos', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
     }
-    if (
-      cmd === 'set_receipt_settings_scoped' || cmd === 'set_store_settings_scoped' ||
-      cmd === 'set_default_currency' || cmd === 'set_user_preferences' ||
-      cmd === 'set_user_preferences_scoped' ||
-      cmd === 'update_sync_settings_scoped' ||
-      cmd === 'set_brand_primary_colour_scoped' ||
-      cmd === 'set_brand_store_name_scoped'
-    ) {
-      return Promise.resolve(undefined);
-    }
-    if (cmd === 'sync_run_scoped') {
-      return Promise.resolve({ synced: 0, failed: 0, error: null });
-    }
-    if (cmd === 'get_backup_status') {
-      return Promise.resolve({ lastBackup: null, lastBackupSize: null });
-    }
-    if (cmd === 'list_audit_log') {
-      return Promise.resolve([]);
-    }
-    if (cmd === 'get_license_status') {
-      return Promise.resolve({
-        is_active: true,
-        status: 'valid',
-        payload: JSON.stringify({
-          tenant_id: 'tenant-1',
-          tier_key: 'pro',
-          status: 'active',
-          max_stores: 5,
-          max_pos_instances: 10,
-          allowed_types: ['retail', 'restaurant'],
-          starts_at: '2026-01-01T00:00:00Z',
-          expires_at: '2027-01-01T00:00:00Z',
-          grace_until: '2027-02-01T00:00:00Z',
-          issued_at: '2026-01-01T00:00:00Z',
-        }),
-        message: null,
-      });
-    }
-    if (cmd === 'create_backup') {
-      return Promise.resolve({ sizeBytes: 1024 });
-    }
-    if (cmd === 'check_license_status') {
-      return Promise.resolve({
-        tenantId: 'tenant-1',
-        status: 'active',
-        tier: 'pro',
-        active: true,
-        expiresAt: '2027-01-01T00:00:00Z',
-        graceUntil: '2027-02-01T00:00:00Z',
-        maxLocations: 5,
-      });
-    }
-    if (cmd === 'get_machine_id') {
-      return Promise.resolve('test-machine-id');
-    }
     return Promise.resolve(undefined);
   };
   return { invokeMock: vi.fn(impl), defaultImpl: impl, failCommands };
@@ -179,7 +160,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('@/contexts/ZoomContext', () => ({
   useAppZoom: () => ({ zoomLevel: 'auto', setZoomLevel: vi.fn() }),
-  ZoomProvider: ({ children }: { children: ReactNode }) => children,
+  ZoomProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
@@ -215,16 +196,13 @@ beforeEach(() => {
   failCommands.clear();
   invokeMock.mockReset();
   invokeMock.mockImplementation(defaultImpl);
-  // Sidebar prefs (pinned sections, expanded categories) must not leak
-  // between tests: a leaked pin duplicates a nav item name and breaks
-  // getByRole uniqueness on the sidebar buttons.
+  // Sidebar prefs must not leak between tests.
   localStorage.clear();
+  // Default session: full-shell tests run as admin; gate tests override per case.
+  authState.session = sessions.admin;
+  window.location.hash = '';
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.removeAttribute('data-font-smoothing');
-  document.documentElement.classList.remove('is-theme-transitioning');
-  Array.from(document.documentElement.style)
-    .filter((p) => p.startsWith('--color-accent'))
-    .forEach((p) => document.documentElement.style.removeProperty(p));
 });
 
 afterEach(() => {
@@ -243,603 +221,269 @@ function TestWrapper({ children }: { children: ReactNode }) {
     >
       <BrandProvider>
         <CurrencyProvider>
-          <AuthProvider>{children}</AuthProvider>
+          {children}
         </CurrencyProvider>
       </BrandProvider>
     </LocaleContext.Provider>
   );
 }
 
-// ── Field helpers (fireEvent ~1ms vs userEvent ~20ms/char) ────────
-
-function fillField(label: string, value: string) {
-  fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value } });
+function renderPage() {
+  return renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
 }
 
-function blurField(label: string) {
-  fireEvent.blur(screen.getByRole('textbox', { name: label }));
+/** Single-line Fluent message value from the raw English bundle. */
+function ftlValue(key: string): string {
+  const m = new RegExp('^' + key + '\\s*=\\s*(.*)$', 'm').exec(settingsFtl);
+  return m ? m[1]!.trim() : '';
 }
 
-describe('SettingsPage', () => {
-  // ── Loading ──────────────────────────────────────────────────
+/** Bundle-resolved nav label for a page key (the accessible name the nav uses). */
+function navLabel(key: string): string {
+  return ftlValue(NAV_L10N_KEYS[key] ?? '');
+}
 
-  it('shows loading indicator before APIs resolve', () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    expect(document.querySelector('.settings-loading-card')).toBeInTheDocument();
+/** The section body container. */
+function sectionRoot(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('.settings-section-content');
+  if (!el) throw new Error('no .settings-section-content in the shell');
+  return el;
+}
+
+/** Arguments of the LAST invoke call for a command ({ sessionToken, args? } envelope). */
+function lastInvokeArgs(cmd: string): Record<string, unknown> | undefined {
+  for (let i = invokeMock.mock.calls.length - 1; i >= 0; i--) {
+    if (invokeMock.mock.calls[i]![0] === cmd) return invokeMock.mock.calls[i]![1] as Record<string, unknown>;
+  }
+  return undefined;
+}
+
+async function openShell() {
+  renderPage();
+  await waitFor(() => {
+    expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+  });
+}
+
+async function navigateByNav(key: string) {
+  const label = navLabel(key);
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  await waitFor(() => {
+    expect(within(sectionRoot()).getByRole('heading', { level: 1, name: label })).toBeInTheDocument();
+  });
+}
+
+async function navigateCheck(key: string) {
+  const label = navLabel(key);
+  await waitFor(() => {
+    expect(within(sectionRoot()).getByRole('heading', { level: 1, name: label })).toBeInTheDocument();
+  });
+}
+
+describe('SettingsPage role gate', () => {
+  it('shows the locked card — not the shell — to a manager session', async () => {
+    authState.session = sessions.manager;
+    renderPage();
+
+    const card = await screen.findByTestId('settings-locked-card');
+    expect(card).toBeInTheDocument();
+    expect(card).toHaveAttribute('aria-disabled', 'true');
+    // The wrapper announces the restriction politely.
+    expect(card.parentElement).toHaveAttribute('role', 'status');
+    // Copy resolves from the real bundle (no pinned English).
+    expect(within(card).getByRole('heading', { level: 1 })).toHaveTextContent(ftlValue('settings-locked-title'));
+    expect(within(card).getByText(ftlValue('settings-locked-desc'))).toBeInTheDocument();
+    // No shell surfaces: sidebar, topbar save, search input all absent.
+    expect(screen.queryByTestId('settings-sidebar')).toBeNull();
+    expect(screen.queryByRole('button', { name: /save settings/i })).toBeNull();
+    expect(document.querySelector('.settings-topbar')).toBeNull();
   });
 
-  it('transitions from loading to ready after APIs resolve', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /store/i })).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+  it('locks every role below the admin floor, fail-closed', async () => {
+    for (const role of ['staff', 'auditor', 'manager', 'role-manager', 'cashier', null] as const) {
+      cleanup();
+      authState.session = role === null ? null : { username: 'u', role_name: role, display_name: 'U' };
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-locked-card')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('settings-sidebar'), 'role_name=' + String(role) + ' must NOT see the shell').toBeNull();
+    }
   });
 
-  // ── Full error state ─────────────────────────────────────────
+  it('unlocks for owner, bare admin, and the role-admin preset id', async () => {
+    for (const s of [sessions.owner, sessions.admin, sessions['role-admin']]) {
+      cleanup();
+      authState.session = s;
+      await openShell();
+      expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
+      expect(screen.queryByTestId('settings-locked-card')).toBeNull();
+    }
+  });
+});
 
-  it('renders localized error with retry button when all APIs fail', async () => {
-    invokeMock.mockRejectedValue(new Error('IPC error'));
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByText('Failed to load settings')).toBeInTheDocument();
-    });
-    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+describe('SettingsPage admin shell — flat 13-page IA', () => {
+  it('lists all 13 flat pages in the sidebar, defaulting to General', async () => {
+    await openShell();
+
+    const sidebar = screen.getByTestId('settings-sidebar');
+    const navButtons = Array.from(sidebar.querySelectorAll<HTMLButtonElement>('button.settings-nav-item'));
+    expect(navButtons).toHaveLength(13);
+    expect(navButtons.map((b) => b.getAttribute('aria-label'))).toEqual(NAV_ITEMS.map((n) => navLabel(n.key)));
+
+    // Default section renders the General placeholder and its breadcrumb.
+    expect(within(sectionRoot()).getByRole('heading', { level: 1, name: navLabel('general') })).toBeInTheDocument();
+    const topbar = document.querySelector('.settings-topbar') as HTMLElement;
+    expect(within(topbar).getByRole('heading', { name: navLabel('general') })).toBeInTheDocument();
   });
 
-  it('recovers when retry is clicked after full failure', async () => {
-    invokeMock.mockRejectedValue(new Error('IPC error'));
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
-    });
-    invokeMock.mockImplementation(defaultImpl);
-    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /store/i })).toBeInTheDocument();
-    });
+  it('clicking a page updates aria-current, the breadcrumb, and the section body', async () => {
+    await openShell();
+    await navigateByNav('tax-configuration');
+
+    const active = document.querySelector('[data-testid="settings-sidebar"] [aria-current="page"]');
+    expect(active).toHaveAttribute('aria-label', navLabel('tax-configuration'));
+    const topbar = document.querySelector('.settings-topbar') as HTMLElement;
+    expect(within(topbar).getByRole('heading', { name: navLabel('tax-configuration') })).toBeInTheDocument();
   });
 
-  // ── Partial load failure ─────────────────────────────────────
+  it('every renderSection key lazy-renders its localized placeholder screen', async () => {
+    await openShell();
 
-  it('shows partial-load toast when some APIs fail', async () => {
-    failCommands.add('get_sync_settings_scoped');
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /store/i })).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText(/some settings could not be loaded/i)).toBeInTheDocument();
-    });
+    // Loop over the nav registry: one key must map to one screen, and the
+    // screen must be honest about being a rebuild placeholder.
+    const placeholder = ftlValue('settings-screen-placeholder');
+    const migrating = ftlValue('settings-screen-migrating');
+    expect(placeholder).not.toBe('');
+    expect(migrating).not.toBe('');
+
+    for (const item of NAV_ITEMS) {
+      const label = navLabel(item.key);
+      expect(label, item.key + ' has no bundle label').not.toBe('');
+      await navigateByNav(item.key);
+
+      const root = sectionRoot();
+      const section = root.querySelector('section.settings-screen-placeholder');
+      expect(section, item.key + ' body must be the shared placeholder section').not.toBeNull();
+      expect(within(section as HTMLElement).getAllByText(placeholder)).toHaveLength(1);
+      expect(within(section as HTMLElement).getByText(migrating)).toBeInTheDocument();
+    }
   });
 
-  // ── Store section ────────────────────────────────────────────
-
-  it('renders Store section with name, address, tax ID, and language fields', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /store/i })).toBeInTheDocument();
-    });
-    expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Address' })).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: /tax.*id/i })).toBeInTheDocument();
+  it('honours an accepted deep-link section on mount and consumes the hash', async () => {
+    window.location.hash = '#/settings/sync-status';
+    await openShell();
+    await navigateCheck('sync-status');
+    expect(window.location.hash).toBe('');
   });
 
-  it('updates store name input', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-    fillField('Store name', 'Acme Corp');
-    expect(screen.getByRole('textbox', { name: 'Store name' })).toHaveValue('Acme Corp');
+  it('treats old-IA deep links as unknown: default section, hash untouched', async () => {
+    // 'receipt', 'appearance', 'topology' etc. are no longer KEPT_SECTIONS.
+    window.location.hash = '#/settings/receipt';
+    await openShell();
+    expect(within(sectionRoot()).getByRole('heading', { level: 1, name: navLabel('general') })).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/settings/receipt');
   });
 
-  it('updates store address input', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+  it('filters the sidebar flat from the topbar search box', async () => {
+    await openShell();
+    const input = screen.getByRole('textbox', { name: ftlValue('settings-sidebar-search-aria') });
+    fireEvent.change(input, { target: { value: 'diagnostics' } });
+
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Address' })).toBeInTheDocument();
+      const sidebar = screen.getByTestId('settings-sidebar');
+      const visible = Array.from(sidebar.querySelectorAll<HTMLButtonElement>('button.settings-nav-item'));
+      expect(visible).toHaveLength(1);
+      expect(visible[0]).toHaveAttribute('aria-label', navLabel('system-diagnostics'));
     });
-    fillField('Address', '456 Oak Ave');
-    expect(screen.getByRole('textbox', { name: 'Address' })).toHaveValue('456 Oak Ave');
   });
+});
 
-  // ── Save resilience ──────────────────────────────────────────
-
-  it('calls set_receipt_settings_scoped and set_store_settings_scoped on save', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
-    });
+describe('SettingsPage topbar save flow (kept)', () => {
+  it('Save writes receipt, store, currency, prefs, sync and branding', async () => {
+    await openShell();
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('set_receipt_settings_scoped', expect.any(Object));
+      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
+    });
+    expect(invokeMock).toHaveBeenCalledWith('set_receipt_settings_scoped', expect.any(Object));
+    expect(invokeMock).toHaveBeenCalledWith('set_store_settings_scoped', expect.any(Object));
+    expect(invokeMock).toHaveBeenCalledWith('update_sync_settings_scoped', expect.any(Object));
+    expect(invokeMock).toHaveBeenCalledWith('set_brand_primary_colour_scoped', expect.any(Object));
+    expect(invokeMock).toHaveBeenCalledWith('set_brand_store_name_scoped', expect.any(Object));
+  });
+
+  it('sync save carries the cloud draft default with enabled state and no apiKey', async () => {
+    // SettingsContext applies withSyncDefaults to an unconfigured sync; the
+    // page mirrors that DTO into the save call even though no sync inputs
+    // remain on the shell.
+    await openShell();
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
+    });
+    const envelope = lastInvokeArgs('update_sync_settings_scoped');
+    expect(envelope).toBeDefined();
+    expect(envelope!['args']).toEqual({ serverUrl: 'https://license.ozpos.my.id', enabled: true });
+  });
+
+  it('withSyncDefaults keeps configured URLs and states untouched', () => {
+    // The contract the save-default test above relies on, pinned directly.
+    const configured = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false };
+    expect(withSyncDefaults(configured)).toBe(configured);
+    expect(withSyncDefaults({ serverUrl: '   ', hasApiKey: false, enabled: false })).toEqual({
+      serverUrl: 'https://license.ozpos.my.id', hasApiKey: false, enabled: true,
+    });
+  });
+
+  it('shows the full save-error toast when every save API call fails', async () => {
+    for (const cmd of [
+      'set_receipt_settings_scoped', 'set_store_settings_scoped', 'set_default_currency',
+      'set_user_preferences_scoped', 'update_sync_settings_scoped',
+      'set_brand_primary_colour_scoped', 'set_brand_store_name_scoped',
+    ]) failCommands.add(cmd);
+
+    await openShell();
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(ftlValue('settings-save-error'))).toBeInTheDocument();
+    });
+  });
+
+  it('shows the partial-save toast when some saves fail', async () => {
+    failCommands.add('set_receipt_settings_scoped');
+    await openShell();
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(ftlValue('settings-save-partial'))).toBeInTheDocument();
+    });
+  });
+
+  it('Ctrl+S triggers the same save', async () => {
+    await openShell();
+    fireEvent.keyDown(document, { key: 's', ctrlKey: true });
+
+    await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('set_store_settings_scoped', expect.any(Object));
     });
   });
 
-  it('shows "Saved!" after successful save', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
-    });
-  });
-
-  it('shows full save-error toast when every save API call fails', async () => {
-    failCommands.add('set_receipt_settings_scoped');
-    failCommands.add('set_store_settings_scoped');
-    failCommands.add('set_default_currency');
-    failCommands.add('set_user_preferences_scoped');
-    failCommands.add('update_sync_settings_scoped');
-    failCommands.add('set_brand_primary_colour_scoped');
-    failCommands.add('set_brand_store_name_scoped');
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => {
-      expect(screen.getByText(/failed to save settings/i)).toBeInTheDocument();
-    });
-  });
-
-  it('shows save-partial toast when some saves fail', async () => {
-    failCommands.add('set_receipt_settings_scoped');
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText(/some settings could not be saved/i)).toBeInTheDocument();
-    });
-  });
-
-  // ── Currency section ─────────────────────────────────────────
-
-  it('renders Currency section with default currency select', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /currency/i })).toBeInTheDocument();
-    });
-    const currencyTrigger = screen.getByRole('button', { name: /default currency/i });
-    expect(currencyTrigger).toBeInTheDocument();
-    expect(currencyTrigger).toHaveTextContent(/USD/);
-  });
-
-  it('changes default currency via select', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /default currency/i })).toBeInTheDocument();
-    });
-
-    const currencyTrigger = screen.getByRole('button', { name: /default currency/i });
-    fireEvent.click(currencyTrigger);
-
-    const dropdown = document.querySelector('.ssel-dropdown')!;
-    const eurOption = Array.from(dropdown.querySelectorAll('.ssel-option')).find(
-      (el) => el.textContent?.includes('EUR'),
-    )!;
-    fireEvent.click(eurOption);
-
-    expect(currencyTrigger).toHaveTextContent(/EUR/);
-  });
-
-  // ── Display section ──────────────────────────────────────────
-
-  it('renders Display section with size and font controls', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Appearance' })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /decrease card size/i })).toBeInTheDocument();
-    });
-    expect(screen.getByRole('button', { name: /increase card size/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /decrease font size/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /increase font size/i })).toBeInTheDocument();
-  });
-
-  it('increments card size value', async () => {
-    const { container } = renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Appearance' })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
-
-    // Use container.querySelector to target the specific .settings-size-value element
-    // rather than screen.getAllByText which can match unrelated elements.
-    await waitFor(() => {
-      const sizeValue = container.querySelector('.settings-size-value');
-      expect(sizeValue).toHaveTextContent('2');
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /increase card size/i }));
-
-    await waitFor(() => {
-      const sizeValue = container.querySelector('.settings-size-value');
-      expect(sizeValue).toHaveTextContent('3');
-    });
-  });
-
-  // ── Receipt section ──────────────────────────────────────────
-
-  it('navigates to Receipt section and populates form from API', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receipt' }));
-    await waitFor(() => {
-      expect(screen.getByLabelText(/show currency symbol/i)).not.toBeChecked();
-    });
-    expect(screen.getByLabelText(/show tax line/i)).toBeChecked();
-  });
-
-  it('toggles show-currency and show-tax checkboxes', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receipt' }));
-
-    fireEvent.change(screen.getByLabelText(/show currency symbol/i), { target: { checked: true } });
-    expect(screen.getByLabelText(/show currency symbol/i)).toBeChecked();
-  });
-
-  it('toggles checkboxes when clicking the visual toggle container or slider', async () => {
-    const user = userEvent.setup();
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receipt' }));
-
-    const currencyInput = screen.getByLabelText(/show currency symbol/i) as HTMLInputElement;
-    expect(currencyInput.checked).toBe(false);
-
-    // Find the label wrapper (.settings-toggle) that wraps the switch/slider
-    const currencyToggleLabel = currencyInput.closest('.settings-toggle') as HTMLLabelElement;
-    expect(currencyToggleLabel.tagName.toLowerCase()).toBe('label');
-    expect(currencyToggleLabel.getAttribute('for')).toBe('receipt-show-currency');
-
-    // Clicking the visual label wrapper/slider must delegate to the input
-    await user.click(currencyToggleLabel);
-    expect(currencyInput.checked).toBe(true);
-  });
-
-  it('changes decimal separator and updates receipt footer', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receipt' }));
-
-    const separatorTrigger = screen.getByLabelText(/decimal separator/i);
-    fireEvent.click(separatorTrigger);
-    const commaOption = screen.getByRole('option', { name: /comma/i });
-    fireEvent.click(commaOption);
-    expect(separatorTrigger).toHaveTextContent(/comma/i);
-
-    fireEvent.change(screen.getByPlaceholderText(/thank you/i), { target: { value: 'Come again!' } });
-    expect(screen.getByPlaceholderText(/thank you/i)).toHaveValue('Come again!');
-  });
-
-  // ── Cloud Sync section ───────────────────────────────────────
-
-  it('renders Cloud Sync section with form fields', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cloud Sync' }));
-    await waitFor(() => {
-      expect(screen.getByLabelText(/server url/i)).toBeInTheDocument();
-    });
-    expect(screen.getByLabelText(/^api key$/i)).toBeInTheDocument();
-    expect(screen.getByText(/enable cloud sync/i)).toBeInTheDocument();
-  });
-
-  it('keeps unconfigured sync unconfigured (no local server default)', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cloud Sync' }));
-
-    // Sync pre-fills the deployed cloud server URL so an unconfigured
-    // device has a usable target (cloud server draft default).
-    expect(screen.getByLabelText(/server url/i)).toHaveValue('https://license.ozpos.my.id');
-    expect(screen.getByRole('switch', { name: /toggle/i })).toBeChecked();
-    expect(screen.getByRole('switch', { name: /toggle/i })).toBeChecked();
-  });
-
-  // ── About section ────────────────────────────────────────────
-
-  it('renders About section with version and license info', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /system/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /system/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'About' }));
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /system.*license/i })).toBeInTheDocument();
-    });
-    const versionElements = screen.getAllByText(/0\.0\.\d+/);
-    expect(versionElements.length).toBeGreaterThanOrEqual(1);
-    const licenseElements = screen.getAllByText(/proprietary/i);
-    expect(licenseElements.length).toBeGreaterThanOrEqual(1);
-  });
-
-  // ── Sidebar ──────────────────────────────────────────────────
-
-  it('toggles collapse and expand via sidebar toggle button', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /collapse settings sidebar/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /collapse settings sidebar/i }));
-
-    const sidebarToggle = document.querySelector('.settings-sidebar-toggle');
-    expect(sidebarToggle).toBeInTheDocument();
-    expect(sidebarToggle!.getAttribute('aria-label')?.toLowerCase()).toContain('expand');
-  });
-
-  it('persists sidebar collapsed state to localStorage', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /collapse settings sidebar/i })).toBeInTheDocument();
-    });
-    expect(localStorage.getItem('settings-sidebar-collapsed')).not.toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: /collapse settings sidebar/i }));
-    await waitFor(() => {
-      expect(localStorage.getItem('settings-sidebar-collapsed')).toBe('true');
-    });
-  });
-
-  it('toggles category accordion', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    const opsBtn = screen.getByRole('button', { name: /operations/i });
-    expect(opsBtn.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(opsBtn);
-    expect(opsBtn.getAttribute('aria-expanded')).toBe('true');
-    fireEvent.click(opsBtn);
-    expect(opsBtn.getAttribute('aria-expanded')).toBe('false');
-  });
-
-  // ── Footer ───────────────────────────────────────────────────
-
-  it('renders theme toggle button and app version in footer', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /store/i })).toBeInTheDocument();
-    });
-    expect(screen.getByRole('button', { name: /switch to light/i })).toBeInTheDocument();
-    expect(document.body.textContent).toContain('0.0.4');
-  });
-
-  // ── Keyboard shortcut ─────────────────────────────────────────
-
-  it('saves latest form values when Ctrl+S is pressed after editing', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    fillField('Store name', 'Ctrl+S Store');
-    fillField('Address', '456 Keyboard Blvd');
-    fillField('Address', '456 Keyboard Blvd');
-
-    fireEvent.keyDown(document, { key: 's', ctrlKey: true });
-
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        'set_store_settings_scoped',
-        expect.objectContaining({
-          args: expect.objectContaining({
-            name: 'Ctrl+S Store',
-            address: '456 Keyboard Blvd',
-          }),
-        }),
-      );
-    });
-  });
-
-  // ── Field validation ──────────────────────────────────────────
-
-  it('shows "store name is required" when store name is empty on blur', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    const nameInput = screen.getByRole('textbox', { name: 'Store name' });
-    fillField('Store name', '');
-    blurField('Store name');
-
-    await waitFor(() => {
-      expect(screen.getByText('Store name is required')).toBeInTheDocument();
-    });
-    expect(nameInput.className).toContain('settings-input--error');
-  });
-
-  it('clears store-name error when user starts typing', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    fillField('Store name', '');
-    blurField('Store name');
-    await waitFor(() => {
-      expect(screen.getByText('Store name is required')).toBeInTheDocument();
-    });
-
-    fillField('Store name', 'A');
-    expect(screen.queryByText('Store name is required')).not.toBeInTheDocument();
-  });
-
-  it('shows tax-id pattern error for invalid characters', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: /tax.*id/i })).toBeInTheDocument();
-    });
-
-    const taxInput = screen.getByRole('textbox', { name: /tax.*id/i });
-    fireEvent.change(taxInput, { target: { value: '12-345@#' } });
-    fireEvent.blur(taxInput);
-
-    await waitFor(() => {
-      expect(screen.getByText(/only letters, numbers, dashes, dots, and slashes allowed/i)).toBeInTheDocument();
-    });
-    expect(taxInput.className).toContain('settings-input--error');
-  });
-
-  it('does not show tax-id error for valid characters', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: /tax.*id/i })).toBeInTheDocument();
-    });
-
-    const taxInput = screen.getByRole('textbox', { name: /tax.*id/i });
-    fireEvent.change(taxInput, { target: { value: '12-345.67/89' } });
-    fireEvent.blur(taxInput);
-
-    expect(screen.queryByText(/only letters, numbers, dashes, dots, and slashes allowed/i)).not.toBeInTheDocument();
-  });
-
-  // ── Revert button ─────────────────────────────────────────────
-
-  it('clears field validation errors when Revert is clicked', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    fillField('Store name', '');
-    blurField('Store name');
-    await waitFor(() => {
-      expect(screen.getByText('Store name is required')).toBeInTheDocument();
-    });
-
-    const revertBtn = document.querySelector('.settings-btn-revert') as HTMLElement;
-    expect(revertBtn).toBeInTheDocument();
-    fireEvent.click(revertBtn);
-
-    expect(screen.queryByText('Store name is required')).not.toBeInTheDocument();
-  });
-
-  it('shows Revert button only when form is dirty', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    const revertBtn = document.querySelector('.settings-btn-revert') as HTMLElement;
-    expect(revertBtn.className).toContain('settings-btn-revert--hidden');
-
-    fillField('Store name', 'x');
-    expect(revertBtn.className).not.toContain('settings-btn-revert--hidden');
-  });
-
-  // ── Arrow keyboard navigation ─────────────────────────────────
-
-  it('navigates sections with ArrowDown key', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /store/i })).toBeInTheDocument();
-    });
-
-    // Arrow navigation is scoped to the sidebar (A3): dispatch on the aside.
-    fireEvent.keyDown(screen.getByTestId('settings-sidebar'), { key: 'ArrowDown' });
-
-    // After ArrowDown from 'general', it should navigate to 'appearance'.
-    await waitFor(() => {
-      const items = screen.getAllByRole('button', { name: /appearance/i });
-      const hasActive = items.some((el) => el.className.includes('settings-nav-item--active'));
-      expect(hasActive).toBe(true);
-    });
-  });
-
-  it('navigates sections with ArrowUp key', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /store/i })).toBeInTheDocument();
-    });
-
-    // Navigate down first to move to a different section, then up.
-    // Arrow navigation is scoped to the sidebar (A3): dispatch on the aside.
-    const sidebar = screen.getByTestId('settings-sidebar');
-    fireEvent.keyDown(sidebar, { key: 'ArrowDown' });
-    fireEvent.keyDown(sidebar, { key: 'ArrowDown' });
-    fireEvent.keyDown(sidebar, { key: 'ArrowUp' });
-
-    await waitFor(() => {
-      const items = screen.getAllByRole('button', { name: /appearance/i });
-      const hasActive = items.some((el) => el.className.includes('settings-nav-item--active'));
-      expect(hasActive).toBe(true);
-    });
-  });
-
-  // ── API key visibility toggle ─────────────────────────────────
-
-  it('toggles API key visibility in Cloud Sync section', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cloud Sync' }));
-
-    const apiKeyInput = screen.getByLabelText(/^api key$/i) as HTMLInputElement;
-    expect(apiKeyInput.type).toBe('password');
-
-    // The toggle only renders when text is typed (not for placeholder dots)
-    fireEvent.change(apiKeyInput, { target: { value: 'sk-test' } });
-
-    const toggleBtn = document.querySelector('.settings-input-toggle') as HTMLElement;
-    expect(toggleBtn).not.toBeNull();
-    fireEvent.click(toggleBtn);
-
-    expect(apiKeyInput.type).toBe('text');
-
-    fireEvent.click(toggleBtn);
-    expect(apiKeyInput.type).toBe('password');
-  });
-
-  // ── Save button loading state ─────────────────────────────────
-
-  it('shows loading state on Save button while saving', async () => {
-    // Make a save command hang to keep saving=true.
+  it('Save button is aria-busy while the saves are in flight', async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd.startsWith('set_') || cmd === 'update_sync_settings_scoped') {
+      if (String(cmd).startsWith('set_') || cmd === 'update_sync_settings_scoped') {
         return new Promise(() => {});
       }
-      return defaultImpl(cmd);
+      return defaultImpl(String(cmd));
     });
 
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
-    });
-
+    await openShell();
     const saveBtn = screen.getByRole('button', { name: /save settings/i });
     fireEvent.click(saveBtn);
 
@@ -847,253 +491,59 @@ describe('SettingsPage', () => {
       expect(saveBtn).toHaveAttribute('aria-busy', 'true');
     });
   });
+});
 
-  // ══════════════════════════════════════════════════════════════
-  //  SectionKey — multiple navigations don't break rendering
-  // ══════════════════════════════════════════════════════════════
+describe('SettingsPage load lifecycle and chrome (kept)', () => {
+  it('shows the loading skeleton before the APIs resolve', () => {
+    renderPage();
+    expect(document.querySelector('.settings-loading-card')).toBeInTheDocument();
+  });
 
-  it('renders correct section after navigating through multiple sections', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+  it('renders a localized error with a working retry when all APIs fail', async () => {
+    invokeMock.mockRejectedValue(new Error('IPC error'));
+    renderPage();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+    expect(screen.getByText(ftlValue('settings-load-failed'))).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Receipt' }));
-
+    const retry = screen.getByRole('button', { name: ftlValue('settings-retry') });
+    invokeMock.mockImplementation(defaultImpl);
+    fireEvent.click(retry);
     await waitFor(() => {
-      expect(screen.getByLabelText(/show currency symbol/i)).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /system/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'About' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /system.*license/i })).toBeInTheDocument();
-    });
-
-    // Navigate back to General via the sidebar.
-    const businessHeader = screen.getByRole('button', { name: /business/i });
-    fireEvent.click(businessHeader);
-
-    fireEvent.click(screen.getByRole('button', { name: 'General' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
+      expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument();
     });
   });
 
-  // ══════════════════════════════════════════════════════════════
-  //  Sync API key — preserved in field after successful save
-  // ══════════════════════════════════════════════════════════════
-
-  function navigateToSync() {
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cloud Sync' }));
-  }
-
-  it('keeps API key in field after save when sync save succeeds', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+  it('toasts a partial-load warning when one source fails', async () => {
+    failCommands.add('get_sync_settings_scoped');
+    await openShell();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    navigateToSync();
-
-    const apiKeyInput = screen.getByLabelText(/^api key$/i) as HTMLInputElement;
-    fireEvent.change(apiKeyInput, { target: { value: 'sk-abc123' } });
-    expect(apiKeyInput).toHaveValue('sk-abc123');
-
-    // Make every non-sync save command fail so only sync succeeds.
-    failCommands.add('set_receipt_settings_scoped');
-    failCommands.add('set_store_settings_scoped');
-    failCommands.add('set_default_currency');
-    failCommands.add('set_user_preferences_scoped');
-    failCommands.add('set_brand_primary_colour_scoped');
-    failCommands.add('set_brand_store_name_scoped');
-
-    const saveBtn = screen.getByRole('button', { name: /save settings/i });
-    fireEvent.click(saveBtn);
-
-    await waitFor(() => {
-      const inputAfterSave = screen.getByLabelText(/^api key$/i) as HTMLInputElement;
-      expect(inputAfterSave).toHaveValue('sk-abc123');
+      expect(screen.getByText(ftlValue('settings-load-partial'))).toBeInTheDocument();
     });
   });
 
-  it('keeps API key after save when sync save fails', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    navigateToSync();
-
-    const apiKeyInput = screen.getByLabelText(/^api key$/i) as HTMLInputElement;
-    fireEvent.change(apiKeyInput, { target: { value: 'sk-xyz789' } });
-    expect(apiKeyInput).toHaveValue('sk-xyz789');
-
-    // Make sync save fail while all other saves succeed.
-    failCommands.add('update_sync_settings_scoped');
-
-    const saveBtn = screen.getByRole('button', { name: /save settings/i });
-    fireEvent.click(saveBtn);
-
-    // Wait for save to settle (Saved! appears when at least one save succeeds).
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
-    });
-
-    const inputAfterSave = screen.getByLabelText(/^api key$/i) as HTMLInputElement;
-    expect(inputAfterSave).toHaveValue('sk-xyz789');
+  it('renders the footer theme toggle and app version', async () => {
+    await openShell();
+    expect(screen.getByRole('button', { name: /switch to light/i })).toBeInTheDocument();
+    expect(document.body.textContent).toContain('0.0.4');
   });
 
-  it('shows partial-save toast when sync save is the only failure', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+  it('persists the sidebar collapsed toggle', async () => {
+    await openShell();
+    const collapse = ftlValue('settings-sidebar-collapse-aria');
+    fireEvent.click(screen.getByRole('button', { name: collapse }));
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    navigateToSync();
-
-    failCommands.add('update_sync_settings_scoped');
-
-    const saveBtn = screen.getByRole('button', { name: /save settings/i });
-    fireEvent.click(saveBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText(/some settings could not be saved/i)).toBeInTheDocument();
+      expect(localStorage.getItem('settings-sidebar-collapsed')).toBe('true');
     });
   });
 
-  // ══════════════════════════════════════════════════════════════
-  //  beforeunload — WebView2 unsaved-changes dialog (Windows UX bug)
-  //  Bug: e.preventDefault() alone is insufficient on WebView2.
-  //  Fix: Also set e.returnValue = '' to trigger the confirmation.
-  // ══════════════════════════════════════════════════════════════
-
-  it('sets returnValue on beforeunload when form is dirty (WebView2 compat)', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    // Make the form dirty by editing a field.
-    fillField('Store name', 'Unsaved Change');
-
-    // Dispatch a beforeunload event and verify the handler sets returnValue.
-    // WebView2 (Windows) requires e.returnValue to be set (even to '')
-    // for the unsaved-changes dialog to appear. e.preventDefault() alone
-    // is insufficient on WebView2.
+  it('does not block window close while nothing is dirty', async () => {
+    await openShell();
     const event = new Event('beforeunload', { cancelable: true, bubbles: true });
-    const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
-    Object.defineProperty(event, 'returnValue', {
-      writable: true,
-      value: undefined,
-    });
+    const spy = vi.spyOn(event, 'preventDefault');
     window.dispatchEvent(event);
-
-    expect(preventDefaultSpy).toHaveBeenCalled();
-    expect((event as BeforeUnloadEvent).returnValue).toBeDefined();
-    expect((event as BeforeUnloadEvent).returnValue).toBe('unsaved');
-  });
-
-  it('does not trigger beforeunload when form is clean', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    // Form is NOT dirty — beforeunload should not prevent default.
-    const event = new Event('beforeunload', { cancelable: true, bubbles: true });
-    const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
-    Object.defineProperty(event, 'returnValue', {
-      writable: true,
-      value: undefined,
-    });
-    window.dispatchEvent(event);
-
-    expect(preventDefaultSpy).not.toHaveBeenCalled();
-    expect((event as BeforeUnloadEvent).returnValue).toBeUndefined();
-  });
-
-  it('stops triggering beforeunload after save clears dirty state', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Store name' })).toBeInTheDocument();
-    });
-
-    // Make dirty
-    fillField('Store name', 'Will Save');
-
-    // Save to clear dirty state
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
-    });
-
-    // After save, beforeunload should NOT prevent default
-    const event = new Event('beforeunload', { cancelable: true, bubbles: true });
-    const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
-    window.dispatchEvent(event);
-
-    expect(preventDefaultSpy).not.toHaveBeenCalled();
-  });
-
-  // ── Management tabs ────────────────────────────────────────────
-
-  it('renders License section when navigating to License tab', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /system/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /system/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'License' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 2, name: /license/i })).toBeInTheDocument();
-    });
-  });
-
-  it('renders Email Reports section when navigating to Email tab', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /operations/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Email Reports' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 2, name: /email reports/i })).toBeInTheDocument();
-    });
-  });
-
-  it('renders About section when navigating to About tab', async () => {
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /system/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /system/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'About' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 2, name: /system.*license/i })).toBeInTheDocument();
-    });
-  });
-
-  // ── Drag-to-reorder recently-used sections (P60-3b) ───────────────
-  //
-  // Re-homed from SettingsNavTree.test.tsx during P92 refactoring.
-  // Drag-to-reorder logic lives in SettingsPage (recentSections state,
-  // onDragStart/onDragOver/onDrop callbacks in the collapsed sidebar).
-  //
-  // TODO: Add drag-to-reorder tests using @testing-library/user-event
-  // pointer API or dataTransfer mock for HTML5 DnD simulation.
-
-  describe('drag-to-reorder recently-used sections', () => {
-    it('is tracked here in SettingsPage (re-homed from NavTree)', () => {
-      // Drag-to-reorder state lives in SettingsPage, not SettingsNavTree.
-      // The feature uses onDragStart/onDragOver/onDrop on recently-used
-      // section items at the top of the collapsed sidebar. Tests should
-      // simulate drag-and-drop via userEvent.pointer or dataTransfer mock.
-      expect(true).toBe(true);
-    });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
