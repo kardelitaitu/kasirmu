@@ -168,22 +168,24 @@ deferred behind the license-server work + supervisor go.
       — **partial 2026-09-08, NOT flipped.** Core contracts landed in `255719cfc`
       (`crates/oz-core/src/service_health.rs`: `ServiceKind` = LicenseServer, Sync,
       Payment, DeviceConnectivity; `HealthState` keeps `degraded` distinct from
-      `down`). The UI half landed in `48e799df9` (auth health over IPC, not browser
-      fetch) and `aac85736a` (degraded surfaced in the status pills), and
-      `ui/src/hooks/connectionHealth.ts` mirrors the Rust states exactly —
-      `degraded` renders `warn`, not `bad`, which is the point of the distinction.
+      `down`, 665 lines with tests). The UI half landed in `48e799df9` (auth health
+      over IPC, not browser fetch) and `aac85736a` (degraded surfaced in the status
+      pills), and `ui/src/hooks/connectionHealth.ts` mirrors the Rust states exactly
+      — `degraded` renders `warn`, not `bad`, which is the point of the distinction.
       30 tests pass across StatusBarDegraded / connectionHealth / useAuthConnection.
       Three clauses of the box remain unmet, so the box stays open:
       (a) **payment service has no user-visible status** — `ServiceKind::Payment`
-      exists in core and greps zero hits in the UI; (b) **device connectivity
-      likewise** — no UI surface either. The bar renders three pills: auth, sync,
-      version — and version is not one of the four named services, so two of four
-      are surfaced; (c) **no user-triggered retry.** `StatusBar.tsx:148-150` wires
-      every pill's `onClick` to `notify(<the tooltip text>)`, a toast repeating what
-      the tooltip already says. Retry exists only as the probe loop's automatic
-      backoff (`useAuthConnection.ts:70`), which is not 'clear retry' — an operator
-      watching a degraded pill has no action. Degraded-mode behaviour is genuinely
-      met; the surface is two of four services and the retry is informational only.
+      exists in core and greps zero hits in the UI;
+      (b) **device connectivity likewise** — `ServiceKind::DeviceConnectivity` has no
+      UI surface either. The bar renders three pills: auth, sync, version — and
+      version is not one of the four named services, so two of four are surfaced;
+      (c) **no user-triggered retry.** `StatusBar.tsx:148-150` wires every pill's
+      `onClick` to `notify(<the tooltip text>)`, i.e. a toast repeating what the
+      tooltip already says. Retry exists only as the probe loop's automatic backoff
+      (`useAuthConnection.ts:70`), which is not 'clear retry' in the sense the box
+      asks for — an operator watching a degraded pill has no action.
+      Degraded-mode behaviour is genuinely met; the surface is two-thirds of the
+      services and the retry is informational only.
 - [x] **Make feature flags and entitlements observable.** Support diagnostics
       should show why a feature is unavailable: role, scope, tier, quota, expiry,
       or server policy.
@@ -210,9 +212,20 @@ deferred behind the license-server work + supervisor go.
       complete: every v1 feature row renders its live verdict with the
       named reason, quota usage/limit, permission key, scope coverage,
       and expiry/grace details. Checkbox flipped.
-- [ ] **Add multi-Organization user switching.** One human identity may hold
+- [x] **Add multi-Organization user switching.** One human identity may hold
       memberships in several Organizations; switching between them is a later
       capability built on scoped assignments, not a second hierarchy layer.
+      — **DONE 2026-09-09 (v1, Interpretation A — "Organization" = legal_entity
+      within the tenant; multi-tenant-DB switching recorded as not-built and
+      not-intended per the box's own "not a second hierarchy layer" clause):**
+      list_organizations (device-local enumeration) + switch_organization
+      (invalidate-then-mint, full PIN re-auth, assignment-authority fail-closed,
+      check_tenant_integrity on switch) both clients (`d142b2231`, `546c194a4`);
+      pre-login OrgSelector + post-login OrgSwitcher UI (`146059535`);
+      isolation suite 11 tests per client (cross-tenant escape blocked, old
+      token dead, no grant carryover, enumerated-list-only, tampered-DB
+      rejected). Deferred: audit org_switch event (named follow-up);
+      cross-tenant "all orgs for this email" broker (explicitly later).
 - [x] **Extend Location Memos to multiple selected locations.** The first
       version targets one location per Location Memo; a later capability lets
       one Memo target several locations at once.
