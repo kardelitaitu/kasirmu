@@ -222,6 +222,320 @@ impl Store<'_> {
         })
     }
 
+    /// Insert a tax rate at an explicit scope and window.
+    ///
+    /// This is the authoring half of tax-separation P1: [`Self::create_tax_rate`]
+    /// can only write a tenant-global row, and since 20260921 the table has
+    /// carried scope and window columns nothing in core could fill. Under the
+    /// adopted Option B design [`TaxRate`] keeps its seven fields, so scope and
+    /// window arrive as arguments here and leave through
+    /// [`Self::tax_rate_scope`] / [`Self::tax_rate_window`].
+    ///
+    /// Everything is checked BEFORE the transaction opens: name and rate bounds,
+    /// a strict `YYYY-MM-DD` window with `effective_from < effective_to`, and a
+    /// scope target that is non-empty and actually exists
+    /// ([`Self::validate_scope_target`]).
+    ///
+    /// # Overlapping windows in one tier are legal
+    ///
+    /// Two rows for one location with touching or even overlapping periods is
+    /// how a rate change gets authored; the resolver breaks the tie by newest
+    /// `effective_from` (see
+    /// [`Self::within_a_level_the_newest_effective_from_wins` in tests]).
+    /// Refusing overlap here would make the ordinary case — replace a 2025 rate
+    /// with a 2026 one before the year ends — impossible.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Validation`] for a bad name, rate, window or scope target. A
+    /// second `is_default` row inside one tier is refused by that tier's partial
+    /// unique index and surfaces as [`CoreError::Db`] — the writer clears the
+    /// tier first, so reaching it means a concurrent author won the same tier.
+    pub fn create_tax_rate_scoped(
+        &self,
+        name: &str,
+        rate_bps: i64,
+        is_default: bool,
+        is_inclusive: bool,
+        scope: &TaxRateScope,
+        window: &TaxRateWindow,
+    ) -> Result<TaxRate, CoreError> {
+        Self::validate_tax_rate_input(name, rate_bps)?;
+        window.validate()?;
+        self.validate_scope_target(scope)?;
+
+        let tx = self.conn.unchecked_transaction()?;
+        if is_default {
+            Self::clear_tier_default(&tx, scope)?;
+        }
+
+        let id = uuid::Uuid::now_v7().to_string();
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let (entity, location) = scope.scope_columns();
+        tx.execute(
+            "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive,
+                                    created_at, updated_at,
+                                    legal_entity_id, location_id, effective_from, effective_to)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                id,
+                name.trim(),
+                rate_bps,
+                is_default,
+                is_inclusive,
+                now,
+                now,
+                entity,
+                location,
+                window.effective_from,
+                window.effective_to
+            ],
+        )?;
+        tx.commit()?;
+
+        Ok(TaxRate {
+            id,
+            name: name.trim().to_owned(),
+            rate_bps,
+            is_default,
+            is_inclusive,
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    }
+
+    /// Re-scope, re-window, rename or re-price an existing tax rate.
+    ///
+    /// Same pre-write validation as [`Self::create_tax_rate_scoped`], the TAX-03
+    /// rule that an archived rate is immutable (`NotFound`, identical to a
+    /// missing id so the two are not distinguishable), and `created_at` carried
+    /// over unchanged — unlike [`Self::update_tax_rate`], which returns an empty
+    /// one, this read is already inside the transaction so the truth is free.
+    ///
+    /// Moving a row between tiers is allowed, with one consequence worth naming
+    /// to whoever builds the screen: a row that WAS its tier's default and moves
+    /// elsewhere leaves the old tier without a default. That is correct — no row
+    /// of that tier claims to be the default any more — and [`Self::list_
+    /// tax_rate_scopes`] shows it, but nothing undoes it.
+    pub fn update_tax_rate_scoped(
+        &self,
+        id: &str,
+        name: &str,
+        rate_bps: i64,
+        is_default: bool,
+        is_inclusive: bool,
+        scope: &TaxRateScope,
+        window: &TaxRateWindow,
+    ) -> Result<TaxRate, CoreError> {
+        Self::validate_tax_rate_input(name, rate_bps)?;
+        window.validate()?;
+        self.validate_scope_target(scope)?;
+
+        let tx = self.conn.unchecked_transaction()?;
+        let existing = tx
+            .query_row(
+                "SELECT created_at FROM tax_rates WHERE id = ?1 AND is_active = 1",
+                params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+        let Some(created_at) = existing else {
+            return Err(CoreError::NotFound {
+                entity: "tax_rate",
+                id: id.to_owned(),
+            });
+        };
+
+        if is_default {
+            Self::clear_tier_default(&tx, scope)?;
+        }
+
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let (entity, location) = scope.scope_columns();
+        // The clear must precede this UPDATE: the tier's unique index is
+        // immediate, so claiming the flag while a peer still holds it fails.
+        tx.execute(
+            "UPDATE tax_rates SET name = ?1, rate_bps = ?2, is_default = ?3, is_inclusive = ?4,
+                                    legal_entity_id = ?5, location_id = ?6,
+                                    effective_from = ?7, effective_to = ?8, updated_at = ?9
+             WHERE id = ?10 AND is_active = 1",
+            params![
+                name.trim(),
+                rate_bps,
+                is_default,
+                is_inclusive,
+                entity,
+                location,
+                window.effective_from,
+                window.effective_to,
+                now,
+                id
+            ],
+        )?;
+        tx.commit()?;
+
+        Ok(TaxRate {
+            id: id.to_owned(),
+            name: name.trim().to_owned(),
+            rate_bps,
+            is_default,
+            is_inclusive,
+            created_at,
+            updated_at: now,
+        })
+    }
+
+    /// Clear `is_default` inside ONE tier only — the tier of the row being made
+    /// default.
+    ///
+    /// THE BUG THIS CLOSES. [`Self::create_tax_rate`] and
+    /// [`Self::update_tax_rate`] clear `WHERE is_default = 1` across the whole
+    /// table, which was coherent only while the table could hold one default.
+    /// Once 20260926 made defaults unique PER TIER, that clear stopped being a
+    /// no-op and became silent damage: authoring a legal-entity default un-
+    /// defaulted the tenant-global row, i.e. every location that has no row of
+    /// its own loses the rate it was pricing on. Each arm below is the exact
+    /// predicate of the tier's own partial unique index — the set the index
+    /// says may hold one default is the set this clears.
+    fn clear_tier_default(
+        tx: &rusqlite::Transaction<'_>,
+        scope: &TaxRateScope,
+    ) -> Result<(), CoreError> {
+        match scope {
+            TaxRateScope::Global => tx.execute(
+                "UPDATE tax_rates SET is_default = 0
+                 WHERE is_default = 1 AND legal_entity_id IS NULL AND location_id IS NULL",
+                [],
+            ),
+            TaxRateScope::LegalEntity(entity) => tx.execute(
+                "UPDATE tax_rates SET is_default = 0
+                 WHERE is_default = 1 AND legal_entity_id = ?1 AND location_id IS NULL",
+                params![entity],
+            ),
+            TaxRateScope::Location(location) => tx.execute(
+                "UPDATE tax_rates SET is_default = 0
+                 WHERE is_default = 1 AND location_id = ?1",
+                params![location],
+            ),
+        }?;
+        Ok(())
+    }
+
+    /// Refuse a scope that names nothing, or names a row that does not exist.
+    ///
+    /// NULL already means "not scoped at this tier", so an empty string would
+    /// store a scope that is simultaneously set and meaningless. And a missing
+    /// entity or location would fail on its `ON DELETE RESTRICT` foreign key
+    /// with a bare constraint error that names neither the column nor the typo —
+    /// checked before any write instead, the same role the `role_id` existence
+    /// guard plays in `db/staff.rs`.
+    fn validate_scope_target(&self, scope: &TaxRateScope) -> Result<(), CoreError> {
+        let (table, column, id) = match scope {
+            TaxRateScope::Global => return Ok(()),
+            TaxRateScope::LegalEntity(id) => ("legal_entities", "legal_entity_id", id.as_str()),
+            TaxRateScope::Location(id) => ("locations", "location_id", id.as_str()),
+        };
+        if id.trim().is_empty() {
+            return Err(CoreError::Validation {
+                field: column,
+                message: format!("{column} must not be empty; NULL means unscoped"),
+            });
+        }
+        let exists: Option<i64> = self
+            .conn
+            .query_row(
+                &format!("SELECT 1 FROM {table} WHERE id = ?1"),
+                params![id],
+                |row| row.get(0),
+            )
+            .ok();
+        if exists.is_none() {
+            return Err(CoreError::Validation {
+                field: column,
+                message: format!(
+                    "no {table} {id:?}: the rate would be scoped to a row that does not exist"
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    /// The stored window of one rate row, verbatim.
+    ///
+    /// `Ok(None)` means no such ACTIVE row — the convention
+    /// [`Self::tax_rate_scope`] uses, so a missing and an archived rate read the
+    /// same way. Values are not parsed here: a stored date that does not parse
+    /// is a fact about the data, and the resolver skipping such a row is exactly
+    /// what a screen should be able to show.
+    pub fn tax_rate_window(&self, rate_id: &str) -> Result<Option<TaxRateWindow>, CoreError> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT effective_from, effective_to FROM tax_rates
+                 WHERE id = ?1 AND is_active = 1",
+                params![rate_id],
+                |row| {
+                    Ok(TaxRateWindow {
+                        effective_from: row.get(0)?,
+                        effective_to: row.get(1)?,
+                    })
+                },
+            )
+            .ok())
+    }
+
+    /// Every active rate's scope and window, in one read.
+    ///
+    /// Option B means a list of rates has no scope on the row it is holding,
+    /// so the authoring surface needs this join: per-rate
+    /// [`Self::tax_rate_scope`] + [`Self::tax_rate_window`] is 2N queries for
+    /// columns that live in the same table, one read away.
+    ///
+    /// # An ambiguous row fails the batch
+    ///
+    /// Since 20260926's CHECK a both-set row cannot be written, so this error is
+    /// unreachable on a migrated database — it stays an error rather than a
+    /// skipped row because a list that quietly omits a rate the operator can see
+    /// in the table would claim no such rate exists.
+    pub fn list_tax_rate_scopes(&self) -> Result<Vec<TaxRateScopeInfo>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, legal_entity_id, location_id, effective_from, effective_to
+             FROM tax_rates WHERE is_active = 1 ORDER BY name",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut out = Vec::with_capacity(rows.len());
+        for (id, entity, location, effective_from, effective_to) in rows {
+            let Some(scope) = TaxRateScope::classify(entity.as_deref(), location.as_deref()) else {
+                return Err(CoreError::Validation {
+                    field: "tax_rate_scope",
+                    message: format!(
+                        "tax rate {id} is scoped to both a legal entity and a location; \
+                        the two columns are one-or-the-other-or-neither"
+                    ),
+                });
+            };
+            out.push(TaxRateScopeInfo {
+                id,
+                scope,
+                window: TaxRateWindow {
+                    effective_from,
+                    effective_to,
+                },
+            });
+        }
+        Ok(out)
+    }
+
     /// Count every reference to a tax rate (TAX-03).
     ///
     /// Returns how many products, categories, and historical sale lines
@@ -701,6 +1015,87 @@ impl TaxRateScope {
     pub fn is_global(&self) -> bool {
         matches!(self, Self::Global)
     }
+    /// The `(legal_entity_id, location_id)` pair this scope stores as.
+    ///
+    /// The inverse of [`Self::classify`], and total: every variant produces a
+    /// pair `classify` accepts, so a scoped write cannot mint the ambiguous row
+    /// the enum cannot name — and, since migration
+    /// 20260926_tax_rate_scoped_authoring, neither can anything else.
+    #[must_use]
+    pub fn scope_columns(&self) -> (Option<&str>, Option<&str>) {
+        match self {
+            Self::Global => (None, None),
+            Self::LegalEntity(id) => (Some(id.as_str()), None),
+            Self::Location(id) => (None, Some(id.as_str())),
+        }
+    }
+}
+
+/// The validity window stored on a rate row, exactly as written.
+///
+/// `None` on both arms is the pre-scoping shape: no lower bound, never
+/// expires — which is every row a database written before 20260921 holds.
+/// The arms stay strings rather than parsed dates on purpose: a stored value
+/// that does not parse is data the write path must not silently rewrite, and
+/// the resolver SKIPS such a row instead of trusting it. An authoring screen
+/// has to tell "no expiry" apart from "expiry I cannot read", so the shape
+/// is reported here, not repaired.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TaxRateWindow {
+    /// Inclusive first business date, `YYYY-MM-DD`. `None` = no lower bound.
+    pub effective_from: Option<String>,
+    /// EXCLUSIVE last business date, `YYYY-MM-DD`. `None` = does not expire.
+    pub effective_to: Option<String>,
+}
+
+impl TaxRateWindow {
+    /// Refuse a window that cannot be honoured: a malformed date, or an empty
+    /// period. An exclusive end on or before the start matches no day at all,
+    /// and silently writing a row that can never price a sale is worse than an
+    /// error at the keyboard.
+    fn validate(&self) -> Result<(), CoreError> {
+        for (field, value) in [
+            ("effective_from", &self.effective_from),
+            ("effective_to", &self.effective_to),
+        ] {
+            if let Some(v) = value
+                && parse_effective_date(v).is_none()
+            {
+                return Err(CoreError::Validation {
+                    field,
+                    message: format!("expected a business date 'YYYY-MM-DD', got {v:?}"),
+                });
+            }
+        }
+        if let (Some(from), Some(to)) = (&self.effective_from, &self.effective_to) {
+            // Both arms parsed above, so these defaults are unreachable.
+            let from = parse_effective_date(from).unwrap_or(chrono::NaiveDate::MIN);
+            let to = parse_effective_date(to).unwrap_or(chrono::NaiveDate::MAX);
+            if from >= to {
+                return Err(CoreError::Validation {
+                    field: "effective_to",
+                    message: format!(
+                        "effective_to {to:?} must fall after effective_from {from:?}; \
+                        the end date is exclusive, so equal dates cover no period at all"
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+/// One rate row's scope and window together, as [`Store::list_tax_rate_scopes`]
+/// reports them — the shape an authoring surface joins onto a `TaxRate`
+/// (Option B: the struct the sale path carries stays at its seven fields).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxRateScopeInfo {
+    /// The rate row's id.
+    pub id: String,
+    /// Its stored scope.
+    pub scope: TaxRateScope,
+    /// Its stored window, unmodified.
+    pub window: TaxRateWindow,
 }
 
 /// Where and when a sale is being priced — the input the tax read path needs

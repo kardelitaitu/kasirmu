@@ -1321,3 +1321,408 @@ fn business_dates_parse_strictly_and_reject_every_other_shape() {
         );
     }
 }
+
+// ── Scoped authoring (tax-separation P1, slice A2) ──────────────────────
+//
+// The write half. Everything above had to seed scoped rows with raw SQL
+// because nothing in core could author them; from here on there is a writer,
+// so these go through it. The one place that deliberately writes raw SQL says
+// why in its own comment.
+
+#[test]
+fn create_tax_rate_scoped_stores_scope_window_and_prices_the_location() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    let window = TaxRateWindow {
+        effective_from: Some("2026-01-01".into()),
+        effective_to: Some("2027-01-01".into()),
+    };
+    let rate = s
+        .create_tax_rate_scoped(
+            "Jakarta PPN",
+            1100,
+            false,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &window,
+        )
+        .unwrap();
+
+    assert_eq!(
+        s.tax_rate_scope(&rate.id).unwrap(),
+        Some(TaxRateScope::Location("loc-a".into())),
+        "the scope round-trips"
+    );
+    assert_eq!(s.tax_rate_window(&rate.id).unwrap(), Some(window));
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        rate.id,
+        "the new row prices its own location"
+    );
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-b", None, "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        global.id,
+        "and nobody else's"
+    );
+}
+
+#[test]
+fn an_entity_default_leaves_the_tenant_global_default_in_place() {
+    // THE bug this slice closes. The old clear was
+    // UPDATE ... SET is_default = 0 WHERE is_default = 1 across the whole
+    // table, so authoring an entity default silently un-defaulted the
+    // tenant-global row and every location without its own rate lost the rate
+    // it was pricing on.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+
+    let ent = s
+        .create_tax_rate_scoped(
+            "Entity VAT",
+            1200,
+            true,
+            false,
+            &TaxRateScope::LegalEntity("ent-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    assert!(
+        s.get_tax_rate(&global.id).unwrap().expect("row").is_default,
+        "a default in one tier must not touch another tier's default"
+    );
+    assert!(s.get_tax_rate(&ent.id).unwrap().unwrap().is_default);
+}
+
+#[test]
+fn the_same_tier_default_is_still_replaced() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let first = s
+        .create_tax_rate_scoped(
+            "Loc rate A",
+            1000,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    let second = s
+        .create_tax_rate_scoped(
+            "Loc rate B",
+            1100,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    assert!(!s.get_tax_rate(&first.id).unwrap().unwrap().is_default);
+    assert!(s.get_tax_rate(&second.id).unwrap().unwrap().is_default);
+}
+
+#[test]
+fn a_location_default_clears_only_its_own_location_tier_row() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    seed_topology(&conn, "ent-a", "loc-b");
+    let a = s
+        .create_tax_rate_scoped(
+            "Loc A",
+            1000,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    let b = s
+        .create_tax_rate_scoped(
+            "Loc B",
+            1100,
+            true,
+            false,
+            &TaxRateScope::Location("loc-b".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    assert!(s.get_tax_rate(&a.id).unwrap().unwrap().is_default);
+    assert!(s.get_tax_rate(&b.id).unwrap().unwrap().is_default);
+}
+
+#[test]
+fn create_tax_rate_scoped_refuses_a_malformed_or_inverted_window() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let scope = TaxRateScope::Location("loc-a".into());
+    // None means "column absent", Some("") means "column present but empty"
+    // — a present-but-unreadable date, which is exactly what must be refused.
+    let bad: [(Option<&str>, Option<&str>, &str); 6] = [
+        (Some("2026-1-1"), None, "effective_from"),
+        (Some("2026-01-01T00:00:00Z"), None, "effective_from"),
+        (Some(""), None, "effective_from"),
+        (None, Some("2026-02-30"), "effective_to"),
+        // Equal bounds cover no day at all: effective_to is exclusive.
+        (Some("2026-01-01"), Some("2026-01-01"), "effective_to"),
+        (Some("2026-06-01"), Some("2026-01-01"), "effective_to"),
+    ];
+    for (from, to, field) in bad {
+        let window = TaxRateWindow {
+            effective_from: from.map(str::to_owned),
+            effective_to: to.map(str::to_owned),
+        };
+        let err = s
+            .create_tax_rate_scoped("Bad window", 1000, false, false, &scope, &window)
+            .expect_err("an unusable period must be refused");
+        assert!(
+            matches!(&err, CoreError::Validation { field: f, .. } if *f == field),
+            "{from:?}..{to:?} must name {field}, got {err:?}"
+        );
+    }
+    // Every refusal happened before the transaction opened.
+    assert!(s.list_tax_rates().unwrap().is_empty());
+}
+
+#[test]
+fn create_tax_rate_scoped_refuses_an_unknown_or_blank_scope_target() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let w = TaxRateWindow::default();
+    let err = s
+        .create_tax_rate_scoped(
+            "Nowhere",
+            1000,
+            false,
+            false,
+            &TaxRateScope::Location("loc-nope".into()),
+            &w,
+        )
+        .expect_err("a missing location is not a scope");
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "location_id"),
+        "a typed location_id error, not a bare FK violation: {err:?}"
+    );
+    let err = s
+        .create_tax_rate_scoped(
+            "Blank",
+            1000,
+            false,
+            false,
+            &TaxRateScope::LegalEntity("  ".into()),
+            &w,
+        )
+        .expect_err("an empty entity id is not a scope either");
+    assert!(matches!(
+        &err,
+        CoreError::Validation { field, .. } if *field == "legal_entity_id"
+    ));
+}
+
+#[test]
+fn update_tax_rate_scoped_moves_tiers_keeps_created_at_and_refuses_archived() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let rate = s
+        .create_tax_rate_scoped(
+            "Location rate",
+            1000,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow {
+                effective_from: Some("2026-01-01".into()),
+                effective_to: None,
+            },
+        )
+        .unwrap();
+
+    let moved = s
+        .update_tax_rate_scoped(
+            &rate.id,
+            "Entity rate",
+            1200,
+            false,
+            false,
+            &TaxRateScope::LegalEntity("ent-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    assert_eq!(moved.created_at, rate.created_at, "created_at survives");
+    // updated_at is NOT asserted: both stamps come from the same clock read and
+    // the writes land inside one millisecond, so an inequality here would be a
+    // flake, not a fact.
+    assert_eq!(
+        s.tax_rate_scope(&rate.id).unwrap(),
+        Some(TaxRateScope::LegalEntity("ent-a".into()))
+    );
+    assert_eq!(
+        s.tax_rate_window(&rate.id).unwrap(),
+        Some(TaxRateWindow::default()),
+        "the window is replaced, not merged"
+    );
+    // The row left the location tier and stopped being a default, so that tier
+    // now has none — the accepted, documented consequence of a tier change.
+    assert!(!s.get_tax_rate(&rate.id).unwrap().unwrap().is_default);
+
+    s.delete_tax_rate(&rate.id).unwrap();
+    let err = s
+        .update_tax_rate_scoped(
+            &rate.id,
+            "Resurrect",
+            100,
+            false,
+            false,
+            &TaxRateScope::Global,
+            &TaxRateWindow::default(),
+        )
+        .expect_err("an archived rate stays immutable");
+    assert!(matches!(err, CoreError::NotFound { .. }));
+}
+
+#[test]
+fn list_tax_rate_scopes_reports_every_active_row_in_one_read() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("A Global", 1000, true, false).unwrap();
+    let ent = s
+        .create_tax_rate_scoped(
+            "B Entity",
+            1100,
+            false,
+            false,
+            &TaxRateScope::LegalEntity("ent-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    let loc = s
+        .create_tax_rate_scoped(
+            "C Location",
+            1200,
+            false,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow {
+                effective_from: None,
+                effective_to: Some("2027-01-01".into()),
+            },
+        )
+        .unwrap();
+    let gone = s
+        .create_tax_rate_scoped(
+            "D Gone",
+            1300,
+            false,
+            false,
+            &TaxRateScope::Global,
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    s.delete_tax_rate(&gone.id).unwrap();
+
+    let all = s.list_tax_rate_scopes().unwrap();
+    let ids: Vec<String> = all.iter().map(|r| r.id.clone()).collect();
+    assert_eq!(
+        ids,
+        vec![global.id.clone(), ent.id.clone(), loc.id.clone()],
+        "active rows only, ordered by name"
+    );
+    let tiers: Vec<&str> = all
+        .iter()
+        .map(|r| match &r.scope {
+            TaxRateScope::Global => "global",
+            TaxRateScope::LegalEntity(_) => "entity",
+            TaxRateScope::Location(_) => "location",
+        })
+        .collect();
+    assert_eq!(tiers, vec!["global", "entity", "location"]);
+    assert!(all[0].window.effective_from.is_none());
+    assert_eq!(all[2].window.effective_to.as_deref(), Some("2027-01-01"));
+}
+
+#[test]
+fn the_tier_unique_index_backstops_a_writer_that_does_not_clear() {
+    // The only raw write in this section, on purpose: it proves the default
+    // rule belongs to the database and is not just the writer being polite.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    s.create_tax_rate_scoped(
+        "Loc default",
+        1000,
+        true,
+        false,
+        &TaxRateScope::Location("loc-a".into()),
+        &TaxRateWindow::default(),
+    )
+    .unwrap();
+    let err = conn
+        .execute(
+            "INSERT INTO tax_rates (id, name, rate_bps, is_default, location_id)
+             VALUES ('r-sneak', 'Second default', 1100, 1, 'loc-a')",
+            [],
+        )
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("UNIQUE constraint failed"),
+        "the location tier's index must refuse a second default: {err}"
+    );
+    // A different tier is still free to hold its own default.
+    assert!(
+        s.create_tax_rate_scoped(
+            "Entity default",
+            1200,
+            true,
+            false,
+            &TaxRateScope::LegalEntity("ent-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn tax_rate_window_reports_a_malformed_stored_date_verbatim() {
+    // The writer refuses a malformed date, so one can only arrive from
+    // elsewhere (a hub row, a hand edit). It is REPORTED, not repaired — the
+    // resolver skips it, and a screen has to be able to show why.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    insert_scoped_rate(
+        &conn,
+        "r-ts",
+        "Timestamp",
+        1000,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2026-01-01T00:00:00Z"),
+        None,
+    );
+    let w = s.tax_rate_window("r-ts").unwrap().unwrap();
+    assert_eq!(w.effective_from.as_deref(), Some("2026-01-01T00:00:00Z"));
+    assert_eq!(w.effective_to, None);
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", None, "2026-09-08")
+            .unwrap(),
+        None,
+        "the untrusted row prices nothing"
+    );
+}
