@@ -34,7 +34,8 @@ import { TopologyValidationWidget } from './topologyValidationWidget';
 import type { TopologyOverlay } from './topologyBranchCompare';
 import { layoutGhosts, buildGhostWireStubs, compareFocusDimIds, GHOST_WIDTH, GHOST_HEIGHT } from './topologyBranchCompare';
 import { TopologyWiresLayer } from './topologyWiresLayer';
-import { cubicBezier, polylinePoint, wireUnderCardSegments } from './topologyWireGeometry';
+import { wireUnderCardSegments } from './topologyWireGeometry';
+import { TopologyWireLabelPills } from './topologyWireLabelPills';
 import { useTopologyEditorGraph, type TopologyHistoryEntry } from './nodeTopologyEditorState';
 import { historyEntry, validWiresForNodes } from './topologyHistoryIntegrity';
 import { useTopologyEditorSaveLifecycle } from './nodeTopologyEditorSaveState';
@@ -2336,47 +2337,19 @@ export default function NodeTopologyEditor({
               l10n={l10n}
             />
 
-            {wireLabelsVisible && wires.map((wire) => {
-              // Permanent label pill at the wire's midpoint (the same point
-              // the rename input anchors to). Clicking opens the rename
-              // editor — the wire itself stays the direction-cycle
-              // affordance, so the pill must not cycle. Hidden while the
-              // wire's own rename input is open (it replaces the pill).
-              if (renamingWireId === wire.id) return null;
-              const geo = wireGeometries.get(wire.id);
-              if (!geo) return null;
-              const mid = geo.polyline
-                ? polylinePoint(geo.polyline, 0.5)
-                : {
-                    x: cubicBezier(0.5, geo.x1, geo.x1 + geo.dx, geo.x2 - geo.dx, geo.x2),
-                    y: cubicBezier(0.5, geo.y1, geo.y1, geo.y2, geo.y2),
-                  };
-              const isDimmed = hoverConnections !== null
-                && wire.fromNodeId !== hoveredNodeId
-                && wire.toNodeId !== hoveredNodeId;
-              const rStyle = relationshipStyle(wire.relationshipType);
-              const fromName = nodeMap.get(wire.fromNodeId)?.name ?? '';
-              const toName = nodeMap.get(wire.toNodeId)?.name ?? '';
-              const tooltip = `${rStyle.icon} ${rStyle.label}: ${fromName} → ${toName}`;
-              return (
-                <button
-                  key={wire.id}
-                  type="button"
-                  className={`wire-label-pill${isDimmed ? ' wire-label-pill-dimmed' : ''}`}
-                  style={{ left: mid.x, top: mid.y }}
-                  title={tooltip}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    selectWire(wire.id);
-                    startWireRename(wire.id);
-                  }}
-                >
-                  <span className="wire-label-badge" style={{ backgroundColor: rStyle.color }} />
-                  <span className="wire-label-text-content">{wireDisplayLabel(wire)}</span>
-                </button>
-              );
-            })}
+            <TopologyWireLabelPills
+              wires={wires}
+              wireLabelsVisible={wireLabelsVisible}
+              wireGeometries={wireGeometries}
+              nodeMap={nodeMap}
+              hoverConnections={hoverConnections}
+              hoveredNodeId={hoveredNodeId}
+              renamingWireId={renamingWireId}
+              relationshipStyle={relationshipStyle}
+              wireDisplayLabel={wireDisplayLabel}
+              onSelectWire={selectWire}
+              onStartWireRename={startWireRename}
+            />
 
             <TopologyNodeMapLayer
               nodes={nodes}
