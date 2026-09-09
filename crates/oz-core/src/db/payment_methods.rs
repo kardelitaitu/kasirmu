@@ -196,7 +196,8 @@ impl crate::db::Store<'_> {
                 params![location_id],
                 |row| row.get::<_, Option<String>>(0),
             )
-            .optional()?;
+            .optional()? // no such row → no location at all
+            .flatten(); // NULL link → location exists, entity does not
         let Some(entity_id) = entity_id else {
             return Ok(Vec::new());
         };
