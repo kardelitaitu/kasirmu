@@ -482,3 +482,165 @@ All four previously-missing input-controller coverage items landed in one additi
 
 Two guard layers landed while the extraction ladder advanced, both strictly additive and green at HEAD: (1) ui-coder-24's memo churn tripwire (nodeTopologyMemo.test.tsx +104, 3 tests): pan and wheel zoom re-key the wire props (onStartBendDrag/onStartGhostBend identities differ) while node-card drag/selection props stay referentially stable and the memoized cards render zero times — with throwing never-captured accessors so a silently-stopped render layer cannot pass vacuously. This pins the contract 3.4c-e and 3.5 must preserve; if a slice legitimately drops pan from the bend hook deps, the assertion flips deliberately, never silently. (2) ui-coder-23's hook-in-isolation suite for the 3.4a bend seam (NEW topologyEditorBendDrag.test.ts +404, 8 tests): arming/disposer re-arm (a leaked listener is only observable by re-arming the ref and pinning setWires to one call — handleMove early-returns on a null ref), no-trace release, the existing-bend-suppressed vs created-bend-never-suppressed matrix, client->canvas mapping (client - rect - pan) / zoom, and removeBend identity preservation. Pinned finding: the ghost path double-fires selectWire/stopPropagation/preventDefault (startGhostBendDrag delegates to startBendDrag) — idempotent and correct today, so removing it is now a deliberate, test-visible decision.
 
+
+### 2026-09-09 — Slice R0 (pre-extraction): rename-flow characterization gaps closed
+
+All six scout-identified rename gaps landed as characterization tests (b30e97c63, single test file, 6/6 green independently re-run): (a) wire-rename blur commit with the no-focus-steal half; (b) empty wire relabel DELETES the label field — asserted on the onSave payload because the display fallback is byte-identical under delete-vs-empty-string (this is the only guard distinguishing the two); (c) keyboard-driven rename close returns focus to .wire-hitbox[data-wire-id] for both Enter and Escape; (d) the renameSaving Enter+blur double-submit guard (exactly one round-trip under a deferred promise); (e) a rejected card-level commit keeps the draft open and releases the guard; (f) a wire relabel pushes exactly one undo entry and marks the canvas dirty (Ctrl+Z / Ctrl+Shift+Z round-trip).
+
+**Binding flags for the R1 rename extraction:** (1) do not weaken test 2's payload assertion — it is the only delete-vs-empty guard; (2) renameSaving must STAY in commitNodeRename's dependency array — dep-pruning or a ref conversion makes test 4 red by design; (3) the body-config/inspector path (renameBaselineRef / persistNodeRename, ~1610-1633) has thinner coverage than the six above; if R1 moves it, extend the suite in the same slice. Editor suite at 520 passed / 1 skipped.
+
+
+### 2026-09-09 — Slice 3.4c-1: node-drag trio folded into the pointer hook
+
+- **Responsibility boundary:** applyDragMove (edge-autopan/clamp/alignment), finalizeNodeDrag, beginNodeDrag (ref-only graph reads for memoized cards preserved), and handleNodeMouseDown move into useTopologyEditorPointer; the duplicate-drag lifecycle (commit/cancel/convert/cancelNodeMove) stays parent-owned, which is what keeps 3.4c-2 separable.
+- **Safety gate (ran before any edit):** the central keydown effect's dependency array names only cancelDuplicateDrag / cancelNodeMove / convertDragToDuplicate / cancelBendDrag — zero trio names — so trio-only extraction is TDZ-safe at the unchanged hook call site. The trio were the only hooks between executeDelete and the canvas-handler block, so hook and effect order are provably unchanged.
+- **Files:** NodeTopologyEditor.tsx (5,389 -> 5,099); nodeTopologyEditorPointer.ts (411 -> 879; TopologyPointerDeps 31 -> 59 fields). Public imports/re-exports unchanged; JSX zero lines changed; dead imports dropped per noUnusedLocals (edgeAutoPanDelta, moveLandedAtStart — now imported by the hook).
+- **Focused tests:** editor + inspector + memo = 536/1/0; the two most dep-exposed files (pointer isolation + memo) 21/21; ORCHESTRATOR independent re-run over 4 suites 550 passed / 1 skipped / 0 failed (exit 0).
+- **Typecheck:** exit 0; exhaustive-deps ratchet at cap 4; +4 targeted eslint-disables (react-hooks v7 ref-scope rule: refs arriving through deps are no longer counted) — scheduled to retire when the unmount sweep moves with the gesture systems.
+- **Behavior checked:** 323 lines moved mechanically (never retyped); bodies/comments/3 useCallback dep arrays byte-identical; nothing newly wrapped in useCallback; hoveredTarget identity rule and memo churn tripwire (nodeTopologyMemo 7/7) both hold.
+- **Rollback point:** revert 4956d74a4 alone.
+- **Remaining coupling / follow-up:** 3.4c-2 (duplicate cluster + hook-call-site relocation) is ONE fused commit — commitDuplicateDrag is still a parent-owned dep the trio calls; nodeTopologyEditorPointer.test.ts's exhaustive deps literal is a deliberate tripwire and must be updated inside the same commit.
+
+
+### 2026-09-09 — Slice T-G2: viewport view-preferences characterization gaps closed pre-extraction
+
+All five G2 gaps (b)-(f) landed as 10 characterization tests (54735b777, single test file). Two suspected bugs were investigated and DISPROVEN rather than pinned: the predicted "unmount drops the pending write" does not exist (persistViewport is a stable useCallback([]); the unmount cleanup writes the LATEST zoom+pan — test pins the 1.1 -> 1.375 ordering), and the zoom-popover Escape "cross-talk" is genuine exclusivity (popover listens on document, canvas Escape ladder on window; probed empirically, selection survives). NaN restore is already rejected by the validator (JSON.stringify emits null).
+
+**Binding flags for the 3.5a viewport extraction:** (1) the 0.4..2.0 clamp lives ONLY in the useState initializer — the write path never clamps; moving it breaks restore safety (tests 3+4 guard); (2) viewPersistRef carries its own viewKey inside the persisted record — do NOT simplify to a closure over the live key (per-branch cross-write protection); (3) autoFitKeyRef is consumed only AFTER the measured-canvas guard — hoisting it silently kills every load fit; (4) 0.4/2.0 literals confirmed at 4 editor sites + the wheel clamp in nodeTopologyEditorPointer.ts — the const extraction remains its own commit; (5) gap (e)'s positive half (a new diagram replacing the current one and refitting) still needs a two-load harness — build it inside 3.5a. Editor suite now 530 passed / 1 skipped.
+
+
+### 2026-09-09 — Slice 3.4c-2: duplicate-drag cluster folded in + pointer-hook call site relocated (ONE commit)
+
+- **Responsibility boundary:** commitDuplicateDrag and beginDrag become internal to useTopologyEditorPointer (beginNodeDrag calls both); cancelDuplicateDrag, convertDragToDuplicate, and cancelNodeMove are returned and consumed by the keydown Escape ladder / Alt-mid-move path; duplicate state stays parent-declared. The pointer hook now owns the full node-drag + duplicate lifecycle; the editor no longer defines any drag callback.
+- **Safety gates (verified pre-edit by the coder, re-verified independently):** resetTransientCanvasState and the load-lifecycle call reference none of the four cluster callbacks; the four useCallbacks moved verbatim (bodies/comments/dep arrays byte-identical, internal order preserved); zero other hooks existed between the old and new call-site positions, so hook/effect order is provably unchanged. The relocation satisfied scout-7's sequencing gate (a): call site below resetTransientCanvasState (1495) and userInteractedRef (1994), above the keydown effect (2521).
+- **Files:** NodeTopologyEditor.tsx (5,099 -> 4,960); nodeTopologyEditorPointer.ts (879 -> 1,092); nodeTopologyEditorPointer.test.ts deps literal updated inside the same commit (the deliberate tripwire worked as designed).
+- **Focused tests:** ORCHESTRATOR independent 5-suite re-run = 582 passed / 1 skipped / 0 failed (editor + inspector + memo + pointer isolation + apply characterization), exit 0.
+- **Typecheck / lint:** exit 0; exhaustive-deps ratchet at cap 4; the ref-scope eslint-disable set carried over unchanged (no new ones for this slice).
+- **Behavior checked:** duplicate-drag semantics pinned by existing editor tests + tripwire; zero JSX changes.
+- **Rollback point:** revert 59d37d6c1 alone.
+- **Remaining coupling / follow-up:** the unmount sweep's dragCleanupRef disable is now the only ref-scope disable whose writer is fully hook-side — scheduled to retire with 3.4d; next slice on the editor fence = R2 (F2 -> startNodeRename dedupe, which scout-7 corrected to a 35-name dep array).
+
+### 2026-09-09 — Slice T-G8 (pre-extraction): apply save-flow characterization landed
+
+Seven tests (5e9e4b59d, TopologyApplyConfirm.characterization.test.tsx 15 -> 22) pin the G8 contract: onSave positional arity 5 with a LIVE canvas arg0 and an array-copy arg3; Apply is NOT dirty-gated; the .topology-apply-confirm-overlay keyboard shield (the 3.4d closest() guard made executable); backdrop-mousedown shield (guards against swapping in the shared Modal); failure path releases the guard without reopening or blaming the PIN; no-Remember forces re-PIN; commitSnapshot flips both dirty views atomically. **Open question for the G8 slice (deliberately unpinned):** revision adoption — a save resolving {revision: N} does not surface in the next Apply's baseRevision; either a post-save authoritative load re-bases (correct) or finishApply(nextRevision) is dead. Root-cause before/at G8, then pin the winner. **Extraction tripwire:** finishApply/failApply release via setTimeout(0) — inlining it will red tests 5-7 by design.
+
+
+### 2026-09-09 — Slice R2: F2 routed through startNodeRename (keyboard deps 35 -> 34)
+
+- **Change:** startNodeRename absorbs the node lookup (nodesRef) and the renameable type-gate; signature (nodeId), deps [] (referentially stable). The F2 branch is now guard + preventDefault + startNodeRename. All three external callers (canvas context menu, node-card double-click/pencil) pass nodes-derived names — verified loss-free by a caller audit, so the absorbed lookup reconstructs every name exactly.
+- **Dependency effect:** onRenameBranch/onRenameWorkspace leave the central keydown dep array (grep-proven sole reader was the F2 branch); startNodeRename replaces them as a permanently stable dep. Net 35 -> 34: two volatile props became one stable callback.
+- **Accepted deviation:** the absorbed gate reads two render-mirror booleans (canRenameBranchRef/canRenameWorkspaceRef, assigned beside the existing nodesRef mirror) instead of the props directly. Reading props inside the []-dep callback would force it to churn, breaking memoized-card prop identity and making the dep narrowing nominal rather than real. Behavior identical (the gate reads presence only); documented in-file.
+- **Tests:** 4 scoped suites 575/1/0 + nodeTopologyMemo 7/7 (independent proof the memoized card props stayed referentially stable); ratchet at cap 4; typecheck clean for the file (transient foreign reds from a concurrent locale workstream healed on their own).
+- **Ladder note:** the keydown dep array now carries only 1 rename-related dep-adjacent name; with 3.5a (planned next-but-one) removing the 5 viewport deps, 3.4d will extract at ~29 deps.
+- **Rollback point:** revert 2c6632284 alone.
+
+### 2026-09-09 — Slice T-R1c: inspector rename persistence pinned (coverage hole closed)
+
+Five tests (d07864a5a, +127, single test file): inspector rename persists through the parent and marks the canvas dirty with baseline-advance (no double commit on re-blur); an unedited blur never round-trips the focus-time name; a whitespace-only inspector commit is a no-op (in contrast to the wire relabel that DELETES the label — the trim-gate asymmetry is now pinned); a rejected inspector rename reverts the live-bound name and stays retryable; an inspector rename followed by a card rename costs exactly one undo entry. **R1 flags:** persistNodeRename has NO renameSaving guard (card-form-only; adding one during extraction is a behavior change — do not silently "fix"); its deps re-bind per nodes change via the baseline-revert setNodes. Editor suite now 535 passed / 1 skipped.
+
+
+### 2026-09-09 — Slice 3.4e: touch gesture hook extracted
+
+- **Responsibility boundary:** the entire canvas touch loop (pointerdown/up/cancel/pinch) moves into useTopologyEditorTouch (NEW nodeTopologyEditorTouch.ts, 312 lines, 16 dep fields). Only handleCanvasPointerDown is returned (the block's sole external consumer). touchPointersRef and touchGestureRef move INTO the hook (zero external readers, full-file line map); touchCleanupRef stays parent-declared (read by the unmount sweep) with its declaration relocated beside the other cleanup refs atomically with the extraction.
+- **Safety gates:** all consumers resolve above the hook call site (no TDZ); the hook registers exactly two useRef and no useEffect/useCallback, so component hook/effect order is unchanged; the 213 moved lines are byte-identical to the source slice (line-slice, never retyped); handleTouchPointerCancel still delegates verbatim to handleTouchPointerUp ("end the gesture exactly like a release" — the cancel==release post-threshold semantics preserved, now also component-pinned by the touch characterization suite).
+- **Files:** NodeTopologyEditor.tsx 4,984 -> 4,802; nodeTopologyEditorTouch.ts NEW 312.
+- **Focused tests:** 587 passed / 1 skipped / 0 failed across editor + pointer-isolation + memo + apply-characterization (exact pre-slice baseline — zero behavioral drift); ORCH independent re-run exit 0.
+- **Typecheck / lint:** exit 0; ratchet exhaustive-deps 4 = cap 4; +1 targeted eslint-disable (unmount-sweep read of the parent-side touchCleanupRef, worded like its siblings); JSX zero lines changed.
+- **Rollback point:** revert cfad63603 alone.
+- **Remaining coupling / follow-up:** gesture controllers are now fully hook-owned (bend/pointer+node-drag/duplicate/touch); the unmount sweep's five cleanup-ref disables are the residue to retire in 3.4d's neighborhood; next on the editor fence = 3.5a/3.5b-1 viewport (keyboard-dep shrink lever, gate decision recorded in the orchestrator journal).
+
+### 2026-09-09 — GATE DECISION: 3.5b view-preferences persistence split (storageKeyPins)
+
+The storageKeyPins enforcement is a vitest fixture (not a pre-commit hook): T4 pins key->owner-path by exact string; only the 3 legacy fallback literals are scanner-visible. Decision: 3.5b-1 (viewport zoom/pan + minimap persistence) lands as a clean 2-file slice with zero registry impact; 3.5b-2 (routing/snap/wire-labels) lands as a 3-file atomic commit including the storageKeyPins.test.ts registry path update (by-design co-change, itemized in the commit body). Key-injection and shared-constants alternatives rejected (stranded fallbacks / 4 files + still-red T4). Guardrails: no new *_KEY/*_PREFIX consts; no literal duplication across the fence; storageKeyPins.test.ts must be run before and after each 3.5b commit.
+
+
+### 2026-09-09 — Slice T-3.4e: touch gesture behavior pinned (component level)
+
+Six tests (c6d626f20, +152, single test file) pin the touch contract that 3.4e's hook extraction must preserve: a pointercancel AFTER the drag threshold commits exactly like a pointerup (position + cleanup, completing the pre-threshold case pinned by 98e208d3f); two-finger pinch zooms via pinchTransform and a pinch during an in-flight node drag COMMITS that drag; a drag below TOUCH_DRAG_THRESHOLD never arms; a touch tap selects; unmount with an armed gesture tears down with no leaked document listeners (re-arm proof pattern). Landed after the 3.4e extraction (cfad63603) — it retroactively pins the hook's behavior at the component level. Editor suite 541 passed / 1 skipped.
+
+
+### 2026-09-09 — Slices 3.5a + 3.5b-1: viewport machinery extracted
+
+- **Responsibility boundary:** view-preferences persistence (zoom/pan debounce + unmount flush + restore), minimap persistence, center/nudge viewport, and the zoom cluster (zoomToFit/zoomToSelection/zoomBy/resetView) move into useTopologyEditorViewport (NEW nodeTopologyEditorViewport.ts, 225 lines, 9 dep fields). The hook is called at the vacated G2-A slot; auto-fit stays parent-side deliberately (its autoFitKeyRef consumption sits after the measured-canvas guard, and userInteractedRef is declared below the hook call).
+- **Storage-keys guardrails honored (gate decision, scout-8):** zero legacy literals moved (routing/snap/wire-labels remain editor-side for 3.5b-2), zero new *_KEY/*_PREFIX consts, storageKeyPins green before and after — template keys are scanner-invisible, so the oz-topology-viewport:[branchId] key moved without a registry edit.
+- **Keyboard lever landed:** the central keydown dep array is byte-identical (34 names); zoomToFit/zoomBy/resetView now bind from the hook's return. 3.4d can now relocate the keyboard effect into its own controller whose dep object excludes the volatile viewport callbacks.
+- **Files:** NodeTopologyEditor.tsx 4,802 -> 4,702; nodeTopologyEditorViewport.ts NEW 225.
+- **Focused tests:** 591 passed / 1 skipped / 0 failed (editor 541 incl. the touch characterization +6, pointer-isolation 21, memo 7, apply-characterization 22); ORCH independent re-run with storageKeyPins: 596/1/0 exit 0.
+- **Typecheck / lint:** exit 0; ratchet cap 4; +5 targeted eslint-disables in the hook (ref-scope rule), editor count unchanged.
+- **Rollback point:** revert 2fa4cbfe1 alone.
+- **Remaining coupling / follow-up:** 3.5b-2 (routing/snap/wire-labels + registry path strings) and 3.4d (keyboard controller, in flight) remain on the editor fence; zoom 0.4/2.0 clamp const extraction still deferred (now 4 editor-side sites + 1 hook site became hook-internal — re-verify site count before that slice).
+
+
+### 2026-09-09 — Slice 3.4d: keyboard controller extracted (LAST input controller)
+
+- **Responsibility boundary:** the central window keydown useEffect (344 lines, editor 2454-2797) moves into useTopologyEditorKeyboard (NEW nodeTopologyEditorKeyboard.ts, 588 lines). Hook args = 53 fields (the byte-identical 34-name dep array + 19 body-read extras: 6 gesture refs, userInteractedRef/migrationDismissedRef/nudgeSessionRef/canvasRef, handleAddNodeRef passed BY REF because it is still assigned below the call, 5 state setters, setNodes, isBranchLocation, GRID_SIZE/NUDGE_COALESCE_MS/snap). The hook returns nothing — it is listener registration only.
+- **Behavior preservation proved:** body copied by splice-guarded line-slice (the script refuses to write unless the source boundary lines match, then asserts the written hook is byte-equal to the saved block); the .topology-apply-confirm-overlay closest() shield and the F2 -> startNodeRename(nodeId) form are verbatim; zero JSX lines changed; call sits at the exact vacated slot.
+- **The +1 disable:** isBranchLocation (deps [nodes]) is called inside the body but is not in the 34-name array — passed as a hook arg outside the array text with one targeted react-hooks/exhaustive-deps on the in-hook array. Directive-placement gotcha recorded: a multi-line comment above the array makes the directive "unused"; it must be the last line before the array.
+- **Ratchet improved:** whole-tree exhaustive-deps 4 -> 3 against cap 4 (the editor's keydown warning moved out and is now suppressed as sanctioned). Locking the baseline JSON at 3 is a deferred one-file follow-up.
+- **Files:** NodeTopologyEditor.tsx 4,702 -> 4,415; nodeTopologyEditorKeyboard.ts NEW 588. Two dead imports whose sole consumer moved (nodeBoxesOverlap, computeAlignmentGuides) were dropped from the editor's import list; the compatibility re-export block is untouched.
+- **Focused tests:** 594/1/0 x4 suites at the slice HEAD; ORCH independent 6-suite re-run (incl. touch isolation + storageKeyPins): 609/1/0 exit 0.
+- **Phase 3.4 is now COMPLETE:** all input controllers live in dedicated hooks — topologyEditorBendDrag (3.4a), nodeTopologyEditorPointer (3.4b/c), nodeTopologyEditorTouch (3.4e), nodeTopologyEditorKeyboard (3.4d). Remaining inline input handling in the editor: none. The unmount-sweep ref-scope disables (+15 across hooks) retire when the sweep + resetTransientCanvasState move in the next phase.
+- **Rollback point:** revert e9e0f0ef0 alone.
+
+
+### 2026-09-09 — Slice 3.5b-2: view preferences moved into the viewport hook (3.5 COMPLETE)
+
+- **Responsibility boundary:** routing / snap / wire-labels persistence (the three scanner-visible legacy keys) moves into useTopologyEditorViewPrefs, a second export in nodeTopologyEditorViewport.ts alongside the sibling minimap pref. Each key's legacy fallback read + per-branch write-back effect moved as one closed set (splitting them would strand a legacy value unmigrated — a real behavior change). panToolActive, anyBentWires and snapOrNot stay parent-side (pointer deps / render-scope consumers).
+- **The gate co-edit, by design:** storageKeyPins.test.ts re-attributes the three relocated literals to the hook file (T4 owner match, exact-string src-relative paths). T5's exactly-two-shared-owners invariant held — no legacy literal was duplicated across the fence; no const *_KEY was introduced (KEY_DECL would discover new keys). This is the one slice where the registry edit is itemized in the commit body rather than a violation.
+- **Files:** NodeTopologyEditor.tsx (71+/−~140); nodeTopologyEditorViewport.ts +107; storageKeyPins.test.ts 3 lines. Zero new eslint-disables (the states moving into the hook made all three persist effects hook-local).
+- **Focused tests:** 546 passed / 1 skipped / 0 failed (editor suite 541 + storageKeyPins 5 — exact). storageKeyPins ran green before AND after the commit (vitest-only gate; the pre-commit hook does not run it).
+- **Rollback point:** revert 29300f8ea alone.
+- **Phase 3.5 is COMPLETE:** all view state (viewport zoom/pan/minimap prefs in 3.5b-1, view prefs in 3.5b-2) is hook-owned; the storageKeyPins registry now attributes every legacy topology key to its true owner file.
+
+
+### 2026-09-09 — Slices R1 + R1b: both rename halves extracted (G5 COMPLETE)
+
+- **R1 — node half (c877b1e6c):** the 145-line inline node-rename block (state x2, refs x3, focus effects x2, canRename render mirrors, startNodeRename/cancelNodeRename/persistNodeRename/commitNodeRename) moved into useTopologyEditorNodeRename (NEW nodeTopologyEditorRename.ts, 220 lines). Deps = 5 parent-owned fields (nodes, setNodes, nodesRef, onRenameBranch, onRenameWorkspace — all also read at other call sites, not relocatable). Byte-identity PROVEN against HEAD content (145/145 case-sensitive equal). All four dep arrays byte-identical — commitNodeRename keeps renameSaving (coder-25 flag b), persistNodeRename gains NO guard (coder-31: that would be a behavior change). The canRename gate stays on render-mirror refs (coder-32 deviation preserved: switching to prop reads would churn startNodeRename identity and red memoRenderIsolation). renameBaselineRef/renameInputRef remain the SAME ref objects the card receives and the inspector writes — no value-ification. Editor 4,362 -> 4,239; +1 targeted eslint-disable in the hook file (startNodeRename deps [] reads param nodesRef; viewport precedent). Verified: 618/1/0 (editor 541 + card 77) + tsc 0 + ratchet 3/4, independently re-verified by ORCH at 629/1/0 across 4 suites after the foreign dev-mock syntax outage healed.
+- **R1b — wire half (ffe5e448d):** the 72-line inline wire-rename block (2 useState + 3 useRef + 2 effects + plain-arrow startWireRename/cancelWireRename/commitWireRename) moved into useTopologyEditorWireRename as the hook file's second export. The scout-10 blocker (commitWireRename calls pushHistory declared below the block) resolved by scout-11 option (iv): the hook dep is typed '() => void' and wired parent-side as the deferred-access wrapper '() => pushHistory()' — the arrow closes over the binding without reading it at render, so the call site stays at the exact marker (slot-identical, zero positional-hook delta) while pushHistory/pushHistoryRef positions remain untouched. Callbacks stay plain arrows (pre-existing identity churn preserved; no new deps arrays, +0 disables expected). commitWireRename body byte-identical incl. the empty-label delete branch and fromKeyboard focus-return. Editor 4,239 -> ~4,164. Verified by ORCH: 622/1/0 (editor 541 + audit 4 + card 77 exact) across 3 suites.
+- **Test protection:** ~26 node-rename tests + 9 wire-rename direct pins all stayed green with zero test edits — the R0/R2/coder-31 characterization work did its job.
+- **Rollback points:** revert c877b1e6c and ffe5e448d independently (R1b shares only the file with R1, not symbols).
+
+
+### 2026-09-09 — Slice G8-a: the apply/save surface extracted (Phase 4 opened)
+
+- **Responsibility boundary:** the apply-confirm save flow — applyConfirmOpen/applyConfirmData state, confirmApply (118 ln), handleApplyClick (76 ln), dirtySummary (33 ln) and the PIN_VERIFIED_SESSIONS module cache — moves into useTopologyEditorApplyPanel (NEW nodeTopologyEditorApplyPanel.ts, 402 lines, deps 27, returns 6). TopologyApplyConfirm is ALREADY a props-driven child component and its JSX mount is untouched; the extraction takes the LOGIC, not the markup (scout-12's split verdict — G8-b, a cosmetic mount-surface component, is deferred to the G13/menu pass).
+- **Byte-identity proved mechanically:** every span's first and last line asserted against exact literals; all three dep arrays (12/11/3 names) compared as full strings; the written hook re-read requiring the joined spans verbatim including injected disable lines. PIN_VERIFIED_SESSIONS relocates as an export so the staying pinVerifiedRef initializer stays byte-identical (a deps-field pass would have made exhaustive-deps demand a 13th name into a frozen array).
+- **Contracts held (each re-read from source after the splice):** commitSnapshot is called, never re-derived; the skipNextLoadRef cross-effect handshake and the setTimeout(0) finishApply release are verbatim; Apply is not dirty-gated; onSave receives a positional array copy; setHistory([])/setRedo([]) are literal clears so the history-creator audit multiset pin holds; storageKeyPins untouched; the dialog stays mounted unconditionally (keyboard overlay shield contract); the jsx-a11y disable/enable block survives with every cut inside it.
+- **Ratchet:** +2 targeted disables (handleApplyClick + dirtySummary, each only appliedSnapshotRef); confirmApply's pre-existing warning left visible; whole-tree exhaustive-deps 3 vs cap 4.
+- **Focused tests:** 592 passed / 1 skipped / 0 failed across 6 suites (editor 541 + apply-characterization 22 + save-state 13 + history audit 4 + storageKeyPins 5 + memo 7). typecheck 0; 10 gates.
+- **Editor size:** 3,983 lines (from 6,048 baseline; -2,065 across the refactor).
+- **Rollback point:** revert 420f30a60 alone.
+- **Remaining per doc:** G4 (load/migration surface), G7/G13, G18 menus LAST. Next scout pass ranks them at current anchors.
+
+
+### 2026-09-09 — Slice G4-a: the migration logic extracted (residual G4)
+
+- **Premise correction (scout-13):** G4's load half was already banked — useTopologyEditorLoadLifecycle has lived in its own file since b5d00ac91 (26 deps, 11-test isolation suite). The doc's "G4 migration" item therefore reduces to the legacy-wire MIGRATION surface alone.
+- **Boundary:** the migration state trio stays in the editor by construction — migrationOpen is consumed as a VALUE by the keyboard hook and migrationDismissedRef by both the load and keyboard hooks, all above liveValidation, which the moved memos need. A state-owning hook would have to sit above the load hook yet below liveValidation: impossible. The LOGIC (ambiguous-wire detection memo, entries memo, per-wire selection, auto-open effect, resolve/later handlers, 108 lines) moves to useTopologyEditorMigration (NEW nodeTopologyEditorMigration.ts, 210 lines, deps 11, returns 4) at a slot-identical call site.
+- **Contracts held:** handleResolveMigration only CALLS pushHistory (no history-producer move; the entry-audit multiset pin holds); zero legacy storage literals in the span (registry untouched); the keyboard hook's own Escape-dismissal duplication is deliberately preserved (routing it through the hook would break the 34-name keydown dep array); class strings unchanged (noise-dither allowlist intact); the 5 migration tests pass unedited.
+- **Ratchet:** +1 targeted disable in the new file (auto-open effect; same shape as the load hook's), whole-tree exhaustive-deps 3 vs cap 4.
+- **Focused tests:** 565 passed / 1 skipped / 0 failed across 5 suites (editor 541 + history audit 4 + storageKeyPins 5 + loadLifecycle 11 + timezoneSelect 4). typecheck 0; 10 gates.
+- **Editor size:** 3,900 lines (coder-48 correction: -83 net, not -94).
+- **Rollback point:** revert bbb255a19 alone.
+- **Remaining per doc:** G7-a (BranchLocationFields 173 ln, module-scope component move), G7-b (inspector drawer IIFE), G13-prep/G13-c/G13-a+b (clipboard + templates, tests first), G18 menus LAST. G8-b skip recorded (evidence-backed).
+
+
+### 2026-09-09 — Slice G7-a: BranchLocationFields relocated (Phase 4 inspector boundary opened)
+
+- **Boundary:** the module-scope BranchLocationFields component (173 lines: 4 state slots, 4 refs, persist-on-blur, load effect, timezone-aware JSX) plus its two private timezone helpers move to topologyBranchLocationFields.tsx verbatim. Parent coupling was exactly one prop (beginInspectorEdit); zero hook slots, zero TDZ, zero dep arrays — the cheapest safe slice in the file, taken first per the ranking.
+- **Contracts held:** JSX, class names, and props byte-identical; no useCallback introduction; the compat re-export block untouched; the timezone-select test suite pins the component behavior unedited.
+- **Focused tests:** 563 passed / 1 skipped / 0 failed across 5 suites (editor 541 + timezoneSelect 4 + InspectorIntegration 9 + history audit 4 + storageKeyPins 5). typecheck 0; 10 gates.
+- **Editor size:** 3,726 lines (coder-49 measured: -174 net).
+- **Rollback point:** revert a7b0c5051 alone.
+- **Next:** G7-b (inspector drawer IIFE -> TopologyInspectorDrawer) + G13-prep characterization in parallel (disjoint fences), then G13-c/G13-a+b, G18 menus LAST.
+
+
+### 2026-09-09 — Slice G13-prep (clipboard characterization) + Slice G7-b (inspector drawer extracted)
+
+- **G13-prep (f67b5034f, test-only):** 7 clipboard/selection characterization tests added on top of the pre-existing 13-test "clipboard & bulk duplication" describe (scout-14's "zero coverage" census corrected). Pinned: copy snapshot semantics (array-of-copies, not live refs), paste reads clipboard not selection, paste-cascade counter reset-on-fresh-copy with unique ids, empty-selection/empty-clipboard no-ops, refused warehouse paste creates NO undo entry, inspector Duplicate drives the same path. The refusal-before-history ordering is now executable-pinned — a future reorder will redden by design. New editor baseline: 549 tests. G13-c unblocked.
+- **G7-b (5c7739327):** the inspector drawer IIFE (244 lines) plus its renderWorkspaceCard adapter moves into topologyInspectorDrawer.tsx (323 lines, 12 props). selectedNode, renameBaselineRef and persistNodeRename cross the boundary unwrapped — the inspector rename contracts stay byte-stable. Mount guard remains editor-side; getTelemetry stays (card-grid consumer). Two-line createElement conformance swap (the IIFE had shielded a component-reference pattern that is now a hard lint rule); no new eslint-disable; ratchet held at 3/4.
+- **Focused tests:** 747 passed / 1 skipped / 0 failed across 5 suites (editor 549 + InspectorIntegration 9 + history audit 4 + storageKeyPins 5 + screenExtraction 181). typecheck 0; 10 gates.
+- **Editor size:** 3,475 lines (from 6,048 baseline; -2,573 across the refactor).
+- **Rollback points:** revert 5c7739327 (drawer) or f67b5034f (tests) alone.
+- **Remaining per doc:** G13-c clipboard hook -> G13-a+b templates/import-export -> G18 menus LAST (consumes the settled callback surfaces).
+
