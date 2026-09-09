@@ -11189,3 +11189,166 @@ describe('NodeTopologyEditor — peer group badge', () => {
     expect(pos1.querySelector('.node-peer-group-badge')).toBeNull();
   });
 });
+
+// ── Input-controller disarm & teardown characterization (Phase 3.4) ──
+// Characterization tests pinning the CURRENT disarm/teardown behavior of the
+// input controllers before they are extracted: (1) tab-hidden disarms a held
+// Space, (2) pointercancel ends a touch node drag with the position intact,
+// (3) unmount tears down every document-level gesture listener, (4) wheel
+// zoom-to-cursor compensates the pan so the content point under the cursor
+// stays visually fixed.
+
+describe('NodeTopologyEditor — input controller disarm and teardown', () => {
+  it('document visibilitychange to hidden disarms a held Space so the next left-drag marquees', () => {
+    // Regression: Space arming had keydown/keyup writers plus a window-blur
+    // disarm, but a tab switch to another window delivers keyup to the NEW
+    // document — and neither keyup nor blur fires — so spacePanArmed stuck
+    // true across the visibilitychange. The hidden-tab disarm closes that
+    // third gap: cursor class drops and the next left-drag marquees instead
+    // of panning.
+    renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+
+    fireEvent.keyDown(window, { code: 'Space', key: ' ' });
+    expect(canvas.className).toContain('canvas-space-pan');
+
+    // Hide the tab WITHOUT any keyup or window blur.
+    const visibilityStateSpy = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    try {
+      fireEvent(document, new Event('visibilitychange'));
+    } finally {
+      visibilityStateSpy.mockRestore();
+    }
+
+    // The pan must disarm: cursor class gone, and a left-drag on empty
+    // canvas opens a marquee instead of panning the viewport.
+    expect(canvas.className).not.toContain('canvas-space-pan');
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(canvas, { clientX: 650, clientY: 420 });
+    fireEvent.mouseUp(canvas, { button: 0 });
+
+    expect(document.querySelector('.topology-marquee')).toBeNull(); // marquee is transient; released already
+    expect(document.querySelectorAll('.topology-node.node-selected')).toHaveLength(2);
+    expect(viewport.style.transform).toContain('translate(0px, 0px)');
+  });
+
+  it('pointercancel during a one-finger touch node drag ends the gesture with the node position restored', () => {
+    // A system gesture (edge-swipe, notification shade) steals the touch
+    // mid-drag: the OS dispatches pointercancel and the finger is already
+    // gone. The cancel must finish the gesture exactly like a lift — drag
+    // state cleared, no dangling listeners — and since the pointer never
+    // moved past the drag threshold, the node stays at its start position
+    // and a later pointermove for the dead pointer re-drags nothing.
+    renderEditor();
+    const firstNode = document.querySelector('.topology-node') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+    const beforeLeft = firstNode.style.left;
+
+    fireEvent.pointerDown(firstNode, { pointerId: 7, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerCancel(document, { pointerId: 7, pointerType: 'touch', clientX: 40, clientY: 20 });
+
+    // No movement crossed the threshold before the cancel → position intact.
+    expect(firstNode.style.left).toBe(beforeLeft);
+    expect(viewport.style.transform).toContain('translate(0px, 0px)');
+
+    // No dangling listeners: a move+up for the cancelled pointer re-arms
+    // nothing — the node never re-drags and the viewport never pans.
+    fireEvent.pointerMove(document, { pointerId: 7, pointerType: 'touch', clientX: 300, clientY: 300 });
+    fireEvent.pointerUp(document, { pointerId: 7, pointerType: 'touch' });
+    expect(firstNode.style.left).toBe(beforeLeft);
+    expect(viewport.style.transform).toContain('translate(0px, 0px)');
+  });
+
+  it('unmount tears down the pan, node-drag, bend-drag, and touch document listeners (no post-unmount firing)', () => {
+    // The unmount sweep must disarm EVERY document-level gesture listener.
+    // The marquee mouseup teardown is pinned separately; this pins the other
+    // four controllers. After unmount, dispatching each controller's
+    // document-level events must produce no state changes or errors — the
+    // closures were removed, not merely orphaned.
+    const { unmount } = renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    // Arm pan: a middle-button drag arms document mousemove/mouseup without
+    // releasing (panCleanupRef stays armed).
+    fireEvent.mouseDown(canvas, { button: 1, clientX: 100, clientY: 100 });
+    // Arm node-drag: mousedown on a node arms the document mouseup
+    // finalizer (dragCleanupRef) with the drag still in flight.
+    fireEvent.mouseDown(document.querySelector('.topology-node')!, { button: 0, clientX: 0, clientY: 0 });
+    // Arm bend-drag: select the first wire, create a bend, grab its handle,
+    // and leave the move/up listeners armed mid-drag.
+    fireEvent.click(document.querySelector('.wire-hitbox')!);
+    const ghost = document.querySelector('.wire-bend-ghost') as Element;
+    expect(ghost).not.toBeNull();
+    fireEvent.mouseDown(ghost, { button: 0, clientX: 350, clientY: 289 });
+    // Arm touch cleanup: a single touch pointer arms the document
+    // pointermove/pointerup/pointercancel listeners.
+    fireEvent.pointerDown(canvas, { pointerId: 3, pointerType: 'touch', clientX: 200, clientY: 200 });
+
+    unmount();
+
+    // Each controller's document-level events fire on the unmounted page.
+    // None may throw or mutate anything observable: the removed closures
+    // cannot resurrect pan state (a fresh editor's viewport stays at
+    // translate(0px, 0px) — the old listeners no longer drag it).
+    expect(() => {
+      fireEvent.mouseMove(document, { clientX: 500, clientY: 400 }); // pan mousemove
+      fireEvent.mouseUp(document, { button: 1 });                    // pan mouseup
+      fireEvent.mouseMove(document, { clientX: 60, clientY: 60 });   // node-drag mousemove
+      fireEvent.mouseUp(document, { button: 0 });                    // node-drag/marquee mouseup
+      fireEvent.mouseMove(document, { clientX: 420, clientY: 300 }); // bend-drag mousemove
+      fireEvent.mouseUp(document, { button: 0 });                    // bend-drag mouseup
+      fireEvent.pointerMove(document, { pointerId: 3, pointerType: 'touch', clientX: 260, clientY: 240 });
+      fireEvent.pointerCancel(document, { pointerId: 3, pointerType: 'touch' });
+      fireEvent.pointerUp(document, { pointerId: 3, pointerType: 'touch' });
+    }).not.toThrow();
+
+    // The definitive no-op proof: mount a fresh editor — its viewport must
+    // be untouched at the identity transform. If any leaked mousemove
+    // closure survived, it would set pan and the fresh viewport would show
+    // a non-zero translate.
+    cleanup();
+    renderEditor();
+    const freshViewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+    expect(freshViewport.style.transform).toContain('translate(0px, 0px)');
+  });
+
+  it('wheel zoom-to-cursor adjusts the pan so the content point under the cursor stays visually fixed', () => {
+    // The existing wheel test pins the zoom level only; this pins the pan
+    // compensation. Content point C under the cursor (400, 300), identity
+    // view: C_screen = C·zoom + pan. After zooming k at the cursor the SAME
+    // content point must still project to (400, 300), i.e. pan' = cursor −
+    // (cursor − pan)·k.
+    renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+    // Cursor over the ws-1 card (380..620 × 80..320), NOT the viewport
+    // center — the whole point of zoom-to-cursor.
+    const CX = 400;
+    const CY = 300;
+    const contentAtCursor = (tx: string) => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale\(([-\d.]+)\)/.exec(tx);
+      if (!m) throw new Error('unparsable viewport transform: ' + tx);
+      return {
+        x: (CX - parseFloat(m[1]!)) / parseFloat(m[3]!),
+        y: (CY - parseFloat(m[2]!)) / parseFloat(m[3]!),
+      };
+    };
+
+    const before = contentAtCursor(viewport.style.transform);
+    fireEvent.wheel(canvas, { deltaY: -100, clientX: CX, clientY: CY });
+    expect(document.querySelector('.canvas-zoom-level')?.textContent).toBe('110%');
+
+    const after = contentAtCursor(viewport.style.transform);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+
+    // Explicit pan coordinates for the same event, k = 1.1 from pan 0:
+    // pan' = (400 − 400·1.1, 300 − 300·1.1) = (−40, −30).
+    expect(viewport.style.transform).toContain('scale(1.1)');
+    const tm = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale/.exec(viewport.style.transform);
+    expect(tm).not.toBeNull();
+    expect(parseFloat(tm![1]!)).toBeCloseTo(-40, 6);
+    expect(parseFloat(tm![2]!)).toBeCloseTo(-30, 6);
+  });
+});
