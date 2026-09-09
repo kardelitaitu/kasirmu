@@ -737,13 +737,14 @@ interface MockReceiptLayout {
   footer_note: string | null;
 }
 interface MockReceiptContent {
-  required_fields: string[];
-  footer_text: string;
-  show_tax: boolean;
-  show_currency: boolean;
-  decimal_separator: string;
+  requiredFields: string[];
+  footerText: string;
+  showTax: boolean;
+  showCurrency: boolean;
+  decimalSeparator: string;
 }
 const mockReceiptLayouts = new Map<string, MockReceiptLayout>();
+let mockReceiptContent: MockReceiptContent | null = null;
 
 /** The effective read: content is unset in the mock (entity-layer
  *  authoring is a management surface), layout resolves terminal →
@@ -779,8 +780,8 @@ function getMockReceiptFormat(args: unknown): {
   const pick = <T,>(terminalValue: T | null | undefined, workspaceValue: T | null | undefined): T | null =>
     terminal ? (terminalValue ?? null) : (workspaceValue ?? null);
   return {
-    content: null,
-    content_source: 'unset',
+    content: mockReceiptContent,
+    content_source: mockReceiptContent ? 'entity' : 'unset',
     layout: {
       paperWidthMm: layer ? pick(terminal?.paper_width_mm, workspace?.paper_width_mm) : null,
       marginTopMm: pick(terminal?.margin_top_mm, workspace?.margin_top_mm),
@@ -842,6 +843,32 @@ function setMockReceiptLayout(args: unknown): {
       show_table_number: layout.showTableNumber ?? null,
       footer_note: layout.footerNote ?? null,
     });
+  }
+  return getMockReceiptFormat(args);
+}
+
+/** The statutory-content write (W2-C): replaces the one content record
+ *  and returns the fresh effective read. The mock mirrors the core
+ *  upsert semantics session-locally — exactly one content row per
+ *  entity, so a second write replaces the first. */
+function setMockReceiptContent(args: unknown): ReturnType<typeof getMockReceiptFormat> {
+  const { content } = unwrapArgs<{
+    content?: {
+      requiredFields?: string[];
+      footerText?: string;
+      showTax?: boolean;
+      showCurrency?: boolean;
+      decimalSeparator?: string;
+    };
+  }>(args);
+  if (content) {
+    mockReceiptContent = {
+      requiredFields: content.requiredFields ?? [],
+      footerText: content.footerText ?? '',
+      showTax: content.showTax ?? true,
+      showCurrency: content.showCurrency ?? false,
+      decimalSeparator: content.decimalSeparator ?? 'dot',
+    };
   }
   return getMockReceiptFormat(args);
 }
@@ -2752,6 +2779,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // Receipt format (regional receipt-format axis) — same parity rule.
   'get_receipt_format_scoped': getMockReceiptFormat,
   'set_receipt_layout_scoped': setMockReceiptLayout,
+  'set_receipt_content_scoped': setMockReceiptContent,
 
   'list_active_memos_scoped': listMockActiveMemos,
   'acknowledge_memo_scoped': acknowledgeMockMemo,

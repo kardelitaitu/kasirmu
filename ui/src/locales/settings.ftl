@@ -1086,5 +1086,19 @@ settings-rcptfmt-element-subtotal = Subtotal
 settings-rcptfmt-element-tax = Tax
 settings-rcptfmt-element-total = Total
 settings-rcptfmt-element-payments = Payments
+# W2-C: statutory-content editor (set_receipt_content_for_entity)
+settings-rcptfmt-footer-text = Footer text
+settings-rcptfmt-show-tax = Print tax line
+settings-rcptfmt-show-currency = Currency symbol prefix
+settings-rcptfmt-decimal-separator = Decimal separator
+settings-rcptfmt-sep-dot = Dot (1,234.56)
+settings-rcptfmt-sep-comma = Comma (1.234,56)
+settings-rcptfmt-sep-none = None
+settings-rcptfmt-required-fields = Market-mandated elements
+settings-rcptfmt-content-save = Save statutory content
+settings-rcptfmt-content-saving = Saving…
+settings-rcptfmt-content-saved = Statutory content saved.
+settings-rcptfmt-content-error-save = Could not save the statutory content.
+settings-rcptfmt-content-note = Written at the market-mandated (legal entity) layer — applies to every location of this entity.
 
 

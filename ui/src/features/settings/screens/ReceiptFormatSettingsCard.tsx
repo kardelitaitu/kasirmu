@@ -3,11 +3,12 @@
  * Settings → Business Defaults screen (receipt-format axis, the LAST
  * missing saas-2 L167 axis).
  *
- * Edits the presentational LAYOUT at the workspace layer (paper width,
- * margins, print copies, footer note); the statutory CONTENT half is
- * displayed read-only when the market has configured it — the card never
- * lets a site weaken what the market mandates. Tier separation is a
- * contract: the card reads no tier state.
+ * Edits BOTH halves: the presentational LAYOUT at the workspace layer
+ * (paper width, margins, print copies, footer note) and the statutory
+ * CONTENT at the legal-entity layer (required elements, footer text,
+ * tax/currency lines, decimal separator — W2-C, through
+ * set_receipt_content_scoped). Tier separation is a contract: the card
+ * reads no tier state.
  *
  * Fluent-only copy: `settings-rcptfmt-*` keys in settings.ftl +
  * settings.id.ftl.
@@ -19,7 +20,9 @@ import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
   getReceiptFormatScoped,
+  setReceiptContentScoped,
   setReceiptLayoutScoped,
+  type ReceiptContentArgs,
   type ReceiptLayoutArgs,
 } from '@/api/receipt-format';
 import { getPrimaryLocationScoped } from '@/api/locations';
@@ -38,6 +41,21 @@ interface DraftLayout {
   showTableNumber: boolean | null;
   footerNote: string | null;
 }
+
+/** The closed element enum (mirrors core `RECEIPT_ELEMENT_CODES` — the
+ *  same codes the `settings-rcptfmt-element-*` Fluent keys localize). */
+const RECEIPT_ELEMENT_CODES = [
+  'store_name',
+  'store_address',
+  'tax_id',
+  'date',
+  'receipt_number',
+  'items',
+  'subtotal',
+  'tax',
+  'total',
+  'payments',
+] as const;
 
 /** Content provenance → Fluent key. */
 function contentSourceKey(source: string): string {
@@ -79,6 +97,12 @@ export function ReceiptFormatSettingsCard() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Statutory-content draft (W2-C) — the entity-layer half. The content
+  // write owns requiredFields; the display list above is its mirror.
+  const [contentDraft, setContentDraft] = useState<ReceiptContentArgs | null>(null);
+  const [contentSaving, setContentSaving] = useState(false);
+  const [contentSaved, setContentSaved] = useState(false);
+  const [contentSaveError, setContentSaveError] = useState<string | null>(null);
 
   const load = useCallback(
     async (token: string) => {
@@ -94,11 +118,24 @@ export function ReceiptFormatSettingsCard() {
         }
         const eff = await getReceiptFormatScoped(token, null, primary.id);
         setWorkspaceId(primary.id);
-        setRequiredFields(eff.content?.required_fields ?? []);
+        setRequiredFields(eff.content?.requiredFields ?? []);
         setContentSource(eff.contentSource);
         setLayoutSource(eff.layoutSource);
         setDraft({ ...eff.layout });
         setSaved(false);
+        setContentDraft(
+          eff.content
+            ? {
+                requiredFields: eff.content.requiredFields,
+                footerText: eff.content.footerText,
+                showTax: eff.content.showTax,
+                showCurrency: eff.content.showCurrency,
+                decimalSeparator: eff.content.decimalSeparator,
+              }
+            : { requiredFields: [], footerText: '', showTax: true, showCurrency: false, decimalSeparator: 'dot' },
+        );
+        setContentSaved(false);
+        setContentSaveError(null);
       } catch (err) {
         setLoadError(l10nErrorMessage(err, l10n, 'settings-rcptfmt-error-load'));
       } finally {
@@ -136,7 +173,7 @@ export function ReceiptFormatSettingsCard() {
     };
     try {
       const eff = await setReceiptLayoutScoped(sessionToken, workspaceId, payload);
-      setRequiredFields(eff.content?.required_fields ?? requiredFields);
+      setRequiredFields(eff.content?.requiredFields ?? requiredFields);
       setContentSource(eff.contentSource);
       setLayoutSource(eff.layoutSource);
       setDraft({ ...eff.layout });
@@ -147,6 +184,44 @@ export function ReceiptFormatSettingsCard() {
       setSaving(false);
     }
   }, [sessionToken, workspaceId, draft, l10n, requiredFields]);
+
+  const updateContent = useCallback((patch: Partial<ReceiptContentArgs>) => {
+    setContentDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+    setContentSaved(false);
+  }, []);
+
+  const toggleRequiredField = useCallback((code: string) => {
+    setContentDraft((prev) => {
+      if (!prev) return prev;
+      const has = prev.requiredFields.includes(code);
+      return {
+        ...prev,
+        requiredFields: has
+          ? prev.requiredFields.filter((c) => c !== code)
+          : [...prev.requiredFields, code],
+      };
+    });
+    setContentSaved(false);
+  }, []);
+
+  const handleContentSave = useCallback(async () => {
+    if (!sessionToken || !contentDraft) return;
+    setContentSaving(true);
+    setContentSaveError(null);
+    setContentSaved(false);
+    try {
+      const eff = await setReceiptContentScoped(sessionToken, contentDraft);
+      setRequiredFields(eff.content?.requiredFields ?? contentDraft.requiredFields);
+      setContentSource(eff.contentSource);
+      setLayoutSource(eff.layoutSource);
+      setDraft((prev) => (prev ? { ...prev, ...eff.layout } : prev));
+      setContentSaved(true);
+    } catch (err) {
+      setContentSaveError(l10nErrorMessage(err, l10n, 'settings-rcptfmt-content-error-save'));
+    } finally {
+      setContentSaving(false);
+    }
+  }, [sessionToken, contentDraft, l10n]);
 
   if (loading) {
     return (
@@ -202,20 +277,116 @@ export function ReceiptFormatSettingsCard() {
         <span className="rcptfmt-content-source">
           <Localized id={contentSourceKey(contentSource)}>{contentSource}</Localized>
         </span>
-        {requiredFields.length > 0 ? (
-          <ul className="rcptfmt-required">
-            {requiredFields.map((code) => (
-              <li key={code}>
-                <Localized id={`settings-rcptfmt-element-${code}`}>{code}</Localized>
-              </li>
-            ))}
-          </ul>
-        ) : (
+        {contentSource === 'unset' && (
           <span className="rcptfmt-content-none">
             <Localized id="settings-rcptfmt-content-none">
               No market content configured.
             </Localized>
           </span>
+        )}
+        {contentDraft && (
+          <div className="rcptfmt-content-editor">
+            <span className="rcptfmt-required-label">
+              <Localized id="settings-rcptfmt-required-fields">Market-mandated elements</Localized>
+            </span>
+            <div className="rcptfmt-required-picker">
+              {RECEIPT_ELEMENT_CODES.map((code) => (
+                <span key={code} className="rcptfmt-required-item">
+                  <input
+                    type="checkbox"
+                    id={`rcptfmt-req-${code}`}
+                    checked={contentDraft.requiredFields.includes(code)}
+                    onChange={() => toggleRequiredField(code)}
+                  />
+                  <label htmlFor={`rcptfmt-req-${code}`}>
+                    <Localized id={`settings-rcptfmt-element-${code}`}>{code}</Localized>
+                  </label>
+                </span>
+              ))}
+            </div>
+            <div className="rcptfmt-row">
+              <span id="rcptfmt-footer-text-label">
+                <Localized id="settings-rcptfmt-footer-text">Footer text</Localized>
+              </span>
+              <input
+                type="text"
+                aria-labelledby="rcptfmt-footer-text-label"
+                value={contentDraft.footerText}
+                onChange={(e) => updateContent({ footerText: e.target.value })}
+              />
+            </div>
+            <div className="rcptfmt-check">
+              <input
+                type="checkbox"
+                id="rcptfmt-show-tax"
+                checked={contentDraft.showTax}
+                onChange={(e) => updateContent({ showTax: e.target.checked })}
+              />
+              <label htmlFor="rcptfmt-show-tax">
+                <Localized id="settings-rcptfmt-show-tax">Print tax line</Localized>
+              </label>
+            </div>
+            <div className="rcptfmt-check">
+              <input
+                type="checkbox"
+                id="rcptfmt-show-currency"
+                checked={contentDraft.showCurrency}
+                onChange={(e) => updateContent({ showCurrency: e.target.checked })}
+              />
+              <label htmlFor="rcptfmt-show-currency">
+                <Localized id="settings-rcptfmt-show-currency">Currency symbol prefix</Localized>
+              </label>
+            </div>
+            <div className="rcptfmt-row">
+              <span id="rcptfmt-decimal-label">
+                <Localized id="settings-rcptfmt-decimal-separator">Decimal separator</Localized>
+              </span>
+              <select
+                aria-labelledby="rcptfmt-decimal-label"
+                value={contentDraft.decimalSeparator}
+                onChange={(e) => updateContent({ decimalSeparator: e.target.value })}
+              >
+                <option value="dot">
+                  <Localized id="settings-rcptfmt-sep-dot">Dot (1,234.56)</Localized>
+                </option>
+                <option value="comma">
+                  <Localized id="settings-rcptfmt-sep-comma">Comma (1.234,56)</Localized>
+                </option>
+                <option value="none">
+                  <Localized id="settings-rcptfmt-sep-none">None</Localized>
+                </option>
+              </select>
+            </div>
+            <p className="rcptfmt-content-note">
+              <Localized id="settings-rcptfmt-content-note">
+                Written at the market-mandated (legal entity) layer — applies to every location of this entity.
+              </Localized>
+            </p>
+            <div className="rcptfmt-actions">
+              <button
+                type="button"
+                className="rcptfmt-save"
+                onClick={() => { void handleContentSave(); }}
+                disabled={contentSaving}
+              >
+                {contentSaving ? (
+                  <Localized id="settings-rcptfmt-content-saving">Saving…</Localized>
+                ) : (
+                  <Localized id="settings-rcptfmt-content-save">Save statutory content</Localized>
+                )}
+              </button>
+              {contentSaved && (
+                <span className="rcptfmt-status" role="status">
+                  <Localized id="settings-rcptfmt-content-saved">Statutory content saved.</Localized>
+                </span>
+              )}
+              {contentSaveError && (
+                <span className="rcptfmt-error" role="alert">
+                  {contentSaveError}
+                </span>
+              )}
+            </div>
+          </div>
         )}
       </div>
       <div className="rcptfmt-layout-source">

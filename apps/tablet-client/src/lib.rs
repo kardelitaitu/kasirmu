@@ -685,6 +685,7 @@ pub fn run() {
                 // Receipt format (receipt-format axis, saas-2 design).
                 commands::receipt_format::get_receipt_format_scoped,
                 commands::receipt_format::set_receipt_layout_scoped,
+                commands::receipt_format::set_receipt_content_scoped,
                 commands::offline::delete_offline_item_scoped,
                 commands::offline::enqueue_offline_scoped,
                 commands::offline::list_all_offline_scoped,

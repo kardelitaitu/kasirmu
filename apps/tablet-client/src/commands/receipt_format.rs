@@ -3,7 +3,7 @@
 //! resource scoping the desktop layers on top (ADR #47) has no tablet
 //! helper yet, matching this shell's other scoped write commands.
 
-use oz_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptLayout};
+use oz_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptContent, ReceiptLayout};
 use oz_core::{Store, permissions};
 use tauri::State;
 
@@ -78,6 +78,60 @@ pub struct ReceiptLayoutArgs {
     pub show_table_number: Option<bool>,
     /// Optional presentational footer note (≤ 500 chars).
     pub footer_note: Option<String>,
+}
+
+/// Replace the primary legal entity's statutory content record and
+/// return the freshly effective format. The tablet shell checks
+/// `settings:edit` on the session (no location-resource helper here,
+/// matching this shell's other scoped write commands); the entity is
+/// resolved server-side through the store's primary location and the
+/// write fails closed without one.
+#[tauri::command]
+pub async fn set_receipt_content_scoped(
+    content: ReceiptContentArgs,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<EffectiveReceiptFormat, AppError> {
+    let (session, conn) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&conn);
+    let primary = store.get_primary_location()?.ok_or_else(|| {
+        AppError::Invalid("no primary location to resolve the entity from".into())
+    })?;
+    let entity_id = store
+        .location_legal_entity_id(&primary.id)?
+        .ok_or_else(|| {
+            AppError::Invalid("no legal entity linked to the primary location".into())
+        })?;
+    let core_content = ReceiptContent {
+        required_fields: content.required_fields,
+        footer_text: content.footer_text,
+        show_tax: content.show_tax,
+        show_currency: content.show_currency,
+        decimal_separator: content.decimal_separator,
+    };
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    store.set_receipt_content_for_entity(&entity_id, &core_content, &now)?;
+    Ok(store.effective_receipt_format(None, None)?)
+}
+
+/// One statutory-content submission from the card.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptContentArgs {
+    /// Market-mandated element codes (closed enum).
+    pub required_fields: Vec<String>,
+    /// Footer text (empty = none).
+    pub footer_text: String,
+    /// Whether the tax line prints.
+    pub show_tax: bool,
+    /// Whether amounts carry the currency symbol prefix.
+    pub show_currency: bool,
+    /// `dot` | `comma` | `none`.
+    pub decimal_separator: String,
 }
 
 #[cfg(test)]

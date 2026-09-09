@@ -6,19 +6,19 @@ import { loggedInvoke } from '@/utils/logged-invoke';
  *  `oz_core::db::receipt_formats::ReceiptSource`'s serde names). */
 export type ReceiptSource = 'entity' | 'terminal' | 'workspace' | 'legacy' | 'unset';
 
-/** The statutory content half (legal-entity scope). Read-only on this
- *  surface — authoring is a management surface. */
+/** The statutory content half (legal-entity scope). The wire mirrors
+ *  `oz_core::db::receipt_formats::ReceiptContent`'s camelCase serde. */
 export interface ReceiptContent {
   /** Market-mandated element codes (closed enum, enforced server-side). */
-  required_fields: string[];
+  requiredFields: string[];
   /** Footer text (empty = none). */
-  footer_text: string;
+  footerText: string;
   /** Whether the tax line prints. */
-  show_tax: boolean;
+  showTax: boolean;
   /** Whether amounts carry the currency symbol prefix. */
-  show_currency: boolean;
+  showCurrency: boolean;
   /** `dot` | `comma` | `none`. */
-  decimal_separator: string;
+  decimalSeparator: string;
 }
 
 /** The presentational layout half (workspace/terminal scope). `null`
@@ -92,4 +92,28 @@ export const setReceiptLayoutScoped = (
     sessionToken,
     workspaceId,
     layout,
+  });
+
+/** One statutory-content submission from the card (whole-record write;
+ *  `required_fields` is validated against the closed element enum in
+ *  core, inside the write transaction). */
+export interface ReceiptContentArgs {
+  requiredFields: string[];
+  footerText: string;
+  showTax: boolean;
+  showCurrency: boolean;
+  decimalSeparator: string;
+}
+
+/** Replace the primary legal entity's statutory content record (ADR #7
+ *  scoped, gated `settings:edit` server-side; the entity is resolved
+ *  server-side through the store's primary location and the write fails
+ *  closed without one). Returns the freshly effective format. */
+export const setReceiptContentScoped = (
+  sessionToken: string,
+  content: ReceiptContentArgs,
+): Promise<EffectiveReceiptFormat> =>
+  loggedInvoke<EffectiveReceiptFormat>('set_receipt_content_scoped', {
+    sessionToken,
+    content,
   });

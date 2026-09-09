@@ -211,3 +211,77 @@ async fn denies_staff_without_settings_edit() {
 
     assert!(matches!(result, Err(AppError::PermissionDenied(_))));
 }
+
+#[tokio::test]
+async fn content_write_targets_the_linked_entity_and_readback_agrees() {
+    let conn = migrations::fresh_db();
+    seed_owner(&conn);
+    let state = flow_state(conn);
+    owner_session(&state, "owner-tok");
+    // Content resolves through the store's primary location row. The
+    // migrations seed location 'default' with its own legal entity; make
+    // it primary so the write path resolves that entity (no FK gymnastics).
+    {
+        let store_conn = state.db_manager.open_store("default").unwrap();
+        let guard = store_conn.lock().unwrap();
+        guard
+            .execute(
+                "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
+                [],
+            )
+            .unwrap();
+    }
+    let app = mock_app(state);
+
+    let eff = set_receipt_content_scoped(
+        ReceiptContentArgs {
+            required_fields: vec!["store_name".into(), "tax_id".into(), "total".into()],
+            footer_text: "statutory footer".into(),
+            show_tax: true,
+            show_currency: false,
+            decimal_separator: "comma".into(),
+        },
+        "owner-tok".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(eff.content_source, ReceiptSource::Entity);
+    assert_eq!(
+        eff.content.as_ref().unwrap().footer_text,
+        "statutory footer"
+    );
+    assert_eq!(eff.content.as_ref().unwrap().required_fields.len(), 3);
+
+    // Readback agrees with the write's read-back.
+    let again = get_receipt_format_scoped(None, None, "owner-tok".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(again.content_source, ReceiptSource::Entity);
+    assert_eq!(again.content.as_ref().unwrap().decimal_separator, "comma");
+}
+
+#[tokio::test]
+async fn content_write_fails_closed_without_a_linked_entity() {
+    let conn = migrations::fresh_db();
+    seed_owner(&conn);
+    let state = flow_state(conn);
+    owner_session(&state, "owner-tok");
+    let app = mock_app(state);
+
+    let result = set_receipt_content_scoped(
+        ReceiptContentArgs {
+            required_fields: vec![],
+            footer_text: "orphan".into(),
+            show_tax: true,
+            show_currency: false,
+            decimal_separator: "dot".into(),
+        },
+        "owner-tok".into(),
+        app.state(),
+    )
+    .await;
+
+    assert!(result.is_err());
+}

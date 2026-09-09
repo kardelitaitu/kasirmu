@@ -1068,5 +1068,19 @@ settings-rcptfmt-element-subtotal = Subtotal
 settings-rcptfmt-element-tax = Pajak
 settings-rcptfmt-element-total = Total
 settings-rcptfmt-element-payments = Pembayaran
+# W2-C: editor konten wajib (set_receipt_content_for_entity)
+settings-rcptfmt-footer-text = Teks footer
+settings-rcptfmt-show-tax = Cetak baris pajak
+settings-rcptfmt-show-currency = Awalan simbol mata uang
+settings-rcptfmt-decimal-separator = Pemisah desimal
+settings-rcptfmt-sep-dot = Titik (1.234,56)
+settings-rcptfmt-sep-comma = Koma (1.234,56)
+settings-rcptfmt-sep-none = Tanpa
+settings-rcptfmt-required-fields = Elemen wajib pasar
+settings-rcptfmt-content-save = Simpan konten wajib
+settings-rcptfmt-content-saving = Menyimpan…
+settings-rcptfmt-content-saved = Konten wajib tersimpan.
+settings-rcptfmt-content-error-save = Tidak dapat menyimpan konten wajib.
+settings-rcptfmt-content-note = Ditulis pada lapisan wajib pasar (badan hukum) — berlaku untuk semua lokasi badan hukum ini.
 
 
