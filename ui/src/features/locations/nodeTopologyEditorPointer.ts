@@ -5,7 +5,8 @@
 //! already fed the first two, and leaving them parent-side forced the parent to
 //! forward them back in as deps. Their bodies and comments are byte-identical to
 //! the inline originals; every gesture ref they read or write stays PARENT-declared
-//! (the touch loop and the unmount sweep still share them). The useCallback dep
+//! (the touch loop still shares them; the drag/pan teardown refs became hook-local
+//! in stage 4A). The useCallback dep
 //! arrays LIST those parent-owned refs/setters — stable identities, so identity
 //! churn is unchanged (precedent 68a29a1e7) — instead of suppressing the rule.
 //! Slice 3.4c-2 folded the duplicate cluster in as well — commitDuplicateDrag,
@@ -23,10 +24,11 @@
 //! parent keydown effect (which sits below it) can name the three returned cancels.
 //! The cluster were the ONLY hooks in that span, so the move re-slotted useCallbacks
 //! only — every pre-existing parent effect kept the relative order it had before.
-//! The hook now registers effects of its own: one per parent-owned cleanup ref it
-//! writes (drag/pan/marquee), each firing that ref's disposer at unmount so listener
-//! disposal no longer depends solely on the editor's unmount sweep (transient
-//! double-fire accepted — every disposer is a functional no-op on second invocation).
+//! The hook now registers effects of its own: one per cleanup ref it
+//! writes (drag/pan — hook-local since stage 4A — and marquee, still parent-owned),
+//! each firing that ref's disposer at unmount so listener disposal no longer
+//! depends on the editor's unmount sweep (every disposer is a functional no-op
+//! on second invocation).
 //! Owns the seven gestures the canvas element itself receives: handleCanvasMouseMove
 //! (node-drag feed + marquee rect tracking + connection snap-to-port, including the
 //! hoveredTarget identity-preserve rule that keeps memoized cards from re-rendering),
@@ -44,14 +46,15 @@
 //!
 //! The hook owns these callbacks plus the duplicate cluster. Every ref, state setter
 //! and drag reducer they read stays parent-owned and arrives through deps: the editor
-//! cancelMarquee, cancelBendDrag, resetTransientCanvasState, the load-lifecycle call
-//! and the unmount listener sweep all consume those refs, so hoisting any of them here
-//! would split one gesture across two owners. The one parent declaration that DID move
+//! cancelMarquee, cancelBendDrag, resetTransientCanvasState and the load-lifecycle
+//! call all consume those refs, so hoisting any of them here would split one gesture
+//! across two owners. (Stage-4A exceptions: the drag/pan teardown refs are hook-owned
+//! now.) The one parent declaration that DID move
 //! is `userInteractedRef` — hoisted above the relocated call in the editor because a
 //! hook call evaluates its args at render time; it stays parent-owned, only its
 //! declaration site changed.
 
-import { useCallback, useEffect, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, type MutableRefObject, type SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
 import type { ToastType } from '@/frontend/shared/Toast';
 import type { PortName, TopologyNodeData, TopologyWireData } from './NodeTopologyEditor';
@@ -113,14 +116,12 @@ export interface TopologyPointerDeps {
   marqueeStartRef: MutableRefObject<{ x: number; y: number } | null>;
   /** True when the marquee began with Shift, so release unions instead of replaces. */
   marqueeAdditiveRef: MutableRefObject<boolean>;
-  /** Document marquee-mouseup teardown, also fired by the parent cancelMarquee and unmount sweep. */
+  /** Document marquee-mouseup teardown, also fired by the parent cancelMarquee; the hook owns its unmount disposal. */
   marqueeCleanupRef: MutableRefObject<(() => void) | null>;
   /** Set by a real pan movement; the context-menu gate consumes then resets it once. */
   panMovedRef: MutableRefObject<boolean>;
   /** Pan origin in canvas space (client minus the pan at gesture start). */
   panStartRef: MutableRefObject<{ x: number; y: number }>;
-  /** Document pan-listener teardown, also fired by the parent unmount sweep. */
-  panCleanupRef: MutableRefObject<(() => void) | null>;
   /** Live-pan flag guarding the document mousemove until the gesture ends. */
   isPanningRef: MutableRefObject<boolean>;
   /** Space modifier mirror, written by the parent keyboard effect (slice 3.4d). */
@@ -147,7 +148,7 @@ export interface TopologyPointerDeps {
   // being forwarded as `applyDragMove` / `finalizeNodeDrag` function deps
   // (those two fields are gone — the hook produces them and returns them).
   // Every ref stays parent-declared: the duplicate cluster (3.4c-2),
-  // cancelNodeMove, the touch loop and the unmount sweep all read/write them.
+  // cancelNodeMove and the touch loop all read/write them.
   /** Live drag set — reducer mirror, read by the move feed and the commit. */
   draggingNodeIdsRef: MutableRefObject<Set<string>>;
   /** Selection mirror read at card mousedown so the handler stays stable. */
@@ -172,9 +173,6 @@ export interface TopologyPointerDeps {
   duplicateCopyIdsRef: MutableRefObject<string[]>;
   /** Last pointer fed to applyDragMove — edge auto-pan's direction gate. */
   lastDragMovePosRef: MutableRefObject<{ x: number; y: number } | null>;
-  /** Document mouseup teardown for the in-flight mouse drag; also fired by
-   *  the parent unmount sweep, so it stays parent-declared. */
-  dragCleanupRef: MutableRefObject<(() => void) | null>;
   /** Drag reducer: arm the set (writes the mirror synchronously). */
   beginDrag: (ids: Set<string>) => void;
   /** Drag reducer: end the drag at release/cancel. */
@@ -268,7 +266,6 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     marqueeCleanupRef,
     panMovedRef,
     panStartRef,
-    panCleanupRef,
     isPanningRef,
     spaceDownRef,
     userInteractedRef,
@@ -291,7 +288,6 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     duplicateDragRef,
     duplicateCopyIdsRef,
     lastDragMovePosRef,
-    dragCleanupRef,
     beginDrag,
     endDrag,
     cancelDrag,
@@ -316,6 +312,10 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     clearWire,
     dismissPicker,
   } = deps;
+  // Stage 4A: the drag/pan teardown refs are hook-owned — the editor neither
+  // declares nor invokes them any more (its sweep keeps only add-node timers).
+  const panCleanupRef = useRef<(() => void) | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
 
   /** Commit an in-flight Alt+drag: the copies stay where they dropped,
    *  become the selection, and the whole duplicate-drop lands as ONE undo
@@ -388,9 +388,10 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     dragCleanupRef.current?.();
   // cancelDuplicateDrag reads duplicateDragRef / duplicateCopyIdsRef /
   // duplicateHistoryPushedRef / dragHasMovedRef / dragOffsetsRef / dragStartRef /
-  // dragCleanupRef / setAlignmentGuide / l10nRef — all stable parent-owned
-  // identities, listed in the array below (churn unchanged).
-  }, [setHistory, setNodes, setWires, cancelDrag, setLiveAnnouncement, duplicateDragRef, duplicateCopyIdsRef, duplicateHistoryPushedRef, dragHasMovedRef, dragOffsetsRef, dragStartRef, dragCleanupRef, setAlignmentGuide, l10nRef]);
+  // dragCleanupRef (hook-local since stage 4A) / setAlignmentGuide / l10nRef —
+  // all stable identities; the parent-owned ones are listed in the array below
+  // (churn unchanged).
+  }, [setHistory, setNodes, setWires, cancelDrag, setLiveAnnouncement, duplicateDragRef, duplicateCopyIdsRef, duplicateHistoryPushedRef, dragHasMovedRef, dragOffsetsRef, dragStartRef, setAlignmentGuide, l10nRef]);
 
   /** Alt pressed MID-move (Figma semantics): the drag becomes a duplicate
    *  drag. The originals snap back to their pre-drag positions, fresh copies
@@ -482,9 +483,10 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     setAlignmentGuide(null);
     dragCleanupRef.current?.();
   // cancelNodeMove reads dragStartRef / dragHasMovedRef / dragOffsetsRef /
-  // dragCleanupRef / setAlignmentGuide — all stable parent-owned identities,
-  // listed in the array below (churn unchanged).
-  }, [setHistory, setNodes, cancelDrag, dragStartRef, dragHasMovedRef, dragOffsetsRef, dragCleanupRef, setAlignmentGuide]);
+  // dragCleanupRef (hook-local since stage 4A) / setAlignmentGuide — stable
+  // identities; the parent-owned ones are listed in the array below
+  // (churn unchanged).
+  }, [setHistory, setNodes, cancelDrag, dragStartRef, dragHasMovedRef, dragOffsetsRef, setAlignmentGuide]);
 
   /** End an in-flight node drag (release / document mouseup / touch up):
    *  commit any Alt-drag copies, clear the drag set and offsets, and drop
@@ -679,10 +681,11 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
       }
     }
     // The gesture refs/setters above (userInteractedRef, nodesRef, wiresRef, duplicateDragRef, duplicateCopyIdsRef,
-    // dragHasMovedRef, lastDragMovePosRef, dragCleanupRef, canvasRef, panRef, zoomRef, dragOffsetsRef,
+    // dragHasMovedRef, lastDragMovePosRef, canvasRef, panRef, zoomRef, dragOffsetsRef,
     // dragStartRef) are stable parent-owned identities; they are listed in the
-    // array below, so the callback's identity churn is unchanged.
-  }, [duplicateRefusal, addToast, l10n, finalizeNodeDrag, beginDrag, dismissPicker, setNodes, setWires, clearWire, userInteractedRef, nodesRef, wiresRef, duplicateDragRef, duplicateCopyIdsRef, dragHasMovedRef, lastDragMovePosRef, dragCleanupRef, canvasRef, panRef, zoomRef, dragOffsetsRef, dragStartRef]);
+    // array below, so the callback's identity churn is unchanged. dragCleanupRef
+    // (hook-local since stage 4A) is read above too and needs no listing.
+  }, [duplicateRefusal, addToast, l10n, finalizeNodeDrag, beginDrag, dismissPicker, setNodes, setWires, clearWire, userInteractedRef, nodesRef, wiresRef, duplicateDragRef, duplicateCopyIdsRef, dragHasMovedRef, lastDragMovePosRef, canvasRef, panRef, zoomRef, dragOffsetsRef, dragStartRef]);
 
   const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
     e.stopPropagation();
@@ -1064,17 +1067,17 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     });
   };
 
-  // The hook registers its own unmount cleanups so listener disposal no longer
-  // depends solely on the editor's unmount sweep. Until the sweep is retired,
-  // both run at unmount — accepted by design: every disposer below is a
-  // functional no-op on second invocation (removeEventListener + ref-nulling /
+  // The hook registers its own unmount cleanups: since stage 4A they are the
+  // sole unmount disposers — the editor sweep no longer invokes these refs (it
+  // clears only the add-node timers). Every disposer below is a functional
+  // no-op on second invocation (removeEventListener + ref-nulling /
   // constant-reset writes; the pan disposer's setPanGestureActive(false) is a
   // constant-valued setState that React bails out via Object.is, and at unmount
-  // the update is discarded anyway). Each ref is a parent-owned stable identity,
-  // listed per the linter's demand — a no-op for churn since the ref objects
-  // never change — so each effect arms once.
-  useEffect(() => () => { dragCleanupRef.current?.(); }, [dragCleanupRef]);
-  useEffect(() => () => { panCleanupRef.current?.(); }, [panCleanupRef]);
+  // the update is discarded anyway). dragCleanupRef/panCleanupRef are hook-local
+  // and marqueeCleanupRef parent-owned — all stable identities, so each effect
+  // arms once.
+  useEffect(() => () => { dragCleanupRef.current?.(); }, []);
+  useEffect(() => () => { panCleanupRef.current?.(); }, []);
   useEffect(() => () => { marqueeCleanupRef.current?.(); }, [marqueeCleanupRef]);
 
   return {

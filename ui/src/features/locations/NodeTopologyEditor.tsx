@@ -352,7 +352,8 @@ export default function NodeTopologyEditor({
   /** Cancels an in-flight marquee when the pointer is released outside the
    *  canvas — the canvas onMouseUp never fires there, so without a
    *  document-level listener the box would linger and the next mousemove
-   *  would re-open it. Mirrors dragCleanupRef for node drags. */
+   *  would re-open it. Mirrors the node-drag teardown (hook-owned since
+   *  stage 4A; this marquee ref stays editor-owned for cancelMarquee). */
   const marqueeCleanupRef = useRef<(() => void) | null>(null);
   /** Set once a drag has actually moved the node — history is pushed on the
    *  first movement, not on mousedown, so a plain click-to-select never
@@ -503,12 +504,9 @@ export default function NodeTopologyEditor({
    *  stationary right-click still opens the canvas menu. */
   const panMovedRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const panCleanupRef = useRef<(() => void) | null>(null);
 
-  /** Document touch-gesture listener teardown. Declared beside its pan/drag/
-   *  marquee siblings rather than inside the touch hook (slice 3.4e): the unmount
-   *  sweep fires it as well, so the hook receives it through deps. */
-  const touchCleanupRef = useRef<(() => void) | null>(null);
+  /** Document marquee-mouseup teardown, also fired by the parent cancelMarquee; the pointer hook owns its unmount disposal. */
+
   /** Space held → the next left-drag pans (Figma-style) instead of
    *  marqueeing. Mirrored in state purely for the grab cursor class. */
   const spaceDownRef = useRef(false);
@@ -554,11 +552,6 @@ export default function NodeTopologyEditor({
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
-  /** Cancels an in-flight node drag when the pointer is released outside
-   *  the canvas — the canvas onMouseUp never fires there, so without this
-   *  the node would keep following the cursor on re-entry (ghost drag). */
-  const dragCleanupRef = useRef<(() => void) | null>(null);
-
   /** In-flight wire connection + relationship picker live in one typed
    *  reducer — dismissing the picker always clears the armed connection
    *  (a stale source port click must never complete a wire after the
@@ -1300,7 +1293,6 @@ export default function NodeTopologyEditor({
     marqueeCleanupRef,
     panMovedRef,
     panStartRef,
-    panCleanupRef,
     isPanningRef,
     spaceDownRef,
     userInteractedRef,
@@ -1312,10 +1304,10 @@ export default function NodeTopologyEditor({
     setZoom,
     setPanGestureActive,
     // Node-drag inputs (slices 3.4c-1 / 3.4c-2). Every ref below stays
-    // declared here: the touch loop and the unmount sweep still share this
-    // gesture state with the hook, which now owns the drag trio AND the
-    // duplicate cluster (commitDuplicateDrag is internal; the other three
-    // are returned for the keydown Escape ladder and the Alt mid-move).
+    // declared here: the touch loop still shares this gesture state with the
+    // hook, which now owns the drag trio AND the duplicate cluster
+    // (commitDuplicateDrag is internal; the other three are returned for the
+    // keydown Escape ladder and the Alt mid-move).
     draggingNodeIdsRef,
     selectedNodeIdsRef,
     nodesRef,
@@ -1328,7 +1320,6 @@ export default function NodeTopologyEditor({
     duplicateDragRef,
     duplicateCopyIdsRef,
     lastDragMovePosRef,
-    dragCleanupRef,
     beginDrag,
     endDrag,
     cancelDrag,
@@ -1537,31 +1528,16 @@ export default function NodeTopologyEditor({
     nudgeSessionRef.current = null;
   }, [redo, nodes, wires, setHistory, setNodes, setRedo, setWires]);
 
-  // Clean up pan/drag/marquee/bend/touch listeners and fresh-node timers on
-  // unmount. Every document-level gesture listener must be disarmed here — a
-  // branch switch or screen navigation mid-gesture otherwise leaves the
-  // listener attached, firing finalize/cancel closures against an unmounted
-  // editor on the next page-wide pointer event.
+  // Clear the add-node timers on unmount (the final edit for a fresh node must
+  // not apply after the editor is gone). The gesture listeners themselves no
+  // longer reach here: each gesture hook owns its listener disposal via its own
+  // unmount effect, and the remaining marquee/bend teardown refs stay editor-
+  // declared because the parent cancelMarquee/cancelBendDrag fire them mid-
+  // session. A follow-up slice should move this timers disposal into the
+  // add-node hook, which owns the setTimeout calls.
   useEffect(() => {
-    // Each cleanup ref holds a closure installed LATER by the gesture hook that
-    // arms it, so the value must be read when the cleanup runs. The ref OBJECT
-    // is stable for the editor's lifetime, so capturing it in a local is safe —
-    // and it is what react-hooks/exhaustive-deps asks for here; copying
-    // `.current` into a local instead would freeze the empty setup-time value
-    // and defeat the sweep (the trap the previous comment on bendDragCleanupRef
-    // named, which is why the sweep keeps five `const x = xRef` captures).
     const timers = freshTimersRef.current;
-    const panCleanup = panCleanupRef;
-    const dragCleanup = dragCleanupRef;
-    const marqueeCleanup = marqueeCleanupRef;
-    const bendDragCleanup = bendDragCleanupRef;
-    const touchCleanup = touchCleanupRef;
     return () => {
-      panCleanup.current?.();
-      dragCleanup.current?.();
-      marqueeCleanup.current?.();
-      bendDragCleanup.current?.();
-      touchCleanup.current?.();
       timers.forEach(clearTimeout);
       timers.clear();
     };
@@ -1720,10 +1696,9 @@ export default function NodeTopologyEditor({
   // The loop lives in useTopologyEditorTouch (slice 3.4e) — the document-level
   // pointer listeners, the one-finger drag/pan branch and the two-finger pinch.
   // Only handleCanvasPointerDown comes back out: the canvas onPointerDown prop
-  // is its single external consumer. touchPointersRef and touchGestureRef moved
-  // into the hook with it (nothing else reads them); touchCleanupRef is declared
-  // up beside the other cleanup refs, because the unmount sweep disarms a live
-  // gesture through it too.
+  // is its single external consumer. touchPointersRef, touchGestureRef and the
+  // touchCleanupRef teardown all moved into the hook (stage 4A); the hook owns
+  // that ref and its unmount disposal.
   const { handleCanvasPointerDown } = useTopologyEditorTouch({
     pan,
     zoom,
@@ -1731,7 +1706,6 @@ export default function NodeTopologyEditor({
     setZoom,
     isPanningRef,
     userInteractedRef,
-    touchCleanupRef,
     selectedNodeIds,
     selectOnly,
     clearWire,

@@ -314,6 +314,9 @@ const setup = (
   });
 
   // -- parent-owned refs (the hook leaves them where the editor has them) ---
+  //    (panCleanupRef/dragCleanupRef below are legacy fakes since stage 4A: the
+  //    hook owns those teardown refs now and no longer reads these two, so their
+  //    lifecycle assertions observe the vacuous side only.)
   const mousePosRef: MutableRefObject<Point> = { current: { x: 0, y: 0 } };
   const marqueeRef: MutableRefObject<MarqueeRect | null> = { current: null };
   const marqueeStartRef: MutableRefObject<Point | null> = { current: null };
@@ -373,7 +376,6 @@ const setup = (
     marqueeCleanupRef,
     panMovedRef,
     panStartRef,
-    panCleanupRef,
     isPanningRef,
     spaceDownRef,
     userInteractedRef,
@@ -396,7 +398,6 @@ const setup = (
     duplicateDragRef,
     duplicateCopyIdsRef,
     lastDragMovePosRef,
-    dragCleanupRef,
     beginDrag: dup.beginDrag,
     endDrag: dup.endDrag,
     cancelDrag: dup.cancelDrag,
@@ -537,7 +538,7 @@ const setup = (
 };
 
 describe('useTopologyEditorPointer -- startPan listener lifecycle', () => {
-  it('detaches both document listeners in the cleanup ref, proven by re-arming', () => {
+  it('detaches both document listeners on release, proven by re-arming', () => {
     const h = setup({ pan: { x: 100, y: 50 } });
 
     h.startPan({ clientX: 500, clientY: 300 });
@@ -550,8 +551,6 @@ describe('useTopologyEditorPointer -- startPan listener lifecycle', () => {
     expect(h.refs.panStartRef.current).toEqual({ x: 400, y: 250 });
     expect(h.getPanActive()).toBe(true);
     expect(document.body.style.cursor).toBe('grabbing');
-    const dispose = h.refs.panCleanupRef.current;
-    expect(typeof dispose).toBe('function');
 
     h.docMove(460, 300);
     expect(h.refs.panMovedRef.current).toBe(true);
@@ -559,10 +558,10 @@ describe('useTopologyEditorPointer -- startPan listener lifecycle', () => {
     // pan = client - origin, in both axes: 460-400, 300-250.
     expect(h.setPan).toHaveBeenLastCalledWith({ x: 60, y: 50 });
 
-    // The parent owns the disposer (the unmount sweep and the editor cancel
-    // paths call it); running it detaches both listeners and resets the flag.
-    act(() => dispose?.());
-    expect(h.refs.panCleanupRef.current).toBeNull();
+    // Stage 4A: the disposer is hook-owned — the document mouseup listener
+    // the hook armed runs it on release, and the hook's own unmount effect
+    // re-runs it at teardown (idempotent, so the second call no-ops).
+    h.docUp();
     expect(h.refs.isPanningRef.current).toBe(false);
     expect(h.getPanActive()).toBe(false);
     expect(document.body.style.cursor).toBe('');
@@ -586,9 +585,9 @@ describe('useTopologyEditorPointer -- startPan listener lifecycle', () => {
     // or a disposer that ran twice, would append a fourth call.
     expect(h.setPanGestureActive.mock.calls).toEqual([[true], [false], [true]]);
 
-    // Tidy up, and pin that the second cycle's disposer completes the pair:
+    // Tidy up, and pin that the second cycle's release completes the pair:
     // arm / dispose / arm / dispose — two gestures, two releases, no extra.
-    h.disposeAll();
+    h.docUp();
     expect(h.setPanGestureActive.mock.calls).toEqual([
       [true],
       [false],

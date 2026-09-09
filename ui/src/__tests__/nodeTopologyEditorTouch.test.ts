@@ -3,7 +3,8 @@
  * (useTopologyEditorTouch). NodeTopologyEditor.test.tsx owns the rendered
  * gestures through the DOM (tap-select, pinch-zoom, cancel-commit); this file
  * owns the seam itself: that the first pointerdown really arms DOCUMENT-level
- * listeners and hands the parent a working disposer through touchCleanupRef,
+ * listeners (the disposer is hook-owned in a hook-local touchCleanupRef since
+ * stage 4A, torn down when the last finger lifts or at unmount),
  * that a sub-threshold touch stays a tap, that a past-threshold touch arms the
  * pointer hook's node drag through the injected beginNodeDrag/applyDragMove/
  * finalizeNodeDrag trio, that the pinch is a pure pinchTransform feed about
@@ -25,11 +26,12 @@
  * deliberate tripwire: any rename, addition or removal in the hook's dep
  * surface fails typecheck HERE first, mirroring the pointer-hook test.
  *
- * Leak-proofing follows the bend-drag test's guidance: a parent-invoked
- * disposer cannot be proven detached by dispatching into dead state (the old
- * handlers share the hook's refs and are inert after a dispose), so the proof
- * is the RE-ARM pattern -- dispose, dispatch the next pointerdown, then count
- * writes on a shared gesture: a leaked first listener would double-fire.
+ * Leak-proofing follows the bend-drag test's guidance: a disposer cannot be
+ * proven detached by dispatching into dead state (the old handlers share the
+ * hook's refs and are inert after a dispose), so the proof is the RE-ARM
+ * pattern -- let the gesture end (fingers lift, which runs the hook-owned
+ * disposer), dispatch the next pointerdown, then count writes on a shared
+ * gesture: a leaked first listener would double-fire.
  */
 import { act, renderHook } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
@@ -94,7 +96,6 @@ const setup = (opts: { pan?: Point; zoom?: number; selectedNodeIds?: Set<string>
     setZoom,
     isPanningRef,
     userInteractedRef,
-    touchCleanupRef,
     selectedNodeIds: opts.selectedNodeIds ?? new Set<string>(),
     selectOnly,
     clearWire,
@@ -145,8 +146,8 @@ const setup = (opts: { pan?: Point; zoom?: number; selectedNodeIds?: Set<string>
   };
 };
 
-describe('useTopologyEditorTouch — arming and the parent-owned disposer', () => {
-  it('a two-finger pointerdown arms the loop, hands the parent a disposer, and re-arms without leaking', () => {
+describe('useTopologyEditorTouch — arming and the hook-owned disposer', () => {
+  it('a two-finger pointerdown arms the loop, the hook disposes on lift, and re-arming does not leak', () => {
     const h = setup();
 
     h.down({ pointerId: 1, clientX: 100, clientY: 100 });
@@ -157,14 +158,13 @@ describe('useTopologyEditorTouch — arming and the parent-owned disposer', () =
     expect(h.dismissPicker).toHaveBeenCalledTimes(2);
     expect(h.setContextMenu).toHaveBeenCalledWith(null);
 
-    const dispose = h.touchCleanupRef.current;
-    expect(typeof dispose).toBe('function');
+    // Stage 4A: the disposer is hook-owned — lifting the last finger runs it
+    // and tears the document listeners down (no parent channel anymore; the
+    // hook's unmount effect re-runs it idempotently at teardown).
+    h.up(1);
+    h.up(2);
 
-    // The parent (unmount sweep) runs the disposer: the cleanup slot clears.
-    act(() => dispose?.());
-    expect(h.touchCleanupRef.current).toBeNull();
-
-    // A stray move after dispose is inert either way (the handlers share the
+    // A stray move after the lift is inert either way (the handlers share the
     // hook's refs), so detachment is proven by the re-arm count below.
     h.move(2, 180, 100);
     expect(h.setZoom).not.toHaveBeenCalled();
@@ -179,7 +179,8 @@ describe('useTopologyEditorTouch — arming and the parent-owned disposer', () =
     // live in the dedicated pinch test -- here the re-arm needs only counts.
     h.down({ pointerId: 1, clientX: 100, clientY: 100 });
     h.down({ pointerId: 2, clientX: 140, clientY: 100 });
-    expect(typeof h.touchCleanupRef.current).toBe('function');
+    // The re-armed loop is live: the single-handler counts on the move below
+    // are the proof (a leaked or missing arm would double-fire or stay silent).
     h.move(2, 200, 100);
     expect(h.setPan).toHaveBeenCalledTimes(1);
     expect(h.setZoom).toHaveBeenCalledTimes(1);
@@ -354,14 +355,14 @@ describe('useTopologyEditorTouch — pan, tap and full-state resets', () => {
     // Release semantics on the pan branch: flag + cursor reset, disposer ran.
     expect(h.isPanningRef.current).toBe(false);
     expect(document.body.style.cursor).toBe('');
-    expect(h.touchCleanupRef.current).toBeNull();
     h.move(1, 300, 300);
     expect(h.setPan).toHaveBeenCalledTimes(1);
 
     // Gesture 2 re-arms (two-finger) and the pinch is live again.
     h.down({ pointerId: 5, clientX: 100, clientY: 100 });
     h.down({ pointerId: 6, clientX: 140, clientY: 100 });
-    expect(typeof h.touchCleanupRef.current).toBe('function');
+    // Stage 4A: the re-armed loop is live — the pinch answering the move below
+    // (exact setter values pinned) is the arm proof; the disposer is hook-owned.
     h.move(6, 180, 100);
     // The pan count is still 1 (the cancelled gesture's listeners are gone)
     // and the new pinch wrote the setters: fingers (100,100)+(180,100) ->

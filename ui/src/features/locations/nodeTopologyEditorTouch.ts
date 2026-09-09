@@ -15,9 +15,9 @@
 //! functions, so they stay plain here — no useCallback is introduced (wrapping
 //! them would change identity churn for the props the canvas element receives).
 //! The one effect the hook registers is its own unmount cleanup: it fires the
-//! touchCleanupRef disposer at unmount so listener disposal no longer depends
-//! solely on the editor's unmount sweep (transient double-fire accepted — the
-//! disposer is idempotent).
+//! touchCleanupRef disposer at unmount, and since stage 4A the ref itself is
+//! hook-owned — that effect is the sole unmount disposer (the editor sweep no
+//! longer touches this ref; the disposer stays idempotent).
 //!
 //! Ownership of the gesture state: touchPointersRef and touchGestureRef have no
 //! reader outside this loop, so they moved with it. touchCleanupRef did NOT —
@@ -44,8 +44,6 @@ export interface TopologyTouchDeps {
   isPanningRef: MutableRefObject<boolean>;
   /** Sticky "user touched the canvas" flag: suppresses the auto-fit-viewport pass. */
   userInteractedRef: MutableRefObject<boolean>;
-  /** Parent-owned document-listener teardown: also fired by the editor unmount sweep. */
-  touchCleanupRef: MutableRefObject<(() => void) | null>;
   /** Selection captured at pointerdown; a group-member tap keeps it so the group drags as a whole. */
   selectedNodeIds: Set<string>;
   /** Selection reducer: a tap on an unselected node collapses the selection to it. */
@@ -85,7 +83,6 @@ export function useTopologyEditorTouch(deps: TopologyTouchDeps): {
     setZoom,
     isPanningRef,
     userInteractedRef,
-    touchCleanupRef,
     selectedNodeIds,
     selectOnly,
     clearWire,
@@ -96,6 +93,9 @@ export function useTopologyEditorTouch(deps: TopologyTouchDeps): {
     applyDragMove,
     finalizeNodeDrag,
   } = deps;
+  // Stage 4A: the teardown ref is hook-owned — the editor neither declares nor
+  // invokes it any more (its sweep keeps only the add-node timers).
+  const touchCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Touch gestures (pointer parity for tablets) ────────────────
   // Mouse input keeps the mouse handlers above (and all their tests); touch
@@ -311,14 +311,12 @@ export function useTopologyEditorTouch(deps: TopologyTouchDeps): {
     armTouchDocumentListeners();
   };
 
-  // The hook registers its own unmount cleanup so listener disposal no longer
-  // depends solely on the editor's unmount sweep. Until the sweep is retired,
-  // both run at unmount — accepted by design: the disposer is idempotent
+  // The hook registers its own unmount cleanup, which since stage 4A is the
+  // sole unmount disposer — the editor sweep no longer invokes this ref (it
+  // clears only the add-node timers). The disposer is idempotent
   // (removeEventListener + ref-nulling only, every reader optional-call), so
-  // the second invocation no-ops. touchCleanupRef is a parent-owned stable ref
-  // identity, listed per the linter's demand — a no-op for churn since the ref
-  // object never changes — so the effect arms once.
-  useEffect(() => () => { touchCleanupRef.current?.(); }, [touchCleanupRef]);
+  // the second invocation no-ops.
+  useEffect(() => () => { touchCleanupRef.current?.(); }, []);
 
   return { handleCanvasPointerDown };
 }
