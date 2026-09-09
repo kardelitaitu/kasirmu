@@ -119,8 +119,9 @@ export function useTopologyEditorNodeRename(deps: TopologyNodeRenameDeps) {
    *  Callers still pass a second `currentName` argument (the card and
    *  context-menu prop signatures are `(nodeId, currentName)`, untouched in
    *  their own files); it is ignored by design — the name is re-read from the
-   *  same array their `node` prop came from. Deps stay empty: the callback is
-   *  referentially stable, so the memoized cards never re-render for it. */
+   *  same array their `node` prop came from. Deps list only the parent-owned
+   *  `nodesRef` — a stable ref identity — so the callback stays referentially
+   *  stable and the memoized cards never re-render for it. */
   const startNodeRename = useCallback((nodeId: string) => {
     const node = nodesRef.current.find((n) => n.id === nodeId);
     if (!node) return;
@@ -130,8 +131,7 @@ export function useTopologyEditorNodeRename(deps: TopologyNodeRenameDeps) {
     renameFocusReturnRef.current = null;
     setRenameDraft(node.name);
     setRenamingNodeId(nodeId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; nodesRef arrives through the deps object.
-  }, []);
+  }, [nodesRef]);
 
   const cancelNodeRename = useCallback(() => {
     renameCancelledRef.current = true;
