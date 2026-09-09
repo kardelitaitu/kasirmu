@@ -776,6 +776,39 @@ pub async fn switch_organization(
         session_store.insert(token.clone(), context.clone());
     }
 
+    // Security audit (todo-global-saas-3.md L227 multi-org follow-up): a
+    // successful switch is a full re-authentication that re-scopes the
+    // operator's data authority, so it is recorded like the other session
+    // lifecycle events. Emitted only on the success path — the deny paths
+    // above already log and leave no re-scoped session behind. A write
+    // failure or tier skip never fails the switch itself (the
+    // `record_security_event` helper logs and continues).
+    {
+        // Everything the audit write needs — the DB guard, the Store
+        // borrow over it, the username lookup and the write itself —
+        // lives and dies inside this scope. Nothing borrows the guard
+        // across an await or outlives it, so the async future stays
+        // Send (the same shape destroy_session uses for its logout
+        // event).
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        let username = store
+            .get_user(&user_id)
+            .ok()
+            .flatten()
+            .map(|u| u.username)
+            .unwrap_or_default();
+        record_security_event(
+            &store,
+            &SecurityEvent::org_switch(
+                user_id.clone(),
+                username,
+                Some(current.terminal_id.clone()),
+                org_id.clone(),
+            ),
+        );
+    }
+
     tracing::info!(user_id = %user_id, org_id = %org_id, "organization switched");
 
     Ok(CreateSessionResult {

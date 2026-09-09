@@ -238,6 +238,44 @@ fn logout_records_for_a_paid_tier() {
 }
 
 #[test]
+fn org_switch_records_the_target_org() {
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    let recorded = store(&conn)
+        .record_security_event(
+            &SecurityEvent::org_switch("user-3", "owner", Some("term-1"), "org-a"),
+            false,
+        )
+        .unwrap();
+    assert!(recorded);
+    let (user_id, action, outcome, target_id, _) = single_row(&conn);
+    assert_eq!(action, SECURITY_ACTION_ORG_SWITCH);
+    assert_eq!(outcome, "success", "a completed switch is not a failure");
+    assert_eq!(user_id, "user-3", "the actor is the switching operator");
+    assert_eq!(target_id, "org-a", "the org entered lands in target_id");
+}
+
+#[test]
+fn org_switch_joins_the_readable_security_class() {
+    // The allowlist rule from the module notes: an action missing from
+    // SECURITY_ACTIONS is written but never readable. This pins org.switch
+    // into the readable class so a later refactor cannot strand it.
+    let conn = fresh();
+    set_tier(&conn, "premium");
+    store(&conn)
+        .record_security_event(
+            &SecurityEvent::org_switch("user-3", "owner", None::<String>, "org-a"),
+            false,
+        )
+        .unwrap();
+    let (items, total, _) = store(&conn)
+        .list_security_events(None, None, None, None, 50)
+        .unwrap();
+    assert_eq!(total, 1, "org.switch must be readable as a security event");
+    assert_eq!(items[0].action, SECURITY_ACTION_ORG_SWITCH);
+}
+
+#[test]
 fn rate_limited_lockout_is_its_own_classifier() {
     let conn = fresh();
     set_tier(&conn, "premium");

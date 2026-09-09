@@ -1206,6 +1206,61 @@ async fn l194_switch_organization_old_token_dead() {
 }
 
 #[tokio::test]
+async fn l194_switch_organization_records_an_org_switch_event() {
+    // todo-global-saas-3.md L227 follow-up: a successful organization
+    // switch is a session-lifecycle security event — the operator
+    // re-authenticated in full and re-scoped their data authority. The
+    // row names the actor in user_id and the TARGET ORG in target_id,
+    // so an investigator can answer "who entered which org" without
+    // parsing the details blob.
+    let conn = migrations::fresh_db();
+    // A paid tier, so the recording is deterministic rather than riding the
+    // desktop helper's debug Free->Premium promotion.
+    set_tier(&conn, "premium");
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket(&uid),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    switch_organization(
+        login.session_token.clone(),
+        "org-a".into(),
+        "1234".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let rows = audit_rows(&app).await;
+    let hit = rows
+        .iter()
+        .find(|(_, action, ..)| *action == oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH)
+        .expect("a successful switch must record an org.switch row");
+    let (user_id, action, outcome, target_id, _details) = hit;
+    assert_eq!(
+        action,
+        &oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH
+    );
+    assert_eq!(outcome, &"success");
+    assert_eq!(user_id, &uid, "the row names the operator who switched");
+    assert_eq!(target_id, &"org-a", "target_id carries the org entered");
+}
+
+#[tokio::test]
 async fn l194_switch_organization_wrong_pin_keeps_old_token() {
     // full re-auth, no credential carryover: a wrong PIN must refuse the
     // switch and leave the old session intact.

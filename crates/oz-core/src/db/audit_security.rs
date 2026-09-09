@@ -50,6 +50,16 @@ pub const SECURITY_ACTION_IMPERSONATE_START: &str = "impersonate.start";
 /// Security event recorded when an operator stops impersonating a user.
 pub const SECURITY_ACTION_IMPERSONATE_STOP: &str = "impersonate.stop";
 
+/// Action recorded when a user completes the multi-organization switch
+/// (todo-global-saas-3.md L227 follow-up): the switch is a FULL
+/// re-authentication that re-scopes the operator's data authority, so it
+/// is a session-lifecycle security event exactly like login and logout.
+///
+/// Like `logout` this has no Fluent label yet (the locale slice is owned
+/// elsewhere) — the audit screen renders it through the catalog's
+/// unknown-action fallback until `auditCatalog.ts` maps it.
+pub const SECURITY_ACTION_ORG_SWITCH: &str = "org.switch";
+
 /// Action recorded when an admin creates a staff account. Already in
 /// `auditCatalog.ts`, and already in its `CRITICAL_ACTIONS` set, so the
 /// audit screen gives it critical emphasis with no front-end change.
@@ -77,6 +87,7 @@ pub const SECURITY_ACTIONS: &[&'static str] = &[
     SECURITY_ACTION_USER_UPDATE,
     SECURITY_ACTION_IMPERSONATE_START,
     SECURITY_ACTION_IMPERSONATE_STOP,
+    SECURITY_ACTION_ORG_SWITCH,
 ];
 
 /// `audit_log.user_id` for an event with no resolved account — the unknown
@@ -262,6 +273,33 @@ impl SecurityEvent {
             reason: None,
             device_id: device_id.map(Into::into),
             subject_id: Some(subject_id.into()),
+        }
+    }
+
+    /// A completed organization switch (the multi-org §L227 follow-up).
+    ///
+    /// `user_id` is the switching operator (lands in `audit_log.user_id`,
+    /// the house actor convention) and `org_id` is the organization
+    /// entered, carried in `subject_id` so it lands in `target_id` — the
+    /// "who entered which org" column, the answer this event exists for.
+    /// There is no failure constructor: the switch's deny paths (unknown
+    /// org, uncovered assignment, bad PIN) re-authenticate or refuse
+    /// without re-scoping anything, and the surface already logs them.
+    #[must_use]
+    pub fn org_switch(
+        user_id: impl Into<String>,
+        username: impl Into<String>,
+        device_id: Option<impl Into<String>>,
+        org_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            user_id: user_id.into(),
+            username: username.into(),
+            action: SECURITY_ACTION_ORG_SWITCH,
+            outcome: "success",
+            reason: None,
+            device_id: device_id.map(Into::into),
+            subject_id: Some(org_id.into()),
         }
     }
 
