@@ -90,9 +90,21 @@ vi.mock('@/contexts/SettingsContext', () => ({
 // chain stays reachable in integration tests), which makes PIN rejection
 // untestable through it. The editor imports verifyPin dynamically, so mock the
 // module with a switch this file can flip.
-const pinGate = { accept: true };
+const pinGate = {
+  accept: true,
+  /**
+   * Every verifyPin call in order. The recorder is what makes the
+   * credential-BEFORE-payload ordering pin below possible — without it the
+   * test could only observe that a save happened, not that it happened after
+   * verification.
+   */
+  calls: [] as Array<{ token: string; pin: string }>,
+};
 vi.mock('@/api/staff', () => ({
-  verifyPin: async () => pinGate.accept,
+  verifyPin: async (token: string, pin: string) => {
+    pinGate.calls.push({ token, pin });
+    return pinGate.accept;
+  },
 }));
 
 // The editor's own prop type, not a hand-rolled signature: the real onSave
@@ -119,6 +131,7 @@ const openDialog = async () => {
 
 beforeEach(() => {
   pinGate.accept = true;
+  pinGate.calls.length = 0;
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -406,3 +419,267 @@ describe('Apply confirmation dialog — characterization (pre-extraction net)', 
     }
   });
 });
+
+// ── Apply SAVE-FLOW characterization (G8: the apply/save panel) ─────
+//
+// Everything above characterizes the DIALOG — which is the part that already
+// moved out under the ADR #46 Rule 3 waiver. What none of it pins is the pair
+// still inside NodeTopologyEditor.tsx: `handleApplyClick` (validation gate +
+// diff-preview assembly) and `confirmApply` (verify → onSave → snapshot and
+// revision adoption). todo-refactor-topology.md flags that pair as G8, the
+// highest-leverage surface extraction left in the editor.
+//
+// So these tests pin the CONTRACT between the panel and the editor, again only
+// through observable behaviour — roles, DOM and the arguments onSave actually
+// receives. They must pass on both sides of the move: red after the extraction
+// means the panel stopped threading something the save depends on.
+//
+// Pre-existing coverage deliberately not duplicated here: the dirty-chip
+// transitions and the idMap rewrite are pinned in NodeTopologyEditor.test.tsx
+// ('Apply failure resilience', 'idMap remapping'); the change note's journey is
+// pinned above. What is NOT pinned anywhere else is the onSave argument
+// positional contract, the keyboard-ownership guard, and revision adoption —
+// which are precisely the three things a props-object refactor can quietly
+// break while every existing test stays green.
+describe('Apply save flow — characterization (pre-G8 extraction)', () => {
+  /** The saved spy's call list, read through the REAL prop signature so a
+   *  positional swap in the panel is a type-visible failure, not an `any`. */
+  const callsOf = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls as unknown as Parameters<OnSave>[];
+
+  /** Tick the tool rack open if it is closed, then add a Retail POS
+   *  workspace — the same route the diff-preview test above uses. */
+  const addRetailWorkspace = () => {
+    const addBtn = document.querySelector(
+      '.rack-icon-btn[aria-label="topology-rack-add-title"]',
+    ) as HTMLElement;
+    if (addBtn && !addBtn.classList.contains('is-active')) {
+      fireEvent.click(addBtn);
+    }
+    fireEvent.click(screen.getByText('+ Retail POS'));
+  };
+
+  /** Type a valid PIN and press the dialog's Apply. */
+  const submitPin = async (onSave: ReturnType<typeof vi.fn>, times = 1) => {
+    const pin = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: '1234' } });
+    fireEvent.click(screen.getByText('Apply').closest('button') as HTMLButtonElement);
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(times));
+  };
+
+  /** Barrier on the save-lifecycle machine having released the Apply: while a
+   *  save is in flight the header button is disabled, so an enabled header is
+   *  observable proof that `finishApply`/`failApply` ran. Needed because the
+   *  editor releases the guard from a `setTimeout(0)`, not inline. */
+  const applyReleased = async () => {
+    await waitFor(() =>
+      expect(
+        (screen.getByText('Apply Topology').closest('button') as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+  };
+
+  it('hands onSave the live canvas, base revision and issue keys, in that order', async () => {
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    addRetailWorkspace();
+    // Counted BEFORE the save: the payload must carry this canvas, so the
+    // number has to match what is on screen at click time.
+    const domNodes = document.querySelectorAll('.topology-node').length;
+
+    await openDialog();
+    await submitPin(onSave);
+
+    const args = callsOf(onSave)[0];
+    // Five positional arguments — (nodes, wires, baseRevision,
+    // resolvedIssueKeys, changeNote). An ApplyPanelProps object that forgets
+    // one still "works" against a loose mock; this pins the arity.
+    expect(args).toHaveLength(5);
+    const [nodes, wires, baseRevision, resolvedIssueKeys] = args ?? [];
+    expect(nodes).toHaveLength(domNodes);
+    expect(Array.isArray(wires)).toBe(true);
+    for (const n of nodes ?? []) {
+      expect(typeof n.id).toBe('string');
+      expect(typeof n.type).toBe('string');
+    }
+    expect(typeof baseRevision).toBe('number');
+    // resolvedIssueKeys is a SPREAD COPY (`[...resolvedIssues]`), not the Set.
+    // Forwarding the Set keeps this call green and breaks the parent, which
+    // hands it straight to the IPC payload — the same class of shape drift
+    // b30e97c63 pinned for the rename label (delete vs empty string).
+    expect(Array.isArray(resolvedIssueKeys)).toBe(true);
+    expect(resolvedIssueKeys).not.toBeInstanceOf(Set);
+  });
+
+  it('still opens and saves on an unchanged canvas — Apply is not dirty-gated', async () => {
+    // `handleApplyClick` checks VALIDATION errors and then opens; `isDirty`
+    // plays no part in it. That is deliberate enough to pin: the extraction
+    // "improving" the panel into a no-op when nothing changed would remove the
+    // only way to re-push an unchanged diagram, and no existing test notices.
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    // The canvas is CLEAN before the click: with no saved diagram behind the
+    // dev-mock, the standalone editor settles on an empty graph, so no
+    // 'Unsaved changes' chip is up. Writing anything from here is by definition
+    // an Apply with nothing to apply.
+    expect(document.querySelector('.topology-dirty-chip')).toBeNull();
+
+    fireEvent.click(screen.getByText('Apply Topology'));
+    await waitFor(() =>
+      expect(document.querySelector('.topology-apply-confirm-overlay')).not.toBeNull(),
+    );
+
+    // An empty diff: the empty-state paragraph stands in for all four sections.
+    expect(document.querySelectorAll('.topology-apply-confirm-section')).toHaveLength(0);
+    expect(document.querySelector('.topology-apply-confirm-empty')).not.toBeNull();
+
+    const applyBtn = screen.getByText('Apply').closest('button') as HTMLButtonElement;
+    const pin = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    fireEvent.change(pin, { target: { value: '1234' } });
+    expect(applyBtn.disabled).toBe(false);
+    fireEvent.click(applyBtn);
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    // The save really did go out carrying the empty canvas, rather than being
+    // skipped as a no-op — the payload is the graph, not the diff.
+    expect(callsOf(onSave)[0]?.[0]).toEqual([]);
+    expect(callsOf(onSave)[0]?.[1]).toEqual([]);
+  });
+
+  it('keeps canvas shortcuts inert while the dialog is open', async () => {
+    // The editor's document-level keydown handler silences canvas shortcuts
+    // for any event whose target sits inside `.topology-apply-confirm-overlay`
+    // (NodeTopologyEditor.tsx's `closest` guard). The comment next to that
+    // guard says every editor-owned dialog must be covered "or its Escape
+    // handling will leak into the canvas" — the overlay's class name is load
+    // bearing. Renaming it during the extraction would let Escape close the
+    // dialog and Delete eat the selection underneath it.
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    addRetailWorkspace();
+    // Select the newly added (unwired) workspace: unwired workspaces delete
+    // immediately, so a leaked Delete keypress WOULD visibly change the canvas.
+    const nodes = document.querySelectorAll('.topology-node');
+    const target = nodes[nodes.length - 1] as HTMLElement;
+    fireEvent.mouseDown(target, { button: 0 });
+    expect(document.querySelector('.topology-node.node-selected')).not.toBeNull();
+    const before = nodes.length;
+
+    await openDialog();
+    const overlay = document.querySelector('.topology-apply-confirm-overlay') as HTMLElement;
+    fireEvent.keyDown(overlay, { key: 'Escape' });
+    fireEvent.keyDown(overlay, { key: 'Delete' });
+    fireEvent.keyDown(overlay, { key: 'Backspace' });
+
+    // Nothing leaked: dialog open, canvas intact, selection intact, no save.
+    expect(document.querySelector('.topology-apply-confirm-overlay')).not.toBeNull();
+    expect(document.querySelectorAll('.topology-node')).toHaveLength(before);
+    expect(document.querySelector('.topology-node.node-selected')).not.toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('does not dismiss on a backdrop mousedown — the overlay is not click-to-close', async () => {
+    // The overlay's onMouseDown only calls stopPropagation, so the backdrop is
+    // a shield (keep the canvas from starting a marquee under the modal), not
+    // a dismissal affordance. A PIN-gated deploy confirm that closes on a
+    // stray click outside it is a real behaviour change, and it is exactly
+    // what swapping in a shared Modal/ConfirmDialog would bring.
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    await openDialog();
+    const overlay = document.querySelector('.topology-apply-confirm-overlay') as HTMLElement;
+    fireEvent.mouseDown(overlay, { button: 0 });
+
+    expect(document.querySelector('.topology-apply-confirm-overlay')).not.toBeNull();
+    // Still fully armed: the typed credentials survived the backdrop click.
+    expect(document.getElementById('topology-apply-pin')).not.toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed save without reopening the dialog or blaming the PIN', async () => {
+    // confirmApply resolves TRUE for a backend failure precisely so the dialog
+    // does NOT reopen — a rejected save is not a rejected credential. The
+    // canvas-side half of this (edits kept, still dirty, undo intact) is pinned
+    // in NodeTopologyEditor.test.tsx; the dialog-side half is pinned here, and
+    // the retry at the end is the proof that failApply released the in-flight
+    // guard instead of stranding the editor in `applying`.
+    const onSave = vi.fn().mockRejectedValue(new Error('backend said no'));
+    renderEditor(onSave);
+    await openDialog();
+    await submitPin(onSave);
+
+    await waitFor(() =>
+      expect(screen.getByText(/topology-toast-save-error/)).toBeInTheDocument(),
+    );
+    expect(document.querySelector('.topology-apply-confirm-overlay')).toBeNull();
+    expect(document.querySelector('.topology-apply-confirm-pin-error')).toBeNull();
+    // No silent retry from the failure path itself.
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    await applyReleased();
+    fireEvent.click(screen.getByText('Apply Topology'));
+    await waitFor(() =>
+      expect(document.querySelector('.topology-apply-confirm-overlay')).not.toBeNull(),
+    );
+  });
+
+  it('asks for the PIN again on the next Apply when Remember was not ticked', async () => {
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    await openDialog();
+    await submitPin(onSave);
+    expect(pinGate.calls).toHaveLength(1);
+    expect(pinGate.calls[0]?.pin).toBe('1234');
+    await applyReleased();
+
+    // A fresh open hands over empty credentials: PIN cleared by the dialog's
+    // open effect, Apply disabled again, nothing pre-authorized.
+    fireEvent.click(screen.getByText('Apply Topology'));
+    await waitFor(() =>
+      expect(document.querySelector('.topology-apply-confirm-overlay')).not.toBeNull(),
+    );
+    const pinAgain = document.getElementById('topology-apply-pin') as HTMLInputElement;
+    expect(pinAgain.value).toBe('');
+    expect(
+      (screen.getByText('Apply').closest('button') as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    await submitPin(onSave, 2);
+    // Second verification, same session token: the remember-cache is keyed per
+    // session and was NOT armed, so the credential is re-checked per Apply.
+    expect(pinGate.calls).toHaveLength(2);
+    expect(pinGate.calls[1]?.token).toBe(pinGate.calls[0]?.token);
+  });
+
+  it('clears the unsaved-changes state and the diff preview together once the save succeeds', async () => {
+    // `commitSnapshot({nodes: savedNodes, wires: savedWires})` is the single
+    // thing that makes an Apply land CLEAN. Dirty is DERIVED by comparing the
+    // canvas against that snapshot, and the dialog's diff preview is built from
+    // the same snapshot — so the chip and the preview are two views of one
+    // value, and both must flip on a success. A panel that saves correctly but
+    // forgets to call commitSnapshot leaves the operator staring at 'Unsaved
+    // changes' and a diff that never empties; this is the only net on it.
+    const onSave = vi.fn().mockResolvedValue({ revision: 1 });
+    renderEditor(onSave);
+    addRetailWorkspace();
+    expect(document.querySelector('.topology-dirty-chip')).not.toBeNull();
+
+    await openDialog();
+    // The pending diff is real before the save...
+    expect(document.querySelectorAll('.topology-apply-confirm-section').length).toBeGreaterThan(0);
+    await submitPin(onSave);
+    await applyReleased();
+
+    // ...and is gone after it, from BOTH surfaces, with nothing rewritten in
+    // memory beyond the ids the save returned.
+    expect(document.querySelector('.topology-dirty-chip')).toBeNull();
+    fireEvent.click(screen.getByText('Apply Topology'));
+    await waitFor(() =>
+      expect(document.querySelector('.topology-apply-confirm-overlay')).not.toBeNull(),
+    );
+    expect(document.querySelectorAll('.topology-apply-confirm-section')).toHaveLength(0);
+    expect(document.querySelector('.topology-apply-confirm-empty')).not.toBeNull();
+    // No extra save was implied by reopening the dialog.
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+});
+
