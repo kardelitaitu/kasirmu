@@ -1,9 +1,28 @@
-//! Staff management — User CRUD + Role CRUD.
+//! Staff identity — user CRUD, the login gate, and preset role seeding.
+//!
+//! Key items: [`Store::create_user`], [`Store::update_user`],
+//! [`Store::require_permission`] and its scoped siblings, and
+//! [`Store::seed_default_roles`]. [`Store::authorize_with`] is the
+//! deny-by-default resolver every gate funnels through.
+//!
+//! Role AUTHORING is not here: `create_role`, `update_role`, `delete_role` and
+//! `role_reference_counts` live in [`super::roles`] behind that module's single
+//! grant validator and preset-id guard. This module keeps the preset side only
+//! — [`Store::seed_default_roles`] upserts every `RolePreset` row and overwrites
+//! its grants, which is the very fact that guard refuses on — plus the two role
+//! reads (`list_roles`, `get_role`) that both sides share.
+//!
+//! Writes run in a `rusqlite` transaction, and a `role_id` referencing no row is
+//! refused before any write.
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
 crate: oz-core | status: SAFE | lint: CLEAN
 findings: exemplary core, F-1 and G-2 CLOSED — create_user/update_user now wrap the users + assignments writes in unchecked_transaction (established idiom) and validate role_id existence with a typed Validation error before any write (all five callers inherit: desktop/tablet staff.rs, cloud users.rs, CLI user.rs, profile helper; unseeded paths fail closed instead of stranding a zombie); parameterized SQL throughout; authorize_with is registry-aware deny-by-default and still enforces registered-grants + sensitive-keys-never-family-wildcard + Owner-only global * (db/staff.rs:122-125); STAFF-07 rate limiter intact; assignments FK CASCADE armed at migrations.rs:139; role seeding precedes user creation on interactive paths (setup.rs:102, desktop/tablet staff.rs seed call); evidence: 74 staff tests green incl. the two G-2 guards
 next: none — campaign closed for this file | perf: indexed lookups, fine
+currency 09-09-26: the counts and line pointers above are AS OF 31-08-26 and no
+longer hold — staff_tests.rs is 60 tests and roles_tests.rs 35, and role
+authoring (create_role) moved to db/roles.rs in 9c582a069. Body kept as written:
+an audit stamp records what was true when it ran, so it is annotated, not edited.
 */
 
 use rusqlite::params;
@@ -35,7 +54,7 @@ pub struct LoginLimits {
     pub max_backoff_secs: u64,
 }
 
-// ── Role CRUD ───────────────────────────────────────────────────
+// ── Preset role seeding + role reads (role AUTHORING: super::roles) ──────
 
 impl Store<'_> {
     /// Seed built-in roles from their presets.
