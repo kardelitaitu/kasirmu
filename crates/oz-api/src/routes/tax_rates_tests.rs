@@ -38,6 +38,10 @@ fn body() -> CreateTaxRateRequest {
         rate_bps: 1000,
         is_default: true,
         is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
     }
 }
 
@@ -134,6 +138,10 @@ async fn create_tax_rate_returns_400_on_validation_error() {
         rate_bps: 1000,
         is_default: false,
         is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
     };
     let response = create_tax_rate(
         State(state()),
@@ -196,4 +204,90 @@ fn create_tax_rate_request_inclusive() {
     assert_eq!(req.rate_bps, 500);
     assert!(!req.is_default);
     assert!(req.is_inclusive);
+}
+
+// ── scoped-authoring boundary (D8: the hub is the authoring door) ──
+
+#[tokio::test]
+async fn create_tax_rate_accepts_scope_and_window_fields() {
+    let mut scoped = body();
+    scoped.location_id = Some("default".into());
+    scoped.effective_from = Some("2026-10-01".into());
+    scoped.effective_to = Some("2027-10-01".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(scoped),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_both_scope_arms_with_400() {
+    let mut ambiguous = body();
+    ambiguous.legal_entity_id = Some("whatever".into());
+    ambiguous.location_id = Some("default".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(ambiguous),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_empty_period_with_400() {
+    // effective_to == effective_from covers no day at all (exclusive end),
+    // which core's writers refuse and the hub boundary must refuse too.
+    let mut empty = body();
+    empty.location_id = Some("default".into());
+    empty.effective_from = Some("2026-10-01".into());
+    empty.effective_to = Some("2026-10-01".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(empty),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_malformed_window_date_with_400() {
+    let mut malformed = body();
+    malformed.effective_from = Some("01-10-2026".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(malformed),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_unknown_location_scope_with_400() {
+    // The target row does not exist in the hub's shared database — the
+    // boundary check (not the FK) must produce the typed 400.
+    let mut unknown = body();
+    unknown.location_id = Some("no-such-location".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(unknown),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
