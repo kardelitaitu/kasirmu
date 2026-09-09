@@ -11537,6 +11537,133 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     // One entry consumed and the canvas is back on the applied snapshot.
     expect(document.querySelector('.topology-dirty-dot')).toBeNull();
   });
+
+  // ── Live-bound rename path (persistNodeRename + renameBaselineRef) ──
+  // The inspector Node Name field and the card's headless body-config input
+  // are LIVE-BOUND: the value is already edited on blur, so renameBaselineRef
+  // (the focus-time snapshot) is what separates an unedited blur from a real
+  // rename. persistNodeRename routes through the same parent callback the
+  // card form uses, reverts the live-bound name when the parent refuses, and
+  // advances the baseline at the commit boundary so a re-blur cannot
+  // double-commit. (No renameSaving guard here — that is card-form-only.)
+
+  it('an inspector rename persists through the parent and marks the canvas dirty', async () => {
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    expect(nameInput).not.toBeNull();
+    expect(nameInput.value).toBe('Downtown Branch');
+
+    // Focus snapshots the baseline, the keystroke edits the live-bound name,
+    // and the blur commits through the same parent callback the card uses.
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Inspector HQ' } });
+    fireEvent.blur(nameInput);
+
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Inspector HQ'));
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    await waitFor(() => expect(within(storeCard).getByText('Inspector HQ')).toBeTruthy());
+    expect(document.querySelector('.topology-dirty-dot')).not.toBeNull();
+
+    // The baseline advanced at the commit boundary: a second blur (the input
+    // is still mounted) is a no-op, not a duplicate round-trip.
+    fireEvent.blur(nameInput);
+    expect(onRenameBranch).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unedited inspector blur never round-trips the focus-time name', () => {
+    // The baseline (written on focus) is what tells an unedited blur from a
+    // real rename — without it, every tab-through the field would fire a
+    // redundant rename through the parent.
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+
+    expect(onRenameBranch).not.toHaveBeenCalled();
+  });
+
+  it('a whitespace-only inspector commit is a no-op, unlike the wire relabel that deletes', () => {
+    // persistNodeRename trims and returns on empty — the node-name path has
+    // no delete semantics (that is wire-label-only behavior, pinned by the
+    // empty-relabel test above).
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: '   ' } });
+    fireEvent.blur(nameInput);
+
+    expect(onRenameBranch).not.toHaveBeenCalled();
+  });
+
+  it('a rejected inspector rename reverts the live-bound name and stays retryable', async () => {
+    // A false parent return reverts the canvas to the focus-time baseline
+    // (a blurred input has no draft to keep) — and consumes nothing, so a
+    // re-edit reaches the parent again.
+    const onRenameWorkspace = vi.fn().mockResolvedValue(false);
+    renderEditor({ onRenameWorkspace });
+
+    const wsCard = document.querySelectorAll('.topology-node')[1] as HTMLElement;
+    fireEvent.mouseDown(wsCard, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    expect(nameInput.value).toBe('Retail POS #1');
+
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Rejected POS' } });
+    fireEvent.blur(nameInput);
+
+    await waitFor(() => expect(onRenameWorkspace).toHaveBeenCalledWith('ws-1', 'Rejected POS'));
+    await waitFor(() => expect(within(wsCard).getByText('Retail POS #1')).toBeTruthy());
+    expect(nameInput.value).toBe('Retail POS #1');
+
+    // The retry is real: focus re-snapshots the baseline and the second
+    // commit reaches the parent instead of being swallowed by a one-shot guard.
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Rejected POS II' } });
+    fireEvent.blur(nameInput);
+    await waitFor(() => expect(onRenameWorkspace).toHaveBeenCalledWith('ws-1', 'Rejected POS II'));
+    expect(onRenameWorkspace).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(within(wsCard).getByText('Retail POS #1')).toBeTruthy());
+  });
+
+  it('an inspector rename followed by a card rename costs a single undo entry', async () => {
+    // The inspector's first keystroke pushes the selection session's only
+    // history entry; commitNodeRename writes without pushing — so BOTH
+    // renames undo together and the canvas lands back on the applied snapshot.
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Inspector HQ' } });
+    fireEvent.blur(nameInput);
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    await waitFor(() => expect(within(storeCard).getByText('Inspector HQ')).toBeTruthy());
+
+    // Card-level rename stacked on top of the inspector one.
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
+    const cardInput = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.change(cardInput, { target: { value: 'Inspector HQ II' } });
+    fireEvent.keyDown(cardInput, { key: 'Enter' });
+    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).getByText('Inspector HQ II')).toBeTruthy());
+
+    // One undo reverts BOTH renames: history holds a single pre-inspector
+    // snapshot, and the card commit never pushed a second entry.
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
+    await waitFor(() => expect(within(storeCard).getByText('Downtown Branch')).toBeTruthy());
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+  });
 });
 
 // ── Viewport machinery characterization (pre-3.5a extraction) ────────
