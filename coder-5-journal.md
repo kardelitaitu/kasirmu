@@ -2247,3 +2247,91 @@ do that.
 **Landed this slice:** `8ca94345a` fix(licensing) ERR-05/06, `6e598c648` feat(audit)
 S-A, plus the S-B docs commit.
 
+
+---
+
+## 2026-09-09 — finisher-B: dev-mock audit shapes, and a filter that never filtered
+
+Assigned: fix three wrong-shape handlers in `ui/src/dev-mock/tauri-api.ts`. Checked the
+file's dirty state first as instructed — clean, last touched by my own `6e598c648` — so no
+foreign hold applied.
+
+### One of the three was not a defect, and I had said it was
+
+`get_audit_review_status_scoped` was recorded — by me, in the `dev_mock` comment and in the
+`6e598c648` commit message — as returning "a partial object" to an object-typed DTO. It
+isn't: `{ checkpoint: null, unreviewed_count: 0 }` matches `AuditReviewStatusDto` exactly,
+two fields, both snake_case. The real complaint is different and weaker: it was
+**inert**, hard-coding a null checkpoint and a zero count so the screen's unreviewed badge
+and its Mark-reviewed action could never both be previewed. I fixed the inertness, but the
+claim in the record needed correcting too, and the comment now says which two were shape
+violations and which one was not.
+
+### The find that outranked the assignment
+
+`invoke()` dispatches `handler(args?.['args'] ?? args)` — the `{ args }` envelope an api
+wrapper sends is **unwrapped before the handler sees it**. So a handler that reads
+`args.args` receives `undefined`, falls back to `{}`, and silently ignores every filter.
+
+My `list_security_events_scoped` handler from an hour ago does exactly that. Its comment
+says it "honors `outcome` and `query` rather than returning a fixed list", and the commit
+message repeats the claim. Neither is true: it has always returned all six rows. Same
+class as the mock defects I was sent to fix, arriving from the opposite direction — I was
+worried about a mock lying about its OUTPUT, and mine was lying about its INPUT.
+
+How it was caught: writing a filter assertion for the NEW export handler made the
+unchallenged assumption visible (a filtered export returned everything until the read was
+fixed), so I went and looked at `invoke` instead of trusting the pattern I had copied
+earlier. That is the same lesson as `resolvedStoreId` vs `storeId` from B1 — I reuse a
+pattern from memory and the memory is of the shape, not the semantics. All three audit
+handlers now share one `mockHandlerPayload` helper that unwraps exactly the way `invoke`
+does.
+
+### What the mock now reproduces
+
+`export_audit_log_scoped` returns the real `AuditExportDto`: the UTF-8 BOM, the exact
+header column order from `audit.rs:453`, RFC-4180 quoting, `row_count` equal to the data
+lines, `generated_at` parseable. It reads the same seed the paged list returns, so a
+preview cannot show an export of rows the screen never listed — the same no-drift
+obligation the real store carries for count-vs-list. It does NOT write the `system.export
+` audit event the real command writes, and says so in the comment rather than growing the
+list on every press.
+
+`mark_audit_reviewed_scoped` returns a full `ReviewCheckpointDto`, and the mock keeps the
+real command's asymmetry: arguments arrive camelCase (`MarkAuditReviewedArgs` is
+`#[serde(rename_all = "camelCase")]`) and the response goes back snake_case. Tidying that
+would make the mock friendlier and the preview useless, because a screen reading the wrong
+side would then pass in browser and fail in the app.
+
+Review state is module-level in-memory (not localStorage like the workspace seed): status
+reads what mark wrote, so Mark-reviewed visibly drops the count. Deliberately not
+persisted — a reloaded preview resetting to unreviewed is honest; a stale high-water mark
+claiming a review that never happened is not.
+
+`dev-mock-audit-shapes.test.ts` (5 tests) pins the mock against the Rust field names, not
+against the mock: exact key sets (a superset check would let a renamed field through), the
+BOM and header, filter effects through the real `invoke` path, and the camel-in/snake-out
+pair. The filter assertions are what would fail under the old read, which is the point.
+
+### My own tooling failures in this slice, listed because they were near-misses
+
+1. **`git ... | cat` inside PowerShell produced no output at all.** `cat` is
+   `Get-Content` with no file argument, so it consumed nothing and returned nothing. It
+   read as "the file is clean and has no history", including a `git log` that cannot be
+   empty for a tracked file. That is the fourth silent-empty of the day; the tell here was
+   the impossible third line, not the reassuring first two.
+2. **I put raw newlines inside a JSON string value** while updating the allowlist comment,
+   which broke the file (`Invalid control character at line 214`). Restored with
+   `git checkout --` after confirming the only change above HEAD was my own broken edit
+   (13/1, then clean). This is NOT the forbidden stash-of-foreign-work: the diff was mine,
+   the file was clean before I touched it, and the restore returned it to my own commit.
+   Then re-applied as one line. The mistake came from writing a JSON value the way I write
+   a Rust doc comment.
+3. Twice in a row I called `tools.pwsh` without `description` and once with a malformed
+   object literal (`\`` + `)` instead of `\`` + `})`). Both are caught by the harness
+   rather than by me, which is the only reason they stayed cheap.
+
+Also: I invented a `mockAuditFilterArgs` that nested, copied it to two more handlers, and
+only then read the dispatcher. Writing the third copy was the moment to check, not the
+moment to test.
+

@@ -2106,6 +2106,103 @@ function summarizeMockTopologyRevision(r: MockTopologyRevision) {
   return { ...rest, restorable: diagram !== undefined };
 }
 
+// ── Audit mock: shapes the Rust commands actually serialize ───────
+//
+// These three handlers used to return `''`, `null` and a fixed pair. The first
+// two are type mismatches against object DTOs, and the third was shape-correct
+// but inert — it could never show the effect of a review. All three ignored the
+// args the screen sends, so a filtered export previewed as an unfiltered
+// artifact. verify-ipc-parity's dev_mock list cannot see any of that: it asks
+// whether a command HAS a handler, not whether the handler answers with the
+// right shape. Pinned by ui/src/__tests__/dev-mock-audit-shapes.test.ts.
+
+type MockAuditRow = {
+  id: string;
+  user_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  details: string;
+  outcome: string;
+  created_at: string;
+};
+
+/**
+ * Mirrors `AuditExportDto` in both shells' commands/audit.rs: `csv`,
+ * `row_count`, `generated_at`, `requested_by` — snake_case, because the struct
+ * carries no `rename_all` (only the ARGS structs do). Getting this wrong is
+ * invisible to the mock and visible only to a screen reading a field that
+ * arrives undefined.
+ */
+type MockReviewCheckpoint = {
+  id: string;
+  store_id: string;
+  reviewer_user_id: string;
+  reviewed_at: string;
+  reviewed_through_created_at: string;
+  reviewed_through_id: string;
+};
+
+// The exact column order and header `export_audit_log_scoped` writes
+// (audit.rs:453), BOM included: the artifact is opened in spreadsheets, where
+// the BOM is what stops UTF-8 details text from mojibake-ing.
+const MOCK_AUDIT_CSV_COLUMNS = [
+  'id',
+  'created_at',
+  'user_id',
+  'action',
+  'target_type',
+  'target_id',
+  'outcome',
+  'details',
+] as const;
+
+function mockCsvField(value: string): string {
+  return /[",\n\r]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
+}
+
+/** Newest first, matching the real export's ordering. */
+function mockAuditLogRows(): MockAuditRow[] {
+  const now = Date.now();
+  return [
+    { id: 'audit-1', user_id: 'admin-1', action: 'sale.completed', target_type: 'sale', target_id: 'seed-sale-001', details: 'Sale completed', outcome: 'success', created_at: new Date(now - 60000).toISOString() },
+    { id: 'audit-2', user_id: 'owner-1', action: 'shift.opened', target_type: 'shift', target_id: 'shift-1', details: 'Shift opened', outcome: 'success', created_at: new Date(now - 120000).toISOString() },
+  ];
+}
+
+/**
+ * Read a handler's payload. invoke() calls handlers as
+ * `handler(args?.['args'] ?? args)` — the { args } envelope an api wrapper sends
+ * is UNWRAPPED before the handler sees it (see invoke below), so reading the
+ * nested object directly is wrong twice over: a flat call leaves it undefined,
+ * and an enveloped call receives an object whose own fields are absent. Unwrapping
+ * the same way invoke does is the only reason the filter assertions in
+ * dev-mock-audit-shapes.test.ts pass for the right reason instead of by returning
+ * unfiltered rows that match an unfiltered expectation.
+ */
+function mockHandlerPayload<T extends object>(args: unknown): T {
+  const holder = (args ?? {}) as { args?: T } & T;
+  return ((holder.args ?? holder) ?? {}) as T;
+}
+
+function mockAuditFilterArgs(args: unknown): { outcome?: string; query?: string } {
+  return mockHandlerPayload<{ outcome?: string; query?: string }>(args);
+}
+
+function mockAuditMatches(row: MockAuditRow, f: { outcome?: string; query?: string }): boolean {
+  if (f.outcome && row.outcome !== f.outcome) return false;
+  const q = (f.query ?? '').toLowerCase();
+  if (!q) return true;
+  return (row.action + ' ' + row.user_id + ' ' + row.target_id + ' ' + row.details)
+    .toLowerCase()
+    .includes(q);
+}
+
+// In-memory on purpose: the review checkpoint is preview state, not something to
+// persist to localStorage like the workspace seed. A reload resetting it matches
+// a browser preview starting over, and keeps a stale high-water mark from
+// claiming a review that never happened on the tenant's real log.
+const mockAuditReview: { checkpoint: MockReviewCheckpoint | null } = { checkpoint: null };
 const handlers: Record<string, (args: unknown) => unknown> = {
   // ═══════════════════════════════════════════════════════════════
   // AUTH / STAFF
@@ -4026,14 +4123,10 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // screen calls setEntries(page.items), so an array return would make items
   // undefined and crash the render on entries.length (flippy E2E: passes only
   // when the loading skeleton is caught before the crash lands).
-  'list_audit_log_scoped': () => ({
-    items: [
-      { id: 'audit-1', user_id: 'admin-1', action: 'sale.completed', target_type: 'sale', target_id: 'seed-sale-001', details: 'Sale completed', outcome: 'success', created_at: new Date(Date.now() - 60000).toISOString() },
-      { id: 'audit-2', user_id: 'owner-1', action: 'shift.opened', target_type: 'shift', target_id: 'shift-1', details: 'Shift opened', outcome: 'success', created_at: new Date(Date.now() - 120000).toISOString() },
-    ],
-    total: 2,
-    has_more: false,
-  }),
+  'list_audit_log_scoped': () => {
+    const items = mockAuditLogRows();
+    return { items, total: items.length, has_more: false };
+  },
   // The organization security trail: tenant-global authentications, so these
   // entries name no store. Filtering is honored rather than ignored — the
   // screen's outcome chips and search box are wired to the ARGS, and a mock that
@@ -4045,7 +4138,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // row here has a catalog label — including logout and impersonate.*, which are
   // why the action catalog grew three entries alongside this screen.
   'list_security_events_scoped': (args: unknown) => {
-    const a = (args as { args?: { outcome?: string; query?: string } } | undefined)?.args ?? {};
+    const a = mockAuditFilterArgs(args);
     const securitySeed = [
       { id: 'sec-1', user_id: 'admin-1', action: 'login', target_type: 'session', target_id: 'sess-1', details: 'PIN login', outcome: 'success', created_at: new Date(Date.now() - 90000).toISOString() },
       { id: 'sec-2', user_id: 'cashier-1', action: 'login.failed', target_type: 'session', target_id: 'sess-2', details: 'Wrong PIN', outcome: 'failure', created_at: new Date(Date.now() - 120000).toISOString() },
@@ -4062,9 +4155,61 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     });
     return { items: filtered, total: filtered.length, has_more: false };
   },
-  'get_audit_review_status_scoped': () => ({ checkpoint: null, unreviewed_count: 0 }),
-  'mark_audit_reviewed_scoped': () => null,
-  'export_audit_log_scoped': () => '',
+  // AuditReviewStatusDto is { checkpoint: ReviewCheckpointDto | null, unreviewed_count
+  // } — the previous handler had that exact shape, so it was never the type mismatch
+  // it was recorded as being. What it could not do is answer a review: the checkpoint
+  // was hard-coded null and the count hard-coded 0, so the screen's unreviewed badge
+  // and its "Mark reviewed" action could not both be previewed. Now it reads the same
+  // in-memory state the mark handler writes.
+  'get_audit_review_status_scoped': () => {
+    const cp = mockAuditReview.checkpoint;
+    return {
+      checkpoint: cp,
+      unreviewed_count: cp ? 0 : mockAuditLogRows().length,
+    };
+  },
+  // Returns the persisted ReviewCheckpointDto, not null: marking a review always
+  // produces one. Args arrive camelCase (MarkAuditReviewedArgs is
+  // #[serde(rename_all = "camelCase")]) and the response goes back snake_case — the
+  // asymmetry is the real command's, so the mock reproduces it rather than tidying
+  // it away, and a screen that reads either side wrongly fails in preview too.
+  'mark_audit_reviewed_scoped': (args: unknown) => {
+    const a = mockHandlerPayload<{
+      reviewedThroughCreatedAt?: string;
+      reviewedThroughId?: string;
+    }>(args);
+    const now = new Date().toISOString();
+    const cp: MockReviewCheckpoint = {
+      id: 'cp-' + now,
+      store_id: 'default',
+      reviewer_user_id: 'admin-1',
+      reviewed_at: now,
+      reviewed_through_created_at: a.reviewedThroughCreatedAt ?? now,
+      reviewed_through_id: a.reviewedThroughId ?? '',
+    };
+    mockAuditReview.checkpoint = cp;
+    return cp;
+  },
+  // AuditExportDto, honoring the filters the screen forwards. The real command also
+  // writes an `system.export` audit event into the store log; this mock deliberately
+  // does not, so a preview's row_count stays stable across exports rather than
+  // growing by one each press.
+  'export_audit_log_scoped': (args: unknown) => {
+    const f = mockAuditFilterArgs(args);
+    const rows = mockAuditLogRows().filter((row) => mockAuditMatches(row, f));
+    const header = MOCK_AUDIT_CSV_COLUMNS.join(',');
+    const body = rows.map((row) =>
+      MOCK_AUDIT_CSV_COLUMNS.map((col) => mockCsvField(String(row[col] ?? ''))).join(','),
+    );
+    const csv =
+      '\uFEFF' + header + '\n' + (body.length > 0 ? body.join('\n') + '\n' : '');
+    return {
+      csv,
+      row_count: rows.length,
+      generated_at: new Date().toISOString(),
+      requested_by: 'admin-1',
+    };
+  },
 
   // ═══════════════════════════════════════════════════════════════
   // OFFLINE / SYNC
