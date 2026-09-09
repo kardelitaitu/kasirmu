@@ -54,14 +54,18 @@ export const isTopologyInstance = (w: { type_key: string }): boolean =>
 /** Closed node kinds used by the first ownership slice. */
 export type SemanticNodeKind = 'branch-location' | 'workspace' | 'warehouse' | 'hardware';
 
-/** Closed relationship types introduced by the topology ADR. */
-export type SemanticRelationshipType =
-  | 'location'
-  | 'stock-routing'
-  | 'ticket-routing'
-  | 'hardware-connection'
-  | 'inventory-transfer'
-  | 'generic';
+/** Closed relationship types introduced by the topology ADR — the single
+ *  source: the exported union and the boundary-quarantine Set both derive
+ *  from this tuple, so they cannot drift. */
+const SEMANTIC_RELATIONSHIP_TYPES = [
+  'location',
+  'stock-routing',
+  'ticket-routing',
+  'hardware-connection',
+  'inventory-transfer',
+  'generic',
+] as const;
+export type SemanticRelationshipType = (typeof SEMANTIC_RELATIONSHIP_TYPES)[number];
 
 /** Direction of a semantic port. */
 export type SemanticPortDirection = 'input' | 'output';
@@ -271,17 +275,12 @@ function metadataNumber(node: TopologyNodeInput, key: string): number | undefine
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-/** The closed set of legal relationship types (mirrors SemanticRelationshipType).
- *  Used to quarantine corrupt values at the contract boundary — a garbage
- *  string (manual edit, stale JSON) must never flow into the semantic graph. */
-const RELATIONSHIP_TYPES = new Set<SemanticRelationshipType>([
-  'location',
-  'stock-routing',
-  'ticket-routing',
-  'hardware-connection',
-  'inventory-transfer',
-  'generic',
-]);
+/** The closed set of legal relationship types, derived from
+ *  SEMANTIC_RELATIONSHIP_TYPES (the tuple that also defines the
+ *  SemanticRelationshipType union). Used to quarantine corrupt values at the
+ *  contract boundary — a garbage string (manual edit, stale JSON) must never
+ *  flow into the semantic graph. */
+const RELATIONSHIP_TYPES = new Set<SemanticRelationshipType>(SEMANTIC_RELATIONSHIP_TYPES);
 
 /** The closed set of legal semantic port ids — the SemanticPortId union
  *  from topologyCard.ts (the single source of truth, imported as a type so
