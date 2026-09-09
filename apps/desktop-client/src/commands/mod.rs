@@ -87,6 +87,8 @@ pub mod promotions;
 pub mod purchasing;
 /// Refund commands.
 pub mod refunds;
+/// Regional-configuration read commands (settings:read).
+pub mod regional;
 /// Reporting commands.
 pub mod reports;
 /// Weight-scale commands.

@@ -562,6 +562,54 @@ function updateMockLegalEntity(args: unknown): typeof MOCK_LEGAL_ENTITY | null {
   return { ...updated };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// REGIONAL CONFIGURATION (regional slice 2, saas-2 design)
+// ═══════════════════════════════════════════════════════════════
+// Read model mirroring oz_core::RegionalConfig, which the command returns
+// directly — snake_case fields, ConfigScope serde scope names ("location",
+// "legal_entity", "organization", "built_in"). ADR #48: timezone.value is
+// the STORED IANA name; offsets are derived at display/report time, never
+// here.
+
+/** One resolved regional axis as the dev mock serves it. */
+interface MockRegionalValue {
+  value: string;
+  scope: 'location' | 'legal_entity' | 'organization' | 'built_in';
+}
+
+/** The effective regional configuration as the dev mock serves it. */
+interface MockRegionalConfig {
+  location_id: string;
+  legal_entity_id: string | null;
+  country_code: string | null;
+  locale: MockRegionalValue;
+  timezone: MockRegionalValue;
+  currency: MockRegionalValue;
+}
+
+/** Resolve the regional config for a mock location: the location's own
+ *  columns first, then the built-in defaults — the same narrowest-first
+ *  precedence the core resolver applies. The real backend also walks the
+ *  legal-entity layer, which the mock cannot model: its location rows carry
+ *  no locale column and its LegalEntityDto (like the real one) carries no
+ *  regional fields, so locale always answers built_in here. */
+function getMockRegionalConfig(args: unknown): MockRegionalConfig {
+  const { locationId } = unwrapArgs<{ locationId?: string }>(args);
+  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
+  const axis = (value: string, fallback: string): MockRegionalValue =>
+    value.trim() !== '' ? { value, scope: 'location' } : { value: fallback, scope: 'built_in' };
+  return {
+    location_id: location.id,
+    // The migration seed links every location to this entity id; the mock
+    // has no entity rows to walk, so it is surfaced verbatim.
+    legal_entity_id: 'default:default-legal-entity',
+    country_code: null,
+    locale: { value: 'en-US', scope: 'built_in' },
+    timezone: axis(location.timezone, 'UTC'),
+    currency: axis(location.currency, 'USD'),
+  };
+}
+
 /** A memo as the dev mock serves it. Mirrors `ui/src/api/memos.ts` `Memo`
  *  (camelCase wire shape). */
 interface MockMemo {
@@ -2330,6 +2378,12 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'get_legal_entity_scoped': getMockLegalEntity,
   'create_legal_entity_scoped': createMockLegalEntity,
   'update_legal_entity_scoped': updateMockLegalEntity,
+
+  // Regional configuration read model (regional slice 2). Registered here
+  // because scripts/verify-ipc-parity.py treats a missing dev-mock handler
+  // as a hard violation: invoke() would return null and the caller would
+  // silently render its failure path instead of erroring.
+  'get_regional_config_scoped': getMockRegionalConfig,
 
   'list_active_memos_scoped': listMockActiveMemos,
   'acknowledge_memo_scoped': acknowledgeMockMemo,

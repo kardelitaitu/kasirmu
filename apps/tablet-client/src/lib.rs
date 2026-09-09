@@ -671,6 +671,8 @@ pub fn run() {
                 commands::legal_entities::get_legal_entity_scoped,
                 commands::legal_entities::create_legal_entity_scoped,
                 commands::legal_entities::update_legal_entity_scoped,
+                // Regional configuration read model (slice 2, saas-2 design).
+                commands::regional::get_regional_config_scoped,
                 commands::offline::delete_offline_item_scoped,
                 commands::offline::enqueue_offline_scoped,
                 commands::offline::list_all_offline_scoped,

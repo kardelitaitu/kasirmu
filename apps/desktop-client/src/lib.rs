@@ -1198,6 +1198,8 @@ pub fn run() {
             commands::locations::update_location_profile_scoped,
             commands::locations::set_primary_location_scoped,
             commands::locations::delete_location_profile_scoped,
+            // Regional configuration read model (slice 2, saas-2 design).
+            commands::regional::get_regional_config_scoped,
             // ── Hardware, scale, branding, product variants, bundles (H-1) ──
             commands::hardware::open_cash_drawer_scoped,
             commands::hardware::print_receipt_scoped,
