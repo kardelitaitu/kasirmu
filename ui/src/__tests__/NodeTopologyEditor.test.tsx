@@ -11905,3 +11905,155 @@ describe('NodeTopologyEditor — viewport machinery characterization', () => {
   });
 });
 
+
+// ── Touch gesture characterization (3.4e touch hook protection) ──
+// Pins the POST-threshold semantics of the touch loop. coder-21's disarm
+// block already pinned the pre-threshold half (cancel restores, tap, pan,
+// basic zoom, unmount sweep); this block pins what happens PAST the 8px
+// TOUCH_DRAG_THRESHOLD and the exact pinch math.
+
+describe('NodeTopologyEditor — touch gesture characterization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('a pointercancel past the drag threshold commits the node drag exactly like pointerup', () => {
+    // The touch cancel handler delegates to the up handler, so a system
+    // gesture stealing the touch MID-DRAG (finger already past 8px) must
+    // COMMIT the drag — identical end state to a normal release — not
+    // restore the pre-drag position (that is the pre-threshold half).
+    // Proven by comparing two identical gestures that differ ONLY in
+    // up-vs-cancel on their final event.
+    renderEditor();
+    const node = () => document.querySelector('.topology-node') as HTMLElement;
+    const canvas = () => document.querySelector('.node-canvas-container') as HTMLElement;
+    const before = node().style.left;
+
+    // Mount A: the pointerup reference gesture.
+    fireEvent.pointerDown(node(), { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas(), { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    fireEvent.pointerUp(canvas(), { pointerId: 1, pointerType: 'touch' });
+    const committedByUp = node().style.left;
+    expect(committedByUp).not.toBe(before);
+    cleanup();
+
+    // Mount B: the same gesture, cancelled instead of released.
+    renderEditor();
+    expect(node().style.left).toBe(before);
+    fireEvent.pointerDown(node(), { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas(), { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    fireEvent.pointerCancel(document, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    expect(node().style.left).toBe(committedByUp);
+    cleanup();
+  });
+
+  it('after a past-threshold pointercancel the disposer really ran: a fresh touch gesture re-arms', () => {
+    // endTouchGesture runs the cleanup disposer on every full release,
+    // cancel included. A partial teardown (disposer never invoked, or the
+    // listeners removed without a re-arm path) would leave the NEXT touch
+    // gesture dead — pan must still work after a cancelled node drag.
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    fireEvent.pointerCancel(document, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+
+    fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: 'touch', clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: 'touch', clientX: 150, clientY: 130 });
+    fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: 'touch' });
+    expect(viewport.style.transform).toContain('translate(50px, 30px)');
+  });
+
+  it('two-finger pinch zooms AND pans through pinchTransform about the pinch midpoint', () => {
+    // The earlier touch describe pins only "zoom happened"; this pins the
+    // exact pinchTransform output. Fingers at (0,0) + (60,80): midpoint
+    // (30,40), distance 100 (exact 3-4-5 x20). Spread to distance 150 with
+    // the midpoint dragged to (75,0): ratio 1.5 (dyadic, so no float
+    // drift), zoom 1.5 and pan = mid1 - mid0*1.5 = (75,0) - (45,60) =
+    // (30,-60).
+    renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+
+    fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: 'touch', clientX: 60, clientY: 80 });
+    fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: 'touch', clientX: 150, clientY: 0 });
+
+    expect(document.querySelector('.canvas-zoom-level')?.textContent).toBe('150%');
+    expect(viewport.style.transform).toContain('translate(30px, -60px)');
+    expect(viewport.style.transform).toContain('scale(1.5)');
+
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+    fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: 'touch' });
+  });
+
+  it('a pinch during an in-flight node drag commits the drag (finalize, not revert)', () => {
+    // The second-finger branch calls finalizeNodeDrag() when a node drag is
+    // in flight: the node STAYS at its dragged position (a revert would
+    // restore 80px) and the drag's already-pushed history entry survives,
+    // so one undo returns the card to its start position.
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    expect(node.style.left).not.toBe('80px'); // drag in flight
+
+    fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: 'touch', clientX: 200, clientY: 200 });
+    fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: 'touch', clientX: 260, clientY: 200 });
+    expect(node.style.left).not.toBe('80px'); // pinch did NOT revert the drag
+    expect(document.querySelector('.canvas-zoom-level')?.textContent).not.toBe('100%');
+
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+    fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: 'touch' });
+
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
+    expect(node.style.left).toBe('80px');
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+  });
+
+  it('a touch drag below TOUCH_DRAG_THRESHOLD never arms a node drag', () => {
+    // hypot(5,3) is about 5.83px of travel - under the 8px threshold: the
+    // gesture must stay a tap candidate, never calling beginNodeDrag, so
+    // the node cannot move and no history entry (dirty dot) may appear.
+    // The tap selection from pointerdown is KEPT on release (node taps
+    // never route through the empty-canvas clearAll).
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: 'touch', clientX: 5, clientY: 3 });
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+
+    expect(node.style.left).toBe('80px');
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+    expect(node.className).toContain('node-selected');
+  });
+
+  it('a touch tap on a node selects it', () => {
+    // Selection happens at pointerdown (an unselected node collapses the
+    // selection to itself); the release with no movement must keep it,
+    // unlike a background tap, which clears the selection.
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+
+    expect(node.className).toContain('node-selected');
+    expect(within(node).getByText('Downtown Branch')).toBeTruthy();
+    expect(document.querySelectorAll('.topology-node.node-selected')).toHaveLength(1);
+  });
+});
