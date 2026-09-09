@@ -11352,3 +11352,189 @@ describe('NodeTopologyEditor — input controller disarm and teardown', () => {
     expect(parseFloat(tm![2]!)).toBeCloseTo(-30, 6);
   });
 });
+
+// ── Rename machinery characterization (pre-G5 extraction) ──────────
+// Pins the CURRENT behavior of the two inline rename clusters (node card +
+// wire relabel) before they move out of the editor: (a) the wire blur /
+// click-away commit path, (b) an empty relabel DELETING the label field,
+// (c) the keyboard focus-return to the wire hitbox, (d) the renameSaving
+// double-submit guard, (e) a rejected card commit keeping the draft open,
+// (f) the relabel's single undo entry.
+
+describe('NodeTopologyEditor — rename machinery characterization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  /** Open a wire's floating relabel input through its context menu (the same
+   *  entry point the shipped wire tests drive). */
+  const openWireRename = (wireId = 'w-1') => {
+    const hitbox = document.querySelector(`.wire-hitbox[data-wire-id="${wireId}"]`) as HTMLElement;
+    fireEvent.contextMenu(hitbox, { clientX: 400, clientY: 300 });
+    fireEvent.click(screen.getByText('Rename wire'));
+    return document.querySelector('.wire-rename-input') as HTMLInputElement;
+  };
+
+  const wireTitles = () =>
+    [...document.querySelectorAll('.wire-hitbox title')].map((t) => t.textContent ?? '');
+
+  const pillTexts = () =>
+    [...document.querySelectorAll('.wire-label-pill')].map((p) => p.textContent ?? '');
+
+  it('a wire relabel commits on blur and a click-away keeps the focus it took', () => {
+    // Gap (a): the onBlur commit path (the wire input's click-away) had no
+    // coverage at all — only Enter and Escape did. The blur path is also the
+    // one that must NOT return focus, so both halves are pinned together.
+    renderEditor();
+    const input = openWireRename();
+    expect(input.value).toBe('Binds Store');
+
+    fireEvent.change(input, { target: { value: 'Blur Backbone' } });
+
+    // The honest click-away: focus moves to another card, and jsdom fires the
+    // input's native blur on the way out — which is exactly React's onBlur
+    // commit path (fromKeyboard = false). act() keeps the resulting update
+    // synchronous instead of leaking a flush past this call.
+    const otherCard = document.querySelectorAll('.topology-node')[2] as HTMLElement;
+    act(() => { otherCard.focus(); });
+    if (input.isConnected) fireEvent.blur(input);
+
+    expect(wireTitles().some((t) => t.includes('Blur Backbone'))).toBe(true);
+    expect(wireTitles().some((t) => t.includes('Binds Store'))).toBe(false);
+    expect(document.querySelector('.wire-rename-input')).toBeNull();
+    // A blur commit must NOT pull focus back to the wire hitbox.
+    expect(document.activeElement).toBe(otherCard);
+    expect(document.activeElement?.getAttribute('data-wire-id')).toBeNull();
+  });
+
+  it('an empty wire relabel deletes the label field, leaving the endpoint-name display', async () => {
+    // Gap (b): commitWireRename DELETES the key (not label: ''), so the wire
+    // carries no label at all into the Apply payload. Whitespace-only input
+    // pins the trim as well.
+    localStorage.setItem('oz-topology-view-wire-labels:unassigned', '1');
+    const onSave = vi.fn();
+    renderEditor({ onSave });
+    expect(pillTexts().some((t) => t.includes('Binds Store'))).toBe(true);
+
+    const input = openWireRename();
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(document.querySelector('.wire-rename-input')).toBeNull();
+    // The pill falls back to the endpoint-name join, and the custom label is
+    // gone from every surface that reads it.
+    expect(pillTexts().some((t) => t.includes('Downtown Branch → Retail POS #1'))).toBe(true);
+    expect(pillTexts().some((t) => t.includes('Binds Store'))).toBe(false);
+
+    await applyWithPin();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const savedWires = onSave.mock.calls[0]![1] as Array<Record<string, unknown>>;
+    const w1 = savedWires.find((w) => w['id'] === 'w-1')!;
+    const w2 = savedWires.find((w) => w['id'] === 'w-2')!;
+    expect('label' in w1).toBe(false);
+    expect(w2['label']).toBe('Operation Feed');
+  });
+
+  it('a keyboard-driven wire rename close returns focus to that wire hitbox', () => {
+    // Gap (c): the focus-return effect was never observed — Enter and Escape
+    // both close as keyboard-driven, so both must land on the wire.
+    renderEditor();
+    const hitbox = () => document.querySelector('.wire-hitbox[data-wire-id="w-1"]') as HTMLElement;
+
+    let input = openWireRename();
+    fireEvent.change(input, { target: { value: 'Keyboard Backbone' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(document.activeElement).toBe(hitbox());
+    expect(wireTitles().some((t) => t.includes('Keyboard Backbone'))).toBe(true);
+
+    input = openWireRename();
+    fireEvent.change(input, { target: { value: 'Never Applied' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(document.activeElement).toBe(hitbox());
+    expect(wireTitles().some((t) => t.includes('Keyboard Backbone'))).toBe(true);
+    expect(wireTitles().some((t) => t.includes('Never Applied'))).toBe(false);
+  });
+
+  it('renameSaving blocks a blur that races an in-flight Enter commit', async () => {
+    // Gap (d): Enter arms renameSaving and awaits the parent; the still-open
+    // input's blur must not fire a second rename for the same draft.
+    let settle: (v: boolean) => void = () => {};
+    const onRenameBranch = vi.fn(
+      () => new Promise<boolean>((resolve) => { settle = resolve; }),
+    );
+    renderEditor({ onRenameBranch });
+
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
+    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Double Submit' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledTimes(1));
+    // Still in flight and still mounted: without the guard this blurs into a
+    // second identical rename round-trip.
+    fireEvent.blur(input);
+    expect(onRenameBranch).toHaveBeenCalledTimes(1);
+
+    settle(true);
+    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).getByText('Double Submit')).toBeTruthy());
+    expect(onRenameBranch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a rejected card rename keeps the draft open and releases the guard for a retry', async () => {
+    // Gap (e): the card path (commitNodeRename) keeps its form open on a false
+    // return — the body-config rejection coverage does not reach it.
+    const onRenameBranch = vi.fn().mockResolvedValue(false);
+    renderEditor({ onRenameBranch });
+
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
+    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Rejected HQ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Rejected HQ'));
+    const stillOpen = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    expect(stillOpen.value).toBe('Rejected HQ');
+    // Still open means still no local write: the card title element is not
+    // even rendered while the rename input owns that slot.
+    expect(storeCard.querySelector('.node-title')).toBeNull();
+
+    // The finally-released renameSaving is what makes the retry real: a second
+    // Enter must reach the parent again instead of being swallowed.
+    fireEvent.keyDown(stillOpen, { key: 'Enter' });
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledTimes(2));
+    expect(within(storeCard).getByLabelText('topology-branch-rename-placeholder')).not.toBeNull();
+
+    // Escape is the honest exit — and the canvas still holds the AUTHORITATIVE
+    // name, never the rejected one.
+    fireEvent.keyDown(stillOpen, { key: 'Escape' });
+    await waitFor(() => expect(within(storeCard).getByText('Downtown Branch')).toBeTruthy());
+  });
+
+  it('a wire relabel pushes one undo entry and marks the canvas dirty', () => {
+    // Gap (f): the relabel's dirty half was pinned; the pushHistory() half —
+    // exactly ONE entry for the whole commit — was not.
+    renderEditor();
+    const input = openWireRename();
+    fireEvent.change(input, { target: { value: 'Undoable Feed' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(document.querySelector('.topology-dirty-dot')).not.toBeNull();
+    expect(wireTitles().some((t) => t.includes('Undoable Feed'))).toBe(true);
+
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
+    expect(wireTitles().some((t) => t.includes('Undoable Feed'))).toBe(false);
+    expect(wireTitles().some((t) => t.includes('Binds Store'))).toBe(true);
+    // One entry consumed and the canvas is back on the applied snapshot.
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+  });
+});
