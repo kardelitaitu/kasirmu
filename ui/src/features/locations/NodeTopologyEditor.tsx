@@ -15,6 +15,7 @@ import { TopologyEmptyState } from './topologyEmptyState';
 import { TopologyAlignBar } from './topologyAlignBar';
 import { TopologyAlignmentGuides } from './topologyAlignmentGuides';
 import { TopologyGhostLayer } from './topologyGhostLayer';
+import { TopologyCrossingLayer } from './topologyCrossingLayer';
 import {
   NODE_WIDTH,
   NODE_HEIGHT,
@@ -2479,33 +2480,15 @@ export default function NodeTopologyEditor({
               stubSvgBounds={stubSvgBounds}
             />
 
-            {/* Round 146: the under-card segments of wires that cross a card
-                they do not connect to, drawn on top so the wire reads as
-                continuous. pointer-events-none — the overlay never steals
-                clicks or hover from the card below. */}
-            {wireUnderCardPaths.size > 0 && (
-              <svg className="node-wires-crossing" style={{ width: svgBounds.width, height: svgBounds.height }}>
-                {[...wireUnderCardPaths.entries()].map(([wireId, d]) => {
-                  // Round 151: the overlay must mirror the base wire's
-                  // interaction states (hover brightens, selected turns
-                  // info-blue, hover-focus mode dims) or the wire visibly
-                  // splits again the moment the user interacts with it —
-                  // the exact continuity defect round 146 fixed, but on
-                  // hover/selection instead of the static render.
-                  const crossingWire = wires.find((w) => w.id === wireId);
-                  const dimmed = hoverConnections !== null
-                    && (crossingWire === undefined
-                      || (crossingWire.fromNodeId !== hoveredNodeId
-                        && crossingWire.toNodeId !== hoveredNodeId));
-                  const cls = [
-                    hoveredWireId === wireId ? 'node-wires-crossing-hover' : null,
-                    selectedWireId === wireId ? 'node-wires-crossing-selected' : null,
-                    dimmed ? 'node-wires-crossing-dimmed' : null,
-                  ].filter(Boolean).join(' ') || undefined;
-                  return <path key={wireId} d={d} className={cls} pointerEvents="none" />;
-                })}
-              </svg>
-            )}
+            <TopologyCrossingLayer
+              wires={wires}
+              wireUnderCardPaths={wireUnderCardPaths}
+              svgBounds={svgBounds}
+              hoveredWireId={hoveredWireId}
+              selectedWireId={selectedWireId}
+              hoverConnections={hoverConnections}
+              hoveredNodeId={hoveredNodeId}
+            />
           </div>
 
           {/* ── Canvas HUD — status readouts only; the zoom readout
