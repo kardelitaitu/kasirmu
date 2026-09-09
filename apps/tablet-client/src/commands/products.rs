@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
+use oz_core::availability::UsageCounts;
+use oz_core::entitlements::Entitlements;
 use oz_core::{Money, Store};
 
 use oz_core::events::{ProductCreated, StockAdjusted};
@@ -401,7 +403,9 @@ pub async fn create_product(
         if args.cost_minor != 0 {
             require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_EDIT_COST)?;
         }
-        store.enforce_product_quota(&sub.effective_tier())?;
+        store.enforce_product_quota(
+            &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+        )?;
 
         let currency: oz_core::Currency = args
             .currency
@@ -839,7 +843,9 @@ pub async fn create_product_scoped(
         if args.cost_minor != 0 {
             require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
         }
-        store.enforce_product_quota(&sub.effective_tier())?;
+        store.enforce_product_quota(
+            &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+        )?;
 
         let currency: oz_core::Currency = args
             .currency

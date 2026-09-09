@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use oz_core::availability::UsageCounts;
+use oz_core::entitlements::Entitlements;
 use oz_core::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
 use oz_core::inventory_transaction::InventoryTransactionId;
 use oz_core::{Money, Store};
@@ -545,7 +547,9 @@ pub async fn create_product_scoped(
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
 
-        store.enforce_product_quota(&sub.effective_tier())?;
+        store.enforce_product_quota(
+            &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+        )?;
 
         let currency: oz_core::Currency = args
             .currency
