@@ -146,10 +146,13 @@ impl Store<'_> {
         // default rate, and concurrent writers cannot race the flag swap.
         let tx = self.conn.unchecked_transaction()?;
         if is_default {
-            tx.execute(
-                "UPDATE tax_rates SET is_default = 0 WHERE is_default = 1",
-                [],
-            )?;
+            // This writer cannot produce a scoped row, so the tier it belongs to
+            // is always the tenant-global one. Clearing table-wide — what this
+            // statement used to do — let a new global default silently
+            // un-default every entity and location tier; the predicate below is
+            // the global arm of clear_tier_default, which is the rule the
+            // per-tier indexes state.
+            Self::clear_tier_default(&tx, &TaxRateScope::Global)?;
         }
 
         let id = uuid::Uuid::now_v7().to_string();
@@ -189,10 +192,13 @@ impl Store<'_> {
         // with a stale default flag.
         let tx = self.conn.unchecked_transaction()?;
         if is_default {
-            tx.execute(
-                "UPDATE tax_rates SET is_default = 0 WHERE is_default = 1",
-                [],
-            )?;
+            // This writer cannot produce a scoped row, so the tier it belongs to
+            // is always the tenant-global one. Clearing table-wide — what this
+            // statement used to do — let a new global default silently
+            // un-default every entity and location tier; the predicate below is
+            // the global arm of clear_tier_default, which is the rule the
+            // per-tier indexes state.
+            Self::clear_tier_default(&tx, &TaxRateScope::Global)?;
         }
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);

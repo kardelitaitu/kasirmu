@@ -1726,3 +1726,46 @@ fn tax_rate_window_reports_a_malformed_stored_date_verbatim() {
         "the untrusted row prices nothing"
     );
 }
+
+#[test]
+fn the_unscoped_writer_still_leaves_scoped_tiers_alone() {
+    // The D5 fix is not confined to the scoped writers. create_tax_rate is
+    // reachable from the IPC today and can only ever write a tenant-global row,
+    // so its table-wide clear used to wipe every entity and location default in
+    // the database the moment an operator set an application default.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let ent = s
+        .create_tax_rate_scoped(
+            "Entity default",
+            1200,
+            true,
+            false,
+            &TaxRateScope::LegalEntity("ent-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    let loc = s
+        .create_tax_rate_scoped(
+            "Location default",
+            1100,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+
+    assert!(s.get_tax_rate(&global.id).unwrap().unwrap().is_default);
+    assert!(
+        s.get_tax_rate(&ent.id).unwrap().unwrap().is_default,
+        "a tenant-global default must not reach into the entity tier"
+    );
+    assert!(
+        s.get_tax_rate(&loc.id).unwrap().unwrap().is_default,
+        "...or the location tier"
+    );
+}
