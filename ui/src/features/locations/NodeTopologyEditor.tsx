@@ -29,7 +29,6 @@ import {
   findFreeSpawnSpot,
   NODE_WIDTH,
   NODE_HEIGHT,
-  nodeBoxesOverlap,
   resolveDropOverlaps,
   findOverlappingNodeIds,
 } from './nodeTopologyClamp';
@@ -84,6 +83,7 @@ import { useTopologyEditorBendDrag } from './topologyEditorBendDrag';
 import { useTopologyEditorPointer } from './nodeTopologyEditorPointer';
 import { useTopologyEditorTouch } from './nodeTopologyEditorTouch';
 import { useTopologyEditorViewport } from './nodeTopologyEditorViewport';
+import { useTopologyEditorKeyboard } from './nodeTopologyEditorKeyboard';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -104,7 +104,6 @@ import {
   elbowPoints,
   polylineD,
   canvasStateEqual,
-  computeAlignmentGuides,
   diagramNodeToCanvas,
   diagramWireToCanvas,
   diagramOverflowsCanvas,
@@ -2451,350 +2450,64 @@ export default function NodeTopologyEditor({
    *  definition and read by the effect — always the current render's fn. */
   const handleAddNodeRef = useRef<((type: NodeType) => void) | null>(null);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      // Any key press hands the view to the user — the one-shot load
-      // auto-fit must never yank it afterwards (even Delete/Undo, which
-      // change the content key, must not trigger a refit).
-      userInteractedRef.current = true;
-      // Guard: don't handle canvas shortcuts while the user is typing in a text field.
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return;
-      }
-      // Guard: while a non-canvas control (tool rack, header, inspector)
-      // owns keyboard focus, canvas shortcuts are inert — a stray
-      // Delete/Backspace/arrow after clicking a tool-card or header button
-      // would otherwise mutate (or instantly delete) the selected element
-      // the user is not looking at. Canvas-internal elements (node cards,
-      // port sockets, wire labels) are NOT covered and keep their
-      // shortcuts, so keyboard Delete on a focused node still works.
-      // `closest` only exists on Elements — keydown can target window/document
-      // (tests, programmatic dispatch), which must never throw out of the guard.
-      if (target && typeof target.closest === 'function'            && target.closest('.node-tool-rack, .node-topology-header, .node-inspector-drawer, .topology-apply-confirm-overlay')) {
-        return;
-      }
-      // Guard: a confirm dialog owns the keyboard while it is open — Escape
-      // (and any canvas shortcut) must not clear the selection or mutate the
-      // canvas under an open delete/preset dialog. The Modal's focus trap
-      // closes the dialog itself (bubble order: document listener first).
-      // NOTE: every editor-owned confirm dialog must be added to this
-      // condition, or its Escape/shortcut handling will leak into the canvas.
-      if (relationshipPicker) {
-        // The relationship picker owns the keyboard while open: Escape
-        // closes it (cancelling the in-flight connection); everything
-        // else must NOT leak into the canvas.
-        if (e.key === 'Escape') cancelRelationshipPicker();
-        return;
-      }
-      if (migrationOpen) {
-        // The legacy-migration dialog owns the keyboard while open: Escape
-        // dismisses it (same contract as Later); everything else must NOT
-        // leak into the canvas — a stray Delete/arrow would otherwise edit
-        // the canvas under the modal.
-        if (e.key === 'Escape') {
-          migrationDismissedRef.current = true;
-          setMigrationOpen(false);
-        }
-        return;
-      }
-      if (confirmDelete || confirmDeleteMany) {
-        return;
-      }
-      // Tool-slot shortcuts: 1-4 spawn nodes from the palette, matching the
-      // rack's card order (Store, Workspace, Warehouse, Hardware). Bare keys
-      // only — no modifier, no auto-repeat. The guards above already keep
-      // these inert while typing or when a non-canvas control owns focus.
-      // NEW: the spawn additionally requires the keydown target to be INSIDE
-      // the canvas (or a canvas-internal element) — focus on the page body,
-      // a floating dialog, or any chrome outside the canvas no longer
-      // spawns a stray node from a careless keystroke.
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
-        const inCanvas = target
-          && typeof target.closest === 'function'
-          && target.closest('.node-canvas-container');
-        if (inCanvas) {
-          const spawnBySlot: Record<string, NodeType> = {
-            '1': 'store',
-            '2': 'workspace',
-            '3': 'warehouse',
-            '4': 'hardware',
-          };
-          const spawnType = spawnBySlot[e.key];
-          if (spawnType) {
-            e.preventDefault();
-            handleAddNodeRef.current?.(spawnType);
-            return;
-          }
-        }
-      }
-      // Alt pressed MID-move converts the drag into a duplicate (Figma):
-      // only while a node drag is in flight and not already duplicating.
-      if (e.key === 'Alt' && !e.repeat && dragStartRef.current.size > 0 && !duplicateDragRef.current) {
-        convertDragToDuplicate();
-        return;
-      }
-      if (e.key === 'Escape') {
-        // Escape closes the finder overlay first — it owns the canvas while
-        // open, so a plain Escape must not clear the selection underneath.
-        if (finderOpen) {
-          setFinderOpen(false);
-          return;
-        }
-        // Escape mid-Alt+drag cancels the duplication: the preview copies
-        // are discarded and the originals keep the selection (no history
-        // entry — nothing was committed).
-        if (duplicateDragRef.current) {
-          cancelDuplicateDrag();
-          return;
-        }
-        // Escape mid-bend-drag restores the bend (or removes a ghost-created
-        // one) and pops the drag's history entry — same Figma semantics as
-        // the node-move cancel below. bendDragRef is set only by a real
-        // handle/ghost mousedown, so a stale value cannot swallow the plain
-        // Escape.
-        if (bendDragRef.current) {
-          cancelBendDrag();
-          return;
-        }
-        // Escape mid-MOVE snaps the dragged nodes back to their start
-        // positions (Figma semantics) and keeps the selection. Guarded on
-        // the drag having actually MOVED: a bare mousedown (select-first,
-        // port-click sequence) leaves dragStartRef populated but is not a
-        // move to cancel — a stale cancel would swallow the normal Escape
-        // (connection/selection clear) below.
-        if (dragStartRef.current.size > 0 && dragHasMovedRef.current) {
-          cancelNodeMove();
-          return;
-        }
-        // Escape mid-marquee cancels the box and disarms its document
-        // finalizer — a release after Escape must not commit a selection
-        // from a cancelled marquee (the box would otherwise linger until
-        // the next mousedown/mouseup cycle).
-        if (marqueeStartRef.current) {
-          cancelMarquee();
-          return;
-        }
-        cancelConnection();
-        clearAll();
-        return;
-      }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedNodeIds.size > 0 || selectedWireId)) {
-        e.preventDefault();
-        if (selectedNodeIds.size > 0) {
-          // Filter out Branch Location nodes — they are permanent anchors.
-          const targets = [...selectedNodeIds].filter((id) => !isBranchLocation(id));
-          if (targets.length === 0) return; // Only Branch Location(s) selected
-          const hasWires = wires.some((w) => targets.includes(w.fromNodeId) || targets.includes(w.toNodeId));
-          if (hasWires) {
-            // A single wired node keeps the established dialog; 2+ use the
-            // count-aware batch dialog.
-            if (targets.length === 1) setConfirmDelete(targets[0]!);
-            else setConfirmDeleteMany(targets);
-          } else {
-            // No connected wires — delete immediately without dialog.
-            deleteNodes(targets);
-          }
-        } else {
-          setConfirmDelete('');
-        }
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          popRedo();
-        } else {
-          popUndo();
-        }
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        e.preventDefault();
-        popRedo();
-        return;
-      }
-      // Ctrl+I — jump focus to the first inspector input when a node is selected
-      if ((e.ctrlKey || e.metaKey) && e.key === 'i' && selectedNodeIds.size > 0) {
-        e.preventDefault();
-        const firstInput = document.querySelector('.inspector-content input');
-        if (firstInput instanceof HTMLElement) {
-          firstInput.focus();
-        }
-        return;
-      }
-      // Clipboard & bulk selection: Ctrl+A select all, Ctrl+D duplicate the
-      // selection, Ctrl+C copy, Ctrl+V paste. The typing guard at the top of
-      // this handler already returns early inside INPUT/TEXTAREA/contentEditable,
-      // so native field copy/paste/select-all is never hijacked.
-      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-        e.preventDefault();
-        selectAllNodes();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-        e.preventDefault();
-        duplicateSelection();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-        e.preventDefault();
-        copySelection();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-        e.preventDefault();
-        pasteClipboard();
-        return;
-      }
-      // Zoom shortcuts: Ctrl+0 fit the whole diagram, Ctrl+1 100%, Ctrl+= in,
-      // Ctrl+- out — the standard diagram-tool set. The typing guard above
-      // keeps native browser zoom intact inside text fields.
-      if ((e.ctrlKey || e.metaKey) && (e.key === '0' || e.key === '1' || e.key === '=' || e.key === '+' || e.key === '-')) {
-        e.preventDefault();
-        if (e.key === '0') zoomToFit();
-        else if (e.key === '1') resetView();
-        else if (e.key === '=' || e.key === '+') zoomBy(1.25);
-        else zoomBy(1 / 1.25);
-        return;
-      }
-      // Ctrl+F — open the node finder (typing guard above keeps native
-      // browser find intact inside text fields).
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        setFinderOpen(true);
-        return;
-      }
-      // F2 — inline rename of the single selected renameable node, same
-      // flow as the card pencil (store/workspace with a rename callback).
-      // The typing guard above already keeps F2 inert inside text fields.
-      if (e.key === 'F2' && selectedNodeIds.size === 1) {
-        e.preventDefault();
-        // The renameable type gate and the node lookup now live in
-        // startNodeRename, shared with the card and context-menu entry points
-        // (slice R2). preventDefault keeps its old unconditional placement —
-        // F2 is swallowed for a single selection even when the node is not
-        // renameable, which is what the browser-inert behavior was before.
-        startNodeRename([...selectedNodeIds][0]!);
-        return;
-      }
-      if (selectedNodeIds.size > 0 && !e.repeat && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        e.preventDefault();
-        // Shift = FINE nudge (1px, pixel-exact — never grid-rounded); plain
-        // arrows move one full grid step when snap is on (deterministic,
-        // no dead presses on-grid) or the raw 8px step when it is off.
-        const step = e.shiftKey ? 1 : (snapEnabled ? GRID_SIZE : 8);
-        const fine = e.shiftKey;
-        // Arrow nudges share the SAME dynamic edge clamp as mouse dragging,
-        // so keyboard and pointer movement agree on the reachable bounds.
-        // The whole multi-selection nudges together. Positions are computed
-        // UP FRONT (not inside the updater) so the alignment engine below
-        // can run on the exact post-nudge geometry.
-        const canvas = canvasRef.current;
-        const next = new Map<string, { x: number; y: number }>();
-        for (const n of nodes) {
-          if (!selectedNodeIds.has(n.id)) continue;
-          const rawX = n.x + (e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0);
-          const rawY = n.y + (e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0);
-          const clamped = clampNodeToViewport(rawX, rawY, {
-            panX: pan.x,
-            panY: pan.y,
-            zoom,
-            canvasW: canvas?.clientWidth ?? 0,
-            canvasH: canvas?.clientHeight ?? 0,
-          });
-          next.set(n.id, {
-            x: fine ? clamped.x : (snapEnabled ? snap(clamped.x) : clamped.x),
-            y: fine ? clamped.y : (snapEnabled ? snap(clamped.y) : clamped.y),
-          });
-        }
-        // Block a nudge that would step any selected node's box into a
-        // STATIONARY node's box (round 141) — the keyboard path must respect
-        // the same no-overlap invariant as drops. Selection members move
-        // together (rigid), so they cannot newly overlap each other; only
-        // stationary nodes matter. Flush alignment (zero gap, the guide
-        // landing) is not an overlap and stays reachable. A blocked nudge is
-        // NOT an edit: no history entry, no movement — the user hits a wall
-        // and goes around instead of stepping a card under a neighbour.
-        let blocked = false;
-        for (const n of nodes) {
-          if (selectedNodeIds.has(n.id)) continue;
-          for (const pos of next.values()) {
-            if (nodeBoxesOverlap(pos, n)) {
-              blocked = true;
-              break;
-            }
-          }
-          if (blocked) break;
-        }
-        if (blocked) return;
-        // Nudge-burst coalescing: discrete arrow presses within
-        // NUDGE_COALESCE_MS on the same selection share ONE undo entry
-        // (undo reverts the whole burst). The burst's FIRST press pushed
-        // the entry (snapshotting the origin); continuation presses move
-        // the nodes without pushing. A gap, selection change, other edit,
-        // undo/redo, or fresh canvas ends the burst.
-        const now = Date.now();
-        const nudgeSession = nudgeSessionRef.current;
-        const sameBurst =
-          nudgeSession !== null &&
-          now - nudgeSession.lastNudgeAt < NUDGE_COALESCE_MS &&
-          nudgeSession.nodeIds.size === selectedNodeIds.size &&
-          [...selectedNodeIds].every((id) => nudgeSession.nodeIds.has(id));
-        if (sameBurst) {
-          nudgeSession.lastNudgeAt = now;
-        } else {
-          pushHistory();
-          nudgeSessionRef.current = { nodeIds: new Set(selectedNodeIds), lastNudgeAt: now };
-        }
-        // Figma-style alignment on FINE nudges only: the round-22 guide
-        // engine runs on the nudged selection, so a Shift+arrow landing
-        // flush against a neighbour shows the live guide. ENTRY-ONLY snap:
-        // the correction applies only when the nudge itself crosses INTO the
-        // 6px band (the pre-nudge position was outside it) — once inside,
-        // raw 1px moves stand, so a snap can never eat every subsequent
-        // nudge. The guide lingers while the band is held and clears when a
-        // nudge (fine or grid) leaves it. Plain arrows skip the engine: they
-        // are grid steps by design and clear any lingering guide.
-        let dx = 0;
-        let dy = 0;
-        if (fine && next.size > 0) {
-          const before = new Map<string, { x: number; y: number }>();
-          for (const n of nodes) {
-            if (selectedNodeIds.has(n.id)) before.set(n.id, { x: n.x, y: n.y });
-          }
-          const after = computeAlignmentGuides(next, selectedNodeIds, nodes);
-          const pre = computeAlignmentGuides(before, selectedNodeIds, nodes);
-          const inX = after.alignedX;
-          const inY = after.alignedY;
-          const enterX = after.alignedX && !pre.alignedX;
-          const enterY = after.alignedY && !pre.alignedY;
-          // Delta is the reference MINUS the dragged axis: a nudge must land
-          // exactly flush on the line. Applied to the whole group, so it stays
-          // rigid. (NOTE: the drag path applies the same delta with the
-          // opposite sign — a known stick-lead discrepancy, journaled.)
-          if (enterX) dx = -after.dx;
-          if (enterY) dy = -after.dy;
-          setAlignmentGuide(
-            inX || inY
-              ? { ...(inX ? { x: after.x } : {}), ...(inY ? { y: after.y } : {}) }
-              : null,
-          );
-        } else {
-          setAlignmentGuide(null);
-        }
-        setNodes((prev) =>
-          prev.map((n) => {
-            const p = next.get(n.id);
-            if (!p) return n;
-            return { ...n, x: p.x + dx, y: p.y + dy };
-          }),
-        );
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedNodeIds, selectedWireId, wires, pushHistory, popUndo, popRedo, confirmDelete, confirmDeleteMany, pan, zoom, deleteNodes, relationshipPicker, cancelRelationshipPicker, selectAllNodes, duplicateSelection, copySelection, pasteClipboard, nodes, startNodeRename, zoomToFit, zoomBy, resetView, snapEnabled, cancelDuplicateDrag, cancelNodeMove, convertDragToDuplicate, cancelBendDrag, finderOpen, clearSelection, setNodes, migrationOpen, cancelConnection, cancelMarquee, clearAll]);
+  /** Central canvas keyboard controller (slice 3.4d). The window keydown
+   *  effect moved verbatim into nodeTopologyEditorKeyboard; every ref, setter
+   *  and module constant it reads stays parent-owned and is passed in. */
+  useTopologyEditorKeyboard({
+    selectedNodeIds,
+    selectedWireId,
+    wires,
+    pushHistory,
+    popUndo,
+    popRedo,
+    confirmDelete,
+    confirmDeleteMany,
+    pan,
+    zoom,
+    deleteNodes,
+    relationshipPicker,
+    cancelRelationshipPicker,
+    selectAllNodes,
+    duplicateSelection,
+    copySelection,
+    pasteClipboard,
+    nodes,
+    startNodeRename,
+    zoomToFit,
+    zoomBy,
+    resetView,
+    snapEnabled,
+    cancelDuplicateDrag,
+    cancelNodeMove,
+    convertDragToDuplicate,
+    cancelBendDrag,
+    finderOpen,
+    clearSelection,
+    setNodes,
+    migrationOpen,
+    cancelConnection,
+    cancelMarquee,
+    clearAll,
+    userInteractedRef,
+    migrationDismissedRef,
+    handleAddNodeRef,
+    dragStartRef,
+    duplicateDragRef,
+    bendDragRef,
+    dragHasMovedRef,
+    marqueeStartRef,
+    nudgeSessionRef,
+    canvasRef,
+    setFinderOpen,
+    setMigrationOpen,
+    setConfirmDelete,
+    setConfirmDeleteMany,
+    setAlignmentGuide,
+    GRID_SIZE,
+    NUDGE_COALESCE_MS,
+    snap,
+    isBranchLocation,
+  });
 
   const executeDelete = useCallback(() => {
     if (confirmDeleteMany) {
