@@ -21,9 +21,12 @@
 //! hook order — and therefore its effect order — exactly as it was. 3.4c-2 then
 //! relocated the call site UP to the duplicate cluster's vacated position, so the
 //! parent keydown effect (which sits below it) can name the three returned cancels.
-//! The cluster were the ONLY hooks in that span and this hook registers no effect of
-//! its own, so the move re-slots useCallbacks only — every pre-existing parent effect
-//! keeps the relative order it had before.
+//! The cluster were the ONLY hooks in that span, so the move re-slotted useCallbacks
+//! only — every pre-existing parent effect kept the relative order it had before.
+//! The hook now registers effects of its own: one per parent-owned cleanup ref it
+//! writes (drag/pan/marquee), each firing that ref's disposer at unmount so listener
+//! disposal no longer depends solely on the editor's unmount sweep (transient
+//! double-fire accepted — every disposer is a functional no-op on second invocation).
 //! Owns the seven gestures the canvas element itself receives: handleCanvasMouseMove
 //! (node-drag feed + marquee rect tracking + connection snap-to-port, including the
 //! hoveredTarget identity-preserve rule that keeps memoized cards from re-rendering),
@@ -48,7 +51,7 @@
 //! hook call evaluates its args at render time; it stays parent-owned, only its
 //! declaration site changed.
 
-import { useCallback, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, type MutableRefObject, type SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
 import type { ToastType } from '@/frontend/shared/Toast';
 import type { PortName, TopologyNodeData, TopologyWireData } from './NodeTopologyEditor';
@@ -1060,6 +1063,19 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
       return newZoom;
     });
   };
+
+  // The hook registers its own unmount cleanups so listener disposal no longer
+  // depends solely on the editor's unmount sweep. Until the sweep is retired,
+  // both run at unmount — accepted by design: every disposer below is a
+  // functional no-op on second invocation (removeEventListener + ref-nulling /
+  // constant-reset writes; the pan disposer's setPanGestureActive(false) is a
+  // constant-valued setState that React bails out via Object.is, and at unmount
+  // the update is discarded anyway). Each ref is a parent-owned stable identity,
+  // listed per the linter's demand — a no-op for churn since the ref objects
+  // never change — so each effect arms once.
+  useEffect(() => () => { dragCleanupRef.current?.(); }, [dragCleanupRef]);
+  useEffect(() => () => { panCleanupRef.current?.(); }, [panCleanupRef]);
+  useEffect(() => () => { marqueeCleanupRef.current?.(); }, [marqueeCleanupRef]);
 
   return {
     handleCanvasMouseMove,
