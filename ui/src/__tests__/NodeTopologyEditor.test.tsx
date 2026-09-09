@@ -11538,3 +11538,243 @@ describe('NodeTopologyEditor — rename machinery characterization', () => {
     expect(document.querySelector('.topology-dirty-dot')).toBeNull();
   });
 });
+
+// ── Viewport machinery characterization (pre-3.5a extraction) ────────
+// Pins the CURRENT behavior of the G2 viewport block (pan/zoom state,
+// debounced per-branch persistence, restore clamping, reset/fit anchors,
+// auto-fit suppression, zoom-picker popover ownership) before slice 3.5a
+// moves it out of the editor. Gaps closed: (b) the unmount flush inside
+// the 250ms persist window; (c) clamp-on-restore of an out-of-range saved
+// zoom; (d) resetView's Branch-Location anchor and its no-store fallback;
+// (e) the restored-view half of auto-fit suppression; (f) what the zoom
+// picker does and does not own (inside mousedown, toggle-close).
+
+describe('NodeTopologyEditor — viewport machinery characterization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.useRealTimers();
+  });
+
+  const viewKey = (branch?: string) => `oz-topology-viewport:${branch ?? 'unassigned'}`;
+  const zoomLevel = () => document.querySelector('.canvas-zoom-level')?.textContent;
+  const transform = () => (document.querySelector('.node-canvas-viewport') as HTMLElement).style.transform;
+  const canvas = () => document.querySelector('.node-canvas-container') as HTMLElement;
+  /** The live pan/zoom as rendered — the same numbers a persist must capture. */
+  const readTransform = () => {
+    const m = /translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px\s*\)\s*scale\(\s*([-\d.]+)\s*\)/.exec(transform());
+    if (!m) throw new Error(`unparsable viewport transform: ${transform()}`);
+    return { x: parseFloat(m[1]!), y: parseFloat(m[2]!), zoom: parseFloat(m[3]!) };
+  };
+  type SavedView = { zoom: number; pan: { x: number; y: number } };
+  const readSavedView = (key: string): SavedView | null => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : (JSON.parse(raw) as SavedView);
+  };
+
+  it('defers the viewport write until the 250ms debounce has elapsed', () => {
+    // Gap (b), first half: the write is debounced, not per-change. An
+    // extraction that drops the timer (or fires it synchronously) turns
+    // every pointer-move into a localStorage write.
+    vi.useFakeTimers();
+    const key = viewKey('branch-a');
+    renderEditor({ branchId: 'branch-a' });
+    expect(localStorage.getItem(key)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+
+    act(() => { vi.advanceTimersByTime(249); });
+    expect(localStorage.getItem(key)).toBeNull();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(readSavedView(key)?.zoom).toBeCloseTo(1.25, 5);
+  });
+
+  it('flushes the pending viewport write on unmount, inside the debounce window', () => {
+    // Gap (b), the half that actually loses data: a branch switch (which
+    // remounts the editor) landing < 250ms after the last pan must not drop
+    // that pan. Two mutations after mount, so the flush has to carry the
+    // LATEST value — not the mount identity, not the intermediate 1.1.
+    vi.useFakeTimers();
+    const key = viewKey('branch-a');
+    const first = renderEditor({ branchId: 'branch-a' });
+
+    fireEvent.wheel(canvas(), { deltaY: -100, clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    const live = readTransform();
+    expect(live.zoom).toBeCloseTo(1.375, 5); // 1 → 1.1 (wheel) → 1.375 (+25%)
+    expect(localStorage.getItem(key)).toBeNull(); // still inside the window
+
+    first.unmount();
+
+    const saved = readSavedView(key);
+    expect(saved).not.toBeNull();
+    expect(saved!.zoom).toBeCloseTo(live.zoom, 5);
+    expect(saved!.pan.x).toBeCloseTo(live.x, 5);
+    expect(saved!.pan.y).toBeCloseTo(live.y, 5);
+
+    // And the remount lands exactly where the user left the canvas.
+    renderEditor({ branchId: 'branch-a' });
+    expect(zoomLevel()).toBe('138%');
+  });
+
+  it('clamps an out-of-range saved zoom into the 0.4..2.0 band on restore and keeps the saved pan', () => {
+    // Gap (c): the clamp lives in the useState initializer, so a stale or
+    // hand-edited 5x / 0.05x value can never reach the transform. The pan is
+    // deliberately NOT clamped — restoring it verbatim is the contract.
+    localStorage.setItem(viewKey('branch-hi'), JSON.stringify({ zoom: 5, pan: { x: 120, y: -40 } }));
+    const hi = renderEditor({ branchId: 'branch-hi' });
+    expect(zoomLevel()).toBe('200%');
+    expect(transform()).toBe('translate(120px, -40px) scale(2)');
+    hi.unmount();
+
+    localStorage.clear();
+    localStorage.setItem(viewKey('branch-lo'), JSON.stringify({ zoom: 0.05, pan: { x: 0, y: 0 } }));
+    renderEditor({ branchId: 'branch-lo' });
+    expect(zoomLevel()).toBe('40%');
+    expect(transform()).toBe('translate(0px, 0px) scale(0.4)');
+  });
+
+  it('mounts at identity when the saved view is unparsable or only half-shaped', () => {
+    // Gap (c), the reject half: a corrupt record must not leave the canvas
+    // unusable, and a zoom with no pan is rejected as a whole — no partial
+    // restore that moves the diagram without the user asking.
+    localStorage.setItem(viewKey('bad'), '{not json');
+    const first = renderEditor({ branchId: 'bad' });
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe('translate(0px, 0px) scale(1)');
+    first.unmount();
+
+    localStorage.clear();
+    localStorage.setItem(viewKey('half'), JSON.stringify({ zoom: 1.5 }));
+    renderEditor({ branchId: 'half' });
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe('translate(0px, 0px) scale(1)');
+  });
+
+  it('Reset View anchors the Branch Location card at the fixed margin instead of the canvas origin', () => {
+    // Gap (d), the anchor half: reset is not "identity", it is
+    // margin(60) − store position. The expectation is computed from the
+    // card's own canvas coords so the pin survives preset drift.
+    renderEditor();
+    const store = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    const storeX = parseFloat(store.style.left);
+    const storeY = parseFloat(store.style.top);
+
+    fireEvent.wheel(canvas(), { deltaY: -100, clientX: 40, clientY: 40 });
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(transform()).not.toBe('translate(0px, 0px) scale(1)');
+
+    fireEvent.click(screen.getByText('Reset View'));
+
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe(`translate(${60 - storeX}px, ${60 - storeY}px) scale(1)`);
+  });
+
+  it('Reset View falls back to the identity transform when the diagram has no Branch Location', async () => {
+    // Gap (d), the fallback half: with no 'store' node the ternary must land
+    // on {0,0} — and still reset zoom to 1.
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [{ id: 'n-solo', type: 'workspace', name: 'Solo POS', x: 900, y: 700, metadata: { typeKey: 'store-pos' } }],
+      wires: [],
+    } as never);
+    renderEditor();
+    await waitFor(() => expect(getNodeCount()).toBe(1));
+
+    fireEvent.wheel(canvas(), { deltaY: -100, clientX: 10, clientY: 10 });
+    expect(transform()).not.toBe('translate(0px, 0px) scale(1)');
+
+    fireEvent.click(screen.getByText('Reset View'));
+
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe('translate(0px, 0px) scale(1)');
+  });
+
+  it('does not auto-fit an overflowing diagram whose view came back from storage', async () => {
+    // Gap (e): restoredViewRef is the second suppression gate and had no
+    // coverage. The same geometry that the auto-fit suite expects to land on
+    // scale(0.4) must stay put when this branch already has a saved view.
+    localStorage.setItem(viewKey(), JSON.stringify({ zoom: 1, pan: { x: 500, y: 500 } }));
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [
+        { id: 'a', type: 'store', name: 'A', x: 0, y: 0 },
+        { id: 'b', type: 'workspace', name: 'B', x: 2000, y: 100, metadata: { typeKey: 'store-pos' } },
+      ],
+      wires: [],
+    } as never);
+    renderEditor();
+    mockCanvasSize(800, 600);
+    await waitFor(() => expect(getNodeCount()).toBe(2));
+
+    expect(transform()).toBe('translate(500px, 500px) scale(1)');
+  });
+
+  it('keeps the zoom slider popover open through a mousedown inside the zoom controls', () => {
+    // Gap (f): the toolbar/slider stopPropagation is what makes a slider drag
+    // possible at all — the document-level close listener must not fire on it.
+    renderEditor();
+    fireEvent.click(screen.getByRole('button', { name: /zoom level/i }));
+    const slider = document.querySelector('.canvas-zoom-slider-pop input[type="range"]') as HTMLInputElement;
+    expect(slider).not.toBeNull();
+
+    fireEvent.mouseDown(document.querySelector('.canvas-zoom-controls')!);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).not.toBeNull();
+    fireEvent.mouseDown(slider);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).not.toBeNull();
+
+    // The same gesture one node away in the tree IS an outside click.
+    fireEvent.mouseDown(canvas());
+    expect(document.querySelector('.canvas-zoom-slider-pop')).toBeNull();
+  });
+
+  it('closes the zoom slider popover when the zoom level button is clicked again', () => {
+    // Gap (f), the toggle half: the button owns a `v => !v` toggle AND stops
+    // its own mousedown. Drop either half and the second click re-opens the
+    // popover (the document close fires first, then the toggle flips back on).
+    renderEditor();
+    const btn = screen.getByRole('button', { name: /zoom level/i });
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.mouseDown(btn);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).not.toBeNull();
+    fireEvent.click(btn);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).toBeNull();
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('Escape closes the zoom popover and is NOT handed to the canvas Escape ladder', async () => {
+    // Gap (f), the ownership half. The popover listens on document and calls
+    // stopPropagation; the canvas ladder listens on window (bubble phase), so
+    // that stop is what keeps the keystroke exclusive — an Escape aimed at the
+    // popover must not also clear the selection underneath it. Move the
+    // popover listener to window, or drop the stopPropagation, and this reddens.
+    renderEditor();
+    mockCanvasSize(1200, 800);
+    const live = () => screen.getByTestId('topology-live-region').textContent;
+    selectFirstNode();
+    await waitFor(() => expect(live()).toBe('Downtown Branch selected'));
+    const btn = screen.getByRole('button', { name: /zoom level/i });
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(document.querySelector('.canvas-zoom-slider-pop')).toBeNull();
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    // The selection survives the keystroke: no 'Selection cleared' announce,
+    // and the card is still the inspector's subject.
+    let cleared = false;
+    try {
+      await waitFor(() => expect(live()).toBe('Selection cleared'), { timeout: 600, interval: 50 });
+      cleared = true;
+    } catch { cleared = false; }
+    expect(cleared).toBe(false);
+    expect(live()).toBe('Downtown Branch selected');
+  });
+});
+
