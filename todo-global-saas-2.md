@@ -173,9 +173,15 @@ actual relationship mutation.
       ticket prefix, receipt format in both halves, tax regime in its own box),
       and the one thing that was holding the checkbox — the suspected
       currency minor-unit disagreement — turned out not to exist on
-      inspection; see the final paragraph below. The three items recorded as
+      inspection; see the final paragraph below. The three items then recorded as
       gaps stay OPEN as follow-up improvements, not as missing halves of this
-      box's wording.
+      box's wording. — **amended 2026-09-10, same day:** two of those three have
+      since landed (**G1** readers, `74639639e`; **G2** `document_kind` enum +
+      schema CHECK, `c3f5920cf`) — struck in place below, evidence there. Only
+      **G3**, the legacy `receipt.*` print repoint, is still open, and it is
+      sequenced behind an external settings-rebuild stream rather than
+      unimplemented. The closure stands either way: none of the three was ever a
+      missing half of what this box asks for.
       — **Unblocked 2026-09-08** (§G closed by `20260908_legal_entities.sql`).
       **Design written:** see §"Regional configuration — design" below — nine
       axes, six of which already exist somewhere with no stated precedence, three
@@ -292,16 +298,60 @@ actual relationship mutation.
         an IPC/UI surface to show them, not a missing predicate. Recorded the
         same day it was found, two passes later — the gap text above is left as
         written because it is what the card was built against.
-      - **Gap 2:** *(status 2026-09-10: still open AT HEAD — `20260923_fiscal_numbering.sql:61,69`
-        is still `document_kind TEXT NOT NULL` + pair `UNIQUE` with no `CHECK`,
-        and `git log -S 'enum DocumentKind'` returns nothing for the commit
-        history; a `DocumentKind` enum was visible in another agent's
-        WORKING TREE while this pass ran, which is in-flight, not landed, so it
-        is not recorded as a closure here.)* `document_kind` is `TEXT NOT NULL` with no core enum, so the
-        card's closed `DOCUMENT_KINDS = ['receipt', 'invoice']` (card :41) is a
+        **And the surface followed the same day:** `006e13488` *feat(fiscal):
+        expose scheme and series readers over IPC and ui client*
+        (`list_document_number_sequences_scoped`,
+        `…_for_entity_scoped`, `list_fiscal_schemes_scoped` in
+        `commands/fiscal.rs` both clients + both `lib.rs` registries +
+        `fiscal.ts` + dev-mock), then `ce582c748` *feat(ui): show all configured
+        statutory series on the numbering card* — the overview table the card
+        could not show before, 7 key pairs mirrored in both locales. Gap 1 is
+        therefore closed end to end, not just in core.
+      - ~~**Gap 2:**~~ **CLOSED 2026-09-10 by `c3f5920cf`** *feat(core): close
+        document_kind as a parsed enum and a schema CHECK* (6 files, verified at
+        HEAD). The original claim — reproduced below as written — is now
+        history:
+        `document_kind` is `TEXT NOT NULL` with no core enum, so the card's
+        closed `DOCUMENT_KINDS = ['receipt', 'invoice']` (card :41) is a
         **UI-layer** guard doing a core job. The failure it prevents is real and
         silent: a typo'd kind satisfies the pair-UNIQUE by opening a SECOND
         series at zero. Moving the set into core is the follow-up.
+      - **What landed:** `pub enum DocumentKind { Receipt, Invoice }` in
+        `db/fiscal.rs:97` with `parse` (:107) and a canonical `as_str`, and
+        `20260928_document_kind_check.sql` adds
+        `CHECK (document_kind IN ('receipt','invoice'))` **via table rebuild**
+        (new table carries the CHECK *and* the same
+        `UNIQUE (legal_entity_id, document_kind)`, under
+        `PRAGMA defer_foreign_keys`), with `20260813_init.pg.sql` regenerated,
+        `migrations.rs` registered and `migrations_tests.rs` pinned. So the
+        guard now exists at all three layers a caller can reach: the type, the
+        write path, and the schema — a bad kind can no longer be persisted by
+        anyone, including a client that skips core.
+      - **The honest shape of it:** the enum did **not** widen the wire.
+        `upsert_document_number_sequence` still takes `&str` and
+        normalises through `DocumentKind::parse(document_kind)?.as_str()`
+        (:205) before writing, so the IPC contract, `fiscal.ts` and the card are
+        untouched — core validates rather than re-typing the boundary. A
+        migration-date deviation is worth knowing about when reading the SHA: the
+        file is `20260928_…`, not the date of the work, because registry order is
+        canonical and a 2026-09-10 stamp would sort **before** the migration that
+        creates the table it rebuilds.
+      - **Two defects found and pinned on the way**, both the same statutory
+        failure class the card's select was invented to prevent:
+        1. **A capitalised kind was a second series.** `'Receipt'` and `'receipt'`
+           are distinct strings, so they satisfy the pair-UNIQUE and each gets
+           its own counter from zero — silently, with no error. The write path
+           now lower-cases through `parse` before persisting.
+        2. **The getter reported a typo as "unconfigured".** A stored-but-invalid
+           kind fell into the `Ok(None)` branch, i.e. "this entity has no
+           series", which is a *different fact* and the one an operator would
+           act on by creating one. `document_number_sequence` (:246) parses too,
+           and the code says so directly: "A bad kind is refused, not reported as
+           `\"unconfigured\"`."
+      Gap 1 and Gap 2 are both struck; **only Gap 3 (the legacy `receipt.*`
+      print repoint) remains listed here**, and it stays open by design — it is
+      sequenced behind an external settings-rebuild stream, not unimplemented
+      work.
       - **Gap 3:** the 10 legacy `receipt.*` keys are still a live fallback and
         the print path still reads them (below), so receipt-format work is not
         finished even though the axis landed.
