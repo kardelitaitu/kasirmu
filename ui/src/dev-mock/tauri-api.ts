@@ -3260,13 +3260,21 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'lookup_sale_by_receipt_barcode_scoped': () => null,
 
   'process_refund': (args) => {
-    const a = (args as { args?: { lines?: Array<{ lineTotalMinor: number }> } })?.args ?? (args as { lines?: Array<{ lineTotalMinor: number }> }) ?? {};
+    // mockHandlerPayload rather than a nested read: invoke() hands a handler
+    // args?.['args'] ?? args, so the envelope is already unwrapped here. The
+    // helper's own '?? {}' tail preserves the old third fallback exactly, so a
+    // no-argument call still yields an empty object rather than undefined.
+    const a = mockHandlerPayload<{ lines?: Array<{ lineTotalMinor: number }> }>(args);
     const lines = a.lines ?? [];
     const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
     return { refundId: `refund-${Date.now()}`, totalMinor };
   },
   'process_refund_scoped': (args) => {
-    const a = (args as { args?: { lines?: Array<{ lineTotalMinor: number }> } })?.args ?? (args as { lines?: Array<{ lineTotalMinor: number }> }) ?? {};
+    // mockHandlerPayload rather than a nested read: invoke() hands a handler
+    // args?.['args'] ?? args, so the envelope is already unwrapped here. The
+    // helper's own '?? {}' tail preserves the old third fallback exactly, so a
+    // no-argument call still yields an empty object rather than undefined.
+    const a = mockHandlerPayload<{ lines?: Array<{ lineTotalMinor: number }> }>(args);
     const lines = a.lines ?? [];
     const totalMinor = lines.reduce((sum, l) => sum + (l.lineTotalMinor ?? 0), 0);
     return { refundId: `refund-${Date.now()}`, totalMinor };
