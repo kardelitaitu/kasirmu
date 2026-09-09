@@ -721,11 +721,11 @@ CREATE TABLE IF NOT EXISTS fiscal_schemes (
     updated_at      TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS document_number_sequences (
+CREATE TABLE IF NOT EXISTS "document_number_sequences" (
     id              TEXT PRIMARY KEY,
     tenant_id       TEXT NOT NULL DEFAULT 'default',
     legal_entity_id TEXT NOT NULL REFERENCES legal_entities(id),
-    document_kind   TEXT NOT NULL,
+    document_kind   TEXT NOT NULL CHECK (document_kind IN ('receipt', 'invoice')),
     prefix          TEXT NOT NULL DEFAULT '',
     current_value   BIGINT NOT NULL DEFAULT 0,
     reset_period    TEXT NOT NULL DEFAULT 'never',

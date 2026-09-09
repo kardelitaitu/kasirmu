@@ -233,6 +233,13 @@ pub const ALL: &[Migration] = &[
         id: "20260927_kds_ticket_prefix_stamp.sql",
         sql: include_str!("../migrations/20260927_kds_ticket_prefix_stamp.sql"),
     },
+    // W5-B: a statutory series is identified by (entity, kind); the kind was
+    // free TEXT, so a typo opened a parallel series at zero instead of failing.
+    // Core now parses DocumentKind and this closes the same set in the schema.
+    Migration {
+        id: "20260928_document_kind_check.sql",
+        sql: include_str!("../migrations/20260928_document_kind_check.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

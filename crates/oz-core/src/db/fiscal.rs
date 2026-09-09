@@ -58,7 +58,9 @@ pub struct DocumentNumberSequence {
     pub id: String,
     /// The owning legal entity.
     pub legal_entity_id: String,
-    /// The document kind this series numbers (e.g. `receipt`, `invoice`).
+    /// The document kind this series numbers — always one of [`DocumentKind`],
+    /// parsed on write and CHECK-constrained in the schema, but stored and sent
+    /// as the keyword so the wire shape stays a plain string.
     pub document_kind: String,
     /// Statutory prefix, emitted verbatim before the number.
     pub prefix: String,
@@ -75,6 +77,52 @@ pub struct DocumentNumberSequence {
     pub created_at: String,
     /// Last update timestamp (RFC 3339).
     pub updated_at: String,
+}
+
+/// The statutory document kinds a number series may be kept for.
+///
+/// `document_kind` is the discriminator of a statutory series, but the schema
+/// only makes the `(legal_entity_id, document_kind)` PAIR unique — so an
+/// unvalidated string never fails: it silently opens a PARALLEL series whose
+/// counter starts at zero, which is exactly the failure statutory numbering
+/// exists to prevent. The set is therefore closed in both places — parsed here
+/// into a typed `Validation` rejection, and constrained by
+/// `20260928_document_kind_check.sql` so a row core would not write cannot land
+/// even through a future sync or downsert arm that bypasses this file.
+///
+/// `as_str` is the stored keyword; serde uses the same lowercase spelling so a
+/// future typed wire field cannot invent a third casing of one series.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DocumentKind {
+    /// A sale receipt.
+    Receipt,
+    /// A tax invoice.
+    Invoice,
+}
+
+impl DocumentKind {
+    /// Parse the supplied or stored keyword, case-insensitively. Anything
+    /// outside the closed set is rejected — never a new series.
+    pub fn parse(raw: &str) -> Result<Self, CoreError> {
+        match raw.to_ascii_lowercase().as_str() {
+            "receipt" => Ok(Self::Receipt),
+            "invoice" => Ok(Self::Invoice),
+            other => Err(CoreError::Validation {
+                field: "document_kind".into(),
+                message: format!("document_kind must be receipt or invoice; got {other:?}"),
+            }),
+        }
+    }
+
+    /// The canonical keyword stored in `document_number_sequences.document_kind`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Receipt => "receipt",
+            Self::Invoice => "invoice",
+        }
+    }
 }
 
 /// The reset policy for a sequence's counter.
@@ -151,6 +199,10 @@ impl crate::db::Store<'_> {
         padding: i64,
         now: &str,
     ) -> Result<(), CoreError> {
+        // Resolve the kind FIRST: an unknown one is a typed rejection rather
+        // than a new row, and a capitalised spelling must not become a second
+        // series for the same pair. `kind` below is always canonical.
+        let kind = DocumentKind::parse(document_kind)?.as_str();
         if padding < 0 {
             return Err(CoreError::Validation {
                 field: "padding".into(),
@@ -171,7 +223,7 @@ impl crate::db::Store<'_> {
             params![
                 uuid::Uuid::now_v7().to_string(),
                 legal_entity_id,
-                document_kind,
+                kind,
                 prefix,
                 reset_period.as_str(),
                 initial_period_key,
@@ -189,6 +241,9 @@ impl crate::db::Store<'_> {
         legal_entity_id: &str,
         document_kind: &str,
     ) -> Result<Option<DocumentNumberSequence>, CoreError> {
+        // A bad kind is refused, not reported as "unconfigured": a `null`
+        // read keeps its single meaning — the pair genuinely has no series.
+        let kind = DocumentKind::parse(document_kind)?;
         let row = self
             .conn
             .query_row(
@@ -196,7 +251,7 @@ impl crate::db::Store<'_> {
                         reset_period, period_key, padding, created_at, updated_at
                  FROM document_number_sequences
                  WHERE legal_entity_id = ?1 AND document_kind = ?2",
-                params![legal_entity_id, document_kind],
+                params![legal_entity_id, kind.as_str()],
                 |row| {
                     Ok(DocumentNumberSequence {
                         id: row.get(0)?,

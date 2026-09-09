@@ -383,3 +383,84 @@ fn fiscal_scheme_reader_reports_active_and_inactive() {
     assert!(!schemes[1].is_active);
     assert_eq!(schemes[0].legal_entity_id, "ent-1");
 }
+
+/// The kinds a series exists for, read straight from the column — deliberately
+/// not through a Store reader, so a test about what reached the database cannot
+/// be satisfied by a reader that normalises on the way out.
+fn stored_kinds(store: &Store<'_>, entity: &str) -> Vec<String> {
+    let mut stmt = store
+        .conn
+        .prepare(
+            "SELECT document_kind FROM document_number_sequences
+             WHERE legal_entity_id = ?1 ORDER BY document_kind",
+        )
+        .unwrap();
+    stmt.query_map(params![entity], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect()
+}
+
+#[test]
+fn an_unknown_document_kind_is_rejected_instead_of_opening_a_series() {
+    let store = store();
+    seed_entity(&store, "ent-typo");
+    let err = store
+        .upsert_document_number_sequence("ent-typo", "reciept", "", ResetPeriod::Never, 0, NOW)
+        .unwrap_err();
+    match err {
+        CoreError::Validation { field, .. } => assert_eq!(field, "document_kind"),
+        other => panic!("expected a typed document_kind rejection, got {other:?}"),
+    }
+    // The whole point: a typo must not leave a row behind whose counter starts
+    // at zero, because that row would then silently issue numbers too.
+    assert!(stored_kinds(&store, "ent-typo").is_empty());
+    // A bad kind on the READ side is refused rather than reported as
+    // "unconfigured", so None keeps exactly one meaning for the UI.
+    assert!(
+        store
+            .document_number_sequence("ent-typo", "reciept")
+            .is_err()
+    );
+}
+
+#[test]
+fn a_capitalised_kind_normalises_instead_of_becoming_a_parallel_series() {
+    let store = store();
+    seed_entity(&store, "ent-case");
+    store
+        .upsert_document_number_sequence("ent-case", "RECEIPT", "NO.", ResetPeriod::Never, 4, NOW)
+        .unwrap();
+    // UNIQUE compares exact strings, so without normalising this would leave
+    // two rows for one logical series — each with its own counter.
+    assert_eq!(
+        stored_kinds(&store, "ent-case"),
+        vec!["receipt".to_string()]
+    );
+    let got = store
+        .document_number_sequence("ent-case", "receipt")
+        .unwrap()
+        .expect("the canonical read must find what the capitalised write stored");
+    assert_eq!(got.padding, 4);
+}
+
+#[test]
+fn the_schema_refuses_a_kind_that_bypasses_core_validation() {
+    let store = store();
+    seed_entity(&store, "ent-db");
+    let err = store
+        .conn
+        .execute(
+            "INSERT INTO document_number_sequences
+                 (id, tenant_id, legal_entity_id, document_kind, prefix,
+                  current_value, reset_period, period_key, padding, created_at, updated_at)
+             VALUES ('kind-db', 'default', 'ent-db', 'credit-note', '', 0,
+                     'never', '', 0, ?1, ?1)",
+            params![NOW],
+        )
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("CHECK"),
+        "expected the 20260928 CHECK to refuse the row, got {err}"
+    );
+}
