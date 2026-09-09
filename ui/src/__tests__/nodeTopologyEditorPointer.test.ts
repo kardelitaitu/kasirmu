@@ -60,6 +60,117 @@ type HoveredTarget = {
   variantIndex: number;
 };
 
+// ── Duplicate-cluster harness extension (coder-35, additive) ────────────────
+// The shared deps stubs below are inert on purpose: the 14 tests above never
+// start a node drag. The duplicate-drag suite at the bottom of this file needs
+// to OBSERVE the drag reducers and the graph/history setters, so it passes
+// `duplicateStores: true` to swap in store-backed spies whose shapes are
+// restated from the dep signatures themselves (no import from the state
+// module, still zero vi.mock). Tests without the flag keep receiving the
+// inert bundle and stay byte-identical in behaviour.
+type StateOf<F> = F extends (value: infer V) => unknown
+  ? V extends (prev: infer P) => unknown
+    ? P
+    : V
+  : never;
+type DupNodesList = StateOf<PointerDeps['setNodes']>;
+type DupWiresList = StateOf<PointerDeps['setWires']>;
+type DupHistoryList = StateOf<PointerDeps['setHistory']>;
+type DupRedoList = StateOf<PointerDeps['setRedo']>;
+type DupSnapshot = Parameters<PointerDeps['pushHistory']>[0];
+type DupGuideValue = Parameters<PointerDeps['setAlignmentGuide']>[0];
+type DupToastArg = Parameters<PointerDeps['addToast']>[0];
+
+/** The duplicate cluster's reducer + setter deps, spy-typed for assertions. */
+type DupHarness = {
+  beginDrag: (ids: Set<string>) => void;
+  endDrag: () => void;
+  cancelDrag: () => void;
+  setLiveAnnouncement: (message: string) => void;
+  setRedo: (value: SetStateAction<DupRedoList>) => void;
+  pushHistory: (snapshot?: DupSnapshot) => void;
+  setNodes: (value: SetStateAction<DupNodesList>) => void;
+  setWires: (value: SetStateAction<DupWiresList>) => void;
+  setHistory: (value: SetStateAction<DupHistoryList>) => void;
+  setAlignmentGuide: (value: DupGuideValue) => void;
+  addToast: (toast: DupToastArg) => unknown;
+  getNodes: () => DupNodesList;
+  getWires: () => DupWiresList;
+  getHistory: () => DupHistoryList;
+  getRedo: () => DupRedoList;
+};
+
+const dupInertHarness = (): DupHarness => ({
+  beginDrag: vi.fn(),
+  endDrag: vi.fn(),
+  cancelDrag: vi.fn(),
+  setLiveAnnouncement: vi.fn(),
+  setRedo: vi.fn(),
+  pushHistory: vi.fn(),
+  setNodes: vi.fn(),
+  setWires: vi.fn(),
+  setHistory: vi.fn(),
+  setAlignmentGuide: vi.fn(),
+  addToast: vi.fn(),
+  getNodes: () => [],
+  getWires: () => [],
+  getHistory: () => [],
+  getRedo: () => [],
+});
+
+/** Store-backed reducers: an updater composes against the previous write (as
+ *  React would), nodesRef mirrors the store synchronously (the parent's
+ *  render mirror that the drag math and the commit's history filter read),
+ *  and the reducer trio maintains its documented contract of writing
+ *  draggingNodeIdsRef synchronously. */
+const dupStoreHarness = (
+  startNodes: NodeData[],
+  nodesMirror: MutableRefObject<NodeData[]>,
+  dragSetMirror: MutableRefObject<Set<string>>,
+): DupHarness => {
+  let nodesStore: DupNodesList = [...startNodes];
+  let wiresStore: DupWiresList = [];
+  let historyStore: DupHistoryList = [];
+  let redoStore: DupRedoList = [];
+  return {
+    beginDrag: vi.fn((ids: Set<string>) => {
+      dragSetMirror.current = new Set(ids);
+    }),
+    endDrag: vi.fn(() => {
+      dragSetMirror.current = new Set();
+    }),
+    cancelDrag: vi.fn(() => {
+      dragSetMirror.current = new Set();
+    }),
+    setLiveAnnouncement: vi.fn(() => {}),
+    setRedo: vi.fn((value: SetStateAction<DupRedoList>) => {
+      redoStore = typeof value === 'function' ? value(redoStore) : value;
+    }),
+    pushHistory: vi.fn((snapshot?: DupSnapshot) => {
+      historyStore = [
+        ...historyStore,
+        snapshot ?? { nodes: nodesStore, wires: wiresStore },
+      ];
+    }),
+    setNodes: vi.fn((value: SetStateAction<DupNodesList>) => {
+      nodesStore = typeof value === 'function' ? value(nodesStore) : value;
+      nodesMirror.current = nodesStore;
+    }),
+    setWires: vi.fn((value: SetStateAction<DupWiresList>) => {
+      wiresStore = typeof value === 'function' ? value(wiresStore) : value;
+    }),
+    setHistory: vi.fn((value: SetStateAction<DupHistoryList>) => {
+      historyStore = typeof value === 'function' ? value(historyStore) : value;
+    }),
+    setAlignmentGuide: vi.fn(() => {}),
+    addToast: vi.fn(() => null),
+    getNodes: () => nodesStore,
+    getWires: () => wiresStore,
+    getHistory: () => historyStore,
+    getRedo: () => redoStore,
+  };
+};
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const storeOf = (id: string, x = 0, y = 0): NodeData => ({
@@ -131,6 +242,8 @@ const setup = (
     panToolActive?: boolean;
     /** Drops the canvas element, to pin the handleWheel null-canvas guard. */
     noCanvas?: boolean;
+    /** Swaps the duplicate cluster's reducer/setter stubs for store-backed spies. */
+    duplicateStores?: boolean;
   } = {},
 ) => {
   // A pan that outlives a test would leave body.style.cursor = 'grabbing' for
@@ -214,10 +327,15 @@ const setup = (
   const dragHasMovedRef: MutableRefObject<boolean> = { current: false };
   const duplicateDragRef: MutableRefObject<boolean> = { current: false };
   const duplicateCopyIdsRef: MutableRefObject<string[]> = { current: [] };
+  const duplicateHistoryPushedRef: MutableRefObject<boolean> = { current: false };
   const lastDragMovePosRef: MutableRefObject<Point | null> = { current: null };
   const dragCleanupRef: MutableRefObject<(() => void) | null> = { current: null };
   /** Inert: only the Alt+drag refusal path reads getString/duplicateRefusal. */
   const l10n = { getString: (id: string) => id };
+
+  const dup = opts.duplicateStores
+    ? dupStoreHarness(opts.nodes ?? [], nodesRef, draggingNodeIdsRef)
+    : dupInertHarness();
 
   const selectMany = vi.fn((_ids: string[], _primary: string | null) => {});
   const clearSelection = vi.fn(() => {});
@@ -263,22 +381,22 @@ const setup = (
     duplicateCopyIdsRef,
     lastDragMovePosRef,
     dragCleanupRef,
-    beginDrag: () => {},
-    endDrag: () => {},
-    cancelDrag: () => {},
-    duplicateHistoryPushedRef: { current: false },
+    beginDrag: dup.beginDrag,
+    endDrag: dup.endDrag,
+    cancelDrag: dup.cancelDrag,
+    duplicateHistoryPushedRef,
     l10nRef: { current: l10n },
-    setLiveAnnouncement: () => {},
-    setRedo: () => {},
-    pushHistory: () => {},
-    setNodes: () => {},
-    setWires: () => {},
-    setHistory: () => {},
-    setAlignmentGuide: () => {},
+    setLiveAnnouncement: dup.setLiveAnnouncement,
+    setRedo: dup.setRedo,
+    pushHistory: dup.pushHistory,
+    setNodes: dup.setNodes,
+    setWires: dup.setWires,
+    setHistory: dup.setHistory,
+    setAlignmentGuide: dup.setAlignmentGuide,
     selectOnly: () => {},
     addToSelection: () => {},
     duplicateRefusal: () => null,
-    addToast: () => {},
+    addToast: dup.addToast,
     l10n,
     snapEnabled: false,
     snap: (value: number) => value,
@@ -376,6 +494,7 @@ const setup = (
     clearSelection,
     clearWire,
     dismissPicker,
+    dup,
     dragRefs: { draggingNodeIdsRef, dragHasMovedRef, duplicateDragRef, dragCleanupRef },
     getPan: () => panState,
     getZoom: () => zoomState,
@@ -922,6 +1041,254 @@ describe('useTopologyEditorPointer -- handleCanvasMouseMove branches', () => {
     expect(h.clearSelection).not.toHaveBeenCalled();
     expect(h.setMarquee).not.toHaveBeenCalled();
     expect(h.getMarquee()).toBeNull();
+    h.unmount();
+  });
+});
+
+// The duplicate cluster moved into this hook with 59d37d6c1 (slice 3.4c-2);
+// the block above only proves the WIRING. This describe characterizes the
+// cluster's own lifecycle semantics, read off the bodies at that SHA:
+// beginNodeDrag's Alt arm (copies in at the originals' positions, offsets
+// keyed to the copies), the commit's ONE-filtered-entry contract and its
+// one-shot guard, convertDragToDuplicate's mid-move handoff (the move's own
+// history entry is REUSED, never duplicated), both cancels, and the
+// no-movement release. duplicateStores: true arms the store-backed bundle
+// above; everything else is the identical harness.
+describe('useTopologyEditorPointer -- duplicate-drag cluster lifecycle', () => {
+  it('arms an Alt drag: copies in at the originals position, offsets keyed to the copies', () => {
+    const h = setup({ nodes: [storeOf('n-1', 0, 0)], duplicateStores: true });
+
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1']), true, 'mouse'));
+
+    expect(h.dragRefs.duplicateDragRef.current).toBe(true);
+    const copyIds = h.deps.duplicateCopyIdsRef.current;
+    expect(copyIds).toHaveLength(1);
+    const copyId = copyIds[0] ?? '';
+    expect(copyId).toMatch(/^store-/);
+    // The drag set IS the copies (the reducer mirror was written at arm).
+    expect([...h.dragRefs.draggingNodeIdsRef.current]).toEqual([copyId]);
+    // The copy exists AT the original's position -- the in-place preview.
+    const nodes = h.dup.getNodes();
+    expect(nodes).toHaveLength(2);
+    expect(nodes[1]).toMatchObject({ id: copyId, x: 0, y: 0 });
+    // Grip offsets are computed from the ORIGINAL under the cursor, keyed by
+    // the copy id the drag actually moves.
+    expect(h.deps.dragOffsetsRef.current.get(copyId)).toEqual({ x: 10, y: 10 });
+    expect(h.deps.dragStartRef.current.get(copyId)).toEqual({ x: 0, y: 0 });
+    // The threshold is not latched, the auto-pan baseline is seeded, the copy
+    // cursor is on, and nothing historical happened yet.
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(false);
+    expect(h.deps.lastDragMovePosRef.current).toEqual({ x: 10, y: 10 });
+    expect(document.body.style.cursor).toBe('copy');
+    expect(h.dup.pushHistory).not.toHaveBeenCalled();
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+    h.disposeAll();
+    h.unmount();
+  });
+
+  it('a move past the threshold latches dragHasMovedRef and defers the history push to the drop', () => {
+    const h = setup({
+      nodes: [storeOf('n-1', 0, 0), storeOf('n-2', 600, 600)],
+      duplicateStores: true,
+    });
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1']), true, 'mouse'));
+
+    h.move(110, 110);
+
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(true);
+    // A duplicate drag defers its undo entry to the drop: the first movement
+    // latches the flag but pushes NOTHING (the plain-move path would have).
+    expect(h.dup.pushHistory).not.toHaveBeenCalled();
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+    // The copy followed the pointer (grip offset math keyed to the copy).
+    expect(h.dup.getNodes()[2]).toMatchObject({ x: 100, y: 100 });
+    // No alignment guide: the stationary n-2 sits far beyond the 6px snap.
+    expect(h.dup.setAlignmentGuide).toHaveBeenCalledWith(null);
+    h.disposeAll();
+    h.unmount();
+  });
+
+  it('commits a moved Alt drag as ONE filtered history entry and is one-shot after the release', () => {
+    const h = setup({
+      nodes: [storeOf('n-1', 0, 0), storeOf('n-2', 600, 600)],
+      duplicateStores: true,
+    });
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1']), true, 'mouse'));
+    const copyId = h.deps.duplicateCopyIdsRef.current[0] ?? '';
+    h.move(110, 110);
+
+    h.docUp();
+
+    // The whole duplicate-drop lands as ONE undo entry: the PRE-drag state,
+    // i.e. the current graph minus the copy ids (originals never moved).
+    expect(h.dup.getHistory()).toHaveLength(1);
+    const entry = h.dup.getHistory()[0];
+    expect(entry?.nodes.map((n) => n.id)).toEqual(['n-1', 'n-2']);
+    expect(entry?.nodes[0]).toMatchObject({ x: 0, y: 0 });
+    expect(entry?.nodes[1]).toMatchObject({ x: 600, y: 600 });
+    // The copies become the selection, redo is invalidated, live region fires.
+    expect(h.selectMany).toHaveBeenCalledTimes(1);
+    expect(h.selectMany).toHaveBeenLastCalledWith([copyId], copyId);
+    expect(h.dup.setRedo).toHaveBeenCalledWith([]);
+    expect(h.dup.setLiveAnnouncement).toHaveBeenCalledWith('topology-duplicate-announce');
+    // Drop-overlap resolution is SKIPPED for duplicates: the landing spot IS
+    // the intent, so the copy stays exactly where it was dropped.
+    expect(h.dup.getNodes()[2]).toMatchObject({ x: 100, y: 100 });
+    // Every gesture ref is reset...
+    expect(h.dragRefs.duplicateDragRef.current).toBe(false);
+    expect(h.deps.duplicateCopyIdsRef.current).toEqual([]);
+    expect(h.deps.duplicateHistoryPushedRef.current).toBe(false);
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(false);
+    expect(h.deps.dragOffsetsRef.current.size).toBe(0);
+    expect(h.deps.dragStartRef.current.size).toBe(0);
+    expect(h.dragRefs.draggingNodeIdsRef.current.size).toBe(0);
+    expect(document.body.style.cursor).toBe('');
+    // ...and the internal commit is one-shot: the same release replayed (the
+    // canvas mouseup can fire after the document one) commits nothing more.
+    act(() => h.api.finalizeNodeDrag());
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.dup.setHistory).toHaveBeenCalledTimes(1);
+    expect(h.selectMany).toHaveBeenCalledTimes(1);
+    h.unmount();
+  });
+
+  it('convertDragToDuplicate hands the in-flight move over without a second history entry', () => {
+    const h = setup({
+      nodes: [storeOf('n-1', 0, 0), storeOf('n-2', 600, 600)],
+      duplicateStores: true,
+    });
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1', 'n-2']), false, 'mouse'));
+    h.move(110, 110);
+    // A plain move pushed exactly one entry: the pre-drag state.
+    expect(h.dup.pushHistory).toHaveBeenCalledTimes(1);
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(true);
+
+    act(() => h.api.convertDragToDuplicate());
+
+    const copyIds = h.deps.duplicateCopyIdsRef.current;
+    const [c1, c2] = copyIds;
+    expect(h.dragRefs.duplicateDragRef.current).toBe(true);
+    // The originals snapped back to their pre-drag positions; the copies took
+    // over the cursor from the mid-drag positions.
+    const nodes = h.dup.getNodes();
+    expect(nodes.find((n) => n.id === 'n-1')).toMatchObject({ x: 0, y: 0 });
+    expect(nodes.find((n) => n.id === 'n-2')).toMatchObject({ x: 600, y: 600 });
+    expect(nodes.find((n) => n.id === c1)).toMatchObject({ x: 100, y: 100 });
+    expect(nodes.find((n) => n.id === c2)).toMatchObject({ x: 700, y: 700 });
+    // The drag set and grip offsets are re-keyed to the copies (same offsets).
+    expect([...h.dragRefs.draggingNodeIdsRef.current].sort()).toEqual(
+      [c1 ?? '', c2 ?? ''].sort(),
+    );
+    expect(h.deps.dragOffsetsRef.current.get(c1 ?? '')).toEqual({ x: 10, y: 10 });
+    expect(h.deps.dragOffsetsRef.current.get(c2 ?? '')).toEqual({ x: -590, y: -590 });
+    expect(document.body.style.cursor).toBe('copy');
+    // The move's own entry IS the pre-drag state: the conversion pushes
+    // nothing and marks the flag the commit reuses / the cancel pops.
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+    expect(h.deps.duplicateHistoryPushedRef.current).toBe(true);
+
+    // The converted drag keeps moving (still no push) and the drop reuses the
+    // entry -- one undo for the whole gesture, exactly like a born-Alt drag.
+    h.move(510, 510);
+    expect(h.dup.getHistory()).toHaveLength(1);
+    h.docUp();
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.dup.pushHistory).toHaveBeenCalledTimes(1);
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+    expect(h.selectMany).toHaveBeenLastCalledWith([c1 ?? '', c2 ?? ''], c1);
+    const finalNodes = h.dup.getNodes();
+    expect(finalNodes.find((n) => n.id === 'n-1')).toMatchObject({ x: 0, y: 0 });
+    expect(finalNodes.find((n) => n.id === c1)).toMatchObject({ x: 500, y: 500 });
+    expect(finalNodes.find((n) => n.id === c2)).toMatchObject({ x: 1100, y: 1100 });
+    h.unmount();
+  });
+
+  it('cancelDuplicateDrag discards the copies, resets every ref, and leaves history untouched', () => {
+    const h = setup({ nodes: [storeOf('n-1', 0, 0)], duplicateStores: true });
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1']), true, 'mouse'));
+    h.move(110, 110);
+
+    act(() => h.api.cancelDuplicateDrag());
+
+    // The preview copies are gone; the original never moved.
+    const nodes = h.dup.getNodes();
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({ id: 'n-1', x: 0, y: 0 });
+    // A born-Alt drag never pushed an entry, so cancel pops nothing either.
+    expect(h.dup.getHistory()).toHaveLength(0);
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+    expect(h.dragRefs.duplicateDragRef.current).toBe(false);
+    expect(h.deps.duplicateCopyIdsRef.current).toEqual([]);
+    expect(h.deps.duplicateHistoryPushedRef.current).toBe(false);
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(false);
+    expect(h.deps.dragOffsetsRef.current.size).toBe(0);
+    expect(h.deps.dragStartRef.current.size).toBe(0);
+    expect(h.dragRefs.draggingNodeIdsRef.current.size).toBe(0);
+    expect(h.dup.setAlignmentGuide).toHaveBeenLastCalledWith(null);
+    expect(h.dup.setLiveAnnouncement).toHaveBeenCalledWith('topology-duplicate-cancel-announce');
+    expect(document.body.style.cursor).toBe('');
+    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
+
+    // The document mouseup listener is GONE: a leaked finalize would select
+    // the discarded copies. Replaying the release changes nothing.
+    h.docUp();
+    expect(h.selectMany).not.toHaveBeenCalled();
+    expect(h.dup.getNodes()).toHaveLength(1);
+    expect(h.dup.getHistory()).toHaveLength(0);
+    // Escape twice: the guard makes the second cancel inert (no re-announce).
+    act(() => h.api.cancelDuplicateDrag());
+    expect(h.dup.setLiveAnnouncement).toHaveBeenCalledTimes(1);
+    h.unmount();
+  });
+
+  it('cancelNodeMove restores the pre-drag positions of a plain move and pops its entry', () => {
+    const h = setup({ nodes: [storeOf('n-1', 0, 0)], duplicateStores: true });
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1']), false, 'mouse'));
+    h.move(110, 110);
+    expect(h.dup.getNodes()[0]).toMatchObject({ x: 100, y: 100 });
+    expect(h.dup.getHistory()).toHaveLength(1);
+
+    act(() => h.api.cancelNodeMove());
+
+    expect(h.dup.getNodes()[0]).toMatchObject({ id: 'n-1', x: 0, y: 0 });
+    expect(h.dup.getHistory()).toHaveLength(0);
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(false);
+    expect(h.deps.dragOffsetsRef.current.size).toBe(0);
+    expect(h.deps.dragStartRef.current.size).toBe(0);
+    expect(h.dragRefs.draggingNodeIdsRef.current.size).toBe(0);
+    expect(h.dup.setAlignmentGuide).toHaveBeenLastCalledWith(null);
+    // Plain moves never touch the duplicate surface or the selection.
+    expect(h.dragRefs.duplicateDragRef.current).toBe(false);
+    expect(h.deps.duplicateCopyIdsRef.current).toEqual([]);
+    expect(h.selectMany).not.toHaveBeenCalled();
+    expect(h.dup.setLiveAnnouncement).not.toHaveBeenCalled();
+    expect(document.body.style.cursor).toBe('');
+    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
+
+    h.docUp();
+    expect(h.dup.getNodes()[0]).toMatchObject({ x: 0, y: 0 });
+    expect(h.dup.getHistory()).toHaveLength(0);
+    h.unmount();
+  });
+
+  it('a release that never moved commits nothing on a plain drag', () => {
+    const h = setup({ nodes: [storeOf('n-1', 0, 0)], duplicateStores: true });
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1']), false, 'mouse'));
+    expect(h.deps.dragStartRef.current.get('n-1')).toEqual({ x: 0, y: 0 });
+
+    h.docUp();
+
+    expect(h.dup.getHistory()).toHaveLength(0);
+    expect(h.dup.pushHistory).not.toHaveBeenCalled();
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+    expect(h.selectMany).not.toHaveBeenCalled();
+    expect(h.dup.getNodes()).toHaveLength(1);
+    expect(h.dup.getNodes()[0]).toMatchObject({ id: 'n-1', x: 0, y: 0 });
+    expect(h.deps.dragStartRef.current.size).toBe(0);
+    expect(h.deps.lastDragMovePosRef.current).toBeNull();
+    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
     h.unmount();
   });
 });
