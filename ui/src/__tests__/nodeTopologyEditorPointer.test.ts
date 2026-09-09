@@ -193,6 +193,18 @@ const posOf = (id: string, x = 0, y = 0): NodeData => ({
   metadata: { typeKey: 'store-pos' },
 });
 
+/** A Stock Room card -- the only node type the tier-cap gate counts, so the
+ *  refusal cases need one. `duplicateRefusal` filters the pending copies on
+ *  `type === 'warehouse'` and refuses when the install would cross the cap
+ *  (one warehouse below Pro): NodeTopologyEditor.tsx:1188-1204. */
+const warehouseOf = (id: string, x = 0, y = 0): NodeData => ({
+  id,
+  type: 'warehouse',
+  name: id,
+  x,
+  y,
+});
+
 /** One snap candidate exactly as the hook builds it: left column at the card
  *  edge, right column at NODE_WIDTH, each row at its own portRowCenterY. */
 const portPoint = (
@@ -244,6 +256,10 @@ const setup = (
     noCanvas?: boolean;
     /** Swaps the duplicate cluster's reducer/setter stubs for store-backed spies. */
     duplicateStores?: boolean;
+    /** Tier-cap override: the real editor passes a callback that returns the FTL
+     *  toast id when the pending copies would cross the cap (NodeTopologyEditor
+     *  .tsx:1197). Default null = every duplicate allowed, as before. */
+    duplicateRefusal?: (copies: NodeData[]) => string | null;
   } = {},
 ) => {
   // A pan that outlives a test would leave body.style.cursor = 'grabbing' for
@@ -395,7 +411,7 @@ const setup = (
     setAlignmentGuide: dup.setAlignmentGuide,
     selectOnly: () => {},
     addToSelection: () => {},
-    duplicateRefusal: () => null,
+    duplicateRefusal: opts.duplicateRefusal ?? (() => null),
     addToast: dup.addToast,
     l10n,
     snapEnabled: false,
@@ -1289,6 +1305,198 @@ describe('useTopologyEditorPointer -- duplicate-drag cluster lifecycle', () => {
     expect(h.deps.dragStartRef.current.size).toBe(0);
     expect(h.deps.lastDragMovePosRef.current).toBeNull();
     expect(h.dragRefs.dragCleanupRef.current).toBeNull();
+    h.unmount();
+  });
+
+  // ── The tier-cap refusal (coder-38, closes coder-35's unpinned follow-up) ──
+  // Both duplicate entry points consult ONE dep callback -- `duplicateRefusal`
+  // (NodeTopologyEditor.tsx:1197, which filters the PENDING copies on
+  // type === 'warehouse' and refuses when the install would cross the cap) --
+  // and both bail out the same way: a warning toast, and NOTHING else. The
+  // convert site (nodeTopologyEditorPointer.ts:405-413) says it plainly: "the
+  // move simply stays a move"; the arm site (:585-601) says "refused up front
+  // (no copies, no drag, no history entry)". Two call sites, two different
+  // half-armed states to leave intact, so each is pinned on its own.
+  const refusalSpy = () =>
+    vi.fn((copies: NodeData[]) =>
+      copies.some((n) => n.type === 'warehouse')
+        ? 'topology-toast-multi-warehouse'
+        : null,
+    );
+
+  it('convertDragToDuplicate refuses past the tier cap and the move stays a move', () => {
+    const refusal = refusalSpy();
+    const h = setup({
+      nodes: [warehouseOf('w-1', 0, 0), storeOf('s-2', 600, 600)],
+      duplicateStores: true,
+      duplicateRefusal: refusal,
+    });
+    // A PLAIN move, already past the threshold: it owns one history entry and
+    // the warehouse sits mid-drag at (100, 100).
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['w-1']), false, 'mouse'));
+    h.move(110, 110);
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.dup.getNodes()[0]).toMatchObject({ id: 'w-1', x: 100, y: 100 });
+    expect(h.dup.addToast).not.toHaveBeenCalled();
+
+    act(() => h.api.convertDragToDuplicate());
+
+    // Consulted with the PENDING copies only -- the dragged set, not the graph.
+    expect(refusal).toHaveBeenCalledTimes(1);
+    expect(refusal.mock.calls[0]?.[0].map((n) => n.id)).toEqual(['w-1']);
+    // The refusal is user-visible: the FTL id straight through getString (the
+    // harness l10n is identity, so the toast message IS the key).
+    expect(h.dup.addToast).toHaveBeenCalledTimes(1);
+    expect(h.dup.addToast).toHaveBeenCalledWith({
+      message: 'topology-toast-multi-warehouse',
+      type: 'warning',
+    });
+    // Refused means NO copies inserted, and no wire copies either.
+    expect(h.dup.getNodes().map((n) => n.id)).toEqual(['w-1', 's-2']);
+    expect(h.deps.duplicateCopyIdsRef.current).toEqual([]);
+    expect(h.dup.setWires).not.toHaveBeenCalled();
+    // ...and the drag refs stay DRAG-shaped: the conversion never ran, so the
+    // set is still keyed to the original, the threshold is still latched, and
+    // the duplicate surface was never armed.
+    expect(h.dragRefs.duplicateDragRef.current).toBe(false);
+    expect(h.deps.duplicateHistoryPushedRef.current).toBe(false);
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(true);
+    expect([...h.dragRefs.draggingNodeIdsRef.current]).toEqual(['w-1']);
+    expect(h.deps.dragOffsetsRef.current.get('w-1')).toEqual({ x: 10, y: 10 });
+    expect(h.deps.dragStartRef.current.get('w-1')).toEqual({ x: 0, y: 0 });
+    expect(h.deps.lastDragMovePosRef.current).toEqual({ x: 110, y: 110 });
+    expect(document.body.style.cursor).not.toBe('copy');
+    // No history churn: the refused conversion neither pushes nor pops.
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.dup.pushHistory).toHaveBeenCalledTimes(1);
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+
+    // The user let go of Alt or not -- either way the gesture is still the SAME
+    // move it was before: it continues, and the drop commits exactly ONE
+    // ordinary move entry (the pre-drag positions, no copy ids).
+    h.move(210, 210);
+    expect(h.dup.getHistory()).toHaveLength(1);
+    h.docUp();
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.dup.getNodes()).toHaveLength(2);
+    expect(h.dup.getNodes()[0]).toMatchObject({ id: 'w-1', x: 200, y: 200 });
+    const entry = h.dup.getHistory()[0];
+    expect(entry?.nodes.map((n) => n.id)).toEqual(['w-1', 's-2']);
+    expect(entry?.nodes[0]).toMatchObject({ x: 0, y: 0 });
+    // A plain move never selects and never announces: that surface is the
+    // duplicate commit's alone, and the commit never ran.
+    expect(h.selectMany).not.toHaveBeenCalled();
+    expect(h.dup.setLiveAnnouncement).not.toHaveBeenCalled();
+    expect(document.body.style.cursor).toBe('');
+    h.unmount();
+  });
+
+  it('an Alt press past the tier cap is refused up front: no drag is armed at all', () => {
+    const refusal = refusalSpy();
+    const h = setup({
+      nodes: [warehouseOf('w-1', 0, 0), storeOf('s-2', 600, 600)],
+      duplicateStores: true,
+      duplicateRefusal: refusal,
+    });
+
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['w-1']), true, 'mouse'));
+
+    expect(refusal).toHaveBeenCalledTimes(1);
+    expect(refusal.mock.calls[0]?.[0].map((n) => n.id)).toEqual(['w-1']);
+    expect(h.dup.addToast).toHaveBeenCalledWith({
+      message: 'topology-toast-multi-warehouse',
+      type: 'warning',
+    });
+    // Nothing was created and nothing was armed -- the refusal happens BEFORE
+    // the copy set is built, so there is no preview to clean up later.
+    expect(h.dup.getNodes().map((n) => n.id)).toEqual(['w-1', 's-2']);
+    expect(h.deps.duplicateCopyIdsRef.current).toEqual([]);
+    expect(h.dragRefs.duplicateDragRef.current).toBe(false);
+    expect(h.dup.beginDrag).not.toHaveBeenCalled();
+    expect(h.dragRefs.draggingNodeIdsRef.current.size).toBe(0);
+    expect(h.deps.dragOffsetsRef.current.size).toBe(0);
+    expect(h.deps.dragStartRef.current.size).toBe(0);
+    expect(h.deps.lastDragMovePosRef.current).toBeNull();
+    expect(h.dup.pushHistory).not.toHaveBeenCalled();
+    expect(h.dup.setHistory).not.toHaveBeenCalled();
+    expect(h.dup.setNodes).not.toHaveBeenCalled();
+    expect(document.body.style.cursor).not.toBe('copy');
+    // The housekeeping that runs AHEAD of the gate is not undone by the
+    // refusal: a refused grab still dismisses an open picker and drops a
+    // staged wire, and it still counts as interaction (auto-fit stays off).
+    expect(h.dismissPicker).toHaveBeenCalledTimes(1);
+    expect(h.clearWire).toHaveBeenCalledTimes(1);
+    expect(h.refs.userInteractedRef.current).toBe(true);
+    // No document mouseup was armed, so a replayed release is inert.
+    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
+    h.docUp();
+    expect(h.dup.getHistory()).toHaveLength(0);
+    expect(h.selectMany).not.toHaveBeenCalled();
+
+    // The gate is about the DRAGGED SET, not a global latch: the same press on
+    // a card that adds no warehouse is allowed, right after the refusal.
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['s-2']), true, 'mouse'));
+    expect(refusal).toHaveBeenCalledTimes(2);
+    expect(h.dragRefs.duplicateDragRef.current).toBe(true);
+    expect(h.dup.getNodes()).toHaveLength(3);
+    expect(document.body.style.cursor).toBe('copy');
+    act(() => h.api.cancelDuplicateDrag());
+    expect(h.dup.getNodes()).toHaveLength(2);
+    expect(h.dup.getHistory()).toHaveLength(0);
+    h.unmount();
+  });
+
+  it('a zero-movement Alt release duplicates in place', () => {
+    const h = setup({
+      nodes: [storeOf('n-1', 0, 0), storeOf('n-2', 600, 600)],
+      duplicateStores: true,
+    });
+    act(() => h.api.beginNodeDrag(10, 10, new Set(['n-1']), true, 'mouse'));
+    const copyId = h.deps.duplicateCopyIdsRef.current[0] ?? '';
+
+    // No mousemove at all -- dragHasMovedRef never latches.
+    expect(h.dragRefs.dragHasMovedRef.current).toBe(false);
+    h.docUp();
+
+    // commitDuplicateDrag has NO moved-gate (unlike finalizeNodeDrag's own
+    // no-op pop, which does have one): a plain Alt+down+up is a CREATION
+    // gesture, so the copy survives the release with zero movement.
+    const nodes = h.dup.getNodes();
+    expect(nodes).toHaveLength(3);
+    expect(nodes[2]).toMatchObject({ id: copyId, x: 0, y: 0 });
+    // ...EXACTLY at the original, overlap and all: drop-overlap resolution is
+    // skipped for duplicates because the landing spot IS the intent, so the
+    // copy is never settled away from the card it was copied from.
+    expect(nodes[0]).toMatchObject({ id: 'n-1', x: 0, y: 0 });
+    // One undo entry for the in-place creation, and it is the PRE-duplicate
+    // graph -- undo removes the copy and nothing else moved.
+    expect(h.dup.getHistory()).toHaveLength(1);
+    const entry = h.dup.getHistory()[0];
+    expect(entry?.nodes.map((n) => n.id)).toEqual(['n-1', 'n-2']);
+    expect(entry?.nodes[0]).toMatchObject({ x: 0, y: 0 });
+    // The entry came from the COMMIT path (setHistory), not the move path: a
+    // zero-move gesture never reaches the first-movement push at all.
+    expect(h.dup.pushHistory).not.toHaveBeenCalled();
+    expect(h.dup.setHistory).toHaveBeenCalledTimes(1);
+    // The copy is the selection, redo is invalidated, the live region fires.
+    expect(h.selectMany).toHaveBeenCalledTimes(1);
+    expect(h.selectMany).toHaveBeenLastCalledWith([copyId], copyId);
+    expect(h.dup.setRedo).toHaveBeenCalledWith([]);
+    expect(h.dup.setLiveAnnouncement).toHaveBeenCalledWith('topology-duplicate-announce');
+    // Every ref is back to rest and the copy cursor is gone.
+    expect(h.dragRefs.duplicateDragRef.current).toBe(false);
+    expect(h.deps.duplicateCopyIdsRef.current).toEqual([]);
+    expect(h.deps.duplicateHistoryPushedRef.current).toBe(false);
+    expect(h.deps.dragOffsetsRef.current.size).toBe(0);
+    expect(h.deps.dragStartRef.current.size).toBe(0);
+    expect(h.dragRefs.draggingNodeIdsRef.current.size).toBe(0);
+    expect(document.body.style.cursor).toBe('');
+    // One-shot, exactly like the moved case: the second release of the same
+    // gesture commits nothing.
+    act(() => h.api.finalizeNodeDrag());
+    expect(h.dup.getHistory()).toHaveLength(1);
+    expect(h.selectMany).toHaveBeenCalledTimes(1);
+    expect(h.dup.getNodes()).toHaveLength(3);
     h.unmount();
   });
 });
