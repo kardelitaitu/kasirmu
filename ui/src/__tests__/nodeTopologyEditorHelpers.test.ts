@@ -19,7 +19,7 @@ import {
   polylineD,
   prefersReducedMotion,
   validateEditorGraph,
-} from '../features/locations/NodeTopologyEditor';
+} from '../features/locations/topologyEditorHelpers';
 
 /* ── normalizeVisualPort ─────────────────────────────────────────── */
 

@@ -13,7 +13,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type { TopologyNodeData, TopologyWireData } from '../features/locations/NodeTopologyEditor';
-import { canvasStateEqual } from '../features/locations/NodeTopologyEditor';
+import { canvasStateEqual } from '../features/locations/topologyEditorHelpers';
 
 /* ── Fixtures ───────────────────────────────────────────────── */
 
