@@ -432,6 +432,19 @@ RLS_TABLES = [
 # closed in both directions). Remove an entry the moment the table's
 # write path stamps tenant_id and it joins RLS_TABLES.
 RLS_EXEMPT = {
+    "document_number_sequences": (
+        "regional slice 5; desktop-local write paths only (Store CRUD + "
+        "the checkout claim) — tenant_id stamped schema-side from birth, "
+        "cover when its PG write path lands; parent legal_entities is "
+        "itself exempt pending the cloud-sync decision, and covering a "
+        "child while the parent is uncovered would be incoherent"
+    ),
+    "fiscal_schemes": (
+        "regional slice 5; desktop-local write paths only (Store CRUD) — "
+        "tenant_id stamped schema-side from birth, cover when its PG "
+        "write path lands; parent legal_entities is itself exempt "
+        "pending the cloud-sync decision"
+    ),
     "image_refs": (
         "no PG write path audited; desktop-local image references — "
         "cover when its cloud sync path lands"

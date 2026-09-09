@@ -388,17 +388,18 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 114 tables,
+    // All migrations applied (init + incremental) yield 116 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
     // (20260918_payables.sql added the 112th and 113th: payables +
     // payable_payments; 20260922_over_quota_markers.sql added the 114th:
-    // over_quota_markers.)
+    // over_quota_markers; 20260923_fiscal_numbering.sql added the 115th
+    // and 116th: fiscal_schemes + document_number_sequences.)
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        114,
+        116,
         "table surface drifted"
     );
     assert_eq!(
@@ -420,10 +421,12 @@ fn init_sql_creates_complete_schema_surface() {
         // `20260921_tax_rate_scoping.sql` (location, entity — both partial, so
         // neither indexes the constant NULL that every pre-scoping row carries),
         // plus the 3 over_quota_markers indexes (dimension, resource, tenant)
-        // from 20260922_over_quota_markers.sql.
-        // (The table's UNIQUE constraint is NOT counted: SQLite names that
-        // index `sqlite_autoindex_*` and the query excludes that prefix.)
-        169,
+        // from 20260922_over_quota_markers.sql, plus the fiscal-scheme lookup
+        // index `idx_fiscal_schemes_entity` from
+        // `20260923_fiscal_numbering.sql`. (The document_number_sequences
+        // UNIQUE constraint is NOT counted: SQLite names that index
+        // `sqlite_autoindex_*` and the query excludes that prefix.)
+        170,
         "index surface drifted"
     );
     assert_eq!(
@@ -568,6 +571,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260920_audit_retention.sql".to_string(),
             "20260921_tax_rate_scoping.sql".to_string(),
             "20260922_over_quota_markers.sql".to_string(),
+            "20260923_fiscal_numbering.sql".to_string(),
         ]
     );
 
@@ -590,16 +594,17 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run (114 tables: the
+    // Schema surface is unchanged after the no-op re-run (116 tables: the
     // 111 pinned before 20260918, plus payables and payable_payments from
-    // 20260918, plus over_quota_markers from 20260922 - recorded once,
+    // 20260918, plus over_quota_markers from 20260922, plus fiscal_schemes
+    // and document_number_sequences from 20260923 - recorded once,
     // idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        114,
+        116,
         "table surface must be unchanged after upgrade"
     );
 }

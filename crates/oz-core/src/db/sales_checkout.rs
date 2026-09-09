@@ -487,6 +487,20 @@ impl Store<'_> {
         // with the sale (guards documented on the helper).
         crate::db::promotions::persist_checkout_applications(&tx, &sale.id, checkout_applications)?;
 
+        // ── Statutory numbering (regional slice 5) ────────────────
+        // The claim runs INSIDE this transaction (constraint: statutory
+        // sequence writes must be atomic with the sale — a rolled-back
+        // sale must not consume a number). Unconfigured entities stamp
+        // nothing and keep today's behavior. The `now` timestamp drives
+        // the period bucket, matching the sale's own business moment.
+        let statutory_number = self.claim_statutory_number_for_sale(
+            &tx,
+            &sale.id,
+            primary_location.as_str(),
+            "receipt",
+            &now,
+        )?;
+
         tx.commit()?;
 
         Ok(crate::sale_deduction::CompleteSaleResult {
@@ -494,6 +508,7 @@ impl Store<'_> {
             status: SaleStatus::Pending,
             receipt_number: sale.id.clone(),
             deduct_tx_id,
+            statutory_number,
         })
     }
 }

@@ -92,6 +92,11 @@ pub struct CompleteSaleResult {
     pub status: SaleStatus,
     /// Human-readable receipt number for the cashier UI.
     pub receipt_number: String,
+    /// The statutory document number claimed inside the sale transaction
+    /// (regional slice 5), or `None` when the selling entity has no
+    /// configured `document_number_sequences` series for the document kind
+    /// (unconfigured deployments keep today's behavior).
+    pub statutory_number: Option<String>,
     /// FK to `inventory_transactions.id` — the audit session that groups
     /// all `stock_movements` rows produced by this deduction.
     pub deduct_tx_id: InventoryTransactionId,

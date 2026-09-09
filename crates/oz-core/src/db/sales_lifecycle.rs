@@ -484,6 +484,19 @@ impl Store<'_> {
         // with the sale (guards documented on the helper).
         crate::db::promotions::persist_checkout_applications(&tx, &sale.id, checkout_applications)?;
 
+        // ── Statutory numbering (regional slice 5) ────────────────
+        // Same in-transaction contract as complete_sale_deduction_with_locations:
+        // this is the ADR-19 §6b sibling checkout path, and a statutory number
+        // on one path but not its sibling would be the invented-inconsistency
+        // class. Unconfigured entities stamp nothing.
+        let statutory_number = self.claim_statutory_number_for_sale(
+            &tx,
+            &sale.id,
+            primary_location.as_str(),
+            "receipt",
+            &now,
+        )?;
+
         tx.commit()?;
 
         // ADR #37 D3: recompute popularity for every sold SKU — the sale
@@ -500,6 +513,7 @@ impl Store<'_> {
             status: foundation::SaleStatus::Completed,
             receipt_number: sale.id.clone(),
             deduct_tx_id,
+            statutory_number,
         })
     }
 

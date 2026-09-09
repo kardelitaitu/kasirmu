@@ -85,6 +85,9 @@ pub mod stripe;
 pub use offline::RemoteSyncFailure;
 /// EDC terminal configuration CRUD — PLANNED (stubs).
 pub mod edc_terminals;
+/// Fiscalization and statutory numbering — legal-entity schemes and the
+/// race-free document-number claim (slice 5).
+pub mod fiscal;
 /// Cloud image content spine — refcount + push queue (spec 0046b §3.7).
 pub mod image_refs;
 /// Organization/Tenant-scoped Legal Entity CRUD and location assignment.

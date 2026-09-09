@@ -679,6 +679,33 @@ CREATE TABLE IF NOT EXISTS "locations" (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
     ON locations(is_primary) WHERE is_primary = 1;
 
+CREATE TABLE IF NOT EXISTS fiscal_schemes (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    legal_entity_id TEXT NOT NULL REFERENCES legal_entities(id),
+    scheme_code     TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    parameters      TEXT NOT NULL DEFAULT '{}',
+    is_active       BIGINT NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS document_number_sequences (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    legal_entity_id TEXT NOT NULL REFERENCES legal_entities(id),
+    document_kind   TEXT NOT NULL,
+    prefix          TEXT NOT NULL DEFAULT '',
+    current_value   BIGINT NOT NULL DEFAULT 0,
+    reset_period    TEXT NOT NULL DEFAULT 'never',
+    period_key      TEXT NOT NULL DEFAULT '',
+    padding         BIGINT NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE (legal_entity_id, document_kind)
+);
+
 CREATE TABLE IF NOT EXISTS memo_revisions (
     id            TEXT PRIMARY KEY,
     memo_id       TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
@@ -936,7 +963,7 @@ CREATE TABLE IF NOT EXISTS "sales" (
     pending_expires_at  TEXT,
     payment_reference   TEXT,
     captured_at         TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0);
+, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0, statutory_number TEXT);
 
 CREATE TABLE IF NOT EXISTS category_taxes (
     category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
@@ -1577,6 +1604,8 @@ CREATE INDEX IF NOT EXISTS idx_exchange_rates_from ON exchange_rates(from_curren
 
 CREATE INDEX IF NOT EXISTS idx_exchange_rates_to   ON exchange_rates(to_currency);
 
+CREATE INDEX IF NOT EXISTS idx_fiscal_schemes_entity ON fiscal_schemes(legal_entity_id, is_active);
+
 CREATE INDEX IF NOT EXISTS idx_gift_card_transactions_gift_card_id ON gift_card_transactions(gift_card_id);
 
 CREATE INDEX IF NOT EXISTS idx_gift_card_transactions_sale_id ON gift_card_transactions(sale_id);
@@ -2039,6 +2068,8 @@ ON CONFLICT DO NOTHING;
 -- (RLS_EXEMPT in scripts/generate-pg-migration.py; the reason
 -- travels with the entry, and an undocumented table fails the
 -- generator):
+--   document_number_sequences — regional slice 5; desktop-local write paths only (Store CRUD + the checkout claim) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision, and covering a child while the parent is uncovered would be incoherent
+--   fiscal_schemes — regional slice 5; desktop-local write paths only (Store CRUD) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
 --   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
 --   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
 --   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
