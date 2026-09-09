@@ -2535,3 +2535,58 @@ routed to the regional-slice-6 stream (BusinessDefaultsScreen). Standing rule
 from this exchange: a provider added to AppProviders must also be added to the
 shared test wrapper in the same commit — and note the wrapper may not be truly
 shared until it is (the fix wrapped inline in the screen's own render helper).
+
+## 2026-09-26 — Receipt-format axis (slice 7): the LAST missing L167 axis (feat)
+
+**Plan-first verdict B, supervisor-ratified:** dedicated `receipt_formats` table
+(one closed record per scope), NOT a generic regional_settings KV — the axis is
+a closed 10-field record split by owner (content=entity, layout=workspace/
+terminal), which a KV expresses only as untyped key-prefix soup; a generic KV
+for a single consumer is the slice-6 smell. Option C grounded-rejected: scoping
+the `settings` table is the schema change the design explicitly declined
+(hottest config surface); key-namespace conventions are design-rejected;
+riding location/terminal profile columns hits the full-overwrite hazard
+(structural fact #2); riding fiscal_schemes.parameters breaks the axis seam.
+
+**Migration 20260925_receipt_formats.sql:** one table, scope_type CHECK(legal_entity|
+workspace|terminal), UNIQUE(scope_type, scope_id), config JSON bag validated per
+scope kind at the core boundary. paper_width_mm is a dedicated INTEGER COLUMN with
+DB-layer CHECK (BETWEEN 20 AND 120) — supervisor addition 3, test inserts 500 raw
+and asserts the DB rejects it. Pins 118/172, registry +1, idempotency 118,
+RLS_EXEMPT entry, PG regen 118/151 + --check clean.
+
+**The three supervisor additions, all in:** (1) LEGACY_RECEIPT_KEYS const = the
+exact 10 legacy settings key literals, fallback reads BY the list, test pins all
+10 verbatim (settings-rebuild stream cannot strand the fallback silently) +
+scoped-row-override test (legacy receipt.footer vs scoped entity footer → scoped
+wins, provenance Entity); (2) RECEIPT_ELEMENT_CODES closed enum (10 codes mirroring
+the oz-hal SalesReceipt/ReceiptConfig sections the renderer consumes),
+required_fields ⊆ enum validated at the write boundary, unknown codes rejected by
+name, FTL element keys ×2 bundles; (3) the DB-layer width CHECK above.
+
+**Honesty fix caught by my own test:** layout legacy defaults (80mm/0 margins)
+fill even when NO legacy key exists — the source must stay Unset, not Legacy
+(a default is not a configuration). Legacy source engages only when a legacy
+key is actually set.
+
+**Explicit workspace_id (landed pattern):** fresh store dbs have no primary
+location row, so the layout write takes an explicit workspace_id; the read
+resolves workspace explicit param → terminal bound_location_id → primary
+location. MutexGuard-across-await fixed by short-lock scope resolution before
+the resource gate.
+
+**IPC + card:** get/set in both shells (desktop ADR #47 location-resource gate;
+content read-only — entity authoring is a deferred management surface),
+dev-mock, card beside the other two with statutory-content read-only display
+(provenance + element chips) and layout editing; settings-rcptfmt-* keys ×2
+bundles; a11y via aria-labelledby (Localized-inside-label fails jsx-a11y static
+analysis).
+
+**Gates:** receipt_formats 11/11; desktop 4/4; tablet 3/3; migrations 28/28;
+PG --check clean; full core 2850/2850; typecheck/lint/i18nBundle/screenExtraction
+clean at commit window (waited out A's NodeTopologyEditor edit).
+
+**Commit:** `aa69f8ca7` — 21 files, +2413/−5. L167's last missing axis landed;
+awaiting the supervisor's verification pass to flip the box.
+
+**Linkage:** supervisor — verdict + landing report.
