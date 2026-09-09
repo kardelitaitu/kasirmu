@@ -1654,21 +1654,25 @@ export default function NodeTopologyEditor({
   // listener attached, firing finalize/cancel closures against an unmounted
   // editor on the next page-wide pointer event.
   useEffect(() => {
+    // Each cleanup ref holds a closure installed LATER by the gesture hook that
+    // arms it, so the value must be read when the cleanup runs. The ref OBJECT
+    // is stable for the editor's lifetime, so capturing it in a local is safe —
+    // and it is what react-hooks/exhaustive-deps asks for here; copying
+    // `.current` into a local instead would freeze the empty setup-time value
+    // and defeat the sweep (the trap the previous comment on bendDragCleanupRef
+    // named, which is why the sweep keeps five `const x = xRef` captures).
     const timers = freshTimersRef.current;
+    const panCleanup = panCleanupRef;
+    const dragCleanup = dragCleanupRef;
+    const marqueeCleanup = marqueeCleanupRef;
+    const bendDragCleanup = bendDragCleanupRef;
+    const touchCleanup = touchCleanupRef;
     return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup ref, assigned by the pointer hook.
-      panCleanupRef.current?.();
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup ref, assigned by the pointer hook.
-      dragCleanupRef.current?.();
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup ref, assigned by the pointer hook.
-      marqueeCleanupRef.current?.();
-      // bendDragCleanupRef now holds a closure installed by
-      // useTopologyEditorBendDrag, not a rendered node — copying it into a local
-      // inside the effect would capture the (empty) value at setup and defeat the sweep.
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup ref, assigned by the bend-drag hook.
-      bendDragCleanupRef.current?.();
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup ref, assigned by the touch hook.
-      touchCleanupRef.current?.();
+      panCleanup.current?.();
+      dragCleanup.current?.();
+      marqueeCleanup.current?.();
+      bendDragCleanup.current?.();
+      touchCleanup.current?.();
       timers.forEach(clearTimeout);
       timers.clear();
     };
