@@ -606,6 +606,85 @@ actual relationship mutation.
       coverage is marker-level rather than evaluated. NOT flipped; the
       remaining slice is create-path gating plus whatever the owner wants for
       topology nodes.
+      — **CREATE-PATH GATING: LANDED 2026-09-10 (wave 4, four commits). That
+      sentence is now the false half of the note above, so the box is down to
+      ONE item; see the verdict at the end.**
+      - **`b11f7b4ed`** *refactor(core): centralize creation-quota gates behind
+        quota_gate* — new `crates/oz-core/src/db/quota_gate.rs` (200 lines) is
+        the single decision point: `enforce_creation_quota` (:160) keeps the
+        exact legacy predicate, `ensure_quota_allows` (:132) is the
+        batch-aware variant, `resolve_tier_fail_closed` (:53) makes a missing
+        subscription row fail CLOSED to Free on the `Entitlements::fail_closed`
+        precedent rather than erroring or proceeding. At HEAD **five** gates
+        delegate to it — `locations.rs:158`, `terminals.rs:71`,
+        `staff.rs:183`, `products_crud.rs:216`, `inventory.rs:62` (Warehouses).
+        The sixth door is **deliberately not routed**: the per-location instance
+        gate stays bespoke in `workspaces_lifecycle.rs`, because summing
+        `KdsScreens` tenant-globally would answer 0 from `QuotaCounts::get` and
+        a generic loop would then report KDS as allowed everywhere — asking this
+        gate for KDS is an `Internal` error by design, not a wrong answer
+        (`quota_gate.rs:26-34`). Equivalence was proven the honest way: the
+        ~40 existing per-gate tests passed **unmodified**.
+      - **`b5758c571`** *fix(data): gate import_data product batch behind tier
+        quota* — closes the one door no gate guarded: `commands/data.rs:384`
+        calls `ensure_quota_allows(Products, tier, n)` on the count of
+        not-yet-existing SKUs **before** the transaction, so a Free tenant can
+        no longer import 10k rows in one shot that nothing ever counted against
+        `max_products`. Duplicate-SKU overcounting errs on the rejecting side.
+      - **`6bbf0f8c8`** — the two product doors in the clients now read the
+        entitlements read model for the tier like the other doors, so there is
+        one limit source instead of two that could disagree. (Measured at the
+        time: no `effective_tier` divergence, because `from_subscription` already
+        set `tier: effective_tier()` — this removes the *possibility*, not an
+        observed mismatch.)
+      - **`9264b8f67`** *fix(core): close quota TOCTOU with an in-tx creation
+        veto* — worth reading carefully, because it does **not** do what the
+        slice was framed as doing. Folding count-then-insert into one
+        transaction cannot work under WAL: the pre-insert count sees the
+        pre-commit snapshot, so two concurrent callers both pass at limit-1
+        regardless. The shipped shape is `arm_creation_quota` (:177) at the gate
+        and a **post-insert** veto that rolls the transaction back — the legacy
+        predicate, with the race closed, and without widening ~150 call sites.
+      - Gate evidence at `9264b8f67`: core 2892 passed / 0 failed, `cargo check`
+        on app + tablet + oz-api 0 errors, `commands::data` 20,
+        tablet `commands::products` 19.
+      **KDS correction to the note above:** KDS screens are no longer
+      marker-only. `QuotaDimension::KdsScreens` is a real variant with its own
+      `limit_for` → `tier.max_kds_screens()` (`downgrade.rs:106`, documented
+      "in one location" :59) and the per-location cap is enforced at creation in
+      `workspaces_lifecycle.rs:77-90` against `count_active_kds_instances(
+      store_id)`, including the bundle case where a signed payload unlocks the
+      `kds` type on a tier whose static cap is 0.
+      **Still the one open item, precisely:** the box's own list names
+      **topology nodes** among the resources to "preserve … as
+      readable/marked `over_quota`", and nothing marks them. There is no
+      topology-node quota dimension, `assess_downgrade` does not count them
+      (`downgrade.rs:34-38` assigns them to the workspace/topology path), and no
+      marker row is ever written for one. Nodes are *constrained* today — type
+      allowlisting, the per-location caps above, `suspend_surplus_instances` —
+      but constrained is not marked, and the box asks for marked. Cheap to
+      close, not free: `over_quota_markers` was built for it (`resource_type` /
+      `resource_id` are documented in `20260922_over_quota_markers.sql` as wide
+      enough to carry per-resource rows, `resource_id` = tenant id for a
+      dimension marker, = the resource for a specific one), so the shape exists
+      and the missing part is the writer plus a decided limit. **Box NOT
+      flipped** on that single clause.
+      **Two rulings parked for the owner, both live in this box's subject
+      matter and both verified at HEAD** — recorded here so the next reader
+      does not re-find them as bugs:
+      1. **Recover-as-expansion.** `recover_workspace_instances_scoped`
+         (desktop `commands/workspaces.rs:451`, registered `lib.rs:1099`) has no
+         quota veto, so recovering previously-suspended instances can put a
+         downgraded tenant back over its cap. Whether that is legitimate
+         restoration or a creation in disguise is a product ruling, not an
+         oversight to fix locally.
+      2. **Archived terminals keep consuming slots.** `count_terminals` is
+         `SELECT COUNT(*) FROM terminals` (`terminals.rs:78`) with no
+         `is_active` filter, while `count_staff_users` is
+         `WHERE is_active = 1 AND role_id != ?1` (`staff.rs:165`) — the two feed
+         the same assessment (`downgrade.rs:40` and `:42`). So one dimension
+         counts archived rows and its neighbour does not. Tightening either side
+         changes who is reported over quota after a downgrade, hence parked.
 - [x] **Implement offline synchronization guarantees.** Add durable outbox
       states, retries, conflict handling, idempotency, ordering, clock handling,
       and visible failure states. — **verified complete 2026-09-06** across
