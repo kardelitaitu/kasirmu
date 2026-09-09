@@ -353,8 +353,7 @@ export function useTopologyEditorApplyPanel(deps: TopologyApplyPanelDeps) {
     // Opening is all this does now: clearing the PIN and focusing the field
     // are the dialog's own concern, driven by its `open` effect.
     setApplyConfirmOpen(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; appliedSnapshotRef is a parent-owned ref read through the deps object, and setApplyConfirmData is this hook's own useState setter (stable).
-  }, [nodes, wires, allowLegacyApply, currentTier, resolvedIssues, workspaceInstances, sessionStoreId, addToast, l10n, setValidationPanelOpen, setApplyConfirmData]);
+  }, [nodes, wires, allowLegacyApply, currentTier, resolvedIssues, workspaceInstances, sessionStoreId, addToast, l10n, setValidationPanelOpen, setApplyConfirmData, appliedSnapshotRef]);
 
   /** Reactive "Unsaved changes" chip data. Round 153: the chip always
    *  previews the workspace-instance diff through the SAME planTopologyDiff
@@ -388,8 +387,7 @@ export function useTopologyEditorApplyPanel(deps: TopologyApplyPanelDeps) {
         }));
     const plan = planTopologyDiff(nodes, beforeInstances);
     return summarizeTopologyPlan(plan);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original; appliedSnapshotRef is a parent-owned ref read through the deps object.
-  }, [isDirty, nodes, workspaceInstances]);
+  }, [isDirty, nodes, workspaceInstances, appliedSnapshotRef]);
 
   return {
     applyConfirmOpen,
