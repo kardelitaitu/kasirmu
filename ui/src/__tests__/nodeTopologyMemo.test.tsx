@@ -35,6 +35,15 @@ const { nodeCounts, wireCounts, stableL10n, stableSettings } = vi.hoisted(() => 
   },
 }));
 
+// Last props object each memoized layer actually rendered with. The render
+// counters above prove WHETHER a layer re-rendered; these prove WHY by
+// letting a test compare a callback's identity across a rerender. Captured
+// only as `unknown` so the probes stay type-independent of the components.
+const { lastNodeProps, lastWireProps } = vi.hoisted(() => ({
+  lastNodeProps: {} as Record<string, { onSelect: unknown; onCardMouseDown: unknown }>,
+  lastWireProps: {} as Record<string, { onStartBendDrag: unknown; onStartGhostBend: unknown }>,
+}));
+
 vi.mock('../features/locations/topologyNodeCard', async (importOriginal) => {
   // The mocked module's type shape (only the component export is read).
   const actual = await importOriginal<{ TopologyNodeCard: typeof NodeCardComponent }>();
@@ -44,6 +53,7 @@ vi.mock('../features/locations/topologyNodeCard', async (importOriginal) => {
     ...actual,
     TopologyNodeCard: memoize((props: ComponentProps<typeof RealCard>) => {
       nodeCounts[props.node.id] = (nodeCounts[props.node.id] ?? 0) + 1;
+      lastNodeProps[props.node.id] = props;
       return <RealCard {...props} />;
     }),
   };
@@ -57,6 +67,7 @@ vi.mock('../features/locations/topologyWireGroup', async (importOriginal) => {
     ...actual,
     TopologyWireGroup: memoize((props: ComponentProps<typeof RealWire>) => {
       wireCounts[props.wire.id] = (wireCounts[props.wire.id] ?? 0) + 1;
+      lastWireProps[props.wire.id] = props;
       return <RealWire {...props} />;
     }),
   };
@@ -257,5 +268,98 @@ describe('topology memoized render layers — hover/selection touch only the aff
     expect(nodeCount('store-1', settled)).toBe(0);
     expect(nodeCount('ws-1', settled)).toBe(0);
     expect(nodeCount('ws-2', settled)).toBe(0);
+  });
+
+  // ── Viewport churn (Phase 3.4/3.5 extraction guards) ──────────────────
+  // Pan/zoom are the ONE prop-identity churn the memoized layers live with
+  // today, and the asymmetry is deliberate:
+  //   * topologyEditorBendDrag's startBendDrag converts client coords with
+  //     the CURRENT viewport, so its dep array is [pan, zoom, ...] — every
+  //     pan or zoom step re-keys it and every wire group re-renders.
+  //   * the card's drag/selection props (handleNodeMouseDown / selectOnly)
+  //     read the viewport through panRef/zoomRef instead, so a pan must
+  //     NEVER touch a card.
+  // The pointer/keyboard/touch and viewport extractions on the refactor
+  // ladder have to preserve exactly this split, so it is pinned here from
+  // the outside — through the real editor and real gestures, not the hooks.
+
+  const canvasEl = () => document.querySelector('.node-canvas-container') as HTMLElement;
+  const viewportEl = () => document.querySelector('.node-canvas-viewport') as HTMLElement;
+  const zoomLabel = () => document.querySelector('.canvas-zoom-level')?.textContent;
+
+  /** The captured props of the LAST render of a layer — a throw with a named
+   *  layer instead of a silent `undefined` if a gesture ever stops rendering
+   *  it, which would otherwise read as a passing identity assertion. */
+  const lastWire = (id: string) => {
+    const props = lastWireProps[id];
+    if (!props) throw new Error(`no props captured for wire ${id}`);
+    return props;
+  };
+  const lastNode = (id: string) => {
+    const props = lastNodeProps[id];
+    if (!props) throw new Error(`no props captured for node ${id}`);
+    return props;
+  };
+
+  /** One middle-button pan: the canvas starts the gesture, the editor's
+   *  document-level mousemove (armed while the drag is in flight) moves it,
+   *  mouseup tears it down. */
+  const panStep = (dx = 50, dy = 30) => {
+    fireEvent.mouseDown(canvasEl(), { button: 1, clientX: 100, clientY: 100 });
+    fireEvent.mouseMove(document, { clientX: 100 + dx, clientY: 100 + dy });
+    fireEvent.mouseUp(document, { button: 1 });
+  };
+
+  it('panning re-keys the wire group onStartBendDrag identity (pre-existing viewport churn)', async () => {
+    const base = await renderWithPreset();
+    const bendBefore = lastWire('w1').onStartBendDrag;
+    const ghostBefore = lastWire('w1').onStartGhostBend;
+    const transformBefore = viewportEl().style.transform;
+
+    panStep();
+
+    // The gesture really moved the viewport (the transform is the proof, so
+    // a test that silently no-ops on a canvas that ignores the drag fails).
+    expect(viewportEl().style.transform).not.toBe(transformBefore);
+    // Churn pinned: bends stay glued to the cursor while panned, which is
+    // only possible because the handler re-keys with pan.
+    expect(lastWire('w1').onStartBendDrag).not.toBe(bendBefore);
+    expect(lastWire('w1').onStartGhostBend).not.toBe(ghostBefore);
+    expect(wireCount('w1', base)).toBeGreaterThanOrEqual(1);
+    expect(wireCount('w2', base)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the same pan leaves the node card drag/selection props referentially stable', async () => {
+    const base = await renderWithPreset();
+    const cardBefore = lastNode('ws-2');
+    const transformBefore = viewportEl().style.transform;
+
+    panStep();
+
+    expect(viewportEl().style.transform).not.toBe(transformBefore);
+    // The invariant: node-drag math reads pan through refs, so the props the
+    // memoized card receives survive a pan unchanged.
+    expect(lastNode('ws-2').onCardMouseDown).toBe(cardBefore.onCardMouseDown);
+    expect(lastNode('ws-2').onSelect).toBe(cardBefore.onSelect);
+    // And the memo boundary absorbs the pan outright — no card re-renders.
+    expect(nodeCount('ws-2', base)).toBe(0);
+    expect(nodeCount('ws-1', base)).toBe(0);
+    expect(nodeCount('store-1', base)).toBe(0);
+  });
+
+  it('wheel zoom churns the wire props and leaves the card props stable, like a pan', async () => {
+    const base = await renderWithPreset();
+    const bendBefore = lastWire('w1').onStartBendDrag;
+    const cardBefore = lastNode('ws-2');
+    const zoomBefore = zoomLabel();
+
+    fireEvent.wheel(canvasEl(), { deltaY: -100, clientX: 10, clientY: 10 });
+
+    expect(zoomLabel()).not.toBe(zoomBefore);
+    expect(lastWire('w1').onStartBendDrag).not.toBe(bendBefore);
+    expect(wireCount('w1', base)).toBeGreaterThanOrEqual(1);
+    expect(lastNode('ws-2').onCardMouseDown).toBe(cardBefore.onCardMouseDown);
+    expect(lastNode('ws-2').onSelect).toBe(cardBefore.onSelect);
+    expect(nodeCount('ws-2', base)).toBe(0);
   });
 });
