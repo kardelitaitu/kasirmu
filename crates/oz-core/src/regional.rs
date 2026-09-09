@@ -57,6 +57,85 @@ pub const LOCATION_TIMEZONES: &[&str] = &["Asia/Jakarta", "Asia/Makassar", "Asia
 pub fn is_preset_location_timezone(tz: &str) -> bool {
     LOCATION_TIMEZONES.contains(&tz)
 }
+/// Whether `tag` is a shape-valid BCP-47 locale for the regional write
+/// path: a 2–3 letter primary language subtag plus optional `-`-separated
+/// alphanumeric subtags (script 4 letters, region 2 letters or 3 digits,
+/// variants 5–8 alphanumerics — the shape check accepts any 2–8 so it does
+/// not silently reject a valid tag this deployment has never seen). BCP-47
+/// is case-insensitive; the value is stored as supplied.
+#[must_use]
+pub fn is_valid_bcp47_locale(tag: &str) -> bool {
+    let mut segments = tag.split('-');
+    let language = segments.next().unwrap_or("");
+    let lang = language.as_bytes();
+    if !(lang.len() == 2 || lang.len() == 3) || !lang.iter().all(|b| b.is_ascii_alphabetic()) {
+        return false;
+    }
+    segments.all(|segment| {
+        let n = segment.len();
+        (2..=8).contains(&n) && segment.bytes().all(|b| b.is_ascii_alphanumeric())
+    })
+}
+
+/// Whether `code` is a shape-valid ISO-3166 alpha-2 country code: exactly
+/// two ASCII letters. Case-insensitive per the standard; callers
+/// canonicalise to uppercase before storing.
+#[must_use]
+pub fn is_valid_iso3166_alpha2(code: &str) -> bool {
+    let b = code.as_bytes();
+    b.len() == 2 && b.iter().all(|byte| byte.is_ascii_alphabetic())
+}
+
+/// Validate and canonicalise one regional axis value at the write boundary.
+///
+/// This is the single place the design's "validate at the core boundary, not
+/// in React" rule lives: blank means *inherit* and stays blank, everything
+/// else must be valid before it may reach a column.
+///
+/// - `locale`: shape-valid BCP-47 ([`is_valid_bcp47_locale`]).
+/// - `timezone`: the ADR #48 contract, identical to
+///   `update_location_profile_scoped` — exactly the three Indonesian
+///   IANA presets ([`is_preset_location_timezone`]) or the legacy `UTC`
+///   column-default sentinel. Free-text IANA names and fixed offsets are
+///   rejected here exactly as they are there: Decision 2 bounds the write
+///   to the enumerable set so the resolver can never inherit an
+///   unparseable string (Decision 1 rejected fixed-offset storage).
+/// - `currency`: ISO-4217 alpha-3 via the `Currency` parser — the same
+///   validation `create_exchange_rate` applies — canonicalised to
+///   uppercase (787dc742a).
+/// - `country`: shape-valid ISO-3166 alpha-2 ([`is_valid_iso3166_alpha2`]),
+///   canonicalised to uppercase.
+///
+/// Returns the canonical value to store ("" for inherit). The error message
+/// names the axis and the rule; the command layer maps
+/// `CoreError::Validation` onto the typed wire error unchanged.
+pub fn validate_regional_axis_value(
+    axis: &'static str,
+    raw: &str,
+) -> Result<String, crate::CoreError> {
+    let value = raw.trim();
+    if value.is_empty() {
+        // Blank means "not set, inherit" — the schema's own convention.
+        return Ok(String::new());
+    }
+    let ok = match axis {
+        "locale" => is_valid_bcp47_locale(value).then(|| value.to_owned()),
+        "timezone" => (is_preset_location_timezone(value) || value.eq_ignore_ascii_case("UTC"))
+            .then(|| value.to_owned()),
+        "currency" => value.parse::<crate::Currency>().ok().map(|c| c.to_string()),
+        "country" => is_valid_iso3166_alpha2(value).then(|| value.to_ascii_uppercase()),
+        other => {
+            return Err(crate::CoreError::Validation {
+                field: axis,
+                message: format!("unknown regional axis: {other}"),
+            });
+        }
+    };
+    ok.ok_or_else(|| crate::CoreError::Validation {
+        field: axis,
+        message: format!("{axis} must be valid (blank = inherit); got {value:?}"),
+    })
+}
 /// Built-in ISO-4217 currency code used when no scope sets one. Matches the
 /// locations.currency column default.
 pub const DEFAULT_CURRENCY: &str = "USD";

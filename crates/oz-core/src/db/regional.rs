@@ -141,6 +141,102 @@ impl Store<'_> {
             None => Ok(None),
         }
     }
+
+    /// Write the regional configuration for one location and return the
+    /// freshly resolved effective config (read-after-write, same connection).
+    ///
+    /// Slice 3 of the regional-configuration item — the counterpart of
+    /// `Store::regional_config_for_location`. Write shape follows the
+    /// design's structural facts:
+    ///
+    /// - **Location rows + the linked entity's country anchor, nothing
+    ///   else.** The design's structural fact #2 records that the location
+    ///   row is a full-overwrite surface and that regional columns must
+    ///   therefore never ride the general location update; this is the
+    ///   dedicated regional write path. Locale/timezone/currency stay on the
+    ///   location row; the only entity write is the country anchor, because
+    ///   `locations` has no country column and the read resolver takes
+    ///   `country_code` from the entity layer — clearing it here would
+    ///   make the card unable to set what it displays.
+    /// - **Full-overwrite semantics, blank = inherit.** Every axis value is
+    ///   validated and canonicalised by
+    ///   `regional::validate_regional_axis_value` at this core boundary —
+    ///   the design's "validation lives in core, not React" rule — then
+    ///   written through one transaction (the repository-level convention:
+    ///   all writes run inside a transaction). Blank clears the column so
+    ///   the chain falls through to the next scope.
+    /// - The read-back is the same connection's view, so the caller sees
+    ///   exactly what committed, including the entity/org layers the write
+    ///   did not touch.
+    ///
+    /// Returns `CoreError::NotFound` when the location does not exist (an
+    /// unknown location has no honest answer) and `CoreError::Validation`
+    /// for any axis that fails the ADR #48 contract (timezone: the three
+    /// Indonesian IANA presets or the legacy `UTC` sentinel; currency:
+    /// ISO-4217 alpha-3, uppercased; locale: BCP-47 shape; country:
+    /// ISO-3166 alpha-2, uppercased).
+    pub fn update_regional_config_for_location(
+        &self,
+        location_id: &str,
+        locale: &str,
+        timezone: &str,
+        currency: &str,
+        country_code: &str,
+    ) -> Result<crate::regional::RegionalConfig, CoreError> {
+        let locale = crate::regional::validate_regional_axis_value("locale", locale)?;
+        let timezone = crate::regional::validate_regional_axis_value("timezone", timezone)?;
+        let currency = crate::regional::validate_regional_axis_value("currency", currency)?;
+        let country_code = crate::regional::validate_regional_axis_value("country", country_code)?;
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let tx = self.conn.unchecked_transaction()?;
+        let updated = tx.execute(
+            "UPDATE locations
+             SET locale = ?1, timezone = ?2, currency = ?3, updated_at = ?4
+             WHERE id = ?5",
+            params![locale, timezone, currency, now, location_id],
+        )?;
+        if updated == 0 {
+            return Err(CoreError::NotFound {
+                entity: "location",
+                id: location_id.to_owned(),
+            });
+        }
+        if !country_code.is_empty() {
+            // The country anchor lives on the legal entity (the only layer
+            // that carries it today); the location layer has no column for
+            // it, so a location write that sets one propagates it to the
+            // linked entity — untouched rows and NULL links stay untouched.
+            let linked: Option<String> = tx
+                .query_row(
+                    "SELECT legal_entity_id FROM locations WHERE id = ?1",
+                    params![location_id],
+                    |row| row.get(0),
+                )
+                .map_err(|err| match err {
+                    rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
+                        entity: "location",
+                        id: location_id.to_owned(),
+                    },
+                    other => CoreError::Db(other),
+                })?;
+            if let Some(entity_id) = linked {
+                // Tenant-filtered, mirroring the read walk's fail-closed
+                // posture: the entity id is read from this location's row on
+                // this connection, and the UPDATE re-checks the location's
+                // tenant_id so a cross-tenant id cannot be written to.
+                let n = tx.execute(
+                    "UPDATE legal_entities
+                     SET country_code = ?1, updated_at = ?2
+                     WHERE id = ?3
+                       AND tenant_id = (SELECT tenant_id FROM locations WHERE id = ?4)",
+                    params![country_code, now, entity_id, location_id],
+                )?;
+                debug_assert!(n <= 1);
+            }
+        }
+        tx.commit()?;
+        self.regional_config_for_location(location_id)
+    }
 }
 
 #[cfg(test)]

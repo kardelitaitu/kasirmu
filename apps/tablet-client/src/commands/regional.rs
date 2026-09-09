@@ -1,10 +1,13 @@
-//! Regional-configuration read commands (regional slice 2, saas-2 design
-//! slice queue #2).
+//! Regional-configuration commands (slices 2–3 of the saas-2 design slice
+//! queue).
 //!
 //! Exposes the slice-1 core read model (`Store::regional_config_for_location`)
 //! over IPC: the effective locale/timezone/currency for one location with
-//! per-axis provenance. Read-only by design — the write path is slice 3 and
-//! needs the settings-scope ruling first.
+//! per-axis provenance — and, since slice 3, its transactional write
+//! counterpart (`Store::update_regional_config_for_location`). The tablet
+//! shell checks `settings:edit` on the session; the location-resource
+//! scoping that the desktop shell layers on top (ADR #47) has no tablet
+//! helper yet, matching this shell's other scoped write commands.
 //!
 //! Wire contract: the core `RegionalConfig` is returned **as-is** — its
 //! fields are documented "serialized as snake_case so the IPC DTOs of later
@@ -53,6 +56,66 @@ pub async fn get_regional_config_scoped(
     Ok(config)
 }
 
+/// Write the regional configuration for one location of the session's
+/// store (regional slice 3).
+///
+/// Resolves the session's store database (ADR #7) and checks `settings:edit`
+/// on the session (the tablet shell's scoped-write precedent; the desktop
+/// twin adds the ADR #47 location-resource gate on top). All validation
+/// happens in core — `Store::update_regional_config_for_location` enforces
+/// the ADR #48 timezone contract (the three Indonesian IANA presets or the
+/// legacy `UTC` sentinel), ISO-4217 currency shape, BCP-47 locale shape and
+/// ISO-3166 country shape, inside the same transaction that writes the row;
+/// this command adds no validation of its own and never touches a column
+/// directly. The payload reuses core serde names verbatim, mirroring the
+/// read command.
+///
+/// Returns the freshly resolved effective config (read-after-write on the
+/// same connection) so the card can re-render provenance without a second
+/// round-trip.
+#[tauri::command]
+pub async fn set_regional_config_scoped(
+    location_id: String,
+    config: SetRegionalConfig,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<oz_core::RegionalConfig, AppError> {
+    let (session, conn) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&conn);
+    let config = store.update_regional_config_for_location(
+        &location_id,
+        &config.locale,
+        &config.timezone,
+        &config.currency,
+        &config.country_code,
+    )?;
+    Ok(config)
+}
+
+/// The write payload for `set_regional_config_scoped`. Field names match the
+/// axis names in `locations`/`legal_entities` (snake_case on the wire, like
+/// the read model); "" means "clear, inherit from the scope above".
+#[derive(serde::Deserialize)]
+pub struct SetRegionalConfig {
+    /// Locale override (BCP-47); blank to inherit.
+    #[serde(default)]
+    pub locale: String,
+    /// Timezone (IANA preset or the legacy `UTC` sentinel); blank clears
+    /// the column so the chain inherits from the scope above.
+    #[serde(default)]
+    pub timezone: String,
+    /// Currency override (ISO-4217 alpha-3); blank to inherit.
+    #[serde(default)]
+    pub currency: String,
+    /// Market anchor (ISO-3166 alpha-2), resolved through the linked legal
+    /// entity; blank leaves the entity's anchor untouched.
+    #[serde(default)]
+    pub country_code: String,
+}
 #[cfg(test)]
 #[path = "regional_tests.rs"]
 mod tests;

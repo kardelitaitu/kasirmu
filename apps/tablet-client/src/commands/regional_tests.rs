@@ -1,4 +1,4 @@
-//! Tests for the regional-configuration read command (slice 2).
+//! Tests for the regional-configuration commands (slices 2–3).
 //!
 //! The serde test pins the wire contract at the IPC boundary — the core
 //! `RegionalConfig` is the payload, so its snake_case field names and
@@ -6,7 +6,8 @@
 //! either is a wire break and must land deliberately. The flow tests exercise
 //! the session-scoped path end to end against a real migrated store database —
 //! including the entity-level inheritance leg and the ADR #48 IANA
-//! pass-through — plus the `settings:read` gate.
+//! pass-through — the `settings:read`/`settings:edit` gates, and the
+//! slice-3 write command's core-boundary validation.
 
 use super::*;
 use crate::state::AppState;
@@ -236,6 +237,134 @@ async fn get_regional_config_scoped_denies_staff_without_settings_read() {
     let app = mock_app(state);
 
     let result = get_regional_config_scoped("default".into(), "lite-tok".into(), app.state()).await;
+
+    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+}
+// ── slice 3: write command ──────────────────────────────────────────
+
+/// The write command persists through the core validator and returns the
+/// freshly resolved config (same contract as the desktop twin; the tablet
+/// shell layers only the `settings:edit` session gate).
+#[tokio::test]
+async fn set_regional_config_scoped_persists_and_returns_the_effective_config() {
+    let conn = migrations::fresh_db();
+    seed_owner(&conn);
+    let state = flow_state(conn);
+    owner_session(&state, "owner-tok");
+    let app = mock_app(state);
+
+    let config = set_regional_config_scoped(
+        "default".into(),
+        SetRegionalConfig {
+            locale: "id-ID".into(),
+            timezone: "Asia/Makassar".into(),
+            currency: "idr".into(),
+            country_code: "id".into(),
+        },
+        "owner-tok".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(config.locale.value, "id-ID");
+    assert_eq!(config.locale.scope, ConfigScope::Location);
+    assert_eq!(config.timezone.value, "Asia/Makassar");
+    assert_eq!(config.timezone.scope, ConfigScope::Location);
+    assert_eq!(config.currency.value, "IDR");
+    assert_eq!(config.currency.scope, ConfigScope::Location);
+    assert_eq!(config.country_code.as_deref(), Some("ID"));
+
+    // A plain read (slice 2 command) must agree with the write's read-back.
+    let again = get_regional_config_scoped("default".into(), "owner-tok".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(again, config);
+}
+
+/// Core validation rejects a timezone outside the ADR #48 contract as a
+/// typed Validation error at the IPC boundary — before any column moves.
+#[tokio::test]
+async fn set_regional_config_scoped_rejects_a_non_contract_timezone_as_validation() {
+    let conn = migrations::fresh_db();
+    seed_owner(&conn);
+    let state = flow_state(conn);
+    owner_session(&state, "owner-tok");
+    let app = mock_app(state);
+
+    let result = set_regional_config_scoped(
+        "default".into(),
+        SetRegionalConfig {
+            locale: "".into(),
+            timezone: "Europe/Berlin".into(),
+            currency: "".into(),
+            country_code: "".into(),
+        },
+        "owner-tok".into(),
+        app.state(),
+    )
+    .await;
+
+    match result {
+        Err(AppError::Core { sub_kind, .. }) => {
+            assert!(
+                matches!(sub_kind, CoreErrorKind::Validation),
+                "{sub_kind:?}"
+            );
+        }
+        other => panic!("expected typed Validation rejection, got: {other:?}"),
+    }
+
+    // The row is untouched — validation runs before the transaction writes.
+    let config = get_regional_config_scoped("default".into(), "owner-tok".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(config.timezone.value, "UTC");
+}
+
+/// A session without `settings:edit` is denied — typed PermissionDenied.
+#[tokio::test]
+async fn set_regional_config_scoped_denies_staff_without_settings_edit() {
+    let conn = migrations::fresh_db();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-lite', 'Lite', 'Limited', '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let state = flow_state(conn);
+    state.session_store.write().unwrap().insert(
+        "lite-tok".into(),
+        SessionContext::new(
+            "user-lite".into(),
+            "role-lite".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = mock_app(state);
+
+    let result = set_regional_config_scoped(
+        "default".into(),
+        SetRegionalConfig {
+            locale: "".into(),
+            timezone: "UTC".into(),
+            currency: "".into(),
+            country_code: "".into(),
+        },
+        "lite-tok".into(),
+        app.state(),
+    )
+    .await;
 
     assert!(matches!(result, Err(AppError::PermissionDenied(_))));
 }

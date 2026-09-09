@@ -974,6 +974,32 @@ settings-scope-location = Location
 settings-scope-workspace = Workspace
 settings-scope-terminal = Terminal
 
+# ── Regional configuration (regional slice 3, Business Defaults screen) ──
+settings-regional-title = Regional
+settings-regional-subtitle = Market facts this location answers for receipts and reports. Blank fields inherit from the legal entity or the organization defaults.
+settings-regional-locale = Locale (BCP-47)
+settings-regional-locale-placeholder = e.g. id-ID — blank inherits
+settings-regional-currency = Currency (ISO-4217)
+settings-regional-currency-placeholder = e.g. IDR — blank inherits
+settings-regional-currency-inherit = Inherit (scope above)
+settings-regional-timezone = Timezone
+settings-regional-timezone-inherit = Inherit (scope above)
+settings-regional-timezone-utc = UTC (legacy sentinel)
+settings-regional-timezone-legacy = legacy value
+settings-regional-country = Market anchor (ISO-3166)
+settings-regional-country-placeholder = e.g. ID — blank leaves the entity unchanged
+settings-regional-country-hint = Resolved through the location's legal entity.
+settings-regional-save = Save regional defaults
+settings-regional-saving = Saving…
+settings-regional-saved = Regional defaults saved.
+settings-regional-error-save = Could not save the regional defaults.
+settings-regional-error-load = Could not load the regional defaults.
+settings-regional-no-location = No location to configure yet.
+settings-regional-scope-location = Set at this location
+settings-regional-scope-legal-entity = Inherited from the legal entity
+settings-regional-scope-organization = Organization default
+settings-regional-scope-built-in = Built-in default
+
 
 # ── Diagnostics (feature-availability verdicts) ──
 settings-diagnostics-title = Diagnostics

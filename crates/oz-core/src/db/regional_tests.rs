@@ -229,3 +229,197 @@ fn migration_backfills_existing_locations_with_a_blank_locale() {
     assert_eq!(cfg.locale.value, DEFAULT_LOCALE);
     assert_eq!(cfg.locale.scope, ConfigScope::BuiltIn);
 }
+
+// ── update_regional_config_for_location (slice 3, write path) ────────
+
+#[test]
+fn write_persists_the_location_layer_and_reports_provenance() {
+    let store = store();
+    insert_location(&store, "loc-write", "USD", "UTC", "");
+    let cfg = store
+        .update_regional_config_for_location("loc-write", "id-ID", "Asia/Makassar", "IDR", "")
+        .unwrap();
+    assert_eq!(cfg.locale.value, "id-ID");
+    assert_eq!(cfg.locale.scope, ConfigScope::Location);
+    assert_eq!(cfg.timezone.value, "Asia/Makassar");
+    assert_eq!(cfg.timezone.scope, ConfigScope::Location);
+    assert_eq!(cfg.currency.value, "IDR");
+    assert_eq!(cfg.currency.scope, ConfigScope::Location);
+    // The read-back shares the connection with the write, so a plain read
+    // (what the IPC layer would do next) must agree with what was returned.
+    let again = store.regional_config_for_location("loc-write").unwrap();
+    assert_eq!(again, cfg);
+}
+
+#[test]
+fn write_blank_clears_each_axis_to_inherit() {
+    let store = store();
+    insert_location(&store, "loc-clear", "USD", "UTC", "id-ID");
+    insert_entity(&store, "ent-1", "default", "ID", "en-GB", "+07:00", "GBP");
+    link_location(&store, "loc-clear", "ent-1");
+    let cfg = store
+        .update_regional_config_for_location("loc-clear", "", "", "", "")
+        .unwrap();
+    // Every axis cleared → the chain falls through to the entity layer.
+    assert_eq!(cfg.locale.value, "en-GB");
+    assert_eq!(cfg.locale.scope, ConfigScope::LegalEntity);
+    assert_eq!(cfg.currency.value, "GBP");
+    assert_eq!(cfg.currency.scope, ConfigScope::LegalEntity);
+    assert_eq!(cfg.country_code.as_deref(), Some("ID"));
+}
+
+#[test]
+fn write_rejects_a_timezone_outside_the_adr48_contract() {
+    let store = store();
+    insert_location(&store, "loc-tz", "USD", "UTC", "");
+    // A non-preset IANA name: exactly what update_location_profile_scoped
+    // rejects, so the second writer of the column must reject it too.
+    let err = store
+        .update_regional_config_for_location("loc-tz", "", "Europe/Berlin", "", "")
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "timezone",
+                ..
+            }
+        ),
+        "expected timezone Validation, got {err:?}"
+    );
+    // The fixed-offset shape the pre-ADR #48 design draft allowed is also
+    // rejected on writes: ADR #48 Decision 1 rejected fixed-offset storage
+    // and Decision 2 bounded the editor to the preset list.
+    let err2 = store
+        .update_regional_config_for_location("loc-tz", "", "+07:00", "", "")
+        .unwrap_err();
+    assert!(
+        matches!(
+            err2,
+            CoreError::Validation {
+                field: "timezone",
+                ..
+            }
+        ),
+        "expected timezone Validation, got {err2:?}"
+    );
+    // Nothing was written — the row keeps its sentinel.
+    let cfg = store.regional_config_for_location("loc-tz").unwrap();
+    assert_eq!(cfg.timezone.value, "UTC");
+    assert_eq!(cfg.timezone.scope, ConfigScope::Location);
+}
+
+#[test]
+fn write_accepts_the_utc_sentinel_and_the_presets() {
+    let store = store();
+    insert_location(&store, "loc-tz-ok", "USD", "UTC", "");
+    for tz in ["UTC", "Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"] {
+        let cfg = store
+            .update_regional_config_for_location("loc-tz-ok", "", tz, "", "")
+            .unwrap();
+        assert_eq!(cfg.timezone.value, tz, "timezone {tz} must be writable");
+    }
+}
+
+#[test]
+fn write_canonicalises_currency_and_rejects_non_iso_codes() {
+    let store = store();
+    insert_location(&store, "loc-cur", "USD", "UTC", "");
+    // Lowercase is canonicalised to uppercase on write (787dc742a precedent).
+    let cfg = store
+        .update_regional_config_for_location("loc-cur", "", "", "idr", "")
+        .unwrap();
+    assert_eq!(cfg.currency.value, "IDR");
+    let err = store
+        .update_regional_config_for_location("loc-cur", "", "", "US1", "")
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "currency",
+                ..
+            }
+        ),
+        "expected currency Validation, got {err:?}"
+    );
+}
+
+#[test]
+fn write_rejects_a_locale_that_is_not_bcp47_shaped() {
+    let store = store();
+    insert_location(&store, "loc-loc", "USD", "UTC", "");
+    let err = store
+        .update_regional_config_for_location("loc-loc", "id_ID", "", "", "")
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "locale",
+                ..
+            }
+        ),
+        "expected locale Validation, got {err:?}"
+    );
+    // A plain language tag and a language-region tag both pass.
+    let ok = store
+        .update_regional_config_for_location("loc-loc", "id", "", "", "")
+        .unwrap();
+    assert_eq!(ok.locale.value, "id");
+}
+
+#[test]
+fn write_country_anchor_lands_on_the_linked_entity_tenant_filtered() {
+    let store = store();
+    insert_location(&store, "loc-cc", "USD", "UTC", "");
+    insert_entity(&store, "ent-1", "default", "", "", "", "");
+    link_location(&store, "loc-cc", "ent-1");
+    let cfg = store
+        .update_regional_config_for_location("loc-cc", "", "", "", "id")
+        .unwrap();
+    // Canonicalised to uppercase (ISO-3166 alpha-2), resolved through the
+    // entity layer — the only layer that carries the market anchor.
+    assert_eq!(cfg.country_code.as_deref(), Some("ID"));
+    // A cross-tenant link receives nothing: the write's tenant filter
+    // mirrors the read walk's fail-closed posture exactly.
+    insert_location(&store, "loc-cc-x", "USD", "UTC", "");
+    insert_entity(&store, "ent-other", "other-tenant", "", "", "", "");
+    link_location(&store, "loc-cc-x", "ent-other");
+    let cfg2 = store
+        .update_regional_config_for_location("loc-cc-x", "", "", "", "SG")
+        .unwrap();
+    assert_eq!(cfg2.country_code, None);
+    // ISO-3166 shape is enforced: three letters is not alpha-2.
+    let err3 = store
+        .update_regional_config_for_location("loc-cc-x", "", "", "", "IDN")
+        .unwrap_err();
+    assert!(
+        matches!(
+            err3,
+            CoreError::Validation {
+                field: "country",
+                ..
+            }
+        ),
+        "expected country Validation, got {err3:?}"
+    );
+}
+
+#[test]
+fn write_unknown_location_is_not_found() {
+    let store = store();
+    let err = store
+        .update_regional_config_for_location("no-such", "", "", "", "")
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CoreError::NotFound {
+                entity: "location",
+                ..
+            }
+        ),
+        "expected NotFound, got {err:?}"
+    );
+}

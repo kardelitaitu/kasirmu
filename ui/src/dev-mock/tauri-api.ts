@@ -587,27 +587,59 @@ interface MockRegionalConfig {
   currency: MockRegionalValue;
 }
 
+/** Written locale overrides per location id (slice 3 write model): the mock
+ *  location rows predate the locale column, so writes land here instead of
+ *  on the row. Blank = cleared (inherit). */
+const mockRegionalLocale = new Map<string, string>();
+
+/** The written market anchor (slice 3): the mock has no entity rows, so the
+ *  entity-layer country_code is one module-level value. */
+let mockRegionalCountryCode: string | null = null;
+
 /** Resolve the regional config for a mock location: the location's own
- *  columns first, then the built-in defaults — the same narrowest-first
- *  precedence the core resolver applies. The real backend also walks the
- *  legal-entity layer, which the mock cannot model: its location rows carry
- *  no locale column and its LegalEntityDto (like the real one) carries no
- *  regional fields, so locale always answers built_in here. */
+ *  columns (plus slice-3 write overrides) first, then the built-in defaults
+ *  — the same narrowest-first precedence the core resolver applies. The real
+ *  backend also walks the legal-entity layer for its blank regional columns,
+ *  which the mock cannot model: its LegalEntityDto (like the real one)
+ *  carries no regional fields. */
 function getMockRegionalConfig(args: unknown): MockRegionalConfig {
   const { locationId } = unwrapArgs<{ locationId?: string }>(args);
   const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
   const axis = (value: string, fallback: string): MockRegionalValue =>
     value.trim() !== '' ? { value, scope: 'location' } : { value: fallback, scope: 'built_in' };
+  const writtenLocale = mockRegionalLocale.get(location.id) ?? '';
   return {
     location_id: location.id,
     // The migration seed links every location to this entity id; the mock
     // has no entity rows to walk, so it is surfaced verbatim.
     legal_entity_id: 'default:default-legal-entity',
-    country_code: null,
-    locale: { value: 'en-US', scope: 'built_in' },
+    country_code: mockRegionalCountryCode,
+    locale: axis(writtenLocale, 'en-US'),
     timezone: axis(location.timezone, 'UTC'),
     currency: axis(location.currency, 'USD'),
   };
+}
+
+/** The slice-3 write: validate nothing here (the real backend validates in
+ *  core; the mock's job is only to answer non-null), mutate the mock rows,
+ *  and return the re-resolved config read-after-write. */
+function setMockRegionalConfig(args: unknown): MockRegionalConfig {
+  const { locationId, config } = unwrapArgs<{
+    locationId?: string;
+    config?: { locale?: string; timezone?: string; currency?: string; country_code?: string };
+  }>(args);
+  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
+  if (config?.locale !== undefined) mockRegionalLocale.set(location.id, config.locale);
+  if (config?.timezone !== undefined) {
+    updateMockLocation({ id: location.id, timezone: config.timezone });
+  }
+  if (config?.currency !== undefined) {
+    updateMockLocation({ id: location.id, currency: config.currency });
+  }
+  if (config?.country_code !== undefined) {
+    mockRegionalCountryCode = config.country_code.trim() !== '' ? config.country_code : null;
+  }
+  return getMockRegionalConfig(args);
 }
 
 /** A memo as the dev mock serves it. Mirrors `ui/src/api/memos.ts` `Memo`
@@ -2384,6 +2416,9 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   // as a hard violation: invoke() would return null and the caller would
   // silently render its failure path instead of erroring.
   'get_regional_config_scoped': getMockRegionalConfig,
+
+  // Regional configuration write path (regional slice 3) — same parity rule.
+  'set_regional_config_scoped': setMockRegionalConfig,
 
   'list_active_memos_scoped': listMockActiveMemos,
   'acknowledge_memo_scoped': acknowledgeMockMemo,

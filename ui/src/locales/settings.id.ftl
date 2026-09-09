@@ -955,6 +955,32 @@ settings-scope-location = Lokasi
 settings-scope-workspace = Ruang Kerja
 settings-scope-terminal = Perangkat Terminal
 
+# ── Konfigurasi regional (regional slice 3, layar Business Defaults) ──
+settings-regional-title = Regional
+settings-regional-subtitle = Fakta pasar yang dijawab lokasi ini untuk nota dan laporan. Kolom kosong mewarisi dari badan hukum atau default organisasi.
+settings-regional-locale = Locale (BCP-47)
+settings-regional-locale-placeholder = mis. id-ID — kosongkan untuk mewarisi
+settings-regional-currency = Mata uang (ISO-4217)
+settings-regional-currency-placeholder = mis. IDR — kosongkan untuk mewarisi
+settings-regional-currency-inherit = Warisi (tingkat di atas)
+settings-regional-timezone = Zona waktu
+settings-regional-timezone-inherit = Warisi (tingkat di atas)
+settings-regional-timezone-utc = UTC (sentinel lama)
+settings-regional-timezone-legacy = nilai lama
+settings-regional-country = Anchor pasar (ISO-3166)
+settings-regional-country-placeholder = mis. ID — kosongkan untuk tidak mengubah entitas
+settings-regional-country-hint = Diresolusikan melalui badan hukum lokasi.
+settings-regional-save = Simpan default regional
+settings-regional-saving = Menyimpan…
+settings-regional-saved = Default regional tersimpan.
+settings-regional-error-save = Tidak dapat menyimpan default regional.
+settings-regional-error-load = Tidak dapat memuat default regional.
+settings-regional-no-location = Belum ada lokasi untuk dikonfigurasi.
+settings-regional-scope-location = Diatur di lokasi ini
+settings-regional-scope-legal-entity = Diwarisi dari badan hukum
+settings-regional-scope-organization = Default organisasi
+settings-regional-scope-built-in = Default bawaan
+
 
 # ── Diagnostik (hasil ketersediaan fitur) ──
 settings-diagnostics-title = Diagnostik
