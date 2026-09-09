@@ -19,7 +19,7 @@
 //! position of the original trio, so hook order — and therefore effect order —
 //! is unchanged.
 
-import { useCallback, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, type MutableRefObject, type SetStateAction } from 'react';
 import type { TopologyHistoryEntry } from './nodeTopologyEditorState';
 import type { TopologyNodeData, TopologyWireData } from './NodeTopologyEditor';
 import { bendLandedAtStart, type BendGestureState } from './topologyCommands';
@@ -189,6 +189,15 @@ export function useTopologyEditorBendDrag(deps: TopologyBendDragDeps): {
     // pushHistoryRef is listed: the parent keeps it in a ref precisely so
     // these handlers stay referentially stable while pushHistory re-keys.
   }, [setWires, pushHistoryRef]);
+
+  // The hook registers its own unmount cleanup so listener disposal no longer
+  // depends solely on the editor's unmount sweep. Until the sweep is retired,
+  // both run at unmount — accepted by design: the disposer is idempotent
+  // (removeEventListener + ref-nulling only), so the second invocation no-ops.
+  // bendDragCleanupRef is a parent-owned stable ref identity, listed per the
+  // linter's demand — a no-op for churn since the ref object never changes —
+  // so the effect arms once.
+  useEffect(() => () => { bendDragCleanupRef.current?.(); }, [bendDragCleanupRef]);
 
   return { startBendDrag, startGhostBendDrag, removeBend };
 }
