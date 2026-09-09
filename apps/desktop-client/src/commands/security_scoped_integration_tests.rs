@@ -253,6 +253,7 @@ async fn refresh_picker_ticket_end_to_end() {
                 let state = app.state::<AppState>();
                 mint_ticket(&state, "user-owner")
             },
+            org_id: None,
         },
         app.state(),
     )
@@ -275,6 +276,7 @@ async fn refresh_picker_ticket_end_to_end() {
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
             picker_ticket: refresh.picker_ticket,
+            org_id: None,
         },
         app.state(),
     )
@@ -325,6 +327,7 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
                 let s = app.state::<AppState>();
                 mint_ticket(&s, "user-owner")
             },
+            org_id: None,
         },
         app.state(),
     )
@@ -383,6 +386,7 @@ async fn impersonate_user_scoped_revoked_by_destroy_session() {
                 let s = app.state::<AppState>();
                 mint_ticket(&s, "user-owner")
             },
+            org_id: None,
         },
         app.state(),
     )
@@ -435,6 +439,7 @@ async fn impersonate_user_scoped_enforces_ttl() {
                 let s = app.state::<AppState>();
                 mint_ticket(&s, "user-owner")
             },
+            org_id: None,
         },
         app.state(),
     )

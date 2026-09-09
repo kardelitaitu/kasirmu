@@ -795,6 +795,9 @@ pub fn run() {
             commands::auth::verify_pin,
             commands::auth::refresh_picker_ticket,
             commands::auth::impersonate_user_scoped,
+            // SaaS-3 L194: multi-organization user switching.
+            commands::auth::list_organizations,
+            commands::auth::switch_organization,
             commands::branding::get_brand_settings_scoped,
             commands::branding::get_brand_settings,
             commands::branding::pick_logo_file,
@@ -1202,6 +1205,9 @@ pub fn run() {
             commands::regional::get_regional_config_scoped,
             // Regional configuration write path (slice 3, saas-2 design).
             commands::regional::set_regional_config_scoped,
+            // Local payment methods (slice 6, saas-2 design).
+            commands::local_payment::get_local_payment_methods_scoped,
+            commands::local_payment::set_local_payment_methods_scoped,
             // ── Hardware, scale, branding, product variants, bundles (H-1) ──
             commands::hardware::open_cash_drawer_scoped,
             commands::hardware::print_receipt_scoped,
