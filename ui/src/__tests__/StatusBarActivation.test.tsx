@@ -22,7 +22,17 @@ const mockSync = vi.hoisted(() => ({
 }));
 
 vi.mock('@/hooks/useSyncConnection', () => ({
-  useSyncConnection: () => ({ state: mockSync.state, latencyMs: mockSync.latencyMs }),
+  useSyncConnection: () => ({ state: mockSync.state, latencyMs: mockSync.latencyMs, cause: null, retryNow: () => {} }),
+}));
+
+// Service-health contracts (saas-3): the bar gained payment + device pills.
+// Their hooks are mocked so these tests drive the version/auth/sync surfaces
+// without touching IPC.
+vi.mock('@/hooks/usePaymentConnection', () => ({
+  usePaymentConnection: () => ({ state: 'connected', latencyMs: null, cause: null, gateways: 1, retryNow: () => {} }),
+}));
+vi.mock('@/hooks/useDevicesConnection', () => ({
+  useDevicesConnection: () => ({ state: 'connected', latencyMs: null, cause: null, devices: 1, retryNow: () => {} }),
 }));
 
 // ── Mock useAuthConnection for auth ────────────────────────────────
@@ -32,7 +42,7 @@ const mockAuth = vi.hoisted(() => ({
 }));
 
 vi.mock('@/hooks/useAuthConnection', () => ({
-  useAuthConnection: () => ({ state: mockAuth.state, latencyMs: mockAuth.latencyMs }),
+  useAuthConnection: () => ({ state: mockAuth.state, latencyMs: mockAuth.latencyMs, cause: null, retryNow: () => {} }),
 }));
 
 // ── Mock the Toast hook ───────────────────────────────────────────
@@ -62,10 +72,10 @@ describe('StatusBar (activation screen unified status area)', () => {
     mockAuth.latencyMs = 42;
   });
 
-  it('renders three icon buttons (auth, sync, version)', () => {
+  it('renders five icon buttons (auth, sync, payment, devices, version)', () => {
     renderBar();
     const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(5);
   });
 
   it('has correct ARIA labels', () => {
@@ -116,13 +126,15 @@ describe('StatusBar (activation screen unified status area)', () => {
     expect(allAligned.length).toBe(1);
   });
 
-  it('clicks auth icon to show toast with latency info', () => {
+  it('clicks auth icon to re-probe now (saas-3 user-triggered retry)', () => {
     renderBar();
     fireEvent.click(screen.getByLabelText('Auth'));
-    expect(mockAddToast).toHaveBeenCalledWith({ type: 'info', message: 'Auth · 42ms' });
+    expect(mockAddToast).toHaveBeenCalledWith({ type: 'info', message: 'Retrying Auth…' });
   });
 
   it('clicks sync icon to show toast with latency info', () => {
+    // Sync's probe loop lives in useSyncConnection, which has no manual
+    // trigger yet — its pill stays informational until that hook gains one.
     renderBar();
     fireEvent.click(screen.getByLabelText('Sync'));
     expect(mockAddToast).toHaveBeenCalledWith({ type: 'info', message: 'Sync · 42ms' });

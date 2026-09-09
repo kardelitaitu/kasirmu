@@ -29,6 +29,14 @@ const { mockAuth, mockSync, mockVersion } = vi.hoisted(() => ({
 vi.mock('@/hooks/useAuthConnection', () => ({ useAuthConnection: () => mockAuth() }));
 vi.mock('@/hooks/useSyncConnection', () => ({ useSyncConnection: () => mockSync() }));
 vi.mock('@/hooks/useVersionStatus', () => ({ useVersionStatus: () => mockVersion() }));
+// The bar gained payment + device pills (saas-3); mocked out here — this
+// file only asserts the auth/sync degraded tones.
+vi.mock('@/hooks/usePaymentConnection', () => ({
+  usePaymentConnection: () => ({ state: 'connected', latencyMs: null, cause: null, gateways: 1, retryNow: () => {} }),
+}));
+vi.mock('@/hooks/useDevicesConnection', () => ({
+  useDevicesConnection: () => ({ state: 'connected', latencyMs: null, cause: null, devices: 1, retryNow: () => {} }),
+}));
 // Render the tooltip content alongside the trigger so the message is
 // assertable; the real Tooltip only shows it on hover.
 vi.mock('@/frontend/shell/Tooltip', () => ({

@@ -59,6 +59,26 @@ export function toneForHealth(state: ConnectionHealth, latencyMs: number | null)
 }
 
 /**
+ * Tone for probes that carry no latency reading — payment-gateway
+ * configuration and device enumeration (saas-3 service pills). Their answer
+ * is binary, so `connected` reads good; routing them through
+ * `toneForHealth` would trip its "connected but unmeasured" bad branch,
+ * which exists for latency probes that lost their round-trip figure.
+ */
+export function toneForBinaryHealth(state: ConnectionHealth): StatusTone {
+  switch (state) {
+    case 'checking':
+      return 'checking';
+    case 'degraded':
+      return 'warn';
+    case 'connected':
+      return 'good';
+    case 'disconnected':
+      return 'bad';
+  }
+}
+
+/**
  * The wire form of `oz_core::service_health::HealthState`, kept as a string
  * union rather than imported from Rust so the UI can be built against a
  * dev-mock. `fromWireHealth` is the single place that translates it.
