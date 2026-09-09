@@ -42,9 +42,6 @@ import { useTopologyEditorHover } from './nodeTopologyEditorHoverState';
 import {
   type TopologyValidationError,
 } from './topologyContract';
-import {
-  rowRelationshipOptions,
-} from './topologyCard';
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
 import { useTopologyEditorLoadLifecycle } from './nodeTopologyEditorLoadLifecycle';
@@ -1767,29 +1764,6 @@ export default function NodeTopologyEditor({
   });
   handleAddNodeRef.current = handleAddNode;
 
-  const portDirection = useCallback((port: PortName): 'input' | 'output' => (
-    port === 'left' ? 'input' : 'output'
-  ), []);
-
-  const isPortCompatible = useCallback((nodeId: string, port: PortName, variantIndex = 0): boolean => {
-    if (!connectingFromNodeId || !connectingFromPort) return false;
-    if (nodeId === connectingFromNodeId) return false;
-    if (portDirection(port) !== 'input') return false;
-    const source = nodeMap.get(connectingFromNodeId);
-    const target = nodeMap.get(nodeId);
-    if (!source || !target) return false;
-    // Compatibility is decided by the semantic pairing table (ADR #34): a
-    // drop is only completable into a target row that admits the source
-    // row's semantic. With stacked per-semantic rows (round 174) the source
-    // semantic is fixed by connectingFromVariantIndex, so the check resolves
-    // that specific pair — the legacy socket-wide enumeration is only used
-    // by the picker flow.
-    return rowRelationshipOptions(
-      source, connectingFromPort, connectingFromVariantIndex,
-      target, port, variantIndex,
-    ).length > 0;
-  }, [connectingFromNodeId, connectingFromPort, connectingFromVariantIndex, nodeMap, portDirection]);
-
   /** Live semantic validation of the CURRENT canvas (ADR #34 slice 2).
    *  Mirrors the Apply gate exactly — same normalize + validate, same
    *  canonical-identity condition — so the on-canvas badges and the Apply
@@ -1898,9 +1872,10 @@ export default function NodeTopologyEditor({
    *  commitPickerOption and handlePortClick moved verbatim into
    *  nodeTopologyEditorWireCommit; the call sits at the slot the three
    *  callbacks occupied, so hook order — and therefore effect order — is
-   *  unchanged. Every mirror, setter and port-pair they read stays
-   *  parent-owned and arrives through the deps object. */
-  const { commitPickerOption, handlePortClick } = useTopologyEditorWireCommit({
+   *  unchanged. Every mirror and setter they read stays parent-owned and
+   *  arrives through the deps object; the port pair is created in the hook
+   *  now, and isPortCompatible comes back from it for the node-card JSX. */
+  const { commitPickerOption, handlePortClick, isPortCompatible } = useTopologyEditorWireCommit({
     wiresRef,
     pushHistoryRef,
     nodeMap,
@@ -1917,8 +1892,6 @@ export default function NodeTopologyEditor({
     cancelConnection,
     openPicker,
     setPreviewCursor,
-    portDirection,
-    isPortCompatible,
   });
 
   /** Cycle a wire's visual flow: one-way → reverse → two-way → one-way.

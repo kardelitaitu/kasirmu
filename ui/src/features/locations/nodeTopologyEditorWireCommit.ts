@@ -20,8 +20,14 @@
 //! commitWire is INTERNAL: nothing outside this cluster called it (JSX consumes
 //! only commitPickerOption and handlePortClick), so the parent no longer names
 //! it — same shape as pointer's commitDuplicateDrag in 3.4c-2. The port pair
-//! (portDirection / isPortCompatible) stays parent-side: it is also consumed by
-//! the card JSX, and it arrives here as a dep the moved arrays already list.
+//! (portDirection / isPortCompatible) moved in with rider slice P5-B/r:
+//! portDirection now has no reader outside this module and stays INTERNAL,
+//! while isPortCompatible is returned, under the same name, for the node-card
+//! JSX. Both came over byte-identical and needed NO new dependency — every name
+//! they read is a deps field their own array already lists, or (isPortCompatible
+//! reading portDirection) a same-scope const. Measured, not assumed: the
+//! wiresRef / pushHistoryRef listings above STAY — the parent still reads both
+//! refs outside this cluster, so folding the pair cannot retire them.
 //! The call site sits at the exact position the three callbacks occupied, so
 //! hook order — and therefore effect order — is unchanged.
 
@@ -71,9 +77,6 @@ export interface TopologyWireCommitDeps {
   openPicker: (picker: TopologyPickerState) => void;
   /** Ghost-preview cursor: arming a fresh connection clears any stale point. */
   setPreviewCursor: (value: SetStateAction<{ x: number; y: number } | null>) => void;
-  /** Parent-owned port pair (also consumed by the node-card JSX). */
-  portDirection: (port: PortName) => 'input' | 'output';
-  isPortCompatible: (nodeId: string, port: PortName, variantIndex?: number) => boolean;
 }
 
 /**
@@ -83,6 +86,9 @@ export interface TopologyWireCommitDeps {
 export function useTopologyEditorWireCommit(deps: TopologyWireCommitDeps): {
   commitPickerOption: (option: WireRelationshipOption) => void;
   handlePortClick: (e: React.MouseEvent, nodeId: string, port: PortName, variantIndex?: number) => void;
+  /** The port pair moved in with rider slice P5-B/r: the node card still
+   *  needs the compatibility predicate, portDirection has no external reader. */
+  isPortCompatible: (nodeId: string, port: PortName, variantIndex?: number) => boolean;
 } {
   const {
     wiresRef,
@@ -101,9 +107,30 @@ export function useTopologyEditorWireCommit(deps: TopologyWireCommitDeps): {
     cancelConnection,
     openPicker,
     setPreviewCursor,
-    portDirection,
-    isPortCompatible,
   } = deps;
+
+  const portDirection = useCallback((port: PortName): 'input' | 'output' => (
+    port === 'left' ? 'input' : 'output'
+  ), []);
+
+  const isPortCompatible = useCallback((nodeId: string, port: PortName, variantIndex = 0): boolean => {
+    if (!connectingFromNodeId || !connectingFromPort) return false;
+    if (nodeId === connectingFromNodeId) return false;
+    if (portDirection(port) !== 'input') return false;
+    const source = nodeMap.get(connectingFromNodeId);
+    const target = nodeMap.get(nodeId);
+    if (!source || !target) return false;
+    // Compatibility is decided by the semantic pairing table (ADR #34): a
+    // drop is only completable into a target row that admits the source
+    // row's semantic. With stacked per-semantic rows (round 174) the source
+    // semantic is fixed by connectingFromVariantIndex, so the check resolves
+    // that specific pair — the legacy socket-wide enumeration is only used
+    // by the picker flow.
+    return rowRelationshipOptions(
+      source, connectingFromPort, connectingFromVariantIndex,
+      target, port, variantIndex,
+    ).length > 0;
+  }, [connectingFromNodeId, connectingFromPort, connectingFromVariantIndex, nodeMap, portDirection]);
 
   /** Create one wire from an ADR #34 relationship option — the single path
    *  for both unambiguous drops (auto-commit) and picker choices.
@@ -253,5 +280,5 @@ export function useTopologyEditorWireCommit(deps: TopologyWireCommitDeps): {
     commitWire(fromNode, connectingFromPort!, toNode, port, options[0]!);
   }, [connectingFromNodeId, connectingFromPort, connectingFromVariantIndex, nodeMap, isPortCompatible, commitWire, addToast, l10n, beginConnection, cancelConnection, openPicker, setPreviewCursor, portDirection]);
 
-  return { commitPickerOption, handlePortClick };
+  return { commitPickerOption, handlePortClick, isPortCompatible };
 }
