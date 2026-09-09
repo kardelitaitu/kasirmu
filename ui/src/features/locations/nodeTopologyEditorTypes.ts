@@ -1,13 +1,15 @@
 /**
  * Domain types for the topology editor (slice P5-A / S2a): the node and wire
- * shapes, the port / direction / semantic-relationship unions, and the two
- * seed interfaces the load path builds from API rows. Types only — no runtime
- * code and no imports, so nothing here can pull React into an importer.
+ * shapes, the port / direction unions, and the two seed interfaces the load
+ * path builds from API rows. Types only — no runtime code and no runtime
+ * imports (the one type-only re-export edge to the contract is erasable under
+ * isolatedModules), so nothing here can pull React into an importer.
  *
  * NodeTopologyEditor.tsx re-exports every name below as the deliberate public
  * entry point; new importers should name this module directly.
  */
 
+/** Node types offered by the right-click canvas context menu. */
 export type NodeType = 'store' | 'workspace' | 'warehouse' | 'hardware';
 export type WorkspaceTypeKey = 'store-pos' | 'restaurant-pos' | 'kds';
 /** Visual flow state of a wire, cycled by clicking it.
@@ -16,29 +18,17 @@ export type WorkspaceTypeKey = 'store-pos' | 'restaurant-pos' | 'kds';
  *  presentation layer over the same semantic edge. */
 export type WireDirection = 'one-way' | 'reverse' | 'two-way';
 
+/** Connection points a node exposes for wire attachment, listed clockwise.
+ *  The semantic contract's port vocabulary is keyed by these names. */
 export type PortName = 'top' | 'right' | 'bottom' | 'left';
 
-/** Restore-boundary integrity guard for Undo/Redo: drop any wire whose
- *  endpoint nodes are missing from the SAME entry before it lands on the
- *  canvas. Every history entry today is a full pre-mutation snapshot (or
- *  the filtered duplicate-commit entry), so no legitimate entry ever
- *  dangles — this is defense-in-depth so a future creation-path
- *  regression (a dangling wire slipped into state, then into an entry)
- *  can never make Undo/Redo resurrect a wire whose endpoints were since
- *  deleted. A dangling wire cannot render (geometry-gated) and would
- *  immediately surface the unknown-wire-endpoint gate, so dropping it is
- *  the only sane resolution; the canvas invariant stays "every wire's
- *  endpoints exist". */
+// Type-only contract edge: the canonical home of this ADR union is the
+// semantic contract (topologyContract.ts). The import binds the name for the
+// wire shape below; the re-export keeps the editor's import surface unchanged
+// without duplicating the union.
+import type { SemanticRelationshipType } from './topologyContract';
 
-/** Node types offered by the right-click canvas context menu. */
-
-export type SemanticRelationshipType =
-  | 'location'
-  | 'stock-routing'
-  | 'ticket-routing'
-  | 'hardware-connection'
-  | 'inventory-transfer'
-  | 'generic';
+export type { SemanticRelationshipType };
 
 export interface TopologyNodeData {
   id: string;
