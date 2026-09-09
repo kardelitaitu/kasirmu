@@ -1101,4 +1101,27 @@ settings-rcptfmt-content-saved = Statutory content saved.
 settings-rcptfmt-content-error-save = Could not save the statutory content.
 settings-rcptfmt-content-note = Written at the market-mandated (legal entity) layer — applies to every location of this entity.
 
+# ── Statutory numbering (W2-B, regional numbering axis) ──
+settings-fiscalnum-title = Statutory numbering
+settings-fiscalnum-subtitle = The number series each legal entity issues its statutory documents from.
+settings-fiscalnum-label-entity = Legal entity
+settings-fiscalnum-label-kind = Document kind
+settings-fiscalnum-kind-receipt = Receipt
+settings-fiscalnum-kind-invoice = Invoice
+settings-fiscalnum-label-prefix = Prefix
+settings-fiscalnum-label-padding = Zero padding
+settings-fiscalnum-label-period = Resets
+settings-fiscalnum-period-never = Never
+settings-fiscalnum-period-daily = Daily
+settings-fiscalnum-period-monthly = Monthly
+settings-fiscalnum-period-yearly = Yearly
+settings-fiscalnum-current-value = Last number issued: { $value }
+settings-fiscalnum-current-value-note = Changing prefix, padding or period never resets this counter.
+settings-fiscalnum-unset = This pair has no series yet — saving creates one from zero.
+settings-fiscalnum-no-entity = No legal entity to number documents for yet.
+settings-fiscalnum-save = Save series
+settings-fiscalnum-saved = Series saved
+settings-fiscalnum-error-load = Could not read the number series.
+settings-fiscalnum-error-save = Could not save the number series.
+
 

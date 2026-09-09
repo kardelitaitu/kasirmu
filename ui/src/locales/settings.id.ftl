@@ -1083,4 +1083,27 @@ settings-rcptfmt-content-saved = Konten wajib tersimpan.
 settings-rcptfmt-content-error-save = Tidak dapat menyimpan konten wajib.
 settings-rcptfmt-content-note = Ditulis pada lapisan wajib pasar (badan hukum) — berlaku untuk semua lokasi badan hukum ini.
 
+# ── Penomoran resmi (W2-B, sumbu penomoran regional) ──
+settings-fiscalnum-title = Penomoran resmi
+settings-fiscalnum-subtitle = Deret nomor yang dipakai tiap badan hukum menerbitkan dokumen resminya.
+settings-fiscalnum-label-entity = Badan hukum
+settings-fiscalnum-label-kind = Jenis dokumen
+settings-fiscalnum-kind-receipt = Struk
+settings-fiscalnum-kind-invoice = Faktur
+settings-fiscalnum-label-prefix = Awalan
+settings-fiscalnum-label-padding = Digit nol di depan
+settings-fiscalnum-label-period = Reset
+settings-fiscalnum-period-never = Tidak pernah
+settings-fiscalnum-period-daily = Harian
+settings-fiscalnum-period-monthly = Bulanan
+settings-fiscalnum-period-yearly = Tahunan
+settings-fiscalnum-current-value = Nomor terakhir terbit: { $value }
+settings-fiscalnum-current-value-note = Mengubah awalan, digit nol, atau periode tidak pernah mereset penghitung ini.
+settings-fiscalnum-unset = Pasangan ini belum punya deret — menyimpan akan memulainya dari nol.
+settings-fiscalnum-no-entity = Belum ada badan hukum untuk menomori dokumen.
+settings-fiscalnum-save = Simpan deret
+settings-fiscalnum-saved = Deret tersimpan
+settings-fiscalnum-error-load = Gagal membaca deret nomor.
+settings-fiscalnum-error-save = Gagal menyimpan deret nomor.
+
 
