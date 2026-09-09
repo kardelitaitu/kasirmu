@@ -48,9 +48,9 @@ export interface TopologyBendDragDeps {
   /** Parent-owned document-listener cleanup ref: both the editor unmount sweep
    *  and cancelBendDrag disarm a live drag through it. */
   bendDragCleanupRef: MutableRefObject<(() => void) | null>;
-  /** Parent-owned history-push mirror, READ but never listed as a dep — the
-   *  original callbacks stayed referentially stable while pushHistory re-keys
-   *  whenever nodes/wires change, which would otherwise churn every wire. */
+  /** Parent-owned history-push mirror: the REF is a stable identity and is
+   *  listed as a dep; pushHistory itself stays unlisted — it re-keys whenever
+   *  nodes/wires change, which would otherwise churn every wire. */
   pushHistoryRef: MutableRefObject<
     (snapshot?: { nodes: TopologyNodeData[]; wires: TopologyWireData[] }) => void
   >;
@@ -160,12 +160,7 @@ export function useTopologyEditorBendDrag(deps: TopologyBendDragDeps): {
       bendDragCleanupRef.current = null;
       bendDragRef.current = null;
     };
-    // The refs read above (bendDragRef, bendDragCleanupRef, nodesRef, wiresRef,
-    // pushHistoryRef) arrive through the deps object, so the rule cannot see that they
-    // are the editor's own useRef objects — it only trusts useRef() created in this
-    // scope. Their identity never changes, so listing them would be a no-op.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [pan, zoom, selectWire, canvasRef, setWires, setHistory]);
+  }, [pan, zoom, selectWire, canvasRef, setWires, setHistory, bendDragRef, bendDragCleanupRef, nodesRef, wiresRef, pushHistoryRef]);
 
   /** Drag on a midpoint ghost: one gesture creates and positions a fresh
    *  bend. The insertion is DEFERRED to the first drag movement (the
@@ -191,10 +186,9 @@ export function useTopologyEditorBendDrag(deps: TopologyBendDragDeps): {
           : { ...w, bends: (w.bends ?? []).filter((_, i) => i !== index) },
       ),
     );
-    // pushHistoryRef comes through deps (see the note on startBendDrag): the parent
-    // keeps it in a ref precisely so these handlers stay referentially stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dep array kept byte-identical to the inline original.
-  }, [setWires]);
+    // pushHistoryRef is listed: the parent keeps it in a ref precisely so
+    // these handlers stay referentially stable while pushHistory re-keys.
+  }, [setWires, pushHistoryRef]);
 
   return { startBendDrag, startGhostBendDrag, removeBend };
 }
