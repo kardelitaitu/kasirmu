@@ -15,7 +15,7 @@ import {
   type WorkspaceCardProps,
 } from '@/features/settings/workspace-cards';
 import { updateLocationProfileScoped, getLocationProfileScoped, type LocationProfile } from '@/api/locations';
-import TopologyApplyConfirm, { type ApplyDiffItem, type TopologyApplyConfirmData } from './TopologyApplyConfirm';
+import TopologyApplyConfirm from './TopologyApplyConfirm';
 import { WarehouseQuotaChip } from './WarehouseQuotaChip';
 import {
   TrashIcon,
@@ -23,7 +23,6 @@ import {
   NodesIcon,
   WarningIcon,
 } from './NodeTopologyIcons';
-import { parseAppError, plainErrorMessage } from '@/utils/app-error';
 import {
   clampNodeToViewport,
   findFreeSpawnSpot,
@@ -48,10 +47,8 @@ import { TopologyMinimap } from './topologyMinimap';
 import { TopologyRelationshipPicker } from './topologyRelationshipPicker';
 import { TopologyValidationWidget } from './topologyValidationWidget';
 import type { TopologyOverlay } from './topologyBranchCompare';
-import { TopologyApplyValidationError } from './topologyApply';
 import { layoutGhosts, buildGhostWireStubs, compareFocusDimIds, GHOST_WIDTH, GHOST_HEIGHT } from './topologyBranchCompare';
 import { TopologyWireGroup } from './topologyWireGroup';
-import { planTopologyDiff, summarizeTopologyPlan } from './topologyDiff';
 import { cubicBezier, polylinePoint, wireUnderCardSegments } from './topologyWireGeometry';
 import { useTopologyEditorGraph, type TopologyHistoryEntry } from './nodeTopologyEditorState';
 import { historyEntry, validWiresForNodes } from './topologyHistoryIntegrity';
@@ -85,6 +82,7 @@ import { useTopologyEditorTouch } from './nodeTopologyEditorTouch';
 import { useTopologyEditorViewport, useTopologyEditorViewPrefs } from './nodeTopologyEditorViewport';
 import { useTopologyEditorKeyboard } from './nodeTopologyEditorKeyboard';
 import { useTopologyEditorNodeRename, useTopologyEditorWireRename } from './nodeTopologyEditorRename';
+import { PIN_VERIFIED_SESSIONS, useTopologyEditorApplyPanel } from './nodeTopologyEditorApplyPanel';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -108,7 +106,6 @@ import {
   diagramNodeToCanvas,
   diagramWireToCanvas,
   diagramOverflowsCanvas,
-  isTopologyRevisionConflict,
   validateEditorGraph,
 } from './topologyEditorHelpers';
 import { AlignGlyph, ALIGN_ACTIONS, type AlignMode } from './topologyAlignGlyph';
@@ -117,13 +114,6 @@ import { TopologyHeader } from './topologyHeader';
 import { TopologyToolRack } from './topologyToolRack';
 import { TopologyContextMenu } from './topologyContextMenu';
 import { TopologyCanvasZoomControls } from './topologyCanvasZoomControls';
-
-/** Session-level "Remember PIN" cache. The editor is keyed by branch
- *  (TopologyScreen remounts it on every branch switch), so a component-scoped
- *  ref would forget the verified PIN on each switch — contradicting the
- *  "Remember PIN for this session" label. A module-scope set keyed by session
- *  token survives remounts for the app's lifetime, matching the label. */
-const PIN_VERIFIED_SESSIONS = new Set<string>();
 
 // Re-export the moved pure helpers so tests (nodeTopologyEditorHelpers,
 // canvasStateEqual) and runtime importers (topologyWarehouseCard) resolve
@@ -898,13 +888,6 @@ export default function NodeTopologyEditor({
   const [rackPanel, setRackPanel] = useState<string | null>(null);
   const toggleRackPanel = useCallback((key: string) => setRackPanel((p) => (p === key ? null : key)), []);
 
-  // ── Apply confirmation popup ──────────────────────────────────────
-  // Only the two pieces the editor itself decides are left here: whether the
-  // dialog is open, and what it is confirming. The PIN entry, its error, the
-  // verifying spinner and the remember-flag all moved to
-  // TopologyApplyConfirm with the JSX that renders them.
-  const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
-  const [applyConfirmData, setApplyConfirmData] = useState<TopologyApplyConfirmData | null>(null);
   /** Session-level PIN cache. When set, subsequent Apply calls skip the
    *  verifyPin prompt — the checkbox in the dialog controls whether the
    *  flag is remembered for the session. The cache lives in a module-scope
@@ -1470,7 +1453,7 @@ export default function NodeTopologyEditor({
   // ── Inline node rename (slice R1: extracted to useTopologyEditorNodeRename) ──
   // The node half of the old G5 rename block, moved verbatim; the call sits at
   // the block's original position so hook order — and effect order — is what
-  // the component already had. The wire half below stays inline until slice R1b.
+  // the component already had. The wire half below followed in slice R1b.
   const {
     renamingNodeId,
     renameDraft,
@@ -1613,125 +1596,6 @@ export default function NodeTopologyEditor({
     setTemplateName('');
     addToast({ message: l10nRef.current.getString('topology-toast-template-saved'), type: 'info' });
   }, [nodes, wires, addToast]);
-
-  // ── Confirm-apply: the actual save after the confirmation popup ──
-  /**
-   * Verify the dialog's PIN and, if it holds, run the Apply.
-   *
-   * Resolves FALSE only when the PIN was rejected — the signal for the dialog
-   * to re-open and show its error. Every other early exit resolves TRUE,
-   * because "already saving" and "the backend rejected the graph" are not PIN
-   * problems and must not be reported as one.
-   *
-   * The dialog's own state (typed PIN, error, verifying spinner) is no longer
-   * touched here; TopologyApplyConfirm owns it. What stays is the close/reopen
-   * sequencing, because this function is the one that knows when to do it.
-   */
-  const confirmApply = useCallback(async (
-    pin: string,
-    remember: boolean,
-    changeNote: string,
-  ): Promise<boolean> => {
-    if (!beginApply()) return true;
-    setApplyConfirmOpen(false);
-    try {
-      // Session-level PIN cache: skip re-verification when the flag is set
-      // (controlled by the "Remember PIN" checkbox in the dialog).
-      if (!pinVerifiedRef.current) {
-        const { verifyPin } = await import('@/api/staff');
-        if (!sessionToken) { setApplyConfirmOpen(true); failApply(); return false; }
-        const valid = await verifyPin(sessionToken, pin);
-        if (!valid) {
-          setApplyConfirmOpen(true);
-          failApply();
-          return false;
-        }
-        // Persist the verified flag for the rest of the session. Write to
-        // the module-scope cache too so a branch-switch remount (new ref
-        // initialized from the set) keeps the remembered PIN.
-        if (remember) {
-          pinVerifiedRef.current = true;
-          if (sessionToken) PIN_VERIFIED_SESSIONS.add(sessionToken);
-        }
-      }
-    } catch {
-      setApplyConfirmOpen(true);
-      failApply();
-      return false;
-    }
-    skipNextLoadRef.current = true;
-    addToast({ message: l10n.getString('topology-apply-status-saving'), type: 'info' });
-    let savedNodes = nodes;
-    let savedWires = wires;
-    let nextRevision: number | undefined;
-    try {
-      const result = await onSave?.(nodes, wires, topologyRevision, [...resolvedIssues], changeNote);
-      const idMap: Record<string, string> | undefined = result && typeof result === 'object' && 'idMap' in result
-        ? (result.idMap && typeof result.idMap === 'object'
-          ? result.idMap as Record<string, string>
-          : undefined)
-        : result && typeof result === 'object' && !('revision' in result)
-          ? result as Record<string, string>
-          : undefined;
-      if (result && typeof result === 'object' && 'revision' in result && typeof result.revision === 'number') {
-        nextRevision = result.revision;
-      }
-      if (idMap && Object.keys(idMap).length > 0) {
-        clearAll();
-        setHistory([]);
-        setRedo([]);
-        savedNodes = nodes.map((n) => {
-          const newId = idMap[n.id];
-          return newId ? { ...n, id: newId } : n;
-        });
-        savedWires = wires.map((w) => {
-          const newFrom = idMap[w.fromNodeId];
-          const newTo = idMap[w.toNodeId];
-          if (newFrom || newTo) {
-            return {
-              ...w,
-              fromNodeId: newFrom ?? w.fromNodeId,
-              toNodeId: newTo ?? w.toNodeId,
-            };
-          }
-          return w;
-        });
-        setNodes(savedNodes);
-        setWires(savedWires);
-      }
-    } catch (err) {
-      if (isTopologyRevisionConflict(err)) {
-        addToast({ message: l10n.getString('topology-toast-revision-conflict'), type: 'error' });
-        skipNextLoadRef.current = false;
-        failApply();
-        setReloadKey((k) => k + 1);
-        return true;
-      }
-      if (!(err instanceof TopologyApplyValidationError)) {
-        // Show both the localized error category AND the raw backend detail
-        // so the user (and developer) can see exactly what failed.
-        const typed = parseAppError(err);
-        const rawMsg = typed?.message ?? plainErrorMessage(err);
-        const userMsg = plainErrorMessage(err);
-        addToast({
-          message: `${l10n.getString('topology-toast-save-error')}: ${userMsg}${rawMsg !== userMsg ? ` (${rawMsg})` : ''}`,
-          type: 'error',
-        });
-      }
-      skipNextLoadRef.current = false;
-      failApply();
-      return true;
-    }
-    commitSnapshot({ nodes: savedNodes, wires: savedWires });
-    setTimeout(() => {
-      skipNextLoadRef.current = false;
-      finishApply(nextRevision ?? topologyRevision);
-    }, 0);
-    // The PIN held. Everything after this point is the Apply itself, and a
-    // failure there is reported by toast — it is not a PIN problem, so the
-    // dialog must not reopen claiming one.
-    return true;
-  }, [nodes, wires, topologyRevision, resolvedIssues, onSave, addToast, l10n, beginApply, failApply, finishApply, commitSnapshot, sessionToken]);
 
   /** Load a saved template, replacing the canvas under one undo entry. */
   const handleLoadTemplate = useCallback((name: string) => {
@@ -3163,116 +3027,48 @@ export default function NodeTopologyEditor({
   // coordinates).
   const pickerAnchor = relationshipPicker ? nodeMap.get(relationshipPicker.toNodeId) : null;
 
-  // ── Header actions (extracted JSX lives in topologyHeader.tsx) ─────
-  // The Apply gate: validate the raw canvas, then build the diff preview
-  // and open the PIN confirm popup. Same validation as the live badge
-  // surface — shared helper keeps the toast and badges in lockstep. A
-  // DISMISSED missing-stock-routing prompt (intentionally empty warehouse)
-  // is the one error that stops blocking once the user explicitly resolved
-  // it (round 81).
-  const handleApplyClick = useCallback(async () => {
-    const validationErrors = validateEditorGraph(nodes, wires, allowLegacyApply, currentTier).filter(
-      (e) => !(e.code === 'warehouse-missing-stock-routing' && e.nodeId && resolvedIssues.has(issueKey(e.nodeId, e.messageId))),
-    );
-    if (validationErrors.length > 0) {
-      // Open the issues panel so the user sees EVERY blocking issue at once
-      // instead of fixing them one at a time through the toast, then confirm
-      // what blocked Apply.
-      setValidationPanelOpen(true);
-      addToast({
-        message: l10n.getString('topology-apply-blocked', { count: String(validationErrors.length) }),
-        type: 'error',
-      });
-      return;
-    }
-    // Compute the diff preview and show the confirmation popup.
-    const snap = appliedSnapshotRef.current;
-    const beforeInstances = workspaceInstances !== undefined
-      ? workspaceInstances.map((s) => ({
-        instance_id: s.instanceId,
-        type_key: s.typeKey,
-        ...(s.purposeKey !== undefined ? { purpose_key: s.purposeKey } : {}),
-        name: s.name,
-      }))
-      : (snap?.nodes ?? [])
-        .filter((n) => n.type === 'workspace')
-        .map((n) => ({
-          instance_id: n.id,
-          type_key: (n.metadata?.['typeKey'] as string) ?? 'store-pos',
-          purpose_key: (n.metadata?.['purposeKey'] as string) ?? 'general',
-          name: n.name,
-        }));
-    const plan = planTopologyDiff(nodes, beforeInstances);
-    const wsNodes = new Map(nodes.filter((n) => n.type === 'workspace').map((n) => [n.id, n]));
-    const instanceMap = new Map((workspaceInstances ?? []).map((s) => [s.instanceId, s]));
-    const items = (ids: string[], map: Map<string, { name: string; typeKey?: string; type_key?: string }>): ApplyDiffItem[] =>
-      ids.map((id) => {
-        const entry = map.get(id);
-        return { id, name: entry?.name ?? id, typeKey: entry?.typeKey ?? entry?.type_key ?? 'store-pos' };
-      });
-    const createdItems = items(
-      plan.createNodeIds.filter((id) => !plan.typeChanges.has(id)),
-      wsNodes,
-    );
-    const typeChangedItems = [...plan.typeChanges.entries()].map(([id, ch]) => ({
-      id: ch.newId, name: wsNodes.get(id)?.name ?? id, typeKey: ch.newTypeKey,
-    }));
-    const updatedItems = items(plan.updateNodeIds, instanceMap);
-    const archivedItems = items(
-      plan.archiveIds.filter((id) => !plan.typeChanges.has(id)),
-      instanceMap,
-    );
-    // Resolve store IDs for the debug info panel.
-    const branchNode = nodes.find((n) => n.type === 'store');
-    const effectiveStoreId = branchNode?.storeProfileId
-      ?? (branchNode?.metadata?.['storeProfileId'] as string | undefined)
-      ?? sessionStoreId;
-    setApplyConfirmData({
-      created: createdItems,
-      updated: updatedItems,
-      archived: archivedItems,
-      typeChanged: typeChangedItems,
-      sessionStoreId,
-      effectiveStoreId,
-    });
-    // Opening is all this does now: clearing the PIN and focusing the field
-    // are the dialog's own concern, driven by its `open` effect.
-    setApplyConfirmOpen(true);
-  }, [nodes, wires, allowLegacyApply, currentTier, resolvedIssues, workspaceInstances, sessionStoreId, addToast, l10n, setValidationPanelOpen, setApplyConfirmData]);
-
-  /** Reactive "Unsaved changes" chip data. Round 153: the chip always
-   *  previews the workspace-instance diff through the SAME planTopologyDiff
-   *  the save path's payload builder is built on, so the preview can never
-   *  drift from the Apply. With real instances the before-side is the loaded
-   *  backend instances (round 150); on a standalone/demo canvas it is
-   *  synthesized from the committed snapshot (the last-loaded diagram) — the
-   *  workspace format is the single honest signal everywhere.
-   *  The plan is total: a workspace mid-wiring (no store ownership yet)
-   *  still counts as a creation instead of crashing the chip (round 152: a
-   *  type change surfaces as a destructive recreate, not a plain create +
-   *  archive). */
-  const dirtySummary = useMemo(() => {
-    if (!isDirty) return null;
-    const snap = appliedSnapshotRef.current;
-    const beforeInstances = workspaceInstances !== undefined
-      ? workspaceInstances.map((s) => ({
-        instance_id: s.instanceId,
-        type_key: s.typeKey,
-        // exactOptionalPropertyTypes: omit the key, never set it to undefined.
-        ...(s.purposeKey !== undefined ? { purpose_key: s.purposeKey } : {}),
-        name: s.name,
-      }))
-      : (snap?.nodes ?? [])
-        .filter((n) => n.type === 'workspace')
-        .map((n) => ({
-          instance_id: n.id,
-          type_key: (n.metadata?.['typeKey'] as string) ?? 'store-pos',
-          purpose_key: (n.metadata?.['purposeKey'] as string) ?? 'general',
-          name: n.name,
-        }));
-    const plan = planTopologyDiff(nodes, beforeInstances);
-    return summarizeTopologyPlan(plan);
-  }, [isDirty, nodes, workspaceInstances]);
+  // ── Apply gate + confirm popup + save (slice G8-a: extracted to
+  // useTopologyEditorApplyPanel) ───────────────────────────────────────────
+  // The gate, the two dialog state slots, the save itself and the chip diff
+  // preview moved; the call sits at the slot handleApplyClick occupied, below
+  // every ref and setter it hands over and above the return that consumes the
+  // six results. The dialog JSX stays mounted in the editor.
+  const {
+    applyConfirmOpen,
+    applyConfirmData,
+    setApplyConfirmOpen,
+    handleApplyClick,
+    confirmApply,
+    dirtySummary,
+  } = useTopologyEditorApplyPanel({
+    nodes,
+    wires,
+    topologyRevision,
+    resolvedIssues,
+    onSave,
+    addToast,
+    l10n,
+    beginApply,
+    failApply,
+    finishApply,
+    commitSnapshot,
+    sessionToken,
+    allowLegacyApply,
+    currentTier,
+    workspaceInstances,
+    sessionStoreId,
+    setValidationPanelOpen,
+    isDirty,
+    pinVerifiedRef,
+    skipNextLoadRef,
+    appliedSnapshotRef,
+    setNodes,
+    setWires,
+    setHistory,
+    setRedo,
+    clearAll,
+    setReloadKey,
+  });
 
   return (
     <div className="node-topology-editor">
