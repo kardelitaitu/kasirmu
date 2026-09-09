@@ -457,6 +457,9 @@ pub fn run() {
                 commands::auth::destroy_session,
                 commands::auth::session_keepalive,
                 commands::auth::impersonate_user_scoped,
+                // SaaS-3 L194: multi-organization user switching.
+                commands::auth::list_organizations,
+                commands::auth::switch_organization,
                 commands::branding::get_brand_settings,
                 commands::branding::set_brand_primary_colour,
                 commands::branding::set_brand_logo_path,
@@ -675,6 +678,9 @@ pub fn run() {
                 commands::regional::get_regional_config_scoped,
                 // Regional configuration write path (slice 3, saas-2 design).
                 commands::regional::set_regional_config_scoped,
+                // Local payment methods (slice 6, saas-2 design).
+                commands::local_payment::get_local_payment_methods_scoped,
+                commands::local_payment::set_local_payment_methods_scoped,
                 commands::offline::delete_offline_item_scoped,
                 commands::offline::enqueue_offline_scoped,
                 commands::offline::list_all_offline_scoped,

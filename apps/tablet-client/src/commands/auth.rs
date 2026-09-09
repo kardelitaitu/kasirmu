@@ -16,6 +16,7 @@ use tauri::{State, command};
 
 use oz_core::auth::LoginSession;
 use oz_core::db::Store;
+use oz_core::db::assignments::ScopeType;
 use oz_core::db::audit_security::{
     SECURITY_REASON_BAD_PIN, SECURITY_REASON_INACTIVE, SECURITY_REASON_RATE_LIMITED,
     SECURITY_REASON_UNKNOWN_USER, SecurityEvent,
@@ -371,6 +372,18 @@ pub struct CreateSessionArgs {
     pub type_key: String,
     /// ID of the associated terminal.
     pub terminal_id: String,
+    /// Optional Organization (legal entity) id the session should be scoped to.
+    ///
+    /// SaaS-3 L194: routing hint only — never an authentication or
+    /// authorization input. The session authority derives from the user
+    /// assignments row. create_session validates that the org is in the
+    /// device-local enumerated set (legal_entities for tenant "default") and
+    /// that the user assignment covers it (assignment_covers_resource with
+    /// ScopeType::LegalEntity) before setting the display-only org_label.
+    /// An org not on the device, or one the user cannot access, is refused
+    /// (fail-closed), mirroring the impersonation guard.
+    #[serde(default)]
+    pub org_id: Option<String>,
 }
 
 /// Result of `create_session` — returns the opaque session token.
@@ -398,6 +411,12 @@ pub struct SessionContextDto {
     pub type_key: String,
     /// ID of the associated terminal.
     pub terminal_id: String,
+    /// Display-only label for the Organization (legal entity) this session is
+    /// scoped to. NEVER an authentication or authorization input — purely for
+    /// UI presentation (SaaS-3 L194). The session authority derives from the
+    /// user assignments row, not from this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub org_label: Option<String>,
 }
 
 /// Create a new session and return an opaque session token.
@@ -415,6 +434,34 @@ pub async fn create_session(
             "store_id, instance_id, and user_id must not be empty".into(),
         ));
     }
+
+    // SaaS-3 L194: optional Organization (legal entity) scoping.
+    // org_id is a routing hint only — fail-closed validation derives the
+    // session real authority from the user assignment. The org must be in the
+    // device-local enumerated set and the user assignment must cover it.
+    let org_label: Option<String> = match args.org_id.as_ref().filter(|o| !o.is_empty()) {
+        Some(org_id) => {
+            let db = state.db.lock().await;
+            let store = oz_core::db::Store::new(&db);
+            let entity = store
+                .get_legal_entity("default", org_id)?
+                .ok_or_else(|| AppError::Invalid("Unknown organization".into()))?;
+            let covered =
+                store.assignment_covers_resource(&args.user_id, ScopeType::LegalEntity, org_id)?;
+            if !covered.unwrap_or(false) {
+                tracing::warn!(
+                    user_id = %args.user_id,
+                    org_id = %org_id,
+                    "session creation denied — assignment does not cover organization"
+                );
+                return Err(AppError::Invalid(
+                    "User does not have access to this organization".into(),
+                ));
+            }
+            Some(entity.name)
+        }
+        None => None,
+    };
 
     // Server-side authorization: verify the user has a valid role assignment
     // for the requested workspace instance (ADR #4 / ADR #7).
@@ -555,6 +602,192 @@ pub async fn create_session(
             instance_id: args.instance_id,
             type_key: args.type_key,
             terminal_id: args.terminal_id,
+            org_label,
+        },
+    })
+}
+
+/// Enumerate the Organizations (legal entities) this device knows about.
+///
+/// SaaS-3 L194 (pre-login org selector source). Device-local enumeration:
+/// returns the legal_entities belonging to the device tenant (default) and
+/// nothing else. Callable before authentication because it reveals only org
+/// ids/names (device configuration, not account secrets); it is the enumerated
+/// allow-list that create_session and switch_organization constrain org
+/// selection to — no cross-tenant identity broker exists.
+#[command]
+pub async fn list_organizations(
+    state: State<'_, AppState>,
+) -> Result<Vec<OrganizationSummary>, AppError> {
+    let db = state.db.lock().await;
+    let store = oz_core::db::Store::new(&db);
+    let orgs = store
+        .list_legal_entities("default")?
+        .into_iter()
+        .map(|le| OrganizationSummary {
+            id: le.id,
+            name: le.name,
+        })
+        .collect();
+    Ok(orgs)
+}
+
+/// Summary of an Organization (legal entity) available on this device.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationSummary {
+    /// Legal entity id (the legal_entities.id a session can be scoped to).
+    pub id: String,
+    /// Display name for the org selector.
+    pub name: String,
+}
+
+/// Switch the active Organization (legal entity) for an authenticated session.
+///
+/// SaaS-3 L194. Fail-closed, mirrors the impersonation guard, but the leak class
+/// it closes is different: it must never leave BOTH the old and new tokens live.
+/// So it INVALIDATES the current token FIRST (old token dead before any new
+/// session exists), then mints a fresh session whose scope re-derives from the
+/// user assignment alone — no credential carryover, no grant merge.
+///
+/// Steps:
+/// 1. Resolve + authenticate the current session (caller identity).
+/// 2. The chosen org must be in the device-local enumerated set.
+/// 3. The user assignment must cover the org (assignment_covers_resource with
+///    ScopeType::LegalEntity) — fail-closed, mirroring the impersonation guard.
+/// 4. FULL re-authentication: the PIN is verified against the users stored
+///    pin_hash — no credential carryover from the old session.
+/// 5. check_tenant_integrity re-runs on the single already-open tenant DB as
+///    defense-in-depth, exactly as at startup.
+/// 6. Invalidate the old token, THEN mint the new session.
+#[command]
+pub async fn switch_organization(
+    session_token: String,
+    org_id: String,
+    pin: String,
+    state: State<'_, AppState>,
+) -> Result<CreateSessionResult, AppError> {
+    // 1. Resolve + authenticate the current session.
+    let current = state.resolve_session(&session_token)?;
+    let user_id = current.user_id.clone();
+
+    // 2. Enumerated-list-only: the org must be one this device knows.
+    let org_name = {
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        store
+            .get_legal_entity("default", &org_id)?
+            .map(|le| le.name)
+            .ok_or_else(|| {
+                tracing::warn!(
+                    user_id = %user_id,
+                    org_id = %org_id,
+                    "organization switch denied — org not in device-local enumerated set"
+                );
+                AppError::Invalid("Unknown organization".into())
+            })?
+    };
+
+    // 3. Assignment gate (fail-closed — mirrors the impersonation guard).
+    {
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        let covered =
+            store.assignment_covers_resource(&user_id, ScopeType::LegalEntity, &org_id)?;
+        if !covered.unwrap_or(false) {
+            tracing::warn!(
+                user_id = %user_id,
+                org_id = %org_id,
+                "organization switch denied — assignment does not cover org"
+            );
+            return Err(AppError::Invalid(
+                "User does not have access to this organization".into(),
+            ));
+        }
+    }
+
+    // 4. FULL re-authentication — no credential carryover.
+    let role_id = {
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        let user = store
+            .get_user(&user_id)?
+            .ok_or_else(|| AppError::Invalid("user not found".into()))?;
+        let valid = oz_core::auth::verify_pin(&pin, &user.pin_hash)
+            .map_err(|e| AppError::Internal(format!("PIN verification failed: {e}")))?;
+        if !valid {
+            tracing::warn!(
+                user_id = %user_id,
+                org_id = %org_id,
+                "organization switch denied — PIN re-authentication failed"
+            );
+            return Err(AppError::Invalid("invalid PIN".into()));
+        }
+        user.role_id.clone()
+    };
+
+    // 5. Defense-in-depth: re-run tenant integrity on the active DB.
+    {
+        let db = state.db.lock().await;
+        oz_core::db::Store::new(&db)
+            .check_tenant_integrity()
+            .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
+    }
+
+    // 6. INVALIDATE the old token FIRST, then mint the new session.
+    state.invalidate_session(&session_token);
+
+    let now_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let token = uuid::Uuid::now_v7().to_string();
+    let expires_at = if state.session_ttl_seconds > 0 {
+        Some(now_ts + state.session_ttl_seconds)
+    } else {
+        None
+    };
+
+    let context = SessionContext::new(
+        user_id.clone(),
+        role_id,
+        current.terminal_id.clone(),
+        current.store_id.clone(),
+        current.instance_id.clone(),
+        current.type_key.clone(),
+        expires_at,
+        now_ts,
+    );
+
+    {
+        let mut session_store = state
+            .session_store
+            .write()
+            .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
+        if session_store.len() >= 256 {
+            let oldest = session_store
+                .iter()
+                .min_by_key(|(_, c)| c.created_at)
+                .map(|(t, _)| t.clone());
+            if let Some(old) = oldest {
+                session_store.remove(&old);
+            }
+        }
+        session_store.insert(token.clone(), context.clone());
+    }
+
+    tracing::info!(user_id = %user_id, org_id = %org_id, "organization switched");
+
+    Ok(CreateSessionResult {
+        session_token: token,
+        context: SessionContextDto {
+            user_id,
+            role_id: context.role_id.clone(),
+            store_id: context.store_id.clone(),
+            instance_id: context.instance_id.clone(),
+            type_key: context.type_key.clone(),
+            terminal_id: context.terminal_id.clone(),
+            org_label: Some(org_name),
         },
     })
 }
@@ -738,6 +971,7 @@ pub async fn impersonate_user_scoped(
             instance_id: operator.instance_id,
             type_key: operator.type_key,
             terminal_id: operator.terminal_id,
+            org_label: None,
         },
     })
 }
