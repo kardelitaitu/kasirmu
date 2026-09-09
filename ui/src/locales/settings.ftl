@@ -1123,5 +1123,12 @@ settings-fiscalnum-save = Save series
 settings-fiscalnum-saved = Series saved
 settings-fiscalnum-error-load = Could not read the number series.
 settings-fiscalnum-error-save = Could not save the number series.
+settings-fiscalnum-overview-title = All configured series
+settings-fiscalnum-overview-empty = No series configured yet — save one above to see it here.
+settings-fiscalnum-overview-col-entity = Legal entity
+settings-fiscalnum-overview-col-kind = Document kind
+settings-fiscalnum-overview-col-prefix = Prefix
+settings-fiscalnum-overview-col-current = Last number
+settings-fiscalnum-overview-col-updated = Updated
 
 

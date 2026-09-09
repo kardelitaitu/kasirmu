@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   listEntities: vi.fn(),
   getSeq: vi.fn(),
   upsert: vi.fn(),
+  listAll: vi.fn(),
 }));
 
 vi.mock('@/api/legalEntities', () => ({
@@ -26,6 +27,7 @@ vi.mock('@/api/legalEntities', () => ({
 vi.mock('@/api/fiscal', () => ({
   getDocumentNumberSequenceScoped: (...args: unknown[]) => mocks.getSeq(...args),
   upsertDocumentNumberSequenceScoped: (...args: unknown[]) => mocks.upsert(...args),
+  listDocumentNumberSequencesScoped: (...args: unknown[]) => mocks.listAll(...args),
 }));
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok-1' }),
@@ -67,6 +69,7 @@ beforeEach(() => {
   mocks.listEntities.mockReset().mockResolvedValue(ENTITIES);
   mocks.getSeq.mockReset().mockResolvedValue(SERIES);
   mocks.upsert.mockReset().mockResolvedValue(undefined);
+  mocks.listAll.mockReset().mockResolvedValue([SERIES]);
 });
 
 describe('StatutoryNumberingCard', () => {
@@ -154,5 +157,43 @@ describe('StatutoryNumberingCard', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
     expect(screen.queryByText('Series saved')).toBeNull();
+  });
+
+  // ── W5-C: the series overview (the card finally SHOWS what exists) ──
+
+  it('lists every configured series with its live counter', async () => {
+    const invoice = {
+      ...SERIES,
+      id: 'seq-2',
+      documentKind: 'invoice',
+      prefix: 'F/',
+      currentValue: 7,
+    };
+    mocks.listAll.mockResolvedValue([SERIES, invoice]);
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByRole('table')).toBeInTheDocument();
+    });
+    // Entity name resolved from the loaded entity list, not the raw id
+    // (at least once per table row; the entity <select> adds one more).
+    expect(screen.getAllByText('PT Utama').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('NO.')).toBeInTheDocument();
+    expect(screen.getByText('F/')).toBeInTheDocument();
+    expect(screen.getAllByText('Invoice').length).toBeGreaterThan(0);
+    expect(screen.getByText('7')).toBeInTheDocument();
+    // The counter column shows the LIVE value, exactly what the next
+    // statutory number continues from.
+    expect(screen.getByText('41')).toBeInTheDocument();
+  });
+
+  it('shows the overview empty state when no series exists yet', async () => {
+    mocks.listAll.mockResolvedValue([]);
+    renderCard();
+    await waitFor(() => {
+      expect(
+        screen.getByText('No series configured yet — save one above to see it here.'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('table')).toBeNull();
   });
 });

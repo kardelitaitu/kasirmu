@@ -1105,5 +1105,12 @@ settings-fiscalnum-save = Simpan deret
 settings-fiscalnum-saved = Deret tersimpan
 settings-fiscalnum-error-load = Gagal membaca deret nomor.
 settings-fiscalnum-error-save = Gagal menyimpan deret nomor.
+settings-fiscalnum-overview-title = Semua deret terdaftar
+settings-fiscalnum-overview-empty = Belum ada deret terdaftar — simpan satu di atas untuk melihatnya di sini.
+settings-fiscalnum-overview-col-entity = Badan hukum
+settings-fiscalnum-overview-col-kind = Jenis dokumen
+settings-fiscalnum-overview-col-prefix = Awalan
+settings-fiscalnum-overview-col-current = Nomor terakhir
+settings-fiscalnum-overview-col-updated = Diperbarui
 
 

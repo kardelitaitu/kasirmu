@@ -29,6 +29,7 @@ import { SettingsScopeTag } from '@/features/settings/SettingsScopeTag';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
   getDocumentNumberSequenceScoped,
+  listDocumentNumberSequencesScoped,
   upsertDocumentNumberSequenceScoped,
   type DocumentNumberSequence,
 } from '@/api/fiscal';
@@ -71,6 +72,7 @@ export function StatutoryNumberingCard() {
   const { l10n } = useLocalization();
 
   const [entities, setEntities] = useState<LegalEntity[]>([]);
+  const [allSeries, setAllSeries] = useState<DocumentNumberSequence[]>([]);
   const [entityId, setEntityId] = useState<string | null>(null);
   const [documentKind, setDocumentKind] = useState<string>(DOCUMENT_KINDS[0]);
   const [sequence, setSequence] = useState<DocumentNumberSequence | null>(null);
@@ -93,6 +95,10 @@ export function StatutoryNumberingCard() {
         if (cancelled) return;
         setEntities(rows);
         setEntityId(rows[0]?.id ?? null);
+        // W5-C: the whole configured surface — every entity's series with
+        // its live counter — so the card finally SHOWS what exists instead
+        // of only the one pair being edited.
+        setAllSeries(await listDocumentNumberSequencesScoped(sessionToken));
       } catch (err) {
         if (!cancelled) {
           setLoading(false);
@@ -335,6 +341,61 @@ export function StatutoryNumberingCard() {
           </span>
         )}
       </div>
+
+      <section className="fiscalnum-overview" aria-labelledby="fiscalnum-overview-title">
+        <Localized id="settings-fiscalnum-overview-title">
+          <h3 id="fiscalnum-overview-title" className="fiscalnum-overview-title">
+            All configured series
+          </h3>
+        </Localized>
+        {allSeries.length === 0 ? (
+          <p className="fiscalnum-overview-empty">
+            <Localized id="settings-fiscalnum-overview-empty">
+              No series configured yet — save one above to see it here.
+            </Localized>
+          </p>
+        ) : (
+          <table className="fiscalnum-overview-table">
+            <thead>
+              <tr>
+                <th scope="col">
+                  <Localized id="settings-fiscalnum-overview-col-entity">Legal entity</Localized>
+                </th>
+                <th scope="col">
+                  <Localized id="settings-fiscalnum-overview-col-kind">Document kind</Localized>
+                </th>
+                <th scope="col">
+                  <Localized id="settings-fiscalnum-overview-col-prefix">Prefix</Localized>
+                </th>
+                <th scope="col">
+                  <Localized id="settings-fiscalnum-overview-col-current">Last number</Localized>
+                </th>
+                <th scope="col">
+                  <Localized id="settings-fiscalnum-overview-col-updated">Updated</Localized>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {allSeries.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    {entities.find((entity) => entity.id === row.legalEntityId)?.name ??
+                      row.legalEntityId}
+                  </td>
+                  <td>
+                    <Localized id={KIND_LABEL[row.documentKind] ?? row.documentKind}>
+                      {row.documentKind}
+                    </Localized>
+                  </td>
+                  <td>{row.prefix}</td>
+                  <td>{row.currentValue}</td>
+                  <td>{row.updatedAt.slice(0, 10)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
     </Card>
   );
 }
