@@ -644,6 +644,74 @@ fn create_and_update_share_one_rule_set() {
         .expect("update accepts the same legal grant set");
 }
 
+// The five below moved here with the fold: they exercise `create_role`, which
+// until `9c582a069` lived in `db/staff.rs` and so was tested from
+// `staff_tests.rs`. They are kept as-is rather than folded into the parity
+// test above — each names one refusal in its own test name, which is what a
+// red run points a reader at — and the parity test is the one that would catch
+// a future private copy of a rule.
+
+#[test]
+fn create_role_basic() {
+    let conn = fresh();
+    let r = store(&conn)
+        .create_role(
+            "role-viewer",
+            "viewer",
+            "Read-only access",
+            r#"["sales:view"]"#,
+        )
+        .unwrap();
+    assert_eq!(r.name, "viewer");
+    assert_eq!(r.description, "Read-only access");
+    assert_eq!(r.permissions, r#"["sales:view"]"#);
+}
+
+#[test]
+fn create_role_duplicate_name() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    // 'Owner' is already taken by the preset — duplicate name should conflict.
+    let err = store(&conn)
+        .create_role("role-dup", "Owner", "Dup", "[]")
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Conflict { entity, .. } if entity == "role"));
+}
+
+#[test]
+fn create_role_rejects_unregistered_permission() {
+    let conn = fresh();
+    let err = store(&conn)
+        .create_role("role-x", "X", "x", r#"["sales:typo"]"#)
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "permissions"),
+        "unregistered key must fail validation: {err}"
+    );
+}
+
+#[test]
+fn create_role_rejects_sensitive_family_wildcard() {
+    let conn = fresh();
+    let err = store(&conn)
+        .create_role("role-x", "X", "x", r#"["sales:*"]"#)
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "permissions"),
+        "a wildcard covering sensitive keys must fail validation: {err}"
+    );
+}
+
+#[test]
+fn create_role_accepts_valid_permission_set() {
+    let conn = fresh();
+    let grants = r#"["sales:process", "products:*", "sales:void"]"#;
+    let r = store(&conn)
+        .create_role("role-x", "X", "x", grants)
+        .unwrap();
+    assert_eq!(r.permissions, grants);
+}
+
 // ── role_holders ───────────────────────────────────────────────────────
 
 /// A second authored role, so holder rows can point at something other than
