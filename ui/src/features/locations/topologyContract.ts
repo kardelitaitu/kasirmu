@@ -32,6 +32,11 @@ export const isWarehouseOperationalInputPort = (portId?: string): portId is Ware
  *  empty" bypass reads the same store both sides write. */
 export const topologyIssueKey = (nodeId: string, messageId: string) => `node:${nodeId}:${messageId}`;
 
+/** Graph-level validation issue key (shared dismissal store format). The
+ *  format is load-bearing: graph dismissal keys persist and are read back —
+ *  never rename the `graph:` prefix. */
+export const topologyGraphIssueKey = (messageId: string) => `graph:${messageId}`;
+
 /** Whether a workspace instance participates in the store topology canvas.
  *  The 'admin' instance is a system workspace surfaced automatically for
  *  owner/manager roles — it is app management, not a routing endpoint, so it

@@ -28,11 +28,11 @@
 //! derives from it, so hoisting it here would either cross that call or drag
 //! the whole migration slice with it. It arrives back here as a dep.
 //!
-//! The two key formats the dismissal store is written under are re-declared
-//! here exactly as nodeTopologyEditorApplyPanel.ts already re-declares the node
-//! one (a module-local alias of the contract's topologyIssueKey), rather than
-//! imported from the component - which keeps this module free of any value
-//! export crossing back into the editor.
+//! The two key formats the dismissal store is written under are module-local
+//! aliases of the contract's topologyIssueKey and topologyGraphIssueKey (the
+//! same aliasing nodeTopologyEditorApplyPanel.ts uses for the node one), so
+//! both derivations have one home in the contract and this module stays free
+//! of any value export crossing back into the editor.
 //!
 //! The call site is the slot the cluster occupied, directly below the
 //! migration call and above every consumer, and the block moved in its own
@@ -41,17 +41,17 @@
 
 import { useCallback, useEffect, useMemo, useState, type SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
-import { topologyIssueKey, type TopologyValidationError } from './topologyContract';
+import { topologyGraphIssueKey, topologyIssueKey, type TopologyValidationError } from './topologyContract';
 import { findOverlappingNodeIds, NODE_WIDTH, NODE_HEIGHT } from './nodeTopologyClamp';
 import type { TopologyNodeData, TopologyWireData } from './nodeTopologyEditorTypes';
 
 /** Stable keys identifying a validation issue for mark-issue-resolved
  *  persistence: a node issue is scoped by its card + message, a graph-level
  *  issue by its message alone. Module-scope so every surface (panel, banner,
- *  card notes) derives the same key from the same error. The node key format
- *  lives in the contract so the screen's Apply gate reads the same store. */
+ *  card notes) derives the same key from the same error. Both key formats
+ *  live in the contract so the screen's Apply gate reads the same store. */
 const issueKey = topologyIssueKey;
-const graphIssueKey = (messageId: string) => `graph:${messageId}`;
+const graphIssueKey = topologyGraphIssueKey;
 
 export interface TopologyValidationDeps {
   /** Parent-owned: the migration hook derives from it, so it cannot move here. */
