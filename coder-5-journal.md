@@ -1963,3 +1963,71 @@ binary (15 GB free — foreign-agent build contention, not memory).
 
 **Linkage:** supervisor message — slice-3 report (SHAs, gates, shared.ftl discovery).
 
+
+## 2026-09-26 — Regional slice 4: org default locale joins Fluent negotiation (feat)
+
+**Assignment:** supervisor greenlight after slice-3 acceptance: org/entity default locale
+feeds Fluent's negotiation order; per-user override keeps winning; UI-only + one read of
+slice 1's chain. Constraints: (a) open question 2 stays open, (b) collision test, (c)
+hot-file check, (d) STOP if blast radius is bigger than design implies.
+
+**Blast radius assessment (constraint d) — CHANGED, reported up front:** the design says
+'negotiation in ui/src/i18n/*' and the negotiation actually lives in ONE spot —
+LocaleProvider's resolveInitialLocale — so I did NOT reorder negotiation for existing
+users. Instead: the provider now resolves locale = explicit ?? orgDefault ?? initial,
+where explicit is the stored localStorage choice and initial keeps the entire
+pre-existing chain (localStorage > browser > 'id'). Net effect: existing users who ever
+touched the LanguageSelector see ZERO behavior change (their stored choice still wins;
+the chain cannot reorder under them because initial is frozen at boot). Only fresh
+profiles with no stored choice can see the org default, and only when the chain answers
+a CONFIGURED scope. Built-in default remains 'id'. Blast radius matches the design's
+intent; no stop needed.
+
+**Implementation:** LocaleContext.tsx: LocaleContextValue gains orgDefaultLocale/
+setOrgDefaultLocale (raw tag in, narrowed to a supported locale via primary subtag;
+never persists — only setLocale writes localStorage, honoring the storageKeyPins pin).
+OrgLocaleSync.tsx (mirrors CurrencyWorkspaceSync): rendered below WorkspaceProvider in
+BOTH entries (AppProviders + main.tablet), one chain read (primary location then
+regional config) per session, pushes the locale axis unless it answers built_in (the
+built-in default must not masquerade as an org decision and flip fresh devices to 'en'),
+clears on logout, skips on error (browser heuristic keeps answering). The ui.locale KV
+the chain reads at the org layer is the row GeneralSection has always written — the
+reader the design says it finally gets. Open question 2 untouched: no delete, no
+migrate, no write-path change.
+
+**Tests (constraint b):** LocaleContext.test.tsx +6 including THE COLLISION PIN — stored
+'en' beats a pushed 'id-ID' org default AND the org default never persists over the
+user's stored choice. Plus org-beats-browser (no stored choice), BCP-47 narrowing,
+unsupported-tag skip, clear-falls-back, setLocale-after-org-default persistence. New
+orgLocaleSync.test.tsx 4 tests: no-session no-read, session feeds configured locale,
+built_in feeds nothing, logout clears.
+
+**Constraint (c) hot-file check:** negotiation lives in LocaleContext.tsx, not an FTL
+file — shared.ftl/shared.id.ftl clean at start and at commit, never touched; no FTL
+edits at all this slice (negotiation needs no new strings).
+
+**Pre-existing red suites — verified failure-neutral:** at HEAD (e670fd6a2), in a
+detached worktree with linked node_modules: CloudSyncSettings 37/37, DeepLink +
+ToggleButtons 6/8, SettingsPage 1/22 already failed before my edits; with my edits the
+counts are IDENTICAL (37/37, 7/23 combined) — these belong to the in-flight settings
+stream (supervisor informed; not mine to fix). My suites all green: LocaleContext 14/14,
+orgLocaleSync 4/4, storage pins + TierLocked + GeneralSection 48/48.
+
+**INCIDENT — my mistake, contained and repaired:** I built the HEAD-baseline worktree
+with a junction for ui/node_modules instead of npm ci (to save install time). git
+worktree remove partially followed the junction and emptied the MAIN repo's
+node_modules/.bin (tsc.cmd gone mid-run). Repaired: deleted the junction reparse point
+explicitly (not following it), npm ci in ui/ (14s, 543 packages), verified. Root cause:
+junctions are a trap for recursive-delete tooling here — ALWAYS npm ci in throwaway
+worktrees. Also noted: the baseline worktree sprouted foreign ui-coder-* journal writes
+mid-session (an agent was writing into that path); I removed only the junction and left
+everything else of that tree untouched. typecheck+eslint green after repair; one
+unused-import fix (FluentBundle) and one index-signature access fix (dataset['locale'])
+found by tsc.
+
+**Commit:** 4232b64f3 feat(i18n): feed the org default locale into Fluent negotiation
+(slice 4) — 11 files, +339/-5, hook 10/10 (typecheck 11 staged files, bundle parity 0
+missing). Reported to supervisor with SHAs, the constraint-(d) assessment, the
+failure-neutrality evidence, and the junction incident.
+
+**Linkage:** supervisor message — slice-4 report.
