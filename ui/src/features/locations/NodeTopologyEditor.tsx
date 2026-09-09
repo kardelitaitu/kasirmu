@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from 'react';
-import { Localized, useLocalization } from '@fluent/react';
+import { useLocalization } from '@fluent/react';
 import { useToast } from '@/frontend/shared/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { TopologyDeleteDialogs } from './topologyDeleteDialogs';
 import {
   type TopologyApplyResult,
   type TopologyNodePayload,
@@ -11,7 +11,7 @@ import {
 } from '@/api/topology';
 import { useSettings } from '@/contexts/SettingsContext';
 import TopologyApplyConfirm from './TopologyApplyConfirm';
-import { NodesIcon } from './NodeTopologyIcons';
+import { TopologyEmptyState } from './topologyEmptyState';
 import {
   NODE_WIDTH,
   NODE_HEIGHT,
@@ -2124,37 +2124,14 @@ export default function NodeTopologyEditor({
           users would otherwise get zero feedback that a snap or clone
           happened. role="status" implies aria-live="polite". */}
       <div className="sr-only" role="status" aria-live="polite" data-testid="topology-live-region">{liveAnnouncement}</div>
-      {/* ── Confirm delete dialog ── */}
-      {confirmDelete !== null && (
-        <ConfirmDialog
-          open
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={executeDelete}
-          title={confirmDelete
-            ? l10n.getString('topology-confirm-delete-node-title')
-            : l10n.getString('topology-confirm-delete-wire-title')}
-          message={
-            confirmDelete
-              ? l10n.getString('topology-confirm-delete-node-msg')
-              : l10n.getString('topology-confirm-delete-wire-msg')
-          }
-          variant="danger"
-          confirmLabel={l10n.getString('topology-confirm-delete-label')}
-        />
-      )}
-
-      {/* ── Confirm batch delete dialog (2+ nodes) ── */}
-      {confirmDeleteMany !== null && (
-        <ConfirmDialog
-          open
-          onCancel={() => setConfirmDeleteMany(null)}
-          onConfirm={executeDelete}
-          title={l10n.getString('topology-confirm-delete-many-title', { count: confirmDeleteMany.length })}
-          message={l10n.getString('topology-confirm-delete-many-msg', { count: confirmDeleteMany.length })}
-          variant="danger"
-          confirmLabel={l10n.getString('topology-confirm-delete-label')}
-        />
-      )}
+      <TopologyDeleteDialogs
+        confirmDelete={confirmDelete}
+        setConfirmDelete={setConfirmDelete}
+        confirmDeleteMany={confirmDeleteMany}
+        setConfirmDeleteMany={setConfirmDeleteMany}
+        executeDelete={executeDelete}
+        l10n={l10n}
+      />
 
       <TopologyHeader
         l10n={l10n}
@@ -2257,21 +2234,7 @@ export default function NodeTopologyEditor({
               }}
             />
           )}
-          {nodes.length === 0 && (
-            <div className="topology-empty-state" aria-live="polite">
-              <div className="topology-empty-state-card">
-                <NodesIcon size={30} />
-                <h3>
-                  <Localized id="topology-empty-state-title">Build your store topology</Localized>
-                </h3>
-                <p>
-                  <Localized id="topology-empty-state-body">
-                    Drag tools from the palette onto the canvas, or press 1–4 to add a node. Connect nodes with the port sockets on each card.
-                  </Localized>
-                </p>
-              </div>
-            </div>
-          )}
+          <TopologyEmptyState isEmpty={nodes.length === 0} />
           {selectionBounds && (
             <div
               className="topology-align-toolbar"
