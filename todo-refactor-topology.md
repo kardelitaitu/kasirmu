@@ -48,10 +48,10 @@ Scope: `ui/src/features/locations/NodeTopologyEditor.tsx` and its directly relat
   - [ ] Rename, inspector editing, templates, import/export, and clipboard. (Inline — Phase 3 slice 3 / Phase 4 surfaces.)
   - [ ] Validation, migration, Apply confirmation, and save lifecycle. (Save *state* hook exists; the apply/save flow and migration UI remain inline — Phase 4 target.)
   - [x] Canvas composition and overlay rendering. (Partially: header/tool rack/cards/wires are extracted components; overlays and menus remain inline.)
-- [ ] For each group, list its state, refs, effects, callbacks, and the minimum inputs/outputs it needs.
-- [ ] Mark dependencies that must remain in the parent: shared graph state, localization, toast/error reporting, session identity, and Apply callbacks.
-- [ ] Choose extraction seams that can be tested independently before changing the next group.
-- [ ] Avoid creating a single replacement "god hook" that merely moves the 6k-line problem into another file.
+- [x] For each group, list its state, refs, effects, callbacks, and the minimum inputs/outputs it needs.
+- [x] Mark dependencies that must remain in the parent: shared graph state, localization, toast/error reporting, session identity, and Apply callbacks.
+- [x] Choose extraction seams that can be tested independently before changing the next group.
+- [x] Avoid creating a single replacement "god hook" that merely moves the 6k-line problem into another file.
 
 ## Execution baseline and first slices
 
@@ -116,10 +116,10 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 - [ ] Decide which data types are editor-domain types and which are semantic-contract types.
 - [ ] Move only genuinely shared editor types/constants into a small dedicated types module if doing so does not create cycles.
-- [ ] Keep semantic graph types and validation errors owned by `topologyContract.ts`.
+- [x] Keep semantic graph types and validation errors owned by `topologyContract.ts`.
 - [ ] Replace any accidental imports of runtime UI code from pure modules with type-only imports or explicit adapters. (2026-09-09: none found — all extracted pure modules import types only.)
 - [x] Add boundary types for the major feature slices instead of passing the entire editor props/state object. (Every extracted hook takes an explicit deps interface: the load-lifecycle deps object, `TopologyAnnouncementDeps`, `BendGestureState` — not the props bag.)
-- [ ] Preserve `NodeTopologyEditor.tsx` re-exports while callers migrate gradually.
+- [x] Preserve `NodeTopologyEditor.tsx` re-exports while callers migrate gradually.
 - [ ] Run typecheck and the focused tests; commit this boundary-only change separately.
 
 ## Phase 3 — Extract orchestration hooks in small slices
@@ -148,28 +148,28 @@ For every slice, add a short entry to the task journal or PR notes containing:
 
 ### 3.4 Input controllers
 
-- [ ] Extract mouse/pointer event orchestration into a controller hook without moving presentational JSX yet.
-- [ ] Extract touch gesture orchestration separately; do not merge touch and mouse behavior into one opaque handler.
+- [x] Extract mouse/pointer event orchestration into a controller hook without moving presentational JSX yet.
+- [x] Extract touch gesture orchestration separately; do not merge touch and mouse behavior into one opaque handler.
 - [ ] Keep document-level listener cleanup owned by the controller that installs it.
-- [ ] Add regression tests for pointer release outside the canvas, window blur, visibility changes, Escape cancellation, duplicate drag, bend drag, and touch cancellation.
-- [ ] Verify no handler identity churn regresses memoized topology cards.
+- [x] Add regression tests for pointer release outside the canvas, window blur, visibility changes, Escape cancellation, duplicate drag, bend drag, and touch cancellation.
+- [x] Verify no handler identity churn regresses memoized topology cards.
 
 ### 3.5 Viewport and canvas interaction
 
 - [ ] Extract pan, zoom, auto-fit, viewport persistence, minimap interaction, and cursor readout coordination.
-- [ ] Keep geometry calculations in the existing pure modules (`nodeTopologyClamp`, `nodeTopologyLayout`, `topologyWireGeometry`, and related helpers).
-- [ ] Add focused tests for zoom bounds, saved viewport restoration, auto-fit suppression after manual movement, and pan/zoom keyboard controls.
+- [x] Keep geometry calculations in the existing pure modules (`nodeTopologyClamp`, `nodeTopologyLayout`, `topologyWireGeometry`, and related helpers).
+- [x] Add focused tests for zoom bounds, saved viewport restoration, auto-fit suppression after manual movement, and pan/zoom keyboard controls.
 
 ## Phase 4 — Extract feature surfaces from the render tree
 
 - [ ] Keep the parent as a thin composition root that wires hooks to feature components.
-- [ ] Extract the inspector/drawer surface, including branch profile fields and workspace fields, behind a typed `InspectorProps` boundary.
-- [ ] Extract the confirmation and Apply flow behind a typed `ApplyPanelProps` boundary; preserve PIN/session behavior and revision conflict handling.
+- [x] Extract the inspector/drawer surface, including branch profile fields and workspace fields, behind a typed `InspectorProps` boundary.
+- [x] Extract the confirmation and Apply flow behind a typed `ApplyPanelProps` boundary; preserve PIN/session behavior and revision conflict handling.
 - [ ] Extract migration/legacy-wire resolution UI and its state transitions.
-- [ ] Extract template/import/export/clipboard controls if they are still coupled to the parent render function.
+- [x] Extract template/import/export/clipboard controls if they are still coupled to the parent render function.
 - [ ] Extract canvas overlays and menus that are not already isolated: validation widget integration, relationship picker integration, context menu integration, guides, and selection overlays.
-- [ ] Keep `TopologyNodeCard`, `TopologyWireGroup`, `TopologyToolRack`, `TopologyHeader`, and other existing extracted components as stable seams rather than wrapping them in unnecessary pass-through layers.
-- [ ] After each extraction, compare rendered DOM roles, labels, class names used by tests, and keyboard focus behavior.
+- [x] Keep `TopologyNodeCard`, `TopologyWireGroup`, `TopologyToolRack`, `TopologyHeader`, and other existing extracted components as stable seams rather than wrapping them in unnecessary pass-through layers.
+- [x] After each extraction, compare rendered DOM roles, labels, class names used by tests, and keyboard focus behavior.
 
 ## Phase 5 — Reduce parent responsibilities
 
@@ -684,6 +684,7 @@ Six tests (c6d626f20, +152, single test file) pin the touch contract that 3.4e's
 - **Focused tests:** post-splice 564/1/0 across editor + Inspector + memo — identical baseline, ZERO test edits. Typecheck exit 0. ESLint 0 errors; hook file 0 warnings.
 - **Rollback point:** revert 664e8a815 alone.
 - **Next:** the unmount-sweep + resetTransientCanvasState relocation retires the ref-scope eslint-disable set, then Phase 5 (reduce parent to composition).
+- **Checkbox-sync pass (2026-09-09, this edit):** Phase 1 (:51-54), Phase 2 (:119, :122), 3.4 (:151, :152, :154, :155), 3.5 (:160, :161) and Phase 4 (:166, :167, :169, :171, :172) boxes ticked against the landed-slice records above; deliberately still open — :117/:118/:123 (no shared-types module ever landed; cycles were avoided by type-only imports instead), :153 (unmount sweep + `resetTransientCanvasState` still parent-side = the next slice), :159 (auto-fit deliberately parent-side; the cursor readout was already its own component), :165 (Phase 5 work), :168 (migration dialog JSX and its state trio still inline), :170 (menu JSX mount, guides and selection overlays still inline).
 
 
 
