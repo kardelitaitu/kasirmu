@@ -8,9 +8,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { testSyncConnection } from '@/api/offline';
+import type { ConnectionHealth } from '@/hooks/connectionHealth';
 
-/** Connection state to the cloud sync server. */
-export type SyncConnectionState = 'checking' | 'connected' | 'disconnected';
+/**
+ * Connection state to the cloud sync server. An alias onto the shared
+ * vocabulary — this union and `AuthConnectionState` were written out
+ * identically twice, and the duplication is why a new state would have to be
+ * handled in each copy separately.
+ */
+export type SyncConnectionState = ConnectionHealth;
 
 /**
  * Return type of the `useSyncConnection` hook.
@@ -25,6 +31,13 @@ export interface SyncConnectionStatus {
   state: SyncConnectionState;
   /** Round-trip latency in milliseconds, or null if unknown/offline. */
   latencyMs: number | null;
+  /**
+   * Always null for sync today. The sync probe reduces the server's answer to
+   * a status code and never reads the health payload, so there is no named
+   * cause to report. Carrying the field keeps both indicators rendering from
+   * one shape, and its emptiness marks the gap instead of hiding it.
+   */
+  cause: string | null;
 }
 
 const POLL_INTERVAL_MS = 60_000;
@@ -86,5 +99,8 @@ export function useSyncConnection(): SyncConnectionStatus {
     };
   }, []);
 
-  return { state, latencyMs };
+  // cause is a constant here — see the field doc. Sync gains a real value
+  // when its probe starts reading the health payload instead of the status
+  // code, which is the same fix the license probe just had.
+  return { state, latencyMs, cause: null };
 }

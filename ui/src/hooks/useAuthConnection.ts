@@ -9,9 +9,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { testAuthConnection } from '@/api/license';
+import { fromWireHealth, type ConnectionHealth } from '@/hooks/connectionHealth';
 
-/** Connection state to the auth server. */
-export type AuthConnectionState = 'checking' | 'connected' | 'disconnected';
+/**
+ * Connection state to the auth server. An alias onto the shared vocabulary
+ * rather than a second copy of it — this union and `SyncConnectionState` were
+ * written out identically twice, which is how a state ends up handled in one
+ * indicator and missed in the next.
+ */
+export type AuthConnectionState = ConnectionHealth;
 
 /**
  * Return type of the `useAuthConnection` hook.
@@ -21,6 +27,12 @@ export interface AuthConnectionStatus {
   state: AuthConnectionState;
   /** Round-trip latency in milliseconds, or null if unknown/offline. */
   latencyMs: number | null;
+  /**
+   * What the server named as broken when `state` is `'degraded'`, or null.
+   * Surfaced verbatim from the health payload: it is the server's own
+   * subsystem label, not something the client should translate into a guess.
+   */
+  cause: string | null;
 }
 
 const POLL_INTERVAL_MS = 60_000;
@@ -41,6 +53,7 @@ const RETRY_INTERVAL_MS = 5_000;
 export function useAuthConnection(): AuthConnectionStatus {
   const [state, setState] = useState<AuthConnectionState>('checking');
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [cause, setCause] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -53,18 +66,24 @@ export function useAuthConnection(): AuthConnectionStatus {
         const result = await testAuthConnection();
         if (!mountedRef.current) return;
 
-        if (result.ok) {
-          setState('connected');
-          setLatencyMs(result.latencyMs);
-          nextDelay = POLL_INTERVAL_MS;
-        } else {
-          setState('disconnected');
+        // A degraded server answers, so it is reachable: keep the normal
+        // poll cadence rather than dropping to the 5 s retry loop, which
+        // would have the client hammering a server that is already talking
+        // to us and just wants its database fixed.
+        const health = fromWireHealth(result.state, result.ok);
+        setState(health);
+        setCause(health === 'degraded' ? (result.cause ?? null) : null);
+        if (health === 'disconnected') {
           setLatencyMs(null);
+        } else {
+          setLatencyMs(result.latencyMs);
         }
+        nextDelay = result.ok || health === 'degraded' ? POLL_INTERVAL_MS : RETRY_INTERVAL_MS;
       } catch {
         if (!mountedRef.current) return;
         setState('disconnected');
         setLatencyMs(null);
+        setCause(null);
       }
 
       if (mountedRef.current) {
@@ -81,5 +100,5 @@ export function useAuthConnection(): AuthConnectionStatus {
     };
   }, []);
 
-  return { state, latencyMs };
+  return { state, latencyMs, cause };
 }

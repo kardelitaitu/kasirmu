@@ -65,6 +65,10 @@ statusbar-version-label = Versi
 statusbar-checking-msg = { $name } · Memeriksa…
 statusbar-offline-msg = { $name } · Luring
 statusbar-latency-msg = { $name } · { $ms }ms
+# Server tetap menjawab dan menyebut subsistem yang rusak. Beda dari "Luring":
+# layanan yang terganggu masih melayani, jadi pesan ini tidak boleh terbaca
+# sebagai mati. $cause adalah label subsistem dari server (mis. "database").
+statusbar-degraded-msg = { $name } · Terganggu — { $cause }
 statusbar-version-latest-msg = Versi terbaru
 statusbar-version-update-msg = Pembaruan tersedia
 

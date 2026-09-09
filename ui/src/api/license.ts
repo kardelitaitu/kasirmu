@@ -1,4 +1,5 @@
 import { loggedInvoke } from '@/utils/logged-invoke';
+import type { WireHealth } from '@/hooks/connectionHealth';
 
 /** Possible license verification outcomes. */
 export type LicenseVerificationStatus = 'valid' | 'expired' | 'gracePeriod' | 'invalidSignature' | 'clockTampered' | 'missing';
@@ -140,11 +141,20 @@ export async function resumeSubscriptionScoped(
   return loggedInvoke('resume_subscription_scoped', { sessionToken });
 }
 
-/** Auth-server reachability probe result (mirrors PingResult). */
+/**
+ * Auth-server probe result (mirrors the sync `PingResult` so both pills
+ * render from one shape). `state` and `cause` are optional because a desktop
+ * build predating them sends neither, and the hook must then fall back to the
+ * reachability answer rather than invent a health reading.
+ */
 export interface AuthPingResult {
   ok: boolean;
   status: string;
   latencyMs: number | null;
+  /** Health read from the server's own payload — see `WireHealth`. */
+  state?: WireHealth;
+  /** Named broken subsystem when `state` is `'degraded'`. */
+  cause?: string | null;
 }
 
 /**

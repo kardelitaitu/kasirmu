@@ -79,6 +79,97 @@ describe('useAuthConnection', () => {
     expect(result.current.latencyMs).toBeNull();
   });
 
+  // ── Degraded path ───────────────────────────────────────────
+
+  it('reports degraded, not disconnected, when the server answers 503 with a payload', async () => {
+    // The exact case the old probe collapsed: ok:false is reachability, and
+    // here the server IS reachable and reporting a broken database.
+    vi.mocked(testAuthConnection).mockResolvedValue({
+      ok: false,
+      status: 'Degraded: database (12ms)',
+      latencyMs: 12,
+      state: 'degraded',
+      cause: 'database',
+    });
+
+    const { result } = renderHook(() => useAuthConnection());
+    await flush();
+
+    expect(result.current.state).toBe('degraded');
+    expect(result.current.cause).toBe('database');
+  });
+
+  it('keeps the latency reading for a degraded server', async () => {
+    // It answered, so the round-trip figure is real and worth showing.
+    vi.mocked(testAuthConnection).mockResolvedValue({
+      ok: false,
+      status: 'Degraded',
+      latencyMs: 44,
+      state: 'degraded',
+      cause: 'database',
+    });
+
+    const { result } = renderHook(() => useAuthConnection());
+    await flush();
+
+    expect(result.current.latencyMs).toBe(44);
+  });
+
+  it('polls a degraded server at the normal interval rather than hammering it', async () => {
+    // Degraded is reachable. Dropping to the 5 s retry loop would have the
+    // client polling every five seconds a server that is already talking to
+    // us and simply needs its database fixed.
+    vi.mocked(testAuthConnection).mockResolvedValue({
+      ok: false,
+      status: 'Degraded',
+      latencyMs: 12,
+      state: 'degraded',
+      cause: 'database',
+    });
+    renderHook(() => useAuthConnection());
+    await flush();
+    expect(testAuthConnection).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_999); });
+    // Must not fall into the 5 s retry band.
+    expect(testAuthConnection).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(55_001); });
+    expect(testAuthConnection).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the cause once the server recovers', async () => {
+    vi.mocked(testAuthConnection)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 'Degraded',
+        latencyMs: 12,
+        state: 'degraded',
+        cause: 'database',
+      })
+      .mockResolvedValue({ ok: true, status: 'healthy', latencyMs: 9, state: 'operational' });
+
+    const { result } = renderHook(() => useAuthConnection());
+    await flush();
+    expect(result.current.cause).toBe('database');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    await flush();
+    expect(result.current.state).toBe('connected');
+    expect(result.current.cause).toBeNull();
+  });
+
+  it('leaves cause null when the payload carries none', async () => {
+    vi.mocked(testAuthConnection).mockResolvedValue({
+      ok: true,
+      status: 'healthy',
+      latencyMs: 9,
+    });
+    const { result } = renderHook(() => useAuthConnection());
+    await flush();
+    expect(result.current.cause).toBeNull();
+  });
+
   // ── Polling cadence ───────────────────────────────────────────
 
   it('re-polls after 60 s while connected', async () => {

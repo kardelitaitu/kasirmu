@@ -369,6 +369,10 @@ statusbar-version-label = Version
 statusbar-checking-msg = { $name } · Checking…
 statusbar-offline-msg = { $name } · Offline
 statusbar-latency-msg = { $name } · { $ms }ms
+# The server is answering and told us which subsystem is broken. Distinct from
+# "Offline": a degraded service still serves, so this must not read as down.
+# $cause is the server's own subsystem label (e.g. "database"), passed through.
+statusbar-degraded-msg = { $name } · Degraded — { $cause }
 statusbar-version-latest-msg = Version up to date
 statusbar-version-update-msg = Update available
 

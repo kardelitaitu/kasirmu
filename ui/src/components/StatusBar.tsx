@@ -3,29 +3,18 @@ import { requiredLocalized } from '@/frontend/shared';
 import { useToast } from '@/frontend/shared/Toast';
 import Tooltip from '@/frontend/shell/Tooltip';
 import { useAuthConnection } from '@/hooks/useAuthConnection';
+import { toneForHealth, type ConnectionHealth, type StatusTone } from '@/hooks/connectionHealth';
 import { useSyncConnection } from '@/hooks/useSyncConnection';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import type { VersionStatusInfo } from '@/hooks/useVersionStatus';
 import './StatusBar.css';
 
-// ── Latency color thresholds (ms) ─────────────────────────────────
-const LATENCY_GOOD_MAX = 999; // green
-const LATENCY_WARN_MAX = 2999; // yellow
-// >= 3000 or unreachable → red
-
-type DotTone = 'good' | 'warn' | 'bad' | 'checking';
-
-/** Health-check state enum (checking / online / offline). */
-type HealthState = 'checking' | 'online' | 'offline';
-
-/** Map a health latency result to a color tone. */
-function latencyTone(latencyMs: number | null, state: HealthState): DotTone {
-  if (state === 'checking') return 'checking';
-  if (state === 'offline' || latencyMs === null) return 'bad';
-  if (latencyMs <= LATENCY_GOOD_MAX) return 'good';
-  if (latencyMs <= LATENCY_WARN_MAX) return 'warn';
-  return 'bad';
-}
+// The tone vocabulary and the latency thresholds live in
+// @/hooks/connectionHealth with the state union, so an indicator cannot
+// disagree with the hook feeding it. This file used to keep its own
+// `HealthState` ('checking' | 'online' | 'offline') alongside the two hooks'
+// structurally identical `*ConnectionState` unions — three names for one
+// concept, and `degraded` was in none of them.
 
 /** Icon glyphs (Lucide-style, 24x24 stroke icons, uniform style). */
 function KeyIcon() {
@@ -64,7 +53,7 @@ const ICONS = {
 
 interface StatusItemProps {
   kind: keyof typeof ICONS;
-  tone: DotTone;
+  tone: StatusTone;
   label: string;
   tooltip: string;
   onClick?: () => void;
@@ -113,19 +102,29 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
   const versionLabel = requiredLocalized(l10n, 'statusbar-version-label');
 
   // ── Auth + Sync items ──────────────────────────────────────────
-  // Both hooks return { state: checking/connected/disconnected, latencyMs }.
-  const connectionTone = (s: { state: 'checking' | 'connected' | 'disconnected'; latencyMs: number | null }): DotTone =>
-    s.state === 'checking' ? 'checking' : s.state === 'connected' ? latencyTone(s.latencyMs, 'online') : 'bad';
+  // Both hooks return { state: ConnectionHealth, latencyMs, cause }.
+  const connectionTone = (s: { state: ConnectionHealth; latencyMs: number | null }): StatusTone =>
+    toneForHealth(s.state, s.latencyMs);
   const connectionTooltip = (
     l10n: ReturnType<typeof useLocalization>['l10n'],
-    s: { state: 'checking' | 'connected' | 'disconnected'; latencyMs: number | null },
+    s: { state: ConnectionHealth; latencyMs: number | null; cause: string | null },
     name: string,
-  ) =>
-    s.state === 'checking'
-      ? requiredLocalized(l10n, 'statusbar-checking-msg', { name })
-      : s.state === 'disconnected'
-        ? requiredLocalized(l10n, 'statusbar-offline-msg', { name })
-        : requiredLocalized(l10n, 'statusbar-latency-msg', { name, ms: String(s.latencyMs ?? 0) });
+  ) => {
+    if (s.state === 'checking') {
+      return requiredLocalized(l10n, 'statusbar-checking-msg', { name });
+    }
+    if (s.state === 'disconnected') {
+      return requiredLocalized(l10n, 'statusbar-offline-msg', { name });
+    }
+    // Degraded names the subsystem the server itself reported. Translating it
+    // into "something is wrong" would throw away the only actionable half of
+    // the message, so it is interpolated as-is — it is a service label like
+    // "database", not prose.
+    if (s.state === 'degraded') {
+      return requiredLocalized(l10n, 'statusbar-degraded-msg', { name, cause: s.cause ?? '' });
+    }
+    return requiredLocalized(l10n, 'statusbar-latency-msg', { name, ms: String(s.latencyMs ?? 0) });
+  };
 
   const authTone = connectionTone(auth);
   const authTooltip = connectionTooltip(l10n, auth, authLabel);
@@ -133,7 +132,7 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
   const syncTooltip = connectionTooltip(l10n, sync, syncLabel);
 
   // ── Version item (2 states: latest / update) ───────────────────
-  const versionTone: DotTone =
+  const versionTone: StatusTone =
     version.state === 'checking' ? 'checking' : version.state === 'update' ? 'warn' : 'good';
   const versionTooltip =
     version.state === 'checking'
