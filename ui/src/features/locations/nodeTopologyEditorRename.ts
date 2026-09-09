@@ -1,4 +1,4 @@
-//! Node-rename machinery for the topology editor (Phase 4 · slice R1).
+//! Inline rename machinery for the topology editor (Phase 4 · slices R1 + R1b).
 //!
 //! Owns inline node rename end to end: the open/draft/saving state, the two
 //! focus effects that move the caret into the card's input and back out to the
@@ -9,10 +9,14 @@
 //! and inspector inputs) and `commitNodeRename` (the card's Enter/blur).
 //!
 //! What deliberately did NOT move, and why:
-//! - The WIRE half of the old inline rename block (slice R1b) stays in
-//!   NodeTopologyEditor.tsx. It has zero symbol overlap with this one, and its
-//!   `commitWireRename` calls `pushHistory`, which is declared below the block —
-//!   moving it needs its own deferred-access design pass, not a slot shift.
+//! - The WIRE half of the old inline rename block moved into
+//!   `useTopologyEditorWireRename` below (slice R1b) — zero symbol overlap with
+//!   this one, so the two halves coexist as two exports with independent deps.
+//!   What stayed parent-side is `pushHistory` itself: it is declared BELOW the
+//!   wire block in NodeTopologyEditor.tsx, so the wire hook takes it as a
+//!   deferred `pushHistory: () => void` wrapper rather than the callback (see
+//!   TopologyWireRenameDeps). Relocating `pushHistory` would have shifted a hook
+//!   slot, which is the one thing this extraction must not do.
 //! - `nodes`, `setNodes`, `nodesRef`, `onRenameBranch` and `onRenameWorkspace`
 //!   stay parent-side and arrive through deps: every one of them is also read by
 //!   other regions of the editor (card / context-menu / inspector prop sites),
@@ -32,7 +36,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject, SetStateAction } from 'react';
-import type { TopologyNodeData } from './NodeTopologyEditor';
+import type { TopologyNodeData, TopologyWireData } from './NodeTopologyEditor';
 
 export interface TopologyNodeRenameDeps {
   /** Current nodes — commit/persist resolve the target and its live name from
@@ -216,5 +220,117 @@ export function useTopologyEditorNodeRename(deps: TopologyNodeRenameDeps) {
     cancelNodeRename,
     persistNodeRename,
     commitNodeRename,
+  };
+}
+
+/**
+ * Deps for {@link useTopologyEditorWireRename}. Slice R1b owns the WIRE half of
+ * the old inline rename block: start/draft/cancel state, the two focus effects,
+ * and the three plain-arrow callbacks the wire surfaces drive.
+ */
+export interface TopologyWireRenameDeps {
+  /** Current wires — start/commit resolve the target and its live label from
+   *  here, so the value has to be the render-time array. */
+  wires: TopologyWireData[];
+  /** Wire setter — a committed relabel (or the empty-label delete) is written
+   *  through it. */
+  setWires: (value: SetStateAction<TopologyWireData[]>) => void;
+  /** Deferred access to the parent's `pushHistory`. The real `pushHistory`
+   *  is declared BELOW this hook's call site in NodeTopologyEditor.tsx, so it
+   *  arrives as a wrapper arrow: the arrow closes over the BINDING without
+   *  reading it during render (no TDZ throw) and by event time it is
+   *  initialized. Passing `pushHistory` itself would evaluate it at render —
+   *  ReferenceError. `commitWireRename` calls it bare, so `() => void` suffices. */
+  pushHistory: () => void;
+}
+
+export function useTopologyEditorWireRename(deps: TopologyWireRenameDeps) {
+  const {
+    wires,
+    setWires,
+    pushHistory,
+  } = deps;
+
+  // ── Inline wire rename: floating input at the wire's midpoint ──
+  const [renamingWireId, setRenamingWireId] = useState<string | null>(null);
+  const [wireRenameDraft, setWireRenameDraft] = useState('');
+  const wireRenameInputRef = useRef<HTMLInputElement>(null);
+  /** Guards the blur-commit against a concurrent Escape/close. */
+  const wireRenameCancelledRef = useRef(false);
+  /** Focus target when the form closes: the wire id for keyboard closes
+   *  (Enter/Escape), null for blur-commits — a click-away must not steal
+   *  focus back from wherever the user actually clicked. */
+  const wireRenameFocusReturnRef = useRef<string | null>(null);
+
+  // Move keyboard focus into the wire's rename input the moment it opens.
+  useEffect(() => {
+    if (renamingWireId) wireRenameInputRef.current?.focus();
+  }, [renamingWireId]);
+
+  // Return focus to the wire after a keyboard-driven close, so the keyboard
+  // user lands back on the object they just relabeled instead of the canvas.
+  useEffect(() => {
+    if (renamingWireId !== null) return;
+    const wireId = wireRenameFocusReturnRef.current;
+    if (wireId === null) return;
+    wireRenameFocusReturnRef.current = null;
+    (document.querySelector(`.wire-hitbox[data-wire-id="${wireId}"]`) as HTMLElement | null)?.focus();
+  }, [renamingWireId]);
+
+  const startWireRename = (wireId: string) => {
+    const wire = wires.find((w) => w.id === wireId);
+    wireRenameCancelledRef.current = false;
+    wireRenameFocusReturnRef.current = null;
+    setWireRenameDraft(wire?.label ?? '');
+    setRenamingWireId(wireId);
+  };
+
+  const cancelWireRename = () => {
+    wireRenameCancelledRef.current = true;
+    // Escape is a keyboard close — return focus to the wire.
+    wireRenameFocusReturnRef.current = renamingWireId;
+    setRenamingWireId(null);
+    setWireRenameDraft('');
+  };
+
+  const commitWireRename = (wireId: string, fromKeyboard = false) => {
+    if (wireRenameCancelledRef.current) return;
+    const wire = wires.find((w) => w.id === wireId);
+    const label = wireRenameDraft.trim();
+    // Empty or unchanged input is a no-op: close the form silently. An empty
+    // label reverts to the endpoint-name display (the label is optional).
+    if (!wire || label === (wire.label ?? '')) {
+      wireRenameCancelledRef.current = true;
+      wireRenameFocusReturnRef.current = fromKeyboard ? wireId : null;
+      setRenamingWireId(null);
+      setWireRenameDraft('');
+      return;
+    }
+    // One undo entry; label is a persisted field in the dirty projection, so
+    // the relabel also marks the canvas dirty and rides Apply Topology.
+    pushHistory();
+    setWires((prev) =>
+      prev.map((w) => {
+        if (w.id !== wireId) return w;
+        const next: TopologyWireData = { ...w };
+        if (label) next.label = label;
+        else delete next.label;
+        return next;
+      }),
+    );
+    wireRenameCancelledRef.current = true;
+    wireRenameFocusReturnRef.current = fromKeyboard ? wireId : null;
+    setRenamingWireId(null);
+    setWireRenameDraft('');
+  };
+
+  return {
+    renamingWireId,
+    wireRenameDraft,
+    setWireRenameDraft,
+    wireRenameInputRef,
+    startWireRename,
+    cancelWireRename,
+    commitWireRename,
   };
 }
