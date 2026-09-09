@@ -37,6 +37,7 @@ pub fn format_kds_chit(
     item_count: i64,
     notes: &str,
     received_at: &str,
+    ticket_prefix: &str,
 ) -> KdsChit {
     let w = 48; // 80mm paper width
     let mut lines: Vec<String> = Vec::with_capacity(20);
@@ -48,10 +49,14 @@ pub fn format_kds_chit(
     lines.push(separator.clone());
     lines.push(String::new());
 
-    // Order number
-    let order_str = display_number
-        .map(|n| format!("#{}", n))
-        .unwrap_or_else(|| "--".to_string());
+    // Order number — `#{prefix}{n}` when the ticket carries the location's
+    // stamped prefix, plain `#{n}` otherwise. No invented zero-padding: only
+    // the prefixed arm would gain it, printing the same counter two ways.
+    let order_str = match display_number {
+        Some(n) if !ticket_prefix.is_empty() => format!("#{ticket_prefix}{n}"),
+        Some(n) => format!("#{n}"),
+        None => "--".to_string(),
+    };
     lines.push(format!("Order: {order_str}"));
 
     // Table number

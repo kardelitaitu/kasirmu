@@ -333,6 +333,7 @@ async fn print_kds_chit_with_printer(
         order.item_count,
         &order.notes,
         &order.received_at,
+        &order.ticket_prefix,
     );
 
     match printer.print_raw(&chit.data).await {
