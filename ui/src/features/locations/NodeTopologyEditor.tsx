@@ -11,11 +11,7 @@ import {
 } from '@/api/topology';
 import { useSettings } from '@/contexts/SettingsContext';
 import TopologyApplyConfirm from './TopologyApplyConfirm';
-import { WarehouseQuotaChip } from './WarehouseQuotaChip';
-import {
-  NodesIcon,
-  WarningIcon,
-} from './NodeTopologyIcons';
+import { NodesIcon } from './NodeTopologyIcons';
 import {
   NODE_WIDTH,
   NODE_HEIGHT,
@@ -28,6 +24,7 @@ import { TopologyNodeFinder } from './topologyNodeFinder';
 import { TopologyMinimap } from './topologyMinimap';
 import { TopologyMigrationDialog } from './topologyMigrationDialog';
 import { TopologyRelationshipPicker } from './topologyRelationshipPicker';
+import { TopologyStatusStrip } from './topologyStatusStrip';
 import { TopologyValidationWidget } from './topologyValidationWidget';
 import type { TopologyOverlay } from './topologyBranchCompare';
 import { layoutGhosts, buildGhostWireStubs, compareFocusDimIds, GHOST_WIDTH, GHOST_HEIGHT } from './topologyBranchCompare';
@@ -2222,48 +2219,16 @@ export default function NodeTopologyEditor({
           onWheel={handleWheel}
           onContextMenu={handleContextMenu}
         >
-          {bannerGraphLevel.length > 0 && (
-            <div
-              className="topology-validation-banner"
-              role="alert"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {bannerGraphLevel.map((err) => (
-                <span key={err.messageId} className="topology-validation-banner-item">
-                  {l10n.getString(err.messageId)}
-                </span>
-              ))}
-            </div>
-          )}
-          {!isProAllowed && hasCapacityMetadata && (
-            <div className="topology-tier-notice" role="status" onMouseDown={(e) => e.stopPropagation()}>
-              <WarningIcon size={14} />
-              <span>
-                <Localized id="topology-tier-capacity-notice">
-                  Warehouse capacity numbers are saved but not enforced on your current plan — upgrade to Pro to use capacity limits.
-                </Localized>
-              </span>
-            </div>
-          )}
-          {caps && warehouseCount > 0 && (
-            <WarehouseQuotaChip count={warehouseCount} maxWarehouses={caps.maxWarehouses} />
-          )}
-          {dirtySummary && (
-            <span className="topology-dirty-chip" role="status" onMouseDown={(e) => e.stopPropagation()}>
-              <span className="topology-dirty-dot" aria-hidden="true" />
-              <Localized id="topology-unsaved">Unsaved changes</Localized>
-              <span className="topology-diff-summary">
-                {l10n.getString('topology-apply-workspace-diff', {
-                  created: dirtySummary.created,
-                  updated: dirtySummary.updated,
-                  archived: dirtySummary.archived,
-                  typeChanged: dirtySummary.typeChanged,
-                  from: topologyRevision,
-                  to: topologyRevision + 1,
-                })}
-              </span>
-            </span>
-          )}
+          <TopologyStatusStrip
+            bannerGraphLevel={bannerGraphLevel}
+            isProAllowed={isProAllowed}
+            hasCapacityMetadata={hasCapacityMetadata}
+            caps={caps}
+            warehouseCount={warehouseCount}
+            dirtySummary={dirtySummary}
+            topologyRevision={topologyRevision}
+            l10n={l10n}
+          />
           {totalIssues > 0 && (
             <TopologyValidationWidget
               totalIssues={totalIssues}
