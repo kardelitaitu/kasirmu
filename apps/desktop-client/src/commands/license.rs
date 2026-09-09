@@ -497,21 +497,29 @@ pub async fn check_license_status(
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthPingResult {
-    /// Whether the auth server responded successfully.
+    /// Whether the auth server responded with a 2xx.
     pub ok: bool,
     /// Status text (e.g. "Connected", "Connection refused", ...).
     pub status: String,
     /// Round-trip latency in milliseconds, if the ping succeeded.
     pub latency_ms: Option<u64>,
+    /// Health state read from the server's own payload — see
+    /// [`oz_core::service_health::HealthState`]. This is not the same question
+    /// as `ok`: a degraded server is answering, and saying what is broken.
+    pub state: oz_core::service_health::HealthState,
+    /// The named cause when `state` is not `operational`.
+    pub cause: Option<String>,
 }
 
 /// Ping the license server's `/api/health` endpoint to verify reachability.
 ///
 /// Unlike [`check_license_status`], this probe needs NO stored license key —
-/// it answers only "is the auth server reachable?" so the login/lock-screen
-/// connection pill can show green before any license is activated. The
-/// endpoint is unauthenticated (the license server's health route returns
-/// `{"status":"ok"}` without credentials).
+/// so the login/lock-screen connection pill can report the auth server before
+/// any license is activated. The endpoint is unauthenticated.
+///
+/// It answers two questions, not one. `ok` is reachability; `state` is health,
+/// read from the payload the server sends even with a 503. Collapsing the two
+/// is what used to make "up, database down" render identically to "no server".
 #[tauri::command]
 pub async fn test_auth_connection() -> Result<AuthPingResult, AppError> {
     let result = oz_core::license_verification::ping_license_server().await;
@@ -519,6 +527,8 @@ pub async fn test_auth_connection() -> Result<AuthPingResult, AppError> {
         ok: result.ok,
         status: result.status,
         latency_ms: result.latency_ms,
+        state: result.state,
+        cause: result.cause,
     })
 }
 

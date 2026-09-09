@@ -92,8 +92,9 @@ impl ServiceKind {
 /// The state a service is in.
 ///
 /// Serializes snake_case, matching [`HealthState::as_str`], so the wire key
-/// and the persisted key cannot drift apart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+/// and the persisted key cannot drift apart. Deserializing is required by the
+/// desktop's `AuthPingResult`, which derives both halves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HealthState {
     /// Answering, and every subsystem it reports is fine.
