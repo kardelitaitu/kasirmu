@@ -25,6 +25,7 @@ import { TopologyMinimap } from './topologyMinimap';
 import { TopologyMigrationDialog } from './topologyMigrationDialog';
 import { TopologyRelationshipPicker } from './topologyRelationshipPicker';
 import { TopologyStatusStrip } from './topologyStatusStrip';
+import { TopologyWireRenameOverlay } from './topologyWireRenameOverlay';
 import { TopologyValidationWidget } from './topologyValidationWidget';
 import type { TopologyOverlay } from './topologyBranchCompare';
 import { layoutGhosts, buildGhostWireStubs, compareFocusDimIds, GHOST_WIDTH, GHOST_HEIGHT } from './topologyBranchCompare';
@@ -2423,35 +2424,16 @@ export default function NodeTopologyEditor({
               <div className="alignment-guide alignment-guide-y" style={{ top: alignmentGuide.y }} aria-hidden="true" />
             )}
 
-            {(() => {
-              // Inline wire relabel: a floating input at the wire's midpoint
-              // (where a label pill would sit), seeded with the current label.
-              if (!renamingWireId) return null;
-              const geo = wireGeometries.get(renamingWireId);
-              if (!geo) return null;
-              const mid = geo.polyline
-                ? polylinePoint(geo.polyline, 0.5)
-                : {
-                    x: cubicBezier(0.5, geo.x1, geo.x1 + geo.dx, geo.x2 - geo.dx, geo.x2),
-                    y: cubicBezier(0.5, geo.y1, geo.y1, geo.y2, geo.y2),
-                  };
-              return (
-                <input
-                  ref={wireRenameInputRef}
-                  className="wire-rename-input"
-                  value={wireRenameDraft}
-                  onChange={(e) => setWireRenameDraft(e.target.value)}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); commitWireRename(renamingWireId, true); }
-                    if (e.key === 'Escape') { e.preventDefault(); cancelWireRename(); }
-                  }}
-                  onBlur={() => void commitWireRename(renamingWireId)}
-                  aria-label={l10n.getString('topology-wire-rename-placeholder')}
-                  style={{ left: mid.x, top: mid.y }}
-                />
-              );
-            })()}
+            <TopologyWireRenameOverlay
+              renamingWireId={renamingWireId}
+              wireGeometries={wireGeometries}
+              wireRenameDraft={wireRenameDraft}
+              setWireRenameDraft={setWireRenameDraft}
+              wireRenameInputRef={wireRenameInputRef}
+              commitWireRename={commitWireRename}
+              cancelWireRename={cancelWireRename}
+              l10n={l10n}
+            />
 
             {wireLabelsVisible && wires.map((wire) => {
               // Permanent label pill at the wire's midpoint (the same point
