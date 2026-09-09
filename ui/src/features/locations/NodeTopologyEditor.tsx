@@ -63,7 +63,6 @@ import {
 } from './topologyContract';
 import {
   rowRelationshipOptions,
-  legacyWireResolutionOptions,
   type WireRelationshipOption,
   iconForNode,
   SELECTABLE_WORKSPACE_TYPE_KEYS,
@@ -83,6 +82,7 @@ import { useTopologyEditorViewport, useTopologyEditorViewPrefs } from './nodeTop
 import { useTopologyEditorKeyboard } from './nodeTopologyEditorKeyboard';
 import { useTopologyEditorNodeRename, useTopologyEditorWireRename } from './nodeTopologyEditorRename';
 import { PIN_VERIFIED_SESSIONS, useTopologyEditorApplyPanel } from './nodeTopologyEditorApplyPanel';
+import { useTopologyEditorMigration } from './nodeTopologyEditorMigration';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -2354,115 +2354,32 @@ export default function NodeTopologyEditor({
     return { byNode, byWire, graphLevel };
   }, [nodes, wires, allowLegacyApply, currentTier]);
 
-  // ── Legacy-schema migration dialog (ADR #34 item 7) ────────────
-  // A fully-unknown legacy wire (normalized to the legacy-out/legacy-in
-  // placeholders) cannot be applied — the pairing table has nothing to say
-  // about it. The dialog lists every ambiguous wire and lets the user
-  // resolve each one in place from the node types' LEGAL relationships
-  // (never a silent reinterpretation), or delete it. Apply stays blocked
-  // until none remain (the ambiguous-legacy-wire gate is unchanged).
-
-  /** Wires currently flagged ambiguous by the live gate — the migration
-   *  candidates. Mirrors the exact error the Apply gate refuses. */
-  const ambiguousLegacyWireIds = useMemo(() => {
-    const ids: string[] = [];
-    for (const [wireId, errs] of liveValidation.byWire) {
-      if (errs.some((e) => e.code === 'ambiguous-legacy-wire')) ids.push(wireId);
-    }
-    return ids;
-  }, [liveValidation]);
-
-  /** Migration entries: each ambiguous wire with its endpoint nodes and the
-   *  legal resolution options derived from the pairing table. Zero options
-   *  means the pair has no legal relationship — delete-only. */
-  const migrationEntries = useMemo(() => {
-    const entries = ambiguousLegacyWireIds
-      .map((id) => {
-        const wire = wires.find((w) => w.id === id);
-        if (!wire) return null;
-        const from = nodeMap.get(wire.fromNodeId);
-        const to = nodeMap.get(wire.toNodeId);
-        if (!from || !to) return null;
-        return { wire, from, to, options: legacyWireResolutionOptions(from, to) };
-      })
-      .filter((e): e is { wire: TopologyWireData; from: TopologyNodeData; to: TopologyNodeData; options: WireRelationshipOption[] } => e !== null);
-    return entries;
-  }, [ambiguousLegacyWireIds, wires, nodeMap]);
-
-  /** The current choice for a wire: the user's explicit selection, else the
-   *  first legal option, else delete-only. */
-  const migrationSelectionFor = (wireId: string, optionsLen: number): number | 'delete' =>
-    migrationSelections[wireId] ?? (optionsLen > 0 ? 0 : 'delete');
-
-  /** Auto-open on load: an unresolved legacy wire gets the migration dialog
-   *  (once per session until dismissed). The dialog re-offers when the
-   *  ambiguity returns — an undo of a migration, or a later edit recreating
-   *  the same legacy wire. */
-  useEffect(() => {
-    if (ambiguousLegacyWireIds.length > 0 && !migrationDismissedRef.current) {
-      setMigrationOpen(true);
-    }
-  }, [ambiguousLegacyWireIds.length]);
-
-  /** Apply the migration: each wire keeps its chosen relationship (semantic
-   *  fields + a label mirroring commitWire's first-wire choices, legacy
-   *  coordinates preserved) or is deleted. ONE undo entry for the whole
-   *  migration; the live gate clears the moment the fields land. */
-  const handleResolveMigration = () => {
-    const entries = migrationEntries;
-    if (entries.length === 0) return;
-    pushHistory();
-    const resolveMap = new Map<string, WireRelationshipOption>();
-    const deleteIds = new Set<string>();
-    for (const entry of entries) {
-      const choice = migrationSelectionFor(entry.wire.id, entry.options.length);
-      if (choice === 'delete') {
-        deleteIds.add(entry.wire.id);
-      } else {
-        const opt = entry.options[choice];
-        if (opt) resolveMap.set(entry.wire.id, opt);
-      }
-    }
-    setWires((prev) =>
-      prev
-        .map((w) => {
-          if (deleteIds.has(w.id)) return null;
-          const opt = resolveMap.get(w.id);
-          if (!opt) return w;
-          const from = nodeMap.get(w.fromNodeId);
-          const to = nodeMap.get(w.toNodeId);
-          return {
-            ...w,
-            fromPortId: opt.fromPortId,
-            toPortId: opt.toPortId,
-            relationshipType: opt.relationshipType,
-            // Mirror commitWire's first-wire label choices so a migrated
-            // wire reads exactly like an authored one.
-            label:
-              opt.relationshipType === 'ticket-routing'
-                ? l10n.getString('topology-wire-label-ticket')
-                : opt.relationshipType === 'inventory-transfer'
-                  ? l10n.getString('topology-wire-label-transfer')
-                  : from?.type === 'workspace' && to?.type === 'warehouse' && opt.relationshipType === 'stock-routing'
-                    ? l10n.getString('topology-wire-label-stock-deduct', { priority: 1 })
-                    : l10n.getString('topology-wire-label-connected'),
-          };
-        })
-        .filter((w): w is TopologyWireData => w !== null),
-    );
-    setMigrationOpen(false);
-    setMigrationSelections({});
-    setLiveAnnouncement(l10n.getString('topology-migration-announce'));
-  };
-
-  /** "Later"/Escape: dismiss the dialog for this load session. The wire
-   *  stays unresolved — the validation panel keeps the error and Apply
-   *  stays blocked until the user resolves it manually or reloads. */
-  const handleLaterMigration = () => {
-    migrationDismissedRef.current = true;
-    setMigrationOpen(false);
-  };
-
+  // ── Legacy-schema migration dialog (ADR #34 item 7, slice G4-a) ─────
+  // The candidate memos, the auto-open effect and the two footer handlers moved
+  // verbatim to nodeTopologyEditorMigration. The call sits at the slot that block
+  // occupied - directly after liveValidation, which the first memo derives from
+  // - so hook order, and therefore effect order, is unchanged. The state trio
+  // above stays parent-owned (the load and keyboard hooks read it from higher up)
+  // and arrives through deps; the dialog JSX below keeps consuming the same four
+  // names, now bound from the hook return.
+  const {
+    migrationEntries,
+    migrationSelectionFor,
+    handleResolveMigration,
+    handleLaterMigration,
+  } = useTopologyEditorMigration({
+    liveValidation,
+    nodeMap,
+    wires,
+    setWires,
+    pushHistory,
+    setLiveAnnouncement,
+    l10n,
+    migrationDismissedRef,
+    setMigrationOpen,
+    migrationSelections,
+    setMigrationSelections,
+  });
 
   /** True when any warehouse carries design-time capacity numbers — the
    *  tier-downgrade notice's trigger. The numbers were authored (Pro)
