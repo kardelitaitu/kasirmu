@@ -26,14 +26,6 @@ import {
 } from './nodeTopologyClamp';
 import { computeAutoLayout } from './nodeTopologyLayout';
 import { TopologyInspectorDrawer } from './topologyInspectorDrawer';
-import {
-  deserializeTopology,
-  serializeTopology,
-  saveTemplate,
-  loadTemplate,
-  listTemplates,
-  deleteTemplate,
-} from './topologyExport';
 import { TopologyNodeCard } from './topologyNodeCard';
 import { TopologyNodeFinder } from './topologyNodeFinder';
 import { TopologyMinimap } from './topologyMinimap';
@@ -73,6 +65,7 @@ import { useTopologyEditorNodeRename, useTopologyEditorWireRename } from './node
 import { PIN_VERIFIED_SESSIONS, useTopologyEditorApplyPanel } from './nodeTopologyEditorApplyPanel';
 import { useTopologyEditorMigration } from './nodeTopologyEditorMigration';
 import { useTopologyEditorClipboard } from './nodeTopologyEditorClipboard';
+import { useTopologyEditorIo } from './nodeTopologyEditorIo';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -1362,81 +1355,30 @@ export default function NodeTopologyEditor({
     setLiveAnnouncement(l10nRef.current.getString('topology-layout-announce'));
   }, [nodes, wires, pushHistory, snapEnabled, wireRouting, setNodes, setWires, setLiveAnnouncement]);
 
-  /** Copy the diagram to the clipboard as the versioned JSON envelope.
-   *  Guards a missing clipboard API (insecure context / WebView) with an
-   *  explanatory toast instead of throwing. */
-  const handleExport = useCallback(async () => {
-    if (!navigator.clipboard?.writeText) {
-      addToast({ message: l10nRef.current.getString('topology-toast-clipboard-unavailable'), type: 'warning' });
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(serializeTopology(nodes, wires));
-      addToast({ message: l10nRef.current.getString('topology-toast-export-copied'), type: 'info' });
-    } catch {
-      addToast({ message: l10nRef.current.getString('topology-toast-clipboard-unavailable'), type: 'warning' });
-    }
-  }, [nodes, wires, addToast]);
-
-  /** Replace the canvas with a clipboard payload under ONE undo entry. A
-   *  strict-parse failure (or a missing/unreadable clipboard) leaves the
-   *  canvas untouched — a bad paste can never half-load a broken diagram. */
-  const handleImport = useCallback(async () => {
-    if (!navigator.clipboard?.readText) {
-      addToast({ message: l10nRef.current.getString('topology-toast-clipboard-unavailable'), type: 'warning' });
-      return;
-    }
-    let json: string;
-    try {
-      json = await navigator.clipboard.readText();
-    } catch {
-      addToast({ message: l10nRef.current.getString('topology-toast-import-invalid'), type: 'warning' });
-      return;
-    }
-    const payload = deserializeTopology(json);
-    if (!payload) {
-      addToast({ message: l10nRef.current.getString('topology-toast-import-invalid'), type: 'warning' });
-      return;
-    }
-    pushHistory();
-    setNodes(payload.nodes.map((n) => ({ ...n })));
-    setWires(payload.wires.map((w) => ({ ...w })));
-    addToast({ message: l10nRef.current.getString('topology-toast-import-ok'), type: 'info' });
-  }, [pushHistory, addToast, setNodes, setWires]);
-
-  /** Save the diagram under `name`; an empty name keeps the popover open
-   *  (the pure helper refuses it — nothing to save). */
-  const handleSaveTemplate = useCallback((name: string) => {
-    if (saveTemplate(name, nodes, wires) === null) return;
-    setTemplateSaveOpen(false);
-    setTemplateName('');
-    addToast({ message: l10nRef.current.getString('topology-toast-template-saved'), type: 'info' });
-  }, [nodes, wires, addToast]);
-
-  /** Load a saved template, replacing the canvas under one undo entry. */
-  const handleLoadTemplate = useCallback((name: string) => {
-    const payload = loadTemplate(name);
-    if (!payload) return;
-    pushHistory();
-    setNodes(payload.nodes.map((n) => ({ ...n })));
-    setWires(payload.wires.map((w) => ({ ...w })));
-    setTemplatesOpen(false);
-    addToast({ message: l10nRef.current.getString('topology-toast-import-ok'), type: 'info' });
-  }, [pushHistory, addToast, setNodes, setWires]);
-
-  /** Delete a saved template and re-list, so the popover reflects the
-   *  deletion immediately. */
-  const handleDeleteTemplate = useCallback((name: string) => {
-    deleteTemplate(name);
-    setSavedTemplates(listTemplates());
-    addToast({ message: l10nRef.current.getString('topology-toast-template-deleted'), type: 'info' });
-  }, [addToast]);
-
-  /** Toggle the templates popover, re-listing on every open. */
-  const openTemplates = useCallback(() => {
-    setSavedTemplates(listTemplates());
-    setTemplatesOpen((v) => !v);
-  }, []);
+  /** Diagram import/export + template callbacks (slice G13-a+b): the six
+   *  handlers live in useTopologyEditorIo (bodies byte-identical); the
+   *  popover state slots stay parent-owned (G4-a precedent) and are wired
+   *  in as their stable setters. */
+  const {
+    handleExport,
+    handleImport,
+    handleSaveTemplate,
+    handleLoadTemplate,
+    handleDeleteTemplate,
+    openTemplates,
+  } = useTopologyEditorIo({
+    nodes,
+    wires,
+    addToast,
+    l10nRef,
+    pushHistory,
+    setNodes,
+    setWires,
+    setTemplateSaveOpen,
+    setTemplateName,
+    setTemplatesOpen,
+    setSavedTemplates,
+  });
 
   /** Sticky "user touched the canvas" flag: suppresses the auto-fit-viewport
    *  pass. Hoisted above the relocated pointer-hook call (slice 3.4c-2) — that
