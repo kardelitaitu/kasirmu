@@ -2523,3 +2523,15 @@ debt only. Linkage: supervisor — slice-6 report + recovery report sent.
   Gates on `41ea03458`: 18 dev-mock tests pass, lint-i18n clean, ipc-parity OK (519
   handlers, 10 gated dead surface), tsc clean. `--no-verify` for step 9 only, so a
   foreign red did not hold my commit.
+
+---
+
+**SUPERVISOR ANNOTATION (post-41ea03458):** the two pre-existing reds recorded above
+are now resolved — `StaffManagementScreen.test.tsx` 27/27 green via
+`74d4b7244` (ImpersonationProvider added to that test's render wrapper; the
+fixer's own commit message carries the provenance: the consumption came from
+`425b823e1`, not L194). `screenExtraction.test.ts`'s dead-class failure is
+routed to the regional-slice-6 stream (BusinessDefaultsScreen). Standing rule
+from this exchange: a provider added to AppProviders must also be added to the
+shared test wrapper in the same commit — and note the wrapper may not be truly
+shared until it is (the fix wrapped inline in the screen's own render helper).
