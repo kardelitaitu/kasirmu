@@ -57,6 +57,8 @@ function TestWrapper({ children }: { children: ReactNode }) {
         setLocale: () => {},
         availableLocales: getAvailableLocales(),
         getLocaleLabel,
+        orgDefaultLocale: null,
+        setOrgDefaultLocale: () => {},
       }}
     >
       <BrandProvider>

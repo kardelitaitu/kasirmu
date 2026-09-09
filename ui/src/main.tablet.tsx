@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { LocaleProvider } from '@/i18n/LocaleContext';
+import { OrgLocaleSync } from '@/i18n/OrgLocaleSync';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
@@ -48,6 +49,10 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
                     AppProviders): per-store scoped default (CUR-03)
                     reaches useCurrency on every workspace switch. */}
                 <CurrencyWorkspaceSync />
+                {/* Regional slice 4 (parity with AppProviders): feeds the
+                    org/entity default locale into the locale negotiation
+                    BELOW the stored per-user choice. */}
+                <OrgLocaleSync />
                 {/* F-034: the desktop entry nests Subscription (C2.2
                     upgrade gates), Zoom (root font scaling) and
                     HardwareAccel inside WorkspaceProvider — the tablet

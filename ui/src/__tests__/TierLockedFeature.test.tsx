@@ -44,6 +44,8 @@ const renderWithLocale = (locale: string, props: { target: 'plus' | 'pro' | 'pre
         setLocale: () => {},
         availableLocales: ['en', 'id'],
         getLocaleLabel: () => '',
+        orgDefaultLocale: null,
+        setOrgDefaultLocale: () => {},
       }}
     >
       <TierLockedFeature
