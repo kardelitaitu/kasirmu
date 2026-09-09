@@ -10,10 +10,10 @@ import {
  *  test can pin exactly which key (and args) the hook requested. */
 const l10nOf = () => ({
   getString: (key: string, args?: Record<string, unknown>) =>
-    args?.name !== undefined
-      ? `${key}:${String(args.name)}`
-      : args?.count !== undefined
-        ? `${key}:${String(args.count)}`
+    args?.['name'] !== undefined
+      ? `${key}:${String(args['name'])}`
+      : args?.['count'] !== undefined
+        ? `${key}:${String(args['count'])}`
         : key,
 }) as unknown as ReactLocalization;
 
