@@ -2483,6 +2483,30 @@ const handlers: Record<string, (args: unknown) => unknown> = {
 
   'destroy_session': () => null,
 
+  // L194 (saas-3): multi-org switching (device-local) org enumeration + re-auth.
+  // Mirrors staff_login / create_session so the browser dev preview can exercise
+  // the org picker and switch flow without a real backend.
+  'list_organizations': () => ([
+    { id: 'default', name: 'Default Organization' },
+  ]),
+
+  'switch_organization': (args) => {
+    const a = args as { sessionToken: string; orgId: string; pin: string };
+    return {
+      session_token: 'mock-session-' + Date.now(),
+      context: {
+        userId: 'owner-1',
+        roleId: 'role-owner',
+        storeId: 'store-1',
+        instanceId: 'inst-1',
+        typeKey: 'organization',
+        terminalId: 'term-1',
+        orgLabel: a.orgId,
+      },
+    };
+  },
+
+
   'impersonate_user_scoped': (args) => {
     const a = args as { sessionToken: string; targetUserId: string };
     return {
