@@ -164,9 +164,18 @@ actual relationship mutation.
 
 ## P1 — required for a mature global product
 
-- [ ] **Implement regional configuration.** Support locale, language, timezone,
+- [x] **Implement regional configuration.** Support locale, language, timezone,
       currency, tax regime, fiscalization, receipt format, numbering, and local
       payment settings at the decided organization/legal-entity/location scopes.
+      — **closed 2026-09-10.** Every named axis has a landing cited in the
+      amendments below (ADR #48 timezone/locale/language, scoped currency +
+      local payment methods, fiscalization + numbering including the location
+      ticket prefix, receipt format in both halves, tax regime in its own box),
+      and the one thing that was holding the checkbox — the suspected
+      currency minor-unit disagreement — turned out not to exist on
+      inspection; see the final paragraph below. The three items recorded as
+      gaps stay OPEN as follow-up improvements, not as missing halves of this
+      box's wording.
       — **Unblocked 2026-09-08** (§G closed by `20260908_legal_entities.sql`).
       **Design written:** see §"Regional configuration — design" below — nine
       axes, six of which already exist somewhere with no stated precedence, three
@@ -288,14 +297,39 @@ actual relationship mutation.
       currency, local payment settings, fiscalization, numbering (including the
       location ticket prefix), receipt format — now has a landing with the
       evidence cited above, and the tax-regime axis is closed in its own box.
-      Residency stays outside this box's axis set by its own clause. **Box
-      closure is therefore a judgement, not a missing slice, and it is NOT
-      flipped here:** it hinges on the currency axis's unresolved minor-unit
-      question — the `decimal_exponent` storage table vs
-      `foundation::money::Currency::minor_unit_exponent` disagreeing about the
-      same number, flagged in this file's own design section and **never
-      examined by anyone** — and the owner is deciding that. Axes complete;
-      box closure pending the currency minor-unit question. One trap for whoever continues this
+      Residency stays outside this box's axis set by its own clause.
+      — **CURRENCY MINOR-UNIT QUESTION: RESOLVED 2026-09-10 — THE DISAGREEMENT
+      NEVER EXISTED, and the box is flipped on that reading.** The design
+      section below flagged `currencies.minor_exponent` and
+      `Currency::minor_unit_exponent` as "two answers to the same question";
+      checked against HEAD they are not two answers, because only one of them
+      is ever consulted. The compiled table
+      (`foundation/src/money.rs:75-81`: IDR/JPY/KRW/VND/CLP/ISK/HUF = 0,
+      KWD/OMR/BHD/JOD/TND = 3, everything else 2) matches the seed exactly —
+      `20260813_init.sql:1395-1397` inserts precisely two rows, USD = 2 and
+      IDR = 0 — and it matches the third copy in the frontend map
+      (`ui/src/types/domain.ts:151-158`), so all three agree on every code
+      that has a value. The money path uses the compiled table exclusively:
+      `format_minor` (:90-91) and `from_major` (:161-162) both call
+      `minor_unit_exponent()`, and checkout arithmetic operates on `Money`
+      minor units and never reads the table at all. The column has **no
+      production writer** — every `INSERT INTO currencies` is a seed
+      (the init migration, its PG mirror at :1997, and the `oz-cli` init-db
+      mirror at `crates/oz-cli/src/commands/db.rs:57`) or a test fixture — and
+      exactly **two readers, both display-only**: `db/settings.rs:200`
+      (currency list) and `ui/src/api/currency.ts:15` (the `CurrencyDto`
+      type). Note the IPC exponent does NOT come from the column either:
+      `commands/currencies.rs:33` fills `CurrencyInfo.exponent` from the
+      compiled table, so even the client's decimal places bypass the DB.
+      **Verdict for the record: `currencies.minor_exponent` is inert display
+      metadata.** That clears the last stated blocker, so the checkbox flips;
+      if the owner ever wants the column gone, dropping it is optional tidy-up,
+      not owed work. Doc nit found on the way: `money.rs:71` tells the reader
+      to keep in sync with `crates/oz-core/migrations/006_currencies.sql`, a
+      pre-squash filename that no longer exists in the tree (the seed lives in
+      `20260813_init.sql`), so the pointer leads nowhere — worth fixing in the
+      comment, not in the code. The three gaps above stay listed as
+      improvements. One trap for whoever continues this
       axis: the 10 legacy `receipt.*` keys are a LIVE fallback by design
       (`LEGACY_RECEIPT_KEYS`, `receipt_formats.rs:66`; the migration backfills
       nothing) and the print path still reads them, so retiring those keys
@@ -3055,5 +3089,8 @@ locale change.
    one — do not build a per-entity editor that requires a picker first.
 4. **Currency exponent source.** `currencies.minor_exponent` (table) vs
    `foundation::money::Currency::minor_unit_exponent` (compiled table) are two
-   answers to the same question. Out of scope here, but the regional UI must
+   answers to the same question *(resolved 2026-09-10: written here, they are
+   two COPIES of one answer, and only the compiled table is ever read — see the
+   regional-config box's closure note for the writers/readers census)*. Out of
+   scope here, but the regional UI must
    not become a third.
