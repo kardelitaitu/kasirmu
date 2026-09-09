@@ -375,6 +375,33 @@ impl Store<'_> {
         // transactions).
         let tx = self.conn.unchecked_transaction()?;
         let user = Store::new(&tx).create_user_in_tx(username, pin_hash, display_name, role_id)?;
+        // W7-B: mirror of the locations/products veto (9264b8f67). The pre-tx
+        // enforce_staff_quota armed this tier on this Store; re-check the count
+        // AFTER the insert, inside the same transaction, so the verdict and the
+        // write commit or roll back together. Post-insert because a pre-insert
+        // count under WAL would read only its own snapshot. Same counting
+        // predicate as count_staff_users (active, owner excluded) — the veto
+        // must not disagree with the gate that armed it.
+        let tier = self.take_armed_quota(QuotaDimension::Staff);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::Staff.limit_for(t))
+        {
+            let current: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role_id != ?1",
+                params![crate::builtin_roles::OWNER],
+                |r| r.get(0),
+            )?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::StaffLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
         tx.commit()?;
         Ok(user)
     }

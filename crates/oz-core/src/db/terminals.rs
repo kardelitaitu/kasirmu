@@ -93,7 +93,18 @@ impl Store<'_> {
                 message: "terminal device_id must not be empty".into(),
             });
         }
-        self.conn.execute(
+        // W7-B: the write moved into a transaction so the armed quota verdict
+        // (armed by enforce_terminal_quota through the central gate) can be
+        // re-checked against the row it just inserted, atomically. Post-insert
+        // veto rather than a pre-insert count, because under WAL a pre-insert
+        // count reads only this connection snapshot: current > limit here is the
+        // same predicate the pre-tx gate applied (current >= limit before its own
+        // insert), which is what closes the race where two concurrent
+        // registrations both pass at limit-1. An un-armed Store (a programmatic
+        // create, the pre-auth provisioning path) keeps the legacy un-gated
+        // behaviour — no arm, no veto.
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO terminals (id, name, device_id, terminal_secret, is_active,
                                     last_seen_at, metadata, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -109,6 +120,23 @@ impl Store<'_> {
                 terminal.updated_at,
             ],
         )?;
+        let tier = self.take_armed_quota(QuotaDimension::PosRegisters);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::PosRegisters.limit_for(t))
+        {
+            let current: i64 = tx.query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::RegisterLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 

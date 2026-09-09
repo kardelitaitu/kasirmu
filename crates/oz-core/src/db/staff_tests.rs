@@ -995,3 +995,42 @@ fn update_user_rejects_unknown_role_before_any_write() {
     let user = store(&conn).get_user("user-1").unwrap().expect("user");
     assert_eq!(user.role_id, "role-lite");
 }
+
+#[test]
+fn create_user_tx_veto_closes_limit_race() {
+    // W7-B: the staff door of the same race closure. The veto counts with the
+    // same predicate as count_staff_users (active, owner excluded), so it
+    // cannot disagree with the gate that armed it — a second counting rule
+    // would refuse rows the cap does not actually measure.
+    // Free allows exactly 1 staff user and seed_users already has one active,
+    // so the fill-to-cap starts from Pro — the door under test is the same one
+    // every tier walks.
+    let conn = fresh();
+    seed_users(&conn);
+    let s = store(&conn);
+    let tier = SubscriptionTier::Pro;
+    let limit = QuotaDimension::Staff.limit_for(&tier).unwrap();
+    let baseline = s.count_staff_users().unwrap();
+    assert!(
+        baseline < limit,
+        "the fixture must start under the cap (baseline {baseline}, limit {limit})"
+    );
+    for i in baseline..limit {
+        s.create_user(&format!("staff-{i}"), "hash", "Staff", "role-lite")
+            .unwrap();
+    }
+    assert_eq!(s.count_staff_users().unwrap(), limit);
+    s.arm_creation_quota(QuotaDimension::Staff, tier.clone());
+    let err = s
+        .create_user("staff-over", "hash", "Over", "role-lite")
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Pro at the staff cap must be refused in-tx: {err:?}"
+    );
+    assert_eq!(
+        s.count_staff_users().unwrap(),
+        limit,
+        "the over-cap user must not persist"
+    );
+}

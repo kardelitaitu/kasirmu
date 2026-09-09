@@ -1291,3 +1291,55 @@ fn enforce_warehouse_quota_enterprise_unlimited() {
             .is_ok()
     );
 }
+
+#[test]
+fn warehouse_tx_veto_closes_limit_race_and_ignores_other_types() {
+    // W7-B: the warehouse door. Two things are pinned: an armed warehouse
+    // create at the cap is refused in-tx and does not persist; and a
+    // NON-warehouse location neither consumes nor honours the arm, because
+    // stores are not counted by this dimension — vetoing one would refuse a
+    // row the cap never measured.
+    let conn = fresh();
+    let s = store(&conn);
+    let tier = SubscriptionTier::Free;
+    let limit = QuotaDimension::Warehouses.limit_for(&tier).unwrap();
+    let warehouses = |c: &Connection| -> i64 {
+        c.query_row(
+            "SELECT COUNT(*) FROM inventory_locations WHERE type = ?1 AND is_active = 1",
+            params!["warehouse"],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    let baseline = warehouses(&conn);
+    assert!(
+        baseline < limit,
+        "the fixture must start under the cap (baseline {baseline}, limit {limit})"
+    );
+    for n in baseline..limit {
+        s.create_inventory_location(&format!("WH {n}"), "warehouse", "")
+            .unwrap();
+    }
+    assert_eq!(warehouses(&conn), limit);
+    s.arm_creation_quota(QuotaDimension::Warehouses, tier.clone());
+    let err = s
+        .create_inventory_location("WH over", "warehouse", "")
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Free at the warehouse cap must be refused in-tx: {err:?}"
+    );
+    assert_eq!(
+        warehouses(&conn),
+        limit,
+        "the over-cap warehouse must not persist"
+    );
+    s.arm_creation_quota(QuotaDimension::Warehouses, tier.clone());
+    s.create_inventory_location("Store two", "store", "")
+        .unwrap();
+    assert_eq!(
+        warehouses(&conn),
+        limit,
+        "a store row must not move the warehouse count"
+    );
+}

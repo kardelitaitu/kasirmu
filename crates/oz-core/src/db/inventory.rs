@@ -97,6 +97,37 @@ impl Store<'_> {
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
             params![id, name, location_type, description, now],
         )?;
+        // W7-B: mirror of the locations/products/staff veto (9264b8f67) —
+        // post-insert, in-tx, on the same predicate the gate that armed it uses
+        // (type = warehouse AND is_active = 1). Only a warehouse row may consume
+        // the arm: a store/transit/damaged/virtual location must not be vetoed
+        // against a cap that does not count it, and a Store armed for warehouses
+        // that creates one of those leaves the arm in place for the next
+        // warehouse create, exactly as before.
+        let tier = if location_type == "warehouse" {
+            self.take_armed_quota(QuotaDimension::Warehouses)
+        } else {
+            None
+        };
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::Warehouses.limit_for(t))
+        {
+            let current: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM inventory_locations WHERE type = 'warehouse' AND is_active = 1",
+                [],
+                |r| r.get(0),
+            )?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::WarehouseLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
         tx.commit()?;
 
         Ok(id)
