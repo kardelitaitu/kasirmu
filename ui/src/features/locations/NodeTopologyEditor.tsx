@@ -17,8 +17,6 @@ import {
   WarningIcon,
 } from './NodeTopologyIcons';
 import {
-  clampNodeToViewport,
-  findFreeSpawnSpot,
   NODE_WIDTH,
   NODE_HEIGHT,
   resolveDropOverlaps,
@@ -48,8 +46,6 @@ import {
 } from './topologyContract';
 import {
   rowRelationshipOptions,
-  workspaceTypeLabel,
-  topologyUiString,
 } from './topologyCard';
 import { nodeHeight, portRowCenterY, semanticRowIndex } from './topologyMetrics';
 import { useTopologyEditorRestoreSeed } from './nodeTopologyEditorRestoreState';
@@ -67,6 +63,7 @@ import { useTopologyEditorClipboard } from './nodeTopologyEditorClipboard';
 import { useTopologyEditorIo } from './nodeTopologyEditorIo';
 import { useTopologyEditorContextMenu } from './nodeTopologyEditorContextMenu';
 import { useTopologyEditorWireCommit } from './nodeTopologyEditorWireCommit';
+import { useTopologyEditorAddNode } from './nodeTopologyEditorAddNode';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -99,7 +96,6 @@ import type {
   TopologyWireData,
   WireDirection,
   WorkspaceInstanceSeed,
-  WorkspaceTypeKey,
 } from './nodeTopologyEditorTypes';
 import { AlignGlyph, ALIGN_ACTIONS, type AlignMode } from './topologyAlignGlyph';
 import { CanvasCursorReadout } from './topologyCanvasCursorReadout';
@@ -1797,83 +1793,29 @@ export default function NodeTopologyEditor({
     finalizeNodeDrag,
   });
 
-  const handleAddNode = (
-    type: NodeType,
-    at?: { x: number; y: number },
-    workspaceTypeKey: WorkspaceTypeKey = 'store-pos',
-  ) => {
-    // Strict mode (the real topology screen) builds the branch card from
-    // the authoritative branchLocations list — a palette-spawned store has
-    // no storeProfileId and nothing can attach one, so it could never be
-    // applied. Refuse the spawn there; the palette slot, context-menu
-    // entry, and the 1-slot shortcut are hidden too.
-    if (type === 'store' && !allowLegacyApply) return;
-    if (type === 'warehouse' && wouldExceedWarehouseCap(1)) {
-      addToast({ message: l10n.getString('topology-toast-multi-warehouse'), type: 'warning' });
-      return;
-    }
-    pushHistory();
-
-    const id = `${type}-${crypto.randomUUID()}`;
-    // Placement: a context-menu spawn honors the cursor; a palette spawn
-    // jitters near the origin then settles into the first collision-free
-    // spot (the old jitter box sat entirely inside the preset branch card,
-    // so palette spawns stacked invisibly on top of it). Both are clamped
-    // into the visible viewport so a node can never land off-canvas, and a
-    // palette spot that was outside the view (panned/zoomed away) pans the
-    // viewport so the fresh node is revealed instead of silently invisible.
-    const raw = at
-      ? { x: snapOrNot(at.x), y: snapOrNot(at.y) }
-      : { x: snapOrNot(200 + Math.random() * 100), y: snapOrNot(150 + Math.random() * 100) };
-    const free = at ? raw : findFreeSpawnSpot(raw, nodes.map((n) => ({ x: n.x, y: n.y })));
-    const canvas = canvasRef.current;
-    const canvasW = canvas?.clientWidth ?? 0;
-    const canvasH = canvas?.clientHeight ?? 0;
-    const placed = clampNodeToViewport(free.x, free.y, {
-      panX: pan.x,
-      panY: pan.y,
-      zoom,
-      canvasW,
-      canvasH,
-    });
-    if (!at && canvasW > 0 && canvasH > 0
-      && (placed.x !== free.x || placed.y !== free.y)) {
-      // The natural palette spot was off-view — pan to reveal the node
-      // (mirrors the node-finder jump).
-      setPan({
-        x: canvasW / 2 - (placed.x + NODE_WIDTH / 2) * zoom,
-        y: canvasH / 2 - (placed.y + NODE_HEIGHT / 2) * zoom,
-      });
-    }
-    const newNode: TopologyNodeData = {
-      id,
-      type,
-      name: type === 'workspace'
-        ? workspaceTypeLabel(workspaceTypeKey, (id, vars) => topologyUiString(l10n, id, vars ?? null))
-        : l10n.getString(`topology-new-${type}`),
-      subtitle: type === 'workspace'
-        ? l10n.getString('topology-new-workspace-subtitle')
-        : l10n.getString(`topology-new-${type}-subtitle`),
-      x: placed.x,
-      y: placed.y,
-      telemetryBadge: l10n.getString('topology-new-ready'),
-      telemetryStatus: 'online',
-      // New workspace nodes default to the retail POS type until the user
-      // picks another in the inspector. `persisted: false` marks it as not
-      // yet backed by a workspace_instances row so onSave will create it.
-      ...(type === 'workspace' ? { metadata: { typeKey: workspaceTypeKey, purposeKey: 'general', persisted: false } } : {}),
-    };
-
-    setNodes((prev) => [...prev, newNode]);
-    setFreshNodeIds((prev) => new Set(prev).add(id));
-    // Remove from fresh set after animation completes
-    const freshTimer = setTimeout(() => {
-      setFreshNodeIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-      freshTimersRef.current.delete(freshTimer);
-    }, 400);
-    freshTimersRef.current.add(freshTimer);
-    selectOnly(id);
-  };
+  /** Add-node flow (slice P5-B/S6): the plain `handleAddNode` arrow moved
+   *  verbatim into nodeTopologyEditorAddNode. Neither it nor that hook
+   *  registers a React hook, so the component's hook order — and therefore
+   *  its effect order — is untouched; the deps it reads stay parent-owned.
+   *  The ref mirror below stays here because the keydown effect above this
+   *  point reads it, and a direct dep would hit the TDZ. */
+  const { handleAddNode } = useTopologyEditorAddNode({
+    allowLegacyApply,
+    wouldExceedWarehouseCap,
+    addToast,
+    l10n,
+    pushHistory,
+    snapOrNot,
+    nodes,
+    canvasRef,
+    pan,
+    zoom,
+    setPan,
+    setNodes,
+    setFreshNodeIds,
+    freshTimersRef,
+    selectOnly,
+  });
   handleAddNodeRef.current = handleAddNode;
 
   const portDirection = useCallback((port: PortName): 'input' | 'output' => (
