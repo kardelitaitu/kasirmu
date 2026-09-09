@@ -186,11 +186,36 @@ actual relationship mutation.
       document_number_sequences, statutory numbers stamped inside BOTH checkout
       transactions race-free — `12c55c8ad`; management surfaces + the numbering
       row's location-ticket-prefix half outstanding). Tax regime → deliberately
-      routed to the adjacent tax box (L180). **RECEIPT FORMAT: absent** (zero
-      core references; the design's scoped-KV receipt-format slice never
-      shipped) — principal remaining blocker with the location ticket prefix.
+      routed to the adjacent tax box (L180). **RECEIPT FORMAT: absent** *(this
+      clause predates the landing — read the slice-7 amendment below before
+      acting on it)* — principal remaining blocker with the location ticket
+      prefix.
       Residency (§K) is outside this box's axis set. Box stays open per its own
       clause.
+      — **SLICE 7 LANDED 2026-09-09 (amends the RECEIPT FORMAT clause above,
+      which was accurate when `c7e1e5eb3` wrote it):** `aa69f8ca7`
+      *feat(regional): add receipt formats with entity content and workspace
+      layout (slice 7)* shipped exactly the scoped-KV slice the design called
+      for — `crates/oz-core/src/db/receipt_formats.rs` behind
+      `20260925_receipt_formats.sql` (PG-mirrored, registry wired), statutory
+      entity content and workspace/terminal layout kept separate as the design
+      specified, `ui/src/api/receipt-format.ts` +
+      `ui/src/features/settings/screens/ReceiptFormatSettingsCard.tsx` + the
+      `settings.ftl` pair as the surface. `d62de45a9` *fix(regional): register
+      receipt-format commands in both client handlers* followed the same day:
+      the first commit declared `get_receipt_format_scoped` /
+      `set_receipt_layout_scoped` and wired `commands/mod.rs`, but never added
+      them to either `invoke_handler`, so the surface was unreachable until
+      that fix. **Receipt format is no longer a blocker.** Still outstanding,
+      so the box stays open: the numbering row's **location-ticket-prefix**
+      half (`git grep ticket_prefix` → zero source hits at HEAD) and the
+      fiscal/numbering **management surfaces** (core-only today —
+      `upsert_document_number_sequence` and `claim_statutory_number_for_sale`
+      have no command or settings card). One trap for whoever continues this
+      axis: the 10 legacy `receipt.*` keys are a LIVE fallback by design
+      (`LEGACY_RECEIPT_KEYS`, `receipt_formats.rs:66`; the migration backfills
+      nothing) and the print path still reads them, so retiring those keys
+      before repointing the print paths silently loses receipt configuration.
 - [ ] **Separate business tax configuration from application defaults.** Tax
       rules, effective dates, tax-inclusive behavior, and fiscal requirements
       should be location-aware; display currency and UI preferences should not

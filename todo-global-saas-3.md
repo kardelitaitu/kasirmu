@@ -141,6 +141,40 @@ deferred behind the license-server work + supervisor go.
     `role_reference_counts` gives the number, not the names.
   - `get_over_quota_report` (from `aa420395`, different feature) has no
     `_scoped` variant and currently fails `verify-scoped-coverage.sh`.
+
+  — **Reconciled 2026-09-09 (W1 docs sweep, verified against HEAD
+  `58daaa6eb`): the first two follow-ups above have since LANDED; the third is
+  in flight. The bullets are kept verbatim as written, not rewritten.**
+
+  - **fold `create_role` → closed by `9c582a069`** *feat(core): fold
+    create_role into db/roles.rs behind the preset guard* (09-08). All four
+    role writes now share one home and one rule set:
+    `crates/oz-core/src/db/roles.rs` holds `create_role` (:234),
+    `update_role`, `delete_role` and `role_reference_counts`, and
+    `db/staff.rs` has no `fn create_role` at HEAD. The preset refusal the
+    bullet describes as missing is now enforced in core, not by the command
+    layer's self-discipline, and `roles_tests.rs` pins it
+    (`create_role_refuses_every_builtin_preset_id`).
+  - **role-holder names → closed by `394d8c977`** *feat(roles): list the
+    accounts that hold a role, org-wide, with their scope* (09-08), with
+    `886d3cd22` adding `role_holder_count` against the identical predicate.
+    The whole surface landed, not just the query: `list_role_holders_scoped`
+    in both clients, registered in both `invoke_handler`s (desktop
+    `lib.rs:847`, tablet `lib.rs:490`), `listRoleHoldersScoped` in
+    `ui/src/api/staff.ts`, a dev-mock handler pinned by
+    `dev-mock-role-holders.test.ts`, and `RoleAuthoringScreen.tsx:221`
+    renders the page — capped page plus uncapped total, so the list says
+    "and N more" rather than passing `holders.length` off as the count.
+  - **`get_over_quota_report` `_scoped` → NOT landed, IN FLIGHT** (Wave 1, C2
+    under manager-2; `git grep get_over_quota_report_scoped` is zero at HEAD,
+    the command is still declared unscoped in
+    `apps/{desktop,tablet}-client/src/commands/subscription.rs`). One clause
+    of this bullet has been overtaken and should not be repeated as a live
+    gate failure: the command no longer fails `verify-scoped-coverage.sh` —
+    `7a9a0cdab` allowed it as a genuinely-global quota assessment and
+    `3f7092371` then required a written category justification for any new
+    allowlist entry. The gate is green; the scoped variant remains the real
+    fix.
 - [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
 - [x] **Define data residency and retention policy.** Document where tenant data,
@@ -186,6 +220,13 @@ deferred behind the license-server work + supervisor go.
       asks for — an operator watching a degraded pill has no action.
       Degraded-mode behaviour is genuinely met; the surface is two-thirds of the
       services and the retry is informational only.
+      — **UI completion in flight (2026-09-09, Wave 1 / manager-2 C1)** for
+      clauses (a), (b) and (c) — the Payment and DeviceConnectivity pills and a
+      user-triggered retry on the StatusBar / `connectionHealth` surface.
+      **NOT flipped by this note, deliberately:** at HEAD neither pill exists
+      and no pill carries a retry action, so the three clauses above are still
+      true as written. Whoever lands the pills flips this box in that commit,
+      with the suite output, per the same rule that kept it open here.
 - [x] **Make feature flags and entitlements observable.** Support diagnostics
       should show why a feature is unavailable: role, scope, tier, quota, expiry,
       or server policy.

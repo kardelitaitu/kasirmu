@@ -3415,6 +3415,26 @@ Remaining scoped-auth slices: per-location assignment creation (its own
 IPC/UI per the ADR). The overlay commit is still pending (untracked,
 6/6 green, keys written).
 
+**Amended 2026-09-09 (W1 reconciliation sweep, verified against HEAD
+`58daaa6eb`) — the sentence above is stale on both halves of it.** The
+overlay LANDED: `a385440a5` *feat(topology): add the branch deploy history
+browser (ADR #46 section 2)* (09-07) committed
+`ui/src/features/locations/TopologyRevisionBrowser.tsx` (+394, the same file
+R204 was counting lines on while it was untracked) with its 394-line suite
+and the R141 history-call characterization test, plus the CSS and dev-mock
+handlers. Its Phase-2 half followed as `af09ff150` *feat(topology): land
+restore-to-draft and the pruned-snapshot messaging (ADR #46 Phase 2)*
+(09-08); `e9b0bc1da` marked the module landed in the ADR #46 tracker
+(`docs/decisions/2026-09-07-adr46-topology-revision-history-and-restore.md`)
+and Amendment 7 in todo-global-saas-3.md carries the §5 restore contract and
+the §4/§7 messaging detail. The other pending item named above — per-location
+assignment creation — also landed: ADR #47 slice 3 (`8c0ae0b4` core+IPC +
+`7f7d4ec4` scope picker, box flip `bd60ed2a`), as the R199–201 resync below
+already recorded.
+
+No checkbox flip is owed in this file: Phase 1 was RATIFIED COMPLETE at
+Round 129, and `grep '^- \[ \]'` returns zero matches against it at HEAD.
+
 ---
 
 ## Supervisor log — 2026-09-07 (Round 182) — two more P0 boxes closed with four-leg evidence
