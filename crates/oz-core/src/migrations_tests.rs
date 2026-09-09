@@ -388,18 +388,19 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 116 tables,
+    // All migrations applied (init + incremental) yield 117 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
     // (20260918_payables.sql added the 112th and 113th: payables +
     // payable_payments; 20260922_over_quota_markers.sql added the 114th:
     // over_quota_markers; 20260923_fiscal_numbering.sql added the 115th
-    // and 116th: fiscal_schemes + document_number_sequences.)
+    // and 116th: fiscal_schemes + document_number_sequences;
+    // 20260924_local_payment_methods.sql added the 117th.)
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        116,
+        117,
         "table surface drifted"
     );
     assert_eq!(
@@ -423,10 +424,13 @@ fn init_sql_creates_complete_schema_surface() {
         // plus the 3 over_quota_markers indexes (dimension, resource, tenant)
         // from 20260922_over_quota_markers.sql, plus the fiscal-scheme lookup
         // index `idx_fiscal_schemes_entity` from
-        // `20260923_fiscal_numbering.sql`. (The document_number_sequences
-        // UNIQUE constraint is NOT counted: SQLite names that index
-        // `sqlite_autoindex_*` and the query excludes that prefix.)
-        170,
+        // `20260923_fiscal_numbering.sql`, plus the scope lookup index
+        // `idx_local_payment_methods_scope` from
+        // `20260924_local_payment_methods.sql`. (The document_number_sequences
+        // and local_payment_methods UNIQUE constraints are NOT counted: SQLite
+        // names those indexes `sqlite_autoindex_*` and the query excludes that
+        // prefix.)
+        171,
         "index surface drifted"
     );
     assert_eq!(
@@ -572,6 +576,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260921_tax_rate_scoping.sql".to_string(),
             "20260922_over_quota_markers.sql".to_string(),
             "20260923_fiscal_numbering.sql".to_string(),
+            "20260924_local_payment_methods.sql".to_string(),
         ]
     );
 
@@ -594,17 +599,17 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run (116 tables: the
+    // Schema surface is unchanged after the no-op re-run (117 tables: the
     // 111 pinned before 20260918, plus payables and payable_payments from
     // 20260918, plus over_quota_markers from 20260922, plus fiscal_schemes
-    // and document_number_sequences from 20260923 - recorded once,
-    // idempotently).
+    // and document_number_sequences from 20260923, plus
+    // local_payment_methods from 20260924 - recorded once, idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        116,
+        117,
         "table surface must be unchanged after upgrade"
     );
 }

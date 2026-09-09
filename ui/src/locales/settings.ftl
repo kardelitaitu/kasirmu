@@ -1001,6 +1001,24 @@ settings-regional-scope-legal-entity = Inherited from the legal entity
 settings-regional-scope-organization = Organization default
 settings-regional-scope-built-in = Built-in default
 
+# ── Local payment methods (regional slice 6, Business Defaults screen) ──
+settings-localpay-title = Local payment methods
+settings-localpay-subtitle = Which payment rails this market and site offer.
+settings-localpay-code-placeholder = rail code, e.g. qris
+settings-localpay-code-label = Rail code
+settings-localpay-label-placeholder = display label, e.g. QRIS
+settings-localpay-label-label = Display label
+settings-localpay-add = Add rail
+settings-localpay-save = Save payment methods
+settings-localpay-saving = Saving…
+settings-localpay-saved = Payment methods saved.
+settings-localpay-error-save = Could not save the payment methods.
+settings-localpay-error-load = Could not load the payment methods.
+settings-localpay-no-location = No location to configure yet.
+settings-localpay-empty-list = No rails recorded yet — add the ones this site offers.
+settings-localpay-scope-location = Set at this site
+settings-localpay-scope-legal-entity = Market default (legal entity)
+
 
 # ── Diagnostics (feature-availability verdicts) ──
 settings-diagnostics-title = Diagnostics

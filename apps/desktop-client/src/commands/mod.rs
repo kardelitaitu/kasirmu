@@ -59,6 +59,8 @@ pub mod legal_entities;
 pub mod license;
 /// Local REST API server commands (loopback `oz-api` embed).
 pub mod local_api;
+/// Local payment method commands (slice 6).
+pub mod local_payment;
 /// Location-profile commands.
 pub mod locations;
 /// Loyalty / rewards commands.

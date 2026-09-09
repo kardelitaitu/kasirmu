@@ -642,6 +642,82 @@ function setMockRegionalConfig(args: unknown): MockRegionalConfig {
   return getMockRegionalConfig(args);
 }
 
+// ── Local payment methods (regional slice 6) ────────────────────────
+// The market rail surface: which rails exist, what they are called,
+// whether the site offers them. Session-local maps — the mock has no
+// multi-row table, so the rails live in a Map keyed by scope.
+/** Per-scope rail rows: `${scope_type}:${scope_id}` → rails. */
+const mockLocalPaymentRails = new Map<
+  string,
+  Array<{ rail_code: string; label: string; is_enabled: boolean; parameters: string }>
+>();
+
+/** Resolve the scope key for the mock rail map. */
+function mockRailScopeKey(scopeType: string, scopeId: string): string {
+  return `${scopeType}:${scopeId}`;
+}
+
+/** The effective rail read: entity rows as market defaults, location rows
+ *  overriding per rail — including an explicit disable ("not offered at
+ *  this site" is a fact). Mirrors the core
+ *  `Store::local_payment_methods_for_location`. */
+function getMockLocalPaymentMethods(args: unknown): Array<{
+  rail_code: string;
+  label: string;
+  is_enabled: boolean;
+  scope: 'location' | 'legal_entity';
+  parameters: string;
+}> {
+  const { locationId } = unwrapArgs<{ locationId?: string }>(args);
+  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
+  const entityRows =
+    mockLocalPaymentRails.get(mockRailScopeKey('legal_entity', 'default:default-legal-entity')) ?? [];
+  const locationRows =
+    mockLocalPaymentRails.get(mockRailScopeKey('location', location.id)) ?? [];
+  const byRail = new Map<string, { rail_code: string; label: string; is_enabled: boolean; scope: 'location' | 'legal_entity'; parameters: string }>();
+  for (const row of entityRows) {
+    byRail.set(row.rail_code, { ...row, scope: 'legal_entity' });
+  }
+  for (const row of locationRows) {
+    byRail.set(row.rail_code, { ...row, scope: 'location' });
+  }
+  return [...byRail.values()].sort(
+    (a, b) => a.label.localeCompare(b.label) || a.rail_code.localeCompare(b.rail_code),
+  );
+}
+
+/** The slice-6 write: replace the location's rail list (the card edits the
+ *  whole list; omitted rails are removed) and return the fresh effective
+ *  read. Mirrors the core `replace_local_payment_methods` + read-back. */
+function setMockLocalPaymentMethods(args: unknown): Array<{
+  rail_code: string;
+  label: string;
+  is_enabled: boolean;
+  scope: 'location' | 'legal_entity';
+  parameters: string;
+}> {
+  const { locationId, rails } = unwrapArgs<{
+    locationId?: string;
+    rails?: Array<{ rail_code: string; label: string; is_enabled: boolean; parameters?: string }>;
+  }>(args);
+  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
+  const key = mockRailScopeKey('location', location.id);
+  if (rails && rails.length > 0) {
+    mockLocalPaymentRails.set(
+      key,
+      rails.map((rail) => ({
+        rail_code: rail.rail_code,
+        label: rail.label,
+        is_enabled: rail.is_enabled,
+        parameters: rail.parameters ?? '{}',
+      })),
+    );
+  } else {
+    mockLocalPaymentRails.delete(key);
+  }
+  return getMockLocalPaymentMethods(args);
+}
+
 /** A memo as the dev mock serves it. Mirrors `ui/src/api/memos.ts` `Memo`
  *  (camelCase wire shape). */
 interface MockMemo {
@@ -2516,6 +2592,10 @@ const handlers: Record<string, (args: unknown) => unknown> = {
 
   // Regional configuration write path (regional slice 3) — same parity rule.
   'set_regional_config_scoped': setMockRegionalConfig,
+
+  // Local payment methods (regional slice 6) — same parity rule.
+  'get_local_payment_methods_scoped': getMockLocalPaymentMethods,
+  'set_local_payment_methods_scoped': setMockLocalPaymentMethods,
 
   'list_active_memos_scoped': listMockActiveMemos,
   'acknowledge_memo_scoped': acknowledgeMockMemo,

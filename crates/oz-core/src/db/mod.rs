@@ -102,6 +102,9 @@ pub mod memos;
 pub mod payables;
 /// Payment gateway configuration CRUD — PLANNED (stubs).
 pub mod payment_gateways;
+/// Local payment methods — the market rail surface with entity→location
+/// inheritance and the tier/credential separations (slice 6).
+pub mod payment_methods;
 /// Payment settlement ledger CRUD — PLANNED (stubs).
 pub mod payment_settlements;
 /// Payment CRUD (tenders, transactions).

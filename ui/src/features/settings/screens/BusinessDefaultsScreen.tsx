@@ -9,6 +9,7 @@
 
 import { Localized } from '@fluent/react';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
+import { LocalPaymentSettingsCard } from './LocalPaymentSettingsCard';
 import './screens-placeholder.css';
 
 /** Settings → Business Defaults. */
@@ -19,6 +20,7 @@ export function BusinessDefaultsScreen() {
         <Localized id="settings-nav-business-defaults">Business Defaults</Localized>
       </h1>
       <RegionalSettingsCard />
+      <LocalPaymentSettingsCard />
     </section>
   );
 }

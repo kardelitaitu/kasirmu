@@ -518,6 +518,20 @@ CREATE TABLE IF NOT EXISTS over_quota_markers (
     tenant_id     TEXT    NOT NULL DEFAULT 'default'
 );
 
+CREATE TABLE IF NOT EXISTS local_payment_methods (
+    id          TEXT PRIMARY KEY,
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    scope_type  TEXT NOT NULL CHECK (scope_type IN ('legal_entity', 'location')),
+    scope_id    TEXT NOT NULL,
+    rail_code   TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    is_enabled  BIGINT NOT NULL DEFAULT 1,
+    parameters  TEXT NOT NULL DEFAULT '{}',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (scope_type, scope_id, rail_code)
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -1688,6 +1702,9 @@ CREATE INDEX IF NOT EXISTS idx_kds_orders_target_instance
 CREATE INDEX IF NOT EXISTS idx_legal_entities_tenant
     ON legal_entities(tenant_id);
 
+CREATE INDEX IF NOT EXISTS idx_local_payment_methods_scope
+    ON local_payment_methods(scope_type, scope_id, is_enabled);
+
 CREATE INDEX IF NOT EXISTS idx_locations_legal_entity
     ON locations(legal_entity_id);
 
@@ -2072,6 +2089,7 @@ ON CONFLICT DO NOTHING;
 --   fiscal_schemes — regional slice 5; desktop-local write paths only (Store CRUD) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
 --   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
 --   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
+--   local_payment_methods — regional slice 6; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
 --   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
 --   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
 --   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands

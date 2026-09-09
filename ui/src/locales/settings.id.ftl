@@ -983,6 +983,24 @@ settings-regional-scope-legal-entity = Diwarisi dari badan hukum
 settings-regional-scope-organization = Default organisasi
 settings-regional-scope-built-in = Default bawaan
 
+# ── Metode pembayaran lokal (regional slice 6, layar Business Defaults) ──
+settings-localpay-title = Metode pembayaran lokal
+settings-localpay-subtitle = Jalur pembayaran yang tersedia di pasar dan lokasi ini.
+settings-localpay-code-placeholder = kode jalur, mis. qris
+settings-localpay-code-label = Kode jalur
+settings-localpay-label-placeholder = label tampilan, mis. QRIS
+settings-localpay-label-label = Label tampilan
+settings-localpay-add = Tambah jalur
+settings-localpay-save = Simpan metode pembayaran
+settings-localpay-saving = Menyimpan…
+settings-localpay-saved = Metode pembayaran tersimpan.
+settings-localpay-error-save = Tidak dapat menyimpan metode pembayaran.
+settings-localpay-error-load = Tidak dapat memuat metode pembayaran.
+settings-localpay-no-location = Belum ada lokasi untuk dikonfigurasi.
+settings-localpay-empty-list = Belum ada jalur yang dicatat — tambahkan yang ditawarkan lokasi ini.
+settings-localpay-scope-location = Diatur di lokasi ini
+settings-localpay-scope-legal-entity = Default pasar (badan hukum)
+
 
 # ── Diagnostik (hasil ketersediaan fitur) ──
 settings-diagnostics-title = Diagnostik

@@ -43,6 +43,8 @@ pub mod inventory_counts;
 pub mod kds;
 /// Organization/Tenant Legal Entity commands.
 pub mod legal_entities;
+/// Local payment method commands (slice 6).
+pub mod local_payment;
 /// Loyalty / rewards commands.
 pub mod loyalty;
 /// Memo read/consumer commands (list/acknowledge).
