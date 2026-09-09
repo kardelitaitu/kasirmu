@@ -16,6 +16,8 @@ fn tax_rate_dto_debug() {
         display_rate: "11.00%".into(),
         created_at: "2025-01-01".into(),
         updated_at: "2025-01-01".into(),
+        scope: None,
+        window: None,
     };
     let d = format!("{dto:?}");
     assert!(d.contains("VAT"));
@@ -33,6 +35,8 @@ fn tax_rate_dto_serialize() {
         display_rate: "10.00%".into(),
         created_at: "2025-02-01".into(),
         updated_at: "2025-02-01".into(),
+        scope: None,
+        window: None,
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["name"], "GST");
@@ -62,6 +66,10 @@ fn create_tax_rate_args_debug() {
         rate_bps: 500,
         is_default: false,
         is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
     };
     let d = format!("{args:?}");
     assert!(d.contains("T"));
@@ -88,6 +96,10 @@ fn update_tax_rate_args_debug() {
         rate_bps: 0,
         is_default: true,
         is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
     };
     let d = format!("{args:?}");
     assert!(d.contains("N"));
@@ -142,6 +154,201 @@ fn category_tax_rate_row_serialize() {
     let json = serde_json::to_value(&row).unwrap();
     assert_eq!(json["category_id"], "cat2");
     assert!(json["tax_rate_ids"].as_array().unwrap().is_empty());
+}
+
+// -- scoped tax authoring + DTO join (B1, Option B side-channel) ------
+
+#[test]
+fn create_tax_rate_args_deserialize_scope_fields() {
+    let json = r##"{"name":"PBJT","rateBps":1100,"isDefault":false,"isInclusive":false,"locationId":"default","effectiveFrom":"2026-01-01"}"##;
+    let args: CreateTaxRateArgs = serde_json::from_str(json).unwrap();
+    assert!(args.legal_entity_id.is_none());
+    assert_eq!(args.location_id.as_deref(), Some("default"));
+    assert_eq!(args.effective_from.as_deref(), Some("2026-01-01"));
+}
+
+#[test]
+fn create_tax_rate_args_without_scope_fields_stay_none() {
+    let json = r##"{"name":"VAT","rateBps":1100,"isDefault":true,"isInclusive":false}"##;
+    let args: CreateTaxRateArgs = serde_json::from_str(json).unwrap();
+    assert!(
+        args.legal_entity_id.is_none()
+            && args.location_id.is_none()
+            && args.effective_from.is_none()
+            && args.effective_to.is_none()
+    );
+}
+
+#[test]
+fn scoped_create_round_trips_scope_and_window() {
+    let conn = oz_core::migrations::fresh_db();
+    let created = run_create_tax_rate(
+        &conn,
+        &CreateTaxRateArgs {
+            name: "PBJT Loc".into(),
+            rate_bps: 1100,
+            is_default: false,
+            is_inclusive: false,
+            legal_entity_id: None,
+            location_id: Some("default".into()),
+            effective_from: Some("2026-01-01".into()),
+            effective_to: Some("2026-12-31".into()),
+        },
+    )
+    .unwrap();
+    let scope = created.scope.as_ref().expect("scoped create carries scope");
+    assert_eq!(scope.scope, "location");
+    assert_eq!(scope.location_id.as_deref(), Some("default"));
+    let window = created.window.as_ref().unwrap();
+    assert_eq!(window.effective_from.as_deref(), Some("2026-01-01"));
+    assert_eq!(window.effective_to.as_deref(), Some("2026-12-31"));
+    let store = Store::new(&conn);
+    let stored = store
+        .tax_rate_scope(&created.id)
+        .unwrap()
+        .expect("active scoped row carries a scope");
+    assert!(matches!(
+        stored,
+        oz_core::db::tax::TaxRateScope::Location(_)
+    ));
+}
+
+#[test]
+fn create_tax_rate_args_reject_both_scope_targets() {
+    let conn = oz_core::migrations::fresh_db();
+    let err = run_create_tax_rate(
+        &conn,
+        &CreateTaxRateArgs {
+            name: "Bad".into(),
+            rate_bps: 100,
+            is_default: false,
+            is_inclusive: false,
+            legal_entity_id: Some("ent-1".into()),
+            location_id: Some("default".into()),
+            effective_from: None,
+            effective_to: None,
+        },
+    )
+    .unwrap_err();
+    match err {
+        AppError::Core { message, .. } => {
+            assert!(message.contains("mutually exclusive"), "got: {message}");
+        }
+        other => panic!("expected a typed validation error, got {other:?}"),
+    }
+}
+
+#[test]
+fn legacy_create_without_scope_fields_writes_the_global_arm() {
+    let conn = oz_core::migrations::fresh_db();
+    let created = run_create_tax_rate(
+        &conn,
+        &CreateTaxRateArgs {
+            name: "VAT".into(),
+            rate_bps: 500,
+            is_default: true,
+            is_inclusive: false,
+            legal_entity_id: None,
+            location_id: None,
+            effective_from: None,
+            effective_to: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(created.scope.as_ref().unwrap().scope, "global");
+    assert!(created.window.as_ref().unwrap().effective_from.is_none());
+}
+
+#[test]
+fn list_tax_rates_dto_joins_scope_and_window() {
+    let conn = oz_core::migrations::fresh_db();
+    run_create_tax_rate(
+        &conn,
+        &CreateTaxRateArgs {
+            name: "Ent".into(),
+            rate_bps: 900,
+            is_default: false,
+            is_inclusive: false,
+            legal_entity_id: Some("default:default-legal-entity".into()),
+            location_id: None,
+            effective_from: Some("2026-02-01".into()),
+            effective_to: None,
+        },
+    )
+    .unwrap();
+    run_create_tax_rate(
+        &conn,
+        &CreateTaxRateArgs {
+            name: "Glob".into(),
+            rate_bps: 100,
+            is_default: false,
+            is_inclusive: false,
+            legal_entity_id: None,
+            location_id: None,
+            effective_from: None,
+            effective_to: None,
+        },
+    )
+    .unwrap();
+    let rows = run_list_tax_rates(&conn).unwrap();
+    assert_eq!(rows.len(), 2);
+    let ent = rows.iter().find(|r| r.name == "Ent").unwrap();
+    assert_eq!(ent.scope.as_ref().unwrap().scope, "legal_entity");
+    assert_eq!(
+        ent.window.as_ref().unwrap().effective_from.as_deref(),
+        Some("2026-02-01")
+    );
+    let glob = rows.iter().find(|r| r.name == "Glob").unwrap();
+    assert_eq!(glob.scope.as_ref().unwrap().scope, "global");
+    assert!(glob.window.as_ref().unwrap().effective_from.is_none());
+}
+
+#[test]
+fn scoped_update_moves_tier_and_window() {
+    let conn = oz_core::migrations::fresh_db();
+    let created = run_create_tax_rate(
+        &conn,
+        &CreateTaxRateArgs {
+            name: "Loc".into(),
+            rate_bps: 700,
+            is_default: false,
+            is_inclusive: false,
+            legal_entity_id: None,
+            location_id: Some("default".into()),
+            effective_from: None,
+            effective_to: None,
+        },
+    )
+    .unwrap();
+    let updated = run_update_tax_rate(
+        &conn,
+        &UpdateTaxRateArgs {
+            id: created.id.clone(),
+            name: "Loc moved".into(),
+            rate_bps: 800,
+            is_default: false,
+            is_inclusive: false,
+            legal_entity_id: Some("default:default-legal-entity".into()),
+            location_id: None,
+            effective_from: Some("2026-03-01".into()),
+            effective_to: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(updated.scope.as_ref().unwrap().scope, "legal_entity");
+    assert_eq!(
+        updated.window.as_ref().unwrap().effective_from.as_deref(),
+        Some("2026-03-01")
+    );
+    let store = Store::new(&conn);
+    let stored = store
+        .tax_rate_scope(&created.id)
+        .unwrap()
+        .expect("row still active");
+    assert!(matches!(
+        stored,
+        oz_core::db::tax::TaxRateScope::LegalEntity(_)
+    ));
 }
 
 // ── Scoped-command permission + isolation (Phase 5) ─────────────────
@@ -326,6 +533,10 @@ async fn scoped_tax_write_command_targets_only_the_session_store() {
             rate_bps: 500,
             is_default: false,
             is_inclusive: false,
+            legal_entity_id: None,
+            location_id: None,
+            effective_from: None,
+            effective_to: None,
         },
         app.state(),
     )
