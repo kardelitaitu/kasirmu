@@ -1673,8 +1673,8 @@ pub async fn create_exchange_rate_pg(
         source.trim()
     }
     .to_string();
-    let from = from_currency.trim().to_string();
-    let to = to_currency.trim().to_string();
+    let from = from_currency.trim().to_uppercase();
+    let to = to_currency.trim().to_uppercase();
     let date = effective_date.to_string();
     if let Err(e) = client
         .execute(

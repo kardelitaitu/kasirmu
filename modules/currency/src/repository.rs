@@ -257,11 +257,12 @@ impl<'a> CurrencyRepository<'a> {
             ));
         }
         let id = uuid::Uuid::now_v7().to_string();
-        // Normalize currency codes: validation trims for emptiness, so a
-        // value like "USD " must be stored as "USD" — otherwise lookups
-        // by the trimmed code never match (CUR-08).
-        let from_currency = from_currency.trim();
-        let to_currency = to_currency.trim();
+        // Normalize currency codes to canonical uppercase: validation
+        // accepts mixed case ("usd") and trims for emptiness, but lookups
+        // (get_latest, CUR-08) compare exact stored codes — a lowercase
+        // row would be invisible to the uppercase form.
+        let from_currency = from_currency.trim().to_uppercase();
+        let to_currency = to_currency.trim().to_uppercase();
         // F-022: the INSERT and its read-back SELECT run inside one
         // transaction so the returned row is a consistent snapshot of
         // exactly what was committed (never write outside a transaction).
@@ -335,10 +336,10 @@ impl<'a> CurrencyRepository<'a> {
             ));
         }
         let id = uuid::Uuid::now_v7().to_string();
-        // Normalize currency codes (same as create): "USD " must be stored
-        // as "USD" so lookups by the trimmed code match.
-        let from_currency = from_currency.trim();
-        let to_currency = to_currency.trim();
+        // Normalize currency codes (same as create): "USD " / "usd" must be
+        // stored as "USD" so lookups by the trimmed uppercase code match.
+        let from_currency = from_currency.trim().to_uppercase();
+        let to_currency = to_currency.trim().to_uppercase();
         // F-022: same transactional write + read-back as create.
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
