@@ -644,3 +644,17 @@ Six tests (c6d626f20, +152, single test file) pin the touch contract that 3.4e's
 - **Rollback points:** revert 5c7739327 (drawer) or f67b5034f (tests) alone.
 - **Remaining per doc:** G13-c clipboard hook -> G13-a+b templates/import-export -> G18 menus LAST (consumes the settled callback surfaces).
 
+
+### 2026-09-09 — Slice G13-c: clipboard/duplicate/paste hook extracted
+
+- **Responsibility boundary:** the internal Ctrl+C/Ctrl+V clipboard (clipboardRef), the Figma-style paste-cascade counter (pasteCascadeRef), and copySelection/duplicateSelection/pasteClipboard move into useTopologyEditorClipboard (NEW nodeTopologyEditorClipboard.ts, 198 lines, deps 14). Parent keeps graph state, viewport, the shared creation gate, toast/l10n, and GRID_SIZE as explicit fields.
+- **Files:** NodeTopologyEditor.tsx (3,475 -> 3,387); nodeTopologyEditorClipboard.ts NEW. ui-coder-52-journal.md carries the dated record. Provenance note: executed by the manager-as-executor — the session's subagent delegation infrastructure failed deterministically at tool binding (all spawn_* roles), so the dispatched brief was executed in place with unchanged fences and verification battery.
+- **Public imports/re-exports:** unchanged. Keyboard controller and inspector drawer consume the callbacks under their original names; both refs had zero external readers (grep-verified).
+- **Byte-identity proof:** 112-line cluster excised by scripted splice with first/last-line boundary assertions; all 109 non-blank lines verified verbatim in the hook file (0 missing). No new useCallback; nothing renamed; JSX zero lines changed.
+- **Accepted deviation:** two dep arrays gain canvasRef + GRID_SIZE (stable ref + module const — identity churn unchanged, 3.3a precedent) because both became deps-object fields; +2 disables would have breached the exhaustive-deps ratchet cap. Documented in the hook header.
+- **Dead imports:** sanitizeCopiedNode dropped (sole consumer moved); clampNodeToViewport and GRID_SIZE stay (other call sites); GRID_SIZE forwarded as a deps field.
+- **Focused tests:** baseline 564/1/0 and post-slice 564/1/0 across editor + InspectorIntegration + memo — bit-identical, ZERO test edits (the f67b5034f characterization block is the protection). Typecheck exit 0 tree-wide; ESLint 0 errors, hook file 0 warnings.
+- **Rollback point:** revert 5842e2d81 alone.
+- **Next:** G13-a+b templates/import-export (anchors re-pinned; l10nRef read inside two template handlers is the deps-design input), then G18 menus LAST.
+
+
