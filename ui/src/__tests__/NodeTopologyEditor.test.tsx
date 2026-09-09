@@ -12057,3 +12057,195 @@ describe('NodeTopologyEditor — touch gesture characterization', () => {
     expect(document.querySelectorAll('.topology-node.node-selected')).toHaveLength(1);
   });
 });
+
+// ── G13-prep: clipboard/selection cluster characterization ───────────
+// Pins the observable contracts of clipboardRef / pasteCascadeRef /
+// copySelection / duplicateSelection / pasteClipboard BEFORE the G13-c
+// hook extraction (doc Phase-0 rule). Read off the cluster at HEAD
+// a7b0c5051 (~1798-1907). Where the extraction brief predicted behavior
+// the code does not have it is journaled, not "fixed": there is NO
+// time-window coalescing on pasteCascadeRef — it is a monotonic
+// per-paste counter that a fresh Ctrl+C resets, and every paste mints
+// fresh crypto ids, so duplicate cascade ids are structurally impossible.
+describe('NodeTopologyEditor — clipboard cluster characterization (G13-prep)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  // Preset (mockLoadTopology null) renders in array order
+  // [store-1 (80,140), ws-1, wh-1]; copies APPEND, so index 0..2 stay
+  // the originals for the whole lifetime of a test (pinned by the
+  // existing clipboard describe's assertions at the same coordinates).
+  const selectNode = (i: number) => {
+    const nodes = [...document.querySelectorAll('.topology-node')] as HTMLElement[];
+    fireEvent.mouseDown(nodes[i]!, { button: 0 });
+  };
+  const nodeCount = () => document.querySelectorAll('.topology-node').length;
+  const nodePos = () => [...document.querySelectorAll('.topology-node')]
+    .map((n) => ({
+      x: parseInt((n as HTMLElement).style.left, 10),
+      y: parseInt((n as HTMLElement).style.top, 10),
+    }));
+  const countAt = (x: number, y: number) =>
+    nodePos().filter((p) => p.x === x && p.y === y).length;
+  const typeCount = (type: 'store' | 'workspace' | 'warehouse') =>
+    document.querySelectorAll(`.topology-node.node-type-${type}`).length;
+  const WH_TOAST = 'Multiple Warehouses require a Pro Tier license.';
+
+  it('Ctrl+C snapshots the selection: a later move of the ORIGINAL never reaches the clipboard', async () => {
+    // clipboardRef stores per-node object copies taken at COPY time
+    // (nodes.filter(...).map(n => ({ ...n }))), so what lands is anchored
+    // to the copy-time position even though the live node has since moved.
+    renderEditor();
+    selectNode(1); // ws-1
+    const atCopy = nodePos()[1]!;
+
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    // Mutate the live canvas AFTER the copy: a grid nudge moves the source.
+    fireEvent.keyDown(document, { key: 'ArrowRight' });
+    await waitFor(() => expect(nodePos()[1]).not.toEqual(atCopy));
+
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    // Snapshot semantics: exactly one grid step (24) from the copy-time
+    // position — a live-reference clipboard would land one step from the
+    // POST-NUDGE position instead.
+    expect(countAt(atCopy.x + 24, atCopy.y + 24)).toBe(1);
+  });
+
+  it('Ctrl+V pastes what was COPIED, never what is selected now', async () => {
+    renderEditor();
+    selectNode(0); // the store anchor at (80,140)
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+
+    selectNode(1); // move the selection to the workspace
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    // The new card is a STORE copy (workspace count unchanged) one grid
+    // step from the store — proof the paste reads clipboardRef, not
+    // selectedNodeIds, at paste time.
+    expect(typeCount('store')).toBe(2);
+    expect(typeCount('workspace')).toBe(1);
+    expect(countAt(104, 164)).toBe(1);
+    const selected = [...document.querySelectorAll('.topology-node.node-selected')] as HTMLElement[];
+    expect(selected).toHaveLength(1);
+    expect(selected[0]!.className).toContain('node-type-store');
+  });
+
+  it('a fresh Ctrl+C resets the paste cascade to ONE grid step; every paste mints unique ids', async () => {
+    renderEditor();
+    selectNode(0);
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(5));
+    expect(countAt(104, 164)).toBe(1); // cascade step 1
+    expect(countAt(128, 188)).toBe(1); // cascade step 2
+
+    // Re-copy the ORIGINAL (copies append, so index 0 is still store-1):
+    // copySelection resets pasteCascadeRef, so the next paste is step ONE
+    // again — not step three.
+    selectNode(0);
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(6));
+    expect(countAt(104, 164)).toBe(2); // reset landed: two tenants, one cell
+    expect(countAt(152, 212)).toBe(0); // an unreset counter would land here
+
+    // Three pastes of one snapshot mint fresh crypto identities each time:
+    // the cascade counter never leaks into id generation.
+    const ids = [...document.querySelectorAll('.topology-node[data-node-id]')]
+      .map((n) => (n as HTMLElement).getAttribute('data-node-id'));
+    expect(new Set(ids).size).toBe(6);
+  });
+
+  it('Ctrl+C on an empty selection is a no-op that PRESERVES the clipboard', async () => {
+    renderEditor();
+    selectNode(1); // ws-1
+    const atCopy = nodePos()[1]!;
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+
+    fireEvent.keyDown(document, { key: 'Escape' }); // clears the selection
+    expect(nodeCount()).toBe(3);
+    // A guardless impl would overwrite the clipboard with an empty
+    // snapshot here and silently kill the next paste.
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    expect(typeCount('workspace')).toBe(2);
+    expect(countAt(atCopy.x + 24, atCopy.y + 24)).toBe(1);
+  });
+
+  it('Ctrl+V before anything was copied is a silent no-op that leaves the cluster healthy', async () => {
+    renderEditor();
+    selectNode(0);
+
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    expect(nodeCount()).toBe(3); // nothing pasted from an empty clipboard
+    expect(countAt(104, 164)).toBe(0);
+    expect(screen.queryAllByText(WH_TOAST)).toHaveLength(0); // and it stays silent
+
+    // The early return must not corrupt any state: a real copy→paste after
+    // it still lands at cascade step one.
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    expect(countAt(104, 164)).toBe(1);
+  });
+
+  it('a refused warehouse paste adds NO undo entry and NO nodes (gate runs before history)', async () => {
+    // Standard tier (renderEditor's default) caps warehouses at one.
+    renderEditor();
+    // One real, undoable edit first: duplicating a workspace is allowed.
+    selectNode(1);
+    fireEvent.keyDown(document, { key: 'd', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+
+    // Copying the warehouse is NEVER gated (copy mutates nothing) — the
+    // gate is a creation-path check shared by duplicate/paste/Alt+drag.
+    selectNode(2); // wh-1 — copies append, originals keep indices 0..2
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    expect(screen.queryAllByText(WH_TOAST)).toHaveLength(0);
+
+    // The paste is refused before any history entry or cascade offset.
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(screen.queryAllByText(WH_TOAST).length).toBeGreaterThanOrEqual(1));
+    expect(nodeCount()).toBe(4);
+    expect(typeCount('warehouse')).toBe(1);
+
+    // Exactly ONE undo still reverts the duplicate: had the refused paste
+    // pushed an entry, the first Ctrl+Z would pop that ghost and leave
+    // the canvas at 4 nodes.
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(3));
+  });
+
+  it('the inspector Duplicate button drives the same selection path (and hides on the store)', async () => {
+    // Same useCallback as Ctrl+D — the extraction must keep every driver
+    // (keyboard, rack item, inspector button) on ONE implementation.
+    renderEditor();
+    selectNode(0); // the store anchor never offers duplication
+    let drawer = document.querySelector('.node-inspector-drawer') as HTMLElement;
+    expect(drawer).not.toBeNull();
+    expect(within(drawer).queryByRole('button', { name: 'Duplicate' })).toBeNull();
+
+    selectNode(1); // ws-1 — the button appears
+    drawer = document.querySelector('.node-inspector-drawer') as HTMLElement;
+    const atClick = nodePos()[1]!;
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Duplicate' }));
+
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    expect(countAt(atClick.x + 24, atClick.y + 24)).toBe(1);
+    // Selection moved to the copy (the cascade-Ctrl+D contract).
+    const selected = [...document.querySelectorAll('.topology-node.node-selected')] as HTMLElement[];
+    expect(selected).toHaveLength(1);
+    expect(selected[0]!.style.left).toBe(`${atClick.x + 24}px`);
+  });
+});
