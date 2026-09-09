@@ -574,6 +574,110 @@ impl Store<'_> {
         })
     }
 
+    /// Refuse to archive the last row covering a location that was scoped.
+    ///
+    /// # Why the tenant-global tier is deliberately NOT guarded
+    ///
+    /// [`Self::resolve_tax_rate_for_location`] returning `Ok(None)` is a
+    /// legitimate answer — "this tenant configures no tax" — and for a
+    /// single-rate tenant the ONLY row it has is a tenant-global one. Guarding
+    /// that tier would mean an operator can never turn tax off, which is a
+    /// feature removed, not protection added. A location or entity row is
+    /// different in kind: somebody authored a scope for a branch, and
+    /// archiving its last row silently relocates that branch onto a fallback
+    /// three tiers away, or onto nothing at all.
+    ///
+    /// # The predicate is the resolver's walk, not a table count
+    ///
+    /// "Covered" is a question about a specific location, and only the
+    /// Location -> Entity -> Global walk says which rows answer for it — so
+    /// the EXISTS arms below are the same three tiers, with this row excluded.
+    /// A validity WINDOW is not consulted: an expired row still covers its
+    /// location on other dates, and refusing on `effective_to` would make a
+    /// rate whose period ended permanently undeletable.
+    ///
+    /// Takes the connection so [`Self::delete_tax_rate`] can ask INSIDE its
+    /// transaction — the read that justifies the write must see what the write
+    /// will change. A missing or already-archived row is `Ok(())`: that case
+    /// is `NotFound`'s to report, and this guard does not compete with it.
+    fn ensure_scoped_coverage_survives(
+        conn: &rusqlite::Connection,
+        id: &str,
+    ) -> Result<(), CoreError> {
+        let stored = conn
+            .query_row(
+                "SELECT legal_entity_id, location_id FROM tax_rates
+                 WHERE id = ?1 AND is_active = 1",
+                params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                },
+            )
+            .ok();
+        let Some((entity, location)) = stored else {
+            return Ok(());
+        };
+        // Tenant-global (and the ambiguous both-set row, which the schema has
+        // refused since 20260926): nothing scoped is being erased.
+        if entity.is_none() && location.is_none() {
+            return Ok(());
+        }
+
+        if let Some(loc) = location.as_deref() {
+            let covering: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tax_rates t
+                  WHERE t.is_active = 1 AND t.id != ?1
+                    AND (   t.location_id = ?2
+                       OR (t.location_id IS NULL AND t.legal_entity_id =
+                             (SELECT legal_entity_id FROM locations WHERE id = ?2))
+                       OR (t.location_id IS NULL AND t.legal_entity_id IS NULL) )",
+                params![id, loc],
+                |row| row.get(0),
+            )?;
+            if covering == 0 {
+                return Err(CoreError::Validation {
+                    field: "tax_rate",
+                    message: format!(
+                        "cannot archive tax rate {id}: it is the last row covering location {loc:?} at the location, entity or global tier; author a replacement for that scope first"
+                    ),
+                });
+            }
+            return Ok(());
+        }
+
+        if let Some(ent) = entity.as_deref() {
+            // Live locations of THIS entity that no other row answers for at any
+            // tier. `locations` has no is_active column, so a row there IS a live
+            // location.
+            let uncovered: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM locations l
+                  WHERE l.legal_entity_id = ?2
+                    AND NOT EXISTS (SELECT 1 FROM tax_rates t WHERE t.is_active = 1
+                                    AND t.id != ?1 AND t.location_id = l.id)
+                    AND NOT EXISTS (SELECT 1 FROM tax_rates t WHERE t.is_active = 1
+                                    AND t.id != ?1 AND t.location_id IS NULL
+                                    AND t.legal_entity_id = l.legal_entity_id)
+                    AND NOT EXISTS (SELECT 1 FROM tax_rates t WHERE t.is_active = 1
+                                    AND t.id != ?1 AND t.location_id IS NULL
+                                    AND t.legal_entity_id IS NULL)",
+                params![id, ent],
+                |row| row.get(0),
+            )?;
+            if uncovered > 0 {
+                return Err(CoreError::Validation {
+                    field: "tax_rate",
+                    message: format!(
+                        "cannot archive tax rate {id}: it is the last entity-tier row for {ent:?} and {uncovered} live location(s) under it would be left with no covering row at any tier; author a replacement first"
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Archive (soft-delete) a tax rate by id.
     ///
     /// TAX-03: instead of a hard `DELETE`, sets `is_active = 0` so
@@ -584,7 +688,15 @@ impl Store<'_> {
     ///
     /// Archiving a rate still referenced by historical sales is blocked
     /// with a [`CoreError::Validation`] — receipts and audit trails must
-    /// keep their rate linkage.
+    /// keep their rate linkage, and that check runs FIRST so an operator
+    /// removing a rate that both prices a past sale and is someone's only
+    /// coverage hears the history reason, which is the permanent one.
+    ///
+    /// A rate that is the last row covering a scoped location is blocked too
+    /// — see [`Self::ensure_scoped_coverage_survives`]. The check runs inside
+    /// this transaction, so the coverage it judged is the coverage the archive
+    /// changes; the tenant-global tier is deliberately exempt there, which is
+    /// also why a single-rate tenant can still turn its tax off.
     pub fn delete_tax_rate(&self, id: &str) -> Result<(), CoreError> {
         // TAX-03: never archive a rate referenced by historical sales.
         let counts = self.tax_rate_dependency_counts(id)?;
@@ -599,6 +711,7 @@ impl Store<'_> {
         }
 
         let tx = self.conn.unchecked_transaction()?;
+        Self::ensure_scoped_coverage_survives(&tx, id)?;
         let affected = tx.execute(
             "UPDATE tax_rates SET is_active = 0 WHERE id = ?1 AND is_active = 1",
             params![id],

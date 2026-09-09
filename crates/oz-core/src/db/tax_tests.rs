@@ -1769,3 +1769,219 @@ fn the_unscoped_writer_still_leaves_scoped_tiers_alone() {
         "...or the location tier"
     );
 }
+
+// ── Delete guard: last covering row (tax-separation P1, slice A3) ─────
+//
+// Archiving the only row that covers a location is the same class of money
+// bug as the unscoped default clear: a silent change to what a branch prices
+// on. These pin the refusal, the fallbacks that lift it, and the two cases
+// where refusing would be WRONG (the tenant-global tier, and a rate a
+// historical sale already made permanent).
+
+#[test]
+fn delete_refuses_the_last_row_covering_a_location() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let only = s
+        .create_tax_rate_scoped(
+            "Loc only",
+            1100,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    let err = s
+        .delete_tax_rate(&only.id)
+        .expect_err("the last cover of a location must not be erasable");
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "tax_rate"),
+        "a typed validation error, got {err:?}"
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("loc-a") && msg.contains("location"),
+        "the error names the location it protects: {msg}"
+    );
+    assert!(
+        msg.contains("author a replacement"),
+        "and says what to do instead of refusing: {msg}"
+    );
+    assert!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .is_some_and(|r| r.id == only.id),
+        "a refusal means nothing was archived — the location still prices on it"
+    );
+}
+
+#[test]
+fn delete_allowed_when_a_fallback_tier_covers_the_location() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let global = s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    let loc = s
+        .create_tax_rate_scoped(
+            "Loc rate",
+            1100,
+            false,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    s.delete_tax_rate(&loc.id)
+        .expect("the global row still covers loc-a, so archiving is legal");
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", Some("ent-a"), "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        global.id,
+        "and the location falls back rather than losing tax"
+    );
+}
+
+#[test]
+fn delete_allowed_when_a_sibling_row_covers_the_same_location() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let keeper = s
+        .create_tax_rate_scoped(
+            "Keeper",
+            1100,
+            false,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    let redundant = s
+        .create_tax_rate_scoped(
+            "Redundant",
+            1200,
+            false,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    s.delete_tax_rate(&redundant.id)
+        .expect("two rows cover the location; one may go");
+    assert_eq!(
+        s.resolve_tax_rate_for_location("loc-a", None, "2026-09-08")
+            .unwrap()
+            .unwrap()
+            .id,
+        keeper.id
+    );
+}
+
+#[test]
+fn delete_refuses_the_last_entity_row_a_location_is_relying_on() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    // seed_topology does not link the location to the entity; without the link
+    // there is no entity tier to lose, which is the point of setting it up here.
+    conn.execute(
+        "UPDATE locations SET legal_entity_id = \'ent-a\' WHERE id = \'loc-a\'",
+        [],
+    )
+    .unwrap();
+    let ent = s
+        .create_tax_rate_scoped(
+            "Ent rate",
+            1200,
+            true,
+            false,
+            &TaxRateScope::LegalEntity("ent-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    let msg = s
+        .delete_tax_rate(&ent.id)
+        .expect_err("loc-a would be left with no row at any tier")
+        .to_string();
+    assert!(
+        msg.contains("ent-a") && msg.contains("entity-tier"),
+        "names the tier and the entity: {msg}"
+    );
+
+    // Author the fallback the error asked for, and the same call succeeds.
+    s.create_tax_rate("Global VAT", 1000, true, false).unwrap();
+    s.delete_tax_rate(&ent.id)
+        .expect("with a global fallback the archive is legal");
+}
+
+#[test]
+fn the_tenant_global_tier_is_never_guarded() {
+    // Ok(None) is a legitimate resolver answer: "this tenant configures no
+    // tax". A single-rate tenant's only row is a tenant-global one, so
+    // guarding that tier would mean tax could never be switched off — a
+    // feature removed, not protection added.
+    let conn = fresh();
+    let s = store(&conn);
+    let only = s.create_tax_rate("Legacy VAT", 1000, true, false).unwrap();
+    s.delete_tax_rate(&only.id)
+        .expect("archiving the last row of an unscoped tenant stays possible");
+    assert_eq!(s.get_default_tax_rate().unwrap(), None);
+    assert_eq!(
+        s.resolve_tax_rate_for_location("default", None, "2026-09-08")
+            .unwrap(),
+        None,
+        "the seeded location now reads as no tax configured, not as an error"
+    );
+}
+
+#[test]
+fn the_sales_reference_check_still_wins_over_the_coverage_guard() {
+    // A rate that both prices a historical sale and is a location's last cover
+    // must report the HISTORY reason. The coverage message tells the operator
+    // to author a replacement, which cannot help: this row is never
+    // archivable, and sending them down that path is a wrong instruction.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let rate = s
+        .create_tax_rate_scoped(
+            "Historic loc rate",
+            1100,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+    conn.execute_batch(&format!(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            (\'p-cov\', \'SKU-COV\', \'Item\', 1000, \'USD\', \'2025-01-01T00:00:00.000Z\', \'2025-01-01T00:00:00.000Z\');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
+            (\'sale-cov\', 1000, \'USD\', 1, \'completed\', \'2025-01-01T00:00:00.000Z\', \'2025-01-01T00:00:00.000Z\');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position, tax_rate_id) VALUES
+            (\'sl-cov\', \'sale-cov\', \'SKU-COV\', 1, 1000, 1000, \'USD\', 1, \'{}\');",
+        rate.id
+    ))
+    .unwrap();
+
+    let msg = s
+        .delete_tax_rate(&rate.id)
+        .expect_err("referenced by a historical sale")
+        .to_string();
+    assert!(
+        msg.contains("historical sale line"),
+        "the permanent reason must be the one reported: {msg}"
+    );
+    assert!(
+        !msg.contains("author a replacement"),
+        "not the coverage wording: {msg}"
+    );
+}
