@@ -238,7 +238,10 @@ actual relationship mutation.
       (`f5c64bf49`, then `1cf9d7ef8` *feat(pos): price sales at the signed-in
       location*), with the as_of date resolved in the location's IANA zone per
       ADR #48 (`b223de6bf`). **What the box still asks for and does not exist:
-      authoring.** `create_tax_rate` (tax.rs:135) and `update_tax_rate` (:177)
+      authoring** *(true on 2026-09-09; superseded by the 2026-09-10 amendment
+      below — scoped authoring has since landed through core, IPC and the hub,
+      and what remains is the client and the screen)*.
+      `create_tax_rate` (tax.rs:135) and `update_tax_rate` (:177)
       still take five arguments and INSERT seven columns — `id, name, rate_bps,
       is_default, is_inclusive, created_at, updated_at` — with no
       entity/location scope and no effective window, so nothing an operator
@@ -277,6 +280,63 @@ actual relationship mutation.
       tax.rs:150/:193 behaviour is unchanged — the migration's own header says
       so. The dev PostgreSQL mirror needs `scripts/reset-dev-pg.sh` (Docker)
       before it has the CHECK or the new indexes. Box stays open.
+      — **CORE + IPC + HUB CHAIN COMPLETE 2026-09-10 (one amendment, supersedes
+      both "authoring does not exist" claims above, including this note's own
+      last sentence about the default-clear).** The write path is built end to
+      end below the UI:
+      - **A2 scoped authoring** — `5ef8a8a70` *feat(core): author tax rates at
+        a scope, clearing defaults per tier* puts `create_tax_rate_scoped`
+        (tax.rs:260) and `update_tax_rate_scoped` (:326) beside
+        `tax_rate_window` (:476) and `list_tax_rate_scopes` (:506), the last
+        existing because scope+window per row is 2N queries otherwise.
+      - **A2 bonus, the D5 bug closed** — `7a8d7e01e` *fix(core): stop the
+        tenant-global tax writer clearing scoped tiers* found that the bug was
+        worse than the line above records: `create_tax_rate` was IPC-reachable,
+        so an operator authoring a global default could wipe out EVERY entity
+        and location default at once. Both legacy writers now route through the
+        global arm of `clear_tier_default` (tax.rs:155 and :201), pinned by
+        test — so the tax.rs:150/:193 claim in the 09-09 note is no longer true
+        and `tax.rs` numbers after that note have moved.
+      - **A3 coverage guard** — `d621bdad1` *feat(core): refuse to archive the
+        last tax rate covering a location*, `ensure_scoped_coverage_survives`
+        (tax.rs:603). Two deliberate semantic limits, both test-pinned: the
+        tenant-global tier is NOT guarded (`Ok(None)` is the legitimate "no
+        tax" answer, and guarding it would make tax unremovable for a
+        single-rate tenant), and validity windows are NOT consulted (an expired
+        row still covers other dates).
+      - **B1 IPC** — `b8479f475` *feat(tax): expose scoped tax authoring and
+        scope/window join over IPC*, both `commands/tax.rs` + test files
+        (+910/−44). Additive on names that already existed per ADR #7: the
+        optional `legal_entity_id` / `location_id` / `effective_from` /
+        `effective_to` args route to the tier-scoped core functions when
+        present and to the legacy global arm when absent, so there is no wire
+        break and no `lib.rs` change.
+      - **Hub door** — `56e7ed941` *feat(api): scoped tax-rate authoring door*
+        (`pg.rs` +402, `routes/tax_rates.rs` +274, 15 `#[tokio::test]`s in
+        `tax_rates_tests.rs`). Boundary check is `pg::validate_tax_rate_write`
+        (`crates/oz-api/src/pg.rs:419`, called at `routes/tax_rates.rs:206`),
+        and a per-tier default clash returns a typed 409 via
+        `default_conflict_response` (:140), which keys its match on the
+        `tenant_id`-prefixed constraint name — the same tenancy A1's three
+        partial indexes introduced.
+      - **D1 derived seam** (adjacent, same chain): `20274d803` puts
+        `TaxRegime` + provenance on `RegionalConfig` as a pure function over
+        the landed resolver, never touching `db/tax.rs`. Consumers import
+        `oz_core::regional::TaxRegime` — it is not re-exported at the lib root.
+      **Remaining for this box:** B2, the client half — `ui/src/api/tax.ts`
+      exists and already exports `createTaxRateScoped`, but its
+      `CreateTaxRateArgs` (:18) / `UpdateTaxRateArgs` (:26) still carry no
+      scope or window fields at HEAD, so nothing a UI can send is scoped yet
+      (in flight). Then F1, the real `features/tax/TaxConfigurationScreen.tsx`
+      (not the 32-line placeholder in `settings/screens`; both are registered,
+      which is why a routing grep alone is not evidence), surfacing scope
+      badges and the effective-period editor plus the two debts the core chain
+      left documented — delete-refusal needs a message on the authoring path,
+      and changing a row's tier silently empties the tier it vacates, which
+      only A3's guard would catch too late. **Still parked for an owner
+      ruling, not open work:** whether tax rounding mode is statutory or a
+      preference, and whether a failed tax IPC should block or warn (a caught
+      failure currently looks exactly like zero tax). Box stays open until F1.
 - [x] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise
