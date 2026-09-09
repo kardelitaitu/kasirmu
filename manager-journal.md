@@ -8,7 +8,7 @@ Editor: 6,048 -> 3,475 lines. Remaining GO order (scout-14, adopted): **G13-c cl
 ## Live Dashboard
 | Worker | Role | Fence | ETA | State |
 |---|---|---|---|---|
-| (none — wave 1 closed; all work executed in-session, see Decisions) | | | | IDLE — no collision-free work pending this session |
+| (none — waves 1+2 closed; all work executed in-session, see Decisions) | | | | IDLE — G18 landed; next = unmount-sweep retirement, then Phase 5 |
 
 ## Fences (recorded before launch)
 - Editor production fence: ONE owner (coder-G13-c). Scout-15 is strictly read-only.
@@ -18,6 +18,9 @@ Editor: 6,048 -> 3,475 lines. Remaining GO order (scout-14, adopted): **G13-c cl
 ## Completed & Commit Ledger (topology refactor, from git log + todo journal)
 | Slice | Commit | Files |
 |---|---|---|
+| G18 todo journal | 8368d1994 | todo-refactor-topology.md |
+| G18 coder-54 journal | ebd8641f5 | ui-coder-54-journal.md |
+| G18 context-menu hook | 664e8a815 | editor 3,329->3,305; NEW nodeTopologyEditorContextMenu.ts (104 ln) |
 | G13-a+b import/export+templates hook | 0b2d86e72 | editor 3,387->3,329; NEW nodeTopologyEditorIo.ts |
 | G13-a+b coder-53 journal | 6ea435db2 | ui-coder-53-journal.md |
 | G13-a+b todo journal | 3bd957388 | todo-refactor-topology.md |
@@ -52,6 +55,12 @@ Editor: 6,048 -> 3,475 lines. Remaining GO order (scout-14, adopted): **G13-c cl
 
 ## Verification Evidence
 - Baseline (recorded at G7-b, HEAD 5c7739327): 747 passed / 1 skipped / 0 failed across editor 549 + Inspector 9 + history audit 4 + storageKeyPins 5 + screenExtraction 181; typecheck 0; 10 gates. Topology files clean at HEAD.
+- **WAVE 2 (2026-09-09, same session, continuation round) — G18:**
+  - Design pass corrected the pre-baked brief: keyboard hook has NO menu dependency (":1224" was resetTransientCanvasState's dep array); state-owning hook at the vacated slot removes the double-re-plumb (same-name returns).
+  - Byte-identity: 38/39 span lines verbatim; the 1 documented substitution is the useState type literal -> structurally identical ContextMenuPoint alias (pointer.ts:81).
+  - Zero dep-array deviations (all array names are deps fields or hook-internal setState); no disables.
+  - Focused suites: 564/1/0 (identical, zero test edits); typecheck exit 0; ESLint 0 errors, hook 0 warnings; pre-commit gates clean at 664e8a815.
+  - Extended wave gate: editor + inspector + memo + pointer-isolation + storageKeyPins -> **593 passed / 1 skipped, 5 files, exit 0**.
 - **WAVE 1 (2026-09-09, this session) — G13-c + G13-a+b:**
   - Baseline (executor-run, pre-edit): `npm run test -- --run NodeTopologyEditor InspectorIntegration nodeTopologyMemo` → 564 passed / 1 skipped / 0 failed, 3 files, 31.6s, exit 0.
   - G13-c post-splice: identical 564/1/0 (31.3s). G13-a+b post-splice: identical 564/1/0 (32.0s). Zero test edits across both slices.
@@ -64,9 +73,11 @@ Editor: 6,048 -> 3,475 lines. Remaining GO order (scout-14, adopted): **G13-c cl
 ## Backlog (sized, fenced, SLACK)
 | Task | Size | Fence | Slack |
 |---|---|---|---|
-| G18 context menus LAST | ~89 ln logic + JSX mount; RE-PINNED 20:1xZ: state :826, close-effect :829-843, consumers: pointer :1396/:1426, keyboard :1224, card/wire open-handlers :2439/:2458 (canvasRef+selectOnly/selectWire), JSX mount :2859-2863 | editor + NEW hook (TopologyContextMenu component untouched) | 0 (last named slice) |
-| unmount sweep + resetTransientCanvasState retirement | retires ~15 ref-scope eslint-disables across gesture hooks | editor + gesture hooks | peripheral |
-| Phase 5 composition cleanup | per doc | editor | 0 |
+| ~~G13-c clipboard hook~~ | LANDED 5842e2d81 | — | — |
+| ~~G13-a+b templates/import-export~~ | LANDED 0b2d86e72 | — | — |
+| ~~G18 context menus~~ | LANDED 664e8a815 (design pass corrected the brief: no keyboard dep, no re-plumb) | — | — |
+| unmount sweep + resetTransientCanvasState relocation | retires the ref-scope eslint-disable set across gesture hooks | editor + gesture hooks | peripheral |
+| Phase 5 composition cleanup | per doc: reduce parent to composition; dead-import/re-export audit | editor | 0 |
 
 ### G18 next-slice brief (pre-baked input)
 - State-owning hook must sit ABOVE the pointer hook call (pointer consumes setContextMenu as a dep) yet the keyboard hook ALSO receives setContextMenu — one producer, two hook consumers + JSX value read: feasible (return state), but it is the double-re-plumb scout-14 flagged; design pass required before splicing.
@@ -74,7 +85,8 @@ Editor: 6,048 -> 3,475 lines. Remaining GO order (scout-14, adopted): **G13-c cl
 - Menu item callbacks consume settled surfaces (rename start, delete confirm, duplicate, inspector focus) — G7/G13 returns, all stable.
 
 ## Metrics
-- rework: 0; breaker trips: 0; fence violations: 0; renegotiations: 0; waves-to-integrate: 1 (G13-c + G13-a+b integrated at one gate); slots idled: 0 this wave (subagent pool unavailable — work executed in-session instead of idling); guard refusals: 2 splice-script boundary refusals (by design, no silent writes); assumption checkpoints: assumption 1 verified at gate (foreign files untouched); assumption 2 not triggered (tree typecheck stayed green).
+- rework: 0; breaker trips: 0; fence violations: 0; renegotiations: 0; waves-to-integrate: 2 (each gated green); slots idled: 0 (subagent pool unavailable — work executed in-session instead of idling); splice-guard refusals: 3 total across 3 slices (by design, no silent writes); assumption checkpoints: assumption 1 verified at both gates (foreign files untouched); assumption 2 never triggered (tree typecheck stayed green throughout).
+- **Status vs objective:** all named extractions in the adopted ladder are LANDED. Editor 6,048 -> 3,305 lines. Remaining: unmount-sweep relocation + Phase 5 composition cleanup + eventual Phase 6 completion checklist audit.
 
 ## Assumptions
 1. The working tree's foreign dirty files stay out of every topology commit (pathspec discipline). CHECKPOINT at each gate: git status must not gain topology-file dirt from others.
@@ -87,3 +99,4 @@ Editor: 6,048 -> 3,475 lines. Remaining GO order (scout-14, adopted): **G13-c cl
 - 12:45Z: **MANAGER-AS-EXECUTOR.** Every spawn_* role failed deterministically at tool binding ("subagent backend globals unregistered" — verified with a minimal probe after the wave dispatch failed 3/4). Per the stall policy (nothing waits on the user), the wave's briefs were executed in this session with unchanged fences and verification battery. Consequences recorded: (a) all coder/ops/researcher work is attributed to the manager in the commit ledger; (b) coder-52/53 journals carry the provenance note; (c) the pool ceiling was moot — no subagents existed.
 - 20:15Z: sanctioned dep-array additions in both new hooks (canvasRef/GRID_SIZE clipboard; l10nRef + 4 popover setters io) instead of +8 eslint-disables — stable identities, churn unchanged (3.3a precedent), ratchet preserved.
 - 20:15Z: **WAVE CLOSED after G13-c + G13-a+b.** G18 (context menus) deliberately NOT started at end-of-context: it is the most entangled seam (scout-14 double-re-plumb warning; re-pinned consumer map in the backlog). Rushing the riskiest extraction with no remaining verification headroom is exactly the stop-and-reassess condition the todo doc names. Next session opens with the G18 design pass from the pre-baked brief below.
+- 20:30Z (continuation round): **WAVE 2 EXECUTED — G18 landed** after a design pass that first re-verified every consumer by grep. The design pass overturned two entries of the pre-baked brief (no keyboard dependency; pointer returns the swallow-gate so no re-plumb) — evidence that the design-before-splice rule paid for itself. Full battery green; see WAVE 2 evidence. Manager-as-executor again (infrastructure unchanged).
