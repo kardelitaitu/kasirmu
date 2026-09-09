@@ -428,7 +428,11 @@ describe('OverQuotaCard', () => {
     };
     reportHandler.set((cmd) => {
       if (cmd === 'suspend_surplus_workspace_instances_scoped') {
-        return Promise.reject(new Error('unknown store: store-gone'));
+        // The typed AppError shape as it crosses the IPC boundary, not a plain
+        // Error carrying the backend's sentence: ERR-05/06 requires the message
+        // be mapped by kind. `invalid` is what B1's validator returns for an
+        // unknown store.
+        return Promise.reject({ kind: 'invalid', message: 'unknown store: store-gone' });
       }
       return Promise.resolve(reportWith([row('locations', 5, 1)], [ghost]));
     });
@@ -440,8 +444,17 @@ describe('OverQuotaCard', () => {
     fireEvent.click(within(locRow).getByRole('button', { name: 'Suspend surplus' }));
     await waitFor(() => {
       expect(screen.getByTestId('over-quota-remedy-note')).toHaveTextContent(
-        'unknown store: store-gone',
+        'Please check the information you entered',
       );
     });
+    // Which row failed is still legible — the note prints the store id — so the
+    // owner learns the refusal applied to `store-gone` without any backend
+    // sentence reaching the DOM.
+    expect(screen.getByTestId('over-quota-remedy-note')).toHaveTextContent('store-gone');
+    // And the point of the mapping: the raw message must not leak. This is the
+    // assertion that would have failed the first version of this slice.
+    expect(screen.getByTestId('over-quota-remedy-note')).not.toHaveTextContent(
+      'unknown store:',
+    );
   });
 });

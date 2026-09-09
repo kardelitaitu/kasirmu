@@ -24,9 +24,10 @@ settings-license-quota-dim-kds-screens = KDS screens (this location)
 # §J B3 — rows capped per location rather than per tenant.
 settings-license-quota-loc-aria = Per-location quota limits
 settings-license-quota-loc-title = Per-location limits
-# B1's generic failure line is replaced by one that carries the backend's
-# reason, because a refused store id and a dropped connection need different
-# answers from the owner.
+# B1's generic failure line gained a reason slot, because a refused store id
+# and a dropped connection need different answers from the owner. The reason is
+# the ERR-05/06 KIND-MAPPED message, never the backend's own sentence — which
+# row it refers to is carried by the store id the card prints beside this line.
 settings-license-quota-remedy-failed-detail = That action failed: { $reason }. The quota numbers above are unchanged.
 # §J B1 — the two workspace-register remediation actions on the over-quota
 # card. remedy-hint names the store because the card reads as tenant-wide while

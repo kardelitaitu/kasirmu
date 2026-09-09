@@ -11,6 +11,7 @@ import {
   type OverQuotaReport,
   type QuotaUsageRow,
 } from '@/api/subscription';
+import { l10nErrorMessage } from '@/utils/app-error';
 import {
   suspendSurplusWorkspaceInstancesScoped,
   recoverWorkspaceInstancesScoped,
@@ -122,18 +123,28 @@ export default function OverQuotaCard() {
         // against `locations` before opening anything, and a row that no longer
         // resolves (archived store, stale report) must say so. Swallowing that
         // into a generic failure is how a hidden no-op comes back to life.
-        const detail =
-          err instanceof Error
-            ? err.message
-            : typeof err === 'string'
-              ? err
-              : ((err as { message?: unknown })?.message ?? String(err));
-        setRemedyNote({ kind: 'failed', count: 0, store, detail: String(detail) });
+        //
+        // ERR-05/06 (ui/src/utils/app-error.ts): a screen must never render
+        // `err.message` — raw backend text can carry SQL fragments, identifiers
+        // and infrastructure detail. So the refusal is surfaced through the typed
+        // kind mapping, and WHICH row it refused is carried by the store id the
+        // note already prints. This first cut interpolated the raw message, which
+        // reads as if it satisfies "show the refusal" while breaking the one rule
+        // that decides how a refusal may be shown at all.
+        setRemedyNote({
+          kind: 'failed',
+          count: 0,
+          store,
+          detail: l10nErrorMessage(err, l10n),
+        });
       } finally {
         setRemedyBusy(null);
       }
     },
-    [sessionToken, refresh],
+    // l10n is listed because the failure path now maps the error through
+    // l10nErrorMessage; it is stable across renders, so the callback does not
+    // re-create any more often than before.
+    [sessionToken, refresh, l10n],
   );
 
   const overRows: QuotaUsageRow[] = report

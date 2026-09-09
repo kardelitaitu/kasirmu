@@ -22,8 +22,10 @@ settings-license-quota-dim-kds-screens = Layar KDS (lokasi ini)
 # §J B3 — baris yang dibatasi per lokasi, bukan per tenant.
 settings-license-quota-loc-aria = Batas kuota per lokasi
 settings-license-quota-loc-title = Batas per lokasi
-# Baris kegagalan generik B1 diganti dengan yang membawa alasan dari backend,
-# karena id toko yang ditolak dan koneksi yang putus butuh jawaban berbeda.
+# Baris kegagalan generik B1 diberi slot alasan, karena id toko yang ditolak dan
+# koneksi yang putus butuh jawaban berbeda. Alasannya adalah pesan hasil pemetaan
+# KIND menurut ERR-05/06, bukan kalimat backend itu sendiri — baris mana yang
+# dimaksud dibaca dari id toko yang dicetak kartu di samping baris ini.
 settings-license-quota-remedy-failed-detail = Aksi tersebut gagal: { $reason }. Angka kuota di atas tidak berubah.
 # §J B1 — dua aksi perbaikan register workspace pada kartu melebihi kuota.
 # remedy-hint menyebut nama toko karena kartu ini terbaca sebagai tingkat tenant
