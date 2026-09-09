@@ -13,6 +13,7 @@ import { useSettings } from '@/contexts/SettingsContext';
 import TopologyApplyConfirm from './TopologyApplyConfirm';
 import { TopologyEmptyState } from './topologyEmptyState';
 import { TopologyAlignBar } from './topologyAlignBar';
+import { TopologyAlignmentGuides } from './topologyAlignmentGuides';
 import {
   NODE_WIDTH,
   NODE_HEIGHT,
@@ -2363,12 +2364,7 @@ export default function NodeTopologyEditor({
               )}
             </svg>
 
-            {alignmentGuide?.x !== undefined && (
-              <div className="alignment-guide alignment-guide-x" style={{ left: alignmentGuide.x }} aria-hidden="true" />
-            )}
-            {alignmentGuide?.y !== undefined && (
-              <div className="alignment-guide alignment-guide-y" style={{ top: alignmentGuide.y }} aria-hidden="true" />
-            )}
+            <TopologyAlignmentGuides alignmentGuide={alignmentGuide} />
 
             <TopologyWireRenameOverlay
               renamingWireId={renamingWireId}
