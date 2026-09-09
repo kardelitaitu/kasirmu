@@ -291,12 +291,43 @@ actual relationship mutation.
       `next_attempt_at`, non-retryable fast-fail) are enhancements beyond the
       spec, each needing a migration or a highest-risk-path behavior change —
       deferred, not dropped.
-- [ ] **Implement the audit baseline and retention schedule.** Paid tiers
+- [x] **Implement the audit baseline and retention schedule.** Paid tiers
       retain basic security events; Plus defaults to 90 days, Pro to 180 days,
       Premium to one year, and Enterprise to three years with a configurable
       contract override. Free has no tenant-facing audit logs. Premium and
       Enterprise also receive full business audit logging, filtering, export,
       and compliance views.
+      — **complete except the Enterprise contract override (2026-09-09, S-A
+      `6e598c648`):** clause by clause against HEAD — retention windows are
+      implemented AND swept (`sweep_audit_retention`, wired in both daemons;
+      values match this sentence exactly), security events are logged and now
+      have a screen (`security-trail` route, closing the command's zero-caller
+      gap), filtering is server-side (outcome / query / keyset cursor), export is
+      landed (AUD-09, RFC-4180 CSV with BOM, filter-aware, self-logging), the
+      review-checkpoint mechanism is the "compliance views" clause, and the
+      Free-tier refusal is enforced as a refusal rather than an empty list.
+      **`docs/security/data-residency-and-retention.md` contradicted all of this
+      until 09-09** (it claimed "no purge exists" and "decided but not
+      implemented" while the sweep was wired — its own 09-09 audit stamp had
+      verified `prune.rs:20`, a different table's retention constant). Read that
+      page for policy, this one for status.
+      **Two sentences the box text needs but did not have.** (1) *Retained is not
+      visible*: the read gate is Premium-or-above, so Plus and Pro rows age out on
+      a window those tenants can never inspect. Consistent with the wording here,
+      and the first time it was written down. (2) The four Premium+ clauses share
+      exactly ONE gate: `require_audit_tier` admits Premium and Enterprise to the
+      whole surface at once, so there is no way to sell export or the compliance
+      views separately from reading the log — and nothing below Premium gets any of
+      them, Pro included. If the box text ever means these as separable
+      entitlements, the gate has to become per-capability first.
+      **Open remainder:** (a) the Enterprise per-contract override — no seam at all
+      (`Entitlements::audit_retention_days` is a pure tier delegation), and the fix
+      is a signed-payload change owned by `apps/license-server`, so it needs a
+      payload-schema owner's ruling, not a local edit; an unsigned local override
+      would let a tenant widen the window their own compliance story relies on.
+      (b) security-event EXPORT — not a format question: the trail reads the global
+      identity DB while `export_audit_log_scoped` opens a store DB, so it needs an
+      org-wide-vs-per-store scope decision first.
 - [x] **Implement the Memo lifecycle.** Ship both Memo types — Organization
       Memo (owner/admin, all registered terminals) and Location Memo
       (owner/admin/manager, one selected location — since widened to multiple

@@ -62,7 +62,14 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
 - **Subscriptions**: `tenant_subscription`, `tenant_plans` (signed capability
   mirror), `sync_terminals` (device registration).
 - **Audit**: `audit_log`, `audit_review_checkpoints` — append-only by trigger
-  (both engines: `audit_log_immutable_delete` raises on DELETE).
+  (both engines: `audit_log_immutable_delete` raises on DELETE). The trigger has
+  one narrow exception since `20260920_audit_retention.sql`: DELETE is allowed
+  only while a `settings` row with key `audit.retention_sweep_active` exists,
+  which `Store::sweep_audit_retention` writes around its own deletes
+  (`SWEEP_MARKER_KEY`, `crates/oz-core/src/db/audit.rs:126`, inserted at :196/
+  :204 and removed at :226/:231). An auditor asking whether audit rows can be
+  deleted therefore gets a two-part answer: not by any ordinary path, and yes
+  by the tier retention sweep, which announces itself in the same database.
 - **Ops**: `offline_queue`, `sent_reports`, `exchange_rates`,
   `snapshot_versions`, `payment_gateways`, `payment_settlements`,
   `stripe_customers`.
@@ -100,14 +107,42 @@ leave via metrics has to look at the sync server, not at the absence of a route 
 | `offline_queue` (cloud) | **90 days**, enforced | hourly prune, 500-row batches (`start_prune_loop_pg`; runbook §3.6) |
 | `sent_reports` dedup claims (cloud) | **90 days**, enforced | same prune |
 | Memos (device) | archived → purged at **30 days** | retention sweep (`c8d2a54f` enforced via `archived_at`; daemon `5ee1064a`; `20260914_memo_retention.sql`) |
-| `audit_log` | **infinite** — immutable by trigger; no purge exists | see gap below |
+| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:162`), called from `apps/desktop-client/src/lib.rs:614`/`:639` and `apps/tablet-client/src/lib.rs:284`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs:243-251`) |
+| `audit_log` rows within the window | **infinite**, immutable by trigger | the sweep only deletes PAST the window; see the trigger exception in §2 |
 | Sales, catalog, inventory, users, memos (cloud) | **no expiry** — kept while the tenant exists | no purge path in `crates/oz-api` (verified: no per-tenant `DELETE`) |
 | Local device DB | kept until operator action (backup/restore) | — |
 
-**Decided but not implemented** (P1 audit-baseline item, todo-global-saas-2.md,
-still open): tier-based audit retention — Plus 90 days, Pro 180, Premium 1
-year, Enterprise 3 with contract override, Free none. Until that lands, the
-audit log's immutability is a *correctness* guarantee, not a retention one.
+**Correction (2026-09-09, section J audit-baseline scoping).** This row and the
+paragraph below previously stated that no audit purge exists and that tier-based
+retention was "decided but not implemented". Both were false at the time of the
+09-09 stamp on this page. The mechanism had landed: `sweep_audit_retention` is
+tier-driven, tested in `db/audit_tests.rs` and `db/audit_security_tests.rs`, and
+wired into both apps' daemons.
+
+How the error survived a verification pass is worth recording, because the page
+was audited the same day and stamped "every retention number holds". The number
+that was checked is `RETENTION_DAYS = 90` in `crates/oz-api/src/prune.rs:20` — a
+different mechanism, on a different table, in a different process (the cloud sync
+prune). It is a *correct* citation for the rows above it and says nothing about
+`audit_log`. Verifying one retention constant and generalizing to "no purge
+exists" is the instrument-mismatch shape: the answer was produced by a tool that
+was never pointed at the question.
+
+**Actually open**: the Enterprise *configurable contract override* on the 3-year
+default. `Entitlements::audit_retention_days` (`crates/oz-core/src/entitlements.rs
+:189`) is a pure `self.tier.audit_retention_days()` delegation, so there is no seam
+through which a contract could widen the window; adding one means a signed-payload
+change in `apps/license-server` (a payload-schema ownership decision), not a local
+edit. Deferred as such — an unsigned local override would let a tenant extend the
+retention window their own compliance story depends on, which inverts the point.
+
+**Retained is not the same as visible.** The tier gate on reading the audit surface
+is Premium-or-above (`require_audit_tier`, `commands/audit.rs:265`), while the
+retention schedule sweeps Plus and Pro data too. So a Plus tenant's audit rows age
+out on a 90-day window that they cannot inspect. That is consistent with the box
+text as written — paid tiers *retain*, Premium and above *receive* the views — but
+it is the reading nobody had written down, and it changes what a "your data is
+deleted after 90 days" answer to a customer should say.
 
 ## 4. Deletion & export requests
 
