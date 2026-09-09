@@ -66,19 +66,9 @@ impl Store<'_> {
     /// When the tier's `max_pos_instances()` cap is reached, returns
     /// [`QuotaError::RegisterLimit`]. Unlimited tiers (`None`) pass.
     pub fn enforce_terminal_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = QuotaDimension::PosRegisters.limit_for(tier) {
-            let current = self.count_terminals()?;
-            if current >= limit {
-                return Err(QuotaError::RegisterLimit {
-                    tier: tier.name().into(),
-                    limit,
-                    current,
-                }
-                .into());
-            }
-        }
-        self.persist_over_quota_markers()?;
-        Ok(())
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_pos_instances`), same count, same `RegisterLimit` error.
+        self.enforce_creation_quota(QuotaDimension::PosRegisters, tier)
     }
 
     /// Count all registered terminals in the store.

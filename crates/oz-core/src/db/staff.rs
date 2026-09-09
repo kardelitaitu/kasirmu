@@ -177,19 +177,10 @@ impl Store<'_> {
     /// [`QuotaError::StaffLimit`] (surfaced as `SubscriptionLimitExceeded`,
     /// which the UI maps to an upgrade CTA). Unlimited tiers (`None`) pass.
     pub fn enforce_staff_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = QuotaDimension::Staff.limit_for(tier) {
-            let current = self.count_staff_users()?;
-            if current >= limit {
-                return Err(QuotaError::StaffLimit {
-                    tier: tier.name().into(),
-                    limit,
-                    current,
-                }
-                .into());
-            }
-        }
-        self.persist_over_quota_markers()?;
-        Ok(())
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_staff_users`), same is_active/owner-excluded count, same
+        // `StaffLimit` error.
+        self.enforce_creation_quota(QuotaDimension::Staff, tier)
     }
 
     /// Look up a single user by id.

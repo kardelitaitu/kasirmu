@@ -210,21 +210,10 @@ impl Store<'_> {
     /// `SubscriptionLimitExceeded`, which the UI maps to an upgrade CTA).
     /// Unlimited tiers (`None`) pass.
     pub fn enforce_product_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = QuotaDimension::Products.limit_for(tier) {
-            let current: i64 = self
-                .conn
-                .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
-            if current >= limit {
-                return Err(QuotaError::ProductLimit {
-                    tier: tier.name().into(),
-                    limit,
-                    current,
-                }
-                .into());
-            }
-        }
-        self.persist_over_quota_markers()?;
-        Ok(())
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_products`), same products count (`count_products`), same
+        // `ProductLimit` error.
+        self.enforce_creation_quota(QuotaDimension::Products, tier)
     }
 
     /// Insert a new product and optionally an inventory row.

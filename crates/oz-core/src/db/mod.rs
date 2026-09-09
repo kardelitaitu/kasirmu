@@ -120,6 +120,9 @@ pub mod profile;
 pub mod promotions;
 /// CRUD for purchase orders.
 pub mod purchase_orders;
+/// Central creation-quota gate (W4-S1) — one decision point for every
+/// dimension gate, with the batch-aware `ensure_quota_allows` variant.
+pub mod quota_gate;
 /// Receipt formats — statutory content on the entity, presentational layout
 /// on workspace/terminal, with the pinned legacy-settings fallback (the last
 /// missing L167 axis).

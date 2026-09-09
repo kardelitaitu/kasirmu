@@ -56,19 +56,10 @@ impl Store<'_> {
         if location_type != "warehouse" {
             return Ok(());
         }
-        if let Some(limit) = QuotaDimension::Warehouses.limit_for(tier) {
-            let current = self.count_warehouse_locations()?;
-            if current >= limit {
-                return Err(QuotaError::WarehouseLimit {
-                    tier: tier.name().into(),
-                    limit,
-                    current,
-                }
-                .into());
-            }
-        }
-        self.persist_over_quota_markers()?;
-        Ok(())
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_warehouses`), same active-warehouse count, same
+        // `WarehouseLimit` error.
+        self.enforce_creation_quota(QuotaDimension::Warehouses, tier)
     }
 
     /// Create a new inventory location.

@@ -153,21 +153,9 @@ impl Store<'_> {
     /// When the tier's `max_locations()` cap is reached, returns
     /// [`QuotaError::StoreLimit`]. Unlimited tiers (`None`) pass.
     pub fn enforce_location_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = QuotaDimension::Locations.limit_for(tier) {
-            let current = self.count_locations()?;
-            if current >= limit {
-                return Err(QuotaError::StoreLimit {
-                    tier: tier.name().into(),
-                    limit,
-                    current,
-                }
-                .into());
-            }
-        }
-        // Keep the over-quota marker table in step with every creation attempt
-        // (Slice C §J): the next read refreshes too, but this warms the cache.
-        self.persist_over_quota_markers()?;
-        Ok(())
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_locations`), same org-wide count, same `StoreLimit` error.
+        self.enforce_creation_quota(QuotaDimension::Locations, tier)
     }
 
     /// Create a new location profile.
