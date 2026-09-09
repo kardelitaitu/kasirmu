@@ -3725,3 +3725,98 @@ fn kds_line_item_transitions_reject_unknown_status() {
         );
     }
 }
+
+// ── Frozen ticket prefix (W2-A consumer: kds_orders.ticket_prefix) ──
+//
+// The column is written at INSERT, not resolved at read: that is the whole
+// point (D16). Read with raw SQL because KdsOrder does not carry the field
+// yet - widening it breaks 8 struct literals in three other test files, so
+// the reader half is a separate, sized change.
+
+fn stamped_prefix(conn: &Connection, order_id: &str) -> String {
+    conn.query_row(
+        "SELECT ticket_prefix FROM kds_orders WHERE id = ?1",
+        rusqlite::params![order_id],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+fn ticket_for(conn: &Connection, store_id: Option<&str>) -> String {
+    conn.execute(
+        "INSERT OR IGNORE INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES ('sale-stamp', 1000, 'USD', 1, 'completed', '2026-09-27T00:00:00.000Z', '2026-09-27T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    store(conn)
+        .create_kds_order(CreateKdsOrderInput {
+            sale_id: "sale-stamp".into(),
+            store_id: store_id.map(str::to_owned),
+            items_summary: "Steak x2".into(),
+            item_count: 2,
+            kitchen_zone: None,
+            notes: String::new(),
+            table_number: None,
+            priority: false,
+        })
+        .unwrap()
+        .id
+}
+
+#[test]
+fn a_ticket_stamps_its_locations_prefix_at_creation() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.set_location_ticket_prefix("default", " sw-a ").unwrap();
+    let id = ticket_for(&conn, Some("default"));
+    assert_eq!(stamped_prefix(&conn, &id), "SW-A");
+}
+
+#[test]
+fn the_stamp_survives_renaming_the_location_afterwards() {
+    // THE reason the value is copied instead of looked up: tomorrow's config
+    // edit must not retitle a ticket the kitchen already cooked from.
+    let conn = fresh();
+    let s = store(&conn);
+    s.set_location_ticket_prefix("default", "OLD").unwrap();
+    let id = ticket_for(&conn, Some("default"));
+    s.set_location_ticket_prefix("default", "NEW").unwrap();
+    assert_eq!(
+        stamped_prefix(&conn, &id),
+        "OLD",
+        "the ticket keeps the label it was given"
+    );
+    assert_eq!(
+        s.location_ticket_prefix("default").unwrap().as_deref(),
+        Some("NEW")
+    );
+}
+
+#[test]
+fn a_ticket_with_no_prefix_configured_stamps_the_empty_sentinel() {
+    let conn = fresh();
+    let id = ticket_for(&conn, Some("default"));
+    assert_eq!(stamped_prefix(&conn, &id), "");
+}
+
+#[test]
+fn an_unknown_store_stamps_empty_rather_than_guessing_the_primary() {
+    // Falling back to the primary location would print one branch's label on
+    // another branch's ticket, which is worse than no label.
+    let conn = fresh();
+    store(&conn)
+        .set_location_ticket_prefix("default", "SW-A")
+        .unwrap();
+    let id = ticket_for(&conn, Some("no-such-store"));
+    assert_eq!(stamped_prefix(&conn, &id), "");
+}
+
+#[test]
+fn a_ticket_with_no_store_at_all_stamps_empty() {
+    let conn = fresh();
+    store(&conn)
+        .set_location_ticket_prefix("default", "SW-A")
+        .unwrap();
+    let id = ticket_for(&conn, None);
+    assert_eq!(stamped_prefix(&conn, &id), "");
+}

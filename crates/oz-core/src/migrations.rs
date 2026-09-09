@@ -227,6 +227,12 @@ pub const ALL: &[Migration] = &[
         id: "20260926_location_ticket_prefix.sql",
         sql: include_str!("../migrations/20260926_location_ticket_prefix.sql"),
     },
+    // W2-A consumer: freeze the branch ticket prefix on each KDS ticket at
+    // creation, so renaming a location cannot retitle chits already printed.
+    Migration {
+        id: "20260927_kds_ticket_prefix_stamp.sql",
+        sql: include_str!("../migrations/20260927_kds_ticket_prefix_stamp.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

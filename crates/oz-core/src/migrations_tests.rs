@@ -590,6 +590,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260925_receipt_formats.sql".to_string(),
             "20260926_location_ticket_prefix.sql".to_string(),
             "20260926_tax_rate_scoped_authoring.sql".to_string(),
+            "20260927_kds_ticket_prefix_stamp.sql".to_string(),
         ]
     );
 
