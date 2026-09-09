@@ -66,6 +66,7 @@ import { PIN_VERIFIED_SESSIONS, useTopologyEditorApplyPanel } from './nodeTopolo
 import { useTopologyEditorMigration } from './nodeTopologyEditorMigration';
 import { useTopologyEditorClipboard } from './nodeTopologyEditorClipboard';
 import { useTopologyEditorIo } from './nodeTopologyEditorIo';
+import { useTopologyEditorContextMenu } from './nodeTopologyEditorContextMenu';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -820,27 +821,21 @@ export default function NodeTopologyEditor({
     return ids;
   }, [hoveredNodeId, wires]);
 
-  /** Right-click canvas context menu position (container-relative screen
-   *  px). Null while closed. Closed by Escape, any document mousedown
-   *  outside the menu, a canvas left-click, or picking an item. */
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId?: string; wireId?: string } | null>(null);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        close();
-      }
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [contextMenu]);
+  /** Right-click context-menu state, the document close effect and the
+   *  two object-scoped open handlers (slice G18) live in
+   *  useTopologyEditorContextMenu; the returned names are the original
+   *  locals, so the pointer/touch hooks, resetTransientCanvasState and
+   *  the JSX mount are untouched. */
+  const {
+    contextMenu,
+    setContextMenu,
+    openNodeMenu,
+    openWireMenu,
+  } = useTopologyEditorContextMenu({
+    canvasRef,
+    selectOnly,
+    selectWire,
+  });
 
   /** Whether the zoom-level button's slider popover is open. Closed by
    *  Escape or any document mousedown outside the picker (the picker
@@ -2428,16 +2423,6 @@ export default function NodeTopologyEditor({
     pushHistoryRef,
   });
 
-  /** Node card context menu (right-click): select the object and open the
-   *  NODE menu (rename/duplicate/delete) instead of the canvas menu.
-   *  Stable so the memoized cards can receive it as a prop. */
-  const openNodeMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!e.shiftKey) selectOnly(nodeId);
-    const rect = canvasRef.current?.getBoundingClientRect();
-    setContextMenu({ x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0), nodeId });
-  }, [selectOnly, canvasRef, setContextMenu]);
 
   /** Wire click: select the wire AND cycle its flow direction — the whole
    *  wire is the affordance now (no separate label pill). Stable so the
@@ -2448,15 +2433,6 @@ export default function NodeTopologyEditor({
     handleCycleWireDirection(wireId);
   }, [selectWire, handleCycleWireDirection]);
 
-  /** Wire context menu (right-click): object-scoped wire menu (direction +
-   *  delete) instead of the canvas menu. Stable. */
-  const openWireMenu = useCallback((e: React.MouseEvent, wireId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    selectWire(wireId);
-    setContextMenu({ x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0), wireId });
-  }, [selectWire, canvasRef, setContextMenu]);
 
   /** Stable name/enabled writers for the memoized workspace cards. */
   const handleSetNodeName = useCallback((nodeId: string, name: string) => {
