@@ -207,26 +207,58 @@ actual relationship mutation.
       `set_receipt_layout_scoped` and wired `commands/mod.rs`, but never added
       them to either `invoke_handler`, so the surface was unreachable until
       that fix. **Receipt format is no longer a blocker.** Still outstanding,
-      so the box stays open: the numbering row's **location-ticket-prefix**
+      so the box stays open *(both items below moved on 2026-09-10 — read the
+      dated note under this one before repeating either claim)*: the numbering
+      row's **location-ticket-prefix**
       half (`git grep ticket_prefix` → zero source hits at HEAD) and the
       fiscal/numbering **management surfaces** (core-only today —
       `upsert_document_number_sequence` and `claim_statutory_number_for_sale`
-      have no command or settings card). Within slice 7 the two halves also
+      have no command or settings card; still true of the committed tree, where
+      `commands/fiscal.rs` and `ui/src/api/fiscal.ts` exist only as someone
+      else's untracked work in progress). Within slice 7 the two halves also
       landed unevenly (verified 16:05): the **workspace/terminal layout** half
       has its surface (`ReceiptFormatSettingsCard.tsx` +
       `ui/src/api/receipt-format.ts` + the two registered commands), while the
       **statutory entity content** half is core-only —
       `Store::set_receipt_content_for_entity` (`receipt_formats.rs:271`) has no
       command and no card, so entity receipt content is not authorable from
-      the UI yet. One trap for whoever continues this
+      the UI yet *(no longer true: `2be251ce2` landed
+      `set_receipt_content_scoped` on both clients with a statutory-content
+      card, 13 key pairs, and fixed a latent read bug where `ReceiptContent`
+      snake_case met core camelCase serde, so the dev-mock content was always
+      null)*.
+      — **TICKET PREFIX: STORED AND AUTHORABLE, NOT YET STAMPED (2026-09-10).**
+      The claim above that `ticket_prefix` greps zero is superseded.
+      `5a460a87d` added `20260926_location_ticket_prefix.sql` — a `locations`
+      column with the tenant-keyed partial unique index, deliberately NOT a row
+      in the statutory `document_number_sequences` table — plus the core pair
+      (`db/locations.rs:83` getter, `:106` setter, `normalize_ticket_prefix`
+      :372), with the tenancy pinned by
+      `ticket_prefix_duplicate_within_tenant_refused_by_index`.
+      `fd047cbd5` put it over IPC: `get_location_ticket_prefix_scoped`
+      (desktop `commands/locations.rs:336`) and `set_…_scoped` (:359),
+      registered in the desktop handler with a dev-mock twin; there is no
+      tablet `locations.rs` at all, so ipc-parity accepts the single side
+      rather than this being a parity hole. What keeps the numbering row open
+      is the consumer: at HEAD `db/kds.rs` carries no `ticket_prefix`, so the
+      prefix can be set and read but is not yet written onto the ticket — and
+      per the design ruling it must be STORED ON THE TICKET at stamping time,
+      because resolving it at render time silently relabels tickets already
+      printed. Stamping is in flight as its own slice. Box stays open on the
+      numbering row and the fiscal management surfaces. One trap for whoever continues this
       axis: the 10 legacy `receipt.*` keys are a LIVE fallback by design
       (`LEGACY_RECEIPT_KEYS`, `receipt_formats.rs:66`; the migration backfills
       nothing) and the print path still reads them, so retiring those keys
       before repointing the print paths silently loses receipt configuration.
-- [ ] **Separate business tax configuration from application defaults.** Tax
+- [x] **Separate business tax configuration from application defaults.** Tax
       rules, effective dates, tax-inclusive behavior, and fiscal requirements
       should be location-aware; display currency and UI preferences should not
       accidentally change tax calculation.
+      — **closed 2026-09-10, end to end** (`f4a763aca` → `5ef8a8a70` /
+      `7a8d7e01e` → `d621bdad1` → `b8479f475` → `56e7ed941` → `447a5feb3` →
+      `a9bcb1fd9` / `96635d049`); the clause-by-clause record is the three
+      amendments below, kept in order because each one supersedes a claim the
+      earlier one made truthfully at its own date.
       — **READ HALF LANDED / WRITE HALF OPEN (2026-09-09, W1 sweep, verified
       against `crates/oz-core/src/db/tax.rs` at HEAD):** the location- and
       date-aware *resolution* side exists — scope+window schema
@@ -323,11 +355,15 @@ actual relationship mutation.
         `TaxRegime` + provenance on `RegionalConfig` as a pure function over
         the landed resolver, never touching `db/tax.rs`. Consumers import
         `oz_core::regional::TaxRegime` — it is not re-exported at the lib root.
-      **Remaining for this box:** B2, the client half — `ui/src/api/tax.ts`
-      exists and already exports `createTaxRateScoped`, but its
-      `CreateTaxRateArgs` (:18) / `UpdateTaxRateArgs` (:26) still carry no
-      scope or window fields at HEAD, so nothing a UI can send is scoped yet
-      (in flight). Then F1, the real `features/tax/TaxConfigurationScreen.tsx`
+      **Remaining for this box** *(both items below have since landed — see
+      the closure paragraph immediately after)*: B2, the client half —
+      `ui/src/api/tax.ts` exported `createTaxRateScoped` but its
+      `CreateTaxRateArgs` / `UpdateTaxRateArgs` carried no scope or window
+      fields as written, so nothing a UI could send was scoped. Fixed by
+      `447a5feb3`: those interfaces now take optional
+      `legalEntityId` / `locationId` / `effectiveFrom` / `effectiveTo` with the
+      XOR documented at the type (`tax.ts:46`), plus a stateful dev-mock.
+      Then F1, the real `features/tax/TaxConfigurationScreen.tsx`
       (not the 32-line placeholder in `settings/screens`; both are registered,
       which is why a routing grep alone is not evidence), surfacing scope
       badges and the effective-period editor plus the two debts the core chain
@@ -336,7 +372,36 @@ actual relationship mutation.
       only A3's guard would catch too late. **Still parked for an owner
       ruling, not open work:** whether tax rounding mode is statutory or a
       preference, and whether a failed tax IPC should block or warn (a caught
-      failure currently looks exactly like zero tax). Box stays open until F1.
+      failure currently looks exactly like zero tax).
+      — **F1 LANDED 2026-09-10, ON THE REAL SCREEN — BOX CLOSED.** Two commits
+      on `ui/src/features/tax/TaxConfigurationScreen.tsx` (not the 32-line
+      `settings/screens` placeholder; `register.tsx` wires this one). `a9bcb1fd9`
+      puts a provenance `Badge` on every rate row off the Option-B side-channel
+      join — `tax-config-scope-location` / `tax-config-scope-legal-entity` /
+      `tax-config-scope-global`, screen :429-443. `96635d049` adds the
+      authoring: the two scope arms are **mutually exclusive by construction**,
+      since typing one clears the other (:688, :704) under the hint key
+      `tax-config-scope-hint` ("Fill one scope arm — or neither for the
+      tenant-global tier", :707); two `type="date"` arms drive the window
+      (:720, :735); a tier-change guard warns BEFORE the move, because the
+      backend otherwise leaves the vacated tier default-less silently
+      (`tax-config-tier-change-warning`, :207, with the same text re-shown
+      inline as `role="alert"` at :742); and the delete-refusal dialog carries
+      the backend's own remedy — author a replacement — straight into the
+      create dialog (:264-281). So the two debts the core chain documented are
+      surfaced on the authoring path, which is what the box's "should not
+      accidentally change tax calculation" clause turns on. Verification on
+      this file's own terms: `TaxConfigurationScreen.test.tsx` runs 25 tests at
+      HEAD, and the 14 new keys are mirrored 1:1 into `tax.id.ftl` (69 keys in
+      each, zero one-sided either way).
+      Known follow-ups, recorded and not blocking the flip: scope ids are
+      entered as **free text** — no entity/location pickers yet, so a typo
+      travels to the backend's scope-target check instead of being prevented in
+      the form; and the tier-change confirm is a bare `window.confirm` (:207),
+      serviceable but removable if the house settles on its own dialog
+      component. E1 (rounding mode statutory vs preference) and F2
+      (block-or-warn on a failed tax IPC) remain **parked for the owner**, not
+      open work — the flip rests on those being decisions, not unclaimed code.
 - [x] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise
