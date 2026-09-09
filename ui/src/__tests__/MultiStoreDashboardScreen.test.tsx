@@ -10,16 +10,21 @@ import MultiStoreDashboardScreen from '@/features/locations/MultiStoreDashboardS
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
+import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
 const mockListStores = vi.fn();
 const mockListTerminals = vi.fn();
+const mockGetPrefix = vi.fn();
+const mockSetPrefix = vi.fn();
 
 vi.mock('@/api/locations', () => ({
   listLocationsScoped: () => mockListStores(),
   setPrimaryLocationScoped: vi.fn(),
   deleteLocationProfileScoped: vi.fn(),
+  getLocationTicketPrefixScoped: (...args: unknown[]) => mockGetPrefix(...args),
+  setLocationTicketPrefixScoped: (...args: unknown[]) => mockSetPrefix(...args),
 }));
 
 vi.mock('@/api/terminals', () => ({
@@ -99,8 +104,12 @@ describe('MultiStoreDashboardScreen', () => {
   beforeEach(() => {
     mockListStores.mockReset();
     mockListTerminals.mockReset();
+    mockGetPrefix.mockReset();
+    mockSetPrefix.mockReset();
     mockListStores.mockResolvedValue(sampleStores);
     mockListTerminals.mockResolvedValue(sampleTerminals);
+    mockGetPrefix.mockResolvedValue(null);
+    mockSetPrefix.mockResolvedValue(null);
   });
 
   it('shows loading skeleton while data is being fetched', () => {
@@ -283,6 +292,67 @@ describe('MultiStoreDashboardScreen', () => {
       await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'multi-store-details-close-aria' }));
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(window.location.hash).toBe('');
+    });
+
+    // ── W7-A: ticket-prefix editor (frozen-at-stamping contract) ────
+
+    it('prefix editor loads the current prefix and shows the frozen-at-stamping warning', async () => {
+      mockGetPrefix.mockResolvedValue('MAIN');
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })[0]!);
+      await waitFor(() => {
+        expect(mockGetPrefix).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN, 'store-1');
+      });
+      const input = await within(screen.getByRole('dialog')).findByLabelText('Prefix');
+      expect(input).toHaveValue('MAIN');
+      // The frozen-at-stamping warning is visible BEFORE any edit: the
+      // operator must know a change affects only future tickets.
+      expect(
+        within(screen.getByRole('dialog')).getByText(/copied onto each ticket/i),
+      ).toBeInTheDocument();
+    });
+
+    it('unconfigured location prefixes as empty (bare numbering)', async () => {
+      mockGetPrefix.mockResolvedValue(null);
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })[0]!);
+      const input = await within(screen.getByRole('dialog')).findByLabelText('Prefix');
+      expect(input).toHaveValue('');
+    });
+
+    it('submits the trimmed draft and pins the backend echo, not local text', async () => {
+      // Backend normalizes: 'main ' -> 'MAIN' (the mock mirrors the real
+      // command's normalization), and the card must SHOW the echo.
+      mockGetPrefix.mockResolvedValue(null);
+      mockSetPrefix.mockResolvedValue('MAIN');
+      render(<MultiStoreDashboardScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Main Street')).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'multi-store-btn-details-label' })[0]!);
+      const dialog = screen.getByRole('dialog');
+      const input = await within(dialog).findByLabelText('Prefix');
+      await userEvent.type(input, 'main ');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'multi-store-prefix-save-aria' }));
+
+      await waitFor(() => {
+        expect(mockSetPrefix).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN, 'store-1', 'main');
+      });
+      await waitFor(() => {
+        expect(within(dialog).getByLabelText('Prefix')).toHaveValue('MAIN');
+      });
+      // The confirmation renders the normalized prefix — what future
+      // tickets will actually carry (echo MAIN123, not typed 'main ').
+      expect(within(dialog).getByRole('status').textContent).toMatch(/MAIN123/);
     });
   });
 });

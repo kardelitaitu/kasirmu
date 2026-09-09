@@ -183,7 +183,6 @@
     "version_scoped",
     "void_pending_sale"
   ],
-  "scoped_orphans_reason_w6c": "get/set_location_ticket_prefix_scoped joined 2026-09-09 (W6-C): desktop-only partial slice fd047cbd5 registered them gated (SETTINGS_READ/EDIT + location-resource gate) with dev-mock handlers present, but the UI half (LocationsScreen prefix editor) is a future slice - the gate's work-queue purpose keeps them visible here until that caller lands.",
   "scoped_orphans": [
     "check_license_status_scoped",
     "create_payable_scoped",
@@ -196,10 +195,8 @@
     "get_key_rotation_info_scoped",
     "get_license_status_scoped",
     "get_local_ip_scoped",
-    "get_location_ticket_prefix_scoped",
     "get_machine_id_scoped",
     "list_active_carts_scoped",
-    "set_location_ticket_prefix_scoped",
     "list_payables_scoped",
     "list_pending_offline_scoped",
     "list_scale_devices_scoped",

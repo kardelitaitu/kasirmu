@@ -430,3 +430,14 @@ location-limit-upgrade-pro = Your plan allows { $max } location(s). Upgrade to P
 location-limit-upgrade-cta = Upgrade to Pro
 location-limit-upgrade-premium = Opening a 3rd location? Upgrade to Premium for up to 5 locations.
 location-limit-upgrade-premium-cta = Upgrade to Premium
+
+# W7-A: per-location ticket prefix (frozen-at-stamping contract — D16).
+multi-store-prefix-title = Ticket prefix
+multi-store-prefix-label = Prefix
+multi-store-prefix-warning = The prefix is copied onto each ticket when it is stamped: changing it here affects only FUTURE tickets — existing ones keep the prefix they were stamped with.
+multi-store-prefix-hint = Empty = no prefix (tickets number bare). Uppercased on save; renders as PREFIX123.
+multi-store-prefix-save = Save prefix
+multi-store-prefix-save-aria = Save ticket prefix
+multi-store-prefix-saved = Saved. Future tickets: { $prefix }123
+multi-store-prefix-error-load = Could not read the ticket prefix.
+multi-store-prefix-error-save = Could not save the ticket prefix.

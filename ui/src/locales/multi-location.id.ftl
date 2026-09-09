@@ -429,4 +429,15 @@ location-limit-upgrade-cta = Tingkatkan ke Pro
 location-limit-upgrade-premium = Buka lokasi ke-3? Tingkatkan ke Premium untuk hingga 5 lokasi.
 location-limit-upgrade-premium-cta = Tingkatkan ke Premium
 
+# W7-A: awalan tiket per lokasi (kontrak beku-saat-pembubuhan — D16).
+multi-store-prefix-title = Awalan tiket
+multi-store-prefix-label = Awalan
+multi-store-prefix-warning = Awalan disalin ke setiap tiket saat pembubuhan: mengubahnya di sini hanya berlaku untuk tiket BERIKUTNYA — tiket yang sudah ada tetap memakai awalan saat dibubuhkan.
+multi-store-prefix-hint = Kosong = tanpa awalan (tiket bernomor polos). Huruf besar saat disimpan; tampil sebagai PREFIX123.
+multi-store-prefix-save = Simpan awalan
+multi-store-prefix-save-aria = Simpan awalan tiket
+multi-store-prefix-saved = Tersimpan. Tiket berikutnya: { $prefix }123
+multi-store-prefix-error-load = Gagal membaca awalan tiket.
+multi-store-prefix-error-save = Gagal menyimpan awalan tiket.
+
 # ── Offline Queue ──

@@ -69,3 +69,33 @@ export const setPrimaryLocationScoped = (sessionToken: string, id: string): Prom
 /** Delete a location profile by its identifier (scoped — ADR #7). */
 export const deleteLocationProfileScoped = (sessionToken: string, id: string): Promise<void> =>
   loggedInvoke<void>('delete_location_profile_scoped', { sessionToken, id });
+
+/** Read a location's ticket prefix (scoped — ADR #7; W7-A UI half).
+ *
+ *  null = no prefix set — tickets number bare (`#{n}`); a prefix renders
+ *  verbatim as `#{prefix}{n}` (render ruling: no invented padding). The
+ *  backend normalizes (trim + uppercase) before storing. */
+export const getLocationTicketPrefixScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<string | null> =>
+  loggedInvoke<string | null>('get_location_ticket_prefix_scoped', { sessionToken, id });
+
+/** Set — or, with an empty string, CLEAR — a location's ticket prefix
+ *  (scoped — ADR #7; W7-A UI half).
+ *
+ *  THE FROZEN-AT-STAMPING RULE (D16): the prefix is copied onto each ticket
+ *  when it is stamped, so changing it here affects ONLY future tickets;
+ *  existing tickets keep the prefix they were stamped with. The backend
+ *  echoes the normalized value (trim + uppercase); empty normalizes to
+ *  null (no prefix). */
+export const setLocationTicketPrefixScoped = (
+  sessionToken: string,
+  id: string,
+  prefix: string,
+): Promise<string | null> =>
+  loggedInvoke<string | null>('set_location_ticket_prefix_scoped', {
+    sessionToken,
+    id,
+    prefix,
+  });

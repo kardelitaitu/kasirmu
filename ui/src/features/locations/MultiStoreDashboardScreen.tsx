@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { listLocationsScoped, setPrimaryLocationScoped, deleteLocationProfileScoped, type LocationProfile } from '@/api/locations';
+import { listLocationsScoped, setPrimaryLocationScoped, deleteLocationProfileScoped, getLocationTicketPrefixScoped, setLocationTicketPrefixScoped, type LocationProfile } from '@/api/locations';
 import { listTerminalsScoped, type TerminalDto } from '@/api/terminals';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -38,6 +38,13 @@ export default function MultiStoreDashboardScreen() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   /** Location whose read-only details modal is open (View details). */
   const [detailsStore, setDetailsStore] = useState<LocationProfile | null>(null);
+  // W7-A: ticket-prefix editor (the frozen-at-stamping surface). Lives in
+  // the details modal because it edits ONE location's numbering, and the
+  // modal is already scoped to that location.
+  const [prefixDraft, setPrefixDraft] = useState('');
+  const [prefixSaved, setPrefixSaved] = useState<string | null>(null);
+  const [prefixBusy, setPrefixBusy] = useState(false);
+  const [prefixError, setPrefixError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +87,50 @@ export default function MultiStoreDashboardScreen() {
       setDeletingId(null);
     }
   }, [sessionToken]);
+
+  // ── W7-A: ticket-prefix editor (frozen-at-stamping contract) ──────
+  // The modal's open transition reads THAT location's prefix; saving
+  // submits the trimmed draft and trusts the BACKEND's echo (trim +
+  // uppercase) rather than patching local text — the operator must see
+  // exactly what future tickets will carry.
+  useEffect(() => {
+    if (!detailsStore || !sessionToken) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const prefix = await getLocationTicketPrefixScoped(sessionToken, detailsStore.id);
+        if (cancelled) return;
+        setPrefixDraft(prefix ?? '');
+        setPrefixSaved(null);
+        setPrefixError(null);
+      } catch {
+        if (!cancelled) setPrefixError('multi-store-prefix-error-load');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailsStore, sessionToken]);
+
+  const handleSavePrefix = useCallback(async () => {
+    if (!detailsStore || !sessionToken) return;
+    setPrefixBusy(true);
+    setPrefixError(null);
+    try {
+      // Empty input CLEARS the prefix ('' = no prefix, tickets number bare).
+      const echoed = await setLocationTicketPrefixScoped(
+        sessionToken,
+        detailsStore.id,
+        prefixDraft.trim(),
+      );
+      setPrefixDraft(echoed ?? '');
+      setPrefixSaved(echoed ?? '');
+    } catch {
+      setPrefixError('multi-store-prefix-error-save');
+    } finally {
+      setPrefixBusy(false);
+    }
+  }, [detailsStore, sessionToken, prefixDraft]);
 
   // ── Locations → Topology entry points (todo-global-saas-2 §"Locations
   //    and Topology navigation") ──────────────────────────────────────
@@ -360,6 +411,71 @@ export default function MultiStoreDashboardScreen() {
               <span className="multi-store-card-value">{getTerminalCount(detailsStore.id)}</span>
             </div>
           </div>
+        )}
+        {detailsStore && (
+          <section className="multi-store-prefix-editor" aria-labelledby="multi-store-prefix-title">
+            <Localized id="multi-store-prefix-title">
+              <h3 id="multi-store-prefix-title" className="multi-store-prefix-title">
+                Ticket prefix
+              </h3>
+            </Localized>
+            <div className="multi-store-card-row">
+              <label htmlFor="multi-store-prefix-input">
+                <Localized id="multi-store-prefix-label">Prefix</Localized>
+              </label>
+              <input
+                id="multi-store-prefix-input"
+                type="text"
+                value={prefixDraft}
+                maxLength={12}
+                onChange={(e) => {
+                  setPrefixDraft(e.target.value);
+                  setPrefixSaved(null);
+                }}
+              />
+            </div>
+            <p className="multi-store-prefix-warning" role="note">
+              <Localized id="multi-store-prefix-warning">
+                The prefix is copied onto each ticket when it is stamped:
+                changing it here affects only FUTURE tickets — existing ones
+                keep the prefix they were stamped with.
+              </Localized>
+            </p>
+            <p className="multi-store-prefix-hint">
+              <Localized id="multi-store-prefix-hint">
+                Empty = no prefix (tickets number bare). Uppercased on save;
+                renders as PREFIX123.
+              </Localized>
+            </p>
+            <div className="multi-store-prefix-actions">
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={prefixBusy}
+                onClick={() => void handleSavePrefix()}
+                aria-label={l10n.getString('multi-store-prefix-save-aria', { name: detailsStore.name })}
+              >
+                <Localized id="multi-store-prefix-save">Save prefix</Localized>
+              </Button>
+              {prefixSaved !== null && (
+                <span className="multi-store-prefix-saved" role="status">
+                  <Localized
+                    id="multi-store-prefix-saved"
+                    vars={{ prefix: prefixSaved === '' ? '—' : prefixSaved }}
+                  >
+                    {'Saved. Future tickets: '}
+                    {prefixSaved === '' ? '—' : prefixSaved}
+                    {'123'}
+                  </Localized>
+                </span>
+              )}
+              {prefixError && (
+                <span className="multi-store-prefix-error" role="alert">
+                  {l10n.getString(prefixError)}
+                </span>
+              )}
+            </div>
+          </section>
         )}
       </Modal>
     </div>
