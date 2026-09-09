@@ -6,8 +6,9 @@
  * preference, and the Apply-gate validation wrapper.
  *
  * These were previously module-private in the editor (exported only for
- * unit tests); `NodeTopologyEditor.tsx` re-exports them so existing
- * importers and tests are unaffected.
+ * unit tests); this module is their only public surface — importers and
+ * tests name `topologyEditorHelpers` directly (the editor keeps no
+ * compat re-export shim).
  */
 
 import { parseAppError } from '@/utils/app-error';

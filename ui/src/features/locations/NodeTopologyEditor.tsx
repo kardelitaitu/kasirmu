@@ -80,9 +80,9 @@ import {
 import './NodeTopologyEditor.css';
 
 // ── Extracted modules (Phase 1 split) ────────────────────────────────
-// Pure helpers and presentational sub-components moved out of this 6800-line
-// file. Re-exported here so every existing importer (tests, sibling
-// topology modules) keeps its `from './NodeTopologyEditor'` path working.
+// Pure helpers and presentational sub-components live in their own modules and
+// are imported (and imported by tests/siblings) from THERE — this module keeps
+// no compat re-export shim; only its own type surface is re-exported below.
 import {
   elbowPoints,
   polylineD,
@@ -98,21 +98,6 @@ import { TopologyHeader } from './topologyHeader';
 import { TopologyToolRack } from './topologyToolRack';
 import { TopologyContextMenu } from './topologyContextMenu';
 import { TopologyCanvasZoomControls } from './topologyCanvasZoomControls';
-
-// Re-export the moved pure helpers so tests (nodeTopologyEditorHelpers,
-// canvasStateEqual) and runtime importers (topologyWarehouseCard) resolve
-// them from this module exactly as before the split.
-export {
-  normalizeVisualPort,
-  elbowPoints,
-  polylineD,
-  canvasStateEqual,
-  computeAlignmentGuides,
-  diagramOverflowsCanvas,
-  isTopologyRevisionConflict,
-  prefersReducedMotion,
-  validateEditorGraph,
-} from './topologyEditorHelpers';
 
 // ── Types ──────────────────────────────────────────────────────────
 
