@@ -1202,6 +1202,8 @@ pub fn run() {
             commands::locations::update_location_profile_scoped,
             commands::locations::set_primary_location_scoped,
             commands::locations::delete_location_profile_scoped,
+            commands::locations::get_location_ticket_prefix_scoped,
+            commands::locations::set_location_ticket_prefix_scoped,
             // Regional configuration read model (slice 2, saas-2 design).
             commands::regional::get_regional_config_scoped,
             // Regional configuration write path (slice 3, saas-2 design).

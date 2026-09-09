@@ -319,6 +319,69 @@ pub async fn delete_location_profile_scoped(
     Ok(())
 }
 
+// ── KDS ticket prefix (W2-A consumer slice) ────────────────────
+//
+// Two commands over the landed core pair (`location_ticket_prefix` /
+// `set_location_ticket_prefix`). The field deliberately does NOT ride on
+// `LocationProfileDto`: the core slice chose the dedicated-getter shape (same
+// row as `legal_entity_id`), so the profile DTO stays as wide as the table the
+// settings screen reads and a prefix edit cannot fail an unrelated save.
+
+/// Read one location's KDS ticket prefix for the session's tenant.
+///
+/// `None` means "no prefix" — the same sentinel the column stores as `''`.
+/// There is no fallback to the legal entity's statutory fiscal prefix, by
+/// design: a fiscal re-registration must not retitle kitchen tickets.
+#[tauri::command]
+pub async fn get_location_ticket_prefix_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, AppError> {
+    let (session, _conn) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn = _conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = oz_core::Store::new(&conn);
+    Ok(store.location_ticket_prefix(&id)?)
+}
+
+/// Set (or clear) one location's KDS ticket prefix.
+///
+/// Returns the value AS STORED, after the core's normalization (trim +
+/// ASCII-uppercase), so the caller echoes what will be enforced rather than
+/// what was typed — `" kds-a "` comes back as `Some("KDS-A")`. An empty or
+/// whitespace-only prefix clears it. Unknown ids are `NotFound`; a prefix
+/// already used by another location of this tenant surfaces the partial
+/// unique index's violation, unsmoothed.
+#[tauri::command]
+pub async fn set_location_ticket_prefix_scoped(
+    id: String,
+    prefix: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, AppError> {
+    let (session, _conn) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    // ADR #47: the named location must be covered by the caller's
+    // assignment — manager-of-A cannot retitle location B's tickets.
+    require_permission_for_session_resource(
+        &state,
+        &session,
+        permissions::SETTINGS_EDIT,
+        ScopeType::Location,
+        &id,
+    )
+    .await?;
+    let conn = _conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = oz_core::Store::new(&conn);
+    store.set_location_ticket_prefix(&id, &prefix)?;
+    Ok(store.location_ticket_prefix(&id)?)
+}
+
 #[cfg(test)]
 #[path = "locations_tests.rs"]
 mod tests;

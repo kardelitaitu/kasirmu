@@ -472,6 +472,40 @@ function updateMockLocation(args: unknown): typeof MOCK_STORE {
   return { ...updated };
 }
 
+/**
+ * Session-local KDS ticket prefixes, keyed by location id. The mock profile
+ * type is deliberately not widened (ui/src/api still exposes no such field);
+ * an absent entry means '' — the core's no-prefix sentinel.
+ */
+const mockTicketPrefixes = new Map<string, string>();
+
+/** Normalize exactly as oz_core's ticket-prefix setter does: trim + upper. */
+function normalizeMockTicketPrefix(raw: string | undefined): string {
+  return (raw ?? '').trim().toUpperCase();
+}
+
+/** Read a location's mock ticket prefix; '' resolves to null, as core does. */
+function getMockLocationTicketPrefix(args: unknown): string | null {
+  const { id } = unwrapArgs<{ id?: string }>(args);
+  return normalizeMockTicketPrefix(mockTicketPrefixes.get(id ?? '')) || null;
+}
+
+/**
+ * Set a location's mock ticket prefix and echo the normalized value back,
+ * mirroring the real command so the UI sees post-normalization text, not
+ * what was typed. Unknown ids throw — the real IPC returns NotFound.
+ */
+function setMockLocationTicketPrefix(args: unknown): string | null {
+  const { id, prefix } = unwrapArgs<{ id?: string; prefix?: string }>(args);
+  const key = id ?? '';
+  if (!mockStores.some((location) => location.id === key)) {
+    throw new Error(`location ${key} not found`);
+  }
+  const normalized = normalizeMockTicketPrefix(prefix);
+  mockTicketPrefixes.set(key, normalized);
+  return normalized || null;
+}
+
 /** Make a location primary and persist the choice in the mock list. */
 function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
   const { id } = unwrapArgs<{ id?: string }>(args);
@@ -2753,6 +2787,8 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'update_location_profile_scoped': updateMockLocation,
   'set_primary_location_scoped': setMockPrimaryLocation,
   'delete_location_profile_scoped': deleteMockLocation,
+  'get_location_ticket_prefix_scoped': getMockLocationTicketPrefix,
+  'set_location_ticket_prefix_scoped': setMockLocationTicketPrefix,
 
   // Legal Entity (Organization-level, Phase 1 §G). Registered here because
   // scripts/verify-ipc-parity.py treats a missing dev-mock handler as a hard
