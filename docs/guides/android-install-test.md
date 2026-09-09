@@ -17,20 +17,21 @@ on a physical Android device (phone or tablet).
 | USB cable | Data transfer capable | `adb devices` shows device |
 | USB Debugging | Enabled | Developer Options → USB Debugging |
 | JDK | 17+ | `javac --version` |
-| Android SDK | 34+ | `sdkmanager --list \| grep 'platforms'` |
+| Android SDK | 36+ (`build.gradle.kts` sets `compileSdk = 36` / `targetSdk = 36`) | `sdkmanager --list \| grep 'platforms'` |
 | Android NDK | 27.x | `sdkmanager --list \| grep 'ndk'` |
 | Rust toolchain | stable (1.88+) | `rustc --version` |
 | Node.js | >=22 LTS | `node --version` |
 | cargo-ndk | latest | `cargo install cargo-ndk --locked` |
 | Tauri CLI | ^2 | `cargo install tauri-cli --version "^2" --locked` |
-| Rust targets (Android) | 3 targets | `rustup target list \| grep android` |
+| Rust targets (Android) | 4 targets (3 suffice for the aarch64/armv7/x86\_64 flows below) | `rustup target list \| grep android` |
 
 ### Setting Up the Android SDK
 
 **Option A — Android Studio (recommended):**
 
 1. Install [Android Studio](https://developer.android.com/studio)
-2. SDK Manager → SDK Platforms → Check **Android 14.0 (API 34)**
+2. SDK Manager → SDK Platforms → Check **Android 15.0 (API 36)** — required by
+   `compileSdk = 36`
 3. SDK Manager → SDK Tools → Check **NDK (Side by side)** → version 27.x
 4. Note the SDK path from **Android Studio → SDK Manager → Android SDK Location**
 
@@ -44,7 +45,7 @@ export ANDROID_HOME=$HOME/Android
 
 # Accept licenses + install SDK + NDK
 yes | ~/Android/cmdline-tools/latest/bin/sdkmanager --licenses
-~/Android/cmdline-tools/latest/bin/sdkmanager "platforms;android-34"
+~/Android/cmdline-tools/latest/bin/sdkmanager "platforms;android-36"
 ~/Android/cmdline-tools/latest/bin/sdkmanager "ndk;27.0.12077973"
 ```
 
@@ -68,7 +69,7 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 ### Rust Targets
 
 ```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 ```
 
 ### Enable Developer Options on Device
@@ -92,8 +93,13 @@ cargo tauri android init
 cd ../..
 ```
 
-This generates `gen/android/` (do **not** commit this directory — it is
-.gitignored). If you see "already initialized", you can skip this step.
+The scaffold under `gen/android/` is **committed** (`.gitignore:167-169`: "The
+generated scaffold under apps/*/gen/ is COMMITTED so CI and contributors don't
+need the Tauri CLI installed to build" — 49 tracked files under
+`apps/tablet-client/gen/`, including `app/build.gradle.kts` with its
+`signingConfigs` block). So `cargo tauri android init` is only needed if the
+directory is missing; if you see "already initialized", skip this step, and if
+you do change the scaffold, commit the change.
 
 ### Option A — Debug Build (Fast, for Testing)
 
@@ -118,24 +124,45 @@ apps/tablet-client/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v
 # Build the tablet frontend
 cd ui && npx vite build --config vite.tablet.config.ts && cd ..
 
-# Generate a keystore (if you don't have one)
+# Generate a keystore if you don't have one — same names the keystore guide
+# mandates (android-keystore-guide.md §1): oz-pos-release.keystore / oz-pos-key
+# / 1825 days
 cd apps/tablet-client
-keytool -genkey -v -keystore oz-pos.keystore \
-  -alias oz-pos -keyalg RSA -keysize 2048 -validity 10000
-# You will be prompted for passwords — use a strong password and save it
+keytool -genkey -v -keystore oz-pos-release.keystore \
+  -alias oz-pos-key -keyalg RSA -keysize 2048 -validity 1825
+# You will be prompted for the keystore password, then the key password —
+# answer with the SAME password. build.gradle.kts feeds one `password` key to
+# both keyPassword and storePassword (:44,46); a mismatched keystore fails
+# signing at build time.
+```
 
-# Build signed release APK (official Tauri v2 route — CLI has no keystore flags)
-# Write gen/android/keystore.properties: password / keyAlias / storeFile
-# (see android-keystore-guide.md); the tracked build.gradle.kts signingConfigs
-# block picks it up. When the file is absent the APK builds unsigned.
-# keystore.properties lives in gen/android/ and is read by the tracked
-# build.gradle.kts signingConfigs block; storeFile points at the keystore
-# generated above (apps/tablet-client/oz-pos.keystore).
-cd gen/android
-"password=your-keystore-password" | Out-File keystore.properties -Encoding ascii
-"keyAlias=oz-pos" | Add-Content keystore.properties
-"storeFile=$(Resolve-Path ..)\oz-pos.keystore" | Add-Content keystore.properties
-cd ..
+The build then reads `gen/android/keystore.properties` (`password` /
+`keyAlias` / `storeFile` — android-keystore-guide.md §3) through the tracked
+`build.gradle.kts` `signingConfigs` block; the Tauri CLI has no keystore
+flags, so this file is the only signing route. When the file is absent the
+APK builds unsigned. Write it from PowerShell:
+
+```powershell
+Set-Location apps/tablet-client/gen/android
+"password=<same-password>" | Out-File keystore.properties -Encoding ascii
+"keyAlias=oz-pos-key" | Add-Content keystore.properties
+"storeFile=<full path to>\apps\tablet-client\oz-pos-release.keystore" | Add-Content keystore.properties
+```
+
+or from a POSIX shell:
+
+```bash
+cat > apps/tablet-client/gen/android/keystore.properties <<'EOF'
+password=<same-password>
+keyAlias=oz-pos-key
+storeFile=/abs/path/to/apps/tablet-client/oz-pos-release.keystore
+EOF
+```
+
+Then build:
+
+```bash
+cd apps/tablet-client
 cargo tauri android build --apk --target aarch64
 cd ../..
 ```
@@ -145,7 +172,8 @@ Output location:
 apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
 ```
 
-> ℹ️ On Linux/macOS, use `export` instead of `$env:`.
+> ℹ️ `storeFile` is consumed as written by gradle — give it the keystore's
+> real path, not a relative guess.
 
 ### Option C — Quick Dev (Hot Reload)
 
@@ -198,15 +226,16 @@ adb shell pm list packages | grep ozpos
 
 | Step | Action | Expected Result |
 |------|--------|----------------|
-| 1.1 | Tap the **OZ-POS** icon | App icon renders correctly (not missing/blank) |
+| 1.1 | Tap the **OZ-POS Tablet** icon (launcher label from `res/values/strings.xml`) | App icon renders correctly (not missing/blank) |
 | 1.2 | Wait for splash screen | Splash screen appears within **8 seconds** |
 | 1.3 | Full load | Login screen appears in landscape orientation |
 | 1.4 | Check orientation | App locks to **landscape-primary** — rotating to portrait keeps landscape |
 | 1.5 | Check notch/notch cutout | UI respects safe-area insets — no content hidden behind notch |
-| 1.6 | Camera permission (if barcode scan available) | System dialog: "Allow OZ-POS to take pictures and record video?" |
 
 **Pass criteria:** App launches cleanly, orientation is locked to landscape,
-no black bars or layout issues on notched devices.
+no black bars or layout issues on notched devices. There is **no camera
+permission prompt to expect** — the tracked `AndroidManifest.xml` declares only
+`INTERNET`; no barcode path uses the camera (see Phase 6).
 
 **Common failures:**
 - **"App not installed"** — APK architecture mismatch. Ensure you built for
@@ -215,8 +244,12 @@ no black bars or layout issues on notched devices.
   Uninstall first: `adb uninstall com.ozpos.tablet`.
 - **"App keeps stopping" on launch** — Missing Android SDK/NDK version mismatch.
   Rebuild with `cargo tauri android build --apk --target aarch64`.
-- **Black bars on sides** — App uses a fixed aspect ratio. Check
-  `tauri.conf.json` → `app.windows[0].resizable` settings.
+- **Black bars on sides** — orientation is locked in the UI layer
+  (`useOrientation('landscape-primary')` in
+  `ui/src/frontend/shell/tablet/TabletAppShell.tsx`); the tablet
+  `tauri.conf.json` has `"windows": []` and no per-window `resizable` key to
+  "fix". On unusual aspect ratios check the safe-area CSS
+  (`ui/src/frontend/shell/tablet/tablet.css`) rather than the config.
 - **White screen on launch** — WebView initialization issue. Check `adb logcat`
   for `chromium` or `webview` errors.
 
@@ -227,9 +260,9 @@ no black bars or layout issues on notched devices.
 | 2.1 | Tap PIN pad digit 1 | Key highlights on touch (visual feedback) | ☐ |
 | 2.2 | Enter PIN digits | Each tap produces haptic feedback (if enabled) | ☐ |
 | 2.3 | Tap Submit/OK | Loading spinner; transitions to workspace picker | ☐ |
-| 2.4 | Wrong PIN (3 attempts) | Error message: "Invalid PIN. 3 attempts remaining." | ☐ |
-| 2.5 | Wrong PIN (5 attempts) | Account locked: "Account locked. Contact administrator." | ☐ |
-| 2.6 | Empty PIN validation | Error message: "Please enter a PIN." | ☐ |
+| 2.4 | Wrong PIN (3 attempts) | Invalid-PIN error with an attempts counter — the Fluent string is `staff-login-attempts-remaining` = "(N attempts remaining)" (`ui/src/locales/staff.ftl:121`); there is no single sentence "Invalid PIN. 3 attempts remaining." | ☐ |
+| 2.5 | Wrong PIN (5 attempts) | **Timed** lockout: `staff-login-lockout` = "Locked out. Try again in {seconds}s" (`staff.ftl:122`); on the session lock the variant is `session-lock-lockout` = "Wait {seconds}s." (`:143`). It self-expires — no "Contact administrator" string exists anywhere in the locales, so do NOT file a FAIL when the pad re-enables by itself | ☐ |
+| 2.6 | Empty PIN validation | Submit button is **disabled** while the PIN is empty (`StaffLoginScreen.tsx:430`) — no error message fires; "Please enter a PIN." does not exist. Sub-4-digit PINs get `staff-login-pin-min-length` = "PIN must be at least 4 digits." (`staff.ftl:118`) | ☐ |
 
 **Pass criteria:** Touch targets register correctly (≥ 48px), visual feedback
 works, PIN entry is reliable with no missed taps.
@@ -253,8 +286,8 @@ smooth, back navigation works correctly.
 | 4.2 | Scroll product grid | Touch scroll works — smooth, no stutter | ☐ |
 | 4.3 | Search products | Tap search bar → keyboard opens → results filter in real-time | ☐ |
 | 4.4 | Category filter tabs | Tabs are ≥ 48px height. Tap reliably switches category. | ☐ |
-| 4.5 | Cart panel | Right-side cart panel visible. Shows "No items in cart." | ☐ |
-| 4.6 | Bottom navigation bar | Home / Sales / KDS / Settings tabs accessible (48px min) | ☐ |
+| 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `ui/src/locales/sales.ftl:16`). | ☐ |
+| 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/frontend/shell/tablet/TabletAppLayout.tsx:56-58`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
 
 **Pass criteria:** All touch targets meet minimum size, scrolling is smooth,
 keyboard does not cover critical UI.
@@ -275,19 +308,30 @@ keyboard does not cover critical UI.
 **Pass criteria:** Touch interactions are reliable, swipe gestures register
 correctly, no ghost taps or missed taps.
 
-### Phase 6: Barcode Scanner (Camera)
+### Phase 6: Barcode Scanning (Keyboard-Wedge / Manual)
+
+> ⚠️ **There is no camera barcode scanner.** The tracked `AndroidManifest.xml`
+> declares only `android.permission.INTERNET`; no code in `ui/src` uses
+> `BarcodeDetector`/`getUserMedia`. The shipped surface is a **text field** on
+> the Products lookup screen (`ProductLookupScreen.tsx:280`,
+> `aria-label = barcode-input-aria` "Barcode input") — a HID keyboard-wedge
+> scanner "types" the code and sends Enter, and the same field accepts manual
+> typing.
 
 | Step | Action | Expected Result | Check |
 |------|--------|----------------|-------|
-| 6.1 | Tap barcode scan button | Camera preview opens (fullscreen or popup) | ☐ |
-| 6.2 | Point camera at a barcode | Scanner automatically detects and processes the barcode | ☐ |
-| 6.3 | Successful scan | Product added to cart. Brief vibration/sound confirmation. | ☐ |
-| 6.4 | Unknown barcode | Error message: "Product not found for barcode XXXXXX." | ☐ |
-| 6.5 | Cancel scan | Tap X or back → returns to POS screen | ☐ |
-| 6.6 | Low-light condition | Scanner still works (flash or exposure assist) | ☐ |
+| 6.1 | Open the **Products** tab (route `products`) | Lookup screen shows a "Barcode input" field | ☐ |
+| 6.2 | Scan a known product with a HID wedge scanner (or type the code + Enter) | Code lands in the field and the lookup resolves the product | ☐ |
+| 6.3 | Successful lookup | Product shown in results; add-to-cart path from the result works | ☐ |
+| 6.4 | Unknown barcode | "No results" state via `product-lookup-no-results` (`ProductLookupScreen.tsx:364`) — there is no "Product not found for barcode XXXXXX." string | ☐ |
+| 6.5 | Clear the field / back out | Screen returns to its normal state; POS unaffected | ☐ |
 
-**Pass criteria:** Camera opens, barcodes scan reliably, unknown barcodes
-produce a clear error.
+**Pass criteria:** Wedge-typed and manually-typed codes both resolve reliably,
+unknown codes produce the no-results state. Do not test camera scanning — it
+is not implemented.
+
+> Note: the retail **quick-return** flow has its own barcode field
+> (`RetailModals.tsx:803`) if you also want to cover returns on-device.
 
 ### Phase 7: Payment Flow (Touch)
 
@@ -296,7 +340,7 @@ produce a clear error.
 | 7.1 | Tap **Pay** / **Checkout** | Payment screen opens | ☐ |
 | 7.2 | **Swipe left** on cart panel | Payment modal opens (gesture shortcut) | ☐ |
 | 7.3 | **Swipe right** on payment modal | Returns to cart (gesture shortcut) | ☐ |
-| 7.4 | Select payment method | Cash / Card / Mixed options — each easy to tap | ☐ |
+| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `ui/src/locales/sales.ftl:122`); there is no "Mixed" label. Each easy to tap | ☐ |
 | 7.5 | Cash: enter amount tendered | Numeric keypad is large enough to tap reliably | ☐ |
 | 7.6 | Complete payment | Sale completes. Success message. | ☐ |
 | 7.7 | Receipt preview | Receipt displays full details on screen | ☐ |
@@ -365,7 +409,7 @@ or visual corruption.
 | Warm start (app in memory) | < 4 s | < 2 s | Stopwatch |
 | Product grid load (500 products) | < 3 s | < 1 s | Perceived |
 | Search response (type-ahead) | < 500 ms | < 200 ms | Perceived latency |
-| Barcode scan (camera → result) | < 3 s | < 1.5 s | Stopwatch from scan to add-to-cart |
+| Barcode scan (wedge/manual → lookup result) | < 3 s | < 1.5 s | Stopwatch from code entry to product shown (keyboard-wedge scanner or typed; see Phase 6 — no camera path exists) |
 | Cart rendering (50 items) | < 500 ms | < 100 ms | Perceived |
 | Sale completion (Pay → done) | < 3 s | < 1 s | Stopwatch |
 | KDS ticket load (20 tickets) | < 3 s | < 1 s | Perceived |
@@ -393,8 +437,10 @@ adb shell dumpsys meminfo com.ozpos.tablet
 # Battery stats
 adb shell dumpsys batterystats --charged com.ozpos.tablet
 
-# CPU usage
-adb shell top -n 1 | grep oz-pos
+# CPU usage — the Android process name is the applicationId `com.ozpos.tablet`
+# (build.gradle.kts:34), so grep on `ozpos` WITHOUT the hyphen; `grep oz-pos`
+# silently returns nothing.
+adb shell top -n 1 | grep ozpos
 
 # Startup time
 adb logcat -b events | grep "am_proc_start"
@@ -410,14 +456,15 @@ adb logcat -b events | grep "am_proc_start"
 # Continuous log stream (filter by app)
 adb logcat -v time -s "oz-pos-tablet" "Tauri" "Rust" "chromium" "WebView"
 
-# Filter to only errors
-adb logcat -v time *:E | grep -i "oz-pos\|rust\|panic"
+# Filter to only errors — match `ozpos` (the process is `com.ozpos.tablet`,
+# the Rust lib is `oz_pos_tablet_lib`; neither contains "oz-pos")
+adb logcat -v time *:E | grep -i "ozpos\|oz_pos\|rust\|panic"
 
 # Save to file
 adb logcat -d > android-launch-log-$(date +%Y%m%d).txt
 
-# Filter by PID (get PID first)
-adb shell ps | grep oz-pos
+# Filter by PID (get PID first — same un-hyphenated process name)
+adb shell ps | grep ozpos
 adb logcat -v time --pid=<PID>
 ```
 
@@ -513,7 +560,7 @@ adb pull /sdcard/oz-pos-screenrecord.mp4
    ☐ Quantity increment/decrement reliable
    ☐ Total recalculates correctly
 
-☐ PHASE 6 — Barcode Scanner
+☐ PHASE 6 — Barcode Scanning (Keyboard-Wedge / Manual)
    ☐ Camera preview opens
    ☐ Barcode scans successfully
    ☐ Unknown barcode shows error
