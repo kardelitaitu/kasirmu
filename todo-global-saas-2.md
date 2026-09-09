@@ -284,8 +284,20 @@ actual relationship mutation.
         `20260923_fiscal_numbering.sql` and touched in the committed tree only
         by raw SQL inside `fiscal_tests.rs`, so an entity's statutory
         configuration has no API and no surface. An overview table needs that
-        core slice first.
-      - **Gap 2:** `document_kind` is `TEXT NOT NULL` with no core enum, so the
+        core slice first. — **CLOSED 2026-09-10 by `74639639e`** *feat(core):
+        add fiscal scheme and sequence management readers* (`db/fiscal.rs` only,
+        +tests): `list_document_number_sequences` (:226),
+        `document_number_sequences_for_entity` (:254) and `list_fiscal_schemes`
+        (:290), so both halves of this gap are now core readers; what remains is
+        an IPC/UI surface to show them, not a missing predicate. Recorded the
+        same day it was found, two passes later — the gap text above is left as
+        written because it is what the card was built against.
+      - **Gap 2:** *(status 2026-09-10: still open AT HEAD — `20260923_fiscal_numbering.sql:61,69`
+        is still `document_kind TEXT NOT NULL` + pair `UNIQUE` with no `CHECK`,
+        and `git log -S 'enum DocumentKind'` returns nothing for the commit
+        history; a `DocumentKind` enum was visible in another agent's
+        WORKING TREE while this pass ran, which is in-flight, not landed, so it
+        is not recorded as a closure here.)* `document_kind` is `TEXT NOT NULL` with no core enum, so the
         card's closed `DOCUMENT_KINDS = ['receipt', 'invoice']` (card :41) is a
         **UI-layer** guard doing a core job. The failure it prevents is real and
         silent: a typo'd kind satisfies the pair-UNIQUE by opening a SECOND
