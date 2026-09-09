@@ -83,6 +83,7 @@ import { useTopologyEditorAnnouncements } from './nodeTopologyEditorAnnouncement
 import { useTopologyEditorBendDrag } from './topologyEditorBendDrag';
 import { useTopologyEditorPointer } from './nodeTopologyEditorPointer';
 import { useTopologyEditorTouch } from './nodeTopologyEditorTouch';
+import { useTopologyEditorViewport } from './nodeTopologyEditorViewport';
 import {
   cancelBendDecision,
   deletableNodeIds,
@@ -718,31 +719,34 @@ export default function NodeTopologyEditor({
   const [zoom, setZoom] = useState(() => (savedView ? Math.max(0.4, Math.min(2.0, savedView.zoom)) : 1));
   const [pan, setPan] = useState<{ x: number; y: number }>(() => savedView?.pan ?? { x: 0, y: 0 });
 
-  /** Debounced viewport persist. Pan/zoom update at pointer-move rate, and a
-   *  synchronous localStorage write per frame can jank the canvas — flush the
-   *  latest value 250ms after the last change (and once more on unmount). */
-  const viewPersistRef = useRef<{ viewKey: string; zoom: number; pan: { x: number; y: number } } | null>(null);
-  const viewPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistViewport = useCallback(() => {
-    const v = viewPersistRef.current;
-    if (!v) return;
-    try {
-      localStorage.setItem(v.viewKey, JSON.stringify({ zoom: v.zoom, pan: v.pan }));
-    } catch { /* storage may be unavailable (private mode) — view pref only */ }
-  }, []);
-
-  useEffect(() => {
-    viewPersistRef.current = { viewKey, zoom, pan };
-    if (viewPersistTimerRef.current) clearTimeout(viewPersistTimerRef.current);
-    viewPersistTimerRef.current = setTimeout(persistViewport, 250);
-  }, [viewKey, zoom, pan, persistViewport]);
-
-  // Flush any pending viewport persist on unmount so a branch switch never
-  // drops the last 250ms of panning.
-  useEffect(() => () => {
-    if (viewPersistTimerRef.current) clearTimeout(viewPersistTimerRef.current);
-    persistViewport();
-  }, [persistViewport]);
+  /** Viewport machinery (slices 3.5a + 3.5b-1): the debounced per-diagram
+   *  viewport persist, minimap visibility with its own per-diagram key, the
+   *  center/nudge helpers the minimap drives, and the zoom cluster. The call
+   *  sits exactly where the view-persist block lived, so hook order — and
+   *  therefore effect order — is what the component already had. The zoom/pan
+   *  STATE and viewKey stay above it: they have consumers outside this
+   *  machinery (pointer + touch hook deps, the zoom popover, the label
+   *  transforms), and the savedView restore read seeds those initializers. */
+  const {
+    zoomToFit,
+    zoomToSelection,
+    zoomBy,
+    resetView,
+    minimapVisible,
+    setMinimapVisible,
+    centerViewportOn,
+    nudgeViewport,
+  } = useTopologyEditorViewport({
+    branchId,
+    viewKey,
+    zoom,
+    pan,
+    setZoom,
+    setPan,
+    canvasRef,
+    nodes,
+    selectedNodeIds,
+  });
 
   /** Node finder (Ctrl+F) open state — owned here because the central
    *  keydown handler opens it on Ctrl+F and closes it on a canvas-focus
@@ -1110,25 +1114,6 @@ export default function NodeTopologyEditor({
    *  open and after a delete so the list never goes stale). */
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [savedTemplates, setSavedTemplates] = useState<string[]>([]);
-  /** Minimap visibility per diagram (branch) — mirrors the viewport memory's
-   *  per-branch key scheme so a branch switch (which remounts the editor)
-   *  restores the user's hide/show choice for that diagram instead of
-   *  resetting to a global default. 'unassigned' mirrors the viewport key's
-   *  fallback for diagrams with no selected branch. */
-  const minimapKey = `oz-topology-view-minimap:${branchId ?? 'unassigned'}`;
-  const [minimapVisible, setMinimapVisible] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(minimapKey) !== '0';
-    } catch { /* storage unavailable or corrupted — default visible */ }
-    return true;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(minimapKey, minimapVisible ? '1' : '0');
-    } catch { /* storage may be unavailable (private mode) — view pref only */ }
-  }, [minimapKey, minimapVisible]);
-
   useEffect(() => {
     if (!zoomPickerOpen) return;
     const close = () => { setZoomPickerOpen(false); };
@@ -1158,21 +1143,6 @@ export default function NodeTopologyEditor({
     const maxY = Math.max(...sel.map((n) => n.y + nodeHeight(n)));
     return { minX, minY, maxX, maxY };
   }, [nodes, selectedNodeIds]);
-
-  /** Center the viewport on a canvas point — the minimap's recenter/Enter
-   *  action. Reads the live canvas size so the centering math uses the
-   *  current viewport dimensions. */
-  const centerViewportOn = useCallback((cx: number, cy: number) => {
-    const canvas = canvasRef.current;
-    const cw = canvas?.clientWidth ?? 0;
-    const ch = canvas?.clientHeight ?? 0;
-    setPan({ x: cw / 2 - cx * zoom, y: ch / 2 - cy * zoom });
-  }, [zoom, setPan]);
-
-  /** Nudge the viewport by a canvas-space delta — the minimap's arrows. */
-  const nudgeViewport = useCallback((dx: number, dy: number) => {
-    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
-  }, [setPan]);
 
   /** Select every node on the canvas (context menu action). */
   const selectAllNodes = useCallback(() => {
@@ -2337,76 +2307,6 @@ export default function NodeTopologyEditor({
     setWires((prev) => wiresWithoutEndpoints(prev, doomed));
     clearSelection();
   }, [pushHistory, setNodes, setWires, clearSelection, nodes]);
-
-  /** Fit the whole diagram into the viewport (clamped 40%..200%). */
-  const zoomToFit = useCallback(() => {
-    if (nodes.length === 0) return;
-    const minX = nodes.reduce((acc, n) => Math.min(acc, n.x), Infinity);
-    const minY = nodes.reduce((acc, n) => Math.min(acc, n.y), Infinity);
-    const maxX = nodes.reduce((acc, n) => Math.max(acc, n.x + NODE_WIDTH), -Infinity);
-    const maxY = nodes.reduce((acc, n) => Math.max(acc, n.y + nodeHeight(n)), -Infinity);
-    // Guard against degenerate bounding box with zero or negative dimensions
-    if (!isFinite(minX) || !isFinite(maxX) || maxX <= minX || maxY <= minY) return;
-    const padding = 60;
-    const viewW = (canvasRef.current?.clientWidth ?? 800) - padding * 2;
-    const viewH = (canvasRef.current?.clientHeight ?? 600) - padding * 2;
-    const fitZoom = Math.min(
-      Math.min(viewW / Math.max(maxX - minX, 1), viewH / Math.max(maxY - minY, 1)),
-      1.5,
-    );
-    // The pan must be computed at the CLAMPED zoom that is actually
-    // applied — using the raw fitZoom (e.g. 0.26 for a diagram spanning
-    // ~2.5 viewports) centers the view at a different scale than the
-    // transform uses, so the fit lands off-center by |minX|·(0.4−fitZoom).
-    const appliedZoom = Math.max(0.4, Math.min(2.0, fitZoom));
-    setZoom(appliedZoom);
-    setPan({ x: padding - minX * appliedZoom, y: padding - minY * appliedZoom });
-  }, [nodes]);
-
-  /** Fit the current multi-selection — same bounds math as zoomToFit but
-   *  scoped to the selected nodes (context menu action). */
-  const zoomToSelection = useCallback(() => {
-    if (selectedNodeIds.size === 0) return;
-    const sel = nodes.filter((n) => selectedNodeIds.has(n.id));
-    if (sel.length === 0) return;
-    const minX = Math.min(...sel.map((n) => n.x));
-    const minY = Math.min(...sel.map((n) => n.y));
-    const maxX = Math.max(...sel.map((n) => n.x + NODE_WIDTH));
-    const maxY = Math.max(...sel.map((n) => n.y + nodeHeight(n)));
-    if (!isFinite(minX) || !isFinite(maxX) || maxX <= minX || maxY <= minY) return;
-    const padding = 60;
-    const viewW = (canvasRef.current?.clientWidth ?? 800) - padding * 2;
-    const viewH = (canvasRef.current?.clientHeight ?? 600) - padding * 2;
-    const fitZoom = Math.min(
-      Math.min(viewW / Math.max(maxX - minX, 1), viewH / Math.max(maxY - minY, 1)),
-      1.5,
-    );
-    // Same clamp-consistency rule as zoomToFit: pan at the applied zoom,
-    // not the raw fitZoom.
-    const appliedZoom = Math.max(0.4, Math.min(2.0, fitZoom));
-    setZoom(appliedZoom);
-    setPan({ x: padding - minX * appliedZoom, y: padding - minY * appliedZoom });
-  }, [nodes, selectedNodeIds]);
-
-  /** Step the zoom by a factor, clamped to the same 40%..200% range the
-   *  wheel uses — the floating − / + buttons share one code path. */
-  const zoomBy = useCallback((factor: number) => {
-    setZoom((prev) => Math.min(2.0, Math.max(0.4, prev * factor)));
-  }, []);
-
-  /** Reset the view: 100% zoom, pan so the Branch Location node sits at
-   *  the top-left of the visible canvas (with a fixed margin). That way
-   *  the location anchor is always in view after a reset, regardless of
-   *  where the user has panned. Falls back to the identity transform when
-   *  no Branch Location exists. */
-  const resetView = useCallback(() => {
-    const storeNode = nodes.find((n) => n.type === 'store');
-    const margin = 60;
-    setZoom(1);
-    setPan(storeNode
-      ? { x: margin - storeNode.x, y: margin - storeNode.y }
-      : { x: 0, y: 0 });
-  }, [nodes]);
 
   /** One-shot load auto-fit: when a diagram's content first lands (the
    *  mount preset or an async load) on a MEASURED canvas, fit it if it
