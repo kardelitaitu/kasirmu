@@ -204,10 +204,15 @@ deferred behind the license-server work + supervisor go.
 - [ ] **Add support/operator tooling.** Enterprise support may require scoped
       impersonation, diagnostics, tenant health, deployment version, sync health,
       and safe incident access without bypassing tenant isolation.
-- [ ] **Define service health contracts.** Add user-visible status for license
+- [x] **Define service health contracts.** Add user-visible status for license
       server, sync service, payment service, and device connectivity, with clear
       retry and degraded-mode behavior.
-      — **partial 2026-09-08, NOT flipped.** Core contracts landed in `255719cfc`
+      — **closed 2026-09-09** (`255719cfc` core contracts → `48e799df9` +
+      `aac85736a` UI half → `7d644ecfa` payment/devices/retry → `7d99c8f98`
+      sync retry); see the full clause-by-clause reading below, kept because it
+      records what each commit does and does not prove.
+      — **partial 2026-09-08, NOT flipped at the time** *(superseded by the
+      closure above; kept as the clause-by-clause record)*. Core contracts landed in `255719cfc`
       (`crates/oz-core/src/service_health.rs`: `ServiceKind` = LicenseServer, Sync,
       Payment, DeviceConnectivity; `HealthState` keeps `degraded` distinct from
       `down`, 665 lines with tests). The UI half landed in `48e799df9` (auth health
@@ -254,10 +259,20 @@ deferred behind the license-server work + supervisor go.
       devices → `disconnected` (`useDevicesConnection.ts:89`) — because green
       would lie about a till that cannot see its printer or drawer.
 
-      **Box stays unchecked, one clause short:** `useSyncConnection.ts` returns
-      `{ state, latencyMs, cause }` with no `retryNow`, so the sync pill is the
-      only service pill whose click does not re-probe. That follow-up is in
-      flight with the same worker; the box flips in the commit that lands it.
+      **FLIPPED 2026-09-09 — the last clause closed under me.** The paragraph
+      above this one was written while `useSyncConnection.ts` still returned
+      `{ state, latencyMs, cause }` with no `retryNow`; `7d99c8f98`
+      *feat(ui): wire sync pill to manual retry probe* landed before this note
+      could be read, adding `retryNow` (`useSyncConnection.ts:88`, returned at
+      :142) and the fourth `handleRetry` site — `StatusBar.tsx:235/243/251/259`
+      are now auth, sync, payment and devices, every one of them re-probing on
+      click, with `useSyncConnection.test.ts` (+97) pinning it. The four named
+      services are all surfaced: the auth pill IS the license-server pill
+      (`useAuthConnection.ts` polls the license server's `/api/health` over the
+      `test_auth_connection` IPC), and the version icon is explicitly not one
+      of the four. Degraded-mode behaviour was already met. Held as a
+      limitation, not a blocker, in the paragraph above: the payment pill
+      reports gateway configuration, not transaction health.
 - [x] **Make feature flags and entitlements observable.** Support diagnostics
       should show why a feature is unavailable: role, scope, tier, quota, expiry,
       or server policy.
