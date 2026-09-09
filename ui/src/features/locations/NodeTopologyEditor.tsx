@@ -64,12 +64,10 @@ import { useTopologyEditorIo } from './nodeTopologyEditorIo';
 import { useTopologyEditorContextMenu } from './nodeTopologyEditorContextMenu';
 import { useTopologyEditorWireCommit } from './nodeTopologyEditorWireCommit';
 import { useTopologyEditorAddNode } from './nodeTopologyEditorAddNode';
+import { useTopologyEditorDeleteConfirm } from './nodeTopologyEditorDeleteConfirm';
 import {
   cancelBendDecision,
-  deletableNodeIds,
   disconnectNode,
-  nodesWithoutIds,
-  wiresWithoutEndpoints,
 } from './topologyCommands';
 import './NodeTopologyEditor.css';
 
@@ -588,11 +586,6 @@ export default function NodeTopologyEditor({
   /** Mirror of `history` state for synchronous reads in undo/redo handlers. */
   const historyRef = useRef<HistoryEntry[]>([]);
   historyRef.current = history;
-
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  /** Batch delete confirmation (2+ nodes). Single nodes keep confirmDelete
-   *  so the established single-node dialog text stays untouched. */
-  const [confirmDeleteMany, setConfirmDeleteMany] = useState<string[] | null>(null);
 
   /** Right-side tool rack panel state. Collapsed on mount so the editor
    *  opens on a clean canvas — arriving from the home screen's "Add
@@ -1581,27 +1574,33 @@ export default function NodeTopologyEditor({
     };
   }, []);
 
-  /** Delete a set of nodes in one history entry — every wire touching any
-   *  of them goes too. Single-node and batch deletes share this path. */
-  /** Branch Location nodes (type === 'store') are the topology anchor
-   *  and must never be deleted — every workspace, warehouse, and hardware
-   *  node is organized under them. */
-  const isBranchLocation = useCallback((nodeId: string) => {
-    const node = nodes.find((n) => n.id === nodeId);
-    return node?.type === 'store';
-  }, [nodes]);
-
-  const deleteNodes = useCallback((ids: string[]) => {
-    // Filter out Branch Location nodes — they are permanent anchors. The
-    // rule lives in the shared command module (Phase 3.2); the keydown and
-    // context-menu pre-dialog pre-filters still use isBranchLocation above.
-    const doomed = new Set(deletableNodeIds(nodes, ids));
-    if (doomed.size === 0) return;
-    pushHistory();
-    setNodes((prev) => nodesWithoutIds(prev, doomed));
-    setWires((prev) => wiresWithoutEndpoints(prev, doomed));
-    clearSelection();
-  }, [pushHistory, setNodes, setWires, clearSelection, nodes]);
+  /** Delete-confirm flow (slice P5-B/S5): the two confirmation states,
+   *  the Branch-Location anchor guard, the shared delete commit and
+   *  executeDelete moved verbatim into nodeTopologyEditorDeleteConfirm. The
+   *  call sits at the slot the two callbacks occupied — above the keyboard
+   *  controller that consumes all five names as arguments — and every
+   *  identity the moved bodies read is declared above it. */
+  const {
+    confirmDelete,
+    setConfirmDelete,
+    confirmDeleteMany,
+    setConfirmDeleteMany,
+    isBranchLocation,
+    deleteNodes,
+    executeDelete,
+  } = useTopologyEditorDeleteConfirm({
+    nodes,
+    wires,
+    selectedWireId,
+    connectingFromNodeId,
+    connectingFromPort,
+    pushHistory,
+    setNodes,
+    setWires,
+    clearSelection,
+    clearWire,
+    cancelConnection,
+  });
 
   /** One-shot load auto-fit: when a diagram's content first lands (the
    *  mount preset or an async load) on a MEASURED canvas, fit it if it
@@ -1716,48 +1715,6 @@ export default function NodeTopologyEditor({
     snap,
     isBranchLocation,
   });
-
-  const executeDelete = useCallback(() => {
-    if (confirmDeleteMany) {
-      deleteNodes(confirmDeleteMany);
-      setConfirmDeleteMany(null);
-      return;
-    }
-    if (confirmDelete === '') {
-      if (selectedWireId) {
-        // Deleting a wire is a single-wire mutation — it must NOT cancel a
-        // connection in flight (mirrors the direction-toggle rule). The one
-        // exception: if the deleted wire is the EXACT duplicate pair the
-        // pending connection would create, cancel the pending state —
-        // otherwise completing the connection after the delete would
-        // silently recreate the wire the user just removed, bypassing the
-        // duplicate detector in handlePortClick. The target node is unknown
-        // until the connection completes, so the source endpoint is the only
-        // match signal — conservative by design: a same-source, different-
-        // target wire delete also cancels (ghost preview vanishing signals
-        // it), which is the safer failure than silently recreating the
-        // deleted wire.
-        const deleted = wires.find((w) => w.id === selectedWireId);
-        if (
-          connectingFromNodeId
-          && connectingFromPort
-          && deleted
-          && ((deleted.fromNodeId === connectingFromNodeId
-            && (deleted.fromPort ?? 'right') === connectingFromPort)
-            || (deleted.toNodeId === connectingFromNodeId
-              && (deleted.toPort ?? 'left') === connectingFromPort))
-        ) {
-          cancelConnection();
-        }
-        pushHistory();
-        setWires((prev) => prev.filter((w) => w.id !== selectedWireId));
-        clearWire();
-      }
-    } else if (confirmDelete) {
-      deleteNodes([confirmDelete]);
-    }
-    setConfirmDelete(null);
-  }, [confirmDelete, confirmDeleteMany, selectedWireId, connectingFromNodeId, connectingFromPort, wires, pushHistory, deleteNodes, setWires, cancelConnection, clearWire]);
 
   // Clear hoveredTarget when connection mode ends
   useEffect(() => {
