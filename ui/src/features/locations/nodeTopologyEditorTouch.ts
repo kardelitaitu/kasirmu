@@ -13,8 +13,11 @@
 //! Every body, comment and closing brace is a verbatim line-slice of the inline
 //! originals in NodeTopologyEditor.tsx. The originals were plain per-render
 //! functions, so they stay plain here — no useCallback is introduced (wrapping
-//! them would change identity churn for the props the canvas element receives),
-//! and the hook registers no effect of its own.
+//! them would change identity churn for the props the canvas element receives).
+//! The one effect the hook registers is its own unmount cleanup: it fires the
+//! touchCleanupRef disposer at unmount so listener disposal no longer depends
+//! solely on the editor's unmount sweep (transient double-fire accepted — the
+//! disposer is idempotent).
 //!
 //! Ownership of the gesture state: touchPointersRef and touchGestureRef have no
 //! reader outside this loop, so they moved with it. touchCleanupRef did NOT —
@@ -24,7 +27,7 @@
 //! deps. The call site sits at the exact position of the original block, so the
 //! component's hook order is unchanged.
 
-import { useRef, type MutableRefObject, type SetStateAction } from 'react';
+import { useEffect, useRef, type MutableRefObject, type SetStateAction } from 'react';
 import type { ContextMenuPoint } from './nodeTopologyEditorPointer';
 import { pinchTransform, TOUCH_DRAG_THRESHOLD } from './nodeTopologyTouch';
 
@@ -307,6 +310,15 @@ export function useTopologyEditorTouch(deps: TopologyTouchDeps): {
     }
     armTouchDocumentListeners();
   };
+
+  // The hook registers its own unmount cleanup so listener disposal no longer
+  // depends solely on the editor's unmount sweep. Until the sweep is retired,
+  // both run at unmount — accepted by design: the disposer is idempotent
+  // (removeEventListener + ref-nulling only, every reader optional-call), so
+  // the second invocation no-ops. touchCleanupRef is a parent-owned stable ref
+  // identity, listed per the linter's demand — a no-op for churn since the ref
+  // object never changes — so the effect arms once.
+  useEffect(() => () => { touchCleanupRef.current?.(); }, [touchCleanupRef]);
 
   return { handleCanvasPointerDown };
 }
