@@ -213,9 +213,8 @@ actual relationship mutation.
       half (`git grep ticket_prefix` → zero source hits at HEAD) and the
       fiscal/numbering **management surfaces** (core-only today —
       `upsert_document_number_sequence` and `claim_statutory_number_for_sale`
-      have no command or settings card; still true of the committed tree, where
-      `commands/fiscal.rs` and `ui/src/api/fiscal.ts` exist only as someone
-      else's untracked work in progress). Within slice 7 the two halves also
+      have no command or settings card; *(no longer — both are tracked at HEAD
+      as of 2026-09-10; see the numbering-slice note below)*). Within slice 7 the two halves also
       landed unevenly (verified 16:05): the **workspace/terminal layout** half
       has its surface (`ReceiptFormatSettingsCard.tsx` +
       `ui/src/api/receipt-format.ts` + the two registered commands), while the
@@ -239,13 +238,64 @@ actual relationship mutation.
       (desktop `commands/locations.rs:336`) and `set_…_scoped` (:359),
       registered in the desktop handler with a dev-mock twin; there is no
       tablet `locations.rs` at all, so ipc-parity accepts the single side
-      rather than this being a parity hole. What keeps the numbering row open
-      is the consumer: at HEAD `db/kds.rs` carries no `ticket_prefix`, so the
-      prefix can be set and read but is not yet written onto the ticket — and
-      per the design ruling it must be STORED ON THE TICKET at stamping time,
-      because resolving it at render time silently relabels tickets already
-      printed. Stamping is in flight as its own slice. Box stays open on the
-      numbering row and the fiscal management surfaces. One trap for whoever continues this
+      rather than this being a parity hole. What kept the numbering row open
+      was the consumer — *(2026-09-10: this paragraph's claim that `db/kds.rs`
+      carries no `ticket_prefix` is superseded; the stamping half has since
+      landed, in full, below)*.
+      — **NUMBERING SLICE COMPLETE BOTH ENDS 2026-09-10; ALL BOXES OF THIS AXIS
+      NOW HAVE LANDINGS, WITH THREE NAMED GAPS.**
+      - **Ticket prefix, end to end** — `5a460a87d` (config column) →
+        `fd047cbd5` (scoped IPC) → `949dd1ab8` *feat(core): freeze the location
+        ticket prefix onto each KDS ticket* (`20260927_kds_ticket_prefix_stamp.sql`
+        `ADD COLUMN`, no index and no backfill, read through the getter inside
+        the insert transaction, `db/kds.rs:164-185`) → `d2ac1a2f3` (carries
+        `ticket_prefix` through the read path on `KdsOrder`, 8 SELECT lists)
+        → `c10b36295` (chit render: `#{prefix}{n}` when the ticket carries one,
+        plain `#{n}` otherwise, `kds_chit.rs:56-57`). The migration's own header
+        states why the value is frozen rather than resolved: renaming a branch
+        tomorrow must not retitle tickets the kitchen already cooked from,
+        which is exactly the relabelling this axis's ruling forbade — so the
+        **stamping-path half the todo asked for is DONE**, and no retro-stamp is
+        possible or wanted for pre-existing tickets.
+      - **Fiscal/numbering management surfaces** — `b81ac5356`
+        `get_document_number_sequence_scoped` + `upsert_document_number_sequence_scoped`
+        in both clients + `ui/src/api/fiscal.ts` + a stateful dev-mock, then
+        `6e188ff86`'s `StatutoryNumberingCard.tsx` wired into
+        `BusinessDefaultsScreen` (21 key pairs mirrored into
+        `settings.id.ftl`, 6 card tests). Upsert is keyed
+        `(legal_entity_id, document_kind)` — its `UNIQUE` pair is the schema's
+        own (`20260923_fiscal_numbering.sql`), which is what makes
+        reconfigure-never-gaps true: editing a series cannot strand it.
+      - **Gap 1, recorded not fixed:** the card edits ONE pointed pair only,
+        because core has no list-all reader — `db/fiscal.rs` exposes
+        `upsert_document_number_sequence` (:145), `document_number_sequence`
+        (:187, by entity+kind) and `claim_statutory_number_for_sale` (:250),
+        and nothing that enumerates sequences. There is also **no fiscal-scheme
+        reader at all**: `fiscal_schemes` is created by
+        `20260923_fiscal_numbering.sql` and touched in the committed tree only
+        by raw SQL inside `fiscal_tests.rs`, so an entity's statutory
+        configuration has no API and no surface. An overview table needs that
+        core slice first.
+      - **Gap 2:** `document_kind` is `TEXT NOT NULL` with no core enum, so the
+        card's closed `DOCUMENT_KINDS = ['receipt', 'invoice']` (card :41) is a
+        **UI-layer** guard doing a core job. The failure it prevents is real and
+        silent: a typo'd kind satisfies the pair-UNIQUE by opening a SECOND
+        series at zero. Moving the set into core is the follow-up.
+      - **Gap 3:** the 10 legacy `receipt.*` keys are still a live fallback and
+        the print path still reads them (below), so receipt-format work is not
+        finished even though the axis landed.
+      **Axis verdict:** every axis this box names — locale, language, timezone,
+      currency, local payment settings, fiscalization, numbering (including the
+      location ticket prefix), receipt format — now has a landing with the
+      evidence cited above, and the tax-regime axis is closed in its own box.
+      Residency stays outside this box's axis set by its own clause. **Box
+      closure is therefore a judgement, not a missing slice, and it is NOT
+      flipped here:** it hinges on the currency axis's unresolved minor-unit
+      question — the `decimal_exponent` storage table vs
+      `foundation::money::Currency::minor_unit_exponent` disagreeing about the
+      same number, flagged in this file's own design section and **never
+      examined by anyone** — and the owner is deciding that. Axes complete;
+      box closure pending the currency minor-unit question. One trap for whoever continues this
       axis: the 10 legacy `receipt.*` keys are a LIVE fallback by design
       (`LEGACY_RECEIPT_KEYS`, `receipt_formats.rs:66`; the migration backfills
       nothing) and the print path still reads them, so retiring those keys
@@ -477,6 +527,51 @@ actual relationship mutation.
       `over_quota` marker, and the per-location dimensions (KDS screens,
       topology nodes) which `assess_downgrade` deliberately excludes.
       See §"Downgrade detection slice".
+      — **TWO OF THOSE THREE HAVE SINCE LANDED (recorded 2026-09-10; the list
+      above is kept as written, because two of its items are now false).**
+      - **persisted `over_quota` marker → CLOSED by `006add29b`** *feat(core):
+        persist over-quota markers on every quota-dim create/archive/delete*
+        (2026-09-08 — it pre-dates this session's wave and was missing from the
+        ledger, not from the tree). `20260922_over_quota_markers.sql` owns the
+        table; `Store::persist_over_quota_markers` (`db/downgrade.rs:64`) is a
+        clear-then-insert full refresh inside `SAVEPOINT
+        over_quota_markers_refresh` (:74, delete scoped by `tenant_id` :78) so
+        it nests safely under a caller's transaction, and it fires on every
+        quota-dimension create/archive/delete **and on the report read path in
+        both clients** (`commands/subscription.rs` desktop :468, tablet :423).
+        Refresh-on-read is the load-bearing part: it makes a stale marker
+        structurally impossible after a restore, rather than merely unlikely.
+      - **owner-facing remediation view → LANDED** as
+        `ui/src/features/settings/OverQuotaCard.tsx` (402 lines, its own doc
+        comment names this box as its spec), reading the live assessment
+        through `getOverQuotaReport` / `isOverQuota` / `excessOf` and deriving
+        per-location rows via `perLocationMarkers`. It is not display-only: it
+        wires the two workspace-instance remediation actions
+        (`suspend_surplus_workspace_instances_scoped`,
+        `recover_workspace_instances_scoped`), which were registered,
+        permission-checked and allowlisted orphans with no call site before it.
+        Two honest limits recorded by the card itself: register archiving still
+        lives in the resource screens and the upgrade CTA still rides the
+        pricing flow (so "offer archive-or-upgrade" is partly a navigation,
+        not an action), and it is desktop-only — neither command is registered
+        in the tablet shell, a recorded product choice.
+      - **dimensions → widened, but not as the bullet above assumed.**
+        `QuotaDimension` is now Locations / PosRegisters / Warehouses / Staff /
+        Products / KdsScreens: warehouses were added, and KDS screens are
+        deliberately ABSENT from `DIMENSION_ORDER` (5 entries) because they are
+        capped per location and summing them against a per-store cap would
+        report a tenant over quota for something no single store exceeded
+        (`downgrade.rs:59-70`) — they exist as per-location markers instead.
+        **Topology nodes are still not a dimension at all**
+        (`downgrade.rs:36-37`: owned by the workspace/topology path).
+      **So what genuinely keeps this box open is the last clause of the
+      original wording — the creation path.** Markers are persisted and shown,
+      but the box asks that over-limit resources stay *readable/marked*
+      alongside blocking new creation and remediation for every dimension;
+      topology-node capacity is not represented in the assessment, and KDS
+      coverage is marker-level rather than evaluated. NOT flipped; the
+      remaining slice is create-path gating plus whatever the owner wants for
+      topology nodes.
 - [x] **Implement offline synchronization guarantees.** Add durable outbox
       states, retries, conflict handling, idempotency, ordering, clock handling,
       and visible failure states. — **verified complete 2026-09-06** across
