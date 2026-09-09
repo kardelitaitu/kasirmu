@@ -66,6 +66,64 @@ impl Store<'_> {
         }
     }
 
+    /// The location's normalized kitchen-ticket prefix (W2-A, D16
+    /// micro-design): `None` when the cell is empty or the location does
+    /// not exist, matching [`Self::location_legal_entity_id`]'s read
+    /// shape — a missing row is a read miss, not an error.
+    ///
+    /// Normalization happens HERE, at the core boundary: surrounding
+    /// whitespace is trimmed and the value is ASCII-uppercased, so
+    /// `" kds-a "` and `"KDS-A"` are the SAME prefix — which is what
+    /// makes the `(tenant_id, ticket_prefix)` partial unique index
+    /// enforce duplicates of normalized values, not raw spellings.
+    ///
+    /// There is deliberately NO fallback: an empty prefix is "no prefix",
+    /// never a walk up to the legal entity's statutory fiscal prefix — a
+    /// fiscal re-registration must not retitle kitchen tickets (D16).
+    pub fn location_ticket_prefix(&self, location_id: &str) -> Result<Option<String>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT ticket_prefix FROM locations WHERE id = ?1")?;
+        let mut rows = stmt.query_map(params![location_id], |row| row.get::<_, String>(0))?;
+        match rows.next() {
+            Some(Ok(raw)) => Ok(normalize_ticket_prefix(&raw)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    /// Set (or clear) the location's ticket prefix.
+    ///
+    /// The value is normalized (trim + ASCII-uppercase) BEFORE the write so
+    /// the `(tenant_id, ticket_prefix)` partial unique index enforces
+    /// normalized uniqueness — storing raw spellings would let `" a "` and
+    /// `"A"` coexist and render identically. An empty or whitespace-only
+    /// argument clears the prefix (stored as `''`, the no-prefix sentinel).
+    ///
+    /// Returns `NotFound` when the id does not exist; a duplicate
+    /// normalized prefix within the same tenant surfaces the index's
+    /// unique violation as an error.
+    pub fn set_location_ticket_prefix(
+        &self,
+        location_id: &str,
+        prefix: &str,
+    ) -> Result<(), CoreError> {
+        let stored = normalize_ticket_prefix(prefix).unwrap_or_default();
+        let affected = self.conn.execute(
+            "UPDATE locations SET ticket_prefix = ?1,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?2",
+            params![stored, location_id],
+        )?;
+        if affected == 0 {
+            return Err(CoreError::NotFound {
+                entity: "location_profile",
+                id: location_id.to_owned(),
+            });
+        }
+        Ok(())
+    }
+
     /// Get the primary location profile.
     pub fn get_primary_location(&self) -> Result<Option<LocationProfile>, CoreError> {
         let mut stmt = self.conn.prepare(
@@ -304,6 +362,19 @@ impl Store<'_> {
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
         })
+    }
+}
+
+/// Canonical ticket-prefix form: trimmed, ASCII-uppercased, empty mapped to
+/// `None` ("no prefix"). Shared by the reader and the writer so the
+/// `(tenant_id, ticket_prefix)` partial unique index sees exactly one
+/// spelling per tenant — the index can only enforce what the writer stores.
+fn normalize_ticket_prefix(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_ascii_uppercase())
     }
 }
 

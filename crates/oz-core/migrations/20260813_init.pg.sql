@@ -700,10 +700,14 @@ CREATE TABLE IF NOT EXISTS "locations" (
     created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 , tenant_id TEXT NOT NULL DEFAULT 'default', legal_entity_id TEXT
-    REFERENCES legal_entities(id) ON DELETE RESTRICT, locale TEXT NOT NULL DEFAULT '');
+    REFERENCES legal_entities(id) ON DELETE RESTRICT, locale TEXT NOT NULL DEFAULT '', ticket_prefix TEXT NOT NULL DEFAULT '');
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
     ON locations(is_primary) WHERE is_primary = 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_tenant_ticket_prefix
+    ON locations (tenant_id, ticket_prefix)
+    WHERE ticket_prefix <> '';
 
 CREATE TABLE IF NOT EXISTS fiscal_schemes (
     id              TEXT PRIMARY KEY,
@@ -2105,8 +2109,8 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (30, 'admin', 'design', '', 15)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '')
+INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale, ticket_prefix) VALUES
+    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '', '')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES

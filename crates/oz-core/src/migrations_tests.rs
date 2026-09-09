@@ -436,8 +436,11 @@ fn init_sql_creates_complete_schema_surface() {
         // once scope exists) — net +2. (The document_number_sequences
         // and local_payment_methods UNIQUE constraints are NOT counted: SQLite
         // names those indexes `sqlite_autoindex_*` and the query excludes that
-        // prefix.)
-        174,
+        // prefix.) Plus the tenant-keyed partial unique index
+        // `idx_locations_tenant_ticket_prefix` from
+        // `20260926_location_ticket_prefix.sql` — +1; its WHERE clause keeps
+        // the all-empty backfill out of the index entirely.
+        175,
         "index surface drifted"
     );
     assert_eq!(
@@ -585,6 +588,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260923_fiscal_numbering.sql".to_string(),
             "20260924_local_payment_methods.sql".to_string(),
             "20260925_receipt_formats.sql".to_string(),
+            "20260926_location_ticket_prefix.sql".to_string(),
             "20260926_tax_rate_scoped_authoring.sql".to_string(),
         ]
     );
@@ -2034,4 +2038,66 @@ fn memo_location_fks_follow_the_20260911_policy() {
     // And the now-unreferenced Location is deletable again (no over-block).
     conn.execute("DELETE FROM locations WHERE id = 'loc-fk'", [])
         .expect("a location with no remaining memo targeting must be deletable");
+}
+
+#[test]
+fn ticket_prefix_column_exists_and_backfills_empty_after_upgrade() {
+    // Upgrade path (W2-A, D16): a database that predates the
+    // ticket-prefix migration must come out of `run` with the column
+    // present and every pre-existing row backfilled to the ''
+    // no-prefix sentinel -- the partial unique index's WHERE clause
+    // keeps that all-empty state index-legal, so the upgrade cannot
+    // fail on existing data.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260926_location_ticket_prefix.sql")
+        .expect("ticket_prefix migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // A pre-existing row, written before the column existed.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('legacy-loc', 'Legacy', 'default')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    let cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(locations)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert!(
+        cols.iter().any(|c| c == "ticket_prefix"),
+        "locations must carry ticket_prefix after the upgrade"
+    );
+
+    let (backfilled, existing): (String, i64) = conn
+        .query_row(
+            "SELECT ticket_prefix, COUNT(*) FROM locations WHERE id = 'legacy-loc'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(existing, 1);
+    assert_eq!(
+        backfilled, "",
+        "a pre-existing row must backfill to the '' no-prefix sentinel"
+    );
+
+    // The tenant-keyed partial unique index exists (f4a763aca lesson:
+    // never a tenant-coupling UNIQUE over the bare column).
+    let idx: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index'
+             AND name = 'idx_locations_tenant_ticket_prefix'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(idx, 1, "the tenant-keyed partial unique index must exist");
 }

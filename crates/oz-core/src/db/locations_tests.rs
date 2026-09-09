@@ -650,3 +650,97 @@ fn enforce_location_quota_enterprise_unlimited() {
             .is_ok()
     );
 }
+
+// -- ticket prefix (W2-A, D16) ----------------------------------------
+
+#[test]
+fn ticket_prefix_empty_resolves_to_none() {
+    let (store, id) = setup();
+    // '' is the no-prefix sentinel: no inheritance from the entity's
+    // statutory fiscal prefix, and no default spelling either.
+    assert_eq!(store.location_ticket_prefix(&id).unwrap(), None);
+    assert_eq!(
+        store.location_ticket_prefix("no-such-location").unwrap(),
+        None,
+        "a missing location is a read miss, not an error"
+    );
+}
+
+#[test]
+fn ticket_prefix_normalizes_trim_and_case_at_the_boundary() {
+    let (store, id) = setup();
+    store.set_location_ticket_prefix(&id, "  kds-a  ").unwrap();
+    assert_eq!(
+        store.location_ticket_prefix(&id).unwrap(),
+        Some("KDS-A".to_string()),
+        "trim + ASCII-uppercase normalization at the core boundary"
+    );
+    // Clearing through whitespace-only resolves back to no prefix.
+    store.set_location_ticket_prefix(&id, "   ").unwrap();
+    assert_eq!(store.location_ticket_prefix(&id).unwrap(), None);
+    assert!(
+        store
+            .set_location_ticket_prefix("no-such-location", "A")
+            .is_err(),
+        "setting on a missing location must be NotFound, not a silent no-op"
+    );
+}
+
+#[test]
+fn ticket_prefix_duplicate_within_tenant_refused_by_index() {
+    let (store, _) = setup();
+    store
+        .set_location_ticket_prefix("default", "KDS-A")
+        .unwrap();
+    let second = LocationProfile {
+        id: "loc-2".into(),
+        name: "Second".into(),
+        address: "".into(),
+        tax_id: "".into(),
+        currency: "USD".into(),
+        timezone: "UTC".into(),
+        is_primary: false,
+        created_at: "2026-09-26T00:00:00Z".into(),
+        updated_at: "2026-09-26T00:00:00Z".into(),
+    };
+    store.create_location_profile(&second).unwrap();
+    // The partial unique index (tenant_id, ticket_prefix) refuses the
+    // second "KDS-A" in the SAME tenant -- even across a case/trim
+    // variant, because the writer normalizes before the write.
+    assert!(
+        store.set_location_ticket_prefix("loc-2", "kds-a").is_err(),
+        "duplicate normalized prefix within one tenant must be refused"
+    );
+}
+
+#[test]
+fn ticket_prefix_same_prefix_allowed_across_tenants() {
+    // The f4a763aca lesson applied at design time: tenant-keying the
+    // partial unique index means tenant B's "A" never refuses tenant
+    // A's "A" (a plain UNIQUE (ticket_prefix) would couple them in the
+    // shared cloud database).
+    let conn = migrations::fresh_db();
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('t1-loc', 'T1', 'tenant-1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('t2-loc', 'T2', 'tenant-2')",
+        [],
+    )
+    .unwrap();
+    let store = Store::new(&conn);
+    store.set_location_ticket_prefix("t1-loc", "A").unwrap();
+    store
+        .set_location_ticket_prefix("t2-loc", "A")
+        .expect("the SAME prefix on two tenants must be allowed");
+    assert_eq!(
+        store.location_ticket_prefix("t1-loc").unwrap(),
+        Some("A".to_string())
+    );
+    assert_eq!(
+        store.location_ticket_prefix("t2-loc").unwrap(),
+        Some("A".to_string())
+    );
+}
