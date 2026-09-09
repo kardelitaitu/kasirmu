@@ -14,6 +14,7 @@ import TopologyApplyConfirm from './TopologyApplyConfirm';
 import { TopologyEmptyState } from './topologyEmptyState';
 import { TopologyAlignBar } from './topologyAlignBar';
 import { TopologyAlignmentGuides } from './topologyAlignmentGuides';
+import { TopologyGhostLayer } from './topologyGhostLayer';
 import {
   NODE_WIDTH,
   NODE_HEIGHT,
@@ -2471,51 +2472,12 @@ export default function NodeTopologyEditor({
               );
             })}
 
-            {/* Round 158: the compare panel's spatial diff. Other-only
-                workspaces render as ghost cards at their SAVED positions in
-                the other branch's diagram — a spatial hint of what that
-                location has that this one does not. Decorative: pointer-
-                events-none and aria-hidden, so the ghost never steals
-                clicks, hover, or focus from a card below. */}
-            {laidOutGhosts.length > 0 && (
-              <div
-                className={
-                  panGestureActive
-                    ? 'topology-overlay-ghost-layer'
-                    : 'topology-overlay-ghost-layer topology-ghosts-animate'
-                }
-                aria-hidden="true"
-              >
-                {ghostStubs.length > 0 && (
-                  <svg
-                    className="topology-overlay-stub-layer"
-                    style={{ width: stubSvgBounds.width, height: stubSvgBounds.height }}
-                  >
-                    {ghostStubs.map((s) => (
-                      <line
-                        key={s.id}
-                        className="topology-overlay-stub"
-                        x1={s.x1}
-                        y1={s.y1}
-                        x2={s.x2}
-                        y2={s.y2}
-                      />
-                    ))}
-                  </svg>
-                )}
-                {laidOutGhosts.map((g) => (
-                  <div
-                    key={g.id}
-                    className="topology-overlay-ghost"
-                    data-overlay-node-id={g.id}
-                    aria-hidden="true"
-                    style={{ transform: `translate(${g.x}px, ${g.y}px)` }}
-                  >
-                    <span className="topology-overlay-ghost-name">{g.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <TopologyGhostLayer
+              laidOutGhosts={laidOutGhosts}
+              ghostStubs={ghostStubs}
+              panGestureActive={panGestureActive}
+              stubSvgBounds={stubSvgBounds}
+            />
 
             {/* Round 146: the under-card segments of wires that cross a card
                 they do not connect to, drawn on top so the wire reads as
