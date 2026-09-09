@@ -1,4 +1,4 @@
-//! Viewport machinery for the topology editor (Phase 3.5a + 3.5b-1).
+//! Viewport machinery for the topology editor (Phase 3.5a + 3.5b-1 + 3.5b-2).
 //!
 //! Owns the pieces of the canvas that decide WHERE you are looking, not WHAT is
 //! on it: the debounced per-diagram viewport persist (a 250ms trailing write,
@@ -22,10 +22,11 @@
 //!   declared well below this call, and its `autoFitKeyRef` guard is consumed
 //!   only AFTER the measured-canvas check. Either move would change WHEN a fit
 //!   is allowed to fire.
-//! - The routing / snap / wire-labels prefs keep their legacy per-install
-//!   fallback literals and stay parent-side (slice 3.5b-2). Relocating a pinned
-//!   legacy literal would move its owner in storageKeyPins.test.ts, which is
-//!   that slice's deliberate, itemized gate co-edit.
+//! - `useTopologyEditorViewPrefs` (slice 3.5b-2) is the SECOND export here and
+//!   owns the routing / snap / wire-labels prefs, each with its legacy
+//!   per-install fallback literal. Those three pinned literals moved with their
+//!   readers, which re-attributed their owner in storageKeyPins.test.ts — that
+//!   gate's deliberate, itemized co-edit, committed in the same change.
 //!
 //! Bodies, comments and dependency arrays are verbatim line-slices of the
 //! inline originals in NodeTopologyEditor.tsx. The call site sits at the exact
@@ -221,5 +222,101 @@ export function useTopologyEditorViewport(deps: TopologyViewportDeps) {
     setMinimapVisible,
     centerViewportOn,
     nudgeViewport,
+  };
+}
+
+export interface TopologyViewPrefsDeps {
+  /** Diagram identity — keys all three per-diagram preferences. Undefined
+   *  while no branch is selected, where each key falls back to 'unassigned'. */
+  branchId: string | undefined;
+}
+
+/** The three View-rack preferences that survive a reload: wire routing style,
+ *  grid snapping, and the wire-label pills — all keyed per diagram (branch) on
+ *  the same scheme as the viewport memory and the minimap.
+ *
+ *  Each preference's legacy per-install fallback READ and its per-branch
+ *  write-back effect are one closed set: the read inherits the old global value
+ *  exactly once when the diagram has no stored choice yet, and the write then
+ *  migrates it to the branch key. The pairs move together or the migration
+ *  breaks, which is why all three live here rather than being split.
+ *
+ *  The three legacy literals are pinned in storageKeyPins.test.ts; relocating
+ *  them here moved their owner attribution in the same commit. */
+export function useTopologyEditorViewPrefs(deps: TopologyViewPrefsDeps) {
+  const { branchId } = deps;
+
+  /** Wire routing style: smooth cubic beziers (default) or orthogonal
+   *  elbow segments. Persisted per diagram (branch) in localStorage — the
+   *  same key scheme as the viewport memory and minimap — so each diagram
+   *  keeps its own routing across branch switches and reloads. A legacy
+   *  per-install value is inherited once when no per-diagram choice exists
+   *  yet (the write-back effect then migrates it to the branch key). */
+  const routingKey = `oz-topology-view-routing:${branchId ?? 'unassigned'}`;
+  const [wireRouting, setWireRouting] = useState<'curved' | 'elbow'>(() => {
+    try {
+      const saved = localStorage.getItem(routingKey);
+      const value = saved ?? localStorage.getItem('oz-topology-view-routing');
+      return value === 'elbow' ? 'elbow' : 'curved';
+    } catch {
+      return 'curved';
+    }
+  });
+  const snapKey = `oz-topology-view-snap:${branchId ?? 'unassigned'}`;
+  /** Snap interactive placement (drag/nudge/spawn) to the 24px grid.
+   *  Persisted per branch alongside the routing preference; a legacy
+   *  per-install value is inherited once when no per-branch choice exists. */
+  const [snapEnabled, setSnapEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(snapKey);
+      const value = saved ?? localStorage.getItem('oz-topology-view-snap');
+      return value !== '0';
+    } catch {
+      return true;
+    }
+  });
+  /** Wire label pills: optional permanent labels at each wire's midpoint
+   *  (clicking one opens the round-20 rename editor). Persisted with the
+   *  other view prefs; default off to keep the current clean look. */
+  const wireLabelsKey = `oz-topology-view-wire-labels:${branchId ?? 'unassigned'}`;
+  const [wireLabelsVisible, setWireLabelsVisible] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(wireLabelsKey);
+      const value = saved ?? localStorage.getItem('oz-topology-view-wire-labels');
+      return value === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(wireLabelsKey, wireLabelsVisible ? '1' : '0');
+    } catch { /* storage may be unavailable (private mode) — view pref only */ }
+  }, [wireLabelsKey, wireLabelsVisible]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(routingKey, wireRouting);
+    } catch { /* storage may be unavailable (private mode) — view pref only */ }
+  }, [routingKey, wireRouting]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(snapKey, snapEnabled ? '1' : '0');
+    } catch { /* storage may be unavailable (private mode) — view pref only */ }
+  }, [snapKey, snapEnabled]);
+
+  return {
+    /** Elbow/curved choice — every wire-geometry path, the auto-layout, and the
+     *  View rack's routing toggle. */
+    wireRouting,
+    setWireRouting,
+    /** Grid-snap toggle — read by `snapOrNot`, the nudge/drag paths and the rack. */
+    snapEnabled,
+    setSnapEnabled,
+    /** Midpoint label pills — the label layer and the rack's labels toggle. */
+    wireLabelsVisible,
+    setWireLabelsVisible,
   };
 }

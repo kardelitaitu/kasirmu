@@ -75,9 +75,9 @@ const EXPECTED_KEYS: Record<string, string> = {
 
   // Topology editor
   'oz-topology-template:': 'features/locations/topologyExport.ts',
-  'oz-topology-view-routing': 'features/locations/NodeTopologyEditor.tsx',
-  'oz-topology-view-snap': 'features/locations/NodeTopologyEditor.tsx',
-  'oz-topology-view-wire-labels': 'features/locations/NodeTopologyEditor.tsx',
+  'oz-topology-view-routing': 'features/locations/nodeTopologyEditorViewport.ts',
+  'oz-topology-view-snap': 'features/locations/nodeTopologyEditorViewport.ts',
+  'oz-topology-view-wire-labels': 'features/locations/nodeTopologyEditorViewport.ts',
 
   // Workspaces
   'workspace-last-used': 'features/workspaces/WorkspaceHome.tsx',

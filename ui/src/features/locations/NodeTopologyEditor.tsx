@@ -82,7 +82,7 @@ import { useTopologyEditorAnnouncements } from './nodeTopologyEditorAnnouncement
 import { useTopologyEditorBendDrag } from './topologyEditorBendDrag';
 import { useTopologyEditorPointer } from './nodeTopologyEditorPointer';
 import { useTopologyEditorTouch } from './nodeTopologyEditorTouch';
-import { useTopologyEditorViewport } from './nodeTopologyEditorViewport';
+import { useTopologyEditorViewport, useTopologyEditorViewPrefs } from './nodeTopologyEditorViewport';
 import { useTopologyEditorKeyboard } from './nodeTopologyEditorKeyboard';
 import {
   cancelBendDecision,
@@ -771,74 +771,21 @@ export default function NodeTopologyEditor({
     }
     setFinderOpen(false);
   }, [selectOnly]);
-  /** Wire routing style: smooth cubic beziers (default) or orthogonal
-   *  elbow segments. Persisted per diagram (branch) in localStorage — the
-   *  same key scheme as the viewport memory and minimap — so each diagram
-   *  keeps its own routing across branch switches and reloads. A legacy
-   *  per-install value is inherited once when no per-diagram choice exists
-   *  yet (the write-back effect then migrates it to the branch key). */
-  const routingKey = `oz-topology-view-routing:${branchId ?? 'unassigned'}`;
-  const [wireRouting, setWireRouting] = useState<'curved' | 'elbow'>(() => {
-    try {
-      const saved = localStorage.getItem(routingKey);
-      const value = saved ?? localStorage.getItem('oz-topology-view-routing');
-      return value === 'elbow' ? 'elbow' : 'curved';
-    } catch {
-      return 'curved';
-    }
-  });
-  const snapKey = `oz-topology-view-snap:${branchId ?? 'unassigned'}`;
-  /** Snap interactive placement (drag/nudge/spawn) to the 24px grid.
-   *  Persisted per branch alongside the routing preference; a legacy
-   *  per-install value is inherited once when no per-branch choice exists. */
-  const [snapEnabled, setSnapEnabled] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(snapKey);
-      const value = saved ?? localStorage.getItem('oz-topology-view-snap');
-      return value !== '0';
-    } catch {
-      return true;
-    }
-  });
+  const {
+    wireRouting,
+    setWireRouting,
+    snapEnabled,
+    setSnapEnabled,
+    wireLabelsVisible,
+    setWireLabelsVisible,
+  } = useTopologyEditorViewPrefs({ branchId });
   /** Pan tool: while active, left-drags on the empty canvas pan instead of
    *  marqueeing — the touchscreen-friendly twin of Space+drag. */
   const [panToolActive, setPanToolActive] = useState(false);
-  /** Wire label pills: optional permanent labels at each wire's midpoint
-   *  (clicking one opens the round-20 rename editor). Persisted with the
-   *  other view prefs; default off to keep the current clean look. */
-  const wireLabelsKey = `oz-topology-view-wire-labels:${branchId ?? 'unassigned'}`;
-  const [wireLabelsVisible, setWireLabelsVisible] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(wireLabelsKey);
-      const value = saved ?? localStorage.getItem('oz-topology-view-wire-labels');
-      return value === '1';
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(wireLabelsKey, wireLabelsVisible ? '1' : '0');
-    } catch { /* storage may be unavailable (private mode) — view pref only */ }
-  }, [wireLabelsKey, wireLabelsVisible]);
-
   /** Any wire carrying authored bends. The elbow/curved toggle then applies
    *  only to UNBENT wires (authored geometry wins), so the View rack shows
    *  an override note instead of letting the toggle silently lie. */
   const anyBentWires = wires.some((w) => (w.bends?.length ?? 0) > 0);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(routingKey, wireRouting);
-    } catch { /* storage may be unavailable (private mode) — view pref only */ }
-  }, [routingKey, wireRouting]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(snapKey, snapEnabled ? '1' : '0');
-    } catch { /* storage may be unavailable (private mode) — view pref only */ }
-  }, [snapKey, snapEnabled]);
   /** Grid-aware placement: identity when the snap toggle is off. */
   const snapOrNot = (v: number) => (snapEnabled ? snap(v) : v);
   /** Live cursor position in canvas coords while a connection is in flight
