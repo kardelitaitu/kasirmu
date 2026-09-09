@@ -672,4 +672,19 @@ Six tests (c6d626f20, +152, single test file) pin the touch contract that 3.4e's
 - **Next:** G18 context menus LAST (scout-14 flagged the pointer setContextMenu coupling — recon before extraction), then the unmount-sweep eslint-disable retirement and Phase 5.
 
 
+### 2026-09-09 — Slice G18: context-menu state + open handlers extracted (LAST named extraction)
+
+- **Responsibility boundary:** the menu state (ContextMenuPoint | null), the document close effect (Escape + outside-mousedown, self-owned cleanup), and openNodeMenu/openWireMenu move into useTopologyEditorContextMenu (NEW nodeTopologyEditorContextMenu.ts, deps 3, returns 4). The pointer hook keeps handleContextMenu (canvas swallow-gate — gesture concern); handleWireClick stays parent (selection+direction cycling, not menu machinery).
+- **Design pass (resolves scout-14's double-re-plumb warning):** the keyboard hook has NO menu dependency (grep-verified; the pre-baked brief's ":1224 keyboard" attribution was wrong — that line is resetTransientCanvasState's dep array). Real consumers: pointer hook, touch hook, resetTransientCanvasState, the two open-handlers, the close effect, and the JSX mount. The state-owning hook sits at the vacated state slot (above all consumers) and returns setContextMenu under the ORIGINAL name — pointer/touch/resetTransient call sites are untouched. No re-plumb.
+- **Files:** NodeTopologyEditor.tsx (3,329 -> 3,305); nodeTopologyEditorContextMenu.ts NEW. ui-coder-54-journal.md carries the dated record. Provenance: manager-as-executor (see G13-c note).
+- **Public imports/re-exports:** unchanged. TopologyContextMenu mount, card/wire onOpenNodeMenu/onOpenWireMenu props identical.
+- **Byte-identity proof:** three spans excised by scripted splice with per-span boundary assertions (including a between-block assertion that handleWireClick sits between the two handler spans); 38/39 non-blank lines verbatim — the ONE difference is the documented substitution of the useState type literal by the structurally identical ContextMenuPoint alias (pointer.ts:81; the same shape the pointer/touch hooks already use for the same state). No new useCallback; JSX zero lines changed.
+- **Dep arrays: zero deviations** — every name in the moved arrays is a deps field or hook-internal setState. No disables, no additions, ratchet untouched.
+- **Coverage recorded pre-extraction (Phase-0 rule):** dedicated editor-suite describes — canvas menu (right-click spawn, select-all, authoritative-reload-closes-menu), node menu (select+rename), wire menu (select+label title), edge clamp, right-button-pan swallow, strict-mode store omission, conditional zoom-to-selection.
+- **Focused tests:** post-splice 564/1/0 across editor + Inspector + memo — identical baseline, ZERO test edits. Typecheck exit 0. ESLint 0 errors; hook file 0 warnings.
+- **Rollback point:** revert 664e8a815 alone.
+- **Next:** the unmount-sweep + resetTransientCanvasState relocation retires the ref-scope eslint-disable set, then Phase 5 (reduce parent to composition).
+
+
+
 
