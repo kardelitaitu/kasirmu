@@ -5,6 +5,7 @@ import Tooltip from './Tooltip';
 import UpdateBanner from './UpdateBanner';
 import MemoBanner from '@/features/memo/MemoBanner';
 import StoreSwitcher from '@/components/StoreSwitcher';
+import OrgSwitcher from '@/components/OrgSwitcher';
 import StockAlertBell from '@/components/StockAlertBell';
 import { useBrand } from '@/contexts/BrandContext';
 import { requiredLocalized } from '@/frontend/shared';
@@ -307,6 +308,7 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
                   />
                 )}
                 <StoreSwitcher />
+                <OrgSwitcher />
               </div>
             </div>
           )}

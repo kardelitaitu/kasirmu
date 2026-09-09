@@ -474,6 +474,13 @@ export interface CreateSessionArgs {
   terminal_id: string;
   /** HMAC-signed picker ticket from staff_login / bootstrap_owner. */
   picker_ticket: string;
+  /**
+   * Optional Organization (legal entity) routing hint for SaaS-3 L194.
+   * Display-only: the backend fails closed by re-deriving the org from the
+   * user assignment (assignment_covers_resource) — this value is never
+   * trusted as authority. Omit for the default org.
+   */
+  org_id?: string;
 }
 
 /** Session context DTO returned alongside the opaque token. */
@@ -484,6 +491,12 @@ export interface SessionContextDto {
   instanceId: string;
   typeKey: string;
   terminalId: string;
+  /**
+   * Display-only label of the Organization (legal entity) the session is
+   * scoped to, when the user picked a non-default org at login or switched
+   * after login (SaaS-3 L194). Never used as an auth input.
+   */
+  orgLabel?: string;
 }
 
 /** Result of create_session — opaque token + resolved context. */
@@ -501,6 +514,39 @@ export interface CreateSessionResult {
  */
 export const createSession = (args: CreateSessionArgs): Promise<CreateSessionResult> =>
   loggedInvoke<CreateSessionResult>('create_session', { args });
+
+/** Summary of an Organization (legal entity) available on this device. */
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+}
+
+/**
+ * Enumerate the Organizations (legal entities) this device knows about.
+ *
+ * SaaS-3 L194 (pre-login org selector source). Device-local enumeration —
+ * returns the legal_entities for the device tenant and nothing else. Callable
+ * before authentication (reveals only org ids/names, not account secrets),
+ * and it is the enumerated allow-list that create_session and
+ * switch_organization constrain org selection to.
+ */
+export const listOrganizations = (): Promise<OrganizationSummary[]> =>
+  loggedInvoke<OrganizationSummary[]>('list_organizations', {});
+
+/**
+ * Switch the active Organization (legal entity) for an authenticated session.
+ *
+ * SaaS-3 L194. Invalidate-then-mint: the backend kills the current token
+ * before minting the new one, re-derives tenant authority from the user
+ * assignment (fail-closed), and re-runs tenant integrity on the opened DB.
+ * Requires a FULL PIN re-auth — no credential carryover.
+ */
+export const switchOrganization = (args: {
+  sessionToken: string;
+  orgId: string;
+  pin: string;
+}): Promise<CreateSessionResult> =>
+  loggedInvoke<CreateSessionResult>('switch_organization', args);
 
 /** Result of refreshing a picker ticket. */
 export interface RefreshPickerTicketResult {

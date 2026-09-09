@@ -6,6 +6,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { ConfirmDialog, requiredLocalized } from '@/frontend/shared';
 import { WorkspaceIcon } from '@/components/WorkspaceIcon';
 import { RoleIcon } from '@/components/RoleIcon';
+import OrgSelector from '@/components/OrgSelector';
 import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { tierSatisfies } from '@/utils/tierLevel';
@@ -615,7 +616,9 @@ export default function WorkspaceHome() {
             <LayerFloatingButtons {...floatingProps} />
           </div>
           <div className="ws-main">
-            <header className="workspace-home-header" />
+            <header className="workspace-home-header">
+              <OrgSelector />
+            </header>
             <SkeletonGrid />
           </div>
           <div className="ws-footer" />

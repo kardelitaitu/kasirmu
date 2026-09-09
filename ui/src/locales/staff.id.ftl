@@ -327,3 +327,15 @@ staff-impersonating-stop = Berhenti
 staff-impersonating-stop-aria = Hentikan impersonasi
 staff-impersonate-started = Sekarang meniru { $name }
 staff-impersonate-failed = Tidak dapat memulai impersonasi
+
+# ── Multi-Organization switching (SaaS-3 L194) ────────────────────
+org-switcher-default = Organisasi
+org-switcher-trigger = Ganti organisasi
+org-switcher-list = Pilih organisasi
+org-switcher-pin-title = Ganti organisasi
+org-switcher-pin = PIN Organisasi
+org-switcher-invalid-pin = PIN salah atau tidak ditugaskan ke organisasi ini
+org-switcher-cancel = Batal
+org-switcher-confirm = Ganti
+org-selector-default = Organisasi default
+org-selector-label = Organisasi

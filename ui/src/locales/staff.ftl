@@ -306,3 +306,15 @@ staff-impersonating-stop = Stop
 staff-impersonating-stop-aria = Stop impersonation
 staff-impersonate-started = Now impersonating { $name }
 staff-impersonate-failed = Could not start impersonation
+
+# ── Multi-Organization switching (SaaS-3 L194) ────────────────────
+org-switcher-default = Organization
+org-switcher-trigger = Switch organization
+org-switcher-list = Choose organization
+org-switcher-pin-title = Switch organization
+org-switcher-pin = Organization PIN
+org-switcher-invalid-pin = Incorrect PIN or not assigned to this organization
+org-switcher-cancel = Cancel
+org-switcher-confirm = Switch
+org-selector-default = Default organization
+org-selector-label = Organization

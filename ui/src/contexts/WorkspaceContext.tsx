@@ -17,7 +17,7 @@ import {
   resolveBootStore,
   type WorkspaceDto,
 } from "@/api/workspaces";
-import { createSession, destroySession, refreshPickerTicket } from "@/api/staff";
+import { createSession, destroySession, refreshPickerTicket, switchOrganization as switchOrganizationApi } from "@/api/staff";
 import { getDeviceId } from "@/api/system";
 import { useAuth } from "@/contexts/AuthContext";
 import { requiredLocalized } from "@/frontend/shared";
@@ -81,6 +81,25 @@ export interface WorkspaceContextValue {
    * but the new user's identity.
    */
   swapSessionToken: (newUserId: string, newRoleId: string) => Promise<void>;
+  /**
+   * SaaS-3 L194: display-only label of the Organization (legal entity) the
+   * session is currently scoped to. Never used as an auth input. Optional so
+   * existing test mocks need not override it; the real provider always sets it.
+   */
+  orgLabel?: string | null;
+  /**
+   * SaaS-3 L194: set the pre-login org selection (routing hint) that the next
+   * create_session call will carry as org_id. Cleared once the session is minted.
+   * Optional for the same reason as orgLabel.
+   */
+  setPendingOrgId?: (orgId: string | null) => void;
+  /**
+   * SaaS-3 L194: re-scope the active session to a different Organization
+   * (legal entity). Full PIN re-auth; backend invalidates the old token and
+   * mints a new one (invalidate-then-mint), then updates token + display label.
+   * Optional for the same reason as orgLabel.
+   */
+  switchOrganization?: (orgId: string, pin: string) => Promise<void>;
 }
 
 /** Exported for test helpers only — always use `useWorkspace` in production code. */
@@ -145,6 +164,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const sessionTokenRef = useRef(sessionToken);
   sessionTokenRef.current = sessionToken;
+
+  // SaaS-3 L194: display-only label of the Organization (legal entity) the
+  // active session is scoped to. Never used as an auth input.
+  const [orgLabel, setOrgLabel] = useState<string | null>(null);
+  // SaaS-3 L194: pre-login org selection (routing hint) carried into the next
+  // create_session call. Cleared once the session is minted.
+  const [pendingOrgId, setPendingOrgId] = useState<string | null>(null);
+  const pendingOrgIdRef = useRef(pendingOrgId);
+  pendingOrgIdRef.current = pendingOrgId;
 
   // ADR #22: Device/terminal ID resolved once on mount.
   const [terminalId, setTerminalId] = useState('');
@@ -312,6 +340,31 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [updatePickerTicketFn],
   );
 
+  // SaaS-3 L194: switch the active Organization (legal entity) WITHOUT
+  // tearing down the workspace. The backend invalidates the old token and
+  // mints a new one (invalidate-then-mint), re-derives tenant authority from
+  // the user assignment (fail-closed), and re-runs tenant integrity. The
+  // workspace (store/instance) is unchanged — org is orthogonal to it under
+  // the single-tenant-DB model — so we only swap the token and display label.
+  //
+  // Requires a FULL PIN re-auth (no credential carryover). The backend has
+  // already invalidated the old token by the time the new one is returned, so
+  // we do not call destroySession here.
+  const switchOrganization = useCallback(
+    async (orgId: string, pin: string) => {
+      const token = sessionTokenRef.current;
+      if (!token) return;
+      const result = await switchOrganizationApi({
+        sessionToken: token,
+        orgId,
+        pin,
+      });
+      setOrgLabel(result.context.orgLabel ?? null);
+      setSessionToken(result.session_token);
+    },
+    [],
+  );
+
   // ADR #4 Phase 3: Resolve the boot store first, then load workspaces.
   // This is called once on mount (or when the picker ticket changes).
   useEffect(() => {
@@ -462,10 +515,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         type_key: tokenInstance.type_key,
         terminal_id: deviceId,
         picker_ticket: ticket,
+        ...(pendingOrgIdRef.current ? { org_id: pendingOrgIdRef.current } : {}),
       })
         .then((result) => {
           if (!cancelled) {
             setSessionToken(result.session_token);
+            setOrgLabel(result.context.orgLabel ?? null);
+            setPendingOrgId(null);
           }
         })
         .catch((err) => {
@@ -556,6 +612,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       sessionToken,
       swapSessionToken,
       terminalId,
+      orgLabel,
+      setPendingOrgId,
+      switchOrganization,
     }),
     [
       activeWorkspace,
@@ -573,6 +632,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       sessionToken,
       swapSessionToken,
       terminalId,
+      orgLabel,
+      setPendingOrgId,
+      switchOrganization,
     ],
   );
 
