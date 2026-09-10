@@ -37,6 +37,8 @@ fn offset_for_zone(tz_name: &str) -> FixedOffset {
             // Unknown zone: fall back to UTC rather than inventing an offset. A
             // corrupt or missing `locations.timezone` must never resolve a money
             // question to the wrong day.
+            // SAFETY: 00:00 is a compile-time constant inside chrono's +/-23:59:59
+            // range, so east_opt(0) is always Some.
             FixedOffset::east_opt(0).unwrap()
         }
     }
