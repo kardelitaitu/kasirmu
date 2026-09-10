@@ -621,3 +621,7 @@ pub async fn history_scoped(
         sales_total,
     })
 }
+
+#[cfg(test)]
+#[path = "customers_tests.rs"]
+mod tests;

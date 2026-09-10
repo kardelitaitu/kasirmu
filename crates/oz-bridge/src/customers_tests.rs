@@ -1,8 +1,7 @@
 use super::*;
+use crate::testing::TestBridge;
 use foundation::{Email, Phone};
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 // ── Scoped-command permission + isolation (CUST-01) ─────────────
 
@@ -39,17 +38,13 @@ fn update_args(id: &str, name: &str) -> UpdateCustomerScopedArgs {
 
 #[tokio::test]
 async fn scoped_customer_command_rejects_invalid_session() {
-    let app = tauri::test::mock_builder()
-        .manage(AppState::for_test())
-        .build(tauri::generate_context!())
-        .unwrap();
+    let state = TestBridge::new();
 
-    let result =
-        create_customer_scoped("missing-token".into(), create_args("Alice"), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = create_scoped(&state.ctx(), "missing-token", &create_args("Alice")).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 
-    let result = delete_customer_scoped("missing-token".into(), "cust-1".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = delete_scoped(&state.ctx(), "missing-token", "cust-1").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
@@ -57,7 +52,7 @@ async fn scoped_customer_command_denies_user_without_permission() {
     // A narrow custom role (no customers:* grants) — the new role-staff
     // preset includes customers:create, so a limited user must use a
     // custom role instead (0048 retirement sweep).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -68,11 +63,8 @@ async fn scoped_customer_command_denies_user_without_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         "kitchen-token".into(),
         SessionContext::new(
             "user-kitchen".into(),
@@ -85,14 +77,9 @@ async fn scoped_customer_command_denies_user_without_permission() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result =
-        create_customer_scoped("kitchen-token".into(), create_args("Alice"), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = create_scoped(&state.ctx(), "kitchen-token", &create_args("Alice")).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -101,7 +88,7 @@ async fn list_customers_scoped_denies_user_without_view_permission() {
     // must enforce the declared view permission, not just resolve the
     // store. Before the fix a valid limited session could enumerate
     // every customer (name, email, phone, notes).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -112,11 +99,8 @@ async fn list_customers_scoped_denies_user_without_view_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         "kitchen-token".into(),
         SessionContext::new(
             "user-kitchen".into(),
@@ -129,26 +113,19 @@ async fn list_customers_scoped_denies_user_without_view_permission() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = list_customers_scoped("kitchen-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = list_scoped(&state.ctx(), "kitchen-token").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn scoped_customer_write_command_targets_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let state = TestBridge::new().with_conn(conn);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        state.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -163,31 +140,22 @@ async fn scoped_customer_write_command_targets_only_the_session_store() {
         );
     }
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     // Create a customer ONLY in store A's database.
-    create_customer_scoped("store-a-token".into(), create_args("Alice"), app.state())
+    create_scoped(&state.ctx(), "store-a-token", &create_args("Alice"))
         .await
         .unwrap();
     // Writes target the session store: updating an unknown id in store A
     // rejects (isolated from any other store's data).
-    update_customer_scoped(
-        "store-a-token".into(),
-        update_args("cust-a", "Alice 2"),
-        app.state(),
+    update_scoped(
+        &state.ctx(),
+        "store-a-token",
+        &update_args("cust-a", "Alice 2"),
     )
     .await
     .unwrap_err();
 
-    let store_a = list_customers_scoped("store-a-token".into(), app.state())
-        .await
-        .unwrap();
-    let store_b = list_customers_scoped("store-b-token".into(), app.state())
-        .await
-        .unwrap();
+    let store_a = list_scoped(&state.ctx(), "store-a-token").await.unwrap();
+    let store_b = list_scoped(&state.ctx(), "store-b-token").await.unwrap();
     assert_eq!(store_a.len(), 1);
     assert_eq!(store_a[0].name, "Alice");
     assert!(
@@ -493,32 +461,19 @@ fn seed_customer_in_store(store_db: &rusqlite::Connection, id: &str, name: &str)
 
 #[tokio::test]
 async fn search_customers_scoped_rejects_invalid_session() {
-    let app = tauri::test::mock_builder()
-        .manage(AppState::for_test())
-        .build(tauri::generate_context!())
-        .unwrap();
-    let result = search_customers_scoped(
-        "missing-token".into(),
-        "Alice".into(),
-        None,
-        None,
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let state = TestBridge::new();
+    let result = search_scoped(&state.ctx(), "missing-token", "Alice", None, None).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn search_customers_scoped_is_bounded_and_store_isolated() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let state = TestBridge::new().with_conn(conn);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        state.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -533,58 +488,34 @@ async fn search_customers_scoped_is_bounded_and_store_isolated() {
         );
     }
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     // Only store A has customers; store B must not see them.
     {
-        let store_a = app
-            .state::<AppState>()
-            .db_manager
-            .open_store("store-a")
-            .unwrap();
+        let store_a = state.db_manager().open_store("store-a").unwrap();
         let db = store_a.lock().unwrap();
         seed_customer_in_store(&db, "cust-1", "Alice");
         seed_customer_in_store(&db, "cust-2", "Alicia");
         seed_customer_in_store(&db, "cust-3", "Bob");
     }
 
-    let page_a = search_customers_scoped(
-        "store-a-token".into(),
-        "Ali".into(),
-        Some(50),
-        None,
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let page_a = search_scoped(&state.ctx(), "store-a-token", "Ali", Some(50), None)
+        .await
+        .unwrap();
     assert_eq!(page_a.total, 2, "server-side search finds 2 'Ali' matches");
     assert_eq!(page_a.items.len(), 2);
 
-    let page_b = search_customers_scoped(
-        "store-b-token".into(),
-        "Ali".into(),
-        Some(50),
-        None,
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let page_b = search_scoped(&state.ctx(), "store-b-token", "Ali", Some(50), None)
+        .await
+        .unwrap();
     assert_eq!(page_b.total, 0, "store B must not see store A customers");
 }
 
 #[tokio::test]
 async fn get_customer_history_scoped_returns_profile_loyalty_and_sales() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         "store-a-token".into(),
         SessionContext::new(
             "user-owner".into(),
@@ -597,20 +528,12 @@ async fn get_customer_history_scoped_returns_profile_loyalty_and_sales() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     // Seed the store inside a scoped block so the `MutexGuard` from
     // `store_a.lock()` is dropped before the awaits below
     // (clippy::await_holding_lock).
     {
-        let store_a = app
-            .state::<AppState>()
-            .db_manager
-            .open_store("store-a")
-            .unwrap();
+        let store_a = state.db_manager().open_store("store-a").unwrap();
         let db = store_a.lock().unwrap();
         let store = Store::new(&db);
         seed_customer_in_store(&db, "cust-1", "Alice");
@@ -624,15 +547,9 @@ async fn get_customer_history_scoped_returns_profile_loyalty_and_sales() {
         .unwrap();
     }
 
-    let history = get_customer_history_scoped(
-        "store-a-token".into(),
-        "cust-1".into(),
-        None,
-        None,
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let history = history_scoped(&state.ctx(), "store-a-token", "cust-1", None, None)
+        .await
+        .unwrap();
     assert_eq!(history.customer.name, "Alice");
     let loyalty = history.loyalty.expect("loyalty account was seeded");
     assert_eq!(loyalty.points, 0);
@@ -643,14 +560,11 @@ async fn get_customer_history_scoped_returns_profile_loyalty_and_sales() {
 
 #[tokio::test]
 async fn get_customer_history_scoped_unknown_customer_is_not_found() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         "store-a-token".into(),
         SessionContext::new(
             "user-owner".into(),
@@ -663,20 +577,9 @@ async fn get_customer_history_scoped_unknown_customer_is_not_found() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = get_customer_history_scoped(
-        "store-a-token".into(),
-        "cust-missing".into(),
-        None,
-        None,
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::Core { .. })));
+    let result = history_scoped(&state.ctx(), "store-a-token", "cust-missing", None, None).await;
+    assert!(matches!(result, Err(BridgeError::Core { .. })));
 }
 
 #[tokio::test]
@@ -684,14 +587,11 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
     // CUST-11: a customer referenced by a loyalty account or sales rows
     // must NOT be silently deleted — the FK guard (foreign_keys = ON)
     // rejects the delete so no orphaned child rows can be left behind.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         "store-a-token".into(),
         SessionContext::new(
             "user-owner".into(),
@@ -704,18 +604,10 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     // Seed the customer plus BOTH reference kinds in store-a.
     {
-        let store_a = app
-            .state::<AppState>()
-            .db_manager
-            .open_store("store-a")
-            .unwrap();
+        let store_a = state.db_manager().open_store("store-a").unwrap();
         let db = store_a.lock().unwrap();
         let store = Store::new(&db);
         seed_customer_in_store(&db, "cust-1", "Alice");
@@ -728,16 +620,14 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
         .unwrap();
     }
 
-    let result = delete_customer_scoped("store-a-token".into(), "cust-1".into(), app.state()).await;
+    let result = delete_scoped(&state.ctx(), "store-a-token", "cust-1").await;
     assert!(
-        matches!(result, Err(AppError::Core { .. })),
+        matches!(result, Err(BridgeError::Core { .. })),
         "delete must be blocked by the FK guard, got: {result:?}"
     );
 
     // The customer row is retained — nothing was silently cascaded.
-    let remaining = list_customers_scoped("store-a-token".into(), app.state())
-        .await
-        .unwrap();
+    let remaining = list_scoped(&state.ctx(), "store-a-token").await.unwrap();
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].id, "cust-1");
 }
@@ -746,15 +636,12 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
 async fn delete_customer_scoped_succeeds_without_references() {
     // CUST-11 positive control: deleting an unreferenced customer in the
     // session store works and is isolated from other stores.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let state = TestBridge::new().with_conn(conn);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        state.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -768,33 +655,21 @@ async fn delete_customer_scoped_succeeds_without_references() {
             ),
         );
     }
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     {
-        let store_a = app
-            .state::<AppState>()
-            .db_manager
-            .open_store("store-a")
-            .unwrap();
+        let store_a = state.db_manager().open_store("store-a").unwrap();
         let db = store_a.lock().unwrap();
         seed_customer_in_store(&db, "cust-1", "Alice");
     }
 
-    delete_customer_scoped("store-a-token".into(), "cust-1".into(), app.state())
+    delete_scoped(&state.ctx(), "store-a-token", "cust-1")
         .await
         .unwrap();
 
-    let store_a = list_customers_scoped("store-a-token".into(), app.state())
-        .await
-        .unwrap();
+    let store_a = list_scoped(&state.ctx(), "store-a-token").await.unwrap();
     assert!(store_a.is_empty());
     // Store B was never touched by the store-A delete.
-    let store_b = list_customers_scoped("store-b-token".into(), app.state())
-        .await
-        .unwrap();
+    let store_b = list_scoped(&state.ctx(), "store-b-token").await.unwrap();
     assert!(store_b.is_empty());
 }
 
@@ -803,7 +678,7 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     // CRM-02: get_customer_scoped existed but was never exercised — pin
     // the permission gate (the legacy unscoped get_customer is not
     // registered, so this is the only reachable read-by-id path).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -814,11 +689,8 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         "kitchen-token".into(),
         SessionContext::new(
             "user-kitchen".into(),
@@ -831,11 +703,7 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = get_customer_scoped("cust-1".into(), "kitchen-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_scoped(&state.ctx(), "cust-1", "kitchen-token").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }

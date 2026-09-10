@@ -264,7 +264,3 @@ pub async fn get_customer_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "customers_tests.rs"]
-mod tests;
