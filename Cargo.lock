@@ -4524,6 +4524,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "oz-local-api"
+version = "0.0.37"
+dependencies = [
+ "axum 0.8.9",
+ "chrono",
+ "oz-api",
+ "oz-core",
+ "platform-core",
+ "rand 0.8.6",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "oz-logging"
 version = "0.0.37"
 dependencies = [
@@ -4646,6 +4665,7 @@ dependencies = [
  "oz-core",
  "oz-hal",
  "oz-lan",
+ "oz-local-api",
  "oz-logging",
  "oz-lua",
  "oz-plugin",

@@ -50,7 +50,8 @@ oz-api = { path = "crates/oz-api" }
 oz-core = { path = "crates/oz-core" }
 oz-bridge = { path = "crates/oz-bridge" }
 oz-crypto = { path = "crates/oz-crypto" }
-oz-lan = { path = "crates/oz-lan", version = "0.0.37" }
+oz-lan = { path = "crates/oz-lan" }
+oz-local-api = { path = "crates/oz-local-api" }
 oz-hal = { path = "crates/oz-hal" }
 oz-lua = { path = "crates/oz-lua" }
 oz-plugin = { path = "crates/oz-plugin" }
