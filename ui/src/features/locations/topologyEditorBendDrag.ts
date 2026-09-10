@@ -45,8 +45,12 @@ export interface TopologyBendDragDeps {
   /** Parent-owned in-flight gesture ref, also read by cancelBendDrag and the
    *  keyboard handler that decides whether a bend is in flight. */
   bendDragRef: MutableRefObject<BendGestureState | null>;
-  /** Parent-owned cleanup ref: cancelBendDrag disarms a live drag through it;
-   *  unmount disposal is the hook's own tail effect (the editor sweep is gone). */
+  /** Editor-declared mailbox by proof: cancelBendDrag is consumed above
+   *  this hook's call (keyboard-args chain via resetTransientCanvasState),
+   *  so a hook-owned handle cannot reach an earlier render position without
+   *  a deps-array TDZ; the ref carries only the mid-session cancel handle.
+   *  Unmount disposal is this hook's own tail effect (the editor sweep is
+   *  gone). */
   bendDragCleanupRef: MutableRefObject<(() => void) | null>;
   /** Parent-owned history-push mirror: the REF is a stable identity and is
    *  listed as a dep; pushHistory itself stays unlisted — it re-keys whenever

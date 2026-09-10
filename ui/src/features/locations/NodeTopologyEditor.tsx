@@ -352,8 +352,11 @@ export default function NodeTopologyEditor({
   /** Cancels an in-flight marquee when the pointer is released outside the
    *  canvas — the canvas onMouseUp never fires there, so without a
    *  document-level listener the box would linger and the next mousemove
-   *  would re-open it. Mirrors the node-drag teardown (hook-owned since
-   *  stage 4A; this marquee ref stays editor-owned for cancelMarquee). */
+   *  would re-open it. Mailbox by proof: cancelMarquee is consumed above
+   *  the pointer hook's call (frozen loadLifecycle arg), so a hook-owned
+   *  handle cannot reach an earlier render position without a deps-array
+   *  TDZ. Unmount disposal is hook-owned (tail effect); this ref carries
+   *  only the mid-session cancel handle. */
   const marqueeCleanupRef = useRef<(() => void) | null>(null);
   /** Set once a drag has actually moved the node — history is pushed on the
    *  first movement, not on mousedown, so a plain click-to-select never
@@ -382,7 +385,12 @@ export default function NodeTopologyEditor({
     pendingInsert: boolean;
   } | null>(null);
   /** Document-listener cleanup for a bend drag (minimap pattern) — the
-   *  drag must keep tracking when the pointer leaves the handle. */
+   *  drag must keep tracking when the pointer leaves the handle. Mailbox
+   *  by proof: cancelBendDrag is consumed above the bend hook's call
+   *  (keyboard-args chain via resetTransientCanvasState), so a hook-owned
+   *  handle cannot reach an earlier render position without a deps-array
+   *  TDZ. Unmount disposal is hook-owned (tail effect); this ref carries
+   *  only the mid-session cancel handle. */
   const bendDragCleanupRef = useRef<(() => void) | null>(null);
   /** Set of node ids that were just added (for scale-in animation). */
   const [freshNodeIds, setFreshNodeIds] = useState<Set<string>>(new Set());
