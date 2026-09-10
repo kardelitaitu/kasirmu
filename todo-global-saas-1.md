@@ -3820,3 +3820,26 @@ then live instrumentation):
   are memoized, and the probe + live log both pin it. Diagnostic
   removed; WorkspaceHome.tsx back to clean.
 
+---
+
+## Owner rulings ledger (2026-09-10, adopted verbatim) — cross-file index
+
+The owner's 2026-09-10 rulings were adopted verbatim and recorded in the
+boxes they govern: statutory rounding wins over store preference (E1,
+per-rate column, implementation queued) and cached-tax warn+flag (F2,
+never a silent zero) in `todo-global-saas-2.md` (tax box); entitlement
+phases C+D verified ALREADY LANDED by the concurrent session — 11 SHAs
+confirmed ancestors (R1b) — with only the caps-DTO projection (RES-1)
+remaining, in flight, same file; the Enterprise audit-retention override
+is FIXED (fixed platform default, no override) and security-event EXPORT
+is admin-gated minimal actor + date-range (queued), both in the audit box
+of `todo-global-saas-2.md`; residency is FIXED at organization creation
+(ruling only, no code) in the residency box of `todo-global-saas-3.md`;
+import-users overcount STAYS fail-closed (no relaxation) and topology
+nodes are a marker-only dimension riding the existing per-location caps —
+that one closes the downgrade box when its marker slices land (S4 + S5
+own the flip), recorded in the downgrade box of `todo-global-saas-2.md`.
+New parked item born of E1: do Lua plugins outrank statute?
+(`lua_overrides` would silently skip statutory rounding — warning-only
+for now).
+

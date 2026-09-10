@@ -198,8 +198,15 @@ deferred behind the license-server work + supervisor go.
       there as open work, not claimed done: **no sync-DB purge** (license-server
       tenant delete never touches the Postgres rows), **no self-service**
       deletion/export request path, and **backup windows outliving deletion**.
-      Residency-at-org-creation (§K) stays decided-not-implemented (no region
+      Residency-at-org-creation (§K) ~~stays decided-not-implemented (no region
       column on `legal_entities`) — unblocking it is schema+API work, a later
+      slice.~~ — **OWNER RULING 2026-09-10: residency is FIXED at organization
+      creation.** Ruling only — no code accompanies it: the region column on
+      `legal_entities`, the selection surface and the migration path remain
+      the later slice described above; what is now decided is that a tenant
+      picks residency once, at creation, and moving it later stays an
+      explicit support/migration action (the spec sentence above this box
+      already said so).
       slice.
 - [ ] **Add support/operator tooling.** Enterprise support may require scoped
       impersonation, diagnostics, tenant health, deployment version, sync health,

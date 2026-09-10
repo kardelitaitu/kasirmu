@@ -241,7 +241,7 @@ actual relationship mutation.
       card, 13 key pairs, and fixed a latent read bug where `ReceiptContent`
       snake_case met core camelCase serde, so the dev-mock content was always
       null)*.
-      — **TICKET PREFIX: STORED AND AUTHORABLE, NOT YET STAMPED (2026-09-10).**
+      — **TICKET PREFIX: STORED AND AUTHORABLE, ~~NOT YET STAMPED~~ (2026-09-10; the stamping, render and UI halves have since landed — see the NUMBERING SLICE COMPLETE block below).**
       The claim above that `ticket_prefix` greps zero is superseded.
       `5a460a87d` added `20260926_location_ticket_prefix.sql` — a `locations`
       column with the tenant-keyed partial unique index, deliberately NOT a row
@@ -272,6 +272,22 @@ actual relationship mutation.
         which is exactly the relabelling this axis's ruling forbade — so the
         **stamping-path half the todo asked for is DONE**, and no retro-stamp is
         possible or wanted for pre-existing tickets.
+      - **UI half landed 2026-09-10 — CHAIN END-TO-END CLOSED.**
+          `c53eb4421` *feat(ui): add location ticket-prefix editor and
+          retire its allowlist entries*: the editor lives in the
+          multi-store dashboard's view-details modal with a
+          frozen-at-stamping warning (the stamping ruling made visible),
+          9 ftl pairs mirrored into both locales, 15 tests; the
+          `get/set_location_ticket_prefix_scoped`
+          `ipc-parity-allowlist.json` entries were retired 27→25 in the
+          same commit — self-enforcing, because the gate auto-fails a
+          stale allowlist entry once a real caller exists, so the orphan
+          record could not quietly outlive the feature. Full chain:
+          `5a460a87d` (core column) → `fd047cbd5` (scoped IPC) →
+          `949dd1ab8` (stamping schema) → `d2ac1a2f3` (read path) →
+          `c10b36295` (chit render) → `c53eb4421` (UI editor). Cosmetic
+          follow-up: the `multi-store-prefix-*` classes are unstyled
+          (stylesheet owner's file).
       - **Fiscal/numbering management surfaces** — `b81ac5356`
         `get_document_number_sequence_scoped` + `upsert_document_number_sequence_scoped`
         in both clients + `ui/src/api/fiscal.ts` + a stateful dev-mock, then
@@ -515,10 +531,12 @@ actual relationship mutation.
       badges and the effective-period editor plus the two debts the core chain
       left documented — delete-refusal needs a message on the authoring path,
       and changing a row's tier silently empties the tier it vacates, which
-      only A3's guard would catch too late. **Still parked for an owner
-      ruling, not open work:** whether tax rounding mode is statutory or a
-      preference, and whether a failed tax IPC should block or warn (a caught
-      failure currently looks exactly like zero tax).
+       only A3's guard would catch too late. ~~**Still parked for an owner
+       ruling, not open work:**~~ *(superseded 2026-09-10 — the owner ruled on
+       both; see the OWNER RULINGS paragraph closing this box)* whether tax
+       rounding mode is statutory or a preference, and whether a failed tax IPC
+       should block or warn (a caught failure currently looks exactly like zero
+       tax).
       — **F1 LANDED 2026-09-10, ON THE REAL SCREEN — BOX CLOSED.** Two commits
       on `ui/src/features/tax/TaxConfigurationScreen.tsx` (not the 32-line
       `settings/screens` placeholder; `register.tsx` wires this one). `a9bcb1fd9`
@@ -545,9 +563,39 @@ actual relationship mutation.
       travels to the backend's scope-target check instead of being prevented in
       the form; and the tier-change confirm is a bare `window.confirm` (:207),
       serviceable but removable if the house settles on its own dialog
-      component. E1 (rounding mode statutory vs preference) and F2
-      (block-or-warn on a failed tax IPC) remain **parked for the owner**, not
-      open work — the flip rests on those being decisions, not unclaimed code.
+       component. ~~E1 (rounding mode statutory vs preference) and F2
+       (block-or-warn on a failed tax IPC) remain **parked for the owner**, not
+       open work — the flip rests on those being decisions, not unclaimed code.~~
+       — **OWNER RULINGS RECEIVED 2026-09-10, ADOPTED VERBATIM — designs
+       adopted, implementation queued:**
+       - **E1 — statutory rounding always wins over store preference.**
+         Per-rate column design (T1 dossier adopted in full):
+         `tax_rates.rounding_mode` (`TEXT DEFAULT ''` + inline CHECK) —
+         the resolver's winning row supplies rate_bps AND rounding;
+         effective mode = the row's value else the store preference;
+         slices E1-1..E1-10 are per-line per-rate; the breakdown JSON
+         stamps `rounding` + `rounding_source` so each ticket freezes its
+         rounding provenance audibly; the provenance badge gains
+         `Option<RoundingMode>`. Binding on the briefs: E1-2 MUST close
+         the sync-wire gap (`SnapshotTaxRate` serde default + pull SELECT
+         + `upsert_tax_rates` column list) or a hub-authored mode lands
+         `''` silently at branches; E1-4 must keep UPDATE bumping
+         `updated_at` (the snapshot-cache fingerprint).
+       - **F2 — cached-tax warn + flag, NEVER a silent zero.** A
+         renderer-level cache hook `useCartTax` (module Map keyed by
+         sessionToken; signature match=caution, differ=warn+estimated,
+         none=unknown; invalidated on every tax-config write). Binding
+         double-charge mitigation: a signature-differ renders the display
+         tax WITHOUT adding it to tender unless the cache is fresh;
+         F2-2 closes the third silent-zero door (a `null` sessionToken
+         resolving 0 at `ui/src/api/tax.ts:127-134`); core stamps
+         `sales.tax_estimate_note` with the client claim plus the
+         core-verified delta. Slices F2-1..F2-8.
+       - **NEW PARKED ITEM, born of E1 — do Lua plugins outrank statute?**
+         `lua_overrides` replaces DB tax rates and would silently skip
+         statutory rounding once E1 exists. Minimum now: `tracing::warn`
+         per override line (warning-only); whether an override may exceed
+         a statutory rounding mode stays parked for the owner.
 - [x] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise
@@ -561,8 +609,19 @@ actual relationship mutation.
       source at the caller layer (`815ed1ba`, `e3f0a9ad`; parity test 5-tier ×
       4-dim + lifecycle fail-closed, 16/16) — gate signatures unchanged, db
       files untouched; this is SOURCE consolidation, not call-graph rewiring.
-      Caps-DTO projection of trial/features onto the client payload remains a
-      known dev-mock-queued item.
+       Caps-DTO projection of trial/features onto the client payload ~~remains
+       a known dev-mock-queued item~~ — **re-verified 2026-09-10 by R1b: the
+       phases above were ALREADY LANDED by the concurrent session (11 SHAs
+       confirmed ancestors — including `8a13dece7` + `2eb37045a` for the
+       trial phase and `1eb5b753` / `abda8574` / `12443a1e` / `1aa67b745`
+       for per-feature grants, with `80a2168c` the precedence pin), so the
+       only remainder is the caps-DTO projection itself: `is_trial` /
+       `trial_ends_at` / per-feature grants onto the `project_capabilities`
+       payload (both clients' `commands/subscription.rs` +
+       `ui/src/api/subscription.ts` types + the contract test + dev-mock)
+       — small, additive, no migration; IN FLIGHT.** RES-2 (the "trial N
+       days left" UI) is parked pending a trial-policy scope ruling; not
+       blocking.
       — **⚠️ Read `todo-global-saas-3.md` §"Feature-flag observability" before
       starting — much of this vocabulary already exists, and a second model
       would sit beside it.** `oz_core::availability` (landed `869de0ce`)
@@ -706,7 +765,22 @@ actual relationship mutation.
         pre-commit snapshot, so two concurrent callers both pass at limit-1
         regardless. The shipped shape is `arm_creation_quota` (:177) at the gate
         and a **post-insert** veto that rolls the transaction back — the legacy
-        predicate, with the race closed, and without widening ~150 call sites.
+         predicate, with the race closed, and without widening ~150 call
+         sites. **Hardening widened 2026-09-10 to ALL quota dimensions**:
+         `202af4066` *fix(core): fold terminals, staff and warehouses into
+         the in-tx quota veto* (+218/−1, 5 veto tests, suites unmodified —
+         54/61/47/6) folded the veto into terminal, staff and warehouse
+         creation; the `create_terminal` INSERT moved INTO its transaction
+         (nested-BEGIN risk verified at all 6 call sites); the warehouse
+         arm fires only when `location_type='warehouse'` (pinned); the
+         staff veto uses the literal `count_staff_users` predicate so the
+         import-users owner nuance (gate counts `is_active=1`, import
+         inserts `is_active=0` → overcounts fails-closed) stands. The
+         last uncovered door — `profile.rs` `create_user_with_profile`,
+         the ACTUAL staff door (`commands/staff.rs:942`) — is folding
+         in flight. Combined with `9264b8f67` (locations, products,
+         instances) and the batch door `b5758c571`, no creation path
+         escapes the veto.
       - Gate evidence at `9264b8f67`: core 2892 passed / 0 failed, `cargo check`
         on app + tablet + oz-api 0 errors, `commands::data` 20,
         tablet `commands::products` 19.
@@ -717,8 +791,12 @@ actual relationship mutation.
       `workspaces_lifecycle.rs:77-90` against `count_active_kds_instances(
       store_id)`, including the bundle case where a signed payload unlocks the
       `kds` type on a tier whose static cap is 0.
-      **Still the one open item, precisely:** the box's own list names
-      **topology nodes** among the resources to "preserve … as
+       ~~**Still the one open item, precisely:**~~ *(superseded 2026-09-10 —
+       the owner ruled topology nodes = marker-only dimension riding the
+       existing per-location caps; the marker slices are in flight and this
+       record's paragraph below carries the design and the flip condition*
+       — see the OWNER RULING + IN-FLIGHT CLOSURE paragraph at the end of
+       this box). The pre-ruling text: the box's own list names
       readable/marked `over_quota`", and nothing marks them. There is no
       topology-node quota dimension, `assess_downgrade` does not count them
       (`downgrade.rs:34-38` assigns them to the workspace/topology path), and no
@@ -747,6 +825,27 @@ actual relationship mutation.
          the same assessment (`downgrade.rs:40` and `:42`). So one dimension
          counts archived rows and its neighbour does not. Tightening either side
          changes who is reported over quota after a downgrade, hence parked.
+       — **OWNER RULING + IN-FLIGHT CLOSURE (2026-09-10; the flip belongs to
+       S4+S5, not to this record).** The owner ruled topology nodes = **a
+       marker-only dimension riding the existing per-location
+       caps/suspension — NOT a new cap.** Adopted micro-design: anchor on
+       the READ FAN-OUT (`per_location_over_quota_rows`), not events —
+       event writes are wiped by `persist_over_quota_markers`'
+       clear-then-insert (`downgrade.rs:78`), and topology counts live in
+       per-store DBs unreachable from the tenant Store. The marker is one
+       row per (store, aggregate): `resource_type='topology_node'`,
+       `resource_id` = the store id, dimension `TopologyNodes` (absent
+       from `DIMENSION_ORDER`, the same deliberate shape as `KdsScreens`);
+       severity `'over'` iff ≥1 quota-suspended node or current > limit;
+       limit = the SUM of finite per-location caps (max_pos +
+       max_warehouses + max_kds); current = the non-archived count;
+       read-computed, so staleness is structurally impossible;
+       `quota_gate::quota_count` refuses `TopologyNodes` loudly (the
+       `KdsScreens` `Internal` precedent). Slices: S1 core enum + refusal,
+       S2 core counters, S3 desktop fan-out, S4 UI map (`OverQuotaCard`'s
+       hardcoded ternary MUST become a map — changing the array alone
+       would mislabel topology as warehouses), S5 records. **S1–S5 are in
+       flight; this box flips ONLY when S4 lands and S5 records.**
 - [x] **Implement offline synchronization guarantees.** Add durable outbox
       states, retries, conflict handling, idempotency, ordering, clock handling,
       and visible failure states. — **verified complete 2026-09-06** across
@@ -819,6 +918,16 @@ actual relationship mutation.
       (b) security-event EXPORT — not a format question: the trail reads the global
       identity DB while `export_audit_log_scoped` opens a store DB, so it needs an
       org-wide-vs-per-store scope decision first.
+       — **OWNER RULINGS RECEIVED 2026-09-10 (adopted verbatim):** (a)
+       **Enterprise audit-retention: FIXED — the per-contract override will
+       never exist.** `Entitlements::audit_retention_days` stays a pure tier
+       delegation and the license-server payload seam is not owed; the
+       unsigned-override rejection above is the standing rationale, not a
+       placeholder for later work. (b) **security-event EXPORT =
+       admin-gated, minimal actor + date-range filters** (implementation
+       queued). The org-wide-vs-per-store scope question is answered in its
+       minimal form — no org-wide export surface; the trail's existing
+       admin gate carries.
 - [x] **Implement the Memo lifecycle.** Ship both Memo types — Organization
       Memo (owner/admin, all registered terminals) and Location Memo
       (owner/admin/manager, one selected location — since widened to multiple
