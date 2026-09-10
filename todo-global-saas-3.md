@@ -211,6 +211,54 @@ deferred behind the license-server work + supervisor go.
 - [ ] **Add support/operator tooling.** Enterprise support may require scoped
       impersonation, diagnostics, tenant health, deployment version, sync health,
       and safe incident access without bypassing tenant isolation.
+      — **RECORD 2026-09-10 — five of six clauses landed by other sessions,
+      each re-verified at HEAD the day of writing; box stays open on tenant
+      health, in flight.** Round 1 read this phase as "correctly parked"
+      because Phases 1-2 gate every item — that was a dependency claim, not an
+      owner veto, and the gate-status-resync amendment below already
+      established the method that voids such readings: re-derive them at HEAD
+      instead of trusting the prose. The 2026-09-10 re-derivation (saas-3
+      research dossier) found the five clauses below landed, and the owner's
+      second go dispatched the sixth. Per clause:
+      (a) **Scoped impersonation** — `impersonate_user_scoped` on both
+      clients (desktop `commands/auth.rs:901`, tablet `auth.rs:853`), gated
+      on the `operator:impersonate` capability (`platform/core/src/rbac.rs:629`,
+      granted to the ADMIN preset) and enforced in-command (desktop
+      `auth.rs:912`); 1800 s session TTL (`IMPERSONATION_SESSION_TTL_SECONDS`,
+      desktop `auth.rs:882` / tablet :834); `SecurityEvent::impersonate_start`
+      audit row (desktop `auth.rs:976`; core `db/audit_security.rs:239`); UI
+      banner/revoke in `ui/src/contexts/ImpersonationContext.tsx`. Landed in
+      `6ae962b26`.
+      (b) **Diagnostics + deployment version** —
+      `explain_feature_availability_scoped` (desktop
+      `commands/subscription.rs:404`, tablet :393) rendered by
+      `ui/src/features/settings/sections/DiagnosticsSection.tsx` as one
+      verdict row per v1 feature — the denial axis (tier/quota/role/scope)
+      instead of a boolean wall (section doc comment :42-49); build version
+      via `get_deployment_info` (desktop `commands/settings.rs:1196`,
+      wrapper `ui/src/api/settings.ts:61`, rendered in the same section).
+      (c) **Sync health** — `pg_sync_status_scoped` (desktop
+      `commands/sync.rs:346`, registered in the desktop shell only); the
+      cloud `/health` endpoint reports sync queue depth, proven by
+      `cloud_health_reports_queue_depth` (`apps/cloud-server/src/main_tests.rs:280`);
+      the retryable sync pill is recorded under the **Define service health
+      contracts** box below — cross-referenced there, not re-documented.
+      (d) **Safe incident access** — security-event export on both clients
+      (`export_security_events_scoped`, desktop `commands/audit.rs:560` /
+      tablet :575): filtered core reader `5c1481d9d` → IPC in both shells
+      `500b4ac53` → gated screen control `499e71fdc`.
+      (e) **Tenant health — the one open clause.** Nothing at the hub
+      aggregates license + sync + version + verdicts per tenant (the hub
+      never sees a deployed `app_version` today). In flight: a hub
+      aggregation slice (`admin_tenant_lifecycle.go` + `admin_dashboard.go`
+      + Go tests) was dispatched the day of this record; the box flips only
+      when it lands.
+      Trap worth repeating: the session ledger's SHAs for the clause-(d)
+      chain (`642216e70`/`8ca9fe37d`/`76aaaa5f1`) no longer resolve from
+      `0.0.37` — the branch history was rebuilt at some point, and the
+      identical landings now carry different SHAs (`5c1481d9d`/`500b4ac53`/
+      `499e71fdc`, all verified reachable from HEAD). Cite HEAD-line SHAs,
+      not ledger SHAs.
 - [x] **Define service health contracts.** Add user-visible status for license
       server, sync service, payment service, and device connectivity, with clear
       retry and degraded-mode behavior.
