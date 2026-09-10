@@ -21,6 +21,15 @@ pub enum BridgeError {
         /// Human-readable message.
         message: String,
     },
+    /// Wraps any `oz_hal::HalError` (device not found, USB timeout, …)
+    /// (mirrors `AppError::Hardware`).
+    #[error("hardware error: {message}")]
+    Hardware {
+        /// Typed sub-discriminator mirroring the `HalError` variant.
+        sub_kind: oz_hal::HalErrorKind,
+        /// Human-readable error message.
+        message: String,
+    },
     /// Invalid request/argument (mirrors `AppError::Invalid`).
     #[error("invalid request: {0}")]
     Invalid(String),
@@ -63,5 +72,14 @@ impl From<rusqlite::Error> for BridgeError {
 impl From<platform_core::error::PlatformError> for BridgeError {
     fn from(e: platform_core::error::PlatformError) -> Self {
         Self::Internal(e.to_string())
+    }
+}
+
+impl From<oz_hal::HalError> for BridgeError {
+    fn from(e: oz_hal::HalError) -> Self {
+        Self::Hardware {
+            sub_kind: e.kind(),
+            message: e.to_string(),
+        }
     }
 }

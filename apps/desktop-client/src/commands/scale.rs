@@ -1,21 +1,18 @@
-use serde::Serialize;
-use tauri::State;
+//! Weight scale integration.
+//!
+//! Wave D / D3b: the bodies live in the headless `oz_bridge::scale` module.
+//! Each `#[tauri::command]` below keeps its exact name, parameter list
+//! and `Result<_, AppError>` return; the DTO moved with the bodies and is
+//! re-exported so the sibling test module still resolves it via the parent
+//! module.
 
 use oz_hal::WeightReading;
+use tauri::State;
 
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Information about a detected scale device.
-#[derive(Debug, Serialize)]
-pub struct ScaleDeviceInfo {
-    /// Vendor ID in hex (e.g. `"0x0922"`).
-    pub vendor_id: String,
-    /// Product ID in hex (e.g. `"0x8001"`).
-    pub product_id: String,
-    /// Platform device path.
-    pub device_path: String,
-}
+pub use oz_bridge::scale::ScaleDeviceInfo;
 
 /// Read scale weight (scoped).
 #[tauri::command]
@@ -23,15 +20,10 @@ pub async fn read_scale_weight_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Option<WeightReading>, AppError> {
-    state.resolve_scope(&session_token)?;
-    let scale = state.registry.scale("default").await;
-    match scale {
-        Some(s) => {
-            let reading = s.read_weight()?;
-            Ok(Some(reading))
-        }
-        None => Ok(None),
-    }
+    let ctx = state.bridge_ctx();
+    oz_bridge::scale::read_scale_weight_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// List scale devices (scoped).
@@ -40,20 +32,10 @@ pub async fn list_scale_devices_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ScaleDeviceInfo>, AppError> {
-    state.resolve_scope(&session_token)?;
-    let ids = state.registry.scale_ids().await;
-    let mut devices = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(scale) = state.registry.scale(&id).await {
-            let info = scale.device_info();
-            devices.push(ScaleDeviceInfo {
-                vendor_id: info.vendor,
-                product_id: info.model,
-                device_path: info.serial,
-            });
-        }
-    }
-    Ok(devices)
+    let ctx = state.bridge_ctx();
+    oz_bridge::scale::list_scale_devices_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

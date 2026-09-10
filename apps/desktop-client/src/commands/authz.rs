@@ -237,6 +237,7 @@ impl From<BridgeError> for AppError {
             BridgeError::PermissionDenied(message) => Self::PermissionDenied(message),
             BridgeError::InvalidSession => Self::InvalidSession,
             BridgeError::Internal(message) => Self::Internal(message),
+            BridgeError::Hardware { sub_kind, message } => Self::Hardware { sub_kind, message },
             other => Self::Internal(other.to_string()),
         }
     }

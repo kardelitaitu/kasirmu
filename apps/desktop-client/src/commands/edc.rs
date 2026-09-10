@@ -6,110 +6,33 @@ next: accept a terminal_id argument once more than one terminal can be configure
 */
 //! EDC card-terminal commands.
 //!
-//! Card-present payment through whatever terminal the operator configured.
-//! The terminal is resolved from [`AppState`]'s HAL registry rather than
-//! held on a field, so a card tender can only reach hardware that exists.
+//! Wave D / D3b: the bodies live in the headless `oz_bridge::edc` module.
+//! Each `#[tauri::command]` below keeps its exact name, parameter list
+//! and `Result<_, AppError>` return so the registered IPC surface and the
+//! serialized error shape are unchanged; it borrows a `BridgeCtx` from
+//! `AppState`, calls the bridge, and maps `BridgeError` back to `AppError`
+//! variant-for-variant. The DTOs and `DEFAULT_TERMINAL_ID` moved with the
+//! bodies and are re-exported so the sibling test module still resolves
+//! them via the parent module.
 //!
-//! With no terminal registered every command here fails with
-//! [`HalErrorKind::NotFound`]. That is deliberate: the drivers behind this
-//! surface are stubs until a vendor protocol ships, and a payment result
-//! that looks approved is worse than one that fails.
+//! Card-present payment goes through whatever terminal the operator
+//! configured; with no terminal registered every command fails closed with
+//! `AppError::Hardware` (`HalErrorKind::NotFound`), exactly as before.
 
-use serde::Serialize;
 use tauri::State;
 
-use oz_hal::{EdcPaymentResult, EdcTerminal, HalErrorKind, TerminalStatus};
-
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Registry id the card tender uses when the caller names none.
-///
-/// The startup bootstrap binds this to the earliest-created active row in
-/// `edc_terminals` (see `platform_startup::hardware::register_card_terminals`),
-/// so a store that has configured a terminal resolves here and one that has
-/// not fails closed. It is a single-terminal convention: the table has no
-/// `is_default` column, so with two rows configured the operator gets the
-/// oldest. Making the commands take a `terminal_id` is the follow-up that
-/// removes that.
-pub const DEFAULT_TERMINAL_ID: &str = "default";
-
-/// Terminal status, serialisable for the front-end.
-///
-/// `TerminalStatus` is `#[serde(rename_all = "camelCase")]`, so this emits
-/// the same `"ready" | "busy" | "offline" | "paperError" | "error"` strings
-/// the previous hand-written match produced and `ui/src/api/edc.ts` expects.
-#[derive(Debug, Serialize)]
-pub struct EdcStatusDto {
-    /// Current status as the terminal reported it.
-    pub status: TerminalStatus,
-}
-
-/// Result of a card-present sale/refund/void.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EdcResultDto {
-    /// Whether the transaction was approved.
-    pub success: bool,
-    /// Gateway / acquirer transaction id (present on success).
-    pub transaction_id: Option<String>,
-    /// Authorisation code from the card network.
-    pub auth_code: Option<String>,
-    /// Card scheme (e.g. "Visa").
-    pub card_scheme: Option<String>,
-    /// Last 4 digits of the card.
-    pub card_last4: Option<String>,
-    /// Human-readable message.
-    pub message: String,
-}
-
-impl From<EdcPaymentResult> for EdcResultDto {
-    fn from(r: EdcPaymentResult) -> Self {
-        Self {
-            success: r.success,
-            transaction_id: r.transaction_id,
-            auth_code: r.auth_code,
-            card_scheme: r.card_scheme,
-            card_last4: r.card_last4,
-            message: r.message,
-        }
-    }
-}
-
-/// Resolve the configured card terminal, or fail closed.
-///
-/// The error is `Hardware`/`NotFound` rather than `Invalid`: nothing the
-/// caller sent was wrong, the register simply has no card reader.
-async fn resolve_terminal(state: &AppState) -> Result<std::sync::Arc<dyn EdcTerminal>, AppError> {
-    state
-        .registry
-        .terminal(DEFAULT_TERMINAL_ID)
-        .await
-        .ok_or_else(|| AppError::Hardware {
-            sub_kind: HalErrorKind::NotFound,
-            message: "no card terminal configured — add one under Settings › Hardware".into(),
-        })
-}
-
-/// Parse a minor-units amount and currency from the front-end.
-fn parse_amount(amount_minor: i64, currency: &str) -> Result<foundation::Money, AppError> {
-    let parsed = currency
-        .parse::<foundation::Currency>()
-        .map_err(|_| AppError::Invalid(format!("invalid currency code: {currency}")))?;
-    Ok(foundation::Money {
-        minor_units: amount_minor,
-        currency: parsed,
-    })
-}
+pub use oz_bridge::edc::{DEFAULT_TERMINAL_ID, EdcResultDto, EdcStatusDto};
 
 /// Query the EDC terminal's current status.
 #[tauri::command]
 pub async fn edc_terminal_status(state: State<'_, AppState>) -> Result<EdcStatusDto, AppError> {
-    let terminal = resolve_terminal(&state).await?;
-    Ok(EdcStatusDto {
-        status: terminal.status().await?,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::edc::edc_terminal_status(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Process a card-present sale (authorize + capture in one call).
@@ -123,11 +46,10 @@ pub async fn edc_sale(
     amount_minor: i64,
     currency: String,
 ) -> Result<EdcResultDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let amount = parse_amount(amount_minor, &currency)?;
-    let terminal = resolve_terminal(&state).await?;
-    Ok(terminal.sale(amount).await?.into())
+    let ctx = state.bridge_ctx();
+    oz_bridge::edc::edc_sale(&ctx, &session_token, amount_minor, &currency)
+        .await
+        .map_err(Into::into)
 }
 
 /// Refund a previously captured card transaction.
@@ -139,11 +61,16 @@ pub async fn edc_refund(
     amount_minor: i64,
     currency: String,
 ) -> Result<EdcResultDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_REFUND).await?;
-    let amount = parse_amount(amount_minor, &currency)?;
-    let terminal = resolve_terminal(&state).await?;
-    Ok(terminal.refund(&transaction_id, Some(amount)).await?.into())
+    let ctx = state.bridge_ctx();
+    oz_bridge::edc::edc_refund(
+        &ctx,
+        &session_token,
+        &transaction_id,
+        amount_minor,
+        &currency,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Void a pending authorisation before capture.
@@ -153,10 +80,10 @@ pub async fn edc_void(
     state: State<'_, AppState>,
     transaction_id: String,
 ) -> Result<EdcResultDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_VOID).await?;
-    let terminal = resolve_terminal(&state).await?;
-    Ok(terminal.void(&transaction_id).await?.into())
+    let ctx = state.bridge_ctx();
+    oz_bridge::edc::edc_void(&ctx, &session_token, &transaction_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Session-scoped variant of [`edc_terminal_status`].
@@ -165,8 +92,10 @@ pub async fn edc_terminal_status_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EdcStatusDto, AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    edc_terminal_status(state).await
+    let ctx = state.bridge_ctx();
+    oz_bridge::edc::edc_terminal_status_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
