@@ -11,6 +11,7 @@ import {
   setCategoryTaxRatesScoped,
   listTaxRateRoundingModesScoped,
   type TaxRateDto,
+  type CreateTaxRateArgs,
   type TaxRateDependencyCounts,
   type RoundingModeKey,
 } from '@/api/tax';
@@ -105,6 +106,10 @@ export default function TaxConfigurationScreen() {
   // F1: the delete guard refused (the tier's last covering row). The dialog
   // offers the replacement path the backend's remedy text prescribes.
   const [deleteRefusal, setDeleteRefusal] = useState(false);
+  // F1 debt: the tier-move write stashed while the in-app <ConfirmDialog>
+  // asks consent (replaces the native window.confirm — native-dialog
+  // compliance). null = no consent pending.
+  const [pendingTierMove, setPendingTierMove] = useState<CreateTaxRateArgs | null>(null);
 
   // Refs for the Inclusive/Exclusive radio options so arrow-key navigation can
   // move focus to the newly-selected option (roving tabindex, WAI-ARIA radio).
@@ -218,6 +223,23 @@ export default function TaxConfigurationScreen() {
     // select from it, so a stale empty map must not be captured.
   }, [roundingModes]);
 
+  // Shared write tail of a save: called directly by handleSave, and by the
+  // tier-move ConfirmDialog continuation — the action on confirm is exactly
+  // the write the removed native gate used to gate.
+  const commitSave = useCallback(async (args: CreateTaxRateArgs) => {
+    if (editingId) {
+      await updateTaxRateScoped(sessionToken, { id: editingId, ...args });
+    } else {
+      await createTaxRateScoped(sessionToken, args);
+    }
+    // F2-8: the write succeeded — any cached cart-tax answer computed
+    // under the old configuration is now potentially stale. Drop it so
+    // an open POS session can never serve it as fresh.
+    invalidateCartTaxCache();
+    setShowModal(false);
+    await loadAll();
+  }, [editingId, sessionToken, loadAll]);
+
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
@@ -251,32 +273,42 @@ export default function TaxConfigurationScreen() {
       };
       // F1 debt: moving a rate between tiers empties the vacated tier's
       // default silently — warn before the write, not after the damage.
+      // Consent is asked by the in-app <ConfirmDialog> (native-dialog
+      // compliance): stash the payload and stop here — confirming continues
+      // the identical write, cancelling drops the stash (old semantics:
+      // proceed ? write : return).
       if (
         editingId &&
         originalScopeRef.current &&
         (originalScopeRef.current.legalEntityId !== (form.legalEntityId.trim() || '') ||
           originalScopeRef.current.locationId !== (form.locationId.trim() || ''))
       ) {
-        const proceed = window.confirm(requiredLocalized(l10n, 'tax-config-tier-change-warning'));
-        if (!proceed) return;
+        setPendingTierMove(args);
+        return;
       }
-      if (editingId) {
-        await updateTaxRateScoped(sessionToken, { id: editingId, ...args });
-      } else {
-        await createTaxRateScoped(sessionToken, args);
-      }
-      // F2-8: the write succeeded — any cached cart-tax answer computed
-      // under the old configuration is now potentially stale. Drop it so
-      // an open POS session can never serve it as fresh.
-      invalidateCartTaxCache();
-      setShowModal(false);
-      await loadAll();
+      await commitSave(args);
     } catch {
       addToast({ message: requiredLocalized(l10n, 'tax-config-save-error'), type: 'error' });
     } finally {
       setSaving(false);
     }
-  }, [form, editingId, sessionToken, loadAll, l10n, addToast]);
+  }, [form, editingId, l10n, addToast, commitSave]);
+
+  // Tier-move consent continuation — performs the write the operator just
+  // approved (the exact action the removed native confirm used to gate).
+  const confirmTierMove = useCallback(async () => {
+    if (!pendingTierMove) return;
+    const args = pendingTierMove;
+    setPendingTierMove(null);
+    setSaving(true);
+    try {
+      await commitSave(args);
+    } catch {
+      addToast({ message: requiredLocalized(l10n, 'tax-config-save-error'), type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  }, [pendingTierMove, commitSave, l10n, addToast]);
 
   // TAX-03/07: ask for confirmation (naming the rate) before deleting.
   // Fetches the dependency counts first so the dialog can show what
@@ -919,6 +951,19 @@ export default function TaxConfigurationScreen() {
         variant="warning"
         confirmLabel={l10n.getString('tax-config-delete-refusal-replace')}
         cancelLabel={l10n.getString('tax-config-btn-cancel')}
+      />
+
+      {/* ── Tier-move consent (F1 debt; replaces the native confirm) ── */}
+      <ConfirmDialog
+        open={pendingTierMove !== null}
+        onCancel={() => setPendingTierMove(null)}
+        onConfirm={() => void confirmTierMove()}
+        title={l10n.getString('confirm')}
+        message={l10n.getString('tax-config-tier-change-warning')}
+        variant="warning"
+        confirmLabel={l10n.getString('tax-config-btn-save')}
+        cancelLabel={l10n.getString('tax-config-btn-cancel')}
+        loading={saving}
       />
 
       {/* ── Category Tax Rates Modal ─────────────────────────────── */}
