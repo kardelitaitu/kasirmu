@@ -6,6 +6,7 @@ vi.mock('@/utils/logged-invoke', () => ({
 }));
 
 import {
+  CART_TAX_NO_SESSION_MESSAGE,
   computeCartTax,
   listTaxRatesScoped,
   createTaxRateScoped,
@@ -107,5 +108,15 @@ describe('tax.ts API contract', () => {
   it('propagates errors', async () => {
     mockInvoke.mockRejectedValue(new Error('invalid rate'));
     await expect(computeCartTax(TOKEN, [], 'IDR')).rejects.toThrow('invalid rate');
+  });
+
+  it('computeCartTax REJECTS on a null session token — the F2-2 silent-zero door', async () => {
+    mockInvoke.mockClear();
+    await expect(computeCartTax(null, [], 'IDR')).rejects.toThrow(
+      CART_TAX_NO_SESSION_MESSAGE,
+    );
+    // The door closes BEFORE the IPC: no compute command is attempted,
+    // so a caller can never mistake the missing session for a real zero.
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 });

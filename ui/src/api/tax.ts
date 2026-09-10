@@ -123,7 +123,23 @@ export interface CartTaxResult {
   hasExclusive: boolean;
 }
 
-/** Compute total tax for a set of cart lines (live preview) using the scoped variant (ADR #7). */
+/** The rejection message when computeCartTax is called without a session
+ *  token. F2-2 closes the third silent-zero door (D64 c): a null token
+ *  used to RESOLVE a claimed `{ taxMinor: 0 }`, indistinguishable from a
+ *  real computed zero. */
+export const CART_TAX_NO_SESSION_MESSAGE =
+  'cart tax unavailable: no session token (cannot compute without a session)';
+
+/** Compute total tax for a set of cart lines (live preview) using the scoped variant (ADR #7).
+ *
+ *  F2-2: a null sessionToken now REJECTS with
+ *  {@link CART_TAX_NO_SESSION_MESSAGE} instead of resolving a silent
+ *  zero, so a caller can distinguish "no tax applied" (a resolved
+ *  CartTaxResult) from "could not compute" (this rejection) — the
+ *  distinction the useCartTax failure-window classification needs.
+ *  Additive: the resolved shape is unchanged, and the failure now
+ *  lands in callers' existing catch paths (which already render a
+ *  non-claimed fallback) instead of a fabricated success. */
 export const computeCartTax = (
   sessionToken: string | null,
   lines: CartLineTaxInput[],
@@ -131,7 +147,7 @@ export const computeCartTax = (
 ): Promise<CartTaxResult> =>
   sessionToken
     ? loggedInvoke<CartTaxResult>('compute_cart_tax_scoped', { sessionToken, lines, currency })
-    : Promise.resolve({ taxMinor: 0, hasExclusive: false });
+    : Promise.reject(new Error(CART_TAX_NO_SESSION_MESSAGE));
 
 /** List all tax rates for the store resolved from a session token. ADR #7. */
 export const listTaxRatesScoped = (sessionToken: string): Promise<TaxRateDto[]> =>
