@@ -1,7 +1,18 @@
+//! Unit tests for the stock-count command bodies (Wave-C test relocation:
+//! moved out of `apps/desktop-client/src/commands/inventory_counts_tests.rs`).
+//!
+//! Mounted at the foot of `inventory_counts.rs` with `#[cfg(test)] #[path]`,
+//! so `use super::*` resolves the DTOs, args and scoped operations directly.
+//! The desktop file exercised the same behaviour through `AppState` + a Tauri
+//! mock app; here the scoped calls go straight to the bridge fns over a
+//! `TestBridge` context (the crate's `testing` harness) with sessions seeded
+//! through its shared session map and store products seeded through the
+//! harness's per-instance store directory (no tempdir handle). Error
+//! assertions are the 1:1 `AppError` -> `BridgeError` rename.
+
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 // ── Existing tests (preserved) ────────────────────────────────────
 
@@ -50,18 +61,15 @@ fn seed_staff(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn scoped_state(
+fn scoped_bridge(
     conn: rusqlite::Connection,
     token: &str,
     user_id: &str,
     role_id: &str,
     store_id: &str,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> TestBridge {
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -74,7 +82,7 @@ fn scoped_state(
             0,
         ),
     );
-    state
+    bridge
 }
 
 fn make_count_args(count_type: &str) -> CreateStockCountArgs {
@@ -84,8 +92,8 @@ fn make_count_args(count_type: &str) -> CreateStockCountArgs {
     }
 }
 
-fn create_product_in_store(state: &AppState, sku: &str, name: &str) {
-    let store_db = state.db_manager.open_store("s1").unwrap();
+fn create_product_in_store(bridge: &TestBridge, sku: &str, name: &str) {
+    let store_db = bridge.ctx().db_manager.open_store("s1").unwrap();
     let db = store_db.lock().unwrap();
     let s = Store::new(&db);
     s.create_product(
@@ -108,27 +116,19 @@ fn create_product_in_store(state: &AppState, sku: &str, name: &str) {
 #[tokio::test]
 async fn scoped_list_stock_counts_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result = list_stock_counts_scoped("bad-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_stock_counts_scoped(&bridge.ctx(), "bad-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_get_stock_count_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result = get_stock_count_scoped("bad-token".into(), "count-1".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = get_stock_count_scoped(&bridge.ctx(), "bad-token", "count-1").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Permission matrix: owner (has INVENTORY_COUNT) ────────────────
@@ -137,14 +137,9 @@ async fn scoped_get_stock_count_rejects_invalid_token() {
 async fn owner_can_create_stock_count() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result =
-        create_stock_count_scoped("tok".into(), make_count_args("full"), app.state()).await;
+    let result = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full")).await;
     assert!(result.is_ok(), "owner should create a stock count");
     let c = result.unwrap();
     assert_eq!(c.status, "draft");
@@ -155,16 +150,12 @@ async fn owner_can_create_stock_count() {
 async fn owner_can_get_stock_count_by_id() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let created = create_stock_count_scoped("tok".into(), make_count_args("cyclic"), app.state())
+    let created = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("cyclic"))
         .await
         .unwrap();
-    let fetched = get_stock_count_scoped("tok".into(), created.id.clone(), app.state()).await;
+    let fetched = get_stock_count_scoped(&bridge.ctx(), "tok", &created.id).await;
     assert!(fetched.is_ok());
     assert!(fetched.unwrap().is_some());
 }
@@ -173,20 +164,16 @@ async fn owner_can_get_stock_count_by_id() {
 async fn owner_can_list_stock_counts() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    create_stock_count_scoped("tok".into(), make_count_args("full"), app.state())
+    create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
         .await
         .unwrap();
-    create_stock_count_scoped("tok".into(), make_count_args("cyclic"), app.state())
+    create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("cyclic"))
         .await
         .unwrap();
 
-    let counts = list_stock_counts_scoped("tok".into(), app.state())
+    let counts = list_stock_counts_scoped(&bridge.ctx(), "tok")
         .await
         .unwrap();
     assert_eq!(counts.len(), 2);
@@ -196,14 +183,10 @@ async fn owner_can_list_stock_counts() {
 async fn owner_can_add_count_line() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    create_product_in_store(&state, "WG-001", "Widget");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    create_product_in_store(&bridge, "WG-001", "Widget");
 
-    let count = create_stock_count_scoped("tok".into(), make_count_args("full"), app.state())
+    let count = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
         .await
         .unwrap();
 
@@ -213,7 +196,7 @@ async fn owner_can_add_count_line() {
         product_name: "Widget".into(),
         expected_qty: 10,
     };
-    let result = add_count_line_scoped("tok".into(), args, app.state()).await;
+    let result = add_count_line_scoped(&bridge.ctx(), "tok", args).await;
     assert!(result.is_ok(), "owner should add a count line");
 }
 
@@ -221,31 +204,27 @@ async fn owner_can_add_count_line() {
 async fn owner_can_get_count_lines() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    create_product_in_store(&state, "WG-001", "Widget");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    create_product_in_store(&bridge, "WG-001", "Widget");
 
-    let count = create_stock_count_scoped("tok".into(), make_count_args("full"), app.state())
+    let count = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
         .await
         .unwrap();
 
     add_count_line_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         AddCountLineArgs {
             count_id: count.id.clone(),
             sku: "WG-001".into(),
             product_name: "Widget".into(),
             expected_qty: 10,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let lines = get_count_lines_scoped("tok".into(), count.id, app.state()).await;
+    let lines = get_count_lines_scoped(&bridge.ctx(), "tok", &count.id).await;
     assert!(lines.is_ok());
     assert_eq!(lines.unwrap().len(), 1);
 }
@@ -254,38 +233,34 @@ async fn owner_can_get_count_lines() {
 async fn owner_can_update_count_line() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    create_product_in_store(&state, "WG-001", "Widget");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    create_product_in_store(&bridge, "WG-001", "Widget");
 
-    let count = create_stock_count_scoped("tok".into(), make_count_args("full"), app.state())
+    let count = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
         .await
         .unwrap();
 
     let line = add_count_line_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         AddCountLineArgs {
             count_id: count.id.clone(),
             sku: "WG-001".into(),
             product_name: "Widget".into(),
             expected_qty: 10,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
     let result = update_count_line_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         UpdateCountLineArgs {
             line_id: line.id.clone(),
             counted_qty: Some(8),
             notes: "2 missing".into(),
         },
-        app.state(),
     )
     .await;
     assert!(result.is_ok(), "owner should update a count line");
@@ -295,39 +270,35 @@ async fn owner_can_update_count_line() {
 async fn owner_can_remove_count_line() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    create_product_in_store(&state, "WG-001", "Widget");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    create_product_in_store(&bridge, "WG-001", "Widget");
 
-    let count = create_stock_count_scoped("tok".into(), make_count_args("full"), app.state())
+    let count = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
         .await
         .unwrap();
 
     let line = add_count_line_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         AddCountLineArgs {
             count_id: count.id.clone(),
             sku: "WG-001".into(),
             product_name: "Widget".into(),
             expected_qty: 10,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
     let result = remove_count_line_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         RemoveCountLineArgs { line_id: line.id },
-        app.state(),
     )
     .await;
     assert!(result.is_ok(), "owner should remove a count line");
 
-    let lines = get_count_lines_scoped("tok".into(), count.id, app.state())
+    let lines = get_count_lines_scoped(&bridge.ctx(), "tok", &count.id)
         .await
         .unwrap();
     assert!(lines.is_empty(), "removed line should not exist");
@@ -337,27 +308,23 @@ async fn owner_can_remove_count_line() {
 async fn owner_can_complete_stock_count() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let count = create_stock_count_scoped("tok".into(), make_count_args("full"), app.state())
+    let count = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full"))
         .await
         .unwrap();
 
     let result = complete_stock_count_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         CompleteStockCountArgs {
             count_id: count.id.clone(),
         },
-        app.state(),
     )
     .await;
     assert!(result.is_ok(), "owner should complete a stock count");
 
-    let completed = get_stock_count_scoped("tok".into(), count.id, app.state())
+    let completed = get_stock_count_scoped(&bridge.ctx(), "tok", &count.id)
         .await
         .unwrap()
         .unwrap();
@@ -368,14 +335,10 @@ async fn owner_can_complete_stock_count() {
 async fn owner_can_list_stock_adjustments() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     // No adjustments yet — should return empty list.
-    let result = list_stock_adjustments_scoped("tok".into(), app.state()).await;
+    let result = list_stock_adjustments_scoped(&bridge.ctx(), "tok").await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
 }
@@ -386,15 +349,10 @@ async fn owner_can_list_stock_adjustments() {
 async fn staff_denied_create_stock_count() {
     let conn = oz_core::migrations::fresh_db();
     seed_staff(&conn);
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
 
-    let result =
-        create_stock_count_scoped("tok".into(), make_count_args("full"), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("full")).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -402,24 +360,20 @@ async fn staff_denied_add_count_line() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
 
     let result = add_count_line_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         AddCountLineArgs {
             count_id: "nonexistent".into(),
             sku: "WG-001".into(),
             product_name: "Widget".into(),
             expected_qty: 10,
         },
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -427,21 +381,17 @@ async fn staff_denied_complete_stock_count() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
 
     let result = complete_stock_count_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         CompleteStockCountArgs {
             count_id: "nonexistent".into(),
         },
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── Edge cases ────────────────────────────────────────────────────
@@ -450,13 +400,9 @@ async fn staff_denied_complete_stock_count() {
 async fn list_stock_counts_empty_when_none() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let counts = list_stock_counts_scoped("tok".into(), app.state())
+    let counts = list_stock_counts_scoped(&bridge.ctx(), "tok")
         .await
         .unwrap();
     assert!(counts.is_empty());
@@ -466,13 +412,9 @@ async fn list_stock_counts_empty_when_none() {
 async fn get_stock_count_returns_none_for_unknown() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result = get_stock_count_scoped("tok".into(), "nonexistent-id".into(), app.state()).await;
+    let result = get_stock_count_scoped(&bridge.ctx(), "tok", "nonexistent-id").await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_none());
 }
@@ -481,13 +423,9 @@ async fn get_stock_count_returns_none_for_unknown() {
 async fn create_stock_count_validates_count_type() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     let result =
-        create_stock_count_scoped("tok".into(), make_count_args("invalid_type"), app.state()).await;
+        create_stock_count_scoped(&bridge.ctx(), "tok", make_count_args("invalid_type")).await;
     assert!(result.is_err(), "invalid count type should be rejected");
 }

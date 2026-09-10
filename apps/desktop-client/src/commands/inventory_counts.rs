@@ -170,9 +170,3 @@ pub async fn list_stock_adjustments_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "inventory_counts_tests.rs"]
-mod tests;

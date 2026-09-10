@@ -191,9 +191,3 @@ pub async fn cancel_stock_transfer_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "stock_transfers_tests.rs"]
-mod tests;

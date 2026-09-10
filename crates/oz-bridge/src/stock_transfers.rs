@@ -368,3 +368,7 @@ pub async fn cancel_stock_transfer_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     Ok(Store::new(&db).cancel_transfer(id)?)
 }
+
+#[cfg(test)]
+#[path = "stock_transfers_tests.rs"]
+mod tests;

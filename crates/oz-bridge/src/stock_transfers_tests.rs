@@ -1,7 +1,18 @@
+//! Unit tests for the stock-transfer command bodies (Wave-C test relocation:
+//! moved out of `apps/desktop-client/src/commands/stock_transfers_tests.rs`).
+//!
+//! Mounted at the foot of `stock_transfers.rs` with `#[cfg(test)] #[path]`,
+//! so `use super::*` resolves the DTOs and scoped operations directly. The
+//! desktop file exercised the same behaviour through `AppState` + a Tauri
+//! mock app; here the scoped calls go straight to the bridge fns over a
+//! `TestBridge` context (the crate's `testing` harness) with sessions
+//! seeded through its shared session map and store databases resolved through
+//! the harness's per-instance store directory (no tempdir handle). Error
+//! assertions are the 1:1 `AppError` -> `BridgeError` rename.
+
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 // ── ReceivedLineInput ───────────────────────────────────────────────
 
@@ -99,15 +110,11 @@ fn seed_identity(conn: &rusqlite::Connection, user_id: &str, role_id: &str) {
     .unwrap();
 }
 
-fn scoped_test_app() -> tauri::App<tauri::test::MockRuntime> {
+fn scoped_test_bridge() -> TestBridge {
     let global = oz_core::migrations::fresh_db();
     seed_identity(&global, "transfer-owner", "role-owner");
-    let temp_dir = tempfile::tempdir().unwrap();
-    let temp_path = temp_dir.path().to_path_buf();
-    let _keep_temp_dir = Box::leak(Box::new(temp_dir));
-    let mut state = AppState::for_test_with_conn(global);
-    state.db_manager = StoreDatabaseManager::new(temp_path, oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(global);
+    bridge.sessions().write().unwrap().insert(
         "transfer-token".into(),
         SessionContext::new(
             "transfer-owner".into(),
@@ -120,25 +127,21 @@ fn scoped_test_app() -> tauri::App<tauri::test::MockRuntime> {
             0,
         ),
     );
-
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+    bridge
 }
 
 #[tokio::test]
 async fn scoped_create_derives_created_by_from_session() {
-    let app = scoped_test_app();
+    let bridge = scoped_test_bridge();
     let transfer = create_stock_transfer_scoped(
-        "transfer-token".into(),
+        &bridge.ctx(),
+        "transfer-token",
         None,
         None,
         None,
         None,
-        "session actor test".into(),
-        vec![],
-        app.state(),
+        "session actor test",
+        &[],
     )
     .await
     .unwrap();
@@ -147,8 +150,7 @@ async fn scoped_create_derives_created_by_from_session() {
 
     // Authentication is global; the store ledger must not manufacture a
     // local users row merely to satisfy the historical FK.
-    let state = app.state::<AppState>();
-    let (_, conn) = state.resolve_scope("transfer-token").unwrap();
+    let (_, conn) = bridge.ctx().resolve_scope("transfer-token").unwrap();
     let db = conn.lock().unwrap();
     let local_users: i64 = db
         .query_row(
@@ -167,13 +169,9 @@ async fn scoped_create_derives_created_by_from_session() {
 async fn scoped_transfer_reads_are_isolated_between_store_sessions() {
     let global = oz_core::migrations::fresh_db();
     seed_identity(&global, "transfer-owner", "role-owner");
-    let temp_dir = tempfile::tempdir().unwrap();
-    let temp_path = temp_dir.path().to_path_buf();
-    let _keep_temp_dir = Box::leak(Box::new(temp_dir));
-    let mut state = AppState::for_test_with_conn(global);
-    state.db_manager = StoreDatabaseManager::new(temp_path, oz_core::migrations::ALL);
+    let bridge = TestBridge::new().with_conn(global);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        bridge.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "transfer-owner".into(),
@@ -187,28 +185,24 @@ async fn scoped_transfer_reads_are_isolated_between_store_sessions() {
             ),
         );
     }
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     create_stock_transfer_scoped(
-        "store-a-token".into(),
+        &bridge.ctx(),
+        "store-a-token",
         None,
         None,
         None,
         None,
-        "store A only".into(),
-        vec![],
-        app.state(),
+        "store A only",
+        &[],
     )
     .await
     .unwrap();
 
-    let store_a = list_stock_transfers_scoped("store-a-token".into(), app.state())
+    let store_a = list_stock_transfers_scoped(&bridge.ctx(), "store-a-token")
         .await
         .unwrap();
-    let store_b = list_stock_transfers_scoped("store-b-token".into(), app.state())
+    let store_b = list_stock_transfers_scoped(&bridge.ctx(), "store-b-token")
         .await
         .unwrap();
     assert_eq!(store_a.len(), 1);
@@ -221,12 +215,8 @@ async fn scoped_transfer_denies_user_without_transfer_permission() {
     // Narrow custom role without inventory:transfer — the new role-staff
     // preset grants it (0048 retirement sweep).
     seed_identity(&global, "transfer-cashier", "role-lite");
-    let temp_dir = tempfile::tempdir().unwrap();
-    let temp_path = temp_dir.path().to_path_buf();
-    let _keep_temp_dir = Box::leak(Box::new(temp_dir));
-    let mut state = AppState::for_test_with_conn(global);
-    state.db_manager = StoreDatabaseManager::new(temp_path, oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(global);
+    bridge.sessions().write().unwrap().insert(
         "cashier-transfer-token".into(),
         SessionContext::new(
             "transfer-cashier".into(),
@@ -239,13 +229,9 @@ async fn scoped_transfer_denies_user_without_transfer_permission() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = list_stock_transfers_scoped("cashier-transfer-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = list_stock_transfers_scoped(&bridge.ctx(), "cashier-transfer-token").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── Additional CRUD tests ────────────────────────────────────────
@@ -253,60 +239,44 @@ async fn scoped_transfer_denies_user_without_transfer_permission() {
 #[tokio::test]
 async fn scoped_list_stock_transfers_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager = platform_core::StoreDatabaseManager::new(
-        temp_dir.path().to_path_buf(),
-        oz_core::migrations::ALL,
-    );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = TestBridge::new().with_conn(conn);
 
-    let result = list_stock_transfers_scoped("bad-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_stock_transfers_scoped(&bridge.ctx(), "bad-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_get_stock_transfer_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager = platform_core::StoreDatabaseManager::new(
-        temp_dir.path().to_path_buf(),
-        oz_core::migrations::ALL,
-    );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = TestBridge::new().with_conn(conn);
 
-    let result = get_stock_transfer_scoped("bad-token".into(), "any-id".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = get_stock_transfer_scoped(&bridge.ctx(), "bad-token", "any-id").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_list_stock_transfers_empty() {
-    let app = scoped_test_app();
-    let result = list_stock_transfers_scoped("transfer-token".into(), app.state()).await;
-    assert!(result.is_ok());
-    assert!(result.unwrap().is_empty());
+    let bridge = scoped_test_bridge();
+    let result = list_stock_transfers_scoped(&bridge.ctx(), "transfer-token")
+        .await
+        .unwrap();
+    assert!(result.is_empty());
 }
 
 #[tokio::test]
 async fn scoped_list_in_transit_transfers_empty() {
-    let app = scoped_test_app();
-    let result = list_in_transit_transfers_scoped("transfer-token".into(), app.state()).await;
-    assert!(result.is_ok());
-    assert!(result.unwrap().is_empty());
+    let bridge = scoped_test_bridge();
+    let result = list_in_transit_transfers_scoped(&bridge.ctx(), "transfer-token")
+        .await
+        .unwrap();
+    assert!(result.is_empty());
 }
 
 #[tokio::test]
 async fn scoped_get_stock_transfer_not_found() {
-    let app = scoped_test_app();
-    let result =
-        get_stock_transfer_scoped("transfer-token".into(), "nonexistent".into(), app.state()).await;
-    assert!(result.is_ok());
-    assert!(result.unwrap().is_none());
+    let bridge = scoped_test_bridge();
+    let result = get_stock_transfer_scoped(&bridge.ctx(), "transfer-token", "nonexistent")
+        .await
+        .unwrap();
+    assert!(result.is_none());
 }
