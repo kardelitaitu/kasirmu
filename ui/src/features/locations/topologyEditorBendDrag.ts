@@ -195,8 +195,8 @@ export function useTopologyEditorBendDrag(deps: TopologyBendDragDeps): {
   }, [setWires, pushHistoryRef]);
 
   // The hook registers its own unmount cleanup: since the editor's listener
-  // sweep was retired for this ref it is the SOLE unmount disposer (the sweep
-  // keeps only the add-node timers now). The disposer is idempotent
+  // sweep was retired it is the SOLE unmount disposer (the add-node hook
+  // clears its own timers at unmount). The disposer is idempotent
   // (removeEventListener + ref-nulling only), so cancelBendDrag's mid-session
   // call stays safe. bendDragCleanupRef is a parent-owned stable ref identity,
   // listed per the linter's demand — a no-op for churn since the ref object

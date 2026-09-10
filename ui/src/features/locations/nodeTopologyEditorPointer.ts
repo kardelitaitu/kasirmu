@@ -27,8 +27,8 @@
 //! The hook now registers effects of its own: one per cleanup ref it
 //! writes (drag/pan — hook-local since stage 4A — and marquee, still parent-owned),
 //! each firing that ref's disposer at unmount. Since stage 4A these are the sole
-//! unmount disposers — the editor's sweep is retired and clears only the
-//! add-node timers (every disposer is a functional no-op on second invocation).
+//! unmount disposers — the editor's sweep is retired and the add-node hook
+//! drains its own timers (every disposer is a functional no-op on second invocation).
 //! Owns the seven gestures the canvas element itself receives: handleCanvasMouseMove
 //! (node-drag feed + marquee rect tracking + connection snap-to-port, including the
 //! hoveredTarget identity-preserve rule that keeps memoized cards from re-rendering),
@@ -313,7 +313,7 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
     dismissPicker,
   } = deps;
   // Stage 4A: the drag/pan teardown refs are hook-owned — the editor neither
-  // declares nor invokes them any more (its sweep keeps only add-node timers).
+  // declares nor invokes them any more (the add-node hook clears its own timers).
   const panCleanupRef = useRef<(() => void) | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
 
@@ -1068,8 +1068,8 @@ export function useTopologyEditorPointer(deps: TopologyPointerDeps): {
   };
 
   // The hook registers its own unmount cleanups: since stage 4A they are the
-  // sole unmount disposers — the editor sweep no longer invokes these refs (it
-  // clears only the add-node timers). Every disposer below is a functional
+  // sole unmount disposers — the editor sweep is retired entirely (the add-node
+  // hook clears its own timers). Every disposer below is a functional
   // no-op on second invocation (removeEventListener + ref-nulling /
   // constant-reset writes; the pan disposer's setPanGestureActive(false) is a
   // constant-valued setState that React bails out via Object.is, and at unmount

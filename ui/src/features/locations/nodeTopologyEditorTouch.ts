@@ -94,7 +94,7 @@ export function useTopologyEditorTouch(deps: TopologyTouchDeps): {
     finalizeNodeDrag,
   } = deps;
   // Stage 4A: the teardown ref is hook-owned — the editor neither declares nor
-  // invokes it any more (its sweep keeps only the add-node timers).
+  // invokes it any more (the add-node hook clears its own timers at unmount).
   const touchCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Touch gestures (pointer parity for tablets) ────────────────
@@ -312,8 +312,8 @@ export function useTopologyEditorTouch(deps: TopologyTouchDeps): {
   };
 
   // The hook registers its own unmount cleanup, which since stage 4A is the
-  // sole unmount disposer — the editor sweep no longer invokes this ref (it
-  // clears only the add-node timers). The disposer is idempotent
+  // sole unmount disposer — the editor sweep is retired entirely (the add-node
+  // hook clears its own timers at unmount). The disposer is idempotent
   // (removeEventListener + ref-nulling only, every reader optional-call), so
   // the second invocation no-ops.
   useEffect(() => () => { touchCleanupRef.current?.(); }, []);
