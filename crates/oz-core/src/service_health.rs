@@ -318,20 +318,21 @@ impl LicenseHealthBody {
         if !self.db_connected {
             out.push("database");
         }
-        if let Some(smtp) = &self.smtp {
-            if smtp.configured && !smtp.verified {
-                out.push("smtp");
-            }
+        if let Some(smtp) = &self.smtp
+            && smtp.configured
+            && !smtp.verified
+        {
+            out.push("smtp");
         }
-        if let Some(p) = &self.paddle {
-            if !p.secret_configured || !p.price_tiers_configured {
-                out.push("paddle");
-            }
+        if let Some(p) = &self.paddle
+            && (!p.secret_configured || !p.price_tiers_configured)
+        {
+            out.push("paddle");
         }
-        if let Some(m) = &self.midtrans {
-            if !m.server_key_configured || !m.price_tiers_configured {
-                out.push("midtrans");
-            }
+        if let Some(m) = &self.midtrans
+            && (!m.server_key_configured || !m.price_tiers_configured)
+        {
+            out.push("midtrans");
         }
         if self.rsa.as_ref().is_some_and(|g| !g.configured) {
             out.push("rsa");

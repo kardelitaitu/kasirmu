@@ -239,6 +239,7 @@ impl Entitlements {
     /// `QuotaDimension::limit_for` on the same tier this instance
     /// carries.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn availability_facts<'a>(
         &'a self,
         feature: AvailabilityFeature,

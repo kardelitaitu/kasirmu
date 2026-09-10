@@ -79,7 +79,7 @@ fn location_locale_beats_the_entity_and_the_organization() {
     insert_location(&store, "loc-ent", "USD", "UTC", "id-ID");
     insert_entity(&store, "ent-1", "default", "ID", "en-GB", "+07:00", "GBP");
     link_location(&store, "loc-ent", "ent-1");
-    Settings::set(&store.conn, keys::UI_LOCALE, "ja-JP").unwrap();
+    Settings::set(store.conn, keys::UI_LOCALE, "ja-JP").unwrap();
     let cfg = store.regional_config_for_location("loc-ent").unwrap();
     assert_eq!(cfg.locale.value, "id-ID");
     assert_eq!(cfg.locale.scope, ConfigScope::Location);
@@ -105,7 +105,7 @@ fn blank_location_locale_inherits_the_entity() {
 fn organization_locale_is_the_last_named_scope() {
     let store = store();
     insert_location(&store, "loc-org", "USD", "UTC", "");
-    Settings::set(&store.conn, keys::UI_LOCALE, "id").unwrap();
+    Settings::set(store.conn, keys::UI_LOCALE, "id").unwrap();
     let cfg = store.regional_config_for_location("loc-org").unwrap();
     assert_eq!(cfg.locale.value, "id");
     assert_eq!(cfg.locale.scope, ConfigScope::Organization);
@@ -119,7 +119,7 @@ fn organization_currency_default_is_read() {
     // column with no stated precedence between them.
     let store = store();
     insert_location(&store, "loc-org-cur", "USD", "UTC", "");
-    Settings::set(&store.conn, keys::DEFAULT_CURRENCY, "VND").unwrap();
+    Settings::set(store.conn, keys::DEFAULT_CURRENCY, "VND").unwrap();
     let cfg = store.regional_config_for_location("loc-org-cur").unwrap();
     // NOT NULL column default on the location still shadows the org default —
     // see the design's "inherit is unrepresentable" note.
@@ -159,7 +159,7 @@ fn entity_with_no_regional_values_falls_through_instead_of_winning_blank() {
     insert_location(&store, "loc-empty-ent", "USD", "UTC", "");
     insert_entity(&store, "ent-blank", "default", "", "", "", "");
     link_location(&store, "loc-empty-ent", "ent-blank");
-    Settings::set(&store.conn, keys::UI_LOCALE, "ar-AE").unwrap();
+    Settings::set(store.conn, keys::UI_LOCALE, "ar-AE").unwrap();
     let cfg = store.regional_config_for_location("loc-empty-ent").unwrap();
     assert_eq!(cfg.locale.value, "ar-AE");
     assert_eq!(cfg.locale.scope, ConfigScope::Organization);

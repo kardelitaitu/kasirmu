@@ -109,7 +109,7 @@ impl DocumentKind {
             "receipt" => Ok(Self::Receipt),
             "invoice" => Ok(Self::Invoice),
             other => Err(CoreError::Validation {
-                field: "document_kind".into(),
+                field: "document_kind",
                 message: format!("document_kind must be receipt or invoice; got {other:?}"),
             }),
         }
@@ -148,7 +148,7 @@ impl ResetPeriod {
             "monthly" => Ok(Self::Monthly),
             "yearly" => Ok(Self::Yearly),
             other => Err(CoreError::Validation {
-                field: "reset_period".into(),
+                field: "reset_period",
                 message: format!(
                     "reset_period must be never, daily, monthly or yearly; got {other:?}"
                 ),
@@ -205,7 +205,7 @@ impl crate::db::Store<'_> {
         let kind = DocumentKind::parse(document_kind)?.as_str();
         if padding < 0 {
             return Err(CoreError::Validation {
-                field: "padding".into(),
+                field: "padding",
                 message: format!("padding must not be negative, got {padding}"),
             });
         }
@@ -235,7 +235,6 @@ impl crate::db::Store<'_> {
     }
 
     /// Read the series for one entity/kind, if configured.
-    #[must_use]
     pub fn document_number_sequence(
         &self,
         legal_entity_id: &str,

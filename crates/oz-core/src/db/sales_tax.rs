@@ -55,15 +55,15 @@ impl Store<'_> {
                 |row| row.get(0),
             )
             .ok();
-        if let Some(category_id) = category_id {
-            if let Ok(mut cat_ids) = self.get_category_tax_rates(&category_id) {
-                rate_ids.append(&mut cat_ids);
-            }
+        if let Some(category_id) = category_id
+            && let Ok(mut cat_ids) = self.get_category_tax_rates(&category_id)
+        {
+            rate_ids.append(&mut cat_ids);
         }
-        if let Ok(Some(default)) = self.get_default_tax_rate() {
-            if !rate_ids.iter().any(|id| id == &default.id) {
-                rate_ids.push(default.id.clone());
-            }
+        if let Ok(Some(default)) = self.get_default_tax_rate()
+            && !rate_ids.iter().any(|id| id == &default.id)
+        {
+            rate_ids.push(default.id.clone());
         }
         for id in &rate_ids {
             if let Ok(Some(mode)) = self.tax_rate_rounding_mode(id) {

@@ -179,9 +179,8 @@ fn check_case(case: &Case) {
             .min_by_key(|r| rank(**r))
             .expect("non-empty subset");
         let verdict = explain_availability(&facts_with(case, &set));
-        assert_eq!(
-            verdict.available,
-            false,
+        assert!(
+            !verdict.available,
             "{} on {}: denial set {:?} reported available",
             case.feature.as_str(),
             case.label,

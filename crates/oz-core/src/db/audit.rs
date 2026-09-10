@@ -444,7 +444,7 @@ impl Store<'_> {
     ) -> Result<(Vec<AuditEntry>, u64, bool), CoreError> {
         let bounded = limit.clamp(1, 200);
 
-        let cursor = before_created_at.and_then(|ct| before_id.map(|id| (ct, id)));
+        let cursor = before_created_at.zip(before_id);
         let (where_sql, mut params, idx) =
             build_audit_where(outcome, query, actions, None, None, None, cursor);
 

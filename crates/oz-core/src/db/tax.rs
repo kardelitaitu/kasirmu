@@ -323,6 +323,7 @@ impl Store<'_> {
     /// elsewhere leaves the old tier without a default. That is correct — no row
     /// of that tier claims to be the default any more — and [`Self::list_
     /// tax_rate_scopes`] shows it, but nothing undoes it.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_tax_rate_scoped(
         &self,
         id: &str,

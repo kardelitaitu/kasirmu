@@ -79,7 +79,7 @@ pub const SECURITY_ACTION_USER_UPDATE: &str = "user.update";
 ///
 /// A new security action must be added HERE as well as getting a
 /// constructor, or its rows are written and then never readable.
-pub const SECURITY_ACTIONS: &[&'static str] = &[
+pub const SECURITY_ACTIONS: &[&str] = &[
     SECURITY_ACTION_LOGIN,
     SECURITY_ACTION_LOGIN_FAILED,
     SECURITY_ACTION_LOGOUT,

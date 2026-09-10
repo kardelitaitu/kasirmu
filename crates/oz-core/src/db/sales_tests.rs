@@ -4343,7 +4343,8 @@ fn statutory_truncate_outranks_the_half_up_preference_in_the_sale() {
     )
     .unwrap();
     seed_product_with_category(&conn, "COFFEE", None);
-    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
 
     // 3335 * 1000 / 10000 = 333.5: HalfUp gives 334, truncate gives 333.
     let mut sale = make_single_line_sale("COFFEE", 1, 3335);
@@ -4372,7 +4373,8 @@ fn statutory_truncate_outranks_the_preference_in_the_cart_preview() {
     )
     .unwrap();
     seed_product_with_category(&conn, "COFFEE", None);
-    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
 
     // The preview and the receipt must round the same way, or they disagree
     // about what the customer owes (the scope-preview contract, extended to
@@ -4394,7 +4396,8 @@ fn empty_directive_keeps_the_pre_e1_output_and_stamps_preference() {
     let s = store(&conn);
     let rate = seed_tax_rate(&conn, "VAT 10%", 1000, true, false);
     seed_product_with_category(&conn, "COFFEE", None);
-    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
 
     // 3335 * 1000 / 10000 = 333.5 → HalfUp 334: the same answer the pre-E1
     // code produced for this shape (the zero-behavior-change invariant; the
@@ -4426,7 +4429,8 @@ fn lua_override_skips_a_statutory_directive_and_stamps_preference() {
     )
     .unwrap();
     seed_product_with_category(&conn, "COFFEE", None);
-    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
 
     let mut sale = make_single_line_sale("COFFEE", 1, 3335);
     s.compute_sale_tax(
