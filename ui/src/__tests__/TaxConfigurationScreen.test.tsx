@@ -25,10 +25,20 @@ const SAMPLE_CAT_TAX_RATES = [
   { category_id: 'cat-1', tax_rate_ids: ['tax-1'] },
 ];
 
-const { invokeMock } = vi.hoisted(() => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  invokeMock: vi.fn() as any,
-}));
+const { invokeMock, setRoundingModesMock, getRoundingModesMock } = vi.hoisted(() => {
+  // Hoisted closure state: the invokeMock implementation (defined in
+  // beforeEach, after this runs) must read what tests stage, so the
+  // variable lives HERE and both directions go through accessors.
+  let roundingModesMock: Record<string, string | null> = {};
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invokeMock: vi.fn() as any,
+    setRoundingModesMock: (v: Record<string, string | null>) => {
+      roundingModesMock = v;
+    },
+    getRoundingModesMock: () => roundingModesMock,
+  };
+});
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
@@ -37,6 +47,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 beforeEach(() => {
   invokeMock.mockClear();
   resetUnmatchedInvokes();
+  setRoundingModesMock({});
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd === 'list_tax_rates_scoped') return Promise.resolve(SAMPLE_TAX_RATES);
     if (cmd === 'list_categories' || cmd === 'list_categories_scoped') return Promise.resolve(SAMPLE_CATEGORIES);
@@ -46,6 +57,9 @@ beforeEach(() => {
     if (cmd === 'delete_tax_rate_scoped') return Promise.resolve(undefined);
     if (cmd === 'get_tax_rate_dependency_counts_scoped') return Promise.resolve({ products: 0, categories: 0, sale_lines: 0 });
     if (cmd === 'set_category_tax_rates_scoped') return Promise.resolve(undefined);
+    if (cmd === 'list_tax_rate_rounding_modes_scoped') {
+      return Promise.resolve(getRoundingModesMock());
+    }
     recordUnmatchedInvoke(cmd);
     return Promise.reject(new Error(`Unknown command: ${cmd}`));
   });
@@ -512,5 +526,47 @@ describe('TaxConfigurationScreen', () => {
       expect(invokeMock).not.toHaveBeenCalledWith('create_tax_rate_scoped', expect.anything());
     });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+// ── E1-8: rounding provenance badge (over the E1-5 batch read) ──
+
+describe('TaxConfigurationScreen rounding provenance (E1-8)', () => {
+  beforeEach(() => {
+    invokeMock.mockClear();
+    resetUnmatchedInvokes();
+    setRoundingModesMock({});
+  });
+
+  it('badge falls back to the store preference when the directive is null', async () => {
+    setRoundingModesMock({ 'tax-1': null, 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await screen.findAllByText(/store preference/i);
+    // The preference value is surfaced, not just a generic label.
+    expect(screen.getAllByText(/Rounding: half_up \(store preference\)/).length).toBe(2);
+  });
+
+  it('badge shows the statutory directive when one is stored', async () => {
+    setRoundingModesMock({ 'tax-1': 'truncate', 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await screen.findAllByText(/statutory/i);
+    expect(screen.getByText('Rounding: truncate (statutory)')).toBeInTheDocument();
+    expect(screen.getAllByText(/store preference/i).length).toBe(1);
+  });
+
+  it('a failed batch read degrades to the preference label, never a fabricated directive', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tax_rate_rounding_modes_scoped') return Promise.reject(new Error('down'));
+      if (cmd === 'list_tax_rates_scoped') return Promise.resolve(SAMPLE_TAX_RATES);
+      if (cmd === 'list_categories' || cmd === 'list_categories_scoped') return Promise.resolve(SAMPLE_CATEGORIES);
+      if (cmd === 'list_category_tax_rates_scoped') return Promise.resolve(SAMPLE_CAT_TAX_RATES);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await screen.findAllByText(/store preference/i);
+    expect(screen.queryByText(/statutory/i)).not.toBeInTheDocument();
   });
 });

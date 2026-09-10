@@ -9,11 +9,14 @@ import {
   getTaxRateDependencyCountsScoped,
   listCategoryTaxRatesScoped,
   setCategoryTaxRatesScoped,
+  listTaxRateRoundingModesScoped,
   type TaxRateDto,
   type TaxRateDependencyCounts,
+  type RoundingModeKey,
 } from '@/api/tax';
 import { listCategoriesScoped, type CategoryDto } from '@/api/products';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
@@ -77,6 +80,15 @@ export default function TaxConfigurationScreen() {
   const [loadingDeleteCounts, setLoadingDeleteCounts] = useState(false);
   // Guards against a stale counts response if the user switches rate mid-flight.
   const pendingDeleteIdRef = useRef<string | null>(null);
+  // E1-8: the store's tax rounding preference (per-row fallback display).
+  // Optional read: the screen's existing tests render without a provider,
+  // and the preference only refines the null-directive label.
+  const settingsCtx = useOptionalSettings();
+  const preferenceMode = settingsCtx?.settings.receipt.taxRoundingMode ?? 'half_up';
+  // E1-8: per-rate statutory directives, E1-5 batch read. A missing entry
+  // (fetch failed) renders the same preference label as null — but
+  // nothing invents a directive that was never signed.
+  const [roundingModes, setRoundingModes] = useState<Record<string, RoundingModeKey | null>>({});
   // F1: the tier the edit dialog opened with, so a changed tier can warn —
   // the backend move leaves the vacated tier without a default silently.
   const originalScopeRef = useRef<{ legalEntityId: string; locationId: string } | null>(null);
@@ -140,6 +152,28 @@ export default function TaxConfigurationScreen() {
   }, [sessionToken]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // E1-8: refresh the batch rounding read whenever the rate list changes.
+  // Best-effort by contract — a failure leaves the previous map, whose
+  // missing entries render the preference (the E1-5 null = preference
+  // semantics), never a fabricated directive.
+  useEffect(() => {
+    if (rates.length === 0) {
+      setRoundingModes({});
+      return;
+    }
+    let cancelled = false;
+    listTaxRateRoundingModesScoped(sessionToken, rates.map((r) => r.id))
+      .then((modes) => {
+        if (!cancelled) setRoundingModes(modes);
+      })
+      .catch(() => {
+        if (!cancelled) setRoundingModes({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rates, sessionToken]);
 
   // ── Tax rate CRUD ───────────────────────────────────────────────
 
@@ -437,6 +471,22 @@ export default function TaxConfigurationScreen() {
                             : s === 'legal_entity'
                               ? l10n.getString('tax-config-scope-legal-entity', { id: r.scope?.legalEntityId ?? '' })
                               : l10n.getString('tax-config-scope-global');
+                          return (
+                            <Badge variant="default" size="sm" style={{ marginLeft: 'var(--space-2)' }}>
+                              {label}
+                            </Badge>
+                          );
+                        })()}
+                        {(() => {
+                          // E1-8: effective rounding provenance. A statutory
+                          // directive (half_up/truncate) shows as its own badge;
+                          // null = the preference applies, and the badge states
+                          // WHICH preference value is in effect instead of
+                          // inventing a per-row directive that was never stored.
+                          const mode = roundingModes[r.id] ?? null;
+                          const label = mode
+                            ? l10n.getString('tax-config-rounding-statutory', { mode })
+                            : l10n.getString('tax-config-rounding-preference', { mode: preferenceMode });
                           return (
                             <Badge variant="default" size="sm" style={{ marginLeft: 'var(--space-2)' }}>
                               {label}

@@ -85,3 +85,7 @@ tax-config-delete-deps-categories = { $count ->
     [one] 1 category assignment
    *[other] { $count } category assignments
 }
+
+# E1-8: per-rate rounding provenance (statutory directive vs store preference)
+tax-config-rounding-statutory = Rounding: { $mode } (statutory)
+tax-config-rounding-preference = Rounding: { $mode } (store preference)

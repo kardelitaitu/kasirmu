@@ -84,4 +84,8 @@ tax-config-delete-deps-categories = { $count ->
    *[other] { $count } penugasan kategori
 }
 
+# E1-8: per-rate rounding provenance (statutory directive vs store preference)
+tax-config-rounding-statutory = Pembulatan: { $mode } (statutori)
+tax-config-rounding-preference = Pembulatan: { $mode } (preferensi toko)
+
 # ── Multi-Store ──
