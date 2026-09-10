@@ -18,16 +18,29 @@
 //! therefore a faithful pass-through of the **stored** string — it never
 //! re-derives or formats an offset on this side of the boundary, and the
 //! front-end must not either.
+//!
+//! Wave A / S6: the bodies now live in the headless `oz_bridge::regional`
+//! module. Each `#[tauri::command]` below keeps its exact name, parameter
+//! list and `Result<_, AppError>` return so the registered IPC surface and
+//! the serialized error shape are unchanged; it borrows a `BridgeCtx` from
+//! `AppState`, calls the bridge, and maps `BridgeError` back to `AppError`
+//! variant-for-variant. The write payload moved with the body and is
+//! re-exported so `use super::*` in `regional_tests.rs` still resolves it.
+//! The `settings:read` / `settings:edit` gates — including the ADR #47
+//! location-resource scoping on the write — run inside the bridge, in the
+//! same order as before.
 
-use oz_core::db::assignments::ScopeType;
-use oz_core::{Store, permissions};
 use tauri::State;
 
-use crate::commands::authz::{
-    require_permission_for_session, require_permission_for_session_resource,
-};
 use crate::error::AppError;
 use crate::state::AppState;
+
+// Retained for the sibling test module, which reaches it through
+// `use super::*`; the command bodies no longer name it.
+#[allow(unused_imports)]
+use oz_core::Store;
+
+pub use oz_bridge::regional::SetRegionalConfig;
 
 /// Read the effective regional configuration for one location of the
 /// session's store (regional slice 2, saas-2 design slice queue #2).
@@ -46,14 +59,10 @@ pub async fn get_regional_config_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<oz_core::RegionalConfig, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    let config = store.regional_config_for_location(&location_id)?;
-    Ok(config)
+    let ctx = state.bridge_ctx();
+    oz_bridge::regional::get_scoped(&ctx, &session_token, &location_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Write the regional configuration for one location of the session's
@@ -80,49 +89,10 @@ pub async fn set_regional_config_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<oz_core::RegionalConfig, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    require_permission_for_session_resource(
-        &state,
-        &session,
-        permissions::SETTINGS_EDIT,
-        ScopeType::Location,
-        &location_id,
-    )
-    .await?;
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    let config = store.update_regional_config_for_location(
-        &location_id,
-        &config.locale,
-        &config.timezone,
-        &config.currency,
-        &config.country_code,
-    )?;
-    Ok(config)
-}
-
-/// The write payload for `set_regional_config_scoped`. Field names match the
-/// axis names in `locations`/`legal_entities` (snake_case on the wire, like
-/// the read model); "" means "clear, inherit from the scope above".
-#[derive(serde::Deserialize)]
-pub struct SetRegionalConfig {
-    /// Locale override (BCP-47); blank to inherit.
-    #[serde(default)]
-    pub locale: String,
-    /// Timezone (IANA preset or the legacy `UTC` sentinel); blank clears
-    /// the column so the chain inherits from the scope above.
-    #[serde(default)]
-    pub timezone: String,
-    /// Currency override (ISO-4217 alpha-3); blank to inherit.
-    #[serde(default)]
-    pub currency: String,
-    /// Market anchor (ISO-3166 alpha-2), resolved through the linked legal
-    /// entity; blank leaves the entity's anchor untouched.
-    #[serde(default)]
-    pub country_code: String,
+    let ctx = state.bridge_ctx();
+    oz_bridge::regional::set_scoped(&ctx, &session_token, &location_id, &config)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
