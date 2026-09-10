@@ -9,7 +9,7 @@ next: none | perf: batch query documented
 use rusqlite::params;
 
 use crate::error::CoreError;
-use crate::tax_rate::TaxRate;
+use crate::tax_rate::{RoundingMode, TaxRate};
 
 use super::Store;
 
@@ -542,6 +542,73 @@ impl Store<'_> {
         Ok(out)
     }
 
+    /// The statutory rounding directive of each named rate row, in one read
+    /// (E1-2, owner ruling 2026-09-10: statutory rounding wins over the store
+    /// preference).
+    ///
+    /// `Some(mode)` = the row carries a statutory directive that outranks the
+    /// preference; `None` = `''` or an id the query did not match — unknown and
+    /// absent read identically as "the preference applies", because a caller
+    /// resolved those rates from live rows a moment earlier and must not have
+    /// the lookup turn into a second failure mode.
+    ///
+    /// The spellings are exactly `RoundingMode`'s serde `snake_case` names,
+    /// pinned to this alphabet by the 20260929 CHECK — the schema refuses
+    /// anything else, so an unparseable value here is hand-edited data and is
+    /// refused loudly (the `tax_rate_scope` precedent: an unreadable row is an
+    /// error, not a guess about money). Ids are chunked well below SQLite's
+    /// `SQLITE_MAX_VARIABLE_NUMBER` (the PROD-12 batch bound).
+    pub fn list_tax_rate_rounding_modes(
+        &self,
+        rate_ids: &[&str],
+    ) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, CoreError> {
+        let mut out: std::collections::HashMap<String, Option<RoundingMode>> =
+            rate_ids.iter().map(|id| ((*id).to_owned(), None)).collect();
+        for chunk in rate_ids.chunks(500) {
+            let placeholders = (1..=chunk.len())
+                .map(|i| format!("?{i}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sql = format!(
+                "SELECT id, rounding_mode FROM tax_rates \
+                 WHERE is_active = 1 AND id IN ({placeholders})"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            for (id, raw) in rows {
+                let directive = match raw.as_str() {
+                    "" => None,
+                    "half_up" => Some(RoundingMode::HalfUp),
+                    "truncate" => Some(RoundingMode::Truncate),
+                    other => {
+                        return Err(CoreError::Validation {
+                            field: "rounding_mode",
+                            message: format!(
+                                "tax rate {id} stores rounding_mode {other:?}, which is \
+                                 outside the statutory alphabet; the 20260929 CHECK refuses \
+                                 writes of it, so this is hand-edited data"
+                            ),
+                        });
+                    }
+                };
+                out.insert(id, directive);
+            }
+        }
+        Ok(out)
+    }
+
+    /// The statutory rounding directive of ONE rate row — the E1-2
+    /// convenience over [`Self::list_tax_rate_rounding_modes`]. `None` = no
+    /// directive, the store preference applies.
+    pub fn tax_rate_rounding_mode(&self, rate_id: &str) -> Result<Option<RoundingMode>, CoreError> {
+        self.list_tax_rate_rounding_modes(std::slice::from_ref(&rate_id))
+            .map(|modes| modes.get(rate_id).cloned().flatten())
+    }
+
     /// Count every reference to a tax rate (TAX-03).
     ///
     /// Returns how many products, categories, and historical sale lines
@@ -928,7 +995,8 @@ impl Store<'_> {
 
         let mut stmt = self.conn.prepare(
             "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at,
-                    legal_entity_id, location_id, effective_from, effective_to
+                    legal_entity_id, location_id, effective_from, effective_to,
+                    rounding_mode
              FROM tax_rates
              WHERE is_active = 1
                AND ( location_id = ?1
@@ -951,6 +1019,7 @@ impl Store<'_> {
                     location_id: row.get("location_id")?,
                     effective_from: row.get("effective_from")?,
                     effective_to: row.get("effective_to")?,
+                    rounding_mode: row.get("rounding_mode")?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1299,6 +1368,12 @@ struct TaxRateCandidate {
     location_id: Option<String>,
     effective_from: Option<String>,
     effective_to: Option<String>,
+    /// E1: the row's statutory rounding directive, exactly as stored
+    /// ('' = none). Carried so the walk's winner supplies rate_bps AND
+    /// rounding — a later resolver-facing slice exposes it without a
+    /// second query; the per-line compute path reads it through
+    /// [`Store::list_tax_rate_rounding_modes`], which is the same column.
+    rounding_mode: String,
 }
 
 /// The three levels of the walk, most specific first.

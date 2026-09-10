@@ -1985,3 +1985,46 @@ fn the_sales_reference_check_still_wins_over_the_coverage_guard() {
         "not the coverage wording: {msg}"
     );
 }
+#[test]
+fn list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
+    // E1-2: the batch read door behind the compute loops. 'half_up' and
+    // 'truncate' map to their modes; '' and unknown ids read as None (the
+    // preference applies). The 20260929 CHECK refuses anything else, so the
+    // unparseable arm is unreachable from the schema and the reader treats
+    // it as a hard error when it somehow happens.
+    let conn = fresh();
+    let s = store(&conn);
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode) VALUES
+         ('r-trunc', 'Trunc', 1000, 'truncate'),
+         ('r-half', 'Half', 1000, 'half_up'),
+         ('r-plain', 'Plain', 1000, '')",
+        [],
+    )
+    .unwrap();
+    let modes = s
+        .list_tax_rate_rounding_modes(&["r-trunc", "r-half", "r-plain", "r-ghost"])
+        .unwrap();
+    assert_eq!(modes["r-trunc"], Some(RoundingMode::Truncate));
+    assert_eq!(modes["r-half"], Some(RoundingMode::HalfUp));
+    assert_eq!(modes["r-plain"], None, "'' = no statutory directive");
+    assert_eq!(modes["r-ghost"], None, "unknown id reads as no directive");
+}
+
+#[test]
+fn list_tax_rate_rounding_modes_ignores_archived_rows() {
+    let conn = fresh();
+    let s = store(&conn);
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_active, rounding_mode)
+         VALUES ('r-arch', 'Archived', 1000, 0, 'truncate')",
+        [],
+    )
+    .unwrap();
+    let modes = s.list_tax_rate_rounding_modes(&["r-arch"]).unwrap();
+    assert_eq!(
+        modes["r-arch"], None,
+        "an archived row's directive must not steer a computation that no \
+         longer resolves it"
+    );
+}
