@@ -97,7 +97,7 @@ The core cycle. Use the fast loop (below) so each iteration is seconds, not minu
 > `& 'C:\Program Files\Git\bin\bash.exe' -c 'bash scripts/wtree-guard.sh check'`. See
 > [`AGENTS.md`](../../../AGENTS.md) § *Running CLI Tools on Windows*; the same root cause produced
 > an opposite-looking symptom on 2026-08-22 (WSL runs the Linux node against Windows-built
-> `ui/node_modules`, so vitest crashes on the missing `rollup-linux-x64` binary and the i18n gate
+> UI dependencies, so vitest crashes on the missing `rollup-linux-x64` binary and the i18n gate
 > appears red when nothing in the repo is wrong).
 
 Confirm the fix and no regressions — **scoped to the area you changed**. Full `scripts/check.sh` is **not** part of routine TDD validation.
