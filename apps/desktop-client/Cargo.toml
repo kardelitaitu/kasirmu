@@ -59,6 +59,7 @@ platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 platform-startup = { workspace = true }
 platform-sync = { workspace = true }
+oz-notification = { workspace = true }
 tauri = { workspace = true, features = ["protocol-asset"] }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-dialog = { workspace = true }

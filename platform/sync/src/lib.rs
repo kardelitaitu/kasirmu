@@ -35,6 +35,7 @@ next: none | perf: 64KB priority-sorted batches
 
 pub mod conflict;
 pub mod daemon;
+pub mod image_push;
 pub mod pg_daemon;
 pub mod pg_transport;
 pub mod queue;

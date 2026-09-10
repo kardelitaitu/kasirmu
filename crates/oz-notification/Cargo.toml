@@ -20,6 +20,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
+rusqlite = { workspace = true }
+lettre = { workspace = true }
 tracing = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
