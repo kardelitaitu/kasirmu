@@ -94,7 +94,3 @@ pub async fn set_regional_config_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "regional_tests.rs"]
-mod tests;

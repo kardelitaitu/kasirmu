@@ -179,7 +179,3 @@ pub async fn get_latest_exchange_rate_scoped(
     .await
     .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "exchange_rates_tests.rs"]
-mod tests;

@@ -1,22 +1,31 @@
-//! Tests for the regional-configuration commands (slices 2–3).
+//! Unit tests for the regional-configuration command bodies (Wave-A test
+//! relocation: moved out of
+//! `apps/desktop-client/src/commands/regional_tests.rs`).
 //!
-//! The serde test pins the wire contract at the IPC boundary — the core
+//! Mounted at the foot of `regional.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves `get_scoped`, `set_scoped`, `SetRegionalConfig`
+//! and the module's `Store` import exactly as the desktop sibling module
+//! did. The serde tests pin the wire contract at the IPC boundary — the core
 //! `RegionalConfig` is the payload, so its snake_case field names and
 //! `ConfigScope` scope names are what the front-end receives; changing
-//! either is a wire break and must land deliberately. The flow tests exercise
-//! the session-scoped path end to end against a real migrated store database —
-//! including the entity-level inheritance leg and the ADR #48 IANA
-//! pass-through — the `settings:read`/`settings:edit` gates, and the
-//! slice-3 write command's ADR #47 resource scoping.
+//! either is a wire break and must land deliberately. The flow tests drive
+//! the session-scoped path end to end through the crate's headless
+//! `TestBridge` harness against a real migrated global DB and an isolated
+//! store-db directory — including the entity-level inheritance leg and the
+//! ADR #48 IANA pass-through — the `settings:read`/`settings:edit` gates,
+//! and the write path's ADR #47 location-resource scoping (enforced by the
+//! module's local `require_session_resource_permission` mirror). Error arms
+//! assert `BridgeError` — the desktop file's `AppError` arms map 1:1.
 
 use super::*;
-use crate::state::AppState;
+use crate::testing::{TestBridge, temp_conn};
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use oz_core::CoreErrorKind;
 use oz_core::migrations;
 use oz_core::regional::ConfigScope;
 use oz_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
-use tauri::Manager;
 
 // ── wire contract (serde at the IPC boundary) ───────────────────────
 
@@ -77,25 +86,46 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-/// AppState with a fresh migrated global DB and an isolated store-db dir
-/// (mirrors the locations_tests harness).
-fn flow_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    let path = temp_dir.keep();
-    state.db_manager = StoreDatabaseManager::new(path, migrations::ALL);
-    state
+/// Instance counter disambiguating store-db directories within one process.
+static STORE_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Unique per-test directory for the isolated store-db manager. The manager
+/// creates the directory lazily on first `open_store`; leftovers are left
+/// for the OS temp cleaner, exactly like the harness's own store roots (the
+/// desktop file used `tempfile::tempdir()`, which is not a dev-dependency of
+/// this crate).
+fn unique_store_dir() -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "oz-bridge-regional-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        STORE_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
-fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+/// Isolated store-db manager over a fresh directory — the direct twin of the
+/// desktop `flow_state` harness's
+/// `StoreDatabaseManager::new(path, migrations::ALL)`. Seeding tests open
+/// and mutate their store DB through this handle *before* it is handed to
+/// `flow_bridge`, because `TestBridge` keeps the manager private.
+fn store_manager() -> StoreDatabaseManager {
+    StoreDatabaseManager::new(unique_store_dir(), migrations::ALL)
 }
 
-fn owner_session(state: &AppState, token: &str) {
-    state.session_store.write().unwrap().insert(
+/// `TestBridge` with a fresh migrated global DB and an isolated store-db dir
+/// (the bridge twin of the desktop `flow_state` harness, which built
+/// `AppState::for_test_with_conn` and replaced `db_manager` with a fresh
+/// manager over an empty directory).
+fn flow_bridge(conn: rusqlite::Connection, manager: StoreDatabaseManager) -> TestBridge {
+    TestBridge::new().with_conn(conn).with_db_manager(manager)
+}
+
+fn owner_session(bridge: &TestBridge, token: &str) {
+    bridge.sessions().write().unwrap().insert(
         token.to_string(),
         SessionContext::new(
             "user-owner".into(),
@@ -117,13 +147,12 @@ fn owner_session(state: &AppState, token: &str) {
 /// built-in locale fallback.
 #[tokio::test]
 async fn get_regional_config_scoped_resolves_the_seeded_default_location() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_bridge(conn, store_manager());
+    owner_session(&bridge, "owner-tok");
 
-    let config = get_regional_config_scoped("default".into(), "owner-tok".into(), app.state())
+    let config = get_scoped(&bridge.ctx(), "owner-tok", "default")
         .await
         .unwrap();
 
@@ -146,11 +175,11 @@ async fn get_regional_config_scoped_resolves_the_seeded_default_location() {
 /// market anchor. The stored IANA names come back verbatim (ADR #48).
 #[tokio::test]
 async fn get_regional_config_scoped_inherits_timezone_from_the_legal_entity() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = flow_state(conn);
+    let manager = store_manager();
     {
-        let store_conn = state.db_manager.open_store("default").unwrap();
+        let store_conn = manager.open_store("default").unwrap();
         let store_conn = store_conn.lock().unwrap();
         store_conn
             .execute(
@@ -166,10 +195,10 @@ async fn get_regional_config_scoped_inherits_timezone_from_the_legal_entity() {
             )
             .unwrap();
     }
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_bridge(conn, manager);
+    owner_session(&bridge, "owner-tok");
 
-    let config = get_regional_config_scoped("default".into(), "owner-tok".into(), app.state())
+    let config = get_scoped(&bridge.ctx(), "owner-tok", "default")
         .await
         .unwrap();
 
@@ -186,18 +215,15 @@ async fn get_regional_config_scoped_inherits_timezone_from_the_legal_entity() {
 /// typo'd id must not look like an unconfigured one.
 #[tokio::test]
 async fn get_regional_config_scoped_unknown_location_is_typed_not_found() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_bridge(conn, store_manager());
+    owner_session(&bridge, "owner-tok");
 
-    let result =
-        get_regional_config_scoped("no-such-location".into(), "owner-tok".into(), app.state())
-            .await;
+    let result = get_scoped(&bridge.ctx(), "owner-tok", "no-such-location").await;
 
     match result {
-        Err(AppError::Core { sub_kind, .. }) => {
+        Err(BridgeError::Core { sub_kind, .. }) => {
             assert!(matches!(sub_kind, CoreErrorKind::NotFound), "{sub_kind:?}");
         }
         other => panic!("expected typed NotFound rejection, got: {other:?}"),
@@ -208,7 +234,7 @@ async fn get_regional_config_scoped_unknown_location_is_typed_not_found() {
 /// PermissionDenied, not Internal.
 #[tokio::test]
 async fn get_regional_config_scoped_denies_staff_without_settings_read() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -220,8 +246,8 @@ async fn get_regional_config_scoped_denies_staff_without_settings_read() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = flow_state(conn);
-    state.session_store.write().unwrap().insert(
+    let bridge = flow_bridge(conn, store_manager());
+    bridge.sessions().write().unwrap().insert(
         "lite-tok".into(),
         SessionContext::new(
             "user-lite".into(),
@@ -234,11 +260,10 @@ async fn get_regional_config_scoped_denies_staff_without_settings_read() {
             0,
         ),
     );
-    let app = mock_app(state);
 
-    let result = get_regional_config_scoped("default".into(), "lite-tok".into(), app.state()).await;
+    let result = get_scoped(&bridge.ctx(), "lite-tok", "default").await;
 
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 // ── slice 3: write command ──────────────────────────────────────────
 
@@ -247,22 +272,21 @@ async fn get_regional_config_scoped_denies_staff_without_settings_read() {
 /// resolved config — the card re-renders provenance from the same response.
 #[tokio::test]
 async fn set_regional_config_scoped_persists_and_returns_the_effective_config() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_bridge(conn, store_manager());
+    owner_session(&bridge, "owner-tok");
 
-    let config = set_regional_config_scoped(
-        "default".into(),
-        SetRegionalConfig {
+    let config = set_scoped(
+        &bridge.ctx(),
+        "owner-tok",
+        "default",
+        &SetRegionalConfig {
             locale: "id-ID".into(),
             timezone: "Asia/Makassar".into(),
             currency: "idr".into(),
             country_code: "id".into(),
         },
-        "owner-tok".into(),
-        app.state(),
     )
     .await
     .unwrap();
@@ -278,7 +302,7 @@ async fn set_regional_config_scoped_persists_and_returns_the_effective_config() 
     assert_eq!(config.country_code.as_deref(), Some("ID"));
 
     // A plain read (slice 2 command) must agree with the write's read-back.
-    let again = get_regional_config_scoped("default".into(), "owner-tok".into(), app.state())
+    let again = get_scoped(&bridge.ctx(), "owner-tok", "default")
         .await
         .unwrap();
     assert_eq!(again, config);
@@ -290,11 +314,11 @@ async fn set_regional_config_scoped_persists_and_returns_the_effective_config() 
 /// blank — that IS the inherit mechanism, not a schema violation.
 #[tokio::test]
 async fn set_regional_config_scoped_blanks_clear_to_inherit() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = flow_state(conn);
+    let manager = store_manager();
     {
-        let store_conn = state.db_manager.open_store("default").unwrap();
+        let store_conn = manager.open_store("default").unwrap();
         let store_conn = store_conn.lock().unwrap();
         store_conn
             .execute(
@@ -303,19 +327,19 @@ async fn set_regional_config_scoped_blanks_clear_to_inherit() {
             )
             .unwrap();
     }
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_bridge(conn, manager);
+    owner_session(&bridge, "owner-tok");
 
-    let config = set_regional_config_scoped(
-        "default".into(),
-        SetRegionalConfig {
+    let config = set_scoped(
+        &bridge.ctx(),
+        "owner-tok",
+        "default",
+        &SetRegionalConfig {
             locale: "".into(),
             timezone: "UTC".into(),
             currency: "".into(),
             country_code: "".into(),
         },
-        "owner-tok".into(),
-        app.state(),
     )
     .await
     .unwrap();
@@ -331,27 +355,26 @@ async fn set_regional_config_scoped_blanks_clear_to_inherit() {
 /// typed Validation error at the IPC boundary — before any column moves.
 #[tokio::test]
 async fn set_regional_config_scoped_rejects_a_non_contract_timezone_as_validation() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_bridge(conn, store_manager());
+    owner_session(&bridge, "owner-tok");
 
-    let result = set_regional_config_scoped(
-        "default".into(),
-        SetRegionalConfig {
+    let result = set_scoped(
+        &bridge.ctx(),
+        "owner-tok",
+        "default",
+        &SetRegionalConfig {
             locale: "".into(),
             timezone: "Europe/Berlin".into(),
             currency: "".into(),
             country_code: "".into(),
         },
-        "owner-tok".into(),
-        app.state(),
     )
     .await;
 
     match result {
-        Err(AppError::Core { sub_kind, .. }) => {
+        Err(BridgeError::Core { sub_kind, .. }) => {
             assert!(
                 matches!(sub_kind, CoreErrorKind::Validation),
                 "{sub_kind:?}"
@@ -361,7 +384,7 @@ async fn set_regional_config_scoped_rejects_a_non_contract_timezone_as_validatio
     }
 
     // The row is untouched — validation runs before the transaction writes.
-    let config = get_regional_config_scoped("default".into(), "owner-tok".into(), app.state())
+    let config = get_scoped(&bridge.ctx(), "owner-tok", "default")
         .await
         .unwrap();
     assert_eq!(config.timezone.value, "UTC");
@@ -371,7 +394,7 @@ async fn set_regional_config_scoped_rejects_a_non_contract_timezone_as_validatio
 /// and an unknown location is a typed NotFound, mirroring the read command.
 #[tokio::test]
 async fn set_regional_config_scoped_denies_staff_without_settings_edit() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -383,8 +406,8 @@ async fn set_regional_config_scoped_denies_staff_without_settings_edit() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = flow_state(conn);
-    state.session_store.write().unwrap().insert(
+    let bridge = flow_bridge(conn, store_manager());
+    bridge.sessions().write().unwrap().insert(
         "lite-tok".into(),
         SessionContext::new(
             "user-lite".into(),
@@ -397,20 +420,19 @@ async fn set_regional_config_scoped_denies_staff_without_settings_edit() {
             0,
         ),
     );
-    let app = mock_app(state);
 
-    let result = set_regional_config_scoped(
-        "default".into(),
-        SetRegionalConfig {
+    let result = set_scoped(
+        &bridge.ctx(),
+        "lite-tok",
+        "default",
+        &SetRegionalConfig {
             locale: "".into(),
             timezone: "UTC".into(),
             currency: "".into(),
             country_code: "".into(),
         },
-        "lite-tok".into(),
-        app.state(),
     )
     .await;
 
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }

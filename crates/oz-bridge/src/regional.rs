@@ -173,3 +173,7 @@ pub async fn set_scoped(
         &config.country_code,
     )?)
 }
+
+#[cfg(test)]
+#[path = "regional_tests.rs"]
+mod tests;
