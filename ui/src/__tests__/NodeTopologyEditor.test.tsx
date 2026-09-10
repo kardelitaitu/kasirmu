@@ -5645,6 +5645,10 @@ describe('NodeTopologyEditor — multi-select & marquee', () => {
     // then unmounted (branch switch, screen navigation) left its document
     // mouseup listener armed. The leaked listener fired finalizeMarquee
     // against an unmounted editor on the next page-wide release.
+    // Correction: that parent unmount effect has since been retired — the
+    // pointer/touch/bend hook-tail effects own the pan/drag/touch/marquee
+    // disarm now, and the fresh-node timers live in the add-node hook. This
+    // test pins that the hook-owned disarm still leaves no leaked mouseup.
     const { unmount } = renderEditor();
     mockCanvasSize(1200, 800);
     const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
@@ -11191,8 +11195,8 @@ describe('NodeTopologyEditor — peer group badge', () => {
 });
 
 // ── Input-controller disarm & teardown characterization (Phase 3.4) ──
-// Characterization tests pinning the CURRENT disarm/teardown behavior of the
-// input controllers before they are extracted: (1) tab-hidden disarms a held
+// Characterization tests pinning the disarm/teardown behavior of the input
+// controllers (now hook modules): (1) tab-hidden disarms a held
 // Space, (2) pointercancel ends a touch node drag with the position intact,
 // (3) unmount tears down every document-level gesture listener, (4) wheel
 // zoom-to-cursor compensates the pan so the content point under the cursor
@@ -11261,7 +11265,9 @@ describe('NodeTopologyEditor — input controller disarm and teardown', () => {
   });
 
   it('unmount tears down the pan, node-drag, bend-drag, and touch document listeners (no post-unmount firing)', () => {
-    // The unmount sweep must disarm EVERY document-level gesture listener.
+    // The unmount hook-tail effects (pointer/touch/bend, plus the editor's
+    // own install-and-clean effects) must disarm EVERY document-level gesture
+    // listener — no parent sweep exists anymore.
     // The marquee mouseup teardown is pinned separately; this pins the other
     // four controllers. After unmount, dispatching each controller's
     // document-level events must produce no state changes or errors — the
@@ -11909,7 +11915,7 @@ describe('NodeTopologyEditor — viewport machinery characterization', () => {
 // ── Touch gesture characterization (3.4e touch hook protection) ──
 // Pins the POST-threshold semantics of the touch loop. coder-21's disarm
 // block already pinned the pre-threshold half (cancel restores, tap, pan,
-// basic zoom, unmount sweep); this block pins what happens PAST the 8px
+// basic zoom); this block pins what happens PAST the 8px
 // TOUCH_DRAG_THRESHOLD and the exact pinch math.
 
 describe('NodeTopologyEditor — touch gesture characterization', () => {

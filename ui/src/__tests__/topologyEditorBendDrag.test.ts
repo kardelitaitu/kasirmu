@@ -212,8 +212,9 @@ describe('useTopologyEditorBendDrag — startBendDrag listener lifecycle', () =>
     expect(h.pushHistory.mock.calls[0]?.[0]?.wires).toBe(h.seedWires);
     expect(h.setWires).toHaveBeenCalledTimes(1);
 
-    // The parent owns the disposer (cancelBendDrag and the unmount sweep call
-    // it); running it detaches both listeners and clears the gesture.
+    // The EDITOR owns the bendDragCleanupRef mailbox (cancelBendDrag fires
+    // it mid-session; the bend hook's tail effect disposes it at unmount);
+    // running it detaches both listeners and clears the gesture.
     act(() => dispose?.());
     expect(h.deps.bendDragCleanupRef.current).toBeNull();
     expect(h.deps.bendDragRef.current).toBeNull();
