@@ -98,7 +98,7 @@ export function usePaymentConnection(): PaymentConnectionStatus {
       checkRef.current = null;
       if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [bumpProbe]);
 
   return { state, latencyMs: null, cause: null, gateways, retryNow };
 }

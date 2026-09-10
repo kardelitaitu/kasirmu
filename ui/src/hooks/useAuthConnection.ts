@@ -133,7 +133,7 @@ export function useAuthConnection(): AuthConnectionStatus {
       checkRef.current = null;
       if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [bumpProbe]);
 
   return { state, latencyMs, cause, retryNow };
 }

@@ -134,7 +134,7 @@ export function useSyncConnection(): SyncConnectionStatus {
       checkRef.current = null;
       if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [bumpProbe]);
 
   // cause is a constant here — see the field doc. Sync gains a real value
   // when its probe starts reading the health payload instead of the status

@@ -106,7 +106,7 @@ export function useDevicesConnection(): DevicesConnectionStatus {
       checkRef.current = null;
       if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
     };
-  }, [sessionToken]);
+  }, [sessionToken, bumpProbe]);
 
   return { state, latencyMs: null, cause: null, devices, retryNow };
 }
