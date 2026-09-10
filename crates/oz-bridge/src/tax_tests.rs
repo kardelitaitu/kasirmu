@@ -1,7 +1,20 @@
+//! Unit tests for the tax-rate command bodies (Wave-A test relocation:
+//! moved out of `apps/desktop-client/src/commands/tax_tests.rs`).
+//!
+//! Mounted at the foot of `tax.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs, the five `run_*` bodies and the
+//! session-scoped operations directly. The desktop file exercised the
+//! same behaviour through `AppState` + a Tauri mock app; here the scoped
+//! calls go straight to the bridge fns over a `TestBridge` context (the
+//! crate's `testing` harness), the permission-gate tests seed the global
+//! identity DB exactly as before, and the store-isolation tests use the
+//! harness's per-instance store directory instead of a tempdir handle.
+//! Error assertions are the 1:1 `AppError` -> `BridgeError` rename.
+
 use super::*;
+use crate::testing::{TestBridge, temp_conn};
 use oz_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 // ── TaxRateDto ──────────────────────────────────────────────────────
 
@@ -178,7 +191,7 @@ fn create_tax_rate_args_without_scope_fields_stay_none() {
 
 #[test]
 fn scoped_create_round_trips_scope_and_window() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     // The migration seed provides location 'default' and (20260908
     // backfill) the entity 'default:default-legal-entity' the scope
     // target validation checks against.
@@ -216,7 +229,7 @@ fn scoped_create_round_trips_scope_and_window() {
 
 #[test]
 fn create_tax_rate_args_reject_both_scope_targets() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let err = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -232,7 +245,7 @@ fn create_tax_rate_args_reject_both_scope_targets() {
     )
     .unwrap_err();
     match err {
-        AppError::Core { message, .. } => {
+        BridgeError::Core { message, .. } => {
             assert!(message.contains("mutually exclusive"), "got: {message}");
         }
         other => panic!("expected a typed validation error, got {other:?}"),
@@ -241,7 +254,7 @@ fn create_tax_rate_args_reject_both_scope_targets() {
 
 #[test]
 fn legacy_create_without_scope_fields_writes_the_global_arm() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let created = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -262,7 +275,7 @@ fn legacy_create_without_scope_fields_writes_the_global_arm() {
 
 #[test]
 fn list_tax_rates_dto_joins_scope_and_window() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -310,7 +323,7 @@ fn list_tax_rates_dto_joins_scope_and_window() {
 
 #[test]
 fn scoped_update_moves_tier_and_window() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let created = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -372,23 +385,43 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
+/// Unique per-test directory for the store sqlite files. Mirrors the
+/// harness's per-instance store root (`testing.rs` builds one for the
+/// default `TestBridge` manager); a handle is needed here only where a
+/// test must pre-seed a store database before driving the scoped ops.
+fn store_dir() -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "oz-bridge-tax-tests-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 #[tokio::test]
 async fn require_tax_permission_uses_global_identity_db() {
     // Users/roles are GLOBAL authentication records (ADR #4/#7); the
     // store-scoped DBs have no users, so a permission check against the
     // global DB must succeed for an owner while the store DB alone
     // would report "user not found".
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner_user(&conn);
-    let state = AppState::for_test_with_conn(conn);
+    let bridge = TestBridge::new().with_conn(conn);
+    let ctx = bridge.ctx();
 
     assert!(
-        require_tax_permission(&state, "user-owner", oz_core::permissions::SETTINGS_READ)
+        require_tax_permission(&ctx, "user-owner", oz_core::permissions::SETTINGS_READ)
             .await
             .is_ok()
     );
     assert!(
-        require_tax_permission(&state, "user-owner", oz_core::permissions::SETTINGS_EDIT)
+        require_tax_permission(&ctx, "user-owner", oz_core::permissions::SETTINGS_EDIT)
             .await
             .is_ok()
     );
@@ -396,29 +429,28 @@ async fn require_tax_permission_uses_global_identity_db() {
 
 #[tokio::test]
 async fn require_tax_permission_rejects_missing_user() {
-    let conn = oz_core::migrations::fresh_db();
-    let state = AppState::for_test_with_conn(conn);
+    let conn = temp_conn();
+    let bridge = TestBridge::new().with_conn(conn);
+    let ctx = bridge.ctx();
 
     assert!(matches!(
-        require_tax_permission(&state, "missing-user", oz_core::permissions::SETTINGS_READ).await,
-        Err(AppError::PermissionDenied(_))
+        require_tax_permission(&ctx, "missing-user", oz_core::permissions::SETTINGS_READ).await,
+        Err(BridgeError::PermissionDenied(_))
     ));
 }
 
 #[tokio::test]
 async fn scoped_tax_command_rejects_invalid_session() {
-    let app = tauri::test::mock_builder()
-        .manage(AppState::for_test())
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = TestBridge::new();
+    let ctx = bridge.ctx();
 
-    let result = list_tax_rates_scoped("missing-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_rates_scoped(&ctx, "missing-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_tax_command_denies_user_without_permission() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -428,11 +460,8 @@ async fn scoped_tax_command_denies_user_without_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         "cashier-token".into(),
         SessionContext::new(
             "user-cashier".into(),
@@ -445,28 +474,25 @@ async fn scoped_tax_command_denies_user_without_permission() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let ctx = bridge.ctx();
 
     // Cashier role lacks SETTINGS_READ → PermissionDenied from the
     // GLOBAL identity DB (not "user not found" from an empty store DB).
-    let result = list_tax_rates_scoped("cashier-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = list_rates_scoped(&ctx, "cashier-token").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn scoped_tax_command_reads_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let db_manager = StoreDatabaseManager::new(store_dir(), oz_core::migrations::ALL);
+    let bridge = TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager(db_manager.clone());
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        bridge.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -484,24 +510,16 @@ async fn scoped_tax_command_reads_only_the_session_store() {
     // Seed a tax rate ONLY into store A's database. The guard is
     // scoped to a block so it drops before the async commands below.
     {
-        let store_a_conn = state.db_manager.open_store("store-a").unwrap();
+        let store_a_conn = db_manager.open_store("store-a").unwrap();
         let store_a_db = store_a_conn.lock().unwrap();
         Store::new(&store_a_db)
             .create_tax_rate("Store A VAT", 1000, true, false)
             .unwrap();
     }
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let store_a_rates = list_tax_rates_scoped("store-a-token".into(), app.state())
-        .await
-        .unwrap();
-    let store_b_rates = list_tax_rates_scoped("store-b-token".into(), app.state())
-        .await
-        .unwrap();
+    let ctx = bridge.ctx();
+    let store_a_rates = list_rates_scoped(&ctx, "store-a-token").await.unwrap();
+    let store_b_rates = list_rates_scoped(&ctx, "store-b-token").await.unwrap();
     assert_eq!(store_a_rates.len(), 1);
     assert_eq!(store_a_rates[0].name, "Store A VAT");
     assert!(
@@ -512,15 +530,12 @@ async fn scoped_tax_command_reads_only_the_session_store() {
 
 #[tokio::test]
 async fn scoped_tax_write_command_targets_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let bridge = TestBridge::new().with_conn(conn);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        bridge.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -534,14 +549,12 @@ async fn scoped_tax_write_command_targets_only_the_session_store() {
             ),
         );
     }
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let ctx = bridge.ctx();
 
-    let created = create_tax_rate_scoped(
-        "store-a-token".into(),
-        CreateTaxRateArgs {
+    let created = create_rate_scoped(
+        &ctx,
+        "store-a-token",
+        &CreateTaxRateArgs {
             name: "A-only".into(),
             rate_bps: 500,
             is_default: false,
@@ -551,15 +564,12 @@ async fn scoped_tax_write_command_targets_only_the_session_store() {
             effective_from: None,
             effective_to: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
     assert_eq!(created.name, "A-only");
 
-    let store_b_rates = list_tax_rates_scoped("store-b-token".into(), app.state())
-        .await
-        .unwrap();
+    let store_b_rates = list_rates_scoped(&ctx, "store-b-token").await.unwrap();
     assert!(
         store_b_rates.is_empty(),
         "writes scoped to store A must not leak into store B"
@@ -587,7 +597,7 @@ fn run_list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
     // modes; '' and unknown ids read as None (the preference applies —
     // unknown and absent read identically, so the batch read is never a
     // second failure mode beside the resolver that produced the ids).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_rounding_rows(&conn);
     let modes =
         run_list_tax_rate_rounding_modes(&conn, &["r-trunc", "r-half", "r-plain", "r-ghost"])
@@ -616,7 +626,7 @@ fn run_list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
 fn run_list_tax_rate_rounding_modes_ignores_archived_rows() {
     // Archived rows must not leak a directive: is_active = 0 reads as
     // "the preference applies", exactly like the core door's contract.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     conn.execute(
         "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode, is_active)
          VALUES ('r-arch', 'Archived', 1000, 'truncate', 0)",
@@ -644,8 +654,7 @@ fn rounding_mode_wire_is_the_core_serde_snake_case() {
         serde_json::to_value(oz_core::tax_rate::RoundingMode::Truncate).unwrap(),
         serde_json::json!("truncate"),
     );
-    let map =
-        run_list_tax_rate_rounding_modes(&oz_core::migrations::fresh_db(), &["r-none"]).unwrap();
+    let map = run_list_tax_rate_rounding_modes(&temp_conn(), &["r-none"]).unwrap();
     assert_eq!(
         serde_json::to_value(map).unwrap(),
         serde_json::json!({ "r-none": null }),

@@ -272,9 +272,3 @@ fn run_list_tax_rate_rounding_modes(
 ) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
     oz_bridge::tax::run_list_tax_rate_rounding_modes(conn, rate_ids).map_err(AppError::from)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "tax_tests.rs"]
-mod tests;

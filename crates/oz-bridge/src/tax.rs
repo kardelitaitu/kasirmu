@@ -678,3 +678,7 @@ pub async fn rounding_modes_scoped(
     drop(db);
     out
 }
+
+#[cfg(test)]
+#[path = "tax_tests.rs"]
+mod tests;
