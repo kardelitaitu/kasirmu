@@ -10,17 +10,24 @@
 //! Read: `settings:read`. Write: `settings:edit` + the ADR #47
 //! location-resource gate (the workspace layer is keyed by the session's
 //! primary location id).
+//!
+//! Wave D / D4b: the bodies now live in the headless
+//! `oz_bridge::receipt_format` module. Each `#[tauri::command]` below
+//! keeps its exact name, parameter list, attributes and
+//! `Result<_, AppError>` wire contract; it builds a `BridgeCtx` from
+//! `AppState` and delegates, preserving gate order and the ADR #47
+//! location-resource checks. The args DTOs moved with the bodies and are
+//! re-exported so `use super::*` in `receipt_format_tests.rs` still
+//! resolves them.
 
-use oz_core::db::assignments::ScopeType;
-use oz_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptContent, ReceiptLayout};
-use oz_core::{Store, permissions};
 use tauri::State;
 
-use crate::commands::authz::{
-    require_permission_for_session, require_permission_for_session_resource,
-};
+use oz_core::db::receipt_formats::EffectiveReceiptFormat;
+
 use crate::error::AppError;
 use crate::state::AppState;
+
+pub use oz_bridge::receipt_format::{ReceiptContentArgs, ReceiptLayoutArgs};
 
 /// Read the effective receipt format for the session's terminal (or the
 /// store default when no terminal is bound): statutory content from the
@@ -33,13 +40,15 @@ pub async fn get_receipt_format_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    Ok(store.effective_receipt_format(terminal_id.as_deref(), workspace_id.as_deref())?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::receipt_format::get_receipt_format_scoped(
+        &ctx,
+        terminal_id,
+        workspace_id,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Replace the workspace-layer layout record for the session's store db
@@ -59,73 +68,15 @@ pub async fn set_receipt_layout_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    require_permission_for_session_resource(
-        &state,
-        &session,
-        permissions::SETTINGS_EDIT,
-        ScopeType::Location,
+    let ctx = state.bridge_ctx();
+    oz_bridge::receipt_format::set_receipt_layout_scoped(
+        &ctx,
+        &layout,
         &workspace_id,
+        &session_token,
     )
-    .await?;
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    let core_layout = ReceiptLayout {
-        paper_width_mm: layout.paper_width_mm,
-        margin_top_mm: layout.margin_top_mm,
-        margin_bottom_mm: layout.margin_bottom_mm,
-        margin_left_mm: layout.margin_left_mm,
-        margin_right_mm: layout.margin_right_mm,
-        show_logo: layout.show_logo,
-        print_copies: layout.print_copies,
-        show_table_number: layout.show_table_number,
-        footer_note: layout.footer_note,
-    };
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    store.set_receipt_layout_for_scope("workspace", &workspace_id, &core_layout, &now)?;
-    Ok(store.effective_receipt_format(None, Some(&workspace_id))?)
-}
-
-/// One layout submission from the card (all fields optional — the card
-/// edits the whole record).
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReceiptLayoutArgs {
-    /// Paper width in mm (20–120).
-    pub paper_width_mm: Option<i64>,
-    /// Margins in mm (≥ 0).
-    pub margin_top_mm: Option<i64>,
-    /// Bottom margin in mm (≥ 0).
-    pub margin_bottom_mm: Option<i64>,
-    /// Left margin in mm (≥ 0).
-    pub margin_left_mm: Option<i64>,
-    /// Right margin in mm (≥ 0).
-    pub margin_right_mm: Option<i64>,
-    /// Whether the store logo prints.
-    pub show_logo: Option<bool>,
-    /// How many copies to print (≥ 0).
-    pub print_copies: Option<i64>,
-    /// Whether the table number line prints.
-    pub show_table_number: Option<bool>,
-    /// Optional presentational footer note (≤ 500 chars).
-    pub footer_note: Option<String>,
-}
-
-/// The id of the store's primary location (the ADR #47 resource id the
-/// entity-layer write is gated on; the entity is reached through that
-/// location row, mirroring how `effective_receipt_format` reads it).
-fn primary_location_id(conn: &std::sync::Mutex<rusqlite::Connection>) -> Result<String, AppError> {
-    let guard = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&guard);
-    store
-        .get_primary_location()?
-        .map(|p| p.id)
-        .ok_or_else(|| AppError::Invalid("no primary location to resolve the entity from".into()))
+    .await
+    .map_err(Into::into)
 }
 
 /// Replace the primary legal entity's statutory content record and
@@ -144,55 +95,10 @@ pub async fn set_receipt_content_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    require_permission_for_session_resource(
-        &state,
-        &session,
-        permissions::SETTINGS_EDIT,
-        ScopeType::Location,
-        &primary_location_id(&conn)?,
-    )
-    .await?;
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    let primary = store.get_primary_location()?.ok_or_else(|| {
-        AppError::Invalid("no primary location to resolve the entity from".into())
-    })?;
-    let entity_id = store
-        .location_legal_entity_id(&primary.id)?
-        .ok_or_else(|| {
-            AppError::Invalid("no legal entity linked to the primary location".into())
-        })?;
-    let core_content = ReceiptContent {
-        required_fields: content.required_fields,
-        footer_text: content.footer_text,
-        show_tax: content.show_tax,
-        show_currency: content.show_currency,
-        decimal_separator: content.decimal_separator,
-    };
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    store.set_receipt_content_for_entity(&entity_id, &core_content, &now)?;
-    Ok(store.effective_receipt_format(None, None)?)
-}
-
-/// One statutory-content submission from the card (whole-record write;
-/// `required_fields` is validated against the closed element enum in core).
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReceiptContentArgs {
-    /// Market-mandated element codes (closed enum).
-    pub required_fields: Vec<String>,
-    /// Footer text (empty = none).
-    pub footer_text: String,
-    /// Whether the tax line prints.
-    pub show_tax: bool,
-    /// Whether amounts carry the currency symbol prefix.
-    pub show_currency: bool,
-    /// `dot` | `comma` | `none`.
-    pub decimal_separator: String,
+    let ctx = state.bridge_ctx();
+    oz_bridge::receipt_format::set_receipt_content_scoped(&ctx, &content, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
