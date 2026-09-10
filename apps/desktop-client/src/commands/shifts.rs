@@ -108,4 +108,3 @@ pub async fn get_shift_report_scoped(
         .await
         .map_err(Into::into)
 }
-

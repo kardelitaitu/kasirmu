@@ -90,4 +90,3 @@ pub async fn list_refunds_scoped(
         .await
         .map_err(Into::into)
 }
-
