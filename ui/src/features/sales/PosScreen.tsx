@@ -38,7 +38,8 @@ import {
   type HeldCartRow,
 } from '@/api/sales';
 import { getReceiptSettingsScoped } from '@/api/settings';
-import { computeCartTax, type CartLineTaxInput } from '@/api/tax';
+import { useCartTax, type CartTaxCacheState } from '@/hooks/useCartTax';
+import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
@@ -82,6 +83,37 @@ import './CartPanelCourseBar.css';
 const CART_WIDTH_MIN = 320;
 const CART_WIDTH_DEFAULT = 440;
 const CART_WIDTH_MAX_CAP = 1200;
+
+// ── F2-3: cart-tax watcher (R36-19 / D64) ──────────────────────────
+// The hook owns the compute and the failure-window cache; the screen
+// consumes its state through this keyed child. Bumping the key remounts
+// the watcher and forces a fresh compute — the retry affordance for a
+// failed estimate, without changing the cart or the hook contract.
+const IDLE_TAX_STATE: CartTaxCacheState = {
+  severity: 'unknown',
+  taxMinor: 0,
+  hasExclusive: null,
+  estimated: false,
+  cacheFresh: false,
+};
+
+function CartTaxWatcher({
+  sessionToken,
+  lines,
+  currency,
+  onState,
+}: {
+  sessionToken: string | null;
+  lines: CartLineTaxInput[];
+  currency: string;
+  onState: (state: CartTaxCacheState) => void;
+}) {
+  const state = useCartTax(sessionToken, lines, currency);
+  useEffect(() => {
+    onState(state);
+  }, [state, onState]);
+  return null;
+}
 
 function clampCartWidth(px: number, viewportWidth: number): number {
   const max = Math.max(
@@ -826,31 +858,26 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   });
 
   // ── Live tax preview ─────────────────────────────────────────
-  const [cartTax, setCartTax] = useState<number>(0);
-  const [cartTaxExclusive, setCartTaxExclusive] = useState(false);
-
-  useEffect(() => {
-    if (lines.length === 0 || !subtotal) {
-      setCartTax(0);
-      setCartTaxExclusive(false);
-      return;
-    }
-    const currency = subtotal.currency;
-    const taxLines: CartLineTaxInput[] = lines.map((l) => ({
-      sku: String(l.sku),
-      qty: l.qty,
-      unit_price_minor: l.unit_price.minor_units,
-    }));
-    computeCartTax(sessionToken, taxLines, currency)
-      .then((r) => {
-        setCartTax(r.taxMinor);
-        setCartTaxExclusive(r.hasExclusive);
-      })
-      .catch(() => {
-        setCartTax(0);
-        setCartTaxExclusive(false);
-      });
-  }, [lines, subtotal, sessionToken]);
+  // F2-3: R36-19 fix — the failed-compute path no longer renders a
+  // silent zero. The hook classifies the last known answer (caution /
+  // warn / unknown) and cacheFresh is the BINDING tender-eligibility
+  // gate (D64 b): a stale estimate is displayed but never added to the
+  // amount due. Zero on an empty cart is a genuinely computed zero.
+  const [taxRetryNonce, setTaxRetryNonce] = useState(0);
+  const [taxState, setTaxState] = useState<CartTaxCacheState>(IDLE_TAX_STATE);
+  const taxLines: CartLineTaxInput[] = lines.map((l) => ({
+    sku: String(l.sku),
+    qty: l.qty,
+    unit_price_minor: l.unit_price.minor_units,
+  }));
+  const retryTaxEstimate = useCallback(() => setTaxRetryNonce((n) => n + 1), []);
+  const cartTax = taxState.taxMinor;
+  const cartTaxExclusive = taxState.hasExclusive ?? false;
+  const cartTaxFresh = taxState.cacheFresh;
+  // Sale must be flagged for recompute whenever the shown tax was not
+  // freshly computed (warn estimate, or unknown after a failed compute).
+  // F2-6 threads this flag into sales.tax_estimate_note.
+  const taxEstimated = lines.length > 0 && !cartTaxFresh;
 
   const handlePaymentComplete = useCallback(() => {
     setShowPayment(false);
@@ -1880,13 +1907,22 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
               </div>
             </div>
 
-            {/* ── Tax line (live preview) ──────────────────────── */}
+            {/* ── Tax line (live preview; F2-3 estimated marker) ── */}
             {cartTax > 0 && (
               <div className="pos-cart-tax-row">
                 <span>PPN</span>
-                <span className="pos-cart-money-row-amount">
+                <span className={taxEstimated ? 'pos-cart-money-row-amount pos-cart-tax-estimated' : 'pos-cart-money-row-amount'}>
                   {formatMoney({ minor_units: cartTax, currency: subtotal?.currency ?? 'IDR' })}
                 </span>
+              </div>
+            )}
+            {lines.length > 0 && taxState.severity !== 'ok' && (
+              <div className="pos-cart-tax-row" role="status">
+                {/* Localized text is the accessible name; no aria-label
+                    attribute so the i18n attribute audit stays empty. */}
+                <Localized id="retry">
+                  <button type="button" onClick={retryTaxEstimate}>Retry</button>
+                </Localized>
               </div>
             )}
 
@@ -1966,12 +2002,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         </button>
       </aside>
 
+      {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
+      <CartTaxWatcher
+        key={taxRetryNonce}
+        sessionToken={rawToken}
+        lines={taxLines}
+        currency={subtotal?.currency ?? 'IDR'}
+        onState={setTaxState}
+      />
+
       {/* ── Payment modal ──────────────────────────── */}
       {total && (
         <PaymentModal
           open={showPayment}
           lineItems={lines}
-          total={total && cartTaxExclusive && cartTax > 0
+          total={total && cartTaxExclusive && cartTax > 0 && cartTaxFresh
             ? { minor_units: total.minor_units + cartTax, currency: total.currency }
             : total}
           discountPercent={discountPercent}

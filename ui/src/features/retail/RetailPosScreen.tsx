@@ -27,7 +27,8 @@ import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getActiveShiftScoped, openShiftScoped, closeShiftScoped, type ShiftDto } from '@/api/shifts';
 import { holdCartScoped, listHeldCartsScoped, getHeldCartScoped, deleteHeldCartScoped, type HeldCartRow, type SaleDetail } from '@/api/sales';
 import { getStoreSettingsScoped, listCreditSalesScoped, settleCreditScoped, type StoreSettingsDto, type CreditSaleDto } from '@/api/settings';
-import { computeCartTax, type CartLineTaxInput } from '@/api/tax';
+import { useCartTax, type CartTaxCacheState } from '@/hooks/useCartTax';
+import type { CartLineTaxInput } from '@/api/tax';
 import { recordMark } from '@/utils/perf-metrics';
 import { DEFAULT_LOW_STOCK_THRESHOLD, minorUnitExponent, parseMinorUnits, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
 import { useSound } from '@/frontend/shared/useSound';
@@ -43,6 +44,37 @@ import { SalesHistoryView, TableManagementView, StockInquiryView } from './Retai
 import RetailModals from './RetailModals';
 import RetailReminderPopup from './RetailReminderPopup';
 import './RetailPosScreen.css';
+
+// ── F2-3: cart-tax watcher (R36-19 / D64) ──────────────────────────
+// The hook owns the compute and the failure-window cache; the screen
+// consumes its state through this keyed child. Bumping the key remounts
+// the watcher and forces a fresh compute — the retry affordance for a
+// failed estimate, without changing the cart or the hook contract.
+const IDLE_TAX_STATE: CartTaxCacheState = {
+  severity: 'unknown',
+  taxMinor: 0,
+  hasExclusive: null,
+  estimated: false,
+  cacheFresh: false,
+};
+
+function CartTaxWatcher({
+  sessionToken,
+  lines,
+  currency,
+  onState,
+}: {
+  sessionToken: string | null;
+  lines: CartLineTaxInput[];
+  currency: string;
+  onState: (state: CartTaxCacheState) => void;
+}) {
+  const state = useCartTax(sessionToken, lines, currency);
+  useEffect(() => {
+    onState(state);
+  }, [state, onState]);
+  return null;
+}
 
 function toProduct(p: ProductDto): Product {
   return {
@@ -932,27 +964,21 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   // ── Live tax preview ────────────────────────────────────────
 
-  const [cartTax, setCartTax] = useState<number>(0);
-  const [cartTaxExclusive, setCartTaxExclusive] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    if (lines.length === 0 || !subtotal) {
-      setCartTax(0);
-      setCartTaxExclusive(false);
-      return () => { controller.abort(); };
-    }
-    const currency = subtotal.currency;
-    const taxLines: CartLineTaxInput[] = lines.map((l) => ({
-      sku: String(l.sku),
-      qty: l.qty,
-      unit_price_minor: l.unit_price.minor_units,
-    }));
-    computeCartTax(sessionToken, taxLines, currency)
-      .then((r) => { if (!controller.signal.aborted) { setCartTax(r.taxMinor); setCartTaxExclusive(r.hasExclusive); } })
-      .catch(() => { if (!controller.signal.aborted) { setCartTax(0); setCartTaxExclusive(false); } });
-    return () => { controller.abort(); };
-  }, [lines, subtotal, sessionToken]);
+  // F2-3: R36-19 fix — the failed-compute path no longer renders a
+  // silent zero. The hook classifies the last known answer (caution /
+  // warn / unknown) and cacheFresh is the BINDING tender-eligibility
+  // gate (D64 b): a stale estimate is displayed but never added to the
+  // amount due. Cancellation is the hook's own cancelled flag (the
+  // screen-level AbortController is subsumed by the adoption).
+  const [taxState, setTaxState] = useState<CartTaxCacheState>(IDLE_TAX_STATE);
+  const taxLines: CartLineTaxInput[] = lines.map((l) => ({
+    sku: String(l.sku),
+    qty: l.qty,
+    unit_price_minor: l.unit_price.minor_units,
+  }));
+  const cartTax = taxState.taxMinor;
+  const cartTaxExclusive = taxState.hasExclusive ?? false;
+  const cartTaxFresh = taxState.cacheFresh;
 
   // ── Discount modal ───────────────────────────────────────────
 
@@ -1393,7 +1419,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         lineItems={lines.map((l) => ({
           ...l, sku: l.sku, name: l.name ?? '', qty: l.qty, unit_price: l.unit_price,
         }))}
-        total={total && cartTaxExclusive && cartTax > 0
+        total={total && cartTaxExclusive && cartTax > 0 && cartTaxFresh
           ? { minor_units: total.minor_units + cartTax, currency: total.currency }
           : total}
         discountPercent={discountPercent}
@@ -1430,6 +1456,14 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   return (
     <>
     <div className="retail-pos" data-theme={theme}>
+      {/* ── F2-3: cart-tax watcher — no in-fence retry: the retail
+           banner lives in RetailCartPanel (F2-3 follow-up) ── */}
+      <CartTaxWatcher
+        sessionToken={rawToken}
+        lines={taxLines}
+        currency={subtotal?.currency ?? 'IDR'}
+        onState={setTaxState}
+      />
       {/* ── Skip-to-content link ─────────────── */}
       <a href="#retail-main" className="retail-skip-link">
         {requiredLocalized(l10n, 'retail-skip-to-main')}
