@@ -194,3 +194,7 @@ pub struct ReceiptContentArgs {
     /// `dot` | `comma` | `none`.
     pub decimal_separator: String,
 }
+
+#[cfg(test)]
+#[path = "receipt_format_tests.rs"]
+mod receipt_format_tests;

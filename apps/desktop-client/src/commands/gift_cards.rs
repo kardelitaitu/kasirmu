@@ -28,10 +28,6 @@ use crate::state::AppState;
 
 pub use oz_bridge::gift_cards::BalanceResult;
 
-#[cfg(test)]
-#[path = "gift_cards_tests.rs"]
-mod tests;
-
 // ── Scoped variants (ADR #7) ────────────────────────────────────────
 
 /// Issue a new gift card (scoped — requires valid session).

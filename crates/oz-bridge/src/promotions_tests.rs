@@ -1,7 +1,6 @@
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 // ── Existing deserialization tests (preserved) ────────────────────
 
@@ -123,12 +122,9 @@ fn scoped_state(
     user_id: &str,
     role_id: &str,
     store_id: &str,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> TestBridge {
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -141,7 +137,7 @@ fn scoped_state(
             0,
         ),
     );
-    state
+    bridge
 }
 
 fn make_promo_args(name: &str) -> CreatePromotionArgs {
@@ -167,14 +163,10 @@ fn make_promo_args(name: &str) -> CreatePromotionArgs {
 #[tokio::test]
 async fn scoped_list_promotions_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result = list_promotions_scoped("bad-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_promotions_scoped(&bridge.ctx(), "bad-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Permission matrix: owner has PROMOTIONS_CREATE/EDIT/DELETE ────
@@ -183,14 +175,9 @@ async fn scoped_list_promotions_rejects_invalid_token() {
 async fn owner_can_create_promotion() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result =
-        create_promotion_scoped("tok".into(), make_promo_args("10% Off"), app.state()).await;
+    let result = create_promotion_scoped(&bridge.ctx(), "tok", &make_promo_args("10% Off")).await;
     assert!(result.is_ok(), "owner should create a promotion");
     let p = result.unwrap();
     assert_eq!(p.name, "10% Off");
@@ -201,22 +188,16 @@ async fn owner_can_create_promotion() {
 async fn owner_can_list_promotions() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    create_promotion_scoped("tok".into(), make_promo_args("Promo A"), app.state())
+    create_promotion_scoped(&bridge.ctx(), "tok", &make_promo_args("Promo A"))
         .await
         .unwrap();
-    create_promotion_scoped("tok".into(), make_promo_args("Promo B"), app.state())
+    create_promotion_scoped(&bridge.ctx(), "tok", &make_promo_args("Promo B"))
         .await
         .unwrap();
 
-    let list = list_promotions_scoped("tok".into(), app.state())
-        .await
-        .unwrap();
+    let list = list_promotions_scoped(&bridge.ctx(), "tok").await.unwrap();
     assert_eq!(list.len(), 2);
     assert!(list.iter().any(|p| p.name == "Promo A"));
     assert!(list.iter().any(|p| p.name == "Promo B"));
@@ -226,16 +207,12 @@ async fn owner_can_list_promotions() {
 async fn owner_can_get_promotion_by_id() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let created = create_promotion_scoped("tok".into(), make_promo_args("Promo"), app.state())
+    let created = create_promotion_scoped(&bridge.ctx(), "tok", &make_promo_args("Promo"))
         .await
         .unwrap();
-    let fetched = get_promotion_scoped("tok".into(), created.id.clone(), app.state()).await;
+    let fetched = get_promotion_scoped(&bridge.ctx(), "tok", &created.id).await;
     assert!(fetched.is_ok());
     assert!(fetched.unwrap().is_some());
 }
@@ -244,18 +221,13 @@ async fn owner_can_get_promotion_by_id() {
 async fn owner_can_update_promotion() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let mut created =
-        create_promotion_scoped("tok".into(), make_promo_args("Old Name"), app.state())
-            .await
-            .unwrap();
+    let mut created = create_promotion_scoped(&bridge.ctx(), "tok", &make_promo_args("Old Name"))
+        .await
+        .unwrap();
     created.name = "New Name".into();
-    let result = update_promotion_scoped("tok".into(), created, app.state()).await;
+    let result = update_promotion_scoped(&bridge.ctx(), "tok", created).await;
     assert!(result.is_ok(), "owner should update a promotion");
     assert_eq!(result.unwrap().name, "New Name");
 }
@@ -264,19 +236,15 @@ async fn owner_can_update_promotion() {
 async fn owner_can_delete_promotion() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let created = create_promotion_scoped("tok".into(), make_promo_args("Delete Me"), app.state())
+    let created = create_promotion_scoped(&bridge.ctx(), "tok", &make_promo_args("Delete Me"))
         .await
         .unwrap();
-    let result = delete_promotion_scoped("tok".into(), created.id.clone(), app.state()).await;
+    let result = delete_promotion_scoped(&bridge.ctx(), "tok", &created.id).await;
     assert!(result.is_ok(), "owner should delete a promotion");
 
-    let fetched = get_promotion_scoped("tok".into(), created.id, app.state())
+    let fetched = get_promotion_scoped(&bridge.ctx(), "tok", &created.id)
         .await
         .unwrap();
     assert!(fetched.is_none(), "deleted promotion should not exist");
@@ -288,15 +256,11 @@ async fn owner_can_delete_promotion() {
 async fn staff_denied_create_promotion() {
     let conn = oz_core::migrations::fresh_db();
     seed_staff(&conn);
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
 
     let result =
-        create_promotion_scoped("tok".into(), make_promo_args("Staff Promo"), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+        create_promotion_scoped(&bridge.ctx(), "tok", &make_promo_args("Staff Promo")).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -306,13 +270,9 @@ async fn staff_can_list_promotions() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
 
-    let result = list_promotions_scoped("tok".into(), app.state()).await;
+    let result = list_promotions_scoped(&bridge.ctx(), "tok").await;
     assert!(
         result.is_ok(),
         "read-only list should be accessible to staff"
@@ -325,8 +285,8 @@ async fn staff_denied_delete_promotion() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
-    let state = scoped_state(conn, "owner-tok", "user-owner", "role-owner", "s1");
-    state.session_store.write().unwrap().insert(
+    let bridge = scoped_state(conn, "owner-tok", "user-owner", "role-owner", "s1");
+    bridge.sessions().write().unwrap().insert(
         "staff-tok".into(),
         SessionContext::new(
             "user-staff".into(),
@@ -339,14 +299,9 @@ async fn staff_denied_delete_promotion() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result =
-        delete_promotion_scoped("staff-tok".into(), "nonexistent".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = delete_promotion_scoped(&bridge.ctx(), "staff-tok", "nonexistent").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── Edge cases ────────────────────────────────────────────────────
@@ -355,15 +310,9 @@ async fn staff_denied_delete_promotion() {
 async fn list_promotions_empty_when_none() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let list = list_promotions_scoped("tok".into(), app.state())
-        .await
-        .unwrap();
+    let list = list_promotions_scoped(&bridge.ctx(), "tok").await.unwrap();
     assert!(list.is_empty());
 }
 
@@ -371,13 +320,9 @@ async fn list_promotions_empty_when_none() {
 async fn get_promotion_returns_none_for_unknown() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result = get_promotion_scoped("tok".into(), "nonexistent-id".into(), app.state())
+    let result = get_promotion_scoped(&bridge.ctx(), "tok", "nonexistent-id")
         .await
         .unwrap();
     assert!(result.is_none());

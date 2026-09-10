@@ -1,12 +1,10 @@
 //! Tests for the receipt format commands (receipt-format axis).
 
 use super::*;
-use crate::state::AppState;
+use crate::testing::TestBridge;
 use oz_core::db::receipt_formats::ReceiptSource;
 use oz_core::migrations;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager;
 
 fn seed_owner(conn: &rusqlite::Connection) {
     let store = Store::new(conn);
@@ -19,23 +17,12 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn flow_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    let path = temp_dir.keep();
-    state.db_manager = StoreDatabaseManager::new(path, migrations::ALL);
-    state
+fn flow_state(conn: rusqlite::Connection) -> TestBridge {
+    TestBridge::new().with_conn(conn)
 }
 
-fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
-}
-
-fn owner_session(state: &AppState, token: &str) {
-    state.session_store.write().unwrap().insert(
+fn owner_session(bridge: &TestBridge, token: &str) {
+    bridge.sessions().write().unwrap().insert(
         token.to_string(),
         SessionContext::new(
             "user-owner".into(),
@@ -54,27 +41,26 @@ fn owner_session(state: &AppState, token: &str) {
 async fn read_falls_back_to_legacy_keys_with_legacy_provenance() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
+    let bridge = flow_state(conn);
+    owner_session(&bridge, "owner-tok");
     // Legacy keys live in the STORE db (the one resolve_scope opens), not
     // the global db.
     {
-        let store_conn = state.db_manager.open_store("default").unwrap();
+        let store_conn = bridge.db_manager().open_store("default").unwrap();
         let guard = store_conn.lock().unwrap();
         platform_core::settings::Settings::set(&guard, "receipt.footer", "legacy footer").unwrap();
     }
     {
-        let store_conn = state.db_manager.open_store("default").unwrap();
+        let store_conn = bridge.db_manager().open_store("default").unwrap();
         let guard = store_conn.lock().unwrap();
         platform_core::settings::Settings::set(&guard, "receipt.paper_width", "narrow").unwrap();
     }
-    let app = mock_app(state);
 
     let eff = get_receipt_format_scoped(
+        &bridge.ctx(),
         Some("term-1".into()),
         Some("loc-1".into()),
-        "owner-tok".into(),
-        app.state(),
+        "owner-tok",
     )
     .await
     .unwrap();
@@ -89,12 +75,12 @@ async fn read_falls_back_to_legacy_keys_with_legacy_provenance() {
 async fn layout_write_scopes_to_the_store_location_and_readback_agrees() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_state(conn);
+    owner_session(&bridge, "owner-tok");
 
     let eff = set_receipt_layout_scoped(
-        ReceiptLayoutArgs {
+        &bridge.ctx(),
+        &ReceiptLayoutArgs {
             paper_width_mm: Some(58),
             margin_top_mm: Some(2),
             margin_bottom_mm: Some(1),
@@ -105,9 +91,8 @@ async fn layout_write_scopes_to_the_store_location_and_readback_agrees() {
             show_table_number: Some(false),
             footer_note: Some("counter copy".into()),
         },
-        "loc-1".into(),
-        "owner-tok".into(),
-        app.state(),
+        "loc-1",
+        "owner-tok",
     )
     .await
     .unwrap();
@@ -117,10 +102,9 @@ async fn layout_write_scopes_to_the_store_location_and_readback_agrees() {
     assert_eq!(eff.layout.print_copies, Some(2));
 
     // Readback agrees with the write's read-back.
-    let again =
-        get_receipt_format_scoped(None, Some("loc-1".into()), "owner-tok".into(), app.state())
-            .await
-            .unwrap();
+    let again = get_receipt_format_scoped(&bridge.ctx(), None, Some("loc-1".into()), "owner-tok")
+        .await
+        .unwrap();
     assert_eq!(again.layout.paper_width_mm, Some(58));
 }
 
@@ -128,12 +112,12 @@ async fn layout_write_scopes_to_the_store_location_and_readback_agrees() {
 async fn layout_write_rejects_nonsense_width_as_validation() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_state(conn);
+    owner_session(&bridge, "owner-tok");
 
     let result = set_receipt_layout_scoped(
-        ReceiptLayoutArgs {
+        &bridge.ctx(),
+        &ReceiptLayoutArgs {
             paper_width_mm: Some(500),
             margin_top_mm: None,
             margin_bottom_mm: None,
@@ -144,14 +128,13 @@ async fn layout_write_rejects_nonsense_width_as_validation() {
             show_table_number: None,
             footer_note: None,
         },
-        "loc-1".into(),
-        "owner-tok".into(),
-        app.state(),
+        "loc-1",
+        "owner-tok",
     )
     .await;
 
     match result {
-        Err(AppError::Core { sub_kind, .. }) => {
+        Err(BridgeError::Core { sub_kind, .. }) => {
             assert!(
                 matches!(sub_kind, oz_core::CoreErrorKind::Validation),
                 "{sub_kind:?}"
@@ -175,8 +158,8 @@ async fn denies_staff_without_settings_edit() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = flow_state(conn);
-    state.session_store.write().unwrap().insert(
+    let bridge = flow_state(conn);
+    bridge.sessions().write().unwrap().insert(
         "lite-tok".into(),
         SessionContext::new(
             "user-lite".into(),
@@ -189,10 +172,10 @@ async fn denies_staff_without_settings_edit() {
             0,
         ),
     );
-    let app = mock_app(state);
 
     let result = set_receipt_layout_scoped(
-        ReceiptLayoutArgs {
+        &bridge.ctx(),
+        &ReceiptLayoutArgs {
             paper_width_mm: Some(80),
             margin_top_mm: None,
             margin_bottom_mm: None,
@@ -203,26 +186,25 @@ async fn denies_staff_without_settings_edit() {
             show_table_number: None,
             footer_note: None,
         },
-        "loc-1".into(),
-        "lite-tok".into(),
-        app.state(),
+        "loc-1",
+        "lite-tok",
     )
     .await;
 
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn content_write_targets_the_linked_entity_and_readback_agrees() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
+    let bridge = flow_state(conn);
+    owner_session(&bridge, "owner-tok");
     // Content resolves through the store's primary location row. The
     // migrations seed location 'default' with its own legal entity; make
     // it primary so the write path resolves that entity (no FK gymnastics).
     {
-        let store_conn = state.db_manager.open_store("default").unwrap();
+        let store_conn = bridge.db_manager().open_store("default").unwrap();
         let guard = store_conn.lock().unwrap();
         guard
             .execute(
@@ -231,18 +213,17 @@ async fn content_write_targets_the_linked_entity_and_readback_agrees() {
             )
             .unwrap();
     }
-    let app = mock_app(state);
 
     let eff = set_receipt_content_scoped(
-        ReceiptContentArgs {
+        &bridge.ctx(),
+        &ReceiptContentArgs {
             required_fields: vec!["store_name".into(), "tax_id".into(), "total".into()],
             footer_text: "statutory footer".into(),
             show_tax: true,
             show_currency: false,
             decimal_separator: "comma".into(),
         },
-        "owner-tok".into(),
-        app.state(),
+        "owner-tok",
     )
     .await
     .unwrap();
@@ -255,7 +236,7 @@ async fn content_write_targets_the_linked_entity_and_readback_agrees() {
     assert_eq!(eff.content.as_ref().unwrap().required_fields.len(), 3);
 
     // Readback agrees with the write's read-back.
-    let again = get_receipt_format_scoped(None, None, "owner-tok".into(), app.state())
+    let again = get_receipt_format_scoped(&bridge.ctx(), None, None, "owner-tok")
         .await
         .unwrap();
     assert_eq!(again.content_source, ReceiptSource::Entity);
@@ -266,20 +247,19 @@ async fn content_write_targets_the_linked_entity_and_readback_agrees() {
 async fn content_write_fails_closed_without_a_linked_entity() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let bridge = flow_state(conn);
+    owner_session(&bridge, "owner-tok");
 
     let result = set_receipt_content_scoped(
-        ReceiptContentArgs {
+        &bridge.ctx(),
+        &ReceiptContentArgs {
             required_fields: vec![],
             footer_text: "orphan".into(),
             show_tax: true,
             show_currency: false,
             decimal_separator: "dot".into(),
         },
-        "owner-tok".into(),
-        app.state(),
+        "owner-tok",
     )
     .await;
 

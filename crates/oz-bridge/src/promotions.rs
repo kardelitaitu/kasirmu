@@ -285,3 +285,7 @@ pub async fn get_sale_promotions_scoped(
     drop(db);
     Ok(apps)
 }
+
+#[cfg(test)]
+#[path = "promotions_tests.rs"]
+mod promotions_tests;

@@ -100,7 +100,3 @@ pub async fn set_receipt_content_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "receipt_format_tests.rs"]
-mod tests;

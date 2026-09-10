@@ -124,7 +124,3 @@ pub async fn get_sale_promotions_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "promotions_tests.rs"]
-mod tests;

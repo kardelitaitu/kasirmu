@@ -200,3 +200,7 @@ pub async fn unfreeze_gift_card_scoped(
     drop(db);
     Ok(result)
 }
+
+#[cfg(test)]
+#[path = "gift_cards_tests.rs"]
+mod gift_cards_tests;
