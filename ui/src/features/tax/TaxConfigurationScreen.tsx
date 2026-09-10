@@ -17,6 +17,7 @@ import {
 import { listCategoriesScoped, type CategoryDto } from '@/api/products';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
+import { invalidateCartTaxCache } from '@/hooks/useCartTax';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
@@ -264,6 +265,10 @@ export default function TaxConfigurationScreen() {
       } else {
         await createTaxRateScoped(sessionToken, args);
       }
+      // F2-8: the write succeeded — any cached cart-tax answer computed
+      // under the old configuration is now potentially stale. Drop it so
+      // an open POS session can never serve it as fresh.
+      invalidateCartTaxCache();
       setShowModal(false);
       await loadAll();
     } catch {
@@ -307,6 +312,9 @@ export default function TaxConfigurationScreen() {
     setDeleting(id);
     try {
       await deleteTaxRateScoped(sessionToken, id);
+      // F2-8: success path ONLY — the refusal catch below means the
+      // backend refused the write and the cache is still accurate.
+      invalidateCartTaxCache();
       setPendingDelete(null);
       setPendingDeleteCounts(null);
       setLoadingDeleteCounts(false);
@@ -357,6 +365,9 @@ export default function TaxConfigurationScreen() {
         categoryId: editingCatId,
         taxRateIds: selectedCatRateIds,
       });
+      // F2-8: category↔rate assignment changes which rates a cart
+      // resolves to — same staleness class as a rate write.
+      invalidateCartTaxCache();
       setShowCatModal(false);
       await loadAll();
     } catch {

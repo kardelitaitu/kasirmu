@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { useCartTax } from '@/hooks/useCartTax';
+import { invalidateCartTaxCache } from '@/hooks/useCartTax';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import {
@@ -639,5 +641,115 @@ describe('TaxConfigurationScreen rounding select (E1-6)', () => {
     expect(globalSelect).toBeEnabled();
     expect(globalSelect).toHaveValue('');
     expect(within(dialog).queryByText(/authored at the hub/i)).toBeNull();
+  });
+});
+
+
+// ── F2-8: tax-config writes invalidate the cart-tax cache ──
+
+describe('TaxConfigurationScreen cart-tax cache invalidation (F2-8)', () => {
+  const CART_TOKEN = 'tok_f28';
+  const CART_LINES = [{ sku: 'SKU-1', qty: 2, unit_price_minor: 1000 }];
+  let computeDown: boolean;
+  // Set per-test: the backend's last-covering-row guard refuses the
+    // delete (a Validation rejection routed by command, not a
+    // once-queued rejection that would hit the next load call).
+  let deleteRefused: boolean;
+
+  beforeEach(() => {
+    invokeMock.mockClear();
+    resetUnmatchedInvokes();
+    computeDown = false;
+    deleteRefused = false;
+    // The hook consults the SAME module map the screen writes invalidate.
+    invalidateCartTaxCache();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'compute_cart_tax_scoped') {
+        return computeDown
+          ? Promise.reject(new Error('ipc down'))
+          : Promise.resolve({ taxMinor: 1700, hasExclusive: false });
+      }
+      if (cmd === 'list_tax_rates_scoped') return Promise.resolve(SAMPLE_TAX_RATES);
+      if (cmd === 'list_categories' || cmd === 'list_categories_scoped') return Promise.resolve(SAMPLE_CATEGORIES);
+      if (cmd === 'list_category_tax_rates_scoped') return Promise.resolve(SAMPLE_CAT_TAX_RATES);
+      if (cmd === 'list_tax_rate_rounding_modes_scoped') return Promise.resolve({});
+      if (cmd === 'create_tax_rate_scoped') return Promise.resolve({ ...SAMPLE_TAX_RATES[0], name: 'New Tax' });
+      if (cmd === 'update_tax_rate_scoped') return Promise.resolve(SAMPLE_TAX_RATES[0]);
+      if (cmd === 'delete_tax_rate_scoped') {
+        return deleteRefused
+          ? Promise.reject({ kind: 'invalid', message: 'needs replacement' })
+          : Promise.resolve(undefined);
+      }
+      if (cmd === 'get_tax_rate_dependency_counts_scoped') return Promise.resolve({ products: 0, categories: 0, sale_lines: 0 });
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+  });
+
+  /** Prime the cache, run the screen write, then force a failing
+   *  recompute: without the invalidation the matching signature would
+   *  classify the stale answer as fresh (`caution`); with it the same
+   *  recompute must be `unknown` — and the fresh IPC call is visible.
+   */
+  async function pinFreshRecomputeAfterWrite(write: () => Promise<void>) {
+    const first = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(first.result.current.severity).toBe('ok'));
+    first.unmount();
+    const callsAfterPrime = invokeMock.mock.calls.filter((c: string[]) => c[0] === 'compute_cart_tax_scoped').length;
+
+    await write();
+
+    computeDown = true;
+    const second = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(second.result.current.severity).toBe('unknown'));
+    // The recompute ISSUED its own IPC — nothing was served from cache.
+    const callsAfter = invokeMock.mock.calls.filter((c: string[]) => c[0] === 'compute_cart_tax_scoped').length;
+    expect(callsAfter).toBe(callsAfterPrime + 1);
+    second.unmount();
+  }
+
+  it('a successful rate create drops the cached signature (fresh recompute, never caution)', async () => {
+    await pinFreshRecomputeAfterWrite(async () => {
+      renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+      await waitForTable();
+      await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+      const dialog = screen.getByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText('Tax Name'), 'Cache Bust');
+      await userEvent.type(within(dialog).getByLabelText('Rate (%)'), '500');
+      await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+  });
+
+  it('a successful rate delete drops the cached signature too', async () => {
+    await pinFreshRecomputeAfterWrite(async () => {
+      renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+      await waitForTable();
+      const row = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+      await userEvent.click(within(row).getByRole('button', { name: /delete/i }));
+      const confirm = await screen.findByRole('dialog', { name: /delete sales tax/i });
+      await userEvent.click(within(confirm).getByRole('button', { name: /delete/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /delete sales tax/i })).toBeNull());
+    });
+  });
+
+  it('a REFUSED delete (backend guard) leaves the cache intact', async () => {
+    const first = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(first.result.current.severity).toBe('ok'));
+    first.unmount();
+    deleteRefused = true;
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    const row = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(row).getByRole('button', { name: /delete/i }));
+    const confirm = await screen.findByRole('dialog', { name: /delete sales tax/i });
+    await userEvent.click(within(confirm).getByRole('button', { name: /delete/i }));
+    // Refusal dialog means the write never happened.
+    await screen.findByText(/last rate covering its tier/i);
+    computeDown = true;
+    const second = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(second.result.current.severity).toBe('caution'));
+    // Cache SURVIVED the refusal — the old answer is still accurate.
+    second.unmount();
   });
 });
