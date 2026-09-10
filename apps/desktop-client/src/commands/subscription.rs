@@ -640,6 +640,7 @@ fn per_location_over_quota_rows(
 /// cap while the suspended instances stay parked until restored). Shared by
 /// all three dims so the over/at/none decision exists once; the KDS and
 /// warehouse rows have no suspension semantics of their own and pass 0.
+#[allow(clippy::too_many_arguments)]
 fn push_dim_row(
     rows: &mut Vec<OverQuotaMarker>,
     now: &str,

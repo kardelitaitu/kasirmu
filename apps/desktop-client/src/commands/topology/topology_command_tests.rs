@@ -1440,7 +1440,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     drop(db);
     let store_conn = app_state.db_manager.open_store(store_id).unwrap();
     let store_db = store_conn.lock().unwrap();
-    let topology_events: Vec<String> = oz_core::Store::new(&*store_db)
+    let topology_events: Vec<String> = oz_core::Store::new(&store_db)
         .list_audit_entries(50, 0)
         .unwrap()
         .into_iter()

@@ -221,7 +221,7 @@ async fn put_image_hash_mismatch_returns_409_without_storing() {
                 .unwrap()
                 .path()
                 .extension()
-                .map_or(false, |x| x == "webp")
+                .is_some_and(|x| x == "webp")
         })
         .count();
     assert_eq!(stored_count, 0, "hash mismatch must not persist any file");

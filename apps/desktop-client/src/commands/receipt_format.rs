@@ -122,9 +122,10 @@ fn primary_location_id(conn: &std::sync::Mutex<rusqlite::Connection>) -> Result<
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&guard);
-    Ok(store.get_primary_location()?.map(|p| p.id).ok_or_else(|| {
-        AppError::Invalid("no primary location to resolve the entity from".into())
-    })?)
+    store
+        .get_primary_location()?
+        .map(|p| p.id)
+        .ok_or_else(|| AppError::Invalid("no primary location to resolve the entity from".into()))
 }
 
 /// Replace the primary legal entity's statutory content record and

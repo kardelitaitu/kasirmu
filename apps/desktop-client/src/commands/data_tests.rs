@@ -315,11 +315,9 @@ fn import_gate_proceeds_under_cap_and_pins_the_boundary() {
     seed_catalog(&conn, 2);
     let store = Store::new(&conn);
     // 2 + 2 new = 4, well under the Free cap of 200.
-    let counted = gate_import_product_batch(
-        &store,
-        &vec![product_value("new-1"), product_value("new-2")],
-    )
-    .unwrap();
+    let counted =
+        gate_import_product_batch(&store, &[product_value("new-1"), product_value("new-2")])
+            .unwrap();
     assert_eq!(counted, 2);
     // Simulate the import loop's inserts, then pin the exact edge: a batch
     // landing exactly ON the cap (196 more = 200) is the last allowed one;
@@ -338,7 +336,7 @@ fn import_gate_proceeds_under_cap_and_pins_the_boundary() {
     gate_import_product_batch(&store, &edge).unwrap(); // 200 == limit: allowed
     // The gate only counts; the caller inserts. Materialize the approved
     // batch exactly as the import loop would, THEN ask again.
-    for (_, v) in edge.iter().enumerate() {
+    for v in edge.iter() {
         let p: oz_core::Product = serde_json::from_value(v.clone()).unwrap();
         conn.execute(
             "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",

@@ -95,8 +95,8 @@ fn create_args_rejects_missing_required_fields() {
 
 #[test]
 fn parse_status_filter_accepts_known_and_rejects_unknown() {
-    assert!(matches!(parse_status_filter(None).unwrap(), None));
-    assert!(matches!(parse_status_filter(Some("")).unwrap(), None));
+    assert!(parse_status_filter(None).unwrap().is_none());
+    assert!(parse_status_filter(Some("")).unwrap().is_none());
     assert_eq!(
         parse_status_filter(Some("partial")).unwrap(),
         Some(PayableStatus::Partial)

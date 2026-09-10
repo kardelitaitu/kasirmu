@@ -1809,7 +1809,7 @@ async fn pg_integration_memo_sync_and_active_read() {
     };
 
     // ── Push: the desktop's full-state snapshot (one memo). ──
-    let ack = crate::pg::sync_memos(&pool, &tenant, &[memo.clone()])
+    let ack = crate::pg::sync_memos(&pool, &tenant, std::slice::from_ref(&memo))
         .await
         .expect("sync_memos push");
     assert_eq!(ack.upserted, 1);
@@ -1874,7 +1874,7 @@ async fn pg_integration_memo_sync_and_active_read() {
 
     // The desktop's next push still carries the stale `pending` row: the
     // monotonic merge must keep the cloud-side acknowledgement.
-    let stale_push = crate::pg::sync_memos(&pool, &tenant, &[memo.clone()])
+    let stale_push = crate::pg::sync_memos(&pool, &tenant, std::slice::from_ref(&memo))
         .await
         .expect("stale re-push");
     assert_eq!(stale_push.upserted, 1);
