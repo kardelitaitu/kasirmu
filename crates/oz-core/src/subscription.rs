@@ -918,6 +918,22 @@ impl TenantSubscription {
         }
         Ok(())
     }
+
+    /// Enforce [`Self::pos_read_only_for_connection`] — returns
+    /// [`CoreError::SubscriptionReadOnly`] when the register is locked against monotonic ledger time.
+    pub fn enforce_pos_writable_for_connection(
+        &self,
+        conn: &rusqlite::Connection,
+    ) -> Result<(), CoreError> {
+        if self.pos_read_only_for_connection(conn) {
+            return Err(CoreError::SubscriptionReadOnly(
+                "The offline grace window has expired. This register is read-only: ".to_string()
+                    + "sales and order changes are locked until the subscription is verified online. "
+                    + "Data export and viewing remain available.",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Normalized subscription lifecycle state shared by the license server,

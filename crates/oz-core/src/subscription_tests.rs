@@ -1743,6 +1743,32 @@ fn enforce_pos_writable_error_is_actionable() {
     assert!(err.contains("read-only"), "got: {err}");
     assert!(err.contains("grace"), "got: {err}");
 }
+
+#[test]
+fn test_enforce_pos_writable_for_connection() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+
+    // Expired 3 days ago (Plus tier, within 14-day grace) -> writable.
+    let recent = (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339();
+    let sub = state_sub(SubscriptionTier::Plus, "active", Some(recent));
+    assert!(sub.enforce_pos_writable_for_connection(&conn).is_ok());
+
+    // Insert a sale with a timestamp past the 14-day grace window.
+    let future_ts = (chrono::Utc::now() + chrono::Duration::days(20)).to_rfc3339();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at)
+         VALUES ('s1', 'completed', 100, 'USD', 1, ?1, ?1)",
+        rusqlite::params![future_ts],
+    )
+    .unwrap();
+
+    // With ledger advancing past grace, enforce_pos_writable_for_connection rejects with SubscriptionReadOnly.
+    let res = sub.enforce_pos_writable_for_connection(&conn);
+    assert!(res.is_err());
+    let err = res.unwrap_err().to_string();
+    assert!(err.contains("read-only"), "got: {err}");
+}
 // ── Phase C: trial state, client-visible ────────────────────────────
 
 /// Both trial fields present, as the server emits them for a trial key.

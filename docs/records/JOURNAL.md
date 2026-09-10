@@ -1,4 +1,20 @@
 
+## 2026-09-10 — TDD: Connection-aware write enforcement enforce_pos_writable_for_connection (core/subscription)
+
+**Context & Identified Weakness:**
+The operational enforcement method `enforce_pos_writable()` only consulted `self.pos_read_only()`, which relies on `chrono::Utc::now()`. An offline merchant with a rolled-back system clock could pass write enforcement and create new sales despite ledger timestamps indicating grace had lapsed.
+
+**Changes & Design:**
+1. Added `TenantSubscription::enforce_pos_writable_for_connection(&self, conn: &rusqlite::Connection) -> Result<(), CoreError>`.
+2. Checks `self.pos_read_only_for_connection(conn)`. If read-only is detected via monotonic ledger timestamps, returns `CoreError::SubscriptionReadOnly` with actionable guidance.
+3. Added unit test `test_enforce_pos_writable_for_connection` validating write allowance during grace and rejection with `SubscriptionReadOnly` when ledger timestamps advance past grace.
+
+**Verification:**
+- Verified RED phase: compiler error on missing method.
+- Verified GREEN phase: `test_enforce_pos_writable_for_connection` passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
 ## 2026-09-10 — TDD: Quota gate resolve_tier_fail_closed monotonic ledger integration (core/quota_gate)
 
 **Context & Identified Weakness:**
