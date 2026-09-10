@@ -666,7 +666,7 @@ actual relationship mutation.
       staff/KDS/products quotas become server-issued payload fields
       (Phase 1 §E says they must), and whether Free keeps the "QRIS
       payments" marketing label while `supports_qris()` is dynamic-only.
-- [ ] **Implement downgrade behavior.** Preserve over-limit locations,
+- [x] **Implement downgrade behavior.** Preserve over-limit locations,
       terminals, staff, KDS screens, history, and topology nodes as
       readable/marked `over_quota`; block new creation and provide
       archive-or-upgrade remediation.
@@ -682,8 +682,10 @@ actual relationship mutation.
       `over_quota` marker, and the per-location dimensions (KDS screens,
       topology nodes) which `assess_downgrade` deliberately excludes.
       See §"Downgrade detection slice".
-      — **TWO OF THOSE THREE HAVE SINCE LANDED (recorded 2026-09-10; the list
-      above is kept as written, because two of its items are now false).**
+      — ~~**TWO OF THOSE THREE HAVE SINCE LANDED**~~ **ALL THREE HAVE SINCE
+      LANDED (recorded 2026-09-10; the list above is kept as written, because
+      all three of its items are now false — see the LANDED record at the end
+      of this box).**
       - **persisted `over_quota` marker → CLOSED by `006add29b`** *feat(core):
         persist over-quota markers on every quota-dim create/archive/delete*
         (2026-09-08 — it pre-dates this session's wave and was missing from the
@@ -723,10 +725,13 @@ actual relationship mutation.
       original wording — the creation path.** Markers are persisted and shown,
       but the box asks that over-limit resources stay *readable/marked*
       alongside blocking new creation and remediation for every dimension;
-      topology-node capacity is not represented in the assessment, and KDS
+      ~~topology-node capacity is not represented in the assessment, and KDS
       coverage is marker-level rather than evaluated. NOT flipped; the
       remaining slice is create-path gating plus whatever the owner wants for
-      topology nodes.
+      topology nodes.~~ *(both halves superseded 2026-09-10: create-path
+      gating landed in wave 4, KDS coverage was corrected further below, and
+      the topology-node marker chain completed the last clause — see the
+      LANDED record at the end of this box.)*
       — **CREATE-PATH GATING: LANDED 2026-09-10 (wave 4, four commits). That
       sentence is now the false half of the note above, so the box is down to
       ONE item; see the verdict at the end.**
@@ -793,22 +798,26 @@ actual relationship mutation.
       `kds` type on a tier whose static cap is 0.
        ~~**Still the one open item, precisely:**~~ *(superseded 2026-09-10 —
        the owner ruled topology nodes = marker-only dimension riding the
-       existing per-location caps; the marker slices are in flight and this
-       record's paragraph below carries the design and the flip condition*
-       — see the OWNER RULING + IN-FLIGHT CLOSURE paragraph at the end of
+       existing per-location caps; the marker slices LANDED the same day
+       and this record's paragraph below carries the design (the LANDED
+       record at the end of the box carries the flip)*
+       — see the OWNER RULING + CLOSURE paragraph at the end of
        this box). The pre-ruling text: the box's own list names
-      readable/marked `over_quota`", and nothing marks them. There is no
+      readable/marked `over_quota`, and nothing marks them. There is no
       topology-node quota dimension, `assess_downgrade` does not count them
       (`downgrade.rs:34-38` assigns them to the workspace/topology path), and no
       marker row is ever written for one. Nodes are *constrained* today — type
       allowlisting, the per-location caps above, `suspend_surplus_instances` —
-      but constrained is not marked, and the box asks for marked. Cheap to
+      but ~~constrained is not marked, and the box asks for marked~~
+      *(superseded 2026-09-10 — they are marked now; see the LANDED record
+      at the end of this box)*. Cheap to
       close, not free: `over_quota_markers` was built for it (`resource_type` /
       `resource_id` are documented in `20260922_over_quota_markers.sql` as wide
       enough to carry per-resource rows, `resource_id` = tenant id for a
       dimension marker, = the resource for a specific one), so the shape exists
-      and the missing part is the writer plus a decided limit. **Box NOT
-      flipped** on that single clause.
+      and the missing part is the writer plus a decided limit. ~~**Box NOT
+      flipped** on that single clause.~~ *(superseded 2026-09-10 — the
+      writer landed and the limit was decided; see the LANDED record below.)*
       **Two rulings parked for the owner, both live in this box's subject
       matter and both verified at HEAD** — recorded here so the next reader
       does not re-find them as bugs:
@@ -825,8 +834,9 @@ actual relationship mutation.
          the same assessment (`downgrade.rs:40` and `:42`). So one dimension
          counts archived rows and its neighbour does not. Tightening either side
          changes who is reported over quota after a downgrade, hence parked.
-       — **OWNER RULING + IN-FLIGHT CLOSURE (2026-09-10; the flip belongs to
-       S4+S5, not to this record).** The owner ruled topology nodes = **a
+       — **OWNER RULING + CLOSURE (2026-09-10; the flip belonged to S4+S5,
+        not to this record — both have since landed).** The owner ruled
+        topology nodes = **a
        marker-only dimension riding the existing per-location
        caps/suspension — NOT a new cap.** Adopted micro-design: anchor on
        the READ FAN-OUT (`per_location_over_quota_rows`), not events —
@@ -844,8 +854,56 @@ actual relationship mutation.
        `KdsScreens` `Internal` precedent). Slices: S1 core enum + refusal,
        S2 core counters, S3 desktop fan-out, S4 UI map (`OverQuotaCard`'s
        hardcoded ternary MUST become a map — changing the array alone
-       would mislabel topology as warehouses), S5 records. **S1–S5 are in
-       flight; this box flips ONLY when S4 lands and S5 records.**
+       would mislabel topology as warehouses), S5 records. **S1–S5 all
+        LANDED — BOX FLIPPED [x] (2026-09-10). The chain, in order:**
+        1. **Owner ruling (2026-09-10):** topology nodes are a marker-only
+           dimension riding the EXISTING per-location caps/suspension — no
+           new cap was invented, none needed.
+        2. **T2 micro-design (adopted):** anchor = the READ FAN-OUT
+           (`per_location_over_quota_rows`), NOT event persistence — event
+           writes would be wiped by `persist_over_quota_markers`'
+           clear-then-insert (`downgrade.rs:78`), topology counts live in
+           per-store DBs unreachable from the tenant Store, and
+           `apply_topology_diff` REJECTS rather than over-creates, so there
+           is no overflow hook for an event writer to hang on.
+        3. **S1+S2 core `8bae644e0`** (6 files, +230): `TopologyNodes` exists
+           (`downgrade.rs:87`) deliberately absent from `DIMENSION_ORDER`
+           exactly like `KdsScreens`; `limit_for` → `None` (no honest
+           tenant-global limit exists to report); `quota_gate::quota_count`
+           refuses it LOUDLY with `Internal` (`quota_gate.rs:88`, the
+           `KdsScreens` precedent — never a silent 0); read counters
+           `count_topology_nodes` + `count_quota_suspended_instances`
+           (`workspaces_instances.rs:360/:374`).
+        4. **S3 desktop fan-out `fe8df912c`** (2 files, +105/−6): one
+           aggregate row per store in the scoped report — limit = SUM of the
+           finite per-location caps (max_pos + max_warehouses + max_kds),
+           all-None → NO row at all, severity `Over` iff ≥1 quota-suspended
+           node or current > limit.
+        5. **S4 UI `28a0dc815`** (5 files, +62/−13): `PER_LOCATION_LABEL_IDS`
+           (`OverQuotaCard.tsx:38`) replaces the hardcoded two-way ternary
+           the design demanded, plus the topology-nodes ftl pair — topology
+           rows render under their own label instead of masquerading as
+           warehouses.
+        6. **S5 script half `5280b6fab`**: the grep-gate's
+           `apply_topology_diff` KNOWN-GAP reason records the adopted
+           resolution; the entry STAYS as the rejection-only door tripwire
+           (self-stales the day that fn grows an INSERT).
+        7. **S5 record + flip — this commit.** Companion parity repair
+           `2341bdea6` re-allowlisted the desktop-only
+           `get/set_location_ticket_prefix_scoped` pair in the tablet shell
+           array with a dated reason (inverse staleness — it fails only if
+           tablet ever registers them), restoring parity EXIT=0 honestly.
+        Gate evidence: core 2907 green at the S1+S2 gate (`8bae644e0`);
+        re-run at the flip: core 2909 passed / 0 failed, desktop
+        `commands::subscription` 29 passed, OverQuotaCard suite 14 passed,
+        `verify-ipc-parity.py` OK (EXIT=0), `verify-quota-coverage.sh` PASS
+        (12 sites / 10 covered / 2 KNOWN-GAP / 0 violations). The box's
+        clauses now all hold: over-limit resources are readable AND marked
+        (markers + card rows, topology included), new creation is blocked on
+        every door (wave 4's gates + the in-tx veto), and remediation is
+        offered (the card's suspend/recover actions, with archive living in
+        the resource screens and the upgrade CTA in the pricing flow — the
+        card's own recorded limits).
 - [x] **Implement offline synchronization guarantees.** Add durable outbox
       states, retries, conflict handling, idempotency, ordering, clock handling,
       and visible failure states. — **verified complete 2026-09-06** across
