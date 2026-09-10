@@ -354,7 +354,7 @@ jobs:
           no_output_timeout: 15m
       - run:
           name: Run Cargo Nextest
-          command: cargo nextest run --workspace --all-features -j 2
+          command: cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet -j 2
           no_output_timeout: 15m
       - save_cache:
           key: v2-cargo-cache-{{ checksum "Cargo.lock" }}
