@@ -127,7 +127,3 @@ pub async fn currency_info_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "currencies_tests.rs"]
-mod tests;

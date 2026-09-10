@@ -386,3 +386,7 @@ pub async fn update_scoped(
     tracing::info!(sku = %variant.sku, "product variant updated (scoped)");
     Ok(UpdateProductVariantResult { sku: variant.sku })
 }
+
+#[cfg(test)]
+#[path = "product_variants_tests.rs"]
+mod tests;

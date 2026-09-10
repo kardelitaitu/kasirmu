@@ -211,3 +211,7 @@ pub async fn list_fiscal_schemes_scoped(
     let store = Store::new(&db);
     Ok(store.list_fiscal_schemes()?)
 }
+
+#[cfg(test)]
+#[path = "fiscal_tests.rs"]
+mod tests;

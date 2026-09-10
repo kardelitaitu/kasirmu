@@ -362,3 +362,7 @@ pub async fn get_latest_exchange_rate_scoped(
     drop(db);
     Ok(row.map(ExchangeRateDto::from))
 }
+
+#[cfg(test)]
+#[path = "currency_tests.rs"]
+mod tests;

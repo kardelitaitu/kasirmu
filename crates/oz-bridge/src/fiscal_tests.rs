@@ -1,4 +1,18 @@
+//! Unit tests for the fiscal command bodies (Wave-A test relocation: moved
+//! out of `apps/desktop-client/src/commands/fiscal_tests.rs`).
+//!
+//! Mounted at the foot of `fiscal.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves `Store`, `run_upsert` and the write DTO. The desktop
+//! file carried its own test-local `run_upsert` helper because the shell's
+//! command body was not reachable headlessly; the bridge now exposes the real
+//! `run_upsert` (and owns the RFC-3339 stamp itself), so every case below calls
+//! the production function directly and the duplicate helper is gone. Database
+//! handles come from the crate's own `testing::temp_conn` harness rather than
+//! a direct `migrations::fresh_db` call — the same fully-migrated in-memory
+//! database, reached through the shared seam.
+
 use super::*;
+use crate::testing::temp_conn;
 
 fn upsert_args(
     entity: &str,
@@ -21,7 +35,7 @@ const SEEDED_ENTITY: &str = "default:default-legal-entity";
 
 #[test]
 fn upsert_then_read_round_trips_the_series() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let store = Store::new(&conn);
     run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 4, "yearly")).unwrap();
     let seq = store
@@ -36,7 +50,7 @@ fn upsert_then_read_round_trips_the_series() {
 
 #[test]
 fn upsert_twice_reconfigures_without_resetting_the_counter() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let store = Store::new(&conn);
     run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 4, "never")).unwrap();
     conn.execute(
@@ -59,10 +73,10 @@ fn upsert_twice_reconfigures_without_resetting_the_counter() {
 
 #[test]
 fn unknown_reset_period_is_refused() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let err = run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 0, "weekly")).unwrap_err();
     match err {
-        AppError::Core { message, .. } => {
+        BridgeError::Core { message, .. } => {
             assert!(message.contains("reset_period"), "got: {message}");
         }
         other => panic!("expected typed validation, got {other:?}"),
@@ -71,13 +85,13 @@ fn unknown_reset_period_is_refused() {
 
 #[test]
 fn negative_padding_is_refused() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     assert!(run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", -1, "never")).is_err());
 }
 
 #[test]
 fn unconfigured_entity_kind_reads_none() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     let store = Store::new(&conn);
     assert!(
         store
@@ -85,23 +99,4 @@ fn unconfigured_entity_kind_reads_none() {
             .unwrap()
             .is_none()
     );
-}
-
-/// The sync business logic both fiscal commands wrap (extracted so tests
-/// exercise the exact production path).
-fn run_upsert(
-    conn: &rusqlite::Connection,
-    args: &UpsertDocumentNumberSequenceArgs,
-) -> Result<(), AppError> {
-    let store = Store::new(conn);
-    let reset_period = ResetPeriod::parse(&args.reset_period)?;
-    store.upsert_document_number_sequence(
-        &args.legal_entity_id,
-        &args.document_kind,
-        &args.prefix,
-        reset_period,
-        args.padding,
-        &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-    )?;
-    Ok(())
 }

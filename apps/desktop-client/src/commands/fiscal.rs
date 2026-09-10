@@ -137,9 +137,3 @@ pub async fn list_fiscal_schemes_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "fiscal_tests.rs"]
-mod tests;

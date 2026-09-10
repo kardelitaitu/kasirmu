@@ -1,3 +1,15 @@
+//! Unit tests for the product-variant command bodies (Wave-A test relocation:
+//! moved out of
+//! `apps/desktop-client/src/commands/product_variants_tests.rs`).
+//!
+//! Mounted at the foot of `product_variants.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` reaches the DTOs defined there; `foundation` is a dependency
+//! of this crate, so the `Barcode` value-object cases move unchanged. Every
+//! case here is a pure validation or serde-conformance check — none of them
+//! needs a `TestBridge`, and none constructs a `BridgeCtx`. The desktop command
+//! shims still own the IPC surface these DTOs feed, so the assertions pin the
+//! same wire shape from the side that now implements it.
+
 use super::*;
 
 // ── Barcode validation ─────────────────────────────────────────

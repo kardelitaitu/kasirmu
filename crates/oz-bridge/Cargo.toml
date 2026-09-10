@@ -30,3 +30,8 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 webp = { workspace = true }
+
+# Relocated Wave-A unit tests serialize DTOs directly (currency_tests.rs,
+# product_variants_tests.rs); nothing in [dependencies] needs serde_json.
+[dev-dependencies]
+serde_json = { workspace = true }

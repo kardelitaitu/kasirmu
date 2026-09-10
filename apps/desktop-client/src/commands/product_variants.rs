@@ -91,9 +91,3 @@ pub async fn update_product_variant_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "product_variants_tests.rs"]
-mod tests;

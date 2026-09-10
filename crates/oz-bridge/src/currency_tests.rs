@@ -1,20 +1,32 @@
+//! Unit tests for the currency command bodies (Wave-A test relocation: moved
+//! out of `apps/desktop-client/src/commands/currencies_tests.rs`).
+//!
+//! Mounted at the foot of `currency.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs and the pure lookup exactly as the desktop
+//! sibling module did. Nothing here needs a `TestBridge`: every case is either
+//! the session-free `currency_info` lookup or a plain DTO conformance check.
+//! The bridge's `currency_info` is a synchronous `&str` function (the `String`
+//! + `async` form is the desktop `#[tauri::command]` wrapper), so the three
+//! lookup cases dropped their `.await` and are plain `#[test]`s; the asserted
+//! behaviour is unchanged.
+
 use super::*;
 
-#[tokio::test]
-async fn usd_has_exponent_2() {
-    let info = currency_info("USD".into()).await.unwrap();
+#[test]
+fn usd_has_exponent_2() {
+    let info = currency_info("USD").unwrap();
     assert_eq!(info.exponent, 2);
 }
 
-#[tokio::test]
-async fn jpy_has_exponent_0() {
-    let info = currency_info("JPY".into()).await.unwrap();
+#[test]
+fn jpy_has_exponent_0() {
+    let info = currency_info("JPY").unwrap();
     assert_eq!(info.exponent, 0);
 }
 
-#[tokio::test]
-async fn invalid_code_is_error() {
-    assert!(currency_info("XX".into()).await.is_err());
+#[test]
+fn invalid_code_is_error() {
+    assert!(currency_info("XX").is_err());
 }
 
 #[test]
