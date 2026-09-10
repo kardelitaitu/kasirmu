@@ -43,5 +43,18 @@ pub mod regional;
 /// Tax-rate command bodies (Wave A / S5).
 pub mod tax;
 
+/// Login, session and staff-auth command bodies (Wave B). Not yet extracted.
+pub mod auth;
+/// CRM customer profiles and purchase history (Wave B). Not yet extracted.
+pub mod customers;
+/// Loyalty program command bodies (Wave B). Not yet extracted.
+pub mod loyalty;
+/// Picker-ticket minting and verification (Wave B). Not yet extracted.
+pub mod picker;
+/// Encryption / keyring command bodies (Wave B). Not yet extracted.
+pub mod security;
+/// Staff and role command bodies (Wave B). Not yet extracted.
+pub mod staff;
+
 #[cfg(test)]
 mod testing;

@@ -187,6 +187,7 @@ impl crate::state::AppState {
             kernel: &self.kernel,
             terminal_id: &self.terminal_id,
             media_cache_dir,
+            picker_ticket_secret: self.picker_ticket_secret.clone(),
         }
     }
 }

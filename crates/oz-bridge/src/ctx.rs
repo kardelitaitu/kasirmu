@@ -21,6 +21,7 @@ use std::sync::RwLock;
 
 use oz_core::cache::Cache;
 use oz_core::db::Store;
+use oz_core::db::assignments::ScopeType;
 use oz_core::session::SessionContext;
 use oz_security::mask::mask_token;
 use platform_core::StoreDatabaseManager;
@@ -48,6 +49,8 @@ pub struct BridgeCtx<'a> {
     pub terminal_id: &'a Arc<Mutex<Option<String>>>,
     /// Resolved `app_cache_dir` (None in headless/tests without an AppHandle).
     pub media_cache_dir: Option<PathBuf>,
+    /// HMAC key for picker tickets (copied: minted per boot, tests seed their own).
+    pub picker_ticket_secret: Vec<u8>,
 }
 
 /// Map a gate denial to the client's `permissionDenied` wire shape.
@@ -242,6 +245,43 @@ impl<'a> BridgeCtx<'a> {
     ) -> Result<(), BridgeError> {
         store
             .require_permission_scoped(user_id, required, branch, workspace)
+            .map_err(map_gate_error)
+    }
+
+    /// The hierarchical session gate (ADR #47): what
+    /// [`BridgeCtx::require_session_permission`] enforces, PLUS the caller's
+    /// assignment must COVER the named resource.
+    ///
+    /// Coverage follows ruling 3's downward-only inheritance: an
+    /// `organization` assignment covers every resource kind, a `location`
+    /// assignment only its own location id, and a `legal_entity` assignment
+    /// its own entity id plus any location belonging to it (the walk reads
+    /// the GLOBAL identity DB's `locations` copy). Sibling and upward access
+    /// deny, unknown locations deny fail-closed.
+    ///
+    /// Legacy users without an assignment row are not scope-restricted
+    /// (ruling 5, preserved bit-for-bit); the permission itself is still
+    /// enforced on every path.
+    ///
+    /// Mirrors `commands/authz.rs::require_permission_for_session_resource`.
+    pub async fn require_permission_for_session_resource(
+        &self,
+        session: &SessionContext,
+        required: &str,
+        scope_type: ScopeType,
+        scope_id: &str,
+    ) -> Result<(), BridgeError> {
+        let db = self.lock_global().await;
+        let store = Store::new(&db);
+        self.require_user_permission_scoped(
+            &store,
+            &session.user_id,
+            required,
+            Some(&session.store_id),
+            Some(&session.type_key),
+        )?;
+        store
+            .require_permission_for_resource(&session.user_id, required, scope_type, scope_id)
             .map_err(map_gate_error)
     }
 

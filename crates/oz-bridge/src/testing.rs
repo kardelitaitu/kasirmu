@@ -101,6 +101,9 @@ pub struct TestBridge {
     terminal_id: Arc<Mutex<Option<String>>>,
     /// Resolved media root (None in headless tests).
     media_cache_dir: Option<PathBuf>,
+    /// HMAC key for picker tickets (empty by default; seed it to exercise the
+    /// `picker` paths).
+    picker_ticket_secret: Vec<u8>,
 }
 
 impl TestBridge {
@@ -126,6 +129,7 @@ impl TestBridge {
             kernel: Mutex::new(Kernel::new()),
             terminal_id: Arc::new(Mutex::new(None)),
             media_cache_dir: None,
+            picker_ticket_secret: Vec::new(),
         }
     }
 
@@ -150,6 +154,13 @@ impl TestBridge {
     #[must_use]
     pub fn with_media_cache_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.media_cache_dir = Some(dir.into());
+        self
+    }
+
+    /// Seed the picker-ticket HMAC key (picker/auth ticket tests).
+    #[must_use]
+    pub fn with_picker_ticket_secret(mut self, secret: Vec<u8>) -> Self {
+        self.picker_ticket_secret = secret;
         self
     }
 
@@ -182,6 +193,7 @@ impl TestBridge {
             kernel: &self.kernel,
             terminal_id: &self.terminal_id,
             media_cache_dir: self.media_cache_dir.clone(),
+            picker_ticket_secret: self.picker_ticket_secret.clone(),
         }
     }
 }
