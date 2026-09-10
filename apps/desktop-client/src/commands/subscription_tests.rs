@@ -704,6 +704,20 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
                 )
                 .unwrap();
         }
+        // One quota-suspended instance: the production suspension state
+        // (`suspend_surplus` parks instances as 'quota_suspended'). It still
+        // exists in the topology — so it counts as a node — and its presence
+        // alone is the "over" verdict for the aggregate row.
+        store
+            .create_workspace_instance(&format!("{sid}-kds-3"), "kds", &sid, "Kitchen 3", "", None)
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE workspace_instances SET status = 'quota_suspended' WHERE id = ?1",
+                rusqlite::params![format!("{sid}-kds-3")],
+            )
+            .unwrap();
     }
     let rows = per_location_over_quota_rows(
         &[(sid.clone(), "Pro Store".into())],
@@ -735,6 +749,34 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
         !rows.iter().any(|r| r.resource_type == "warehouse"),
         "{rows:?}"
     );
+    // Topology-node aggregate (D61 ruling: marker-only dimension riding the
+    // existing per-location caps — no tier cap of its own). Limit = SUM of
+    // Pro's finite caps: pos 5 + warehouses 3 + kds 2 = 10. Current = the
+    // store's non-archived instances (2 active KDS + 1 suspended = 3), and
+    // the suspended instance alone forces the Over verdict even though 3 is
+    // far below the summed cap.
+    let topo: Vec<_> = rows
+        .iter()
+        .filter(|r| r.resource_type == "topology_node")
+        .collect();
+    assert_eq!(
+        topo.len(),
+        1,
+        "exactly one topology-node row for the store, got {rows:?}"
+    );
+    assert_eq!(topo[0].dimension, QuotaDimension::TopologyNodes);
+    assert_eq!(topo[0].resource_id, sid);
+    assert_eq!(topo[0].current, 3, "suspended nodes still exist");
+    assert_eq!(
+        topo[0].limit,
+        Some(10),
+        "sum of Pro's finite per-location caps"
+    );
+    assert_eq!(
+        topo[0].severity,
+        OverQuotaSeverity::Over,
+        "≥1 quota-suspended instance is the over verdict"
+    );
 }
 
 #[test]
@@ -751,6 +793,7 @@ fn per_location_rows_emit_nothing_for_an_unlimited_cap() {
         QuotaDimension::KdsScreens,
         None,
         9,
+        0,
     );
     push_dim_row(
         &mut rows,
@@ -760,6 +803,20 @@ fn per_location_rows_emit_nothing_for_an_unlimited_cap() {
         QuotaDimension::Warehouses,
         None,
         9,
+        0,
+    );
+    // The topology aggregate on an all-unlimited tier: no constraint exists
+    // (the limit would be the SUM of zero finite caps), so even data that
+    // somehow carries quota-suspended instances produces no honest row.
+    push_dim_row(
+        &mut rows,
+        "now",
+        "store-1",
+        "topology_node",
+        QuotaDimension::TopologyNodes,
+        None,
+        9,
+        2,
     );
     assert!(rows.is_empty(), "an unlimited cap must never produce a row");
 }

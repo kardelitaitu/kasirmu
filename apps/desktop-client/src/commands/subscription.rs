@@ -542,7 +542,12 @@ fn load_over_quota_report(
 /// `kds_screens` for KDS (a per-location dimension that deliberately has no
 /// tenant-global usage row) and `warehouses` for warehouse instances, whose
 /// dimension IS tenant-global — the per-location row refines it, it does not
-/// contradict the aggregate above it.
+/// contradict the aggregate above it. The third row is the topology-node
+/// aggregate (`topology_nodes`, also absent from `DIMENSION_ORDER`): the
+/// store's non-archived instance count against the SUM of the finite
+/// per-location caps, over the moment at least one instance had to be
+/// quota-suspended. Read-computed marker only — it is never persisted and
+/// the creation gates refuse the dimension.
 fn per_location_over_quota_rows(
     locations: &[(String, String)],
     manager: &StoreDatabaseManager,
@@ -565,12 +570,14 @@ fn per_location_over_quota_rows(
         // aborting the whole report: one unreadable location must not hide the
         // others. The trade is stated rather than hidden — a skipped store can
         // under-report, which is why the error is logged.
-        let (kds, warehouses) = match (
+        let (kds, warehouses, nodes, suspended) = match (
             store.count_active_kds_instances(store_id),
             store.count_active_warehouse_instances(store_id),
+            store.count_topology_nodes(store_id),
+            store.count_quota_suspended_instances(store_id),
         ) {
-            (Ok(k), Ok(w)) => (k, w),
-            (Err(e), _) | (_, Err(e)) => {
+            (Ok(k), Ok(w), Ok(n), Ok(s)) => (k, w, n, s),
+            (Err(e), _, _, _) | (_, Err(e), _, _) | (_, _, Err(e), _) | (_, _, _, Err(e)) => {
                 tracing::warn!(store_id = %store_id, error = %e, "per-location quota dims: store skipped");
                 continue;
             }
@@ -583,6 +590,7 @@ fn per_location_over_quota_rows(
             QuotaDimension::KdsScreens,
             tier.max_kds_screens(),
             kds,
+            0,
         );
         push_dim_row(
             &mut rows,
@@ -592,13 +600,46 @@ fn per_location_over_quota_rows(
             QuotaDimension::Warehouses,
             tier.max_warehouses(),
             warehouses,
+            0,
+        );
+        // D61 owner ruling: topology nodes are a marker-only dimension
+        // riding the EXISTING per-location caps — there is no tier cap for
+        // the aggregate, so the limit is the SUM of the finite ones. When
+        // every cap is unlimited there is no constraint to violate and no
+        // honest row: None suppresses the row entirely (also suppressing
+        // the suspension signal, which cannot arise on a tier that never
+        // capped anything).
+        let caps = [
+            tier.max_pos_instances(),
+            tier.max_warehouses(),
+            tier.max_kds_screens(),
+        ];
+        let topology_limit = if caps.iter().all(Option::is_none) {
+            None
+        } else {
+            Some(caps.iter().filter_map(|&c| c).sum())
+        };
+        push_dim_row(
+            &mut rows,
+            &now,
+            store_id,
+            "topology_node",
+            QuotaDimension::TopologyNodes,
+            topology_limit,
+            nodes,
+            suspended,
         );
     }
     Ok(rows)
 }
 
 /// Emit one per-location marker row when `current` is over or exactly at a
-/// finite `limit`. Shared by both dims so the over/at/none decision exists once.
+/// finite `limit`, or when `suspended` is non-zero: a quota suspension IS an
+/// over-quota verdict — the system had to park instances to admit new ones —
+/// and it can outlive the over-quota state itself (a tier upgrade raises the
+/// cap while the suspended instances stay parked until restored). Shared by
+/// all three dims so the over/at/none decision exists once; the KDS and
+/// warehouse rows have no suspension semantics of their own and pass 0.
 fn push_dim_row(
     rows: &mut Vec<OverQuotaMarker>,
     now: &str,
@@ -607,9 +648,10 @@ fn push_dim_row(
     dimension: QuotaDimension,
     limit: Option<i64>,
     current: i64,
+    suspended: i64,
 ) {
     let Some(limit) = limit else { return };
-    let severity = if current > limit {
+    let severity = if suspended > 0 || current > limit {
         OverQuotaSeverity::Over
     } else if current == limit {
         OverQuotaSeverity::At
