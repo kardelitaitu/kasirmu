@@ -762,6 +762,67 @@ fn test_pos_read_only_with_ledger_timestamp() {
     assert!(sub.pos_read_only_with_timestamp(&past_grace));
 }
 
+#[test]
+fn test_connection_aware_grace_and_pos_read_only() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+
+    // Subscription expired 20 days ago (Plus tier, 14-day grace).
+    let expiry = chrono::Utc::now() - chrono::Duration::days(20);
+    let sub = TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Plus,
+        status: "active".into(),
+        expires_at: Some(expiry.to_rfc3339()),
+        max_locations: 1,
+        max_pos_instances: 2,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    };
+
+    // Case 1: Empty tables. Monotonic ledger defaults to Utc::now() (20 days past expiry).
+    // Grace expired -> false, effective tier -> Free, pos_read_only -> true.
+    assert!(!sub.is_within_grace_period_for_connection(&conn));
+    assert_eq!(
+        sub.effective_tier_for_connection(&conn),
+        SubscriptionTier::Free
+    );
+    assert!(sub.pos_read_only_for_connection(&conn));
+
+    // Case 2: Subscription expiry was only 3 days ago (within 14-day grace).
+    let recent_expiry = chrono::Utc::now() - chrono::Duration::days(3);
+    let mut sub_recent = sub.clone();
+    sub_recent.expires_at = Some(recent_expiry.to_rfc3339());
+
+    assert!(sub_recent.is_within_grace_period_for_connection(&conn));
+    assert_eq!(
+        sub_recent.effective_tier_for_connection(&conn),
+        SubscriptionTier::Plus
+    );
+    assert!(!sub_recent.pos_read_only_for_connection(&conn));
+
+    // Case 3: Sale inserted with a timestamp far past the grace period (e.g. +25 days).
+    let future_sale = (recent_expiry + chrono::Duration::days(25)).to_rfc3339();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at)
+         VALUES ('s-future', 'completed', 500, 'USD', 1, ?1, ?1)",
+        rusqlite::params![future_sale],
+    )
+    .unwrap();
+
+    // Now, even if wall clock was somehow earlier, the ledger timestamp in the DB
+    // advances time past the grace deadline -> grace rejected, read-only enforced.
+    assert!(!sub_recent.is_within_grace_period_for_connection(&conn));
+    assert_eq!(
+        sub_recent.effective_tier_for_connection(&conn),
+        SubscriptionTier::Free
+    );
+    assert!(sub_recent.pos_read_only_for_connection(&conn));
+}
+
 // ── SubscriptionTier feature-flag coverage ─────────────────────────
 
 #[test]

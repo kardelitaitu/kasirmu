@@ -1,4 +1,21 @@
 
+## 2026-09-10 — TDD: Connection-aware monotonic ledger grace and pos_read_only validation (core/subscription)
+
+**Context & Identified Weakness:**
+Callers holding an active SQLite database connection had to manually query `compute_max_ledger_timestamp(conn)`, handle its errors, and pass the string to `*_with_timestamp(...)`. A direct, ergonomic connection-aware API on `TenantSubscription` was missing for callers in the sales and transaction pipeline.
+
+**Changes & Design:**
+1. Added `TenantSubscription::is_within_grace_period_for_connection(&self, conn: &rusqlite::Connection) -> bool`.
+2. Added `TenantSubscription::effective_tier_for_connection(&self, conn: &rusqlite::Connection) -> SubscriptionTier`.
+3. Added `TenantSubscription::pos_read_only_for_connection(&self, conn: &rusqlite::Connection) -> bool`.
+4. Fails closed: if computing the ledger timestamp encounters an error, grace returns `false`, effective tier reverts to `Free`, and `pos_read_only` returns `true`.
+
+**Verification:**
+- Added comprehensive unit test `test_connection_aware_grace_and_pos_read_only` testing empty DB tables, recent expiry within grace, and simulated ledger advancement past grace window.
+- Verified RED/GREEN TDD loop.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- Full subscription test suite passed (138 tests passed).
+
 ## 2026-09-10 — TDD: Trial deadline enforcement in offline grace and lifecycle state (core/subscription)
 
 **Context & Identified Weakness:**

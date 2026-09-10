@@ -507,6 +507,17 @@ impl TenantSubscription {
         self.is_within_grace_period_at(chrono::Utc::now())
     }
 
+    /// Check if the subscription is within grace evaluated against the database's monotonic ledger time.
+    ///
+    /// Computes the maximum ledger timestamp across domain tables (`compute_max_ledger_timestamp`),
+    /// protecting against local clock rollback or tampering while offline.
+    pub fn is_within_grace_period_for_connection(&self, conn: &rusqlite::Connection) -> bool {
+        match Self::compute_max_ledger_timestamp(conn) {
+            Ok(ts) => self.is_within_grace_period_with_timestamp(&ts),
+            Err(_) => false,
+        }
+    }
+
     /// Check if the subscription is within grace evaluated against a specific RFC3339 timestamp.
     ///
     /// Useful for validating grace against a monotonic ledger timestamp (e.g. `compute_max_ledger_timestamp`)
@@ -753,6 +764,14 @@ impl TenantSubscription {
         self.effective_tier_at(chrono::Utc::now())
     }
 
+    /// Determine the effective subscription tier evaluated against the database's monotonic ledger time.
+    pub fn effective_tier_for_connection(&self, conn: &rusqlite::Connection) -> SubscriptionTier {
+        match Self::compute_max_ledger_timestamp(conn) {
+            Ok(ts) => self.effective_tier_with_timestamp(&ts),
+            Err(_) => SubscriptionTier::Free,
+        }
+    }
+
     /// Determine the effective subscription tier evaluated against a specific RFC3339 timestamp.
     pub fn effective_tier_with_timestamp(&self, reference_timestamp: &str) -> SubscriptionTier {
         match chrono::DateTime::parse_from_rfc3339(reference_timestamp) {
@@ -866,6 +885,14 @@ impl TenantSubscription {
     /// capabilities command and the admin gate.
     pub fn pos_read_only(&self) -> bool {
         self.pos_read_only_at(chrono::Utc::now())
+    }
+
+    /// Whether POS runtime is locked to a read-only state evaluated against the database's monotonic ledger time.
+    pub fn pos_read_only_for_connection(&self, conn: &rusqlite::Connection) -> bool {
+        match Self::compute_max_ledger_timestamp(conn) {
+            Ok(ts) => self.pos_read_only_with_timestamp(&ts),
+            Err(_) => true,
+        }
     }
 
     /// Whether POS runtime is locked to a read-only state evaluated against a specific RFC3339 timestamp.
