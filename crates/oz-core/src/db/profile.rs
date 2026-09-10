@@ -22,6 +22,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::audit::AuditEntry;
 use crate::crypto::{decrypt_profile_field, encrypt_profile_field};
+use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
 use crate::{permission_registry, permissions};
 
@@ -350,7 +351,9 @@ impl Store<'_> {
     /// conflict (duplicate email / national id) rolls the user back instead
     /// of leaving a partial row. When `assignment` is `Some`, the user's
     /// single effective assignment is set to that scope instead of the
-    /// default global one, atomically with the rest (spec 0048).
+    /// default global one, atomically with the rest (spec 0048). An armed
+    /// staff-quota verdict (see `quota_gate`) is vetoed in-tx right after the
+    /// user insert, mirroring [`Store::create_user`](crate::db::staff).
     pub fn create_user_with_profile(
         &self,
         username: &str,
@@ -364,6 +367,40 @@ impl Store<'_> {
         let tx = self.conn.unchecked_transaction()?;
         let store = Store::new(&tx);
         let user = store.create_user_in_tx(username, pin_hash, display_name, role_id)?;
+        // W8-C3b: mirror of the staff veto in db/staff.rs::create_user — the
+        // command-layer staff door (commands/staff.rs create_staff_scoped in
+        // both clients) calls THIS fn, so the race closure of 202af4066 left
+        // open only for the profile path closes here. The pre-tx
+        // enforce_staff_quota armed this tier on this Store; re-check the
+        // count AFTER the insert, inside this fn's existing transaction (no
+        // nested BEGIN: create_user_in_tx writes on the tx connection), so
+        // the verdict and the user+profile write commit or roll back
+        // together. Post-insert because a pre-insert count under WAL would
+        // read only its own snapshot. Literal counting predicate of
+        // count_staff_users (active, owner excluded) — the veto must not
+        // disagree with the gate that armed it. An un-armed Store (pre-auth
+        // bootstrap) is the legacy un-gated path: take_armed_quota returns
+        // None.
+        let tier = self.take_armed_quota(QuotaDimension::Staff);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::Staff.limit_for(t))
+        {
+            let current: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role_id != ?1",
+                params![crate::builtin_roles::OWNER],
+                |r| r.get(0),
+            )?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::StaffLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
         store.write_user_profile(&user.id, profile)?;
         if let Some(spec) = assignment {
             store.write_assignment_scope(&user.id, role_id, spec)?;

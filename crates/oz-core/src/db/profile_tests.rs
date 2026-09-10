@@ -1,5 +1,7 @@
 use super::*;
+use crate::downgrade::QuotaDimension;
 use crate::migrations;
+use crate::subscription::SubscriptionTier;
 
 fn complete_profile() -> UserProfile {
     UserProfile {
@@ -594,6 +596,74 @@ fn sha256_hex_different_inputs_different_hashes() {
     let a = sha256_hex("hello");
     let b = sha256_hex("world");
     assert_ne!(a, b);
+}
+
+#[test]
+fn create_with_profile_tx_veto_closes_staff_limit_race() {
+    // W8-C3b: mirror of staff_tests::create_user_tx_veto_closes_limit_race.
+    // The profile door (commands/staff.rs create_staff_scoped, both clients)
+    // writes through create_user_with_profile, so the in-tx veto must hold
+    // here too. Fill to the cap UN-ARMED, then arm directly via
+    // arm_creation_quota, so this pins the door rather than re-testing the
+    // gate. Pro, not Free: Free allows 1 staff user and the fill loop needs
+    // headroom above the fixture baseline.
+    let conn = migrations::fresh_db();
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, permissions) VALUES
+             ('role-staff', 'staff', '[\"sales:view\"]');",
+    )
+    .unwrap();
+    let store = Store::new(&conn);
+    let tier = SubscriptionTier::Pro;
+    let limit = QuotaDimension::Staff.limit_for(&tier).unwrap();
+    let baseline = store.count_staff_users().unwrap();
+    assert!(
+        baseline < limit,
+        "the fixture must start under the cap (baseline {baseline}, limit {limit})"
+    );
+    // Profiles must be distinct per user: email + national id are uniqueness
+    // hashed, so a shared fixture would fail the INSERT before the veto runs.
+    // The national id stays 9 digits (ssn validator) and 9-figures for every
+    // i the loop or the over-cap attempt (-1) can produce.
+    let profile_for = |i: i64| {
+        let mut p = complete_profile();
+        p.email = Some(format!("staff{i}@example.com"));
+        p.national_id = Some(format!("{}", 200_000_000 + i));
+        p
+    };
+    for i in baseline..limit {
+        store
+            .create_user_with_profile(
+                &format!("staff-{i}"),
+                "hash",
+                "Staff",
+                "role-staff",
+                &profile_for(i),
+                None,
+            )
+            .unwrap();
+    }
+    assert_eq!(store.count_staff_users().unwrap(), limit);
+    store.arm_creation_quota(QuotaDimension::Staff, tier.clone());
+    let err = store
+        .create_user_with_profile(
+            "staff-over",
+            "hash",
+            "Over",
+            "role-staff",
+            &profile_for(-1),
+            None,
+        )
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Pro at the staff cap must be refused in-tx: {err:?}"
+    );
+    assert_eq!(
+        store.count_staff_users().unwrap(),
+        limit,
+        "the over-cap user must not persist"
+    );
 }
 
 #[test]
