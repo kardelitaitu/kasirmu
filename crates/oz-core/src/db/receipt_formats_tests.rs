@@ -293,7 +293,7 @@ fn legacy_fallback_reads_exactly_the_pinned_keys() {
     // silently drifting.
     let store = store();
     for key in LEGACY_RECEIPT_KEYS {
-        platform_core::settings::Settings::set(&store.conn, key, "x").unwrap();
+        platform_core::settings::Settings::set(store.conn, key, "x").unwrap();
     }
     // Every pinned key must resolve through the legacy Settings API —
     // proving the literal list matches the platform-core spellings.
@@ -321,7 +321,7 @@ fn legacy_fallback_reads_exactly_the_pinned_keys() {
 fn scoped_row_overrides_the_legacy_key_for_the_same_concern() {
     let store = store();
     // Legacy footer set org-globally.
-    platform_core::settings::Settings::set(&store.conn, "receipt.footer", "legacy footer").unwrap();
+    platform_core::settings::Settings::set(store.conn, "receipt.footer", "legacy footer").unwrap();
     // Scoped content row with a different footer.
     let mut scoped = content();
     scoped.footer_text = "scoped footer".into();

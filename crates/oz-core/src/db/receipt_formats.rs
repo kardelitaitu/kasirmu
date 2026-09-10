@@ -224,13 +224,13 @@ fn validate_layout(scope_type: &str, layout: &ReceiptLayout) -> Result<(), CoreE
             message: format!("layout scope must be workspace or terminal; got {scope_type:?}"),
         });
     }
-    if let Some(width) = layout.paper_width_mm {
-        if !(20..=120).contains(&width) {
-            return Err(CoreError::Validation {
-                field: "paper_width_mm",
-                message: format!("paper_width_mm must be between 20 and 120; got {width}"),
-            });
-        }
+    if let Some(width) = layout.paper_width_mm
+        && !(20..=120).contains(&width)
+    {
+        return Err(CoreError::Validation {
+            field: "paper_width_mm",
+            message: format!("paper_width_mm must be between 20 and 120; got {width}"),
+        });
     }
     for (name, mm) in [
         ("margin_top_mm", layout.margin_top_mm),
@@ -238,30 +238,30 @@ fn validate_layout(scope_type: &str, layout: &ReceiptLayout) -> Result<(), CoreE
         ("margin_left_mm", layout.margin_left_mm),
         ("margin_right_mm", layout.margin_right_mm),
     ] {
-        if let Some(v) = mm {
-            if v < 0 {
-                return Err(CoreError::Validation {
-                    field: name,
-                    message: format!("{name} must not be negative"),
-                });
-            }
-        }
-    }
-    if let Some(copies) = layout.print_copies {
-        if copies < 0 {
+        if let Some(v) = mm
+            && v < 0
+        {
             return Err(CoreError::Validation {
-                field: "print_copies",
-                message: "print_copies must not be negative".into(),
+                field: name,
+                message: format!("{name} must not be negative"),
             });
         }
     }
-    if let Some(note) = &layout.footer_note {
-        if note.chars().count() > 500 {
-            return Err(CoreError::Validation {
-                field: "footer_note",
-                message: "footer_note must be at most 500 characters".into(),
-            });
-        }
+    if let Some(copies) = layout.print_copies
+        && copies < 0
+    {
+        return Err(CoreError::Validation {
+            field: "print_copies",
+            message: "print_copies must not be negative".into(),
+        });
+    }
+    if let Some(note) = &layout.footer_note
+        && note.chars().count() > 500
+    {
+        return Err(CoreError::Validation {
+            field: "footer_note",
+            message: "footer_note must be at most 500 characters".into(),
+        });
     }
     Ok(())
 }
@@ -406,23 +406,23 @@ impl crate::db::Store<'_> {
         if content.is_none() {
             // Legacy fallback: the ten pinned org-global keys.
             let has_any = LEGACY_RECEIPT_KEYS.iter().any(|key| {
-                platform_core::settings::Settings::get(&self.conn, key)
+                platform_core::settings::Settings::get(self.conn, key)
                     .map(|v| v.is_some())
                     .unwrap_or(false)
             });
             if has_any {
                 content = Some(ReceiptContent {
                     required_fields: Vec::new(),
-                    footer_text: platform_core::settings::Settings::get_receipt_footer(&self.conn)
+                    footer_text: platform_core::settings::Settings::get_receipt_footer(self.conn)
                         .unwrap_or_default(),
-                    show_tax: platform_core::settings::Settings::get_receipt_show_tax(&self.conn)
+                    show_tax: platform_core::settings::Settings::get_receipt_show_tax(self.conn)
                         .unwrap_or(true),
                     show_currency: platform_core::settings::Settings::get_receipt_show_currency(
-                        &self.conn,
+                        self.conn,
                     )
                     .unwrap_or(false),
                     decimal_separator:
-                        platform_core::settings::Settings::get_receipt_decimal_separator(&self.conn)
+                        platform_core::settings::Settings::get_receipt_decimal_separator(self.conn)
                             .unwrap_or_else(|_| "dot".into()),
                 });
                 content_source = ReceiptSource::Legacy;
@@ -481,28 +481,28 @@ impl crate::db::Store<'_> {
         };
 
         // Terminal layer (highest).
-        if let Some(terminal_id) = terminal_id {
-            if let Some(terminal) = load_layout("terminal", terminal_id)? {
-                layout = terminal;
-                layout_source = ReceiptSource::Terminal;
-            }
+        if let Some(terminal_id) = terminal_id
+            && let Some(terminal) = load_layout("terminal", terminal_id)?
+        {
+            layout = terminal;
+            layout_source = ReceiptSource::Terminal;
         }
         // Workspace layer: the caller's explicit scope wins (the card that
         // just wrote it), then the terminal's bound location, then the
         // primary location.
         let mut resolved_workspace = workspace_id.map(str::to_string);
-        if resolved_workspace.is_none() {
-            if let Some(id) = terminal_id {
-                resolved_workspace = self
-                    .conn
-                    .query_row(
-                        "SELECT bound_location_id FROM terminals WHERE id = ?1",
-                        params![id],
-                        |row| row.get::<_, Option<String>>(0),
-                    )
-                    .optional()?
-                    .flatten();
-            }
+        if resolved_workspace.is_none()
+            && let Some(id) = terminal_id
+        {
+            resolved_workspace = self
+                .conn
+                .query_row(
+                    "SELECT bound_location_id FROM terminals WHERE id = ?1",
+                    params![id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
         }
         if resolved_workspace.is_none() {
             resolved_workspace = self
@@ -516,39 +516,39 @@ impl crate::db::Store<'_> {
                 .flatten();
         }
         let workspace_id = resolved_workspace;
-        if let Some(workspace_id) = workspace_id {
-            if let Some(workspace) = load_layout("workspace", &workspace_id)? {
-                // Deep merge: the terminal row only fills what it unset.
-                if layout.paper_width_mm.is_none() {
-                    layout.paper_width_mm = workspace.paper_width_mm;
-                }
-                if layout.margin_top_mm.is_none() {
-                    layout.margin_top_mm = workspace.margin_top_mm;
-                }
-                if layout.margin_bottom_mm.is_none() {
-                    layout.margin_bottom_mm = workspace.margin_bottom_mm;
-                }
-                if layout.margin_left_mm.is_none() {
-                    layout.margin_left_mm = workspace.margin_left_mm;
-                }
-                if layout.margin_right_mm.is_none() {
-                    layout.margin_right_mm = workspace.margin_right_mm;
-                }
-                if layout.show_logo.is_none() {
-                    layout.show_logo = workspace.show_logo;
-                }
-                if layout.print_copies.is_none() {
-                    layout.print_copies = workspace.print_copies;
-                }
-                if layout.show_table_number.is_none() {
-                    layout.show_table_number = workspace.show_table_number;
-                }
-                if layout.footer_note.is_none() {
-                    layout.footer_note = workspace.footer_note;
-                }
-                if layout_source == ReceiptSource::Unset {
-                    layout_source = ReceiptSource::Workspace;
-                }
+        if let Some(workspace_id) = workspace_id
+            && let Some(workspace) = load_layout("workspace", &workspace_id)?
+        {
+            // Deep merge: the terminal row only fills what it unset.
+            if layout.paper_width_mm.is_none() {
+                layout.paper_width_mm = workspace.paper_width_mm;
+            }
+            if layout.margin_top_mm.is_none() {
+                layout.margin_top_mm = workspace.margin_top_mm;
+            }
+            if layout.margin_bottom_mm.is_none() {
+                layout.margin_bottom_mm = workspace.margin_bottom_mm;
+            }
+            if layout.margin_left_mm.is_none() {
+                layout.margin_left_mm = workspace.margin_left_mm;
+            }
+            if layout.margin_right_mm.is_none() {
+                layout.margin_right_mm = workspace.margin_right_mm;
+            }
+            if layout.show_logo.is_none() {
+                layout.show_logo = workspace.show_logo;
+            }
+            if layout.print_copies.is_none() {
+                layout.print_copies = workspace.print_copies;
+            }
+            if layout.show_table_number.is_none() {
+                layout.show_table_number = workspace.show_table_number;
+            }
+            if layout.footer_note.is_none() {
+                layout.footer_note = workspace.footer_note;
+            }
+            if layout_source == ReceiptSource::Unset {
+                layout_source = ReceiptSource::Workspace;
             }
         }
         // Legacy layout keys fill whatever no scoped row supplied — but only
@@ -565,12 +565,12 @@ impl crate::db::Store<'_> {
         ]
         .iter()
         .any(|key| {
-            platform_core::settings::Settings::get(&self.conn, key)
+            platform_core::settings::Settings::get(self.conn, key)
                 .map(|v| v.is_some())
                 .unwrap_or(false)
         });
         if layout.paper_width_mm.is_none() {
-            let width = platform_core::settings::Settings::get_receipt_paper_width(&self.conn)
+            let width = platform_core::settings::Settings::get_receipt_paper_width(self.conn)
                 .unwrap_or_else(|_| "standard".into());
             layout.paper_width_mm = match width.as_str() {
                 "narrow" => Some(58),
@@ -580,29 +580,28 @@ impl crate::db::Store<'_> {
         }
         if layout.margin_top_mm.is_none() {
             layout.margin_top_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_top(&self.conn).unwrap_or(0),
+                platform_core::settings::Settings::get_receipt_margin_top(self.conn).unwrap_or(0),
             );
         }
         if layout.margin_bottom_mm.is_none() {
             layout.margin_bottom_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_bottom(&self.conn)
+                platform_core::settings::Settings::get_receipt_margin_bottom(self.conn)
                     .unwrap_or(0),
             );
         }
         if layout.margin_left_mm.is_none() {
             layout.margin_left_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_left(&self.conn).unwrap_or(0),
+                platform_core::settings::Settings::get_receipt_margin_left(self.conn).unwrap_or(0),
             );
         }
         if layout.margin_right_mm.is_none() {
             layout.margin_right_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_right(&self.conn)
-                    .unwrap_or(0),
+                platform_core::settings::Settings::get_receipt_margin_right(self.conn).unwrap_or(0),
             );
         }
         if layout.show_table_number.is_none() {
             layout.show_table_number = Some(
-                platform_core::settings::Settings::get_receipt_show_table_number(&self.conn)
+                platform_core::settings::Settings::get_receipt_show_table_number(self.conn)
                     .unwrap_or(false),
             );
         }

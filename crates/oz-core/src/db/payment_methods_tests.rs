@@ -235,7 +235,7 @@ fn location_override_wins_per_rail_with_location_provenance() {
     let va = rails.iter().find(|r| r.rail_code == "va-bca").unwrap();
     assert_eq!(qris.scope, ConfigScope::LegalEntity);
     assert_eq!(va.scope, ConfigScope::Location);
-    assert!(va.is_enabled == false);
+    assert!(!va.is_enabled);
 }
 
 #[test]

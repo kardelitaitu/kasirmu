@@ -56,12 +56,12 @@ const FORBIDDEN_PARAMETER_FRAGMENTS: &[&str] = &[
 fn validate_parameters_bag(raw: &str) -> Result<(), CoreError> {
     let value: serde_json::Value =
         serde_json::from_str(raw).map_err(|err| CoreError::Validation {
-            field: "parameters".into(),
+            field: "parameters",
             message: format!("parameters must be a JSON object: {err}"),
         })?;
     let serde_json::Value::Object(map) = &value else {
         return Err(CoreError::Validation {
-            field: "parameters".into(),
+            field: "parameters",
             message: "parameters must be a JSON object".into(),
         });
     };
@@ -70,7 +70,7 @@ fn validate_parameters_bag(raw: &str) -> Result<(), CoreError> {
         for fragment in FORBIDDEN_PARAMETER_FRAGMENTS {
             if lower.contains(fragment) {
                 return Err(CoreError::Validation {
-                    field: "parameters".into(),
+                    field: "parameters",
                     message: format!(
                         "parameter key {key:?} looks like a gateway credential — payment_gateways owns credentials, not the market rail surface"
                     ),
@@ -117,20 +117,20 @@ impl crate::db::Store<'_> {
     ) -> Result<(), CoreError> {
         if scope_type != "legal_entity" && scope_type != "location" {
             return Err(CoreError::Validation {
-                field: "scope_type".into(),
+                field: "scope_type",
                 message: format!("scope_type must be legal_entity or location; got {scope_type:?}"),
             });
         }
         for rail in rails {
             if rail.rail_code.trim().is_empty() {
                 return Err(CoreError::Validation {
-                    field: "rail_code".into(),
+                    field: "rail_code",
                     message: "rail_code must not be blank".into(),
                 });
             }
             if rail.label.trim().is_empty() {
                 return Err(CoreError::Validation {
-                    field: "label".into(),
+                    field: "label",
                     message: "label must not be blank".into(),
                 });
             }
@@ -140,7 +140,7 @@ impl crate::db::Store<'_> {
         for rail in rails {
             if !seen.insert(rail.rail_code.to_ascii_lowercase()) {
                 return Err(CoreError::Validation {
-                    field: "rail_code".into(),
+                    field: "rail_code",
                     message: format!(
                         "duplicate rail_code in the submitted set: {:?}",
                         rail.rail_code
