@@ -195,6 +195,12 @@ impl TestBridge {
     /// Clone of the session map handle, for inserting sessions before a call
     /// (the same post-construction mutation `AppState.session_store` allows).
     #[must_use]
+    /// Read-only access to the headless HAL registry (tests register mock
+    /// drivers before handing out a `BridgeCtx`).
+    pub fn registry(&self) -> &DriverRegistry {
+        &self.registry
+    }
+
     pub fn sessions(&self) -> Arc<RwLock<HashMap<String, SessionContext>>> {
         Arc::clone(&self.sessions)
     }

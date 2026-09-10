@@ -1,4 +1,14 @@
+//! Hardware command unit tests (Wave-D test relocation: moved out of
+//! `apps/desktop-client/src/commands/hardware_tests.rs`).
+//!
+//! Mounted at the foot of `hardware.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs and the scanner-preference helper
+//! directly. The desktop tests were pure DTO/serde/plain-fn assertions with
+//! no `AppState` coupling, so the bodies port verbatim; the scanner
+//! fail-closed test below additionally pins the Wave-D Option A rule that a
+//! `None` event sink must refuse to start a scanner.
 use super::*;
+use crate::testing::TestBridge;
 
 #[test]
 fn print_receipt_args_deserialise() {
@@ -209,4 +219,36 @@ fn a_preference_naming_an_absent_scanner_changes_nothing() {
 #[test]
 fn preference_survives_an_empty_registry() {
     assert!(prefer_first(vec![], "a").is_empty());
+}
+
+#[tokio::test]
+async fn starting_a_scanner_without_an_event_sink_fails_closed() {
+    // Wave-D Option A: the shell emits barcode:* through the injected sink;
+    // headless (None) must refuse to start rather than scan silently.
+    let bridge = TestBridge::new();
+    bridge
+        .registry()
+        .register_scanner(
+            "scanner-1",
+            std::sync::Arc::new(oz_hal::drivers::mock::MockBarcodeScanner::default()),
+        )
+        .await;
+    bridge.sessions().write().unwrap().insert(
+        "tok".into(),
+        oz_core::session::SessionContext::new(
+            "user-1".into(),
+            "role-1".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    let ctx = bridge.ctx();
+    let err = crate::hardware::start_scanner_scoped(&ctx, "scanner-1", "tok")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BridgeError::Internal(m) if m == "AppHandle unavailable"));
 }

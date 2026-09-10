@@ -1,3 +1,10 @@
+//! Scale command unit tests (Wave-D test relocation: moved out of
+//! `apps/desktop-client/src/commands/scale_tests.rs`).
+//!
+//! Mounted at the foot of `scale.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs directly. The tests are pure DTO
+//! serialisation assertions with no `AppState` coupling; the bodies port
+//! verbatim.
 use super::*;
 
 #[test]

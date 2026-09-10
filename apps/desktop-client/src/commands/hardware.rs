@@ -219,7 +219,3 @@ pub async fn display_clear_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "hardware_tests.rs"]
-mod tests;

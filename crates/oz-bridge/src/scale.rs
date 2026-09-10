@@ -69,3 +69,7 @@ pub async fn list_scale_devices_scoped(
     }
     Ok(devices)
 }
+
+#[cfg(test)]
+#[path = "scale_tests.rs"]
+mod scale_tests;

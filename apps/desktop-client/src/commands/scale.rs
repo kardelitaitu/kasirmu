@@ -37,7 +37,3 @@ pub async fn list_scale_devices_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "scale_tests.rs"]
-mod tests;

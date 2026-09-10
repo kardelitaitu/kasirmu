@@ -689,3 +689,7 @@ pub async fn display_clear_scoped(
     display.clear().await?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "hardware_tests.rs"]
+mod hardware_tests;
