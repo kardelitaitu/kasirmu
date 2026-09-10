@@ -1,4 +1,20 @@
 
+## 2026-09-10 — TDD: Quota gate resolve_tier_fail_closed monotonic ledger integration (core/quota_gate)
+
+**Context & Identified Weakness:**
+`Store::resolve_tier_fail_closed()` in `crates/oz-core/src/db/quota_gate.rs` previously called `sub.effective_tier()`, which evaluated solely against `chrono::Utc::now()`. A terminal offline with rolled-back local clock could bypass creation quota gates even if previous sales/audit log ledger records were far past the subscription grace window.
+
+**Changes & Design:**
+1. Updated `Store::resolve_tier_fail_closed(&self)` to delegate to `sub.effective_tier_for_connection(self.conn)`.
+2. This ensures quota evaluation queries `compute_max_ledger_timestamp(self.conn)`, detecting and resisting clock rollback.
+3. Added unit test `test_resolve_tier_fail_closed_uses_ledger_time_past_grace` verifying that insertion of a sale past grace reverts the resolved tier to `SubscriptionTier::Free`.
+
+**Verification:**
+- Verified RED phase: assertion failure (`assertion left == right failed; left: Plus, right: Free`).
+- Verified GREEN phase: test passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
 ## 2026-09-10 — TDD: Connection-aware monotonic ledger grace and pos_read_only validation (core/subscription)
 
 **Context & Identified Weakness:**

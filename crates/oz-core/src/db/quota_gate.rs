@@ -53,9 +53,11 @@ impl Store<'_> {
     /// error at one call site vs. a silent `Free` at another) on the
     /// `Entitlements::fail_closed` precedent: an unprovisioned tenant gets
     /// the most restrictive tier, never a crash and never a free pass.
+    /// Evaluates against the database's monotonic ledger timestamp to resist
+    /// local system clock rollback or tampering during offline grace.
     pub fn resolve_tier_fail_closed(&self) -> Result<SubscriptionTier, CoreError> {
         Ok(match TenantSubscription::load(self.conn, TENANT_ID)? {
-            Some(sub) => sub.effective_tier(),
+            Some(sub) => sub.effective_tier_for_connection(self.conn),
             None => SubscriptionTier::Free,
         })
     }

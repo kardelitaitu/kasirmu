@@ -209,3 +209,41 @@ fn passing_gate_warms_the_marker_table() {
         ),
     );
 }
+
+#[test]
+fn test_resolve_tier_fail_closed_uses_ledger_time_past_grace() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Update the seeded bootstrap subscription to Plus, expiring 2 days ago (within 14-day grace).
+    let recent_expiry = chrono::Utc::now() - chrono::Duration::days(2);
+    conn.execute(
+        "UPDATE tenant_subscription SET
+            tier_key = 'plus', status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        rusqlite::params![recent_expiry.to_rfc3339()],
+    )
+    .unwrap();
+
+    // With recent timestamps, effective tier is Plus.
+    assert_eq!(
+        s.resolve_tier_fail_closed().unwrap(),
+        SubscriptionTier::Plus
+    );
+
+    // Insert a sale with a ledger timestamp 25 days past expiry (past the 14-day grace window).
+    let future_sale = (recent_expiry + chrono::Duration::days(25)).to_rfc3339();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at)
+         VALUES ('s-future', 'completed', 1000, 'USD', 1, ?1, ?1)",
+        rusqlite::params![future_sale],
+    )
+    .unwrap();
+
+    // Monotonic ledger evaluation must detect that time has advanced past grace,
+    // reverting the effective tier to Free!
+    assert_eq!(
+        s.resolve_tier_fail_closed().unwrap(),
+        SubscriptionTier::Free
+    );
+}
