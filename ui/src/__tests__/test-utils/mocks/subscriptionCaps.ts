@@ -8,6 +8,7 @@ export function makeSubscriptionCaps(
 ): SubscriptionCapabilities {
   return {
     tier: 'free',
+    status: 'active',
     state: 'active',
     // C+D-RES-1 hard-required (W7-C residual): the Rust DTO always emits
     // the trial-state + feature-grant keys; Free fail-closed = not a trial.
@@ -28,6 +29,9 @@ export function makeSubscriptionCaps(
     supportsDailyDashboard: false,
     supportsCloudSync: false,
     offlineGraceDays: 7,
+    expiresAt: null,
+    graceUntil: null,
+    isExpired: false,
     locationCount: 1,
     staffCount: 0,
     terminalCount: 0,

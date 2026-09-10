@@ -34,6 +34,9 @@ use crate::state::AppState;
 pub struct SubscriptionCapabilitiesDto {
     /// Tier key (`free`, `plus`, `pro`, `premium`, `enterprise`).
     pub tier: String,
+    /// Raw subscription status (`active`, `canceled`, `paused`, etc.) from
+    /// the local signed row, or `unavailable` when fail-closed.
+    pub status: String,
     /// Lifecycle state (todo-global-saas-1.md §B): `active`, `grace`,
     /// `expired`, `canceled`, `paused`, or `unavailable`. Anything other
     /// than `active`/`grace` carries Free-tier entitlements below.
@@ -85,6 +88,19 @@ pub struct SubscriptionCapabilitiesDto {
     pub supports_cloud_sync: bool,
     /// Offline grace period in days.
     pub offline_grace_days: i64,
+    /// When the subscription expires (RFC 3339, from the local signed row).
+    /// `None` for the bootstrap Free row (no expiry) or when the row is
+    /// unreadable (fail-closed). The UI uses this for countdown banners.
+    pub expires_at: Option<String>,
+    /// End of the offline grace window (RFC 3339). Derived as
+    /// `expires_at + tier.offline_grace_days()` and only present when the
+    /// lifecycle state is `grace` and `expires_at` is parseable. `None`
+    /// otherwise — the UI must not invent a grace deadline client-side.
+    pub grace_until: Option<String>,
+    /// Whether the lifecycle state is `expired` (i.e. past expiry AND past
+    /// the grace window). Convenience alias so the Tools gate and upgrade
+    /// modals need not compare string states.
+    pub is_expired: bool,
     /// Current location count (approaching-limit banners).
     pub location_count: i64,
     /// Current active staff count (approaching-limit banners).
@@ -133,9 +149,13 @@ fn gather_usage(store: &Store<'_>) -> UsageCounts {
 fn project_capabilities(
     ent: &Entitlements,
     features: &std::collections::HashMap<String, bool>,
+    status: &str,
+    expires_at: Option<String>,
+    grace_until: Option<String>,
 ) -> SubscriptionCapabilitiesDto {
     SubscriptionCapabilitiesDto {
         tier: ent.tier.tier_key().to_string(),
+        status: status.to_string(),
         state: ent.state.as_str().to_string(),
         // C+D-RES-1 (W7-C): trial state + feature grants ride the caps
         // payload so the UI reads the whole subscription picture from ONE
@@ -162,6 +182,9 @@ fn project_capabilities(
         supports_daily_dashboard: ent.supports_daily_dashboard(),
         supports_cloud_sync: ent.supports_cloud_sync(),
         offline_grace_days: ent.offline_grace_days(),
+        expires_at,
+        grace_until,
+        is_expired: ent.state == SubscriptionLifecycleState::Expired,
         location_count: ent.usage.locations,
         staff_count: ent.usage.staff_users,
         terminal_count: ent.usage.pos_instances,
@@ -178,11 +201,24 @@ fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabiliti
     // verified row itself (it is not on `Entitlements`), so it is loaded
     // here with the same fail-closed semantics the verdict path uses: a
     // missing/tampered/unreadable row is `None`, whose map is empty.
-    let features = store
-        .load_verified_subscription()
+    let loaded = store.load_verified_subscription();
+    let features = loaded
+        .as_ref()
         .map(|sub| sub.payload_features())
         .unwrap_or_default();
-    Ok(project_capabilities(&ent, &features))
+    let status = loaded
+        .as_ref()
+        .map(|sub| sub.status.clone())
+        .unwrap_or_else(|| "unavailable".to_string());
+    let expires_at = loaded.as_ref().and_then(|sub| sub.expires_at.clone());
+    let grace_until = grace_until_for(loaded.as_ref(), &ent.tier, &ent.state);
+    Ok(project_capabilities(
+        &ent,
+        &features,
+        &status,
+        expires_at,
+        grace_until,
+    ))
 }
 
 // ── Feature-availability verdicts (Phase 3 observability) ───────────

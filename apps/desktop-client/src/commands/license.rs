@@ -10,8 +10,9 @@ use oz_core::crypto::{decrypt_api_key, encrypt_api_key};
 use oz_core::license_verification::{
     ActivateLicenseRequest, RenewLicenseRequest, SignedSubscriptionPayload,
     activate_license as core_activate_license, check_license_status as core_check_license_status,
-    pause_subscription as core_pause_subscription, renew_license as core_renew_license,
-    resume_subscription as core_resume_subscription, store_subscription, verify_license_signature,
+    pause_subscription as core_pause_subscription, refresh_subscription_status_from_server,
+    renew_license as core_renew_license, resume_subscription as core_resume_subscription,
+    store_subscription, verify_license_signature,
 };
 use oz_core::subscription::{SubscriptionTier, TenantSubscription};
 
@@ -476,6 +477,22 @@ pub async fn check_license_status(
     let resp = core_check_license_status(&api_key)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // Refresh local capability cache upon successful license-server response.
+    // The server-authoritative status and expiry are persisted to the local
+    // tenant_subscription row so subsequent get_subscription_capabilities
+    // calls reflect current lifecycle state without waiting for re-activation.
+    {
+        let conn = state.db.lock().await;
+        if let Err(e) = refresh_subscription_status_from_server(
+            &conn,
+            "default",
+            &resp.status,
+            resp.expires_at.as_deref(),
+        ) {
+            tracing::warn!("failed to refresh subscription status cache: {e}");
+        }
+    }
 
     let max_locations = resp.effective_max_locations();
 

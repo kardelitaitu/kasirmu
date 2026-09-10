@@ -27,13 +27,13 @@
 ## 📋 Task Checklist
 
 ### Phase 1.0: Baseline Audit
-- [ ] Review `todo-tools.md` §Subscription/auth verification.
+- [x] Review `todo-tools.md` §Subscription/auth verification.
 
 ### Phase 1.1: Expose Expiry and Grace Status to IPC DTO
-- [ ] Extend `SubscriptionCapabilitiesDto` to return `status`, `expiresAt`, `graceUntil`, and `isExpired`.
-- [ ] Connect `check_license_status` to refresh local capability cache upon successful license-server response.
-- [ ] Verify: `python scripts/verify-ipc-parity.py`.
-- [ ] **Commit Milestone:**
+- [x] Extend `SubscriptionCapabilitiesDto` to return `status`, `expiresAt`, `graceUntil`, and `isExpired`.
+- [x] Connect `check_license_status` to refresh local capability cache upon successful license-server response.
+- [x] Verify: `python scripts/verify-ipc-parity.py`.
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "feat(tools-entitlement): expose expiry timestamps and grace period status in subscription DTO"
   ```

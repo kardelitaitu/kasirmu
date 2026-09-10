@@ -620,6 +620,44 @@ pub fn store_subscription(
     Ok(())
 }
 
+/// Refresh the local cache from a successful `/api/v1/license/status` response.
+///
+/// The status endpoint returns authoritative `status` and `expires_at` data
+/// but does NOT re-issue a signed payload. We apply a partial UPDATE to the
+/// local `tenant_subscription` row so that the next call to
+/// `get_subscription_capabilities` reads up-to-date lifecycle information
+/// without requiring a full re-activation. The signed payload and signature
+/// remain unchanged (they carry quota data that only changes on
+/// activation/renewal); only the server-authoritative fields are refreshed.
+///
+/// Runs inside a transaction per the DB-write policy. A missing row is a
+/// no-op (the caller already handled the no-license-activated path before
+/// the network call).
+///
+/// # Arguments
+/// * `conn` — global identity database connection.
+/// * `tenant_id` — the tenant key in the row (always `"default"` for now).
+/// * `status` — the raw status string from the server (e.g. `"active"`, `"canceled"`).
+/// * `expires_at` — RFC 3339 expiry timestamp from the server, if present.
+pub fn refresh_subscription_status_from_server(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+    status: &str,
+    expires_at: Option<&str>,
+) -> Result<(), CoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE tenant_subscription
+         SET status = ?1,
+             expires_at = ?2,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE tenant_id = ?3",
+        rusqlite::params![status, expires_at, tenant_id],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 /// Response from the pause/resume subscription endpoint.
 #[derive(Debug, Deserialize)]
 pub struct PauseResumeResponse {

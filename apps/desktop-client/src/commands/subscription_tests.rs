@@ -96,7 +96,12 @@ fn capabilities_reflect_premium_tier() {
 #[test]
 fn capabilities_report_active_state_for_bootstrap_row() {
     let conn = fresh_db();
-    assert_eq!(caps(&conn).state, "active");
+    let dto = caps(&conn);
+    assert_eq!(dto.state, "active");
+    assert_eq!(dto.status, "active");
+    assert_eq!(dto.expires_at, None);
+    assert_eq!(dto.grace_until, None);
+    assert!(!dto.is_expired);
 }
 
 #[test]
@@ -109,6 +114,10 @@ fn capabilities_fail_closed_when_subscription_row_missing() {
     .unwrap();
     let dto = caps(&conn);
     assert_eq!(dto.state, "unavailable");
+    assert_eq!(dto.status, "unavailable");
+    assert_eq!(dto.expires_at, None);
+    assert_eq!(dto.grace_until, None);
+    assert!(!dto.is_expired);
     // Fail closed: Free entitlements — the debug Premium upgrade must not
     // apply, so every tier gate locks even in dev builds.
     assert_eq!(dto.tier, "free");
@@ -130,6 +139,7 @@ fn capabilities_fail_closed_when_signature_tampered() {
     .unwrap();
     let dto = caps(&conn);
     assert_eq!(dto.state, "unavailable");
+    assert_eq!(dto.status, "unavailable");
     assert_eq!(dto.tier, "free");
     assert!(!dto.supports_qris);
 }
@@ -144,11 +154,15 @@ fn capabilities_report_grace_state_within_offline_grace() {
     let recent = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
     conn.execute(
         "UPDATE tenant_subscription SET expires_at = ?1 WHERE tenant_id = 'default'",
-        [recent],
+        [&recent],
     )
     .unwrap();
     let dto = caps(&conn);
     assert_eq!(dto.state, "grace");
+    assert_eq!(dto.status, "active");
+    assert_eq!(dto.expires_at.as_deref(), Some(recent.as_str()));
+    assert!(dto.grace_until.is_some(), "grace deadline must be computed");
+    assert!(!dto.is_expired);
     // Within grace the REAL tier applies (operational continuity) — the
     // debug Free→Premium upgrade does not mask the state.
     assert_eq!(dto.tier, "premium");
@@ -162,11 +176,15 @@ fn capabilities_report_expired_state_and_free_entitlements() {
     let old = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
     conn.execute(
         "UPDATE tenant_subscription SET expires_at = ?1 WHERE tenant_id = 'default'",
-        [old],
+        [&old],
     )
     .unwrap();
     let dto = caps(&conn);
     assert_eq!(dto.state, "expired");
+    assert_eq!(dto.status, "active");
+    assert_eq!(dto.expires_at.as_deref(), Some(old.as_str()));
+    assert_eq!(dto.grace_until, None, "grace deadline is None when expired");
+    assert!(dto.is_expired, "is_expired is true when in expired state");
     assert_eq!(
         dto.tier, "free",
         "outside grace the tier downgrades to Free"
@@ -205,6 +223,47 @@ fn capabilities_report_paused_state() {
         dto.tier, "plus",
         "pause flags the state; entitlements unchanged here"
     );
+}
+
+#[test]
+fn capabilities_reflect_server_status_refresh() {
+    let conn = fresh_db();
+    seed_tier(&conn, "pro");
+    let future = (chrono::Utc::now() + chrono::Duration::days(45)).to_rfc3339();
+
+    // Initially active without expiry
+    let before = caps(&conn);
+    assert_eq!(before.status, "active");
+    assert_eq!(before.expires_at, None);
+
+    // Refresh status from server (e.g. check_license_status response)
+    oz_core::license_verification::refresh_subscription_status_from_server(
+        &conn,
+        "default",
+        "active",
+        Some(&future),
+    )
+    .unwrap();
+
+    // Cache should immediately reflect refreshed status and expiry
+    let after = caps(&conn);
+    assert_eq!(after.status, "active");
+    assert_eq!(after.expires_at.as_deref(), Some(future.as_str()));
+    assert_eq!(after.state, "active");
+    assert!(!after.is_expired);
+
+    // Now simulate cancellation from server
+    oz_core::license_verification::refresh_subscription_status_from_server(
+        &conn,
+        "default",
+        "canceled",
+        Some(&future),
+    )
+    .unwrap();
+
+    let canceled = caps(&conn);
+    assert_eq!(canceled.status, "canceled");
+    assert_eq!(canceled.state, "canceled");
 }
 
 // ── Feature-availability verdicts (Phase 3 observability) ────────────

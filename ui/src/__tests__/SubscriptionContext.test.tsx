@@ -48,6 +48,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 const caps: SubscriptionCapabilities = {
   tier: 'pro',
+  status: 'active',
   state: 'active',
   // Hard-required C+D-RES-1 keys (W7-C residual): paid Pro, no trial,
   // no payload feature overrides.
@@ -68,6 +69,9 @@ const caps: SubscriptionCapabilities = {
   supportsDailyDashboard: true,
   supportsCloudSync: true,
   offlineGraceDays: 30,
+  expiresAt: null,
+  graceUntil: null,
+  isExpired: false,
   locationCount: 2,
   staffCount: 5,
   terminalCount: 3,

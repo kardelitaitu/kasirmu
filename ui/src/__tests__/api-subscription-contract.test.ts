@@ -37,6 +37,7 @@ import {
 
 const CAPS = {
   tier: 'plus',
+  status: 'active',
   state: 'active',
   isTrial: false,
   trialEndsAt: null,
@@ -53,6 +54,9 @@ const CAPS = {
   supportsDailyDashboard: true,
   supportsCloudSync: true,
   offlineGraceDays: 7,
+  expiresAt: null,
+  graceUntil: null,
+  isExpired: false,
   locationCount: 1,
   staffCount: 2,
   terminalCount: 1,
@@ -67,6 +71,11 @@ describe('subscription.ts IPC contract', () => {
     const result = await getSubscriptionCapabilities();
     expect(mockInvoke).toHaveBeenCalledWith('get_subscription_capabilities', undefined);
     expect(result.tier).toBe('plus');
+    expect(result.status).toBe('active');
+    expect(result.state).toBe('active');
+    expect(result.expiresAt).toBeNull();
+    expect(result.graceUntil).toBeNull();
+    expect(result.isExpired).toBe(false);
     expect(result.maxLocations).toBe(5);
     // C+D-RES-1: the trial-state + feature-grant projection is pinned -
     // the fields must EXIST and carry null-when-absent semantics, never

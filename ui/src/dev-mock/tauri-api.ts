@@ -3000,6 +3000,7 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   }),
   'get_subscription_capabilities': () => ({
     tier: 'premium',
+    status: 'active',
     state: 'active',
     // C+D-RES-1: trial state + feature-grant map ride the caps payload.
     // The mock tenant is a paid premium subscription: not a trial, no
@@ -3023,6 +3024,9 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     supportsDailyDashboard: true,
     supportsCloudSync: true,
     offlineGraceDays: 30,
+    expiresAt: null,
+    graceUntil: null,
+    isExpired: false,
     locationCount: 1,
     staffCount: 1,
     terminalCount: 1,

@@ -265,6 +265,7 @@ fn complete_sale_scoped_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
+    use crate::commands::topology::TOPOLOGY_RUNTIME_SETTING_KEY;
     use oz_core::migrations;
     use oz_core::session::SessionContext;
     use platform_core::StoreDatabaseManager;

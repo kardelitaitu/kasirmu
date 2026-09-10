@@ -25,6 +25,9 @@ export type SubscriptionLifecycleState =
 export interface SubscriptionCapabilities {
   /** Tier key: `free` | `plus` | `pro` | `premium` | `enterprise`. */
   tier: string;
+  /** Raw subscription status (`active`, `canceled`, `paused`, etc.) from
+   *  the local signed row, or `unavailable` when fail-closed. */
+  status: string;
   /** Lifecycle state — anything other than `active`/`grace` means the
    *  capability flags below are the Free-tier (fail-closed) values. */
   state: SubscriptionLifecycleState;
@@ -68,6 +71,14 @@ export interface SubscriptionCapabilities {
   supportsDailyDashboard: boolean;
   supportsCloudSync: boolean;
   offlineGraceDays: number;
+  /** When the subscription expires (RFC 3339, from the local signed row);
+   *  `null` for the bootstrap Free row or when unreadable. */
+  expiresAt: string | null;
+  /** End of the offline grace window (RFC 3339). Only present when in
+   *  `grace` state and `expiresAt` is parseable; `null` otherwise. */
+  graceUntil: string | null;
+  /** Whether the subscription is expired (past expiry AND past grace). */
+  isExpired: boolean;
   // ── Current usage (for approaching-limit banners) ──────────
   locationCount: number;
   staffCount: number;
