@@ -23,3 +23,25 @@
 
 pub mod ctx;
 pub mod error;
+
+/// Category CRUD command bodies — the first Wave-A slice and the pattern
+/// the remaining catalog/fiscal/money modules follow.
+pub mod categories;
+/// Currency + exchange-rate command bodies (Wave A / S4 — not yet extracted).
+pub mod currency;
+/// Fiscalization command bodies (Wave A / S6 — not yet extracted).
+pub mod fiscal;
+/// Product-variant command bodies (Wave A / S7 — not yet extracted).
+pub mod product_variants;
+/// Product CRUD, barcode lookup and stock command bodies (Wave A / S9 —
+/// not yet extracted).
+pub mod products;
+/// Product-image ingest command bodies (Wave A / S8 — not yet extracted).
+pub mod products_images;
+/// Regional-configuration command bodies (Wave A / S6 — not yet extracted).
+pub mod regional;
+/// Tax-rate command bodies (Wave A / S5 — not yet extracted).
+pub mod tax;
+
+#[cfg(test)]
+mod testing;
