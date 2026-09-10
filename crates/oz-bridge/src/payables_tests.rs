@@ -1,6 +1,17 @@
+//! Unit tests for the accounts-payable command bodies (Wave-C test
+//! relocation: moved out of `apps/desktop-client/src/commands/payables_tests.rs`).
+//!
+//! The desktop file booted a Tauri mock app over `AppState::for_test_with_conn`
+//! and inserted sessions into `session_store`; the same seeds here go into a
+//! [`TestBridge`] over the shared `temp_conn` harness (the same fully-migrated
+//! in-memory global identity DB), and every scoped call takes `&bridge.ctx()`
+//! with the session token as a `&str`. `AppError::` assertions map 1:1 onto
+//! `BridgeError::` (identical variant shapes), and `parse_status_filter` now
+//! exercises the bridge's own pub helper instead of the shell's adapter.
+
 use super::*;
+use crate::testing::{TestBridge, temp_conn};
 use oz_core::session::SessionContext;
-use tauri::Manager as _;
 
 fn idr(minor: i64) -> Money {
     Money {
@@ -139,16 +150,9 @@ fn session_for(user_id: &str, role_id: &str) -> SessionContext {
     )
 }
 
-fn test_state(conn: rusqlite::Connection) -> tauri::App<tauri::test::MockRuntime> {
-    tauri::test::mock_builder()
-        .manage(AppState::for_test_with_conn(conn))
-        .build(tauri::generate_context!())
-        .unwrap()
-}
-
-fn insert_session(app: &tauri::App<tauri::test::MockRuntime>, user_id: &str, role_id: &str) {
-    app.state::<AppState>()
-        .session_store
+fn insert_session(bridge: &TestBridge, user_id: &str, role_id: &str) {
+    bridge
+        .sessions()
         .write()
         .unwrap()
         .insert("tok".into(), session_for(user_id, role_id));
@@ -171,19 +175,20 @@ fn create_args(supplier: &str, amount: i64) -> CreatePayableArgs {
 
 #[tokio::test]
 async fn owner_full_payable_lifecycle() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_user(&conn, "user-owner", "role-owner");
     seed_supplier(&conn, "sup-1");
-    let app = test_state(conn);
-    insert_session(&app, "user-owner", "role-owner");
+    let bridge = TestBridge::new().with_conn(conn);
+    insert_session(&bridge, "user-owner", "role-owner");
 
-    let created = create_payable_scoped(create_args("sup-1", 1000), "tok".into(), app.state())
+    let created = create_payable_scoped(&bridge.ctx(), create_args("sup-1", 1000), "tok")
         .await
         .unwrap();
     assert_eq!(created.status, "open");
     assert_eq!(created.balance.minor_units, 1000);
 
     let partial = record_payable_payment_scoped(
+        &bridge.ctx(),
         RecordPayablePaymentArgs {
             payable_id: created.id.clone(),
             amount: MoneyDto {
@@ -193,8 +198,7 @@ async fn owner_full_payable_lifecycle() {
             method: "cash".into(),
             note: None,
         },
-        "tok".into(),
-        app.state(),
+        "tok",
     )
     .await
     .unwrap();
@@ -202,6 +206,7 @@ async fn owner_full_payable_lifecycle() {
     assert_eq!(partial.balance.minor_units, 600);
 
     let settled = record_payable_payment_scoped(
+        &bridge.ctx(),
         RecordPayablePaymentArgs {
             payable_id: created.id.clone(),
             amount: MoneyDto {
@@ -211,8 +216,7 @@ async fn owner_full_payable_lifecycle() {
             method: "bank_transfer".into(),
             note: None,
         },
-        "tok".into(),
-        app.state(),
+        "tok",
     )
     .await
     .unwrap();
@@ -220,7 +224,7 @@ async fn owner_full_payable_lifecycle() {
     assert_eq!(settled.balance.minor_units, 0);
     assert!(settled.settled_at.is_some());
 
-    let all = list_payables_scoped(None, "tok".into(), app.state())
+    let all = list_payables_scoped(&bridge.ctx(), None, "tok")
         .await
         .unwrap();
     assert_eq!(all.len(), 1);
@@ -229,15 +233,15 @@ async fn owner_full_payable_lifecycle() {
 
 #[tokio::test]
 async fn owner_can_write_off_a_payable() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_user(&conn, "user-owner", "role-owner");
     seed_supplier(&conn, "sup-1");
-    let app = test_state(conn);
-    insert_session(&app, "user-owner", "role-owner");
-    let created = create_payable_scoped(create_args("sup-1", 800), "tok".into(), app.state())
+    let bridge = TestBridge::new().with_conn(conn);
+    insert_session(&bridge, "user-owner", "role-owner");
+    let created = create_payable_scoped(&bridge.ctx(), create_args("sup-1", 800), "tok")
         .await
         .unwrap();
-    let wo = write_off_payable_scoped(created.id, "tok".into(), app.state())
+    let wo = write_off_payable_scoped(&bridge.ctx(), &created.id, "tok")
         .await
         .unwrap();
     assert_eq!(wo.status, "written_off");
@@ -246,7 +250,7 @@ async fn owner_can_write_off_a_payable() {
 
 #[tokio::test]
 async fn auditor_can_view_but_not_write() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_user(&conn, "user-aud", "role-auditor");
     seed_supplier(&conn, "sup-1");
     // Seed a payable directly (the auditor cannot create one).
@@ -262,32 +266,32 @@ async fn auditor_can_view_but_not_write() {
             note: String::new(),
         })
         .unwrap();
-    let app = test_state(conn);
-    insert_session(&app, "user-aud", "role-auditor");
+    let bridge = TestBridge::new().with_conn(conn);
+    insert_session(&bridge, "user-aud", "role-auditor");
 
-    let list = list_payables_scoped(None, "tok".into(), app.state())
+    let list = list_payables_scoped(&bridge.ctx(), None, "tok")
         .await
         .unwrap();
     assert_eq!(list.len(), 1, "auditor holds payables:view");
 
-    let denied = create_payable_scoped(create_args("sup-1", 100), "tok".into(), app.state()).await;
-    assert!(matches!(denied, Err(AppError::PermissionDenied(_))));
+    let denied = create_payable_scoped(&bridge.ctx(), create_args("sup-1", 100), "tok").await;
+    assert!(matches!(denied, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn staff_cannot_view_payables() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_user(&conn, "user-staff", "role-staff");
-    let app = test_state(conn);
-    insert_session(&app, "user-staff", "role-staff");
-    let denied = list_payables_scoped(None, "tok".into(), app.state()).await;
-    assert!(matches!(denied, Err(AppError::PermissionDenied(_))));
+    let bridge = TestBridge::new().with_conn(conn);
+    insert_session(&bridge, "user-staff", "role-staff");
+    let denied = list_payables_scoped(&bridge.ctx(), None, "tok").await;
+    assert!(matches!(denied, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn manager_cannot_settle_a_payable() {
     // Manager has no payables keys at all (AP is Owner-only + Auditor view).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_user(&conn, "user-mgr", "role-manager");
     seed_supplier(&conn, "sup-1");
     let pid = Store::new(&conn)
@@ -303,9 +307,10 @@ async fn manager_cannot_settle_a_payable() {
         })
         .unwrap()
         .id;
-    let app = test_state(conn);
-    insert_session(&app, "user-mgr", "role-manager");
+    let bridge = TestBridge::new().with_conn(conn);
+    insert_session(&bridge, "user-mgr", "role-manager");
     let denied = record_payable_payment_scoped(
+        &bridge.ctx(),
         RecordPayablePaymentArgs {
             payable_id: pid,
             amount: MoneyDto {
@@ -315,16 +320,15 @@ async fn manager_cannot_settle_a_payable() {
             method: "cash".into(),
             note: None,
         },
-        "tok".into(),
-        app.state(),
+        "tok",
     )
     .await;
-    assert!(matches!(denied, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(denied, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn rejects_invalid_session() {
-    let app = test_state(oz_core::migrations::fresh_db());
-    let r = list_payables_scoped(None, "missing-token".into(), app.state()).await;
-    assert!(matches!(r, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let r = list_payables_scoped(&bridge.ctx(), None, "missing-token").await;
+    assert!(matches!(r, Err(BridgeError::InvalidSession)));
 }

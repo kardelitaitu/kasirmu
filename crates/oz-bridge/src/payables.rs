@@ -274,3 +274,7 @@ pub async fn write_off_payable_scoped(
         store.write_off_payable(DEFAULT_TENANT_ID, payable_id)?,
     ))
 }
+
+#[cfg(test)]
+#[path = "payables_tests.rs"]
+mod tests;

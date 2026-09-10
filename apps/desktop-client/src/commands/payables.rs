@@ -108,7 +108,3 @@ pub async fn write_off_payable_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "payables_tests.rs"]
-mod tests;

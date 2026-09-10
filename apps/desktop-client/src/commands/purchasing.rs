@@ -280,7 +280,3 @@ pub async fn receive_purchase_order_with_lines_scoped(
     .await
     .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "purchasing_tests.rs"]
-mod tests;

@@ -23,8 +23,8 @@
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
-use oz_core::db::purchase_orders::{CreatePoLineInput, ReceivePoLineInput};
 use oz_core::db::Store;
+use oz_core::db::purchase_orders::{CreatePoLineInput, ReceivePoLineInput};
 use oz_core::permissions;
 use oz_core::{PurchaseOrderLine, PurchaseOrderWithLines, Supplier};
 
@@ -781,3 +781,7 @@ pub async fn receive_purchase_order_with_lines_scoped(
     let po = Store::new(&db).receive_purchase_order_with_lines(id, &input)?;
     Ok(PurchaseOrderDto::from(po))
 }
+
+#[cfg(test)]
+#[path = "purchasing_tests.rs"]
+mod tests;
