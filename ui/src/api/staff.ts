@@ -541,12 +541,16 @@ export const listOrganizations = (): Promise<OrganizationSummary[]> =>
  * assignment (fail-closed), and re-runs tenant integrity on the opened DB.
  * Requires a FULL PIN re-auth — no credential carryover.
  */
-export const switchOrganization = (args: {
+export const switchOrganization = ({
+  sessionToken,
+  orgId,
+  pin,
+}: {
   sessionToken: string;
   orgId: string;
   pin: string;
 }): Promise<CreateSessionResult> =>
-  loggedInvoke<CreateSessionResult>('switch_organization', args);
+  loggedInvoke<CreateSessionResult>('switch_organization', { sessionToken, orgId, pin });
 
 /** Result of refreshing a picker ticket. */
 export interface RefreshPickerTicketResult {
