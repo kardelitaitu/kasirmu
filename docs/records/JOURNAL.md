@@ -1,4 +1,26 @@
 
+## 2026-09-10 — TDD: Monotonic ledger timestamp evaluation for subscription grace and lifecycle (core/subscription)
+
+**Context & Identified Weakness:**
+While `TenantSubscription::validate_clock_rollback` checked if max ledger timestamps were in the future relative to wall-clock, `is_within_grace_period()`, `effective_tier()`, `lifecycle_state()`, and `pos_read_only()` evaluated purely against `chrono::Utc::now()`. A device offline with a rolled-back system clock could bypass grace expiration if the caller evaluated grace directly or failed to run `validate_clock_rollback`.
+
+**Changes & Design:**
+1. Added `is_within_grace_period_at(now: DateTime<Utc>)` and `is_within_grace_period_with_timestamp(&self, reference_timestamp: &str)`.
+2. Added `effective_tier_at(now: DateTime<Utc>)` and `effective_tier_with_timestamp(&self, reference_timestamp: &str)`.
+3. Added `lifecycle_state_at(now: DateTime<Utc>)` and `lifecycle_state_with_timestamp(&self, reference_timestamp: &str)`.
+4. Added `pos_read_only_at(now: DateTime<Utc>)` and `pos_read_only_with_timestamp(&self, reference_timestamp: &str)`.
+5. Delegated default wall-clock methods (`is_within_grace_period`, `effective_tier`, `lifecycle_state`, `pos_read_only`) to their respective `*_at(chrono::Utc::now())` implementations, maintaining 100% backwards compatibility while enabling model-layer verification against ledger timestamps.
+6. Fails closed: unparseable reference timestamps fail closed to expired (`false` for grace, `Free` for effective tier, `Expired` for lifecycle, `true` for `pos_read_only`).
+
+**Verification:**
+- Added 4 unit tests in `subscription_tests.rs`:
+  - `test_is_within_grace_period_with_ledger_evaluates_against_ledger_time`
+  - `test_lifecycle_state_with_ledger_evaluates_against_ledger_time`
+  - `test_effective_tier_with_ledger_timestamp`
+  - `test_pos_read_only_with_ledger_timestamp`
+- Verified RED/GREEN TDD transitions cleanly.
+- Full subscription test suite passed (136 tests passed).
+- Formatted with `cargo fmt -p oz-core`.
 
 ## 2026-09-05 — Round AI: KDS theme-toggle click lag (ui)
 

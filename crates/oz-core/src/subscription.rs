@@ -504,6 +504,23 @@ impl TenantSubscription {
     /// Returns `true` if the subscription is still valid (not expired or
     /// within grace period).
     pub fn is_within_grace_period(&self) -> bool {
+        self.is_within_grace_period_at(chrono::Utc::now())
+    }
+
+    /// Check if the subscription is within grace evaluated against a specific RFC3339 timestamp.
+    ///
+    /// Useful for validating grace against a monotonic ledger timestamp (e.g. `compute_max_ledger_timestamp`)
+    /// to detect and resist local system clock tampering/rollback.
+    /// Fails closed to `false` if `reference_timestamp` cannot be parsed.
+    pub fn is_within_grace_period_with_timestamp(&self, reference_timestamp: &str) -> bool {
+        match chrono::DateTime::parse_from_rfc3339(reference_timestamp) {
+            Ok(dt) => self.is_within_grace_period_at(dt.with_timezone(&chrono::Utc)),
+            Err(_) => false,
+        }
+    }
+
+    /// Check if the subscription is within grace evaluated at a specific UTC datetime.
+    pub fn is_within_grace_period_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
         // Canceled subscriptions are never within grace.
         if self.status == "canceled" {
             return false;
@@ -521,11 +538,10 @@ impl TenantSubscription {
         };
 
         let expiry = match chrono::DateTime::parse_from_rfc3339(expires_at) {
-            Ok(dt) => dt,
+            Ok(dt) => dt.with_timezone(&chrono::Utc),
             Err(_) => return false, // Unparseable expiry → assume expired
         };
 
-        let now = chrono::Utc::now();
         let grace_deadline = expiry + chrono::Duration::days(self.tier.offline_grace_days());
 
         now <= grace_deadline
@@ -710,7 +726,20 @@ impl TenantSubscription {
     /// - If the grace period has elapsed and the register is still
     ///   offline, returns `Free` (downgraded).
     pub fn effective_tier(&self) -> SubscriptionTier {
-        if self.is_within_grace_period() {
+        self.effective_tier_at(chrono::Utc::now())
+    }
+
+    /// Determine the effective subscription tier evaluated against a specific RFC3339 timestamp.
+    pub fn effective_tier_with_timestamp(&self, reference_timestamp: &str) -> SubscriptionTier {
+        match chrono::DateTime::parse_from_rfc3339(reference_timestamp) {
+            Ok(dt) => self.effective_tier_at(dt.with_timezone(&chrono::Utc)),
+            Err(_) => SubscriptionTier::Free,
+        }
+    }
+
+    /// Determine the effective subscription tier evaluated at a specific UTC datetime.
+    pub fn effective_tier_at(&self, now: chrono::DateTime<chrono::Utc>) -> SubscriptionTier {
+        if self.is_within_grace_period_at(now) {
             self.tier.clone()
         } else {
             tracing::warn!(
@@ -737,6 +766,27 @@ impl TenantSubscription {
     /// unparseable expiry fails closed as expired, and a paid row past its
     /// expiry reports `Grace` until the tier's offline grace window ends.
     pub fn lifecycle_state(&self) -> SubscriptionLifecycleState {
+        self.lifecycle_state_at(chrono::Utc::now())
+    }
+
+    /// Normalize the row into the shared lifecycle state contract evaluated against a specific RFC3339 timestamp.
+    ///
+    /// Fails closed to `SubscriptionLifecycleState::Expired` if `reference_timestamp` cannot be parsed.
+    pub fn lifecycle_state_with_timestamp(
+        &self,
+        reference_timestamp: &str,
+    ) -> SubscriptionLifecycleState {
+        match chrono::DateTime::parse_from_rfc3339(reference_timestamp) {
+            Ok(dt) => self.lifecycle_state_at(dt.with_timezone(&chrono::Utc)),
+            Err(_) => SubscriptionLifecycleState::Expired,
+        }
+    }
+
+    /// Normalize the row into the shared lifecycle state contract evaluated at a specific UTC datetime.
+    pub fn lifecycle_state_at(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> SubscriptionLifecycleState {
         match self.status.as_str() {
             "canceled" | "revoked" => return SubscriptionLifecycleState::Canceled,
             "paused" => return SubscriptionLifecycleState::Paused,
@@ -756,7 +806,7 @@ impl TenantSubscription {
             // Unparseable expiry — is_within_grace_period fails closed here.
             return SubscriptionLifecycleState::Expired;
         };
-        let now = chrono::Utc::now();
+        let expiry = expiry.with_timezone(&chrono::Utc);
         if now <= expiry {
             return SubscriptionLifecycleState::Active;
         }
@@ -781,7 +831,18 @@ impl TenantSubscription {
     /// operational sale path. Data-integrity responses live in the
     /// capabilities command and the admin gate.
     pub fn pos_read_only(&self) -> bool {
-        self.lifecycle_state() == SubscriptionLifecycleState::Expired
+        self.pos_read_only_at(chrono::Utc::now())
+    }
+
+    /// Whether POS runtime is locked to a read-only state evaluated against a specific RFC3339 timestamp.
+    pub fn pos_read_only_with_timestamp(&self, reference_timestamp: &str) -> bool {
+        self.lifecycle_state_with_timestamp(reference_timestamp)
+            == SubscriptionLifecycleState::Expired
+    }
+
+    /// Whether POS runtime is locked to a read-only state evaluated at a specific UTC datetime.
+    pub fn pos_read_only_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        self.lifecycle_state_at(now) == SubscriptionLifecycleState::Expired
     }
 
     /// Enforce [`Self::pos_read_only`] — returns

@@ -632,6 +632,136 @@ fn clock_skew_constants_are_reasonable() {
     assert_eq!(CLOCK_SKEW_TOLERANCE_SECONDS, 30);
 }
 
+#[test]
+fn test_is_within_grace_period_with_ledger_evaluates_against_ledger_time() {
+    // Expiry was 20 days ago.
+    let expiry = chrono::Utc::now() - chrono::Duration::days(20);
+    let sub = TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Plus, // 14-day grace period
+        status: "active".into(),
+        expires_at: Some(expiry.to_rfc3339()),
+        max_locations: 1,
+        max_pos_instances: 2,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    };
+
+    // Case 1: If ledger timestamp is 10 days past expiry, it is within the 14-day grace window.
+    let ledger_in_grace = (expiry + chrono::Duration::days(10)).to_rfc3339();
+    assert!(sub.is_within_grace_period_with_timestamp(&ledger_in_grace));
+
+    // Case 2: If ledger timestamp is 15 days past expiry, it has exceeded the 14-day grace window.
+    let ledger_past_grace = (expiry + chrono::Duration::days(15)).to_rfc3339();
+    assert!(!sub.is_within_grace_period_with_timestamp(&ledger_past_grace));
+
+    // Case 3: Tampered clock check:
+    // If ledger has advanced past the grace deadline (25 days after expiry),
+    // even if a rolled-back system clock says it's only 5 days after expiry,
+    // evaluation using the ledger timestamp must reject grace.
+    let ledger_advanced = (expiry + chrono::Duration::days(25)).to_rfc3339();
+    assert!(!sub.is_within_grace_period_with_timestamp(&ledger_advanced));
+
+    // Case 4: Invalid/unparseable ledger timestamp fails closed to wall-clock / false
+    assert!(!sub.is_within_grace_period_with_timestamp("not-a-date"));
+}
+
+#[test]
+fn test_lifecycle_state_with_ledger_evaluates_against_ledger_time() {
+    let expiry = chrono::Utc::now() - chrono::Duration::days(20);
+    let sub = TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Plus, // 14-day grace
+        status: "active".into(),
+        expires_at: Some(expiry.to_rfc3339()),
+        max_locations: 1,
+        max_pos_instances: 2,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    };
+
+    // Before expiry -> Active
+    let before_expiry = (expiry - chrono::Duration::days(2)).to_rfc3339();
+    assert_eq!(
+        sub.lifecycle_state_with_timestamp(&before_expiry),
+        SubscriptionLifecycleState::Active
+    );
+
+    // Within grace -> Grace
+    let in_grace = (expiry + chrono::Duration::days(5)).to_rfc3339();
+    assert_eq!(
+        sub.lifecycle_state_with_timestamp(&in_grace),
+        SubscriptionLifecycleState::Grace
+    );
+
+    // Past grace -> Expired
+    let past_grace = (expiry + chrono::Duration::days(16)).to_rfc3339();
+    assert_eq!(
+        sub.lifecycle_state_with_timestamp(&past_grace),
+        SubscriptionLifecycleState::Expired
+    );
+}
+
+#[test]
+fn test_effective_tier_with_ledger_timestamp() {
+    let expiry = chrono::Utc::now() - chrono::Duration::days(20);
+    let sub = TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Plus, // 14-day grace
+        status: "active".into(),
+        expires_at: Some(expiry.to_rfc3339()),
+        max_locations: 1,
+        max_pos_instances: 2,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    };
+
+    let in_grace = (expiry + chrono::Duration::days(5)).to_rfc3339();
+    assert_eq!(
+        sub.effective_tier_with_timestamp(&in_grace),
+        SubscriptionTier::Plus
+    );
+
+    let past_grace = (expiry + chrono::Duration::days(20)).to_rfc3339();
+    assert_eq!(
+        sub.effective_tier_with_timestamp(&past_grace),
+        SubscriptionTier::Free
+    );
+}
+
+#[test]
+fn test_pos_read_only_with_ledger_timestamp() {
+    let expiry = chrono::Utc::now() - chrono::Duration::days(20);
+    let sub = TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Plus, // 14-day grace
+        status: "active".into(),
+        expires_at: Some(expiry.to_rfc3339()),
+        max_locations: 1,
+        max_pos_instances: 2,
+        allowed_types_json: "[]".into(),
+        signature: "BOOTSTRAP_FREE".into(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    };
+
+    let in_grace = (expiry + chrono::Duration::days(5)).to_rfc3339();
+    assert!(!sub.pos_read_only_with_timestamp(&in_grace));
+
+    let past_grace = (expiry + chrono::Duration::days(20)).to_rfc3339();
+    assert!(sub.pos_read_only_with_timestamp(&past_grace));
+}
+
 // ── SubscriptionTier feature-flag coverage ─────────────────────────
 
 #[test]
