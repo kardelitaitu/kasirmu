@@ -21,6 +21,7 @@ oz-security = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 rusqlite = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
