@@ -386,8 +386,6 @@ export default function NodeTopologyEditor({
   const bendDragCleanupRef = useRef<(() => void) | null>(null);
   /** Set of node ids that were just added (for scale-in animation). */
   const [freshNodeIds, setFreshNodeIds] = useState<Set<string>>(new Set());
-  /** Timers for fresh-node animation cleanup; cleared on unmount to prevent leaks. */
-  const freshTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   /** Per-branch viewport memory: pan/zoom persist per branch id so a branch
    *  switch (which remounts the editor) lands back where the user left off
@@ -1528,20 +1526,15 @@ export default function NodeTopologyEditor({
     nudgeSessionRef.current = null;
   }, [redo, nodes, wires, setHistory, setNodes, setRedo, setWires]);
 
-  // Clear the add-node timers on unmount (the final edit for a fresh node must
-  // not apply after the editor is gone). The gesture listeners themselves no
-  // longer reach here: each gesture hook owns its listener disposal via its own
-  // unmount effect, and the remaining marquee/bend teardown refs stay editor-
-  // declared because the parent cancelMarquee/cancelBendDrag fire them mid-
-  // session. A follow-up slice should move this timers disposal into the
-  // add-node hook, which owns the setTimeout calls.
-  useEffect(() => {
-    const timers = freshTimersRef.current;
-    return () => {
-      timers.forEach(clearTimeout);
-      timers.clear();
-    };
-  }, []);
+  // No unmount teardown for the add-node timers remains here: this slot's
+  // former timers-only effect was retired into nodeTopologyEditorAddNode, the
+  // hook that owns the setTimeout calls — it drains a hook-local
+  // freshTimersRef via its own unmount effect, so the final edit for a fresh
+  // node still cannot apply after the editor is gone. The gesture listeners
+  // themselves no longer reach here: each gesture hook owns its listener
+  // disposal via its own unmount effect, and the remaining marquee/bend
+  // teardown refs stay editor-declared because the parent
+  // cancelMarquee/cancelBendDrag fire them mid-session.
 
   /** Delete-confirm flow (slice P5-B/S5): the two confirmation states,
    *  the Branch-Location anchor guard, the shared delete commit and
@@ -1718,11 +1711,12 @@ export default function NodeTopologyEditor({
   });
 
   /** Add-node flow (slice P5-B/S6): the plain `handleAddNode` arrow moved
-   *  verbatim into nodeTopologyEditorAddNode. Neither it nor that hook
-   *  registers a React hook, so the component's hook order — and therefore
-   *  its effect order — is untouched; the deps it reads stay parent-owned.
-   *  The ref mirror below stays here because the keydown effect above this
-   *  point reads it, and a direct dep would hit the TDZ. */
+   *  verbatim into nodeTopologyEditorAddNode; the deps it reads stay
+   *  parent-owned. Wave 29 retired this file's timers-only unmount effect
+   *  into that hook, so it now registers two React hooks of its own (a
+   *  hook-local timer set + its unmount effect), both unconditional. The ref
+   *  mirror below stays here because the keydown effect above this point
+   *  reads it, and a direct dep would hit the TDZ. */
   const { handleAddNode } = useTopologyEditorAddNode({
     allowLegacyApply,
     wouldExceedWarehouseCap,
@@ -1737,7 +1731,6 @@ export default function NodeTopologyEditor({
     setPan,
     setNodes,
     setFreshNodeIds,
-    freshTimersRef,
     selectOnly,
   });
   handleAddNodeRef.current = handleAddNode;

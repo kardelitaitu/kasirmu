@@ -5,8 +5,8 @@
 //! chain (snap -> jitter -> first collision-free spot -> clamp into the
 //! visible viewport, panning to reveal a spot that had been panned away),
 //! the workspace-label/subtitle resolution, the `persisted: false` seed
-//! metadata, and the 400 ms fresh-node animation timer that the editor's
-//! unmount sweep drains through freshTimersRef.
+//! metadata, and the 400 ms fresh-node animation timer, which this hook now
+//! drains itself through a hook-local freshTimersRef and its own unmount effect.
 //!
 //! The moved body is BYTE-IDENTICAL to the inline original, with ZERO
 //! deviations: it was a plain arrow function, not a useCallback, so this
@@ -17,11 +17,14 @@
 //! `handleAddNodeRef.current = handleAddNode` stays in the editor body: the
 //! keydown effect is declared ABOVE this function precisely because a direct
 //! dep would hit the TDZ, and the ref mirror is what keeps that working. The
-//! call site sits at the slot the arrow occupied, and because neither the
-//! moved code nor this hook registers a React hook, the component's hook
-//! order — and therefore its effect order — is literally untouched.
+//! call site sits at the slot the arrow occupied. This hook now registers two
+//! React hooks of its own — the hook-local `freshTimersRef` and one unmount
+//! effect that drains it, so installer and disposer finally share a scope
+//! (the last parent-owned unmount act in the editor) — both unconditional at
+//! a stable position, so the component's hook order stays stable per render.
 
-import type { MutableRefObject, SetStateAction } from 'react';
+import { useEffect, useRef } from 'react';
+import type { SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
 import type { ToastType } from '@/frontend/shared/Toast';
 import {
@@ -62,8 +65,6 @@ export interface TopologyAddNodeDeps {
   setNodes: (value: SetStateAction<TopologyNodeData[]>) => void;
   /** Fresh-node (scale-in) set — armed here, drained by the timer below. */
   setFreshNodeIds: (value: SetStateAction<Set<string>>) => void;
-  /** Animation timers, parent-owned so the unmount sweep can clear them. */
-  freshTimersRef: MutableRefObject<Set<ReturnType<typeof setTimeout>>>;
   /** Selection reducer: the new node becomes the sole selection. */
   selectOnly: (id: string) => void;
 }
@@ -89,9 +90,13 @@ export function useTopologyEditorAddNode(deps: TopologyAddNodeDeps): {
     setPan,
     setNodes,
     setFreshNodeIds,
-    freshTimersRef,
     selectOnly,
   } = deps;
+
+  /** Timers for fresh-node animation cleanup; cleared on unmount to prevent
+   *  leaks. Hook-local since wave 29 — the setTimeout calls and their
+   *  disposer live in this scope now. */
+  const freshTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   const handleAddNode = (
     type: NodeType,
@@ -170,6 +175,14 @@ export function useTopologyEditorAddNode(deps: TopologyAddNodeDeps): {
     freshTimersRef.current.add(freshTimer);
     selectOnly(id);
   };
+
+  useEffect(() => {
+    const timers = freshTimersRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   return { handleAddNode };
 }
