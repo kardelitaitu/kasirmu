@@ -544,15 +544,11 @@ impl TenantSubscription {
 
         // When marked as a trial with an explicit trial_ends_at, the trial deadline
         // strictly governs offline validity (0 offline grace days post-trial).
-        if self.is_trial() {
-            if let Some(ends_at_str) = self.trial_ends_at() {
-                if let Ok(trial_end) = chrono::DateTime::parse_from_rfc3339(&ends_at_str) {
-                    let trial_end_utc = trial_end.with_timezone(&chrono::Utc);
-                    if now > trial_end_utc {
-                        return false;
-                    }
-                }
-            }
+        if self
+            .trial_ends_at_datetime()
+            .is_some_and(|trial_end| now > trial_end)
+        {
+            return false;
         }
 
         let grace_deadline = expiry + chrono::Duration::days(self.tier.offline_grace_days());
@@ -677,6 +673,21 @@ impl TenantSubscription {
     pub fn trial_ends_at(&self) -> Option<String> {
         self.parsed_trial().1
     }
+
+    /// When the trial ends, parsed as a UTC `DateTime` (`None` when this is
+    /// not a trial, or when the date is absent or unparseable).
+    #[must_use]
+    pub fn trial_ends_at_datetime(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let (is_trial, ends_at) = self.parsed_trial();
+        if !is_trial {
+            return None;
+        }
+        ends_at
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    }
+
     /// The signed payload's explicit per-feature instructions (Phase D1).
     ///
     /// Keyed by the canonical [`crate::availability::AvailabilityFeature`]
@@ -823,15 +834,11 @@ impl TenantSubscription {
 
         // When marked as a trial with an explicit trial_ends_at, the trial deadline
         // strictly governs offline validity (0 offline grace days post-trial).
-        if self.is_trial() {
-            if let Some(ends_at_str) = self.trial_ends_at() {
-                if let Ok(trial_end) = chrono::DateTime::parse_from_rfc3339(&ends_at_str) {
-                    let trial_end_utc = trial_end.with_timezone(&chrono::Utc);
-                    if now > trial_end_utc {
-                        return SubscriptionLifecycleState::Expired;
-                    }
-                }
-            }
+        if self
+            .trial_ends_at_datetime()
+            .is_some_and(|trial_end| now > trial_end)
+        {
+            return SubscriptionLifecycleState::Expired;
         }
 
         if now <= expiry {
