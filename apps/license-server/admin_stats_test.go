@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -229,5 +230,122 @@ func TestAdminStats_TrialFunnel(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("current month %q not found in funnel", curKey)
+	}
+}
+
+// ── Per-market price maps (saas-3 billing, owner go D95) ────────────
+
+func TestAdminStats_MarketPriceMapRoutesLocalAndKeepsUsdFallback(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	idrTenant, _ := seedDashboardTenant(t, app, "market-idr@test.com")
+	seedDashboardTenant(t, app, "market-usd@test.com")
+
+	// The IDR tenant's charging currency is provider-verified via its
+	// revenue event (the subscriptions collection carries no market field).
+	revCol, _ := app.FindCollectionByNameOrId("revenue_events")
+	rev := core.NewRecord(revCol)
+	rev.Set("event_id", "evt-market-idr")
+	rev.Set("provider", "midtrans")
+	rev.Set("tenant_id", idrTenant)
+	rev.Set("currency", "IDR")
+	rev.Set("amount_idr", 149000)
+	if err := app.Save(rev); err != nil {
+		t.Fatalf("save revenue event: %v", err)
+	}
+
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("PRICE_TIERS_IDR", "pro=149900")
+
+	rec := doJSON(mux, http.MethodGet, "/api/v1/admin/stats", "Bearer secret-admin-key", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Kpis struct {
+			MrrUsd      float64 `json:"mrrUsd"`
+			MrrByMarket map[string]struct {
+				Currency    string  `json:"currency"`
+				Subscribers int     `json:"subscribers"`
+				MrrLocal    float64 `json:"mrrLocal"`
+			} `json:"mrrByMarket"`
+			MarketPriceErrors map[string]string `json:"marketPriceErrors"`
+		} `json:"kpis"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad JSON: %v", err)
+	}
+	// The IDR sub is priced at the operator's local 149900, NOT the USD
+	// fallback (9.99) — and it must not ALSO appear in mrrUsd.
+	if len(body.Kpis.MrrByMarket) != 1 {
+		t.Fatalf("expected exactly 1 market, got %d: %v", len(body.Kpis.MrrByMarket), body.Kpis.MrrByMarket)
+	}
+	idr, ok := body.Kpis.MrrByMarket["IDR"]
+	if !ok || idr.Subscribers != 1 || idr.MrrLocal != 149900 {
+		t.Fatalf("expected IDR market 1 subscriber at 149900 local, got %+v (have %v)", idr, body.Kpis.MrrByMarket)
+	}
+	if body.Kpis.MrrUsd != 9.99 {
+		t.Errorf("mrrUsd must count only the USD-fallback sub, got %v want 9.99", body.Kpis.MrrUsd)
+	}
+	if len(body.Kpis.MarketPriceErrors) != 0 {
+		t.Errorf("expected no market price errors, got %v", body.Kpis.MarketPriceErrors)
+	}
+}
+
+func TestAdminStats_UsdFallbackUnchangedWithoutMarketMaps(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	seedDashboardTenant(t, app, "fallback-a@test.com")
+	seedDashboardTenant(t, app, "fallback-b@test.com")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	// Deliberately NO PRICE_TIERS_* env: every sub stays on the USD path.
+	rec := doJSON(mux, http.MethodGet, "/api/v1/admin/stats", "Bearer secret-admin-key", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Kpis struct {
+			MrrUsd      float64        `json:"mrrUsd"`
+			MrrByMarket map[string]any `json:"mrrByMarket"`
+		} `json:"kpis"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad JSON: %v", err)
+	}
+	if body.Kpis.MrrUsd != 19.98 {
+		t.Errorf("two pro subs on the USD path = 19.98, got %v", body.Kpis.MrrUsd)
+	}
+	if len(body.Kpis.MrrByMarket) != 0 {
+		t.Errorf("no market maps configured — mrrByMarket must be empty, got %v", body.Kpis.MrrByMarket)
+	}
+}
+
+func TestAdminStats_MalformedMarketVarSkippedNotFatal(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	seedDashboardTenant(t, app, "malformed@test.com")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("PRICE_TIERS_IDR", "pro=notanumber")
+	// A broken market var must NOT boot-fail or zero out the stats (the
+	// additive-optional contract, the inverse of the per-PROVIDER maps):
+	// the sub falls back to USD and the parse error is reported.
+	rec := doJSON(mux, http.MethodGet, "/api/v1/admin/stats", "Bearer secret-admin-key", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Kpis struct {
+			MrrUsd            float64           `json:"mrrUsd"`
+			MarketPriceErrors map[string]string `json:"marketPriceErrors"`
+		} `json:"kpis"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad JSON: %v", err)
+	}
+	if body.Kpis.MrrUsd != 9.99 {
+		t.Errorf("broken market map must fall back to USD, got %v want 9.99", body.Kpis.MrrUsd)
+	}
+	if !strings.Contains(body.Kpis.MarketPriceErrors["IDR"], "PRICE_TIERS_IDR") {
+		t.Errorf("expected the IDR parse error to surface, got %v", body.Kpis.MarketPriceErrors)
 	}
 }

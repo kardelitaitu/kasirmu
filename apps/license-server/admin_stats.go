@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -110,6 +111,80 @@ func getFxRate() (rate float64, updatedAt time.Time, live bool) {
 	return rate, now, live
 }
 
+// ── Per-market price maps (saas-3 billing, owner go D95) ───────────
+
+// marketPriceTiersPrefix is the env-var prefix for the optional
+// per-market tier price maps: PRICE_TIERS_<CURRENCY>="tier=amount,..."
+// (amounts in that currency's MAJOR units, the same convention as
+// TierPriceUSD), e.g. PRICE_TIERS_IDR="plus=74900,pro=149900".
+const marketPriceTiersPrefix = "PRICE_TIERS_"
+
+// marketPriceTiers parses every PRICE_TIERS_<CURRENCY> env var into
+// currency → tier → monthly price.
+//
+// ADDITIVE-OPTIONAL BY DESIGN (the exact inverse of the per-PROVIDER
+// maps): PADDLE_PRICE_TIERS / MIDTRANS_PRICE_TIERS provision
+// subscriptions and must boot-fail when missing; a market map is a
+// billing-estimate refinement, so an absent map just means the USD+FX
+// fallback covers that market and a MALFORMED map is skipped and
+// reported rather than fatal. Returns (maps, per-market parse errors);
+// both are empty when nothing is configured.
+func marketPriceTiers() (map[string]map[string]float64, map[string]error) {
+	maps := map[string]map[string]float64{}
+	errs := map[string]error{}
+	for _, kv := range os.Environ() {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || !strings.HasPrefix(k, marketPriceTiersPrefix) {
+			continue
+		}
+		cur := strings.ToUpper(strings.TrimPrefix(k, marketPriceTiersPrefix))
+		if cur == "" || strings.TrimSpace(v) == "" {
+			continue
+		}
+		prices := map[string]float64{}
+		var bad error
+		for _, pair := range strings.Split(v, ",") {
+			parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
+			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+				bad = fmt.Errorf("PRICE_TIERS_%s has a malformed entry %q — expected tier=amount pairs, e.g. plus=74900,pro=149900", cur, strings.TrimSpace(pair))
+				break
+			}
+			amt, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+			if err != nil || amt < 0 {
+				bad = fmt.Errorf("PRICE_TIERS_%s entry %q has a non-numeric amount — expected tier=amount pairs", cur, strings.TrimSpace(pair))
+				break
+			}
+			prices[strings.TrimSpace(parts[0])] = amt
+		}
+		if bad != nil {
+			errs[cur] = bad
+			continue
+		}
+		if len(prices) > 0 {
+			maps[cur] = prices
+		}
+	}
+	return maps, errs
+}
+
+// tenantMarkets resolves each tenant's charging currency from its
+// provider-verified revenue events (latest event wins) — the ONLY
+// market signal the hub has, because the subscriptions collection
+// carries no market field. Written only by signature-verified webhooks,
+// so the attribution is provider-verified, not admin-editable. Tenants
+// with no events stay absent → the USD fallback path covers them.
+func tenantMarkets(app core.App) map[string]string {
+	markets := map[string]string{}
+	events, _ := app.FindRecordsByFilter("revenue_events", "currency != ''", "-created", 0, 0)
+	for _, ev := range events {
+		tid := ev.GetString("tenant_id")
+		if _, seen := markets[tid]; !seen {
+			markets[tid] = ev.GetString("currency")
+		}
+	}
+	return markets
+}
+
 // ── Stats handler ────────────────────────────────────────────────────
 
 func handleAdminStats(app core.App) func(e *core.RequestEvent) error {
@@ -129,10 +204,46 @@ func handleAdminStats(app core.App) func(e *core.RequestEvent) error {
 		totalSubscribers := len(activeSubs)
 
 		// MRR: sum of active non-free subscriptions' tier prices.
+		// Per-market price maps (PRICE_TIERS_<CURRENCY>, saas-3 D95) are
+		// additive-optional: a subscription whose tenant charges in a
+		// currency with a configured map contributes its LOCAL price to
+		// that market's sum (its operator-set real price) and is REMOVED
+		// from the USD aggregate so no sub is double-reported; everything
+		// else — no market signal, unconfigured market, or tier missing
+		// from the market's map — keeps the exact USD fallback path
+		// (TierPriceUSD, FX untouched). The per-market sums are local
+		// currency: no cross-currency conversion is invented here.
 		mrrUsd := 0.0
+		marketMaps, _ := marketPriceTiers()
+		markets := tenantMarkets(app)
+		type marketSum struct {
+			Currency    string  `json:"currency"`
+			Subscribers int     `json:"subscribers"`
+			MrrLocal    float64 `json:"mrrLocal"`
+		}
+		mrrByMarket := map[string]*marketSum{}
 		for _, sub := range activeSubs {
 			tier := sub.GetString("tier_key")
+			if pm := marketMaps[markets[sub.GetString("tenant_id")]]; pm != nil {
+				if price, ok := pm[tier]; ok {
+					cur := markets[sub.GetString("tenant_id")]
+					ms := mrrByMarket[cur]
+					if ms == nil {
+						ms = &marketSum{Currency: cur}
+						mrrByMarket[cur] = ms
+					}
+					ms.Subscribers++
+					ms.MrrLocal += price
+					continue
+				}
+			}
 			mrrUsd += TierPriceUSD[tier]
+		}
+		marketPriceErrors := map[string]string{}
+		if _, merrs := marketPriceTiers(); len(merrs) > 0 {
+			for cur, err := range merrs {
+				marketPriceErrors[cur] = err.Error()
+			}
 		}
 		arpuUsd := 0.0
 		if totalSubscribers > 0 {
@@ -636,6 +747,8 @@ func handleAdminStats(app core.App) func(e *core.RequestEvent) error {
 				"activeUsers":         activeUsers,
 				"totalSubscribers":    totalSubscribers,
 				"mrrUsd":              math.Round(mrrUsd*100) / 100,
+				"mrrByMarket":         mrrByMarket,
+				"marketPriceErrors":   marketPriceErrors,
 				"mrrIdr":              math.Round(mrrUsd * fxRate),
 				"monthlyGrossUsd":     monthlyGrossUsd,
 				"monthlyGrossIdr":     monthlyGrossIdr,

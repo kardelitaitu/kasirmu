@@ -45,18 +45,19 @@ func handleHealth(app core.App) func(e *core.RequestEvent) error {
 		}
 
 		return e.JSON(status, map[string]any{
-			"status":       statusText,
-			"db_connected": dbConnected,
-			"db_error":     dbErr,
-			"smtp":         smtpHealthSnapshot(),
-			"paddle":       paddleHealthStatus(),
-			"midtrans":     midtransHealthStatus(),
-			"rsa":          rsaHealthStatus(),
-			"discord":      discordHealthStatus(),
-			"uptime_secs":  int(uptime),
-			"go_version":   runtime.Version(),
-			"go_os":        runtime.GOOS,
-			"go_arch":      runtime.GOARCH,
+			"status":        statusText,
+			"db_connected":  dbConnected,
+			"db_error":      dbErr,
+			"smtp":          smtpHealthSnapshot(),
+			"paddle":        paddleHealthStatus(),
+			"midtrans":      midtransHealthStatus(),
+			"market_prices": marketPriceHealthStatus(),
+			"rsa":           rsaHealthStatus(),
+			"discord":       discordHealthStatus(),
+			"uptime_secs":   int(uptime),
+			"go_version":    runtime.Version(),
+			"go_os":         runtime.GOOS,
+			"go_arch":       runtime.GOARCH,
 		})
 	}
 }
@@ -111,6 +112,36 @@ func midtransHealthStatus() map[string]any {
 		status["price_tiers_configured"] = true
 		status["price_tiers_mappings"] = len(m)
 	}
+	return status
+}
+
+// marketPriceHealthStatus reports the OPTIONAL per-market price maps
+// (PRICE_TIERS_<CURRENCY>, saas-3 D95) alongside the per-provider
+// price_tiers_* reports. Unlike those boot gates these maps never fail
+// the server: absent = {configured:false} (the USD+FX fallback covers
+// everything), configured = market → mapping count, malformed = the
+// parse error under that market so the operator can fix the var
+// without a deploy and without an outage.
+func marketPriceHealthStatus() map[string]any {
+	status := map[string]any{
+		"configured": false,
+		"markets":    map[string]any{},
+		"errors":     map[string]string{},
+	}
+	maps, errs := marketPriceTiers()
+	markets := map[string]any{}
+	for cur, m := range maps {
+		markets[cur] = map[string]any{"mappings": len(m)}
+	}
+	errors := map[string]string{}
+	for cur, err := range errs {
+		errors[cur] = err.Error()
+	}
+	if len(markets) > 0 {
+		status["configured"] = true
+	}
+	status["markets"] = markets
+	status["errors"] = errors
 	return status
 }
 

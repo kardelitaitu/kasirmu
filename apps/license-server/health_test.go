@@ -341,3 +341,53 @@ func TestHealth_DiscordStatus(t *testing.T) {
 		t.Errorf("expected discord.configured=true when set: %s", rec.Body.String())
 	}
 }
+
+// ── Per-market price maps (saas-3 billing, owner go D95) ────────────
+
+func TestHealth_MarketPriceMapsOptionalNotFatal(t *testing.T) {
+	t.Setenv("PRICE_TIERS_IDR", "")
+	rec := getHealth(t, "/api/health")
+	var body struct {
+		MarketPrices struct {
+			Configured bool              `json:"configured"`
+			Markets    map[string]any    `json:"markets"`
+			Errors     map[string]string `json:"errors"`
+		} `json:"market_prices"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v; body: %s", err, rec.Body.String())
+	}
+	if body.MarketPrices.Configured {
+		t.Error("market maps are optional — absent vars must report configured=false")
+	}
+	if len(body.MarketPrices.Errors) != 0 {
+		t.Errorf("an absent market map is not an error, got %v", body.MarketPrices.Errors)
+	}
+}
+
+func TestHealth_MarketPriceMapsConfiguredAndMalformed(t *testing.T) {
+	t.Setenv("PRICE_TIERS_IDR", "plus=74900,pro=149900")
+	t.Setenv("PRICE_TIERS_BROKEN", "plus=")
+	rec := getHealth(t, "/api/health")
+	var body struct {
+		MarketPrices struct {
+			Configured bool `json:"configured"`
+			Markets    map[string]struct {
+				Mappings int `json:"mappings"`
+			} `json:"markets"`
+			Errors map[string]string `json:"errors"`
+		} `json:"market_prices"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v; body: %s", err, rec.Body.String())
+	}
+	if !body.MarketPrices.Configured {
+		t.Error("expected market_prices.configured=true when a map is set")
+	}
+	if body.MarketPrices.Markets["IDR"].Mappings != 2 {
+		t.Errorf("expected 2 IDR mappings, got %+v", body.MarketPrices.Markets)
+	}
+	if !strings.Contains(body.MarketPrices.Errors["BROKEN"], "PRICE_TIERS_BROKEN") {
+		t.Errorf("expected the malformed market's parse error to surface, got %v", body.MarketPrices.Errors)
+	}
+}
