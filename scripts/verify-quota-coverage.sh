@@ -60,7 +60,6 @@ WHITELIST=(
 "crates/oz-core/src/sync_pull.rs::upsert_users | Same pull-mirror class as upsert_products: the rows arrive from the hub, where the gated authoring door already ran."
 "apps/desktop-client/src/state.rs::seed_primary_store | First-run bootstrap of the ONE primary location an empty install needs, before any subscription row exists, so there is no tier to ask. Gating it makes a fresh install unbootable."
 "apps/desktop-client/src/commands/topology/commands.rs::apply_topology_diff | KNOWN-GAP (owner decision, journal D54): topology nodes ARE constrained here - type allowlist, per-location caps, suspend_surplus - but they are not a QuotaDimension, so there is no marker row and nothing for this gate to check. The downgrade box asks for exactly this."
-"crates/oz-core/src/db/staff.rs::create_user | Its command-layer callers are the two that matter: create_staff in both clients, which gates via enforce_staff_quota (covered by GATED-IN-CALLER for that path), and run_bootstrap_owner, which is PRE-AUTH BOOTSTRAP - the ONE owner account a fresh install needs before any operator can sign in, so there is no session and no tier to consult yet. A second staff user can only arrive through create_staff, which does gate."
 "crates/oz-core/src/db/products_stock_query.rs::create_product_if_absent_in_tx | KNOWN-GAP: a PUBLIC Store create door with ZERO in-tree callers (git grep on the name matches only its own definition). Nothing ungated runs today, so this is not a live hole - but whoever wires it up must gate first, and this line is the tripwire that makes that visible the day it gains a caller."
 )
 
@@ -185,11 +184,13 @@ check_sites() { # files...
     fi
     bad=$((bad + 1)); printf "  %-58s %sUNCOVERED%s\n" "$key" "$RED" "$NC"
   done <<<"$sites"
-  printf "\nsites: %d  covered: %d  known gaps: %d  violations: %d\n" "$n" "$covered" "$gaps" "$bad"
   # A stale exemption is a lie kept on the books: when no site matches a
   # whitelist key any more, either the missing gate arrived or the create site
   # went away, and the entry must be deleted rather than inherited. This is
   # what caught the import_data entry the moment W6-A gated the users arm.
+  # Counted BEFORE the summary prints: a "violations: 0" line followed by a
+  # red STALE line below it reads as a pass, and the FAIL summary must reflect
+  # every reason it failed.
   for entry in "${WHITELIST[@]}"; do
     wkey="${entry%% | *}"
     case " $SEEN_KEYS " in
@@ -198,6 +199,7 @@ check_sites() { # files...
     esac
   done
   [ "$stale" -gt 0 ] && printf "note: %d whitelist entry(ies) match no site - delete them\n" "$stale"
+  printf "\nsites: %d  covered: %d  known gaps: %d  violations: %d\n" "$n" "$covered" "$gaps" "$bad"
   SITE_BAD=$bad
 }
 
