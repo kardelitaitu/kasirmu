@@ -19,10 +19,10 @@ use tauri::State;
 // Retained for the sibling test module, which reaches these through
 // `use super::*`; the command bodies themselves no longer name them.
 #[allow(unused_imports)]
+use oz_core::Store;
+#[allow(unused_imports)]
 // sibling products_tests.rs reaches `permissions` via `use super::*`
 use oz_core::permissions;
-#[allow(unused_imports)]
-use oz_core::Store;
 #[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 

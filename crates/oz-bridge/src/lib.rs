@@ -19,7 +19,8 @@
 //! (catalog: `categories`, `products`, `product_variants`, `products_images`;
 //! fiscal: `tax`, `fiscal`, `regional`; money: `currencies`, `exchange_rates`;
 //! then crm/auth/staff, inventory, pos/kds/hardware, enterprise/settings),
-//! wired in as they are extracted — no placeholder module is declared early.
+//! wired in as they are extracted; the Wave-A catalog/fiscal/money modules
+//! below are all landed.
 
 pub mod ctx;
 pub mod error;
@@ -27,20 +28,19 @@ pub mod error;
 /// Category CRUD command bodies — the first Wave-A slice and the pattern
 /// the remaining catalog/fiscal/money modules follow.
 pub mod categories;
-/// Currency + exchange-rate command bodies (Wave A / S4 — not yet extracted).
+/// Currency + exchange-rate command bodies (Wave A / S4).
 pub mod currency;
-/// Fiscalization command bodies (Wave A / S6 — not yet extracted).
+/// Fiscalization command bodies (Wave A / S6).
 pub mod fiscal;
-/// Product-variant command bodies (Wave A / S7 — not yet extracted).
+/// Product-variant command bodies (Wave A / S7).
 pub mod product_variants;
-/// Product CRUD, barcode lookup and stock command bodies (Wave A / S9 —
-/// not yet extracted).
+/// Product CRUD, barcode lookup and stock command bodies (Wave A / S9).
 pub mod products;
-/// Product-image ingest command bodies (Wave A / S8 — not yet extracted).
+/// Product-image ingest command bodies (Wave A / S8).
 pub mod products_images;
-/// Regional-configuration command bodies (Wave A / S6 — not yet extracted).
+/// Regional-configuration command bodies (Wave A / S6).
 pub mod regional;
-/// Tax-rate command bodies (Wave A / S5 — not yet extracted).
+/// Tax-rate command bodies (Wave A / S5).
 pub mod tax;
 
 #[cfg(test)]

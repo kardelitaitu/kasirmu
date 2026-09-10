@@ -18,11 +18,9 @@
 //! variant-for-variant. The write DTO moved with the bodies and is
 //! re-exported so `use super::*` in `fiscal_tests.rs` still resolves it.
 //!
-//! The core upsert takes an RFC-3339 millisecond stamp and `chrono` is not
-//! an `oz-bridge` dependency, so the shim produces the stamp — the exact
-//! expression the old body used — and passes it down. The permission gate
-//! (F-017) and store resolution run inside the bridge, in the same order as
-//! before.
+//! The bridge owns the clock: the core upsert's RFC-3339 millisecond stamp
+//! is computed inside `oz_bridge::fiscal`. The permission gate (F-017) and
+//! store resolution run inside the bridge, in the same order as before.
 
 use tauri::State;
 
@@ -78,8 +76,7 @@ pub async fn upsert_document_number_sequence_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    oz_bridge::fiscal::upsert_document_number_sequence_scoped(&ctx, &session_token, &args, &now)
+    oz_bridge::fiscal::upsert_document_number_sequence_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }

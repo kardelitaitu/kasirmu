@@ -379,12 +379,7 @@ pub async fn update_scoped(
         variant.is_active = active;
     }
 
-    // NOTE (S7 port): the shell re-stamped `variant.updated_at` with chrono
-    // here, but the field is write-only on this path —
-    // `Store::update_product_variant` sets `updated_at` in SQL
-    // (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) and neither the stored row nor
-    // the response reads the stamped value. The stamp is dropped so
-    // oz-bridge stays chrono-free; observable behaviour is unchanged.
+    variant.updated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     store.update_product_variant(&variant)?;
     drop(db);
 

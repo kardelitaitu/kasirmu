@@ -21,14 +21,14 @@
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
+use oz_core::Money;
 use oz_core::availability::UsageCounts;
 use oz_core::db::Store;
 use oz_core::entitlements::Entitlements;
 use oz_core::events::{ProductCreated, StockAdjusted};
-use oz_core::inventory::{LocationId, CANONICAL_DEFAULT_LOCATION_UUID};
+use oz_core::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
 use oz_core::inventory_transaction::InventoryTransactionId;
 use oz_core::permissions;
-use oz_core::Money;
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;

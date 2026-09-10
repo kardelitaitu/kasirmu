@@ -15,10 +15,10 @@
 //! (ADR #4/#7), then open the store connection and act. Entity-scope
 //! resources, so no location-resource gate applies anywhere here.
 //!
-//! Time is injected: the core upsert takes its RFC-3339 millisecond stamp as
-//! an argument and `chrono` is deliberately not an `oz-bridge` dependency, so
-//! the shim computes the stamp and passes it down — byte-identical to the
-//! expression the command body used.
+//! Time: the bridge owns the clock — [`run_upsert`] computes the core
+//! upsert's RFC-3339 millisecond stamp internally (`chrono::Utc::now()`
+//! formatted with `SecondsFormat::Millis`), byte-identical to the expression
+//! the command body used.
 
 use serde::Deserialize;
 
@@ -52,9 +52,9 @@ pub struct UpsertDocumentNumberSequenceArgs {
 ///
 /// The write is keyed on the (legal entity, document kind) UNIQUE pair, so
 /// one call covers both create and reconfiguration; the counter is NEVER
-/// reset by a reconfiguration (a statutory series must not gap). `now` is
-/// the RFC-3339 millisecond stamp supplied by the caller — see the module
-/// note on time injection.
+/// reset by a reconfiguration (a statutory series must not gap). The
+/// RFC-3339 millisecond stamp is computed here — see the module note on
+/// time.
 ///
 /// # Errors
 ///
@@ -63,8 +63,8 @@ pub struct UpsertDocumentNumberSequenceArgs {
 pub fn run_upsert(
     conn: &Connection,
     args: &UpsertDocumentNumberSequenceArgs,
-    now: &str,
 ) -> Result<(), BridgeError> {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let store = Store::new(conn);
     let reset_period = ResetPeriod::parse(&args.reset_period)?;
     store.upsert_document_number_sequence(
@@ -73,7 +73,7 @@ pub fn run_upsert(
         &args.prefix,
         reset_period,
         args.padding,
-        now,
+        &now,
     )?;
     Ok(())
 }
@@ -122,7 +122,6 @@ pub async fn upsert_document_number_sequence_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     args: &UpsertDocumentNumberSequenceArgs,
-    now: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
@@ -131,7 +130,7 @@ pub async fn upsert_document_number_sequence_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    run_upsert(&db, args, now)
+    run_upsert(&db, args)
 }
 
 /// List every statutory number series configured for the tenant, ordered by
