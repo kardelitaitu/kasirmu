@@ -59,6 +59,37 @@ fn create_sale_persists_header() {
     assert_eq!(tenant, "default");
 }
 
+// F2-7 read half: the F2 audit stamp rides its own column (20260930), and the
+// read surface must round-trip it WITHOUT widening the Sale domain struct —
+// a getter was chosen deliberately (see sale_tax_estimate_note's doc).
+#[test]
+fn sale_tax_estimate_note_round_trips_and_defaults_to_none() {
+    let conn = fresh();
+    let store = store(&conn);
+    let sale = Sale::from_cart(&make_cart()).unwrap();
+    store.create_sale(&sale).unwrap();
+
+    // An unstamped sale — the shape every pre-F2-5 writer produces — reads
+    // back as None: absence is the honest answer, never a claim.
+    assert_eq!(store.sale_tax_estimate_note(&sale.id).unwrap(), None);
+    // Unknown sale id: None, not an error (the history row may outlive its
+    // detail in a concurrent delete; no error path to surface).
+    assert_eq!(store.sale_tax_estimate_note("no-such-sale").unwrap(), None);
+
+    // A stamped sale round-trips the free-text note byte-for-byte (the F2-5
+    // JSON shape is core-authored prose at rest; the reader does not parse it).
+    let stamp = r#"{"estimated":true,"claim":1200,"verified":1180,"delta":-20}"#;
+    conn.execute(
+        "UPDATE sales SET tax_estimate_note = ?1 WHERE id = ?2",
+        rusqlite::params![stamp, sale.id],
+    )
+    .unwrap();
+    assert_eq!(
+        store.sale_tax_estimate_note(&sale.id).unwrap().as_deref(),
+        Some(stamp)
+    );
+}
+
 // CUR-02: multi-currency tender metadata must round-trip atomically with
 // the sale. Single-currency sales persist NULLs; multi-currency sales
 // persist base currency / base total / rate.
@@ -2828,6 +2859,68 @@ fn complete_sale_partial_shortfall_rolls_back_sale_row() {
         !sale_exists,
         "sale row must not exist after shortfall rollback"
     );
+}
+
+/// F2-5: a claimed estimate stamps the core-authored note at insert.
+#[test]
+fn checkout_stamps_estimate_note_when_the_client_claims_one() {
+    let conn = fresh();
+    let s = store(&conn);
+    setup_locations_with_stock(&conn, "ESP", "loc-pri", 10, "loc-sec", 0);
+    let mut sale = make_single_line_sale("ESP", 2, 350);
+    sale.tax_total = price(70);
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from("loc-pri")],
+        &tender(770),
+        "cashier-1",
+        None,
+        &[],
+        true,
+    )
+    .unwrap();
+    let note: String = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&note).unwrap();
+    assert_eq!(parsed["estimated"], true, "the claim is recorded");
+    assert_eq!(
+        parsed["computed_tax"], 70,
+        "the tax is CORE's computed number, not a client string"
+    );
+}
+
+/// F2-5: no claim = no stamp — NULL must never read as a claim.
+#[test]
+fn checkout_leaves_the_note_null_without_a_claim() {
+    let conn = fresh();
+    let s = store(&conn);
+    setup_locations_with_stock(&conn, "ESP", "loc-pri", 10, "loc-sec", 0);
+    let sale = make_single_line_sale("ESP", 2, 350);
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from("loc-pri")],
+        &tender(770),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    )
+    .unwrap();
+    let note: Option<String> = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(note.is_none(), "no claim must leave the note NULL");
 }
 
 /// Void of a multi-location pending sale credits stock back to

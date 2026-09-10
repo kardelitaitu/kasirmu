@@ -152,6 +152,39 @@ impl Store<'_> {
         _terminal_id: Option<&str>,
         checkout_applications: &[crate::PromotionApplication],
     ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
+        self.complete_sale_deduction_with_locations_and_estimate(
+            sale,
+            workspace_instance_id,
+            stock_locations,
+            payment_splits,
+            _staff_user_id,
+            _terminal_id,
+            checkout_applications,
+            false,
+        )
+    }
+
+    /// F2-5: checkout with the client's tax-estimate CLAIM. The claim is a
+    /// boolean only — the note's content is authored by core: at insert, in
+    /// the same transaction as the sale, the stamp records
+    /// `{"estimated":true,"computed_tax":<i64>}` where `computed_tax` is the
+    /// tax core itself computed for the cart (the caller computed it via
+    /// `compute_sale_tax_for_location` before this door; nothing client-side
+    /// ever writes the number). D61 ruling 4: never silent-zero — the sale
+    /// is flagged so history can flag it for recompute. `false` (or the
+    /// legacy wrapper) stamps nothing: NULL = unstamped = no claim.
+    #[allow(clippy::too_many_arguments)]
+    pub fn complete_sale_deduction_with_locations_and_estimate(
+        &self,
+        sale: &Sale,
+        workspace_instance_id: Option<&str>,
+        stock_locations: &[crate::inventory::LocationId],
+        payment_splits: &[crate::PaymentSplitArg],
+        _staff_user_id: &str,
+        _terminal_id: Option<&str>,
+        checkout_applications: &[crate::PromotionApplication],
+        tax_estimated: bool,
+    ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
         use crate::inventory_transaction::InventoryTransactionId;
         use crate::sale_deduction::{Shortfall, StockDeduction};
 
@@ -424,6 +457,21 @@ impl Store<'_> {
             message: format!("invalid UTF-8 in currency bytes: {e}"),
         })?;
 
+        // F2-5: the estimate note is composed HERE, at insert, inside the
+        // checkout transaction — the computed tax is core's own number, the
+        // client only supplied the boolean claim.
+        let tax_estimate_note: Option<String> = if tax_estimated {
+            Some(
+                serde_json::json!({
+                    "estimated": true,
+                    "computed_tax": sale.tax_total.minor_units,
+                })
+                .to_string(),
+            )
+        } else {
+            None
+        };
+
         // ADR-20 §6: pending_expires_at = NOW + 30 min for stale-reaper.
         let pending_expires_at = chrono::Utc::now()
             .checked_add_signed(chrono::Duration::minutes(30))
@@ -437,9 +485,9 @@ impl Store<'_> {
                                  customer_id, deduction_locations, version,
                                  pending_expires_at, tenant_id,
                                  base_currency, base_total_minor, tender_rate_millionths,
-                                 tip_minor, service_charge_minor)
+                                 tip_minor, service_charge_minor, tax_estimate_note)
              VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 1, ?16, 'default',
-                     ?17, ?18, ?19, ?20, ?21)",
+                     ?17, ?18, ?19, ?20, ?21, ?22)",
             rusqlite::params![
                 sale.id, sale.total.minor_units, cur_str, sale.line_count,
                 sale.payment_method, sale.tendered_minor,
@@ -448,7 +496,7 @@ impl Store<'_> {
                 sale.subtotal.minor_units, sale.tax_total.minor_units,
                 sale.customer_id, deduction_json, pending_expires_at,
                 sale.base_currency, sale.base_total_minor, sale.tender_rate_millionths,
-                sale.tip_minor, sale.service_charge_minor,
+                sale.tip_minor, sale.service_charge_minor, tax_estimate_note,
             ],
         )?;
 

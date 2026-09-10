@@ -11,6 +11,7 @@
 
 use super::*;
 use crate::SaleStatus;
+use rusqlite::OptionalExtension;
 
 /// Validate the non-negative money/qty class guarded by MONEY-06/MONEY-07
 /// (shared by `create_sale` and `create_sale_in_tx`).
@@ -579,6 +580,33 @@ impl Store<'_> {
         }
 
         Ok(Some(sale))
+    }
+
+    /// The F2 audit stamp for one sale: the `tax_estimate_note` column core
+    /// writes when the cart's tax was computed against a non-fresh estimate
+    /// (client claim + core-verified delta, F2-5's JSON shape).
+    ///
+    /// A dedicated read accessor rather than a field on [`Sale`]: widening the
+    /// domain struct would force `tax_estimate_note: None,` into every `Sale`
+    /// literal across the kds/reports/tables/multi-terminal/promotions test
+    /// corpora and the modules-sales mirror (~45 sites, 9 files) for a value
+    /// only the history surface consumes — the same trade C2 made for
+    /// `legal_entity_id` vs the location-profile struct. `None` = unstamped
+    /// (legacy row, or the tax was computed live): absence is the honest
+    /// answer and must never read as a claim.
+    pub fn sale_tax_estimate_note(&self, sale_id: &str) -> Result<Option<String>, CoreError> {
+        // Two independent absences to flatten: the OUTER Option is row
+        // existence (no sale with that id — .optional()), the INNER is the
+        // NULL column (an unstamped sale — rusqlite's Option<String> get).
+        let note: Option<Option<String>> = self
+            .conn
+            .query_row(
+                "SELECT tax_estimate_note FROM sales WHERE id = ?1",
+                params![sale_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?;
+        Ok(note.flatten())
     }
 
     /// Update the status of a sale, validating the state machine transition.
