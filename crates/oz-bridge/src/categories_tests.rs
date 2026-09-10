@@ -1,7 +1,21 @@
+//! Unit tests for the category command bodies (Wave-A test relocation: moved
+//! out of `apps/desktop-client/src/commands/categories_tests.rs`).
+//!
+//! Mounted at the foot of `categories.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs, `run_list_categories` and the scoped
+//! operations exactly as the desktop sibling module did.
+//!
+//! Harness mapping: the desktop file built a Tauri mock app over
+//! `AppState::for_test_with_conn` and reassigned `db_manager` to a
+//! `tempfile::tempdir()`; here `TestBridge::new().with_conn(conn)` supplies the
+//! same shape headlessly, and the harness's own unique store directory stands
+//! in for the temp dir (so `tempfile` is not needed). Sessions are seeded
+//! through `TestBridge::sessions()`, the shared `Arc` the context reads.
+//! `AppError::` maps 1:1 onto `BridgeError::` with the message text unchanged.
+
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 // ── CategoryDto ─────────────────────────────────────────────────────
 
@@ -141,14 +155,10 @@ fn create_args(id: &str) -> CreateCategoryArgs {
 
 #[tokio::test]
 async fn scoped_category_command_rejects_invalid_session() {
-    let app = tauri::test::mock_builder()
-        .manage(AppState::for_test())
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = TestBridge::new();
 
-    let result =
-        create_category_scoped("missing-token".into(), create_args("c"), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = create_scoped(&bridge.ctx(), "missing-token", &create_args("c")).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
@@ -156,7 +166,7 @@ async fn scoped_category_command_denies_user_without_permission() {
     // A narrow custom role (no products:* grants) — the new role-staff
     // preset includes products:create/update/delete, so a limited user
     // must use a custom role instead (0048 retirement sweep).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -167,11 +177,8 @@ async fn scoped_category_command_denies_user_without_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         "cashier-token".into(),
         SessionContext::new(
             "user-cashier".into(),
@@ -184,27 +191,19 @@ async fn scoped_category_command_denies_user_without_permission() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result =
-        create_category_scoped("cashier-token".into(), create_args("c"), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = create_scoped(&bridge.ctx(), "cashier-token", &create_args("c")).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn scoped_category_write_command_targets_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner_user(&conn);
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let bridge = TestBridge::new().with_conn(conn);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        bridge.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -219,22 +218,13 @@ async fn scoped_category_write_command_targets_only_the_session_store() {
         );
     }
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     // Create a category ONLY in store A's database.
-    create_category_scoped("store-a-token".into(), create_args("cat-a"), app.state())
+    create_scoped(&bridge.ctx(), "store-a-token", &create_args("cat-a"))
         .await
         .unwrap();
 
-    let store_a = list_categories_scoped("store-a-token".into(), app.state())
-        .await
-        .unwrap();
-    let store_b = list_categories_scoped("store-b-token".into(), app.state())
-        .await
-        .unwrap();
+    let store_a = list_scoped(&bridge.ctx(), "store-a-token").await.unwrap();
+    let store_b = list_scoped(&bridge.ctx(), "store-b-token").await.unwrap();
     assert_eq!(store_a.len(), 1);
     assert_eq!(store_a[0].id, "cat-a");
     assert!(

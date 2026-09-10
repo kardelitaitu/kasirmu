@@ -272,7 +272,3 @@ pub async fn delete_product_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "products_tests.rs"]
-mod tests;

@@ -256,3 +256,7 @@ pub async fn delete_scoped(
     let affected_products = store.delete_category_with_unlink(&args.id)?;
     Ok(DeleteCategoryResult { affected_products })
 }
+
+#[cfg(test)]
+#[path = "categories_tests.rs"]
+mod tests;

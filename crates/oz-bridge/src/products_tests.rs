@@ -1,11 +1,37 @@
+//! Integration-style unit tests for the product command bodies (Wave-A test
+//! relocation: moved out of
+//! `apps/desktop-client/src/commands/products_tests.rs`).
+//!
+//! Mounted at the foot of `products.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs and the `run_*` `&Connection` helpers the
+//! desktop shims delegate to.
+//!
+//! Harness mapping: `migrations::fresh_db()` becomes the crate's own
+//! `testing::temp_conn` (same fully-migrated in-memory database, reached
+//! through the shared seam); `AppState::for_test()` /
+//! `for_test_with_conn(conn)` plus a `tauri::test::mock_builder()` app become
+//! `TestBridge::new()` / `TestBridge::new().with_conn(conn)`, with sessions
+//! seeded through `TestBridge::sessions()`; `state.resolve_session(t)` becomes
+//! `ctx.resolve_session(t)` on the borrowed context. Commands map to the bridge
+//! fn the shim's adapter delegates to (`create_product_scoped` ->
+//! `create_scoped`, `update_product_scoped` -> `update_scoped`), taking
+//! `(ctx, token, &args)`. `AppError::` maps 1:1 onto `BridgeError::` with the
+//! message text unchanged.
+//!
+//! One non-mechanical mapping is recorded here: the desktop file's
+//! `commands::authz::require_permission_for_user(store, user, perm)` is a
+//! three-line desktop wrapper that never entered the bridge, so
+//! `edit_cost_permission_membership_is_manager_only` asserts the same role
+//! membership on the underlying `Store::require_permission` call it makes,
+//! matching `CoreError::PermissionDenied`. The fact pinned is unchanged.
+
 use super::*;
-use crate::commands::authz::require_permission_for_user;
-use oz_core::migrations;
+use crate::testing::{TestBridge, temp_conn};
+use oz_core::session::SessionContext;
 use rusqlite::Connection;
-use tauri::Manager as _;
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    temp_conn()
 }
 
 #[test]
@@ -293,14 +319,12 @@ fn get_product_track_serial_batch_maps_known_and_unknown_skus() {
     .unwrap();
 
     let store = Store::new(&conn);
-    let rows = run_get_product_track_serial_batch(
-        &store,
-        &[
-            "TRACKED".to_string(),
-            "PLAIN".to_string(),
-            "MISSING".to_string(),
-        ],
-    );
+    let skus = vec![
+        "TRACKED".to_string(),
+        "PLAIN".to_string(),
+        "MISSING".to_string(),
+    ];
+    let rows = run_get_product_track_serial_batch(&store, &skus);
 
     assert_eq!(rows.len(), 3);
     assert!(rows[0].track_serial);
@@ -402,41 +426,53 @@ fn delete_product_scoped_args_deserialize() {
 }
 
 #[test]
+fn delete_product_args_debug() {
+    let args = DeleteProductArgs {
+        user_id: "u".into(),
+        sku: "S".into(),
+    };
+    let d = format!("{args:?}");
+    assert!(d.contains("S"));
+}
+
+// ── Session resolution ───────────────────────────────────────────
+
+#[test]
 fn create_product_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let result = bridge.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
 fn update_product_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("bad-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let result = bridge.ctx().resolve_session("bad-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
 fn delete_product_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("bogus");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let result = bridge.ctx().resolve_session("bogus");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
 fn list_products_scoped_rejects_invalid_token() {
     // Verify that an invalid/nonexistent session token returns InvalidSession.
-    let state = AppState::for_test();
     // list_products_scoped is an async command, so we can't call it directly.
     // Instead, test that resolve_session rejects unknown tokens.
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let result = bridge.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
 fn list_products_scoped_accepts_valid_token() {
     // Verify that a valid session token resolves and returns products.
-    let state = AppState::for_test();
-    let ctx = oz_core::session::SessionContext::new(
+    let bridge = TestBridge::new();
+    let session = SessionContext::new(
         "u1".into(),
         "r1".into(),
         "t1".into(),
@@ -446,23 +482,29 @@ fn list_products_scoped_accepts_valid_token() {
         None,
         0,
     );
-    state
-        .session_store
+    bridge
+        .sessions()
         .write()
         .unwrap()
-        .insert("tok-valid".into(), ctx);
+        .insert("tok-valid".into(), session);
 
-    let session = state.resolve_session("tok-valid").unwrap();
-    assert_eq!(session.store_id, "default");
-    assert_eq!(session.type_key, "restaurant-pos");
+    let resolved = bridge.ctx().resolve_session("tok-valid").unwrap();
+    assert_eq!(resolved.store_id, "default");
+    assert_eq!(resolved.type_key, "restaurant-pos");
 }
 
-fn seeded_cost_gate_app() -> tauri::App<tauri::test::MockRuntime> {
-    let conn = oz_core::migrations::fresh_db();
+// ── ADR #36 D7 cost gate ─────────────────────────────────────────
+
+/// Seed the identity DB with the cost-gate roles/users and hand back a bridge
+/// carrying the three sessions. The desktop built a Tauri mock app over
+/// `AppState::for_test_with_conn`; `TestBridge` owns the same Arcs
+/// headlessly, and its store manager stands in for the desktop tempdir.
+fn seeded_cost_gate_bridge() -> TestBridge {
+    let conn = fresh_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     // role-costless is a custom role that holds PRODUCTS_CREATE/
-    // PRODUCTS_UPDATE but NOT PRODUCTS_EDIT_COST (ADR #36 D7 — manager+
+    // PRODUCTS_UPDATE but NOT PRODUCTS_EDIT_COST (ADR #36 D7 - manager+
     // only); role-staff is checkout-only and holds none of them.
     conn.execute_batch(
         "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
@@ -474,15 +516,15 @@ fn seeded_cost_gate_app() -> tauri::App<tauri::test::MockRuntime> {
             ('user-manager',  'manager',  'hash', 'Manager',  'role-manager',  1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = AppState::for_test_with_conn(conn);
+    let bridge = TestBridge::new().with_conn(conn);
     for (token, user, role) in [
         ("staff-token", "user-staff", "role-staff"),
         ("costless-token", "user-costless", "role-costless"),
         ("manager-token", "user-manager", "role-manager"),
     ] {
-        state.session_store.write().unwrap().insert(
+        bridge.sessions().write().unwrap().insert(
             token.into(),
-            oz_core::session::SessionContext::new(
+            SessionContext::new(
                 user.into(),
                 role.into(),
                 "terminal-1".into(),
@@ -494,10 +536,7 @@ fn seeded_cost_gate_app() -> tauri::App<tauri::test::MockRuntime> {
             ),
         );
     }
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+    bridge
 }
 
 fn create_args(sku: &str, cost_minor: i64) -> CreateProductScopedArgs {
@@ -543,94 +582,73 @@ fn update_args(sku: &str, cost_minor: Option<i64>) -> UpdateProductScopedArgs {
 
 #[tokio::test]
 async fn create_product_scoped_denies_cost_without_edit_cost_permission() {
-    let app = seeded_cost_gate_app();
+    let bridge = seeded_cost_gate_bridge();
 
     // A create-capable role (custom: products:create, no edit_cost)
-    // creating a product WITHOUT cost passes the gate (the test state has
-    // no store DB, so the call then fails internally — the point is it is
-    // NOT a permission denial).
-    let no_cost = create_product_scoped(
-        "costless-token".into(),
-        create_args("SKU-NO-COST", 0),
-        app.state(),
+    // creating a product WITHOUT cost passes the gate (the call then fails
+    // on the store DB - the point is it is NOT a permission denial).
+    let no_cost = create_scoped(
+        &bridge.ctx(),
+        "costless-token",
+        &create_args("SKU-NO-COST", 0),
     )
     .await;
-    assert!(!matches!(no_cost, Err(AppError::PermissionDenied(_))));
+    assert!(!matches!(no_cost, Err(BridgeError::PermissionDenied(_))));
 
     // The same role setting a cost is rejected outright.
-    let with_cost = create_product_scoped(
-        "costless-token".into(),
-        create_args("SKU-COST", 100),
-        app.state(),
+    let with_cost = create_scoped(
+        &bridge.ctx(),
+        "costless-token",
+        &create_args("SKU-COST", 100),
     )
     .await;
-    assert!(matches!(with_cost, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(with_cost, Err(BridgeError::PermissionDenied(_))));
 
     // Staff is checkout-only and cannot create products at all.
-    let staff = create_product_scoped(
-        "staff-token".into(),
-        create_args("SKU-STAFF", 0),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(staff, Err(AppError::PermissionDenied(_))));
+    let staff = create_scoped(&bridge.ctx(), "staff-token", &create_args("SKU-STAFF", 0)).await;
+    assert!(matches!(staff, Err(BridgeError::PermissionDenied(_))));
 
-    // Manager passes the gate (then fails on the missing store DB, not
-    // on the permission).
-    let manager = create_product_scoped(
-        "manager-token".into(),
-        create_args("SKU-MGR", 100),
-        app.state(),
-    )
-    .await;
-    assert!(!matches!(manager, Err(AppError::PermissionDenied(_))));
+    // Manager passes the gate (then fails on the store DB, not on the
+    // permission).
+    let manager = create_scoped(&bridge.ctx(), "manager-token", &create_args("SKU-MGR", 100)).await;
+    assert!(!matches!(manager, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn update_product_scoped_denies_cost_change_without_edit_cost_permission() {
-    let app = seeded_cost_gate_app();
+    let bridge = seeded_cost_gate_bridge();
 
     // A create-capable role (custom: products:update, no edit_cost) PATCH
     // without touching cost passes the gate.
-    let no_cost = update_product_scoped(
-        "costless-token".into(),
-        update_args("SKU-1", None),
-        app.state(),
-    )
-    .await;
-    assert!(!matches!(no_cost, Err(AppError::PermissionDenied(_))));
+    let no_cost = update_scoped(&bridge.ctx(), "costless-token", &update_args("SKU-1", None)).await;
+    assert!(!matches!(no_cost, Err(BridgeError::PermissionDenied(_))));
 
     // The same role PATCH that changes cost is rejected.
-    let with_cost = update_product_scoped(
-        "costless-token".into(),
-        update_args("SKU-1", Some(100)),
-        app.state(),
+    let with_cost = update_scoped(
+        &bridge.ctx(),
+        "costless-token",
+        &update_args("SKU-1", Some(100)),
     )
     .await;
-    assert!(matches!(with_cost, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(with_cost, Err(BridgeError::PermissionDenied(_))));
 
     // Staff is checkout-only and cannot update products at all.
-    let staff = update_product_scoped(
-        "staff-token".into(),
-        update_args("SKU-1", None),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(staff, Err(AppError::PermissionDenied(_))));
+    let staff = update_scoped(&bridge.ctx(), "staff-token", &update_args("SKU-1", None)).await;
+    assert!(matches!(staff, Err(BridgeError::PermissionDenied(_))));
 
     // Manager PATCH with cost passes the gate.
-    let manager = update_product_scoped(
-        "manager-token".into(),
-        update_args("SKU-1", Some(100)),
-        app.state(),
+    let manager = update_scoped(
+        &bridge.ctx(),
+        "manager-token",
+        &update_args("SKU-1", Some(100)),
     )
     .await;
-    assert!(!matches!(manager, Err(AppError::PermissionDenied(_))));
+    assert!(!matches!(manager, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[test]
 fn edit_cost_permission_membership_is_manager_only() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = fresh_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -642,26 +660,22 @@ fn edit_cost_permission_membership_is_manager_only() {
     )
     .unwrap();
     let store = Store::new(&conn);
-    // Owner (`*`) and Manager presets hold it; Staff does not.
+    // Owner (wildcard) and Manager presets hold it; Staff does not. Desktop
+    // asserted this through commands::authz::require_permission_for_user, a
+    // three-line wrapper over Store::require_permission that never moved to the
+    // bridge, so the test pins the same membership on the wrapped call.
     assert!(
-        require_permission_for_user(&store, "user-owner", permissions::PRODUCTS_EDIT_COST).is_ok()
+        store
+            .require_permission("user-owner", permissions::PRODUCTS_EDIT_COST)
+            .is_ok()
     );
     assert!(
-        require_permission_for_user(&store, "user-manager", permissions::PRODUCTS_EDIT_COST)
+        store
+            .require_permission("user-manager", permissions::PRODUCTS_EDIT_COST)
             .is_ok()
     );
     assert!(matches!(
-        require_permission_for_user(&store, "user-staff", permissions::PRODUCTS_EDIT_COST),
-        Err(AppError::PermissionDenied(_))
+        store.require_permission("user-staff", permissions::PRODUCTS_EDIT_COST),
+        Err(oz_core::CoreError::PermissionDenied(_))
     ));
-}
-
-#[test]
-fn delete_product_args_debug() {
-    let args = DeleteProductArgs {
-        user_id: "u".into(),
-        sku: "S".into(),
-    };
-    let d = format!("{args:?}");
-    assert!(d.contains("S"));
 }

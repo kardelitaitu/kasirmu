@@ -114,9 +114,3 @@ pub async fn delete_category_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "categories_tests.rs"]
-mod tests;

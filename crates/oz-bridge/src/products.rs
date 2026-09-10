@@ -1023,3 +1023,7 @@ pub async fn delete_scoped(
     tracing::info!(sku = %args.sku, "product deleted (scoped)");
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "products_tests.rs"]
+mod tests;
