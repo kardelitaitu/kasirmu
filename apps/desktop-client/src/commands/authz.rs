@@ -143,6 +143,73 @@ pub async fn require_permission_for_session_resource(
         .map_err(map_gate_error)
 }
 
+// ---------------------------------------------------------------------------
+// Wave 2.0 bridge seam (ADDITIVE). No existing code above is modified.
+//
+// `bridge_ctx` is the single borrow point between the Tauri shell's
+// `AppState` and the tauri-free `oz-bridge` crate: a shim builds one per
+// call, runs the extracted command body, and maps `BridgeError` back to
+// `AppError` variant-for-variant so the wire shape is untouched.
+// ---------------------------------------------------------------------------
+
+use tauri::Manager as _;
+
+use oz_bridge::ctx::BridgeCtx;
+use oz_bridge::error::BridgeError;
+
+impl crate::state::AppState {
+    /// Borrow a headless bridge context for command shims. Cheap: refs + one PathBuf clone.
+    /// Must NOT lock anything (no blocking_lock — called inside async shims); borrows fields only.
+    #[allow(dead_code)] // consumed by Wave A command shims
+    pub(crate) fn bridge_ctx(&self) -> BridgeCtx<'_> {
+        // The media root is a shell concern: `AppHandle` / `Manager` never
+        // enter oz-bridge, so `app_cache_dir()` is resolved here and injected
+        // as a plain PathBuf. `None` in headless/test contexts (no handle),
+        // which is also how a failed resolution degrades — the same
+        // `resolving app cache dir` text the command paths report.
+        let media_cache_dir = self
+            .app
+            .as_ref()
+            .and_then(|app| match app.path().app_cache_dir() {
+                Ok(dir) => Some(dir),
+                Err(e) => {
+                    tracing::warn!("resolving app cache dir: {e}");
+                    None
+                }
+            });
+
+        BridgeCtx {
+            db: &self.db,
+            db_manager: &self.db_manager,
+            sessions: &self.session_store,
+            session_ttl_seconds: self.session_ttl_seconds,
+            cache: &self.cache,
+            kernel: &self.kernel,
+            terminal_id: &self.terminal_id,
+            media_cache_dir,
+        }
+    }
+}
+
+impl From<BridgeError> for AppError {
+    /// Variant-for-variant conversion back to the command error type.
+    ///
+    /// `BridgeError` is `#[non_exhaustive]`, so a wildcard arm is required
+    /// from another crate; any variant added in a later wave degrades to
+    /// `AppError::Internal` rather than failing to compile, and the explicit
+    /// arms above it must be extended when that happens.
+    fn from(e: BridgeError) -> Self {
+        match e {
+            BridgeError::Core { sub_kind, message } => Self::Core { sub_kind, message },
+            BridgeError::Invalid(message) => Self::Invalid(message),
+            BridgeError::PermissionDenied(message) => Self::PermissionDenied(message),
+            BridgeError::InvalidSession => Self::InvalidSession,
+            BridgeError::Internal(message) => Self::Internal(message),
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "authz_tests.rs"]
 mod tests;
