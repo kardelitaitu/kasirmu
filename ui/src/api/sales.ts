@@ -175,6 +175,15 @@ export interface CompleteSaleScopedArgs {
    * post-tax sale (see `CompleteSaleArgs.promotionIds`).
    */
   promotionIds?: string[];
+  /**
+   * F2-6: the client's claim that the displayed tax was an ESTIMATE —
+   * the cart-tax cache was stale/unknown at checkout. Core verifies by
+   * computing the tax itself and stamps claim + computed tax into
+   * `sales.tax_estimate_note` (D61 ruling 4: flag for recompute, never
+   * silent). Absent/false is the zero-change default: no stamp.
+   * Mirrors `tax_estimated: Option<bool>` (commands/pos.rs, c2cc3af9e).
+   */
+  taxEstimated?: boolean;
 }
 
 export const completeSaleScoped = (sessionToken: string, args: CompleteSaleScopedArgs): Promise<CompleteSaleResult> =>
