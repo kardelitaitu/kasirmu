@@ -486,3 +486,175 @@ func TestParseInclusiveDate(t *testing.T) {
 		t.Error("expected error for non-ISO date")
 	}
 }
+
+// ── Tenant health aggregation (saas-3 support box) ───────────────
+
+// seedHealthFixture builds the full aggregate-present case: tenant,
+// active subscription, license key bound to the tenant, two machines
+// (one revoked, one last-seen), and a trial registration reporting the
+// deployed app version.
+func seedHealthFixture(t *testing.T, app core.App, email string) *core.Record {
+	t.Helper()
+	tenant := seedLifecycleTenant(t, app, email, "active")
+
+	subCol, _ := app.FindCollectionByNameOrId("subscriptions")
+	sub := core.NewRecord(subCol)
+	sub.Set("tenant_id", tenant.Id)
+	sub.Set("tier_key", "pro")
+	sub.Set("status", "active")
+	sub.Set("max_stores", 3)
+	sub.Set("max_pos_instances", 5)
+	sub.Set("starts_at", "2026-01-01T00:00:00Z")
+	sub.Set("expires_at", "2027-01-01T00:00:00Z")
+	sub.Set("signature", "test")
+	sub.Set("signed_payload", "{}")
+	if err := app.Save(sub); err != nil {
+		t.Fatalf("save subscription: %v", err)
+	}
+
+	keyCol, _ := app.FindCollectionByNameOrId("license_keys")
+	key := core.NewRecord(keyCol)
+	key.Set("key", "OZ-HEALTH-KEY-"+email)
+	key.Set("tier_key", "pro")
+	key.Set("status", "activated")
+	key.Set("activated_by", tenant.Id)
+	key.Set("expires_at", "2027-01-01T00:00:00Z")
+	if err := app.Save(key); err != nil {
+		t.Fatalf("save license key: %v", err)
+	}
+
+	machCol, _ := app.FindCollectionByNameOrId("tenant_machines")
+	revoked := core.NewRecord(machCol)
+	revoked.Set("tenant_id", tenant.Id)
+	revoked.Set("machine_id", "mach-revoked")
+	revoked.Set("revoked_at", "2026-09-01T00:00:00Z")
+	if err := app.Save(revoked); err != nil {
+		t.Fatalf("save revoked machine: %v", err)
+	}
+	seen := core.NewRecord(machCol)
+	seen.Set("tenant_id", tenant.Id)
+	seen.Set("machine_id", "mach-seen")
+	seen.Set("last_seen_at", "2026-09-10T01:02:03Z")
+	if err := app.Save(seen); err != nil {
+		t.Fatalf("save seen machine: %v", err)
+	}
+
+	trialCol, _ := app.FindCollectionByNameOrId("trial_registrations")
+	trial := core.NewRecord(trialCol)
+	trial.Set("tenant_id", tenant.Id)
+	trial.Set("hardware_fingerprint", "health-fp-"+email)
+	trial.Set("first_seen_at", "2026-09-01T00:00:00Z")
+	trial.Set("trial_expires_at", "2026-09-15T00:00:00Z")
+	trial.Set("platform", "windows")
+	trial.Set("app_version", "0.0.35")
+	if err := app.Save(trial); err != nil {
+		t.Fatalf("save trial registration: %v", err)
+	}
+	return tenant
+}
+
+func healthFromDetail(t *testing.T, mux http.Handler, tenantID string) map[string]any {
+	t.Helper()
+	rec := doJSON(mux, http.MethodGet, "/api/v1/admin/tenants/"+tenantID, lifecycleAdminKey, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Health map[string]any `json:"health"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return body.Health
+}
+
+func TestTenantHealthAggregatesAllSignals(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedHealthFixture(t, app, "healthy@test.com")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	health := healthFromDetail(t, mux, tenant.Id)
+	if health["tenantStatus"] != "active" {
+		t.Errorf("tenantStatus = %v, want active", health["tenantStatus"])
+	}
+	if health["licenseStatus"] != "activated" {
+		t.Errorf("licenseStatus = %v, want activated (from the bound license key)", health["licenseStatus"])
+	}
+	if health["subscriptionStatus"] != "active" {
+		t.Errorf("subscriptionStatus = %v, want active", health["subscriptionStatus"])
+	}
+	if health["devices"] != float64(2) {
+		t.Errorf("devices = %v, want 2", health["devices"])
+	}
+	if health["devicesRevoked"] != float64(1) {
+		t.Errorf("devicesRevoked = %v, want 1", health["devicesRevoked"])
+	}
+	if health["lastSeenAt"] != "2026-09-10T01:02:03Z" {
+		t.Errorf("lastSeenAt = %v, want the seen machine pulse", health["lastSeenAt"])
+	}
+	if health["appVersion"] != "0.0.35" {
+		t.Errorf("appVersion = %v, want the trial claim version", health["appVersion"])
+	}
+
+	// The LIST view carries the same health row (surfaced alongside the
+	// existing tenant list/stats). NOTE: the unfiltered first page is used
+	// deliberately — the ?search= path of handleAdminListTenants is
+	// PRE-EXISTING-broken (probe: email ~ {:search} matched zero rows for
+	// a freshly seeded lowercase email) and out of this slice's fence.
+	rec := doJSON(mux, http.MethodGet, "/api/v1/admin/tenants", lifecycleAdminKey, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: expected 200, got %d", rec.Code)
+	}
+	var list struct {
+		Tenants []struct {
+			Email  string         `json:"email"`
+			Health map[string]any `json:"health"`
+		} `json:"tenants"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("unmarshal list: %v", err)
+	}
+	if len(list.Tenants) != 1 || list.Tenants[0].Health["appVersion"] != "0.0.35" {
+		t.Fatalf("list health = %+v, want the aggregated row", list.Tenants)
+	}
+}
+
+// The hub learns app_version ONLY from trial registrations. A tenant
+// without one must report "unknown" — never the server build, never a
+// tier guess (brief hard rule: never fabricate).
+func TestTenantHealthVersionUnknownWhenNeverReported(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "noversion@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	health := healthFromDetail(t, mux, tenant.Id)
+	if health["appVersion"] != "unknown" {
+		t.Errorf("appVersion = %v, want exactly unknown (hub has no version row)", health["appVersion"])
+	}
+	if health["licenseStatus"] != "none" {
+		t.Errorf("licenseStatus = %v, want none (no license key record)", health["licenseStatus"])
+	}
+	if health["subscriptionStatus"] != "none" {
+		t.Errorf("subscriptionStatus = %v, want none (no subscription record)", health["subscriptionStatus"])
+	}
+}
+
+func TestTenantHealthEmptyTenant(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "empty@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	health := healthFromDetail(t, mux, tenant.Id)
+	if health["devices"] != float64(0) || health["devicesRevoked"] != float64(0) {
+		t.Errorf("devices = %v/%v, want 0/0 for a tenant with no machines", health["devices"], health["devicesRevoked"])
+	}
+	if health["lastSeenAt"] != "" {
+		t.Errorf("lastSeenAt = %v, want empty (no machines = no stored pulse)", health["lastSeenAt"])
+	}
+	if health["appVersion"] != "unknown" {
+		t.Errorf("appVersion = %v, want unknown", health["appVersion"])
+	}
+}

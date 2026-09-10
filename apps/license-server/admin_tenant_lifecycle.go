@@ -388,3 +388,76 @@ func handleAdminDeleteTenant(app core.App) func(e *core.RequestEvent) error {
 		})
 	}
 }
+
+// ── Tenant health (saas-3 support box) ────────────────────────────
+
+// summaryStatus extracts the status string from a dashboard summary map
+// (licenseSummary / subscriptionSummary), or "none" when the tenant has
+// no such record. Same "none" vocabulary the account page fallback uses.
+func summaryStatus(v any) string {
+	if m, ok := v.(map[string]any); ok {
+		if s, ok := m["status"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return "none"
+}
+
+// tenantHealth aggregates the four per-tenant signals the admin hub can
+// see TODAY into one row for the support tenant-health view (owner go
+// D95; R5 dossier: nothing previously joined these per tenant):
+// license status, subscription verdict, device last-seen, and the
+// deployed app version.
+//
+// HONESTY RULE (brief hard rule): the hub only learns app_version from
+// trial_registrations — trial claims are the ONLY device→hub report
+// that carries it (pb_schema.json app_version lives solely there). A
+// tenant without a trial registration reports version "unknown": never
+// fabricated from the server build, the subscription tier, or another
+// tenant's row. Closing that gap (a real device→hub version report on
+// /status) is a named follow-up — this slice adds NO new reporting
+// protocol and aggregates ONLY stored data.
+func tenantHealth(app core.App, rec *core.Record) map[string]any {
+	health := map[string]any{
+		"tenantStatus":       rec.GetString("status"),
+		"licenseStatus":      summaryStatus(licenseSummary(app, rec.Id)),
+		"subscriptionStatus": summaryStatus(subscriptionSummary(app, rec.Id)),
+	}
+
+	// Devices: total + revoked count + the most recent last-seen (the
+	// sync pulse the hub already stores on every machine row).
+	machines, err := app.FindRecordsByFilter("tenant_machines",
+		"tenant_id = {:tid}", "-created", 0, 0,
+		map[string]any{"tid": rec.Id})
+	devicesTotal, devicesRevoked := 0, 0
+	lastSeen := ""
+	if err == nil {
+		for _, m := range machines {
+			devicesTotal++
+			if formatDateField(m, "revoked_at") != "" {
+				devicesRevoked++
+			}
+			if ls := formatDateField(m, "last_seen_at"); ls != "" && (lastSeen == "" || ls > lastSeen) {
+				lastSeen = ls
+			}
+		}
+	}
+	health["devices"] = devicesTotal
+	health["devicesRevoked"] = devicesRevoked
+	health["lastSeenAt"] = lastSeen
+
+	// Deployed version: only where a trial registration reported it.
+	// Absence is "unknown" — the newest claim wins if several exist.
+	// Sorted by first_seen_at: trial_registrations carries NO created
+	// autodate field, and an invalid sort silently yields zero rows.
+	version := "unknown"
+	if trials, err := app.FindRecordsByFilter("trial_registrations",
+		"tenant_id = {:tid}", "-first_seen_at", 1, 0,
+		map[string]any{"tid": rec.Id}); err == nil && len(trials) > 0 {
+		if v := trials[0].GetString("app_version"); v != "" {
+			version = v
+		}
+	}
+	health["appVersion"] = version
+	return health
+}

@@ -151,6 +151,7 @@ func handleAdminListTenants(app core.App) func(e *core.RequestEvent) error {
 				"emailVerified": rec.GetBool("email_verified"),
 				"license":       licenseSummary(app, rec.Id),
 				"subscription":  subscriptionSummary(app, rec.Id),
+				"health":        tenantHealth(app, rec),
 				"created":       rec.GetDateTime("created").Time().Format(time.RFC3339),
 			})
 		}
@@ -205,6 +206,7 @@ func handleAdminGetTenant(app core.App) func(e *core.RequestEvent) error {
 			},
 			"license":      licenseSummary(app, tenant.Id),
 			"subscription": subscriptionSummary(app, tenant.Id),
+			"health":       tenantHealth(app, tenant),
 			"devices":      devices,
 		})
 	}

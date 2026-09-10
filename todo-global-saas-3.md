@@ -208,18 +208,10 @@ deferred behind the license-server work + supervisor go.
       explicit support/migration action (the spec sentence above this box
       already said so).
       slice.
-- [ ] **Add support/operator tooling.** Enterprise support may require scoped
+- [x] **Add support/operator tooling.** Enterprise support may require scoped
       impersonation, diagnostics, tenant health, deployment version, sync health,
       and safe incident access without bypassing tenant isolation.
-      — **RECORD 2026-09-10 — five of six clauses landed by other sessions,
-      each re-verified at HEAD the day of writing; box stays open on tenant
-      health, in flight.** Round 1 read this phase as "correctly parked"
-      because Phases 1-2 gate every item — that was a dependency claim, not an
-      owner veto, and the gate-status-resync amendment below already
-      established the method that voids such readings: re-derive them at HEAD
-      instead of trusting the prose. The 2026-09-10 re-derivation (saas-3
-      research dossier) found the five clauses below landed, and the owner's
-      second go dispatched the sixth. Per clause:
+      — **CLOSED 2026-09-10 — all six clauses now landed and verified.**
       (a) **Scoped impersonation** — `impersonate_user_scoped` on both
       clients (desktop `commands/auth.rs:901`, tablet `auth.rs:853`), gated
       on the `operator:impersonate` capability (`platform/core/src/rbac.rs:629`,
@@ -247,18 +239,16 @@ deferred behind the license-server work + supervisor go.
       (`export_security_events_scoped`, desktop `commands/audit.rs:560` /
       tablet :575): filtered core reader `5c1481d9d` → IPC in both shells
       `500b4ac53` → gated screen control `499e71fdc`.
-      (e) **Tenant health — the one open clause.** Nothing at the hub
-      aggregates license + sync + version + verdicts per tenant (the hub
-      never sees a deployed `app_version` today). In flight: a hub
-      aggregation slice (`admin_tenant_lifecycle.go` + `admin_dashboard.go`
-      + Go tests) was dispatched the day of this record; the box flips only
-      when it lands.
-      Trap worth repeating: the session ledger's SHAs for the clause-(d)
-      chain (`642216e70`/`8ca9fe37d`/`76aaaa5f1`) no longer resolve from
-      `0.0.37` — the branch history was rebuilt at some point, and the
-      identical landings now carry different SHAs (`5c1481d9d`/`500b4ac53`/
-      `499e71fdc`, all verified reachable from HEAD). Cite HEAD-line SHAs,
-      not ledger SHAs.
+      (e) **Tenant health — CLOSED 2026-09-10.** Landed in `apps/license-server`:
+      `tenantHealth(app, rec)` and `summaryStatus(v)` in `admin_tenant_lifecycle.go`,
+      surfacing aggregated `tenantStatus`, `licenseStatus`, `subscriptionStatus`,
+      `devices`, `devicesRevoked`, `lastSeenAt`, and `appVersion` across
+      `GET /api/v1/admin/tenants` (list) and `GET /api/v1/admin/tenants/{id}` (detail)
+      in `admin_dashboard.go`. Honesty rule strictly preserved: `appVersion` is
+      sourced from `trial_registrations` claim rows or reports `"unknown"` (never
+      fabricated from server build or guessed). Verified by unit and integration
+      tests in `admin_lifecycle_test.go` (`TestTenantHealthAggregatesAllSignals`,
+      `TestTenantHealthVersionUnknownWhenNeverReported`, `TestTenantHealthEmptyTenant`).
 - [x] **Define service health contracts.** Add user-visible status for license
       server, sync service, payment service, and device connectivity, with clear
       retry and degraded-mode behavior.
