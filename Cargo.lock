@@ -4367,6 +4367,8 @@ name = "oz-bridge"
 version = "0.0.37"
 dependencies = [
  "foundation",
+ "hex",
+ "image",
  "modules-currency",
  "oz-core",
  "oz-security",
@@ -4374,9 +4376,11 @@ dependencies = [
  "platform-kernel",
  "rusqlite",
  "serde",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "webp",
 ]
 
 [[package]]
