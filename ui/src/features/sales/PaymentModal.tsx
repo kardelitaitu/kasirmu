@@ -825,7 +825,7 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [lineItems, discountPercent, discountLabel, promotionIds, sessionToken, qrReference, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, classifyError, addToast, cartCurrency, lineItemsInCartCurrency, effectiveTotalInCartCurrency, tenderSnapshot]);
+  }, [lineItems, discountPercent, discountLabel, promotionIds, sessionToken, qrReference, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, classifyError, addToast, cartCurrency, lineItemsInCartCurrency, effectiveTotalInCartCurrency, tenderSnapshot, taxEstimated]);
 
   const addSplit = useCallback(() => {
     setSplits((prev) => [
@@ -1099,7 +1099,7 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated]);
 
   useEffect(() => {
     if (!done) return;

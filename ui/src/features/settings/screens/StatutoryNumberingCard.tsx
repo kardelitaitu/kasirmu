@@ -172,7 +172,7 @@ export function StatutoryNumberingCard() {
     } finally {
       setSaving(false);
     }
-  }, [sessionToken, entityId, documentKind, draft]);
+  }, [sessionToken, entityId, documentKind, draft, l10n]);
 
   if (loading) {
     return (

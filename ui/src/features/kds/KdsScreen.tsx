@@ -369,7 +369,7 @@ export default function KdsScreen() {
         autoAckInFlightRef.current.delete(order.id);
       });
     }
-  }, [orders, prefs.autoAcknowledge, prefs.acknowledgeDelayMin, advanceStatus]);
+  }, [orders, prefs.autoAcknowledge, prefs.acknowledgeDelayMin, advanceStatus, prefs]);
 
   // Reset ephemeral dropdown zone selection when the persistent zone preference changes.
   useEffect(() => {
