@@ -607,6 +607,7 @@ pub async fn list_tax_rate_rounding_modes_scoped(
 
 /// Business logic for the batch rounding-mode read (extracted for
 /// testing, mirroring `run_list_tax_rates`).
+#[cfg(test)]
 fn run_list_tax_rate_rounding_modes(
     conn: &rusqlite::Connection,
     rate_ids: &[&str],

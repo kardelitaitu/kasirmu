@@ -338,7 +338,7 @@ fn import_gate_proceeds_under_cap_and_pins_the_boundary() {
     gate_import_product_batch(&store, &edge).unwrap(); // 200 == limit: allowed
     // The gate only counts; the caller inserts. Materialize the approved
     // batch exactly as the import loop would, THEN ask again.
-    for (i, v) in edge.iter().enumerate() {
+    for (_, v) in edge.iter().enumerate() {
         let p: oz_core::Product = serde_json::from_value(v.clone()).unwrap();
         conn.execute(
             "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",

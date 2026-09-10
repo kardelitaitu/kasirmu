@@ -288,7 +288,7 @@ fn run_create_tax_rate(
         || args.location_id.is_some()
         || args.effective_from.is_some()
         || args.effective_to.is_some();
-    let mut dto = if wants_scope {
+    let dto = if wants_scope {
         let scope = scoped_scope(args.legal_entity_id.as_deref(), args.location_id.as_deref())?;
         let window = TaxRateWindow {
             effective_from: args.effective_from.clone(),
@@ -380,7 +380,7 @@ fn run_update_tax_rate(
         || args.location_id.is_some()
         || args.effective_from.is_some()
         || args.effective_to.is_some();
-    let mut dto = if wants_scope {
+    let dto = if wants_scope {
         let scope = scoped_scope(args.legal_entity_id.as_deref(), args.location_id.as_deref())?;
         let window = TaxRateWindow {
             effective_from: args.effective_from.clone(),
@@ -616,6 +616,7 @@ pub async fn list_tax_rate_rounding_modes_scoped(
 
 /// Business logic for the batch rounding-mode read (extracted for
 /// testing, mirroring `run_list_tax_rates`).
+#[cfg(test)]
 fn run_list_tax_rate_rounding_modes(
     conn: &rusqlite::Connection,
     rate_ids: &[&str],

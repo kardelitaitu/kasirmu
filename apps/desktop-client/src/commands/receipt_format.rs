@@ -98,8 +98,11 @@ pub struct ReceiptLayoutArgs {
     pub paper_width_mm: Option<i64>,
     /// Margins in mm (≥ 0).
     pub margin_top_mm: Option<i64>,
+    /// Bottom margin in mm (≥ 0).
     pub margin_bottom_mm: Option<i64>,
+    /// Left margin in mm (≥ 0).
     pub margin_left_mm: Option<i64>,
+    /// Right margin in mm (≥ 0).
     pub margin_right_mm: Option<i64>,
     /// Whether the store logo prints.
     pub show_logo: Option<bool>,
