@@ -140,3 +140,25 @@ export const exportAuditLogScoped = (
   args: ExportAuditLogArgs,
 ): Promise<AuditExportDto> =>
   loggedInvoke<AuditExportDto>('export_audit_log_scoped', { sessionToken, args });
+
+/** Arguments for the security-event export (owner ruling D61-7, design D84). */
+export interface SecurityEventExportArgs {
+  /** Exact `user_id` (or `system`) to filter on; omit for all actors. */
+  actor?: string | null;
+  /** Inclusive `YYYY-MM-DD` lower bound; normalized at the IPC layer. */
+  dateFrom?: string | null;
+  /** Exclusive `YYYY-MM-DD` upper bound (+1 day at the IPC layer). */
+  dateTo?: string | null;
+}
+
+/**
+ * Export only the security-event rows (SECURITY_ACTIONS allowlist) to CSV
+ * (owner ruling D61-7, design D84). Same `AuditExportDto` artifact as the
+ * full AUD-09 export; the actor/date bounds are normalized server-side
+ * before the core filtered export runs.
+ */
+export const exportSecurityEventsScoped = (
+  sessionToken: string,
+  args: SecurityEventExportArgs,
+): Promise<AuditExportDto> =>
+  loggedInvoke<AuditExportDto>('export_security_events_scoped', { sessionToken, args });

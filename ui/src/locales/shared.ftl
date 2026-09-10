@@ -126,6 +126,11 @@ audit-log-count-of = { $shown } of { $total } entr{ $shown ->
 audit-log-export = Export CSV
 audit-log-export-error = Export failed. Please try again.
 audit-log-export-progress = Exporting audit log…
+audit-log-security-export = Export security CSV
+audit-log-security-export-actor = Actor (user ID)
+audit-log-security-export-from = From (inclusive)
+audit-log-security-export-to = To (exclusive)
+audit-log-security-export-error = Security event export failed. Please try again.
 
 # Update Banner
 update-banner-title = Update available

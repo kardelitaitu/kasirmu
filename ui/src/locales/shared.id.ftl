@@ -319,6 +319,11 @@ audit-log-count-of = { $shown } dari { $total } entri
 audit-log-export = Ekspor CSV
 audit-log-export-error = Ekspor gagal. Silakan coba lagi.
 audit-log-export-progress = Mengekspor log audit…
+audit-log-security-export = Ekspor CSV keamanan
+audit-log-security-export-actor = Aktor (ID pengguna)
+audit-log-security-export-from = Dari (inklusif)
+audit-log-security-export-to = Hingga (eksklusif)
+audit-log-security-export-error = Ekspor kejadian keamanan gagal. Silakan coba lagi.
 audit-log-table-label = Entri log audit
 # ── Jejak keamanan (audit baseline) ───────────────────────────────
 # Setengah permukaan audit yang berlaku untuk seluruh tenant. Labelnya ditaruh

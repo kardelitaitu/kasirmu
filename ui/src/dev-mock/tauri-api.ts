@@ -4848,6 +4848,44 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     };
   },
 
+  // Security-event export (ruling D61-7 / design D84): the SAME AuditExportDto
+  // shape as export_audit_log_scoped, but restricted to the SECURITY_ACTIONS
+  // allowlist (audit_security.rs:82-91) and honoring the exact actor plus
+  // inclusive-from/exclusive-to date bounds. Date normalization to fixed-width
+  // ISO bounds happens at the real IPC layer; comparing the YYYY-MM-DD prefix
+  // of created_at mirrors that normalization's observable effect. No
+  // security-action rows are seeded, so a fresh preview exports the header
+  // only — the shape, not the row census, is what this handler pins. The
+  // system.export self-audit row is deliberately not appended (same rationale
+  // as the AUD-09 mock above).
+  'export_security_events_scoped': (args: unknown) => {
+    const f = mockHandlerPayload<{ actor?: string | null; dateFrom?: string | null; dateTo?: string | null }>(args);
+    const securityActions = new Set([
+      'login', 'login.failed', 'logout', 'user.create', 'user.update',
+      'impersonate.start', 'impersonate.stop', 'org.switch',
+    ]);
+    const rows = mockAuditLogRows().filter((row) => {
+      if (!securityActions.has(row.action)) return false;
+      if (f.actor && row.user_id !== f.actor) return false;
+      const day = row.created_at.slice(0, 10);
+      if (f.dateFrom && day < f.dateFrom) return false;
+      if (f.dateTo && day >= f.dateTo) return false;
+      return true;
+    });
+    const header = MOCK_AUDIT_CSV_COLUMNS.join(',');
+    const body = rows.map((row) =>
+      MOCK_AUDIT_CSV_COLUMNS.map((col) => mockCsvField(String(row[col] ?? ''))).join(','),
+    );
+    const csv =
+      '\uFEFF' + header + '\n' + (body.length > 0 ? body.join('\n') + '\n' : '');
+    return {
+      csv,
+      row_count: rows.length,
+      generated_at: new Date().toISOString(),
+      requested_by: 'admin-1',
+    };
+  },
+
   // ═══════════════════════════════════════════════════════════════
   // OFFLINE / SYNC
   // ═══════════════════════════════════════════════════════════════

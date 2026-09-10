@@ -67,6 +67,29 @@ describe('dev-mock audit handler shapes', () => {
     expect(dataLines.length - 1).toBe(dto.row_count);
   });
 
+  it('security-event export returns the same AuditExportDto shape, allowlist-restricted', async () => {
+    const dto = await invoke<AuditExportDto>('export_security_events_scoped', {
+      sessionToken: 'mock-token',
+      args: { actor: 'admin-1', dateFrom: '2026-01-01', dateTo: '2026-12-31' },
+    });
+    expect(Object.keys(dto).sort()).toEqual([
+      'csv',
+      'generated_at',
+      'requested_by',
+      'row_count',
+    ]);
+    expect(dto.csv.startsWith(BOM)).toBe(true);
+    const [header] = dto.csv.slice(BOM.length).split('\n');
+    expect(header).toBe(
+      'id,created_at,user_id,action,target_type,target_id,outcome,details',
+    );
+    // No SECURITY_ACTIONS rows are seeded (mock rows are business events), so
+    // the allowlist restriction is observable as a header-only artifact —
+    // and a business row like sale.completed must never leak into it.
+    expect(dto.row_count).toBe(0);
+    expect(dto.csv).not.toContain('sale.completed');
+  });
+
   it('honors the outcome and query filters through the invoke envelope', async () => {
     // The regression this file exists for. invoke() passes the handler
     // `args?.['args'] ?? args`, i.e. the UNWRAPPED payload; a handler that reads
