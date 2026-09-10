@@ -3,6 +3,17 @@
 //! `list_products` fetches all products with category names and stock
 //! quantities from the database and returns them as a JSON array.
 //! The front-end uses this to populate the product grid.
+//!
+//! Wave A / S9a: the read bodies (list / barcode + SKU lookup / serial
+//! tracking) now live in the headless `oz_bridge::products` module. Each
+//! `#[tauri::command]` below keeps its exact name, parameter list and
+//! `Result<_, AppError>` return so the registered IPC surface and the
+//! serialized error shape are unchanged; it borrows a `BridgeCtx` from
+//! `AppState`, calls the bridge, and maps `BridgeError` back to
+//! `AppError` variant-for-variant. The read DTOs moved with the bodies
+//! and are re-exported so `use super::*` in `products_tests.rs` still
+//! resolves them. The write bodies (create / update / delete / stock
+//! adjust / search signal) are extracted in S9b.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -20,9 +31,10 @@ use foundation::validate_not_empty;
 use oz_core::permissions;
 
 use crate::commands::authz::require_permission_for_session;
-use crate::commands::products_images::ProductImageDto;
 use crate::error::AppError;
 use crate::state::AppState;
+
+pub use oz_bridge::products::{MoneyDto, ProductDto, SerialTrackRow};
 
 // ── Adjust stock ────────────────────────────────────────────────────
 
@@ -110,65 +122,6 @@ pub async fn adjust_stock_scoped(
     Ok(new_qty)
 }
 
-/// A product DTO for the front-end, mapped from `ProductWithDetails`.
-#[derive(Debug, Serialize)]
-pub struct ProductDto {
-    /// Internal product ID (UUID) — used by image commands (spec 0046b).
-    pub id: String,
-    /// Stock-keeping unit — the human-readable product code.
-    pub sku: String,
-    /// Display name shown on receipts and the POS UI.
-    pub name: String,
-    /// Category display name, if the product is linked to a category.
-    pub category: Option<String>,
-    /// Sale price with currency.
-    pub price: MoneyDto,
-    /// Machine-readable barcode (EAN-13, UPC-A, etc.) if available.
-    pub barcode: Option<String>,
-    /// Whether the product is in stock (stock_qty > 0 or null = false).
-    pub in_stock: bool,
-    /// Current stock quantity, or `null` if tracking is disabled.
-    pub stock_qty: Option<i64>,
-    /// Tax rate IDs assigned to this product.
-    pub tax_rate_ids: Vec<String>,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 timestamp of the last price change.
-    pub price_updated_at: String,
-    /// Product type: "retail", "restaurant", or "both".
-    pub product_type: String,
-    /// Cost price in minor units (local-only, ADR #36).
-    pub cost_minor: i64,
-    /// Brand (free text).
-    pub brand: Option<String>,
-    /// Rack position code.
-    pub rack_location: Option<String>,
-    /// Free-text notes.
-    pub notes: Option<String>,
-    /// Unit of measure.
-    pub unit: Option<String>,
-    /// Active/sellable status.
-    pub is_active: bool,
-    /// Default supplier FK (local-only).
-    pub default_supplier_id: Option<String>,
-    /// Materialized popularity score (ADR #37) — retail grid sort key.
-    pub popularity_score: f64,
-    /// Slot-1 primary image content hash (spec 0046b); `None` = no image.
-    pub image_hash: Option<String>,
-    /// Content-addressed image assignments (slots 1..5) from the snapshot.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub images: Option<Vec<ProductImageDto>>,
-}
-
-/// Money DTO matching the front-end `Money` type (snake_case keys).
-#[derive(Debug, Serialize)]
-pub struct MoneyDto {
-    /// Minor Units.
-    pub minor_units: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-}
-
 /// Fetch all products for the store resolved from a session token.
 ///
 /// ADR #4 / ADR #7 canonical pattern: The frontend passes an opaque
@@ -184,20 +137,20 @@ pub async fn list_products_scoped(
     state: State<'_, AppState>,
     session_token: String,
 ) -> Result<Vec<ProductDto>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    // F-017: enforce per-domain permission on this scoped command.
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_list_products(&db)
+    let ctx = state.bridge_ctx();
+    oz_bridge::products::list_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for listing products (extracted for testing).
+///
+/// Thin adapter over `oz_bridge::products::run_list_products`: the name,
+/// parameter list and `Result<_, AppError>` type are unchanged so the
+/// sibling test module keeps matching on `AppError::Core`.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_products(conn: &rusqlite::Connection) -> Result<Vec<ProductDto>, AppError> {
-    let store = Store::new(conn);
-    let products = store.list_products()?;
-    map_products_to_dtos(&store, products)
+    oz_bridge::products::run_list_products(conn).map_err(AppError::from)
 }
 
 /// Fetch inventory-tracked products with stock at a specific location.
@@ -211,78 +164,10 @@ pub async fn list_warehouse_products_at_location(
     session_token: String,
     location_id: String,
 ) -> Result<Vec<ProductDto>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-
-    // F-017: enforce per-domain permission on this scoped command.
-
-    require_permission_for_session(&state, &session, permissions::INVENTORY_ADJUST).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let products = store.list_warehouse_products_at_location(&location_id)?;
-    map_products_to_dtos(&store, products)
-}
-
-/// Shared mapping from a vec of ProductWithDetails to ProductDto vec.
-fn map_products_to_dtos(
-    store: &Store<'_>,
-    products: Vec<oz_core::db::ProductWithDetails>,
-) -> Result<Vec<ProductDto>, AppError> {
-    // PROD-12: batch-load tax assignments in ONE query instead of one
-    // `get_product_tax_rates` call per product (N+1 catalog-load pattern).
-    let skus: Vec<String> = products
-        .iter()
-        .map(|pwd| pwd.product.sku.to_string())
-        .collect();
-    let tax_rates_by_sku = store.get_product_tax_rates_batch(&skus)?;
-    let dtos: Vec<ProductDto> = products
-        .into_iter()
-        .map(|pwd| {
-            let cur_str = std::str::from_utf8(&pwd.product.price.currency.0)
-                .unwrap_or("USD")
-                .to_owned();
-            let sku = pwd.product.sku.to_string();
-            let tax_rate_ids = tax_rates_by_sku.get(&sku).cloned().unwrap_or_default();
-            ProductDto {
-                id: pwd.product.id.clone(),
-                sku,
-                name: pwd.product.name,
-                category: pwd.category_name,
-                price: MoneyDto {
-                    minor_units: pwd.product.price.minor_units,
-                    currency: cur_str,
-                },
-                barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-                in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
-                stock_qty: pwd.stock_qty,
-                created_at: pwd.product.created_at,
-                price_updated_at: pwd.product.price_updated_at,
-                product_type: pwd.product.product_type.as_str().to_owned(),
-                tax_rate_ids,
-                cost_minor: pwd.product.cost_minor,
-                brand: pwd.product.brand.clone(),
-                rack_location: pwd.product.rack_location.clone(),
-                notes: pwd.product.notes.clone(),
-                unit: pwd.product.unit.clone(),
-                is_active: pwd.product.is_active,
-                default_supplier_id: pwd.product.default_supplier_id.clone(),
-                popularity_score: pwd.popularity_score,
-                image_hash: pwd.product.image_hash.clone(),
-                images: Some(
-                    pwd.images
-                        .iter()
-                        .map(|img| ProductImageDto {
-                            slot: img.slot,
-                            hash: img.hash.clone(),
-                            position: img.position,
-                        })
-                        .collect(),
-                ),
-            }
-        })
-        .collect();
-    Ok(dtos)
+    let ctx = state.bridge_ctx();
+    oz_bridge::products::list_warehouse_products_at_location(&ctx, &session_token, &location_id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Lookup by barcode ────────────────────────────────────────────────
@@ -295,22 +180,23 @@ pub async fn lookup_by_barcode_scoped(
     barcode: String,
     state: State<'_, AppState>,
 ) -> Result<Option<ProductDto>, AppError> {
-    validate_not_empty("barcode", &barcode).map_err(|e| AppError::Invalid(e.to_string()))?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_lookup_by_barcode(&db, &barcode)
+    let ctx = state.bridge_ctx();
+    oz_bridge::products::lookup_by_barcode(&ctx, &session_token, &barcode)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for barcode lookup (extracted for testing).
+///
+/// Thin adapter over `oz_bridge::products::run_lookup_by_barcode`: the
+/// name, parameter list and `Result<_, AppError>` type are unchanged so
+/// the sibling test module keeps matching on `AppError::Core`.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_lookup_by_barcode(
     conn: &rusqlite::Connection,
     barcode: &str,
 ) -> Result<Option<ProductDto>, AppError> {
-    let store = Store::new(conn);
-    let pwd = store.lookup_product_with_details_by_barcode(barcode)?;
-    map_pwd_to_dto(&store, pwd)
+    oz_bridge::products::run_lookup_by_barcode(conn, barcode).map_err(AppError::from)
 }
 
 /// Look up a product by SKU for the store resolved from a
@@ -321,76 +207,23 @@ pub async fn lookup_product_by_sku_scoped(
     sku: String,
     state: State<'_, AppState>,
 ) -> Result<Option<ProductDto>, AppError> {
-    validate_not_empty("sku", &sku).map_err(|e| AppError::Invalid(e.to_string()))?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_lookup_product_by_sku(&db, &sku)
+    let ctx = state.bridge_ctx();
+    oz_bridge::products::lookup_product_by_sku(&ctx, &session_token, &sku)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for SKU lookup (extracted for testing).
+///
+/// Thin adapter over `oz_bridge::products::run_lookup_product_by_sku`:
+/// the name, parameter list and `Result<_, AppError>` type are unchanged
+/// so the sibling test module keeps matching on `AppError::Core`.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_lookup_product_by_sku(
     conn: &rusqlite::Connection,
     sku: &str,
 ) -> Result<Option<ProductDto>, AppError> {
-    let store = Store::new(conn);
-    let pwd = store.get_product(sku)?;
-    map_pwd_to_dto(&store, pwd)
-}
-
-/// Shared mapping from `ProductWithDetails` to `ProductDto`.
-fn map_pwd_to_dto(
-    store: &Store<'_>,
-    pwd: Option<oz_core::db::ProductWithDetails>,
-) -> Result<Option<ProductDto>, AppError> {
-    let tax_rate_ids = match pwd {
-        Some(ref p) => store
-            .get_product_tax_rates(p.product.sku.as_str())
-            .unwrap_or_default(),
-        None => vec![],
-    };
-    Ok(pwd.map(|pwd| {
-        let cur_str = std::str::from_utf8(&pwd.product.price.currency.0)
-            .unwrap_or("USD")
-            .to_owned();
-        ProductDto {
-            id: pwd.product.id.clone(),
-            sku: pwd.product.sku.to_string(),
-            name: pwd.product.name,
-            category: pwd.category_name,
-            price: MoneyDto {
-                minor_units: pwd.product.price.minor_units,
-                currency: cur_str,
-            },
-            barcode: pwd.product.barcode.as_ref().map(|b| b.to_string()),
-            in_stock: pwd.stock_qty.is_some_and(|q| q > 0),
-            stock_qty: pwd.stock_qty,
-            tax_rate_ids,
-            product_type: pwd.product.product_type.as_str().to_owned(),
-            created_at: pwd.product.created_at,
-            price_updated_at: pwd.product.price_updated_at,
-            cost_minor: pwd.product.cost_minor,
-            brand: pwd.product.brand.clone(),
-            rack_location: pwd.product.rack_location.clone(),
-            notes: pwd.product.notes.clone(),
-            unit: pwd.product.unit.clone(),
-            is_active: pwd.product.is_active,
-            default_supplier_id: pwd.product.default_supplier_id.clone(),
-            popularity_score: pwd.popularity_score,
-            image_hash: pwd.product.image_hash.clone(),
-            images: Some(
-                pwd.images
-                    .iter()
-                    .map(|img| ProductImageDto {
-                        slot: img.slot,
-                        hash: img.hash.clone(),
-                        position: img.position,
-                    })
-                    .collect(),
-            ),
-        }
-    }))
+    oz_bridge::products::run_lookup_product_by_sku(conn, sku).map_err(AppError::from)
 }
 
 // ── Create product ──────────────────────────────────────────────────
@@ -789,26 +622,10 @@ pub async fn get_product_track_serial_scoped(
     sku: String,
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let product = store.get_product(&sku)?;
-    drop(db);
-    Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
-}
-
-/// A single serial-tracking flag keyed by SKU (batch response row).
-#[derive(Debug, Serialize)]
-pub struct SerialTrackRow {
-    /// Stock-keeping unit.
-    pub sku: String,
-    /// Whether the product is configured for serial tracking.
-    pub track_serial: bool,
+    let ctx = state.bridge_ctx();
+    oz_bridge::products::get_product_track_serial(&ctx, &session_token, &sku)
+        .await
+        .map_err(Into::into)
 }
 
 /// Store-scoped batch variant of `get_product_track_serial_batch`. ADR #7.
@@ -818,38 +635,20 @@ pub async fn get_product_track_serial_batch_scoped(
     skus: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<SerialTrackRow>, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let rows = run_get_product_track_serial_batch(&store, &skus);
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::products::get_product_track_serial_batch(&ctx, &session_token, &skus)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for the batch serial-tracking lookup (extracted for testing).
+///
+/// Thin adapter over `oz_bridge::products::run_get_product_track_serial_batch`:
+/// the name, parameter list and `Vec<SerialTrackRow>` return are unchanged
+/// so the sibling test module keeps its assertions.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_get_product_track_serial_batch(store: &Store<'_>, skus: &[String]) -> Vec<SerialTrackRow> {
-    skus.iter()
-        .map(|sku| {
-            // get_product returns Result<Option<ProductWithDetails>> —
-            // collapse both error and missing-product into `false` so the
-            // batch never fails for unknown SKUs (matches single-SKU).
-            let track_serial = store
-                .get_product(sku)
-                .ok()
-                .flatten()
-                .map(|p| p.product.track_serial)
-                .unwrap_or(false);
-            SerialTrackRow {
-                sku: sku.clone(),
-                track_serial,
-            }
-        })
-        .collect()
+    oz_bridge::products::run_get_product_track_serial_batch(store, skus)
 }
 
 // ── Popularity search signal (ADR #37) ──────────────────────────────
