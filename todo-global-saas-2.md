@@ -567,7 +567,12 @@ actual relationship mutation.
        (block-or-warn on a failed tax IPC) remain **parked for the owner**, not
        open work — the flip rests on those being decisions, not unclaimed code.~~
        — **OWNER RULINGS RECEIVED 2026-09-10, ADOPTED VERBATIM — designs
-       adopted, implementation queued:**
+       adopted, ~~implementation queued~~ **implementation UNDER WAY — ten of
+       the eighteen queued slices have landed (E1-1, E1-2, E1-3, E1-4, E1-5,
+       E1-7; F2-1, F2-2, F2-3, F2-4), plus one extra half that was never in the
+       count (E1-2b, the snapshot emit side). Both chains are recorded
+       immediately after the design text below, which stays exactly as it was
+       adopted.**
        - **E1 — statutory rounding always wins over store preference.**
          Per-rate column design (T1 dossier adopted in full):
          `tax_rates.rounding_mode` (`TEXT DEFAULT ''` + inline CHECK) —
@@ -576,10 +581,12 @@ actual relationship mutation.
          slices E1-1..E1-10 are per-line per-rate; the breakdown JSON
          stamps `rounding` + `rounding_source` so each ticket freezes its
          rounding provenance audibly; the provenance badge gains
-         `Option<RoundingMode>`. Binding on the briefs: E1-2 MUST close
+         `Option<RoundingMode>`. Binding on the briefs: ~~E1-2 MUST close
          the sync-wire gap (`SnapshotTaxRate` serde default + pull SELECT
          + `upsert_tax_rates` column list) or a hub-authored mode lands
-         `''` silently at branches; E1-4 must keep UPDATE bumping
+         `''` silently at branches~~ **(both bindings honored — the gap is
+         closed end to end by E1-2 + E1-2b, and the `updated_at` bump is
+         pinned, both recorded below)**; E1-4 must keep UPDATE bumping
          `updated_at` (the snapshot-cache fingerprint).
        - **F2 — cached-tax warn + flag, NEVER a silent zero.** A
          renderer-level cache hook `useCartTax` (module Map keyed by
@@ -590,12 +597,222 @@ actual relationship mutation.
          F2-2 closes the third silent-zero door (a `null` sessionToken
          resolving 0 at `ui/src/api/tax.ts:127-134`); core stamps
          `sales.tax_estimate_note` with the client claim plus the
-         core-verified delta. Slices F2-1..F2-8.
+         core-verified delta. ~~Slices F2-1..F2-8.~~ **(F2-1, F2-2, F2-3 and
+         F2-4 landed; F2-5..F2-8 are the live queue — the stamp column exists
+         and nothing populates it yet. See below.)**
        - **NEW PARKED ITEM, born of E1 — do Lua plugins outrank statute?**
          `lua_overrides` replaces DB tax rates and would silently skip
-         statutory rounding once E1 exists. Minimum now: `tracing::warn`
-         per override line (warning-only); whether an override may exceed
-         a statutory rounding mode stays parked for the owner.
+         statutory rounding once E1 exists. ~~Minimum now: `tracing::warn`
+         per override line (warning-only)~~ — **that minimum LANDED with E1-2
+         (`3f9e6e20e`: `first_statutory_directive_for_sku`, sales_tax.rs:48,
+         warning at :177 — advisory only, errors folded to `None`);** whether
+         an override may EXCEED a statutory rounding mode stays parked for the
+         owner, and the code now says so out loud on every line it skips.
+       — **E1 CHAIN LANDED THROUGH THE WIRE AND THE READ SURFACE 2026-09-10
+       (E1-1, E1-2, E1-2b, E1-3, E1-4, E1-5, E1-7 DONE; E1-6, E1-8, E1-9, E1-10
+       queued or in flight).** The box above stays flipped — these slices extend
+       a closed box rather than re-opening it, and none of them touches the
+       downgrade box, whose flip belongs to `1299ab8a7`.
+       - **E1-1 — `ad167c44b`** *feat(core): add the statutory rounding_mode
+         column to tax_rates (E1-1)* (4 files, +115/−1):
+         `20260929_tax_rate_rounding_mode.sql` —
+         `ADD COLUMN rounding_mode TEXT NOT NULL DEFAULT ''` with the inline
+         `CHECK (rounding_mode IN ('', 'half_up', 'truncate'))`. A CHECK can
+         ride a NEWLY added column directly (SQLite only refuses to ALTER one
+         onto a column that already holds data, which is why the 20260928
+         document_kind change needed a rebuild), so: no rebuild, no backfill,
+         no index. The accepted spellings are exactly
+         `modules_tax::models::RoundingMode`'s serde snake_case names, so no
+         translation layer exists between storage and wire.
+         **The date is the finding, and it is a trap for the next migration
+         here.** The file is `20260929`, not the date of the work, because
+         `20260926_tax_rate_scoped_authoring.sql` REBUILDS `tax_rates` and its
+         `INSERT..SELECT` enumerates the columns it copies — a column added
+         under an earlier stamp is applied and then SILENTLY ERASED by the
+         rebuild. Registry order is canonical, so this sorts after the last
+         `tax_rates` DDL writer; the rule is written into the migration header
+         AND the `migrations.rs:247-252` registry comment, and
+         `migrations_tests.rs:2110`
+         (`tax_rate_rounding_mode_column_pins_the_statutory_set`) plus the
+         ordered-list pin at :595 enforce the obligation on any FUTURE rebuild.
+         Standing lesson for whoever writes the next one: **never date a
+         migration before the last DDL writer of the table it touches.**
+       - **E1-2 — `37208bdc5` (read door) + `3f9e6e20e` (compute + branch
+         sync)** (2 files +120/−2, then 4 files +331/−5; core 2918 green, 9 new
+         pins). `Store::list_tax_rate_rounding_modes` (`db/tax.rs:561`) is the
+         batch door: ids chunked at 500 (SQLite's bind limit, the PROD-12
+         bound), `is_active = 1` so an archived row's directive can never steer
+         a live computation, `''` and an unmatched id both read `None` — "the
+         preference applies" — because a caller that resolved those rates from
+         live rows a moment earlier must not meet a second failure mode from
+         the lookup, and a value outside the alphabet is a HARD
+         `CoreError::Validation`, not a guess (the schema CHECK means such a
+         row is hand-edited data). `Store::tax_rate_rounding_mode` (:607) is
+         the one-row convenience over it.
+       - **The ruling shape, per rate and not per line:**
+         `effective_rounding_for_rate` (`db/sales_tax.rs:30`) returns the
+         row's directive when it carries one, else the `mode` argument — which
+         is the store preference — i.e. `directive.unwrap_or(preference)`
+         applied per RATE, so two rates with different directives on one line
+         each round their own contribution. That is what makes "statutory
+         always wins" true at the row level without deleting the preference
+         for every other rate.
+       - **Freeze-at-write audit:** the per-line breakdown JSON now stamps
+         `"rounding"` + `"rounding_source"` (`sales_tax.rs:256` per-rate arm,
+         :216 the preference-only cart-preview arm), so a ticket's rounding
+         provenance is recorded when the sale is written and cannot be
+         re-interpreted after someone edits the rate. Rows written before E1
+         carry neither key and read as `preference`, which was the only mode
+         that existed when they were computed. **The money is pinned the other
+         way:** the pre-E1 monetary tests run UNMODIFIED — a line whose rates
+         carry no directive rounds byte-identically to before.
+       - **D64(d) minimum landed:** `first_statutory_directive_for_sku`
+         (sales_tax.rs:48) + a `tracing::warn!` per `lua_overrides` line
+         (:177), advisory only (errors folded to `None`, deliberately NOT the
+         full resolver since the override branch never priced from the DB).
+         The warning makes a statutory skip visible; whether a plugin may
+         OUTRANK a statute is still the owner's, and stays parked.
+       - **Sync branch half (in `3f9e6e20e`):** `SnapshotTaxRate.rounding_mode`
+         with `#[serde(default)]` — absence IS the `''` sentinel, the same
+         back-compat ruling the scope columns carry — and
+         `upsert_tax_rates` gained the column plus
+         `rounding_mode = excluded.rounding_mode` (`sync_pull.rs:403`), an
+         UNCONDITIONAL conflict assignment: server-authoritative, so removing a
+         directive at the hub clears it at the branch instead of stranding a
+         stale one (the same non-COALESCE decision as the scope columns). A
+         value outside the statutory alphabet is SKIPPED per row and warned
+         (:415), never flattened to `''` — flattening would round a statutory
+         rate with the store preference, which is the exact thing the ruling
+         forbids.
+       - **E1-2b — `5b352820b`** *feat(sync): carry the statutory rounding
+         mode across the snapshot wire (E1-2b)* (5 files, +25/−4;
+         platform-sync 306 green): the EMIT side, which is what closes D64's
+         binding condition (a) end to end — hub `SELECT`
+         (`platform/sync/src/pg_transport.rs:401`, read as
+         `Option<String>` → `unwrap_or_default()` at :424 so a hub database
+         that predates E1-1 keeps pulling instead of erroring on a missing
+         column) → wire `serde(default)` (`transport.rs:225`) → branch
+         upsert (`lib.rs:346`/`:359`/`:387`, column-for-column with
+         `oz-core`'s own pull path, the other end of the same contract) →
+         compute loops. Named gap, not blocking: the PG test fixture at
+         `pg_transport_tests.rs:487` creates `tax_rates` WITHOUT the column,
+         so the Docker-gated hub path is unproven until that one line is added
+         (fixture owner's file).
+       - **E1-3 + E1-7 + E1-4 — `f643b262f`** (4 files, +128/−17):
+         `RegionalConfig::tax_regime` input widened to the triple
+         `(rate, scope, Option<RoundingMode>)` (`regional.rs:371`) and
+         `TaxRegimeRate.rounding` added (:427), read from the SAME column the
+         money path consults — so a provenance badge and a sale can never
+         disagree about what the row says. **E1-7 is a closed-by-deletion
+         window, worth recording as one:** `37208bdc5` briefly carried
+         `rounding_mode` on `TaxRateCandidate` and in the resolver's SELECT,
+         and this commit REVERTS that, because a second copy of the value
+         inside the walk is a second source of truth; the provenance now re-reads
+         through the batch door instead. Every caller of `tax_regime` in the
+         tree is in `regional_tests` (5 call sites, zero production ones), so
+         the widened signature cost no churn outside the fence.
+         **E1-4 is pin-only, and honest about it:** every writer already
+         stamped `updated_at`; `tax_rate_writers_bump_updated_at_for_the_snapshot_fingerprint`
+         (`tax_tests.rs`) freezes that against regression, because the branch
+         snapshot-cache fingerprint is `(COUNT, MAX(updated_at))` on
+         `tax_rates` — a writer that stopped bumping would silently stop
+         invalidating the pull cache (D64(e) satisfied).
+       - **E1-5 — `03714f55e`** (9 files, +315/−3):
+         `list_tax_rate_rounding_modes_scoped` in BOTH clients
+         (`apps/desktop-client/src/commands/tax.rs:595`,
+         `apps/tablet-client/src/commands/tax.rs:586`), `SETTINGS_READ`-gated
+         with the store resolved from the session token, registered in both
+         `lib.rs` handler lists; client side
+         `ui/src/api/tax.ts:154` `RoundingModeKey` + :162
+         `listTaxRateRoundingModesScoped` returning
+         `Record<string, RoundingModeKey | null>` (a `null` is never a claimed
+         directive), a stateful dev-mock handler and a contract pin. Parity
+         EXIT=0 with 451 UI command strings counted at this HEAD. Deviation worth knowing: the
+         `list_tax_rate_scopes` precedent it was told to mirror has NO
+         standalone IPC command (that join lives inside `list_tax_rates`), so
+         a batch door needed its own.
+       - **E1 remainder — queued / in flight, recorded as unfinished:**
+         **E1-6** + **E1-8** — the tax screen's rate select and provenance
+         badge consuming the new read; **E1-9** — the hub authoring door, which
+         does NOT exist yet (`git grep rounding_mode` over `crates/oz-api` is
+         zero at this record's HEAD, so a statutory directive can be stored,
+         synced and read but not yet authored from the server side); **E1-10** —
+         the tail of the dossier queue. Until E1-9 lands, the column's only
+         authors are the branch DB and the sync pull.
+       — **F2 CHAIN LANDED THROUGH SCREEN ADOPTION AND THE STAMP COLUMN
+       2026-09-10 (F2-1, F2-2, F2-3, F2-4 DONE; F2-5..F2-8 queued or in
+       flight).**
+       - **F2-1 — `812223844`** *feat(ui): add useCartTax hook with
+         failure-window cache* (2 files, +316): `ui/src/hooks/useCartTax.ts`
+         (164 lines) + 7 tests. A module-level, in-memory-ONLY `Map` keyed by
+         `sessionToken` (never persisted — it exists to survive one IPC failure
+         window in one session), holding the last SUCCESSFUL result plus the
+         canonical signature of the cart it answered for
+         (`cartTaxSignature`: sorted `sku:qty:unit_price_minor` + currency,
+         so line order cannot fork a cache entry). Severity: `ok` /
+         `caution` (signature matches → cached tax, tender-eligible, no flag)
+         / `warn` (differs → shown, `estimated: true`) / `unknown` (nothing
+         cached → zero SHOWN, zero NOT CLAIMED). `invalidateCartTaxCache()` is
+         exported for the tax-config writers, and it has **no production caller
+         yet** — F2-8's wiring, recorded as open.
+       - **The binding condition is the field, not a comment:** `cacheFresh`
+         is true exactly when the shown tax may be ADDED to the tender
+         (fresh compute, or a matching-signature cache hit), false in `warn`
+         and `unknown`.
+       - **F2-2 — `4288b7a9f`** *feat(ui): reject null session tokens in
+         computeCartTax* (2 files, +29/−2): the THIRD silent-zero door closed.
+         `computeCartTax(null, …)` used to RESOLVE `{ taxMinor: 0 }` — a
+         claimed zero it had no basis for; it now REJECTS with the exported
+         `CART_TAX_NO_SESSION_MESSAGE` before any IPC attempt, and the
+         contract test pins that `invoke` was never called. Additive on the
+         resolved shape, so the failure lands in callers' existing catch
+         paths, which is what lets F2-1 classify it instead of trusting it.
+         (`ui/src/api/client/tax.ts` untouched — that is the REST
+         `TaxClient`, and it has no cart surface.)
+       - **F2-3 — `aab591083`** (2 files, +131/−52): adoption in
+         `ui/src/features/sales/PosScreen.tsx` and
+         `ui/src/features/retail/RetailPosScreen.tsx`. The R36-19 doors —
+         `.catch(() => setCartTax(0))`, a caught failure rendering as a real
+         zero — are GONE from both screens, and **D64(b) is enforced where the
+         money is: `&& cartTaxFresh` gates the tax add at both PaymentModal
+         total sites** (`PosScreen.tsx:2019`,
+         `RetailPosScreen.tsx:1422`), so a stale or unknown estimate is
+         displayed and never added to the amount due. `taxEstimated`
+         (`PosScreen.tsx:880`) is derived from the same freshness and already
+         drives the visible "estimated" styling on the cart's tax row
+         (:1914), so the operator can see the difference; the SALE-side stamp is
+         what F2-6 still owes. The one surviving
+         `.catch(() => setCartTax(0))` text in the tree is now a comment inside
+         `useCartTax.ts:5` describing the defect it replaces — the pattern is
+         gone from both screens. Named follow-ups, not hidden: the
+         retail-side banner (its panel file is outside that slice's fence),
+         PaymentModal prop threading, and a screen-level 3-case vitest (the
+         severities are pinned by the hook's 7 tests in the meantime).
+       - **F2-4 — `f28f18af9`** *feat(core): add sales.tax_estimate_note
+         audit-stamp column (F2-4)* (4 files, +120/−1):
+         `20260930_sales_tax_estimate_note.sql` —
+         `ALTER TABLE sales ADD COLUMN tax_estimate_note TEXT`, NULLABLE with
+         NO default and NO backfill, because NULL means *unstamped* — legacy
+         rows were computed live, and a missing stamp must never read as a
+         claim. The migration header carries E1-1's ordering rule as binding
+         (dated after the last sales DDL writer, `20260923_fiscal_numbering`,
+         and a future sales rebuild must carry the column through both its
+         column lists — pinned at `migrations_tests.rs:2179`), the ordered
+         registry-list pin at :596 grew to name the new file in place, and
+         `20260813_init.pg.sql` was regenerated rather than hand-edited.
+       - **F2 remainder — queued / in flight, recorded as unfinished:**
+         **F2-5**/**F2-6** — the core writer of the stamp (client claim +
+         core-verified delta) and its IPC thread through the submit call sites
+         — so the COLUMN exists and NOTHING POPULATES IT YET; **F2-7** — the
+         history badge and the sale read; **F2-8** — calling
+         `invalidateCartTaxCache()` from every tax-config write, without which
+         a cached answer computed under an old configuration can still surface
+         in a failure window under a new one. The design's promise — "a sale
+         flagged for recompute" — is therefore DISPLAY-complete and
+         RECORD-INCOMPLETE as of this record.
+       **Census unchanged by this pass: saas-2 stays 0 open boxes** — E1 and F2
+       extend the already-closed tax box, and the downgrade box belongs to
+       `1299ab8a7`.
 - [x] **Implement entitlements beyond tier comparison.** Model plan, add-ons,
       quotas, billing state, trial state, expiry, grace policy, and server-issued
       feature entitlements. Tiers alone are not enough for custom Enterprise
