@@ -114,9 +114,3 @@ pub async fn rotate_encryption_key_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "security_tests.rs"]
-mod tests;

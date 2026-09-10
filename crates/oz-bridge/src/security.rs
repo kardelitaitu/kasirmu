@@ -197,3 +197,7 @@ pub async fn rotate_encryption_key_scoped(
         .await?;
     rotate_encryption_key().await
 }
+
+#[cfg(test)]
+#[path = "security_tests.rs"]
+mod tests;
