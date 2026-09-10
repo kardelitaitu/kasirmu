@@ -299,6 +299,12 @@ pub struct TaxRateWrite {
     pub scope: TaxRateScope,
     /// Its validity window: effective_from inclusive, effective_to EXCLUSIVE.
     pub window: TaxRateWindow,
+    /// E1-9: the statutory rounding mode the row prices with — '' (store
+    /// preference), 'half_up' or 'truncate' (the column core's migration
+    /// 20260929 landed). Validated to exactly those three values at the
+    /// boundary, mirroring the table CHECK, so a hub-authored mode can
+    /// never carry a spelling the branch CHECK would refuse.
+    pub rounding_mode: String,
 }
 
 impl TaxRateWrite {
@@ -309,6 +315,7 @@ impl TaxRateWrite {
         Self {
             scope: TaxRateScope::Global,
             window: TaxRateWindow::default(),
+            rounding_mode: String::new(),
         }
     }
 }
@@ -421,7 +428,20 @@ pub fn validate_tax_rate_write(
     location_id: Option<&str>,
     effective_from: Option<&str>,
     effective_to: Option<&str>,
+    rounding_mode: Option<&str>,
 ) -> Result<TaxRateWrite, PgError> {
+    // E1-9: same three-value set as the tax_rates.rounding_mode CHECK
+    // (migration 20260929). '' and None both mean "store preference
+    // applies"; anything else is a clean 400, never a silent ''.
+    let rounding = match rounding_mode {
+        None | Some("") => String::new(),
+        Some(m @ ("half_up" | "truncate")) => m.to_owned(),
+        Some(other) => {
+            return Err(PgError::Validation(format!(
+                "rounding_mode: expected '' (store preference), 'half_up' or 'truncate', got {other:?}"
+            )));
+        }
+    };
     let scope = TaxRateScope::classify(legal_entity_id, location_id).ok_or_else(|| {
         PgError::Validation(
             "legal_entity_id and location_id are mutually exclusive: a rate is scoped to a \
@@ -467,7 +487,11 @@ pub fn validate_tax_rate_write(
             )));
         }
     }
-    Ok(TaxRateWrite { scope, window })
+    Ok(TaxRateWrite {
+        scope,
+        window,
+        rounding_mode: rounding,
+    })
 }
 
 /// Bounds every tax-rate write shares, so the global and scoped entry points
@@ -553,7 +577,7 @@ pub async fn create_tax_rate_scoped(
     let id = uuid::Uuid::now_v7().to_string();
     let now = now_rfc3339();
     let (entity, location) = write.scope.scope_columns();
-    let insert_sql = "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at, tenant_id, legal_entity_id, location_id, effective_from, effective_to) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)";
+    let insert_sql = "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at, tenant_id, legal_entity_id, location_id, effective_from, effective_to, rounding_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)";
     if let Err(e) = tx
         .execute(
             insert_sql,
@@ -570,6 +594,7 @@ pub async fn create_tax_rate_scoped(
                 &location,
                 &write.window.effective_from,
                 &write.window.effective_to,
+                &write.rounding_mode,
             ],
         )
         .await
@@ -651,7 +676,7 @@ pub async fn update_tax_rate_scoped(
 
     let now = now_rfc3339();
     let (entity, location) = write.scope.scope_columns();
-    let update_sql = "UPDATE tax_rates SET name = $1, rate_bps = $2, is_default = $3, is_inclusive = $4, legal_entity_id = $5, location_id = $6, effective_from = $7, effective_to = $8, updated_at = $9 WHERE id = $10 AND tenant_id = $11 AND is_active = 1";
+    let update_sql = "UPDATE tax_rates SET name = $1, rate_bps = $2, is_default = $3, is_inclusive = $4, legal_entity_id = $5, location_id = $6, effective_from = $7, effective_to = $8, updated_at = $9, rounding_mode = $10 WHERE id = $11 AND tenant_id = $12 AND is_active = 1";
     if let Err(e) = tx
         .execute(
             update_sql,
@@ -665,6 +690,7 @@ pub async fn update_tax_rate_scoped(
                 &write.window.effective_from,
                 &write.window.effective_to,
                 &now,
+                &write.rounding_mode,
                 &id,
                 &tenant_id,
             ],

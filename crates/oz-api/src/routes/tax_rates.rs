@@ -65,6 +65,12 @@ pub struct CreateTaxRateRequest {
     /// applying ON this day. `None` = does not expire.
     #[serde(default)]
     pub effective_to: Option<String>,
+    /// E1-9: statutory rounding mode priced with this rate. ```''``` or
+    /// omitted = store preference applies; `half_up` and `truncate` are the
+    /// statutory modes. Anything else is a 400 — the same three-value set
+    /// the tax_rates CHECK (migration 20260929) enforces at the branch.
+    #[serde(default)]
+    pub rounding_mode: Option<String>,
 }
 
 /// Request body for updating a tax rate.
@@ -96,6 +102,9 @@ pub struct UpdateTaxRateRequest {
     /// EXCLUSIVE last business date, strict `YYYY-MM-DD`.
     #[serde(default)]
     pub effective_to: Option<String>,
+    /// E1-9: statutory rounding mode, same contract as the create body.
+    #[serde(default)]
+    pub rounding_mode: Option<String>,
 }
 
 /// Convert a [`CoreError`] from the Store into an HTTP response.
@@ -202,9 +211,16 @@ fn resolve_write(
     location_id: Option<&str>,
     effective_from: Option<&str>,
     effective_to: Option<&str>,
+    rounding_mode: Option<&str>,
 ) -> Result<TaxRateWrite, axum::response::Response> {
-    pg::validate_tax_rate_write(legal_entity_id, location_id, effective_from, effective_to)
-        .map_err(|e| e.into_response())
+    pg::validate_tax_rate_write(
+        legal_entity_id,
+        location_id,
+        effective_from,
+        effective_to,
+        rounding_mode,
+    )
+    .map_err(|e| e.into_response())
 }
 
 /// Create a new tax rate, at a tier and window if the body asks for one.
@@ -237,6 +253,7 @@ pub async fn create_tax_rate(
         body.location_id.as_deref(),
         body.effective_from.as_deref(),
         body.effective_to.as_deref(),
+        body.rounding_mode.as_deref(),
     ) {
         Ok(w) => w,
         Err(resp) => return resp,
@@ -286,6 +303,23 @@ pub async fn create_tax_rate(
                     "failed to stamp tenant_id on tax rate — snapshot scoping may be affected"
                 );
             }
+            // E1-9: core's writer has no rounding_mode parameter (device
+            // IPC stays preference-only, D61 ruling 3), so the hub mirrors
+            // its own tenant_id post-write stamp for a hub-authored mode.
+            // '' and omitted leave the column at its '' default — no write.
+            if let Some(mode) = body.rounding_mode.as_deref().filter(|m| !m.is_empty()) {
+                if let Err(e) = db.execute(
+                    "UPDATE tax_rates SET rounding_mode = ?1 WHERE id = ?2",
+                    rusqlite::params![mode, rate.id],
+                ) {
+                    tracing::warn!(
+                        tenant_id = tenant_id,
+                        tax_rate_id = %rate.id,
+                        error = %e,
+                        "failed to stamp rounding_mode on tax rate — hub-authored mode may not reach branches"
+                    );
+                }
+            }
             (StatusCode::CREATED, Json(rate)).into_response()
         }
         Err(e) => store_error_response(e),
@@ -319,6 +353,7 @@ pub async fn update_tax_rate(
         body.location_id.as_deref(),
         body.effective_from.as_deref(),
         body.effective_to.as_deref(),
+        body.rounding_mode.as_deref(),
     ) {
         Ok(w) => w,
         Err(resp) => return resp,
@@ -372,7 +407,25 @@ pub async fn update_tax_rate(
         &write.scope,
         &write.window,
     ) {
-        Ok(rate) => (StatusCode::OK, Json(rate)).into_response(),
+        Ok(rate) => {
+            // E1-9: same mirror-stamp as the create arm — the mode was
+            // boundary-validated in resolve_write, and '' is a no-op that
+            // leaves the column at its store-preference default.
+            if let Some(mode) = body.rounding_mode.as_deref().filter(|m| !m.is_empty()) {
+                if let Err(e) = db.execute(
+                    "UPDATE tax_rates SET rounding_mode = ?1 WHERE id = ?2",
+                    rusqlite::params![mode, id],
+                ) {
+                    tracing::warn!(
+                        tenant_id = tenant_id,
+                        tax_rate_id = %id,
+                        error = %e,
+                        "failed to stamp rounding_mode on tax rate — hub-authored mode may not reach branches"
+                    );
+                }
+            }
+            (StatusCode::OK, Json(rate)).into_response()
+        }
         Err(e) => store_error_response(e),
     }
 }

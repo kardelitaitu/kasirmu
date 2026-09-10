@@ -1778,3 +1778,26 @@ async fn pg_integration_memo_sync_and_active_read() {
         .await
         .expect("drop throwaway database should succeed");
 }
+
+// ── E1-9: rounding_mode boundary (pure validation, no database) ──
+
+#[test]
+fn validate_tax_rate_write_rounding_mode_boundaries() {
+    // None and '' both mean "store preference applies" (the column default).
+    assert!(validate_tax_rate_write(None, None, None, None, None).is_ok());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("")).is_ok());
+    // The two statutory modes, byte-exact.
+    assert!(validate_tax_rate_write(None, None, None, None, Some("half_up")).is_ok());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("truncate")).is_ok());
+    // A stored '' round-trips as empty (not None) so the write path binds
+    // '' consistently without special-casing.
+    let write = validate_tax_rate_write(None, None, None, None, Some("")).unwrap();
+    assert_eq!(write.rounding_mode, "");
+    let write = validate_tax_rate_write(None, None, None, None, Some("half_up")).unwrap();
+    assert_eq!(write.rounding_mode, "half_up");
+    // Anything outside the CHECK set is a clean 400 at the boundary —
+    // never normalized, never silently stored as ''.
+    assert!(validate_tax_rate_write(None, None, None, None, Some("bankers")).is_err());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("HALF_UP")).is_err());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("half-up")).is_err());
+}
