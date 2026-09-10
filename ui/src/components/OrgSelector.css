@@ -6,7 +6,7 @@
 }
 
 .org-selector-label {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   opacity: 0.75;
 }
 
@@ -15,7 +15,7 @@
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
   color: inherit;
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   font: inherit;
 }
@@ -35,7 +35,7 @@
   background: var(--surface, #1f2430);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
   z-index: 50;
 }
 

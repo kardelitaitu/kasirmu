@@ -13,7 +13,7 @@
 .regional-settings-intro {
   margin: 0 0 var(--space-3, 0.75rem);
   color: var(--text-secondary, #555);
-  font-size: 0.875rem;
+  font-size: var(--text-base);
 }
 
 .regional-settings-grid {
@@ -29,7 +29,7 @@
 }
 
 .regional-settings-field label {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary, #1a1a1a);
 }
@@ -40,7 +40,7 @@
   padding: 0.375rem 0.5rem;
   background: var(--bg-primary, #fff);
   color: var(--text-primary, #1a1a1a);
-  font-size: 0.875rem;
+  font-size: var(--text-base);
 }
 
 .regional-settings-provenance {
@@ -65,10 +65,10 @@
 .regional-settings-save {
   border: none;
   border-radius: 6px;
-  padding: 0.5rem 1rem;
+  padding: var(--space-2) var(--space-4);
   background: var(--accent-color, #2563eb);
   color: var(--accent-contrast, #fff);
-  font-size: 0.875rem;
+  font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
 }
@@ -79,12 +79,12 @@
 }
 
 .regional-settings-status {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--status-success, #16a34a);
 }
 
 .regional-settings-error {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--status-danger, #dc2626);
   margin: 0;
 }
@@ -93,5 +93,5 @@
 .regional-settings-empty {
   margin: 0;
   color: var(--text-secondary, #555);
-  font-size: 0.875rem;
+  font-size: var(--text-base);
 }

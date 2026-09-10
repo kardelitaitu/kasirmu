@@ -12,7 +12,7 @@
 .fiscalnum-intro {
   margin: 0 0 var(--space-3, 0.75rem);
   color: var(--text-secondary, #555);
-  font-size: 0.875rem;
+  font-size: var(--text-base);
 }
 
 .fiscalnum-pair,
@@ -32,7 +32,7 @@
 
 .fiscalnum-pair label,
 .fiscalnum-field label {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary, #1a1a1a);
 }
@@ -51,7 +51,7 @@
 .fiscalnum-unset,
 .fiscalnum-empty,
 .fiscalnum-loading {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--text-tertiary, #888);
 }
 
@@ -62,11 +62,11 @@
 }
 
 .fiscalnum-saved {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary, #555);
 }
 
 .fiscalnum-error {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--danger-text, #b00020);
 }
