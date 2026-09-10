@@ -55,7 +55,6 @@ pub use oz_bridge::auth::{
 /// per-client tier-promotion policy stays stated exactly once, and the
 /// auth paths and the staff-management paths keep routing through one
 /// definition. See `oz_bridge::auth::record_security_event`.
-pub(crate) use oz_bridge::auth::record_security_event;
 
 /// Check a username before the PIN step (STAFF-06).
 ///
