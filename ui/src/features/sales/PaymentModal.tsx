@@ -73,6 +73,14 @@ export interface PaymentModalProps {
    * exactly what the checkout call will validate against.
    */
   promotionIds?: string[];
+  /**
+   * F2-6: the caller's claim that the displayed tax was an ESTIMATE —
+   * the cart-tax cache was stale/unknown at checkout (D64 b). Threaded
+   * into the complete_sale_scoped payload; core verifies by computing
+   * the tax itself and stamps the claim + computed tax onto the sale.
+   * Absent/false is the zero-change default: no stamp requested.
+   */
+  taxEstimated?: boolean;
 }
 
 /** Payment processing modal — method selection (cash, card, QRIS, open bill, credit), split tender, customer/loyalty, multi-currency, and change calculation. */
@@ -99,6 +107,7 @@ export default function PaymentModal({
   tipMinor = 0,
   serviceChargeMinor = 0,
   promotionIds,
+  taxEstimated,
 }: PaymentModalProps) {
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
@@ -709,6 +718,9 @@ export default function PaymentModal({
             ],
             // PROMO-3: the engine re-applies and re-validates server-side.
             ...(promotionIds && promotionIds.length > 0 ? { promotionIds } : {}),
+            // F2-6: the client's estimate claim — absent (falsy) means
+            // the tax was freshly computed and no stamp is requested.
+            ...(taxEstimated ? { taxEstimated: true } : {}),
             ...tenderSnapshot,
           } as CompleteSaleScopedArgs);
 
@@ -960,6 +972,9 @@ export default function PaymentModal({
             // PROMO-3: the engine re-applies and re-validates server-side.
             ...(promotionIds && promotionIds.length > 0 ? { promotionIds } : {}),
             attemptId: attemptIdRef.current ?? undefined,
+            // F2-6: the client's estimate claim — absent (falsy) means
+            // the tax was freshly computed and no stamp is requested.
+            ...(taxEstimated ? { taxEstimated: true } : {}),
             ...tenderSnapshot,
           } as CompleteSaleScopedArgs);
 

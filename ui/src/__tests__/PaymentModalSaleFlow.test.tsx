@@ -471,3 +471,66 @@ describe('PaymentModal — shortfall resolution', () => {
     });
   });
 });
+
+
+// ── taxEstimated claim (F2-6) ────────────────────────────────────────
+//
+// The claim must reach complete_sale_scoped ONLY when the caller flags
+// the displayed tax as an estimate; absent (fresh tax) means the payload
+// carries no claim at all — core stamps nothing.
+
+describe('PaymentModal — taxEstimated claim', () => {
+  beforeEach(() => {
+    invokeMock.mockImplementation(
+      (cmd: string) => defaultInvokeImpl(cmd) as unknown as Promise<unknown>,
+    );
+  });
+
+  afterEach(() => {
+    invokeMock.mockReset();
+  });
+
+  const completeArgs = () =>
+    (invokeMock.mock.calls as unknown[][])
+      .filter((c) => c[0] === 'complete_sale_scoped')      .map((c) => (c[1] as { args?: Record<string, unknown> } | undefined)?.args);
+
+  const mount = (overrides: Partial<React.ComponentProps<typeof PaymentModal>> = {}) =>
+    renderInAct(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+            {...overrides}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+
+  const completeOnce = async () => {
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await waitFor(() => expect(completeArgs().length).toBeGreaterThan(0));
+  };
+
+  it('sends taxEstimated: true when the cart estimate was flagged', async () => {
+    const view = await mount({ taxEstimated: true });
+    await completeOnce();
+    view.unmount();
+
+    expect(completeArgs()[0]).toMatchObject({ taxEstimated: true });
+  });
+
+  it('omits the claim entirely when the tax was freshly computed (default)', async () => {
+    const view = await mount();
+    await completeOnce();
+    view.unmount();
+
+    expect(completeArgs()[0]).not.toHaveProperty('taxEstimated');
+  });
+});

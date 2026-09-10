@@ -979,6 +979,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const cartTax = taxState.taxMinor;
   const cartTaxExclusive = taxState.hasExclusive ?? false;
   const cartTaxFresh = taxState.cacheFresh;
+  // Sale must be flagged for recompute whenever the shown tax was not
+  // freshly computed (warn estimate, or unknown after a failed compute).
+  // F2-6 threads this flag into sales.tax_estimate_note.
+  const taxEstimated = lines.length > 0 && !cartTaxFresh;
 
   // ── Discount modal ───────────────────────────────────────────
 
@@ -1427,6 +1431,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         userId={userId}
         tipMinor={tipAmount?.minor_units ?? 0}
         serviceChargeMinor={serviceChargeAmount?.minor_units ?? 0}
+        taxEstimated={taxEstimated}
         {...(sessionToken ? { sessionToken } : {})}
         selectedCustomer={selectedCustomer}
         {...(isEnabled(FEATURES.SERIAL_TRACKING) ? { serialNumbers } : {})}

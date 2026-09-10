@@ -2025,6 +2025,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
           tipMinor={tipAmount?.minor_units ?? 0}
           serviceChargeMinor={serviceChargeAmount?.minor_units ?? 0}
           promotionIds={appliedPromotions.map((p) => p.id)}
+          taxEstimated={taxEstimated}
           {...(sessionToken ? { sessionToken } : {})}
           tableNumber={tableNumber}
           onComplete={handlePaymentComplete}
