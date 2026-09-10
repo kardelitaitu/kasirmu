@@ -117,6 +117,130 @@ fn sanitize_details(details: &str) -> String {
     truncate_details(&redacted)
 }
 
+/// Shared WHERE-clause construction for every audit reader: the paged
+/// listing, the AUD-09 export and the security-event export
+/// ([`Store::list_audit_entries_export_filtered`]). One builder so the
+/// filters cannot drift apart — the old export duplicated the outcome/
+/// query clauses by hand, which is exactly how a third reader would
+/// inherit a fourth copy.
+///
+/// Clause order (and therefore parameter order): outcome, query, actions,
+/// actor, created_after, created_before, keyset cursor. `actions` keeps
+/// the page builder's fail-closed rule: an EMPTY allow-list matches
+/// nothing — a caller that forgets to populate it must not be rewarded
+/// with every audit row. `actor_user_id` is an EXACT audit_log.user_id
+/// match (journal D84 ruling 2): 'system' resolves the SYSTEM_ACTOR rows
+/// naturally because that is the literal column value, and no LIKE
+/// fuzzing is added — username-in-details guessing would be dishonest
+/// precision. `created_after`/`created_before` arrive already normalized
+/// to fixed-width ISO strings from the caller; the comparison is a plain
+/// string >= / < (lexicographic == chronological on fixed width), with
+/// `after` INCLUSIVE and `before` EXCLUSIVE (journal D84 ruling 3).
+fn build_audit_where(
+    outcome: Option<&str>,
+    query: Option<&str>,
+    actions: Option<&[&str]>,
+    actor_user_id: Option<&str>,
+    created_after: Option<&str>,
+    created_before: Option<&str>,
+    cursor: Option<(&str, &str)>,
+) -> (String, Vec<Box<dyn rusqlite::ToSql>>, usize) {
+    let mut where_clauses: Vec<String> = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let mut idx = 1usize;
+
+    if let Some(outcome) = outcome {
+        let trimmed = outcome.trim();
+        if !trimmed.is_empty() {
+            where_clauses.push(format!("outcome = ?{idx}"));
+            params.push(Box::new(trimmed.to_string()));
+            idx += 1;
+        }
+    }
+
+    if let Some(query) = query {
+        let trimmed = query.trim();
+        if !trimmed.is_empty() {
+            // Escape LIKE wildcards so literal % or _ in the query does not
+            // broaden the match (mirrors `search_customers`).
+            let escaped = trimmed
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            let pattern = format!("%{escaped}%");
+            where_clauses.push(format!(
+                "(action LIKE ?{idx} ESCAPE '\\' OR COALESCE(target_type, '') LIKE ?{idx} ESCAPE '\\' \
+                 OR COALESCE(target_id, '') LIKE ?{idx} ESCAPE '\\' OR user_id LIKE ?{idx} ESCAPE '\\')"
+            ));
+            params.push(Box::new(pattern));
+            idx += 1;
+        }
+    }
+
+    if let Some(actions) = actions {
+        if actions.is_empty() {
+            where_clauses.push("1 = 0".to_string());
+        } else {
+            let placeholders: Vec<String> = actions
+                .iter()
+                .map(|_| {
+                    let p = format!("?{idx}");
+                    idx += 1;
+                    p
+                })
+                .collect();
+            where_clauses.push(format!("action IN ({})", placeholders.join(", ")));
+            for action in actions {
+                params.push(Box::new(action.to_string()));
+            }
+        }
+    }
+
+    if let Some(actor) = actor_user_id {
+        let trimmed = actor.trim();
+        if !trimmed.is_empty() {
+            where_clauses.push(format!("user_id = ?{idx}"));
+            params.push(Box::new(trimmed.to_string()));
+            idx += 1;
+        }
+    }
+
+    if let Some(after) = created_after {
+        let trimmed = after.trim();
+        if !trimmed.is_empty() {
+            where_clauses.push(format!("created_at >= ?{idx}"));
+            params.push(Box::new(trimmed.to_string()));
+            idx += 1;
+        }
+    }
+
+    if let Some(before) = created_before {
+        let trimmed = before.trim();
+        if !trimmed.is_empty() {
+            where_clauses.push(format!("created_at < ?{idx}"));
+            params.push(Box::new(trimmed.to_string()));
+            idx += 1;
+        }
+    }
+
+    if let Some((ct, id)) = cursor {
+        where_clauses.push(format!(
+            "(created_at < ?{idx} OR (created_at = ?{idx} AND id < ?{}))",
+            idx + 1
+        ));
+        params.push(Box::new(ct.to_string()));
+        params.push(Box::new(id.to_string()));
+        idx += 2;
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", where_clauses.join(" AND "))
+    };
+    (where_sql, params, idx)
+}
+
 impl Store<'_> {
     /// The settings-table key the retention sweep sets while it deletes
     /// expired rows (migration 20260920's trigger carve-out). The
@@ -320,72 +444,9 @@ impl Store<'_> {
     ) -> Result<(Vec<AuditEntry>, u64, bool), CoreError> {
         let bounded = limit.clamp(1, 200);
 
-        let mut where_clauses: Vec<String> = Vec::new();
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        let mut idx = 1usize;
-
-        if let Some(outcome) = outcome {
-            let trimmed = outcome.trim();
-            if !trimmed.is_empty() {
-                where_clauses.push(format!("outcome = ?{idx}"));
-                params.push(Box::new(trimmed.to_string()));
-                idx += 1;
-            }
-        }
-
-        if let Some(query) = query {
-            let trimmed = query.trim();
-            if !trimmed.is_empty() {
-                // Escape LIKE wildcards so literal % or _ in the query does not
-                // broaden the match (mirrors `search_customers`).
-                let escaped = trimmed
-                    .replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_");
-                let pattern = format!("%{escaped}%");
-                where_clauses.push(format!(
-                    "(action LIKE ?{idx} ESCAPE '\\' OR COALESCE(target_type, '') LIKE ?{idx} ESCAPE '\\' \
-                     OR COALESCE(target_id, '') LIKE ?{idx} ESCAPE '\\' OR user_id LIKE ?{idx} ESCAPE '\\')"
-                ));
-                params.push(Box::new(pattern));
-                idx += 1;
-            }
-        }
-
-        if let Some(actions) = actions {
-            if actions.is_empty() {
-                where_clauses.push("1 = 0".to_string());
-            } else {
-                let placeholders: Vec<String> = actions
-                    .iter()
-                    .map(|_| {
-                        let p = format!("?{idx}");
-                        idx += 1;
-                        p
-                    })
-                    .collect();
-                where_clauses.push(format!("action IN ({})", placeholders.join(", ")));
-                for action in actions {
-                    params.push(Box::new(action.to_string()));
-                }
-            }
-        }
-
-        if let (Some(ct), Some(id)) = (before_created_at, before_id) {
-            where_clauses.push(format!(
-                "(created_at < ?{idx} OR (created_at = ?{idx} AND id < ?{}))",
-                idx + 1
-            ));
-            params.push(Box::new(ct.to_string()));
-            params.push(Box::new(id.to_string()));
-            idx += 2;
-        }
-
-        let where_sql = if where_clauses.is_empty() {
-            String::new()
-        } else {
-            format!(" WHERE {}", where_clauses.join(" AND "))
-        };
+        let cursor = before_created_at.and_then(|ct| before_id.map(|id| (ct, id)));
+        let (where_sql, mut params, idx) =
+            build_audit_where(outcome, query, actions, None, None, None, cursor);
 
         // Total matching rows (before the cursor) — powers the server-side
         // "X of Y" count and the unreviewed badge.
@@ -441,41 +502,62 @@ impl Store<'_> {
         outcome: Option<&str>,
         query: Option<&str>,
     ) -> Result<Vec<AuditEntry>, CoreError> {
-        let mut where_clauses: Vec<String> = Vec::new();
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        let mut idx = 1usize;
+        let (where_sql, mut params, idx) =
+            build_audit_where(outcome, query, None, None, None, None, None);
 
-        if let Some(outcome) = outcome {
-            let trimmed = outcome.trim();
-            if !trimmed.is_empty() {
-                where_clauses.push(format!("outcome = ?{idx}"));
-                params.push(Box::new(trimmed.to_string()));
-                idx += 1;
-            }
+        params.push(Box::new(MAX_AUDIT_EXPORT_ROWS));
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT id, user_id, action, target_type, target_id, details, outcome, created_at
+             FROM audit_log{where_sql} ORDER BY created_at DESC, id DESC LIMIT ?{idx}"
+        ))?;
+        let mut rows = stmt.query(rusqlite::params_from_iter(
+            params.iter().map(|p| p.as_ref()),
+        ))?;
+        let mut items: Vec<AuditEntry> = Vec::new();
+        while let Some(row) = rows.next()? {
+            items.push(AuditEntry {
+                id: row.get("id")?,
+                user_id: row.get("user_id")?,
+                action: row.get("action")?,
+                target_type: row.get("target_type")?,
+                target_id: row.get("target_id")?,
+                details: row.get("details")?,
+                outcome: row.get("outcome")?,
+                created_at: row.get("created_at")?,
+            });
         }
+        Ok(items)
+    }
 
-        if let Some(query) = query {
-            let trimmed = query.trim();
-            if !trimmed.is_empty() {
-                let escaped = trimmed
-                    .replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_");
-                let pattern = format!("%{escaped}%");
-                where_clauses.push(format!(
-                    "(action LIKE ?{idx} ESCAPE '\\' OR COALESCE(target_type, '') LIKE ?{idx} ESCAPE '\\' \
-                     OR COALESCE(target_id, '') LIKE ?{idx} ESCAPE '\\' OR user_id LIKE ?{idx} ESCAPE '\\')"
-                ));
-                params.push(Box::new(pattern));
-                idx += 1;
-            }
-        }
-
-        let where_sql = if where_clauses.is_empty() {
-            String::new()
-        } else {
-            format!(" WHERE {}", where_clauses.join(" AND "))
-        };
+    /// Return EVERY audit entry matching the security-event export filters
+    /// (owner ruling D61-7, journal D84): an actions allow-list, an exact
+    /// actor, and fixed-width ISO date bounds — for the security-event CSV
+    /// export. The SECURITY_ACTIONS allowlist itself stays in
+    /// audit_security.rs; this reader takes the already-restricted list and
+    /// fails closed on an empty one (the shared WHERE builder's rule).
+    ///
+    /// Reuses the paged listing's WHERE construction via
+    /// [`build_audit_where`] — no third copy of the filter logic — and
+    /// caps at [`MAX_AUDIT_EXPORT_ROWS`] exactly like AUD-09. Newest-first
+    /// `(created_at, id)` order, same deterministic snapshot shape.
+    pub fn list_audit_entries_export_filtered(
+        &self,
+        actions: Option<&[&str]>,
+        actor_user_id: Option<&str>,
+        created_after: Option<String>,
+        created_before: Option<String>,
+        outcome: Option<String>,
+        query: Option<String>,
+    ) -> Result<Vec<AuditEntry>, CoreError> {
+        let (where_sql, mut params, idx) = build_audit_where(
+            outcome.as_deref(),
+            query.as_deref(),
+            actions,
+            actor_user_id,
+            created_after.as_deref(),
+            created_before.as_deref(),
+            None,
+        );
 
         params.push(Box::new(MAX_AUDIT_EXPORT_ROWS));
         let mut stmt = self.conn.prepare(&format!(

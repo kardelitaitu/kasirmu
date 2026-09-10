@@ -933,3 +933,124 @@ fn audit_retention_bad_now_timestamp_fails_closed() {
     assert_eq!(audit_count(&conn), 1, "nothing deleted on error");
     assert_eq!(marker_count(&conn), 0);
 }
+
+// ── Filtered export (security-event export, owner ruling D61-7) ──
+
+#[test]
+fn filtered_export_actions_allowlist_restricts_rows() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    // Restricted to the two sale actions.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            Some(&["sale.create", "sale.void"]),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].id, "aud-2");
+    assert_eq!(items[1].id, "aud-1");
+    // Empty allow-list fails CLOSED: a caller that forgets to populate
+    // its allow-list must not be rewarded with every audit row (the
+    // shared WHERE builder's rule, carried into the export).
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(Some(&[]), None, None, None, None, None)
+        .unwrap();
+    assert!(items.is_empty());
+}
+
+#[test]
+fn filtered_export_actor_is_exact_user_id_match() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES ('aud-5', 'user-10', 'sale.create', 'sale', 'sale-10', '{}', 'success', '2025-01-01T15:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    // EXACT match (journal D84 ruling 2): user-1 must not pick up the
+    // user-10 row the way a LIKE filter would.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(None, Some("user-1"), None, None, None, None)
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|e| e.user_id == "user-1"));
+    // 'system' resolves the SYSTEM_ACTOR rows naturally — the column
+    // literal is the value.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(None, Some("system"), None, None, None, None)
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "aud-4");
+}
+
+#[test]
+fn filtered_export_date_bounds_inclusive_after_exclusive_before() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    // created_after is INCLUSIVE: aud-3 sits exactly at 13:00 and IS returned.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            None,
+            None,
+            Some("2025-01-01T13:00:00.000Z".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].id, "aud-4");
+    assert_eq!(items[1].id, "aud-3");
+    // created_before is EXCLUSIVE: aud-4 sits exactly at 14:00 and is NOT.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            None,
+            None,
+            None,
+            Some("2025-01-01T14:00:00.000Z".into()),
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 3);
+    assert!(items.iter().all(|e| e.id != "aud-4"));
+    // Fixed-width strftime values sort lexicographically == chronologically.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            None,
+            None,
+            Some("2025-01-01T12:05:00.000Z".into()),
+            Some("2025-01-01T13:00:00.000Z".into()),
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "aud-2");
+}
+
+#[test]
+fn filtered_export_combined_filters() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            Some(&["sale.create", "product.create"]),
+            Some("user-1"),
+            Some("2025-01-01T12:05:00.000Z".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    // sale.create falls before the `after` bound; product.create survives
+    // actions + actor + date together.
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "aud-3");
+}
