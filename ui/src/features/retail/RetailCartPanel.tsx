@@ -6,6 +6,7 @@ import { COURSES, courseLabel, courseEmoji } from '@/types/domain';
 import type { CartLine } from '@/types/domain';
 import type { CustomerDto } from '@/api/customers';
 import { clampRetailCartWidth } from './RetailCartPanel.constants';
+import type { CartTaxSeverity } from '@/hooks/useCartTax';
 
 // ── Grouped prop interfaces ────────────────────────────────────────
 
@@ -90,6 +91,13 @@ export interface RetailCartPanelProps {
   onUndoRemove: () => void;
   onDismissUndo: () => void;
   onEnsureCart: (currency: string) => void;
+
+  // F2-3 follow-up: estimate/stale-tax banner (retail twin of PosScreen's).
+  /** Cart-tax signature severity from useCartTax. Any non-'ok' severity
+   *  on a non-empty cart renders the localized retry banner. */
+  taxSeverity?: CartTaxSeverity;
+  /** Key-bump retry wired by the screen (remounts its CartTaxWatcher). */
+  onRetryTaxEstimate?: () => void;
 }
 
 /** Cart panel — cart lines table, undo bar, totals, action buttons, and the resize handle. */
@@ -117,6 +125,8 @@ export default function RetailCartPanel({
   onUndoRemove,
   onDismissUndo,
   onEnsureCart,
+  taxSeverity,
+  onRetryTaxEstimate,
   showCourseSelector = false,
 }: RetailCartPanelProps) {
   const { l10n } = useLocalization();
@@ -365,6 +375,18 @@ export default function RetailCartPanel({
                 <div className="retail-total-row">
                   <span>{l10n.getString('retail-total-tax')}</span>
                   <span>{formatMoney({ minor_units: totals.cartTax, currency: totals.subtotal?.currency ?? 'IDR' })}</span>
+                </div>
+              )}
+              {/* F2-3 follow-up: estimate/stale-tax banner — the retail
+                  twin of PosScreen's cart panel (severity warn/unknown/
+                  caution on a non-empty cart). Localized text is the
+                  accessible name; no aria-label attribute so the i18n
+                  attribute audit stays empty. */}
+              {lines.length > 0 && taxSeverity && taxSeverity !== 'ok' && onRetryTaxEstimate && (
+                <div className="retail-total-row retail-tax-estimate-banner" role="status" data-testid="retail-tax-estimate-banner">
+                  <Localized id="retry">
+                    <button type="button" className="retail-tax-estimate-retry" onClick={onRetryTaxEstimate}>Retry</button>
+                  </Localized>
                 </div>
               )}
               <div className="retail-total-row retail-total-row--grand" aria-live="polite" aria-atomic="true">

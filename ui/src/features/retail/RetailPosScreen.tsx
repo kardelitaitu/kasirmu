@@ -983,6 +983,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // freshly computed (warn estimate, or unknown after a failed compute).
   // F2-6 threads this flag into sales.tax_estimate_note.
   const taxEstimated = lines.length > 0 && !cartTaxFresh;
+  // F2-3 follow-up: retry affordance for the retail cart banner —
+  // bumping the key remounts the watcher and forces a fresh compute,
+  // the same key-bump pattern PosScreen uses; hook contract untouched.
+  const [taxRetryNonce, setTaxRetryNonce] = useState(0);
 
   // ── Discount modal ───────────────────────────────────────────
 
@@ -1461,9 +1465,10 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   return (
     <>
     <div className="retail-pos" data-theme={theme}>
-      {/* ── F2-3: cart-tax watcher — no in-fence retry: the retail
-           banner lives in RetailCartPanel (F2-3 follow-up) ── */}
+      {/* ── F2-3: cart-tax watcher — the key-bump remount below is the
+           banner retry; the banner itself renders in RetailCartPanel ── */}
       <CartTaxWatcher
+        key={taxRetryNonce}
         sessionToken={rawToken}
         lines={taxLines}
         currency={subtotal?.currency ?? 'IDR'}
@@ -1579,6 +1584,8 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
         <RetailCartPanel
           lines={lines}
           lineCount={lineCount}
+          taxSeverity={taxState.severity}
+          onRetryTaxEstimate={() => setTaxRetryNonce((n) => n + 1)}
           selectedCustomer={selectedCustomer}
           totals={{
             subtotal,

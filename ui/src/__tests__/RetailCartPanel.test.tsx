@@ -491,4 +491,49 @@ describe('RetailCartPanel — grand total tax arithmetic', () => {
     expect(document.querySelector('.retail-total-row--grand')?.textContent)
       .not.toMatch(/retail-total-tax|—/);
   });
+
+  // F2-3 follow-up: the retail twin of PosScreen's estimate/stale banner.
+  // The panel renders the localized retry affordance whenever the screen
+  // threads a non-'ok' severity on a non-empty cart; without the props
+  // (or with an empty cart) nothing changes, so the R36-19 isolation pin
+  // above still holds.
+  it('shows the estimate banner on warn severity and fires the retry', () => {
+    const onRetryTaxEstimate = vi.fn();
+    render(
+      <RetailCartPanel
+        {...makeProps({ taxSeverity: 'warn', onRetryTaxEstimate })}
+      />,
+    );
+    const banner = screen.getByTestId('retail-tax-estimate-banner');
+    expect(banner).toHaveAttribute('role', 'status');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetryTaxEstimate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the estimate banner on unknown severity after a failed compute', () => {
+    render(
+      <RetailCartPanel
+        {...makeProps({ taxSeverity: 'unknown', onRetryTaxEstimate: vi.fn() })}
+      />,
+    );
+    expect(screen.getByTestId('retail-tax-estimate-banner')).toBeInTheDocument();
+  });
+
+  it('hides the estimate banner when fresh or when the cart is empty', () => {
+    const { unmount } = render(
+      <RetailCartPanel
+        {...makeProps({ taxSeverity: 'ok', onRetryTaxEstimate: vi.fn() })}
+      />,
+    );
+    expect(screen.queryByTestId('retail-tax-estimate-banner')).toBeNull();
+    unmount();
+    // Empty cart: even a non-ok severity renders nothing (PosScreen parity —
+    // its banner is also guarded by lines.length > 0).
+    render(
+      <RetailCartPanel
+        {...makeProps({ taxSeverity: 'warn', onRetryTaxEstimate: vi.fn(), lines: [] })}
+      />,
+    );
+    expect(screen.queryByTestId('retail-tax-estimate-banner')).toBeNull();
+  });
 });
