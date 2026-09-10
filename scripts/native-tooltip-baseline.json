@@ -15,7 +15,6 @@
     "features/sales/WeightScaleWidget.tsx": 3,
     "features/workspaces/WorkspaceHome.tsx": 3,
     "features/inventory/StockAlertPanel.tsx": 2,
-    "features/locations/NodeTopologyEditor.tsx": 2,
     "features/memo/MemosScreen.tsx": 2,
     "features/offline/OfflineQueueScreen.tsx": 2,
     "features/restaurant/RestaurantMenu.tsx": 2,
@@ -27,7 +26,9 @@
     "features/design/DevToolbar.tsx": 0,
     "features/kds/KdsScreen.tsx": 1,
     "features/kiosk/KioskScreen.tsx": 1,
+    "features/locations/topologyAlignBar.tsx": 1,
     "features/locations/topologyToolRack.tsx": 1,
+    "features/locations/topologyWireLabelPills.tsx": 1,
     "features/retail/RetailCartPanel.tsx": 1,
     "features/retail/RetailHeader.tsx": 1,
     "features/sales/ReceiptPreview.tsx": 1
