@@ -1,4 +1,20 @@
 
+## 2026-09-10 — TDD: Trial deadline enforcement in offline grace and lifecycle state (core/subscription)
+
+**Context & Identified Weakness:**
+When a subscription had `is_trial() == true` and an explicit `trial_ends_at` deadline in its signed payload, `is_within_grace_period()` and `lifecycle_state()` previously evaluated exclusively against `self.expires_at` and granted the full offline grace window of the underlying tier (e.g. 14 days for Plus, 30 days for Premium). A trial subscription with contract expiry extended beyond the trial period could continue operating in an active/grace state after the trial had expired.
+
+**Changes & Design:**
+1. Updated `TenantSubscription::is_within_grace_period_at(now)` to check if `self.is_trial()` is true with a valid `trial_ends_at`. If `now > trial_end_utc`, it immediately returns `false` (0 offline grace days post-trial).
+2. Updated `TenantSubscription::lifecycle_state_at(now)` to immediately transition to `SubscriptionLifecycleState::Expired` if a trial's `trial_ends_at` deadline has elapsed.
+3. Added unit test `test_trial_expired_deadline_terminates_grace_and_lifecycle` asserting that an expired trial deadline terminates grace and triggers `SubscriptionLifecycleState::Expired` and `pos_read_only() == true`, even when `expires_at` is far in the future.
+
+**Verification:**
+- Verified RED phase: failed on `assertion failed: !sub.is_within_grace_period()`.
+- Verified GREEN phase: `test_trial_expired_deadline_terminates_grace_and_lifecycle` passed.
+- Full subscription suite passed (137 tests passed).
+- Formatted with `cargo fmt -p oz-core`.
+
 ## 2026-09-10 — TDD: Monotonic ledger timestamp evaluation for subscription grace and lifecycle (core/subscription)
 
 **Context & Identified Weakness:**

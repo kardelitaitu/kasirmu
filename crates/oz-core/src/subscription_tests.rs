@@ -1819,3 +1819,40 @@ fn tier_audit_retention_one_time_is_free() {
     // entitlement here either.
     assert_eq!(SubscriptionTier::OneTime.audit_retention_days(), None);
 }
+
+// ── Trial Grace & Expiry Enforcement ──────────────────────────────
+
+#[test]
+fn test_trial_expired_deadline_terminates_grace_and_lifecycle() {
+    // A Plus subscription with contract expiry in the future (+30 days),
+    // but marked as a trial with trial_ends_at in the past (-2 days).
+    let future_contract = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    let past_trial = (chrono::Utc::now() - chrono::Duration::days(2)).to_rfc3339();
+
+    let payload =
+        format!(r#"{{"tier_key":"plus","is_trial":true,"trial_ends_at":"{past_trial}"}}"#);
+    let mut sub = sub_with_payload(&payload);
+    sub.expires_at = Some(future_contract);
+
+    // Because trial_ends_at has passed and trials have 0 offline grace days,
+    // it must not be within grace, and its lifecycle must be Expired.
+    assert!(!sub.is_within_grace_period());
+    assert_eq!(sub.effective_tier(), SubscriptionTier::Free);
+    assert_eq!(sub.lifecycle_state(), SubscriptionLifecycleState::Expired);
+    assert!(sub.pos_read_only());
+
+    // Conversely, if trial_ends_at is in the future, it is Active and within grace.
+    let future_trial = (chrono::Utc::now() + chrono::Duration::days(5)).to_rfc3339();
+    let payload_active =
+        format!(r#"{{"tier_key":"plus","is_trial":true,"trial_ends_at":"{future_trial}"}}"#);
+    let mut sub_active = sub_with_payload(&payload_active);
+    sub_active.expires_at = Some((chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339());
+
+    assert!(sub_active.is_within_grace_period());
+    assert_eq!(sub_active.effective_tier(), SubscriptionTier::Plus);
+    assert_eq!(
+        sub_active.lifecycle_state(),
+        SubscriptionLifecycleState::Active
+    );
+    assert!(!sub_active.pos_read_only());
+}

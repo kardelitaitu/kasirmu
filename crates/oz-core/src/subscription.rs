@@ -542,6 +542,19 @@ impl TenantSubscription {
             Err(_) => return false, // Unparseable expiry → assume expired
         };
 
+        // When marked as a trial with an explicit trial_ends_at, the trial deadline
+        // strictly governs offline validity (0 offline grace days post-trial).
+        if self.is_trial() {
+            if let Some(ends_at_str) = self.trial_ends_at() {
+                if let Ok(trial_end) = chrono::DateTime::parse_from_rfc3339(&ends_at_str) {
+                    let trial_end_utc = trial_end.with_timezone(&chrono::Utc);
+                    if now > trial_end_utc {
+                        return false;
+                    }
+                }
+            }
+        }
+
         let grace_deadline = expiry + chrono::Duration::days(self.tier.offline_grace_days());
 
         now <= grace_deadline
@@ -807,6 +820,20 @@ impl TenantSubscription {
             return SubscriptionLifecycleState::Expired;
         };
         let expiry = expiry.with_timezone(&chrono::Utc);
+
+        // When marked as a trial with an explicit trial_ends_at, the trial deadline
+        // strictly governs offline validity (0 offline grace days post-trial).
+        if self.is_trial() {
+            if let Some(ends_at_str) = self.trial_ends_at() {
+                if let Ok(trial_end) = chrono::DateTime::parse_from_rfc3339(&ends_at_str) {
+                    let trial_end_utc = trial_end.with_timezone(&chrono::Utc);
+                    if now > trial_end_utc {
+                        return SubscriptionLifecycleState::Expired;
+                    }
+                }
+            }
+        }
+
         if now <= expiry {
             return SubscriptionLifecycleState::Active;
         }
