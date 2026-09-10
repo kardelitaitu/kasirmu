@@ -829,3 +829,7 @@ pub async fn invalidate_location_cache_scoped(
     invalidate_location_cache();
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "inventory_tests.rs"]
+mod tests;

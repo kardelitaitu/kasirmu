@@ -1,7 +1,28 @@
+//! Unit tests for the inventory command bodies (Wave-C test relocation:
+//! moved out of `apps/desktop-client/src/commands/inventory_tests.rs`).
+//!
+//! Mounted at the foot of `inventory.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the 24 bridge command bodies and the module's
+//! `Store` import exactly as the desktop sibling module did. The desktop
+//! file's `scoped_state_with_token` harness (which built
+//! `AppState::for_test_with_conn`, swapped in an isolated
+//! `StoreDatabaseManager` and seeded a session) maps 1:1 onto the crate's
+//! headless `TestBridge` — fresh migrated global DB via `with_conn`,
+//! isolated store-db manager via `with_db_manager`, session seeding via
+//! `sessions()`, and the unique per-test store directory replaces
+//! `tempfile::tempdir()` (not a dev-dependency of this crate). Every case
+//! keeps its `#[tokio::test]` + `.await` (the bridge bodies are async) and
+//! the `AppError` arms map 1:1 onto `BridgeError`; the permission-denied
+//! assertions exercise the bridge's global-DB gates exactly as the shell's
+//! `require_inventory_permission` did.
+
 use super::*;
+use crate::testing::TestBridge;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use oz_core::db::Store;
 use oz_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 /// Seed a user with inventory:view but NOT inventory:locations_manage.
 /// The new role-staff preset grants both, so a limited user must use a
@@ -29,18 +50,50 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn scoped_state_with_token(
+/// Instance counter disambiguating store-db directories within one process.
+static STORE_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Unique per-test directory for the isolated store-db manager. The manager
+/// creates the directory lazily on first `open_store`; leftovers are left
+/// for the OS temp cleaner, exactly like the harness's own store roots (the
+/// desktop file used `tempfile::tempdir()`, which is not a dev-dependency of
+/// this crate).
+fn unique_store_dir() -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "oz-bridge-inventory-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        STORE_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+/// Isolated store-db manager over a fresh directory — the direct twin of the
+/// desktop `scoped_state_with_token` harness's
+/// `StoreDatabaseManager::new(temp_dir, migrations::ALL)`. Seeding tests
+/// open and mutate their store DB through this handle *before* it is handed
+/// to the bridge, because `TestBridge` keeps the manager private.
+fn store_manager() -> StoreDatabaseManager {
+    StoreDatabaseManager::new(unique_store_dir(), oz_core::migrations::ALL)
+}
+
+/// `TestBridge` with a fresh migrated global DB, an isolated store-db dir
+/// and one seeded session (the bridge twin of the desktop
+/// `scoped_state_with_token` + `mock_app` pair).
+fn scoped_bridge(
     conn: rusqlite::Connection,
     token: &str,
     user_id: &str,
     role_id: &str,
     store_id: &str,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> TestBridge {
+    let bridge = TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager(store_manager());
+    bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -53,7 +106,7 @@ fn scoped_state_with_token(
             0,
         ),
     );
-    state
+    bridge
 }
 
 // ── LOC-06: least-privilege permission matrix ──────────────────────
@@ -65,21 +118,17 @@ async fn cashier_can_list_locations_but_cannot_create_them() {
     // are management capabilities, not sales side-effects).
     let conn = oz_core::migrations::fresh_db();
     seed_cashier_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-cashier",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     // Read: cashier is allowed. Migrations seed two default locations,
     // so the list is non-empty — the point is the read path works.
-    let listed = list_inventory_locations("cashier-token".into(), app.state())
+    let listed = list_inventory_locations(&bridge.ctx(), "cashier-token")
         .await
         .unwrap();
     assert!(
@@ -89,17 +138,17 @@ async fn cashier_can_list_locations_but_cannot_create_them() {
 
     // Mutation: cashier is denied with PermissionDenied.
     let created = create_inventory_location(
-        "cashier-token".into(),
+        &bridge.ctx(),
+        "cashier-token",
         "Rogue Loc".into(),
         "store".into(),
         String::new(),
-        app.state(),
     )
     .await;
-    assert!(matches!(created, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(created, Err(BridgeError::PermissionDenied(_))));
 
     // And the denied create must not have leaked a row.
-    let after = list_inventory_locations("cashier-token".into(), app.state())
+    let after = list_inventory_locations(&bridge.ctx(), "cashier-token")
         .await
         .unwrap();
     assert!(
@@ -112,30 +161,26 @@ async fn cashier_can_list_locations_but_cannot_create_them() {
 async fn owner_can_create_and_deactivate_locations() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     let id = create_inventory_location(
-        "owner-token".into(),
+        &bridge.ctx(),
+        "owner-token",
         "Backroom".into(),
         "warehouse".into(),
         "Secondary storage".into(),
-        app.state(),
     )
     .await
     .unwrap();
     assert!(!id.is_empty());
 
-    let deactivated = deactivate_inventory_location("owner-token".into(), id, app.state()).await;
+    let deactivated = deactivate_inventory_location(&bridge.ctx(), "owner-token", id).await;
     assert!(deactivated.is_ok());
 }
 
@@ -147,19 +192,15 @@ async fn sales_process_gated_inventory_commands_authorise_via_global_db() {
     // check would deny every caller with "user not found".
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let shifts = list_inventory_shifts("owner-token".into(), app.state())
+    let shifts = list_inventory_shifts(&bridge.ctx(), "owner-token")
         .await
         .unwrap();
     assert!(shifts.is_empty());
@@ -169,12 +210,20 @@ async fn sales_process_gated_inventory_commands_authorise_via_global_db() {
 async fn location_read_is_scoped_to_session_store() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let manager = store_manager();
+
+    // Seed a location ONLY into store A's database. The guard is scoped
+    // to a block so it drops before the async commands below.
+    {
+        let store_a_conn = manager.open_store("store-a").unwrap();
+        let store_a_db = store_a_conn.lock().unwrap();
+        Store::new(&store_a_db)
+            .create_inventory_location("Store A Only", "warehouse", "")
+            .unwrap();
+    }
+    let bridge = TestBridge::new().with_conn(conn).with_db_manager(manager);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        bridge.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -189,25 +238,10 @@ async fn location_read_is_scoped_to_session_store() {
         );
     }
 
-    // Seed a location ONLY into store A's database. The guard is scoped
-    // to a block so it drops before the async commands below.
-    {
-        let store_a_conn = state.db_manager.open_store("store-a").unwrap();
-        let store_a_db = store_a_conn.lock().unwrap();
-        Store::new(&store_a_db)
-            .create_inventory_location("Store A Only", "warehouse", "")
-            .unwrap();
-    }
-
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let store_a = list_inventory_locations("store-a-token".into(), app.state())
+    let store_a = list_inventory_locations(&bridge.ctx(), "store-a-token")
         .await
         .unwrap();
-    let store_b = list_inventory_locations("store-b-token".into(), app.state())
+    let store_b = list_inventory_locations(&bridge.ctx(), "store-b-token")
         .await
         .unwrap();
     assert!(
@@ -226,40 +260,36 @@ async fn location_read_is_scoped_to_session_store() {
 async fn owner_can_update_location_name_and_type() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     let id = create_inventory_location(
-        "owner-token".into(),
+        &bridge.ctx(),
+        "owner-token",
         "Original".into(),
         "warehouse".into(),
         String::new(),
-        app.state(),
     )
     .await
     .unwrap();
 
     update_inventory_location(
-        "owner-token".into(),
+        &bridge.ctx(),
+        "owner-token",
         id.clone(),
         "Renamed".into(),
         "store".into(),
         "".into(),
-        app.state(),
     )
     .await
     .unwrap();
 
-    let listed = list_inventory_locations("owner-token".into(), app.state())
+    let listed = list_inventory_locations(&bridge.ctx(), "owner-token")
         .await
         .unwrap();
     let loc = listed.iter().find(|l| l.id == id).unwrap();
@@ -271,52 +301,44 @@ async fn owner_can_update_location_name_and_type() {
 async fn cashier_cannot_update_location() {
     let conn = oz_core::migrations::fresh_db();
     seed_cashier_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-cashier",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     // First create a location as owner to have something to update.
     let owner_conn = oz_core::migrations::fresh_db();
     seed_owner_user(&owner_conn);
-    let owner_state = scoped_state_with_token(
+    let owner_bridge = scoped_bridge(
         owner_conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let owner_app = tauri::test::mock_builder()
-        .manage(owner_state)
-        .build(tauri::generate_context!())
-        .unwrap();
     let id = create_inventory_location(
-        "owner-token".into(),
+        &owner_bridge.ctx(),
+        "owner-token",
         "Target".into(),
         "warehouse".into(),
         String::new(),
-        owner_app.state(),
     )
     .await
     .unwrap();
 
     let result = update_inventory_location(
-        "cashier-token".into(),
+        &bridge.ctx(),
+        "cashier-token",
         id,
         "Hacked".into(),
         "warehouse".into(),
         "".into(),
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── SHIFT-01: inventory shift lifecycle ────────────────────────────
@@ -325,17 +347,11 @@ async fn cashier_cannot_update_location() {
 async fn owner_can_start_and_end_inventory_shift() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
-        conn,
-        "owner-token",
-        "user-owner",
-        "role-owner",
-        "store-owner",
-    );
+    let manager = store_manager();
     // Seed user, role, and terminal in the store DB.
     // inventory_shifts has FKs to users(id) and terminals(id).
     {
-        let store_arc = state.db_manager.open_store("store-owner").unwrap();
+        let store_arc = manager.open_store("store-owner").unwrap();
         let db = store_arc.lock().unwrap();
         let store = Store::new(&db);
         store.seed_default_roles().unwrap();
@@ -356,47 +372,52 @@ async fn owner_can_start_and_end_inventory_shift() {
         )
         .unwrap();
     }
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = TestBridge::new().with_conn(conn).with_db_manager(manager);
+    bridge.sessions().write().unwrap().insert(
+        "owner-token".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-owner".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
 
     // Create a location first.
     let loc_id = create_inventory_location(
-        "owner-token".into(),
+        &bridge.ctx(),
+        "owner-token",
         "Warehouse".into(),
         "warehouse".into(),
         String::new(),
-        app.state(),
     )
     .await
     .unwrap();
 
     // Start shift.
-    let shift = start_inventory_shift(
-        "owner-token".into(),
-        loc_id,
-        "Morning count".into(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let shift = start_inventory_shift(&bridge.ctx(), "owner-token", loc_id, "Morning count".into())
+        .await
+        .unwrap();
     assert!(!shift.id.is_empty());
 
     // Active shift should exist.
-    let active = get_active_inventory_shift("owner-token".into(), app.state())
+    let active = get_active_inventory_shift(&bridge.ctx(), "owner-token")
         .await
         .unwrap();
     assert!(active.is_some());
     assert_eq!(active.unwrap().id, shift.id);
 
     // End shift.
-    end_inventory_shift("owner-token".into(), shift.id, app.state())
+    end_inventory_shift(&bridge.ctx(), "owner-token", shift.id)
         .await
         .unwrap();
 
     // No active shift after ending.
-    let after = get_active_inventory_shift("owner-token".into(), app.state())
+    let after = get_active_inventory_shift(&bridge.ctx(), "owner-token")
         .await
         .unwrap();
     assert!(after.is_none());
@@ -410,19 +431,15 @@ async fn owner_can_start_and_end_inventory_shift() {
 async fn owner_can_list_inventory_shifts() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let shifts = list_inventory_shifts("owner-token".into(), app.state())
+    let shifts = list_inventory_shifts(&bridge.ctx(), "owner-token")
         .await
         .unwrap();
     assert!(shifts.is_empty(), "no shifts yet");
@@ -434,19 +451,15 @@ async fn owner_can_list_inventory_shifts() {
 async fn owner_can_list_inventory_transactions() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let txns = list_inventory_transactions("owner-token".into(), app.state())
+    let txns = list_inventory_transactions(&bridge.ctx(), "owner-token")
         .await
         .unwrap();
     assert!(txns.is_empty(), "no transactions yet");
@@ -460,23 +473,19 @@ async fn owner_can_list_inventory_transactions() {
 async fn owner_can_get_low_stock_alerts() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     let result = get_low_stock_alerts_at_location_scoped(
-        "owner-token".into(),
+        &bridge.ctx(),
+        "owner-token",
         "loc-default".into(),
         10,
-        app.state(),
     )
     .await;
     assert!(result.is_ok(), "owner should get low stock alerts");
@@ -488,20 +497,16 @@ async fn owner_can_get_low_stock_alerts() {
 async fn owner_can_get_active_stock_alerts() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     let result =
-        active_stock_alerts_scoped("owner-token".into(), "loc-default".into(), app.state()).await;
+        active_stock_alerts_scoped(&bridge.ctx(), "owner-token", "loc-default".into()).await;
     assert!(result.is_ok(), "owner should get active stock alerts");
     assert!(result.unwrap().is_empty());
 }
@@ -512,24 +517,17 @@ async fn owner_can_get_active_stock_alerts() {
 async fn acknowledge_nonexistent_alert_returns_error() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-owner",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = acknowledge_stock_alert_scoped(
-        "owner-token".into(),
-        "nonexistent-alert".into(),
-        app.state(),
-    )
-    .await;
+    let result =
+        acknowledge_stock_alert_scoped(&bridge.ctx(), "owner-token", "nonexistent-alert".into())
+            .await;
     assert!(result.is_err(), "nonexistent alert should fail");
 }
 
@@ -539,59 +537,47 @@ async fn acknowledge_nonexistent_alert_returns_error() {
 async fn cashier_denied_inventory_shifts() {
     let conn = oz_core::migrations::fresh_db();
     seed_cashier_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-cashier",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     // Cashier has inventory:view but NOT SALES_PROCESS.
-    let result = list_inventory_shifts("cashier-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = list_inventory_shifts(&bridge.ctx(), "cashier-token").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn cashier_denied_inventory_transactions() {
     let conn = oz_core::migrations::fresh_db();
     seed_cashier_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-cashier",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = list_inventory_transactions("cashier-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = list_inventory_transactions(&bridge.ctx(), "cashier-token").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn cashier_denied_delete_stock_threshold() {
     let conn = oz_core::migrations::fresh_db();
     seed_cashier_user(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_bridge(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-cashier",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = delete_stock_threshold("cashier-token".into(), "any-id".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = delete_stock_threshold(&bridge.ctx(), "cashier-token", "any-id".into()).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }

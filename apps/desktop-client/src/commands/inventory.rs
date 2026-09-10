@@ -479,7 +479,3 @@ pub async fn void_pending_sale(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "inventory_tests.rs"]
-mod tests;
