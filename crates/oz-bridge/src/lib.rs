@@ -56,16 +56,42 @@ pub mod security;
 /// Staff and role command bodies (Wave B). Not yet extracted.
 pub mod staff;
 
+/// EDC payment-terminal command bodies (Wave D). Not yet extracted.
+pub mod edc;
+/// Gift-card command bodies (Wave D). Not yet extracted.
+pub mod gift_cards;
+/// HAL hardware control command bodies (Wave D). Not yet extracted.
+pub mod hardware;
 /// Inventory CRUD and stock-adjustment command bodies (Wave C). Not yet extracted.
 pub mod inventory;
 /// Stock-count command bodies (Wave C). Not yet extracted.
 pub mod inventory_counts;
+/// Kitchen-display command bodies (Wave D). Not yet extracted.
+pub mod kds;
+/// KDS device-registration command bodies (Wave D). Not yet extracted.
+pub mod kds_device;
+/// KDS order-routing command bodies (Wave D). Not yet extracted.
+pub mod kds_routing;
 /// Accounts-payable command bodies (Wave C). Not yet extracted.
 pub mod payables;
+/// POS cart, checkout and held-bill command bodies (Wave D). Not yet extracted.
+pub mod pos;
+/// Promotion command bodies (Wave D). Not yet extracted.
+pub mod promotions;
 /// Purchase-order command bodies (Wave C). Not yet extracted.
 pub mod purchasing;
+/// Receipt-format template command bodies (Wave D). Not yet extracted.
+pub mod receipt_format;
+/// Refund command bodies (Wave D). Not yet extracted.
+pub mod refunds;
+/// Weight-scale command bodies (Wave D). Not yet extracted.
+pub mod scale;
+/// Cash-shift command bodies (Wave D). Not yet extracted.
+pub mod shifts;
 /// Inter-location stock-transfer command bodies (Wave C). Not yet extracted.
 pub mod stock_transfers;
+/// Void command bodies (Wave D). Not yet extracted.
+pub mod void;
 
 #[cfg(test)]
 mod testing;

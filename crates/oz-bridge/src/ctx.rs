@@ -23,13 +23,37 @@ use oz_core::cache::Cache;
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
 use oz_core::session::SessionContext;
+use oz_hal::DriverRegistry;
+use oz_plugin::PluginManager;
 use oz_security::mask::mask_token;
 use platform_core::StoreDatabaseManager;
 use platform_kernel::Kernel;
 use rusqlite::{Connection, OptionalExtension};
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::sync::{Mutex, MutexGuard, oneshot};
 
 use crate::error::BridgeError;
+
+/// The bridge's tauri-free stand-in for `tauri::Emitter`.
+///
+/// Wave D commands (kds, hardware, pos) broadcast UI events, but no tauri
+/// type may enter this crate: the shell implements this object-safe trait over
+/// its `AppHandle` (`commands/authz.rs::TauriEventSink`) and injects it as
+/// [`BridgeCtx::emitter`]. A recording mock serves headless tests, and `None`
+/// — the headless default — makes every emit a silent no-op, exactly matching
+/// the shell's `if let Some(app) = state.app.as_ref()` pattern: a lost UI
+/// event is never a command failure.
+pub trait EventSink: Send + Sync {
+    /// Broadcast `event` to the frontend with `payload`.
+    fn emit(&self, event: &'static str, payload: serde_json::Value);
+
+    /// Broadcast a UI-facing event.
+    ///
+    /// The desktop sink only ever serves the UI, so the default forwards to
+    /// [`EventSink::emit`]; a sink with a second destination overrides this.
+    fn emit_ui(&self, event: &'static str, payload: serde_json::Value) {
+        self.emit(event, payload);
+    }
+}
 
 /// Everything a headless command body needs, borrowed from `AppState`.
 pub struct BridgeCtx<'a> {
@@ -51,6 +75,17 @@ pub struct BridgeCtx<'a> {
     pub media_cache_dir: Option<PathBuf>,
     /// HMAC key for picker tickets (copied: minted per boot, tests seed their own).
     pub picker_ticket_secret: Vec<u8>,
+    /// HAL driver registry: printers, scanners, drawers, displays, EDC, scales.
+    pub registry: &'a DriverRegistry,
+    /// Optional plugin manager for custom Lua business rules (`None` when no
+    /// `plugins/` directory exists or loading failed).
+    pub plugins: &'a Mutex<Option<PluginManager>>,
+    /// UI event sink built from the shell's `AppHandle` (`None` headless).
+    pub emitter: Option<Arc<dyn EventSink>>,
+    /// Cancel token of the barcode-scanner poll loop: the shell keeps the
+    /// `oneshot::Sender` while a loop is running; dropping or signalling it
+    /// stops the loop gracefully.
+    pub scanner_cancel: &'a Mutex<Option<oneshot::Sender<()>>>,
 }
 
 /// Map a gate denial to the client's `permissionDenied` wire shape.

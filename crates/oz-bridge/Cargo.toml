@@ -21,11 +21,14 @@ hmac = { workspace = true }
 image = { workspace = true }
 modules-currency = { workspace = true }
 oz-core = { workspace = true }
+oz-hal = { workspace = true }
+oz-plugin = { workspace = true }
 oz-security = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -33,7 +36,6 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 webp = { workspace = true }
 
-# Relocated Wave-A unit tests serialize DTOs directly (currency_tests.rs,
-# product_variants_tests.rs); nothing in [dependencies] needs serde_json.
-[dev-dependencies]
-serde_json = { workspace = true }
+# serde_json is a Wave D runtime dependency: EventSink payloads and the kds/pos
+# command bodies serialize JSON at runtime. It used to live in [dev-dependencies]
+# for the relocated Wave-A tests, which still resolve it from [dependencies].

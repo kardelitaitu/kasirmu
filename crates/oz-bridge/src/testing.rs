@@ -24,12 +24,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use oz_core::cache::Cache;
 use oz_core::migrations;
 use oz_core::session::SessionContext;
+use oz_hal::DriverRegistry;
+use oz_plugin::PluginManager;
 use platform_core::StoreDatabaseManager;
 use platform_kernel::Kernel;
 use rusqlite::Connection;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 
-use crate::ctx::BridgeCtx;
+use crate::ctx::{BridgeCtx, EventSink};
 
 /// Session TTL the harness stamps into contexts: the same 24-hour default
 /// `AppState::for_test` uses (production reads `session.ttl_seconds`).
@@ -104,6 +106,15 @@ pub struct TestBridge {
     /// HMAC key for picker tickets (empty by default; seed it to exercise the
     /// `picker` paths).
     picker_ticket_secret: Vec<u8>,
+    /// Empty HAL registry (Wave D fields are injected, never probed by the
+    /// relocated suites).
+    registry: Arc<DriverRegistry>,
+    /// No plugin manager (headless default, mirroring `AppState`).
+    plugins: Arc<Mutex<Option<PluginManager>>>,
+    /// Event sink: `None` = silent no-op; see `with_emitter`.
+    emitter: Option<Arc<dyn EventSink>>,
+    /// Unused scanner-cancel slot (hardware tests inject their own).
+    scanner_cancel: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
 
 impl TestBridge {
@@ -130,6 +141,10 @@ impl TestBridge {
             terminal_id: Arc::new(Mutex::new(None)),
             media_cache_dir: None,
             picker_ticket_secret: Vec::new(),
+            registry: Arc::new(DriverRegistry::new()),
+            plugins: Arc::new(Mutex::new(None)),
+            emitter: None,
+            scanner_cancel: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -184,6 +199,13 @@ impl TestBridge {
         Arc::clone(&self.sessions)
     }
 
+    /// Install a UI event sink (Wave D kds/hardware emit-path tests).
+    #[must_use]
+    pub fn with_emitter(mut self, sink: Arc<dyn EventSink>) -> Self {
+        self.emitter = Some(sink);
+        self
+    }
+
     /// Borrow a headless `BridgeCtx` over this bridge's state.
     ///
     /// The context borrows from `&self`, so it must not outlive the
@@ -200,6 +222,10 @@ impl TestBridge {
             terminal_id: &self.terminal_id,
             media_cache_dir: self.media_cache_dir.clone(),
             picker_ticket_secret: self.picker_ticket_secret.clone(),
+            registry: &self.registry,
+            plugins: &self.plugins,
+            emitter: self.emitter.clone(),
+            scanner_cancel: &self.scanner_cancel,
         }
     }
 }

@@ -4373,6 +4373,8 @@ dependencies = [
  "image",
  "modules-currency",
  "oz-core",
+ "oz-hal",
+ "oz-plugin",
  "oz-security",
  "platform-core",
  "platform-kernel",

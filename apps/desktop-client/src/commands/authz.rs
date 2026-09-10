@@ -18,6 +18,28 @@ use oz_core::session::SessionContext;
 use crate::error::AppError;
 use crate::state::AppState;
 
+use std::sync::Arc;
+
+use oz_bridge::ctx::EventSink;
+use tauri::{AppHandle, Emitter};
+
+/// [`EventSink`] over the shell's `AppHandle`.
+///
+/// Wave D bridge bodies emit UI events through the injected sink instead of a
+/// tauri handle, which keeps `oz-bridge` headless. Built only when
+/// `AppState::app` holds a handle (`None` in headless/test contexts).
+struct TauriEventSink {
+    handle: AppHandle,
+}
+
+impl EventSink for TauriEventSink {
+    fn emit(&self, event: &'static str, payload: serde_json::Value) {
+        // Mirrors the shell's `let _ = app.emit(...)`: a lost UI event is
+        // never a command failure.
+        let _ = self.handle.emit(event, payload);
+    }
+}
+
 /// Map a gate denial to the client's `permissionDenied` wire shape.
 ///
 /// `Store::require_permission` returns `CoreError::PermissionDenied` for
@@ -188,6 +210,15 @@ impl crate::state::AppState {
             terminal_id: &self.terminal_id,
             media_cache_dir,
             picker_ticket_secret: self.picker_ticket_secret.clone(),
+            registry: &self.registry,
+            plugins: &self.plugins,
+            emitter: self.app.as_ref().map(|app| {
+                let sink = TauriEventSink {
+                    handle: app.clone(),
+                };
+                Arc::new(sink) as Arc<dyn EventSink>
+            }),
+            scanner_cancel: &self.scanner_cancel,
         }
     }
 }
