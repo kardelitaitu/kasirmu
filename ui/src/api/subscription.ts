@@ -187,8 +187,9 @@ export type OverQuotaSeverity = 'over' | 'at';
  *  - a **tenant-global** marker, where `resourceType` equals `dimension` and
  *    `resourceId` is the tenant id (the five tracked dimensions); and
  *  - a **per-location** marker (section J B3), where `resourceType` is a
- *    resource kind (`kds_screen`, `warehouse`) and `resourceId` is the **store
- *    id**, so the row carries the target its own remediation action needs.
+ *    resource kind (`kds_screen`, `warehouse`, `topology_node`) and
+ *    `resourceId` is the **store id**, so the row carries the target its own
+ *    remediation action needs.
  *
  *  Per-location rows are computed at read time by visiting each store
  *  database; only the tenant-global ones are persisted. Use
@@ -228,7 +229,14 @@ export interface OverQuotaReport {
 
 /** Resource kinds that are capped per location rather than per tenant (section J
  *  B3). Anything else in `markers` is a tenant-global dimension marker. */
-const PER_LOCATION_RESOURCE_TYPES: readonly string[] = ['kds_screen', 'warehouse'];
+const PER_LOCATION_RESOURCE_TYPES: readonly string[] = [
+  'kds_screen',
+  'warehouse',
+  // The per-store aggregate row (marker S3): non-archived instances against
+  // the SUM of the per-location caps, over when ≥1 instance was
+  // quota-suspended. Read-computed by the desktop fan-out, never persisted.
+  'topology_node',
+];
 
 /** Whether a marker row describes one location rather than the whole tenant. */
 export function isPerLocationMarker(row: OverQuotaMarkerRow): boolean {

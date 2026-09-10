@@ -19,6 +19,11 @@ settings-license-quota-dim-products = Produk
 # §J B3 — cap KDS per lokasi. Tidak ada baris pemakaian tingkat tenant untuk
 # ini, jadi labelnya tetap diperlukan meski dimensinya bukan kuota tenant.
 settings-license-quota-dim-kds-screens = Layar KDS (lokasi ini)
+# Marker S4 — agregat node topologi per toko: satu baris per toko yang
+# menghitung instance non-arsip terhadap JUMLAH batas per lokasi, berlebih
+# sejak ≥1 instance harus ditangguhkan kuota. Dihitung saat dibaca, tidak
+# pernah disimpan.
+settings-license-quota-dim-topology-nodes = Node topologi (toko ini)
 # §J B3 — baris yang dibatasi per lokasi, bukan per tenant.
 settings-license-quota-loc-aria = Batas kuota per lokasi
 settings-license-quota-loc-title = Batas per lokasi

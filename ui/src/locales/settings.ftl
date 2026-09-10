@@ -21,6 +21,10 @@ settings-license-quota-dim-products = Products
 # needs a label of its own even though it is not a QuotaDimension in the
 # tenant-global sense.
 settings-license-quota-dim-kds-screens = KDS screens (this location)
+# Marker S4 — the per-store topology-node aggregate: one row per store counting
+# its non-archived instances against the SUM of the per-location caps, over the
+# moment ≥1 instance had to be quota-suspended. Read-computed, never persisted.
+settings-license-quota-dim-topology-nodes = Topology nodes (this store)
 # §J B3 — rows capped per location rather than per tenant.
 settings-license-quota-loc-aria = Per-location quota limits
 settings-license-quota-loc-title = Per-location limits

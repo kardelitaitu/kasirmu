@@ -37,7 +37,7 @@ const { invokeMock, reportHandler } = vi.hoisted(() => {
   let handler: ((cmd: string, args?: unknown) => Promise<unknown>) | null = null;
   const impl = (cmd: string, args?: unknown): Promise<unknown> => {
     if (handler) return handler(cmd, args);
-    if (cmd === 'get_over_quota_report') {
+    if (cmd === 'get_over_quota_report_scoped') {
       return Promise.resolve({
         tierKey: 'premium',
         tierName: 'Premium',
@@ -159,7 +159,9 @@ describe('OverQuotaCard', () => {
     expect(screen.queryByTestId('over-quota-over')).not.toBeInTheDocument();
     expect(screen.queryByTestId('over-quota-failed')).not.toBeInTheDocument();
     expect(
-      invokeMock.mock.calls.filter(([cmd]) => cmd === 'get_over_quota_report'),
+      // W6-C re-wired the read to the scoped command; the filter tracks the
+      // call the card actually makes, or the count is always 0.
+      invokeMock.mock.calls.filter(([cmd]) => cmd === 'get_over_quota_report_scoped'),
     ).toHaveLength(1);
   });
 
@@ -277,7 +279,9 @@ describe('OverQuotaCard', () => {
       expect(screen.queryByTestId('over-quota-failed')).not.toBeInTheDocument();
       expect(screen.getByText('5 of 2 — 3 over')).toBeInTheDocument();
     });
-    const calls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'get_over_quota_report');
+    const calls = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === 'get_over_quota_report_scoped',
+    );
     expect(calls).toHaveLength(2);
   });
 
@@ -381,29 +385,45 @@ describe('OverQuotaCard', () => {
       current: 4,
       markedAt: '2026-09-09T00:00:00.000Z',
     };
+    // Marker S4: the third per-location kind. The label lookup used to be a
+    // two-way ternary whose else branch was the WAREHOUSES label, so this row
+    // would have rendered mislabeled; the map lookup must name it its own key.
+    const aggregate: OverQuotaMarkerRow = {
+      resourceId: 'store-7',
+      resourceType: 'topology_node',
+      dimension: 'topology_nodes',
+      severity: 'over',
+      limit: 5,
+      current: 9,
+      markedAt: '2026-09-10T00:00:00.000Z',
+    };
     const sent: unknown[] = [];
     reportHandler.set((cmd, args) => {
       if (cmd === 'suspend_surplus_workspace_instances_scoped') {
         sent.push(args);
         return Promise.resolve(2);
       }
-      return Promise.resolve(reportWith([row('locations', 5, 1)], [other]));
+      return Promise.resolve(reportWith([row('locations', 5, 1)], [other, aggregate]));
     });
     renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByTestId('over-quota-locations')).toBeInTheDocument();
     });
     // The dimension label resolves from the real FTL — proving the key for a
-    // dimension that has no tenant-global usage row was actually added.
+    // dimension that has no tenant-global usage row was actually added — and
+    // the topology aggregate gets its OWN label, not the warehouses one.
     expect(screen.getByText('KDS screens (this location)')).toBeInTheDocument();
-    expect(screen.getByTestId('over-quota-location-row')).toBeInTheDocument();
+    expect(screen.getByText('Topology nodes (this store)')).toBeInTheDocument();
+    expect(screen.queryByText('Warehouse stock points')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('over-quota-location-row')).toHaveLength(2);
     expect(screen.getByText('4 of 2 — 2 over')).toBeInTheDocument();
+    expect(screen.getByText('9 of 5 — 4 over')).toBeInTheDocument();
     // Scoped to the row rather than picked out of a flat list: this also proves
     // the affordance belongs to that location, not merely that one exists.
     // `locRow`, not `row`: this file already has a module-level row() fixture
     // helper, and shadowing it inside the test makes the earlier row(...) call in
     // the same block stop typechecking.
-    const locRow = screen.getByTestId('over-quota-location-row');
+    const locRow = screen.getAllByTestId('over-quota-location-row')[0]!;
     expect(within(locRow).getByRole('button', { name: 'Suspend surplus' })).toBeInTheDocument();
     fireEvent.click(within(locRow).getByRole('button', { name: 'Suspend surplus' }));
     await waitFor(() => {

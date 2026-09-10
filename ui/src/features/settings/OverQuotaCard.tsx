@@ -28,6 +28,19 @@ const DIMENSION_LABEL_IDS: Record<string, string> = {
   products: 'settings-license-quota-dim-products',
 };
 
+/** Per-location resource kind → FTL label (marker S4), same literal-reference
+ *  rule as DIMENSION_LABEL_IDS. A map, not a conditional chain: the two-way
+ *  ternary this replaced sent any THIRD kind to the warehouses label, so a
+ *  new resource kind would have rendered mislabeled instead of unnamed. The
+ *  fallback is unreachable through `perLocationMarkers` (it only passes kinds
+ *  in the map) and names no other kind — it degrades to the tenant-global
+ *  generic the same way the usage rows above do. */
+const PER_LOCATION_LABEL_IDS: Record<string, string> = {
+  kds_screen: 'settings-license-quota-dim-kds-screens',
+  warehouse: 'settings-license-quota-dim-warehouses',
+  topology_node: 'settings-license-quota-dim-topology-nodes',
+};
+
 /**
  * The §J downgrade remediation view (todo-global-saas-2.md): renders the
  * live over-quota assessment for the effective tier — the same numbers
@@ -350,9 +363,8 @@ export default function OverQuotaCard() {
                   <span className="settings-license-quota-dim">
                     <Localized
                       id={
-                        row.resourceType === 'kds_screen'
-                          ? 'settings-license-quota-dim-kds-screens'
-                          : 'settings-license-quota-dim-warehouses'
+                        PER_LOCATION_LABEL_IDS[row.resourceType] ??
+                        'settings-license-quota-dim-locations'
                       }
                     >
                       <span>{row.resourceType}</span>
