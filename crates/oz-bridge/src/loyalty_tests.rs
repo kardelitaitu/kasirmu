@@ -1,7 +1,6 @@
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 fn sample_txn() -> LoyaltyTransaction {
     LoyaltyTransaction {
@@ -49,7 +48,7 @@ fn redeem_result_zero_discount() {
 
 #[tokio::test]
 async fn permission_check_uses_global_identity_db() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     // Narrow custom role: loyalty:view but NOT loyalty:manage — the new
@@ -61,44 +60,41 @@ async fn permission_check_uses_global_identity_db() {
          VALUES ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = AppState::for_test_with_conn(conn);
+    let state = TestBridge::new().with_conn(conn);
 
     assert!(
-        require_loyalty_permission(&state, "user-cashier", permissions::LOYALTY_VIEW)
+        require_loyalty_permission(&state.ctx(), "user-cashier", permissions::LOYALTY_VIEW)
             .await
             .is_ok()
     );
     assert!(matches!(
-        require_loyalty_permission(&state, "user-cashier", permissions::LOYALTY_MANAGE).await,
-        Err(AppError::PermissionDenied(_))
+        require_loyalty_permission(&state.ctx(), "user-cashier", permissions::LOYALTY_MANAGE).await,
+        Err(BridgeError::PermissionDenied(_))
     ));
 }
 
 #[tokio::test]
 async fn permission_check_rejects_missing_user() {
-    let conn = oz_core::migrations::fresh_db();
-    let state = AppState::for_test_with_conn(conn);
+    let conn = crate::testing::temp_conn();
+    let state = TestBridge::new().with_conn(conn);
 
     assert!(matches!(
-        require_loyalty_permission(&state, "missing-user", permissions::LOYALTY_VIEW).await,
-        Err(AppError::PermissionDenied(_))
+        require_loyalty_permission(&state.ctx(), "missing-user", permissions::LOYALTY_VIEW).await,
+        Err(BridgeError::PermissionDenied(_))
     ));
 }
 
 #[tokio::test]
 async fn scoped_command_rejects_invalid_session() {
-    let app = tauri::test::mock_builder()
-        .manage(AppState::for_test())
-        .build(tauri::generate_context!())
-        .unwrap();
+    let state = TestBridge::new();
 
-    let result = list_loyalty_accounts_scoped("missing-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_loyalty_accounts_scoped(&state.ctx(), "missing-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_command_denies_user_without_loyalty_permission() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -108,11 +104,8 @@ async fn scoped_command_denies_user_without_loyalty_permission() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         "cashier-token".into(),
         SessionContext::new(
             "user-cashier".into(),
@@ -125,18 +118,14 @@ async fn scoped_command_denies_user_without_loyalty_permission() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
-    let result = list_loyalty_accounts_scoped("cashier-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = list_loyalty_accounts_scoped(&state.ctx(), "cashier-token").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn scoped_command_reads_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -146,12 +135,9 @@ async fn scoped_command_reads_only_the_session_store() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let state = TestBridge::new().with_conn(conn);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        state.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -167,7 +153,7 @@ async fn scoped_command_reads_only_the_session_store() {
     }
 
     {
-        let store_a_conn = state.db_manager.open_store("store-a").unwrap();
+        let store_a_conn = state.db_manager().open_store("store-a").unwrap();
         let store_a_db = store_a_conn.lock().unwrap();
         store_a_db
             .execute(
@@ -180,15 +166,10 @@ async fn scoped_command_reads_only_the_session_store() {
             .unwrap();
     }
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let store_a_accounts = list_loyalty_accounts_scoped("store-a-token".into(), app.state())
+    let store_a_accounts = list_loyalty_accounts_scoped(&state.ctx(), "store-a-token")
         .await
         .unwrap();
-    let store_b_accounts = list_loyalty_accounts_scoped("store-b-token".into(), app.state())
+    let store_b_accounts = list_loyalty_accounts_scoped(&state.ctx(), "store-b-token")
         .await
         .unwrap();
     assert_eq!(store_a_accounts.len(), 1);

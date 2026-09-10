@@ -162,7 +162,3 @@ pub async fn get_or_create_loyalty_account_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "loyalty_tests.rs"]
-mod tests;

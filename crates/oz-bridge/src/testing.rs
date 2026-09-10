@@ -150,6 +150,12 @@ impl TestBridge {
         self
     }
 
+    /// Borrow the per-store manager (scoped tests seed store DBs through it).
+    #[must_use]
+    pub fn db_manager(&self) -> &StoreDatabaseManager {
+        &self.db_manager
+    }
+
     /// Point `media_cache_dir` at a real directory (products-images tests).
     #[must_use]
     pub fn with_media_cache_dir(mut self, dir: impl Into<PathBuf>) -> Self {
