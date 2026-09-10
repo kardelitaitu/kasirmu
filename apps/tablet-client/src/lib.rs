@@ -589,6 +589,7 @@ pub fn run() {
                 commands::browser::open_product_images,
                 commands::setup::get_setup_status,
                 commands::tax::list_tax_rates_scoped,
+                commands::tax::list_tax_rate_rounding_modes_scoped,
                 commands::tax::create_tax_rate_scoped,
                 commands::tax::update_tax_rate_scoped,
                 commands::tax::delete_tax_rate_scoped,

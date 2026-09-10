@@ -8,6 +8,7 @@ vi.mock('@/utils/logged-invoke', () => ({
 import {
   CART_TAX_NO_SESSION_MESSAGE,
   computeCartTax,
+  listTaxRateRoundingModesScoped,
   listTaxRatesScoped,
   createTaxRateScoped,
   updateTaxRateScoped,
@@ -108,6 +109,18 @@ describe('tax.ts API contract', () => {
   it('propagates errors', async () => {
     mockInvoke.mockRejectedValue(new Error('invalid rate'));
     await expect(computeCartTax(TOKEN, [], 'IDR')).rejects.toThrow('invalid rate');
+  });
+
+  it('listTaxRateRoundingModesScoped calls correct command (E1-5)', async () => {
+    mockInvoke.mockResolvedValue({ 'r-1': 'half_up', 'r-2': null });
+    const result = await listTaxRateRoundingModesScoped(TOKEN, ['r-1', 'r-2']);
+    expect(mockInvoke).toHaveBeenCalledWith('list_tax_rate_rounding_modes_scoped', {
+      sessionToken: TOKEN,
+      rateIds: ['r-1', 'r-2'],
+    });
+    // half_up passes verbatim; null = the preference applies (never a
+    // claimed directive) — the JS half of the E1-5 wire contract.
+    expect(result).toEqual({ 'r-1': 'half_up', 'r-2': null });
   });
 
   it('computeCartTax REJECTS on a null session token — the F2-2 silent-zero door', async () => {

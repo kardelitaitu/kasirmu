@@ -149,6 +149,25 @@ export const computeCartTax = (
     ? loggedInvoke<CartTaxResult>('compute_cart_tax_scoped', { sessionToken, lines, currency })
     : Promise.reject(new Error(CART_TAX_NO_SESSION_MESSAGE));
 
+/** The statutory rounding directive of a rate row (E1-5), verbatim from
+ *  the core RoundingMode serde snake_case spellings. */
+export type RoundingModeKey = 'half_up' | 'truncate';
+
+/** Batch-read the statutory rounding directive of each named rate
+ *  (E1-5, over the E1-2 core batch door): `'half_up'` / `'truncate'` =
+ *  the row carries a statutory directive that outranks the store
+ *  preference; `null` = the '' column or an id that matched no live
+ *  row — the preference applies, and a null is never a claimed
+ *  directive. Unknown and absent read identically by contract. */
+export const listTaxRateRoundingModesScoped = (
+  sessionToken: string,
+  rateIds: string[],
+): Promise<Record<string, RoundingModeKey | null>> =>
+  loggedInvoke<Record<string, RoundingModeKey | null>>(
+    'list_tax_rate_rounding_modes_scoped',
+    { sessionToken, rateIds },
+  );
+
 /** List all tax rates for the store resolved from a session token. ADR #7. */
 export const listTaxRatesScoped = (sessionToken: string): Promise<TaxRateDto[]> =>
   loggedInvoke<TaxRateDto[]>('list_tax_rates_scoped', { sessionToken });

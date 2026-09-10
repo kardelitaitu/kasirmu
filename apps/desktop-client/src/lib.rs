@@ -1019,6 +1019,7 @@ pub fn run() {
             commands::setup::seed_default_roles_scoped,
             commands::setup::get_setup_status,
             commands::tax::list_tax_rates_scoped,
+            commands::tax::list_tax_rate_rounding_modes_scoped,
             commands::tax::create_tax_rate_scoped,
             commands::tax::update_tax_rate_scoped,
             commands::tax::delete_tax_rate_scoped,

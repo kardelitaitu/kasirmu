@@ -4581,6 +4581,16 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'create_tax_rate_scoped': createMockTaxRate,
   'update_tax_rate_scoped': updateMockTaxRate,
   'delete_tax_rate_scoped': deleteMockTaxRate,
+  // E1-5: the batch rounding-mode read. The mock tenant's rate rows
+  // carry no statutory directive, so every id reads null — exactly the
+  // core ''-column semantics (null = the store preference applies,
+  // never a claimed directive).
+  'list_tax_rate_rounding_modes_scoped': (raw) => {
+    const { rateIds } = (raw as { rateIds?: string[] }) ?? {};
+    const out: Record<string, null> = {};
+    for (const id of Array.isArray(rateIds) ? rateIds : []) out[id] = null;
+    return out;
+  },
   'get_document_number_sequence_scoped': getMockDocumentNumberSequence,
   'upsert_document_number_sequence_scoped': upsertMockDocumentNumberSequence,
   'list_document_number_sequences_scoped': listMockDocumentNumberSequences,

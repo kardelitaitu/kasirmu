@@ -552,3 +552,89 @@ async fn scoped_tax_write_command_targets_only_the_session_store() {
         "writes scoped to store A must not leak into store B"
     );
 }
+
+// ── E1-5: statutory rounding-mode read surface ────────────────────────
+
+/// The exact seeding of the core alphabet pin: truncate / half_up / ''
+/// (the 20260929 CHECK constrains the column to this alphabet).
+fn seed_rounding_rows(conn: &rusqlite::Connection) {
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode) VALUES
+         ('r-trunc', 'Trunc', 1000, 'truncate'),
+         ('r-half', 'Half', 1000, 'half_up'),
+         ('r-plain', 'Plain', 1000, '')",
+        [],
+    )
+    .unwrap();
+}
+
+#[test]
+fn run_list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
+    // E1-5 over the E1-2 door: the two statutory spellings map to their
+    // modes; '' and unknown ids read as None (the preference applies —
+    // unknown and absent read identically, so the batch read is never a
+    // second failure mode beside the resolver that produced the ids).
+    let conn = oz_core::migrations::fresh_db();
+    seed_rounding_rows(&conn);
+    let modes =
+        run_list_tax_rate_rounding_modes(&conn, &["r-trunc", "r-half", "r-plain", "r-ghost"])
+            .unwrap();
+    assert_eq!(
+        modes.get("r-trunc"),
+        Some(&Some(oz_core::tax_rate::RoundingMode::Truncate)),
+    );
+    assert_eq!(
+        modes.get("r-half"),
+        Some(&Some(oz_core::tax_rate::RoundingMode::HalfUp)),
+    );
+    assert_eq!(
+        modes.get("r-plain"),
+        Some(&None),
+        "'' = the preference applies"
+    );
+    assert_eq!(
+        modes.get("r-ghost"),
+        Some(&None),
+        "unknown id = the preference applies"
+    );
+}
+
+#[test]
+fn run_list_tax_rate_rounding_modes_ignores_archived_rows() {
+    // Archived rows must not leak a directive: is_active = 0 reads as
+    // "the preference applies", exactly like the core door's contract.
+    let conn = oz_core::migrations::fresh_db();
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode, is_active)
+         VALUES ('r-arch', 'Archived', 1000, 'truncate', 0)",
+        [],
+    )
+    .unwrap();
+    let modes = run_list_tax_rate_rounding_modes(&conn, &["r-arch"]).unwrap();
+    assert_eq!(
+        modes.get("r-arch"),
+        Some(&None),
+        "archived rows must not leak a directive",
+    );
+}
+
+#[test]
+fn rounding_mode_wire_is_the_core_serde_snake_case() {
+    // The IPC value IS the core enum's serde snake_case name, passed
+    // through verbatim; null = preference. The ui contract test pins the
+    // JS half of this contract; this pins the Rust half.
+    assert_eq!(
+        serde_json::to_value(oz_core::tax_rate::RoundingMode::HalfUp).unwrap(),
+        serde_json::json!("half_up"),
+    );
+    assert_eq!(
+        serde_json::to_value(oz_core::tax_rate::RoundingMode::Truncate).unwrap(),
+        serde_json::json!("truncate"),
+    );
+    let map =
+        run_list_tax_rate_rounding_modes(&oz_core::migrations::fresh_db(), &["r-none"]).unwrap();
+    assert_eq!(
+        serde_json::to_value(map).unwrap(),
+        serde_json::json!({ "r-none": null }),
+    );
+}

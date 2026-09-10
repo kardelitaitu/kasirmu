@@ -5,10 +5,11 @@
 //! front-end.
 
 use serde::{Deserialize, Serialize};
-use tauri::{State, command};
+use tauri::{command, State};
 
-use oz_core::db::Store;
 use oz_core::db::tax::TaxRateWindow;
+use oz_core::db::Store;
+use oz_core::tax_rate::RoundingMode;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -565,6 +566,53 @@ pub async fn set_category_tax_rates_scoped(
     store.set_category_tax_rates(&args.category_id, &args.tax_rate_ids)?;
     drop(db);
     Ok(())
+}
+
+// ── E1-5: statutory rounding-mode read surface ────────────────────────
+
+/// The statutory rounding directive of each named rate row, in one batch
+/// read (E1-5 read surface over the E1-2 core door). Mirrors the
+/// list_tax_rate_scopes side-channel precedent: a session-scoped read,
+/// gated `SETTINGS_READ`, resolving the store from the session token.
+///
+/// Wire: a map keyed by the requested rate ids — `"half_up"` /
+/// `"truncate"` verbatim from the core RoundingMode serde spellings,
+/// `null` when the row's column is `''` or the id does not match a live
+/// row (both mean the store preference applies; unknown and absent read
+/// identically so the lookup is never a second failure mode). The core
+/// fn chunks ids below SQLite's bind limit and refuses out-of-alphabet
+/// values loudly (the CHECK makes them hand-edited data).
+#[command]
+pub async fn list_tax_rate_rounding_modes_scoped(
+    session_token: String,
+    rate_ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_tax_permission(
+        &state,
+        &session.user_id,
+        oz_core::permissions::SETTINGS_READ,
+    )
+    .await?;
+    let conn = state.resolve_store(&session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let refs: Vec<&str> = rate_ids.iter().map(String::as_str).collect();
+    let out = Store::new(&db).list_tax_rate_rounding_modes(&refs)?;
+    drop(db);
+    Ok(out)
+}
+
+/// Business logic for the batch rounding-mode read (extracted for
+/// testing, mirroring `run_list_tax_rates`).
+fn run_list_tax_rate_rounding_modes(
+    conn: &rusqlite::Connection,
+    rate_ids: &[&str],
+) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
+    let store = Store::new(conn);
+    Ok(store.list_tax_rate_rounding_modes(rate_ids)?)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
