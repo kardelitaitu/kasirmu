@@ -80,6 +80,7 @@ pub async fn list_sales(state: State<'_, AppState>) -> Result<SaleListResponse, 
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Saledetail.
 pub struct SaleDetail {
     /// Unique identifier.
@@ -102,8 +103,7 @@ pub struct SaleDetail {
     pub lines: Vec<oz_core::SaleLine>,
     /// F2-7: the core-authored tax-estimate stamp (F2-5) when the checkout
     /// claimed an estimate; `None` = unstamped (absence is never a claim).
-    /// Field-level camelCase rename (same rationale as the desktop twin).
-    #[serde(rename = "taxEstimateNote")]
+    /// Wire-verified: struct-wide `rename_all` is the drift fix (desktop twin).
     pub tax_estimate_note: Option<String>,
 }
 

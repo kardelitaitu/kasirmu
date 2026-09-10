@@ -98,6 +98,7 @@ fn map_sale_to_item(s: oz_core::Sale) -> SaleListItem {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Saledetail.
 pub struct SaleDetail {
     /// Unique identifier.
@@ -124,10 +125,8 @@ pub struct SaleDetail {
     pub lines: Vec<oz_core::SaleLine>,
     /// F2-7: the core-authored tax-estimate stamp (F2-5) when the checkout
     /// claimed an estimate; `None` = unstamped (absence is never a claim).
-    /// Field-level camelCase rename: this struct's sibling fields predate
-    /// the SaleListItem rename_all and still serialize snake_case — the
-    /// badge must light regardless (struct-wide drift = named follow-up).
-    #[serde(rename = "taxEstimateNote")]
+    /// Wire-verified: the struct-wide `rename_all` above IS the drift fix —
+    /// ui + dev-mock both read camelCase; the backend was the wrong side.
     pub tax_estimate_note: Option<String>,
 }
 

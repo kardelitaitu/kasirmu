@@ -150,7 +150,18 @@ fn sale_detail_serialize() {
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");
-    assert!(json["tendered_minor"].is_null());
+    assert!(
+        json["paymentMethod"].is_null(),
+        "camelCase wire: paymentMethod"
+    );
+    assert!(
+        json["tenderedMinor"].is_null(),
+        "camelCase wire: tenderedMinor"
+    );
+    assert!(
+        json["taxEstimateNote"].is_null(),
+        "camelCase wire: taxEstimateNote"
+    );
     assert_eq!(json["lines"].as_array().unwrap().len(), 0);
 }
 
