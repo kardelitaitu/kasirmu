@@ -274,19 +274,3 @@ pub async fn bootstrap_owner(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "staff_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "staff_security_events_tests.rs"]
-mod security_events_tests;
-
-/// Role-holder tests: a sibling module for the same reason the audit slice
-/// used one — `staff_tests.rs` is another stream in-flight file.
-#[cfg(test)]
-#[path = "staff_role_holders_tests.rs"]
-mod role_holders_tests;

@@ -1,3 +1,11 @@
+//! Security-event wiring on the staff-management paths (Wave-B test
+//! relocation: moved out of `apps/desktop-client/src/commands/staff_security_events_tests.rs`).
+//!
+//! Mounted at the foot of `staff.rs` beside `staff_tests.rs` (multi-mount
+//! ruling). The desktop file drove the shell commands through `AppState` + a
+//! Tauri mock app; here they run through same-named desktop-shaped adapters
+//! over a `TestBridge` context, and the audit rows are read from the global
+//! identity DB via `ctx.lock_global()` — the same connection the shell held.
 //! Security-event wiring on the staff-management paths.
 //!
 //! A separate module from `staff_tests.rs` on purpose: that file is another
@@ -12,8 +20,42 @@
 
 use super::*;
 
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
+use crate::testing::TestBridge;
+
+// ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
+#[allow(dead_code)]
+mod desktop_shaped {
+    use crate::ctx::BridgeCtx;
+    use crate::error::BridgeError;
+    use crate::staff::{
+        CreateStaffScopedArgs, ProfileViewDto, StaffMemberDto, UpdateStaffScopedArgs,
+    };
+
+    pub async fn create_staff_scoped(
+        token: String,
+        args: CreateStaffScopedArgs,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<StaffMemberDto, BridgeError> {
+        crate::staff::create_staff_scoped(ctx, &token, &args).await
+    }
+
+    pub async fn update_staff_scoped(
+        token: String,
+        args: UpdateStaffScopedArgs,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<StaffMemberDto, BridgeError> {
+        crate::staff::update_staff_scoped(ctx, &token, &args).await
+    }
+
+    pub async fn get_staff_profile_scoped(
+        token: String,
+        user_id: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<ProfileViewDto, BridgeError> {
+        crate::staff::get_staff_profile_scoped(ctx, &token, &user_id).await
+    }
+}
+use desktop_shaped::{create_staff_scoped, get_staff_profile_scoped, update_staff_scoped};
 
 /// A complete ADR #35 D6 profile — creation requires the mandatory fields.
 fn profile() -> ProfileArgs {
@@ -36,7 +78,7 @@ fn profile() -> ProfileArgs {
 /// would reject the create before the command ever reached the recorder, so
 /// every test here raises the tier first.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -56,13 +98,10 @@ fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
 }
 
 /// An app whose `owner-token` session resolves to the owner.
-fn owner_app(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
+fn owner_app(tier_key: &str) -> TestBridge {
     let conn = seeded_conn(tier_key);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         "owner-token".into(),
         oz_core::session::SessionContext::new(
             "user-owner".into(),
@@ -75,18 +114,13 @@ fn owner_app(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
             0,
         ),
     );
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+    bridge
 }
 
 /// Every audit row in the global DB.
-async fn audit_rows(
-    app: &tauri::App<tauri::test::MockRuntime>,
-) -> Vec<(String, String, String, String, String)> {
-    let state = app.state::<AppState>();
-    let db = state.db.lock().await;
+async fn audit_rows(bridge: &TestBridge) -> Vec<(String, String, String, String, String)> {
+    let ctx = bridge.ctx();
+    let db = ctx.lock_global().await;
     let mut stmt = db
         .prepare(
             "SELECT user_id, action, outcome, COALESCE(target_id,''), COALESCE(details,'{}')
@@ -116,12 +150,13 @@ fn create_args(username: &str) -> CreateStaffScopedArgs {
 async fn create_staff_scoped_records_a_security_event() {
     // Creating an account is how an attacker with a stolen admin session
     // installs persistence — the trail must name who did it and who appeared.
-    let app = owner_app("premium");
-    create_staff_scoped("owner-token".into(), create_args("jdoe"), app.state())
+    let bridge = owner_app("premium");
+    let ctx = bridge.ctx();
+    create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx)
         .await
         .unwrap();
 
-    let rows = audit_rows(&app).await;
+    let rows = audit_rows(&bridge).await;
     assert_eq!(rows.len(), 1, "one create event, got {rows:?}");
     let (user_id, action, outcome, target_id, details) = &rows[0];
     assert_eq!(user_id, "user-owner", "user_id is the ACTOR");
@@ -132,8 +167,7 @@ async fn create_staff_scoped_records_a_security_event() {
         "target_id is the SUBJECT, not the actor"
     );
     let created = {
-        let state = app.state::<AppState>();
-        let db = state.db.lock().await;
+        let db = ctx.lock_global().await;
         db.query_row::<String, _, _>("SELECT id FROM users WHERE username = 'jdoe'", [], |r| {
             r.get(0)
         })
@@ -152,16 +186,17 @@ async fn create_staff_scoped_records_a_security_event() {
 async fn a_rejected_create_records_no_security_event() {
     // The recorder runs only after the account exists, so a create refused
     // by validation or a duplicate username leaves no phantom row.
-    let app = owner_app("premium");
-    create_staff_scoped("owner-token".into(), create_args("jdoe"), app.state())
+    let bridge = owner_app("premium");
+    let ctx = bridge.ctx();
+    create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx)
         .await
         .unwrap();
-    let before = audit_rows(&app).await.len();
+    let before = audit_rows(&bridge).await.len();
 
-    let dup = create_staff_scoped("owner-token".into(), create_args("jdoe"), app.state()).await;
+    let dup = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
     assert!(dup.is_err(), "duplicate username must be refused");
     assert_eq!(
-        audit_rows(&app).await.len(),
+        audit_rows(&bridge).await.len(),
         before,
         "a refused create must not add an event"
     );
@@ -169,7 +204,8 @@ async fn a_rejected_create_records_no_security_event() {
 
 #[tokio::test]
 async fn update_staff_scoped_records_one_event_without_a_pin_change() {
-    let app = owner_app("premium");
+    let bridge = owner_app("premium");
+    let ctx = bridge.ctx();
     let result = update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -182,12 +218,12 @@ async fn update_staff_scoped_records_one_event_without_a_pin_change() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
     assert!(result.is_ok(), "{:?}", result.err());
 
-    let rows = audit_rows(&app).await;
+    let rows = audit_rows(&bridge).await;
     assert_eq!(rows.len(), 1, "one update event, got {rows:?}");
     let (user_id, action, _, target_id, details) = &rows[0];
     assert_eq!(user_id, "user-owner", "actor");
@@ -208,7 +244,8 @@ async fn update_staff_scoped_records_two_events_when_the_pin_rotates() {
     // A rotation is a distinct security fact: it dropped every other session
     // for the account (STAFF-03). Collapsing it into the profile event would
     // lose which of the two happened, so both are written.
-    let app = owner_app("premium");
+    let bridge = owner_app("premium");
+    let ctx = bridge.ctx();
     update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -221,12 +258,12 @@ async fn update_staff_scoped_records_two_events_when_the_pin_rotates() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
 
-    let rows = audit_rows(&app).await;
+    let rows = audit_rows(&bridge).await;
     assert_eq!(rows.len(), 2, "profile + rotation, got {rows:?}");
     assert!(rows.iter().all(|(_, a, _, _, _)| a == "user.update"));
     let reasons: Vec<&str> = rows
@@ -269,11 +306,8 @@ async fn a_denied_update_records_no_security_event() {
     )
     .unwrap();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         "lite-token".into(),
         oz_core::session::SessionContext::new(
             "user-lite".into(),
@@ -286,11 +320,7 @@ async fn a_denied_update_records_no_security_event() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     let denied = update_staff_scoped(
         "lite-token".into(),
         UpdateStaffScopedArgs {
@@ -303,12 +333,12 @@ async fn a_denied_update_records_no_security_event() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
     assert!(
-        matches!(denied, Err(AppError::PermissionDenied(_))),
+        matches!(denied, Err(BridgeError::PermissionDenied(_))),
         "{denied:?}"
     );
-    assert!(audit_rows(&app).await.is_empty());
+    assert!(audit_rows(&bridge).await.is_empty());
 }

@@ -1,4 +1,123 @@
+//! Staff command unit tests (Wave-B test relocation: moved out of
+//! `apps/desktop-client/src/commands/staff_tests.rs`).
+//!
+//! Mounted at the foot of `staff.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs, the scoped operations and the pub
+//! `run_bootstrap_owner` body directly. The desktop file drove the shell
+//! commands through `AppState` + a Tauri mock app; here the calls go through
+//! same-named desktop-shaped adapters over a `TestBridge` context (the
+//! crate's `testing` harness), the global-identity seeds are ported verbatim
+//! against `testing::temp_conn`, and error assertions are the 1:1
+//! `AppError` -> `BridgeError` rename.
 use super::*;
+use crate::testing::TestBridge;
+
+// ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
+// The desktop tests called the shell commands with (token, args, State)
+// argument order; the bridge fns take (&BridgeCtx, ...). These same-named
+// module items shadow the glob imports so every call site below keeps its
+// desktop shape; each one delegates to the production bridge fn.
+#[allow(dead_code)]
+mod desktop_shaped {
+    use crate::ctx::BridgeCtx;
+    use crate::error::BridgeError;
+    use crate::staff::{
+        BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs, CreateStaffScopedArgs,
+        PermissionKeyDto, ProfileViewDto, RoleDto, RoleHoldersDto, StaffMemberDto, UpdateRoleArgs,
+        UpdateStaffScopedArgs,
+    };
+
+    pub async fn list_staff_scoped(
+        token: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<Vec<StaffMemberDto>, BridgeError> {
+        crate::staff::list_staff_scoped(ctx, &token).await
+    }
+
+    pub async fn get_staff_profile_scoped(
+        token: String,
+        user_id: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<ProfileViewDto, BridgeError> {
+        crate::staff::get_staff_profile_scoped(ctx, &token, &user_id).await
+    }
+
+    pub async fn list_roles_scoped(
+        token: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<Vec<RoleDto>, BridgeError> {
+        crate::staff::list_roles_scoped(ctx, &token).await
+    }
+
+    pub async fn list_permission_keys_scoped(
+        token: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<Vec<PermissionKeyDto>, BridgeError> {
+        crate::staff::list_permission_keys_scoped(ctx, &token).await
+    }
+
+    pub async fn create_role_scoped(
+        token: String,
+        args: CreateRoleArgs,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<RoleDto, BridgeError> {
+        let grants = serde_json::to_string(&args.permissions).unwrap();
+        crate::staff::create_role_scoped(ctx, &token, &args, &grants).await
+    }
+
+    pub async fn update_role_scoped(
+        token: String,
+        args: UpdateRoleArgs,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<RoleDto, BridgeError> {
+        let grants = serde_json::to_string(&args.permissions).unwrap();
+        crate::staff::update_role_scoped(ctx, &token, &args, &grants).await
+    }
+
+    pub async fn delete_role_scoped(
+        token: String,
+        id: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<(), BridgeError> {
+        crate::staff::delete_role_scoped(ctx, &token, &id).await
+    }
+
+    pub async fn list_role_holders_scoped(
+        role_id: String,
+        token: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<RoleHoldersDto, BridgeError> {
+        crate::staff::list_role_holders_scoped(ctx, &role_id, &token).await
+    }
+
+    pub async fn create_staff_scoped(
+        token: String,
+        args: CreateStaffScopedArgs,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<StaffMemberDto, BridgeError> {
+        crate::staff::create_staff_scoped(ctx, &token, &args).await
+    }
+
+    pub async fn update_staff_scoped(
+        token: String,
+        args: UpdateStaffScopedArgs,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<StaffMemberDto, BridgeError> {
+        crate::staff::update_staff_scoped(ctx, &token, &args).await
+    }
+
+    pub async fn bootstrap_owner(
+        args: BootstrapOwnerArgs,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<BootstrapOwnerResult, BridgeError> {
+        crate::staff::bootstrap_owner(ctx, &args).await
+    }
+}
+use desktop_shaped::{
+    bootstrap_owner, create_role_scoped, create_staff_scoped, delete_role_scoped,
+    get_staff_profile_scoped, list_permission_keys_scoped, list_role_holders_scoped,
+    list_roles_scoped, list_staff_scoped, update_role_scoped, update_staff_scoped,
+};
 
 /// A complete ADR #35 D6 profile for create/update fixtures.
 fn complete_profile_args() -> ProfileArgs {
@@ -151,8 +270,6 @@ fn update_staff_args_debug() {
 // (which carry NO caller-supplied identity) exist.
 
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 /// Seed the GLOBAL identity DB with an owner (all permissions) and a
 /// limited user (no staff permissions — the retired cashier role maps
@@ -187,12 +304,9 @@ fn scoped_state_with_token(
     user_id: &str,
     role_id: &str,
     store_id: &str,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> TestBridge {
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -205,74 +319,22 @@ fn scoped_state_with_token(
             0,
         ),
     );
-    state
+    bridge
 }
 
-// ── STAFF-01 — legacy command trusts client-supplied caller ID ────
-
-#[tokio::test]
-async fn legacy_create_staff_accepts_forged_caller_user_id() {
-    // The legacy command must reject caller-supplied identity rather than
-    // allowing the STAFF-01 forged-caller vulnerability.
-    let conn = oz_core::migrations::fresh_db();
-    seed_global_users(&conn);
-    let state = AppState::for_test_with_conn(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = create_staff(
-        CreateStaffArgs {
-            username: "mallory".into(),
-            pin: "1234".into(),
-            display_name: "Mallory".into(),
-            role_id: "role-staff".into(),
-            caller_user_id: "user-owner".into(), // forged
-        },
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
-}
-
-#[tokio::test]
-async fn legacy_update_staff_accepts_forged_caller_user_id() {
-    let conn = oz_core::migrations::fresh_db();
-    seed_global_users(&conn);
-    let state = AppState::for_test_with_conn(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = update_staff(
-        UpdateStaffArgs {
-            id: "user-cashier".into(),
-            username: "cashier".into(),
-            display_name: "Cashier Updated".into(),
-            role_id: "role-owner".into(), // privilege escalation via forged id
-            is_active: true,
-            caller_user_id: "user-owner".into(), // forged
-        },
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
-}
-
+// NOTE (Wave-B relocation): the two STAFF-01 tombstone tests that lived here
+// called the desktop-only unscoped create_staff / update_staff commands,
+// which intentionally have no bridge counterpart (the desktop shims are
+// unconditional permission-denied stubs). Their denial is now shim source; the
+// session-identity property they motivated is pinned by the scoped tests below.
 // ── STAFF-01 fix — scoped commands bind identity to the session ────
 
 #[tokio::test]
 async fn scoped_create_staff_rejects_invalid_session() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = AppState::for_test_with_conn(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge = TestBridge::new().with_conn(conn);
+    let ctx = bridge.ctx();
     let result = create_staff_scoped(
         "missing-token".into(),
         CreateStaffScopedArgs {
@@ -283,10 +345,10 @@ async fn scoped_create_staff_rejects_invalid_session() {
             profile: complete_profile_args(),
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
@@ -294,20 +356,16 @@ async fn scoped_create_staff_denies_cashier_session() {
     // The caller identity is bound to the session token. A cashier
     // session (no staff:create) must be denied — there is no request
     // field left to forge.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     let result = create_staff_scoped(
         "cashier-token".into(),
         CreateStaffScopedArgs {
@@ -318,24 +376,21 @@ async fn scoped_create_staff_denies_cashier_session() {
             profile: complete_profile_args(),
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn scoped_create_staff_allows_owner_session() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
     // Pro (20 staff) — plenty of headroom past the seeded cashier.
     seed_subscription_tier(&conn, "pro");
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     let result = create_staff_scoped(
         "owner-token".into(),
         CreateStaffScopedArgs {
@@ -346,7 +401,7 @@ async fn scoped_create_staff_allows_owner_session() {
             profile: complete_profile_args(),
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
@@ -359,14 +414,11 @@ async fn scoped_create_staff_blocked_at_free_tier_staff_limit() {
     // C1.1: fresh_db seeds Free (max 1 staff) and seed_global_users
     // already created the cashier — the next creation must be rejected
     // with the subscription-limit error, not silently inserted.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     let result = create_staff_scoped(
         "owner-token".into(),
         CreateStaffScopedArgs {
@@ -377,12 +429,12 @@ async fn scoped_create_staff_blocked_at_free_tier_staff_limit() {
             profile: complete_profile_args(),
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
 
     match result {
-        Err(AppError::Core { sub_kind, message }) => {
+        Err(BridgeError::Core { sub_kind, message }) => {
             assert!(matches!(
                 sub_kind,
                 oz_core::CoreErrorKind::SubscriptionLimitExceeded
@@ -397,15 +449,12 @@ async fn scoped_create_staff_blocked_at_free_tier_staff_limit() {
 async fn scoped_create_staff_allowed_with_headroom_tier() {
     // C1.1: with a Plus tier (5 staff) and a single seeded cashier,
     // the owner can add a new staff member.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
     seed_subscription_tier(&conn, "plus");
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     let result = create_staff_scoped(
         "owner-token".into(),
         CreateStaffScopedArgs {
@@ -416,7 +465,7 @@ async fn scoped_create_staff_allowed_with_headroom_tier() {
             profile: complete_profile_args(),
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
@@ -425,20 +474,16 @@ async fn scoped_create_staff_allowed_with_headroom_tier() {
 
 #[tokio::test]
 async fn scoped_update_staff_denies_cashier_session() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     let result = update_staff_scoped(
         "cashier-token".into(),
         UpdateStaffScopedArgs {
@@ -451,10 +496,10 @@ async fn scoped_update_staff_denies_cashier_session() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── STAFF-02 — role hierarchy ─────────────────────────────────────
@@ -464,7 +509,7 @@ async fn scoped_create_staff_denies_cashier_creating_owner() {
     // Even though the cashier has no staff:create at all, the hierarchy
     // guard must also block a role that DOES have staff:create but not
     // staff:manage_roles (Manager/Staff presets) from assigning Owner.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -472,18 +517,14 @@ async fn scoped_create_staff_denies_cashier_creating_owner() {
             ('user-manager', 'manager', 'hash', 'Manager', 'role-manager', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "manager-token",
         "user-manager",
         "role-manager",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     let result = create_staff_scoped(
         "manager-token".into(),
         CreateStaffScopedArgs {
@@ -494,18 +535,18 @@ async fn scoped_create_staff_denies_cashier_creating_owner() {
             profile: complete_profile_args(),
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
     assert!(
-        matches!(result, Err(AppError::PermissionDenied(_))),
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
         "Manager must not create an Owner account"
     );
 }
 
 #[tokio::test]
 async fn scoped_update_staff_denies_manager_promoting_to_owner() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -516,18 +557,14 @@ async fn scoped_update_staff_denies_manager_promoting_to_owner() {
             ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "manager-token",
         "user-manager",
         "role-manager",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     let result = update_staff_scoped(
         "manager-token".into(),
         UpdateStaffScopedArgs {
@@ -540,18 +577,18 @@ async fn scoped_update_staff_denies_manager_promoting_to_owner() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
     assert!(
-        matches!(result, Err(AppError::PermissionDenied(_))),
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
         "Manager must not promote a user to Owner"
     );
 }
 
 #[tokio::test]
 async fn scoped_update_staff_denies_self_promotion() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -559,18 +596,14 @@ async fn scoped_update_staff_denies_self_promotion() {
             ('user-manager', 'manager', 'hash', 'Manager', 'role-manager', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "manager-token",
         "user-manager",
         "role-manager",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     // Manager edits their OWN role → denied (no self-promotion), even
     // though the assignment to role-manager is itself harmless.
     let result = update_staff_scoped(
@@ -585,15 +618,15 @@ async fn scoped_update_staff_denies_self_promotion() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn scoped_update_staff_protects_last_active_owner() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -604,12 +637,9 @@ async fn scoped_update_staff_protects_last_active_owner() {
             ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     // Owner is the only active owner → cannot demote or deactivate self.
     let result = update_staff_scoped(
         "owner-token".into(),
@@ -623,11 +653,11 @@ async fn scoped_update_staff_protects_last_active_owner() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
     assert!(
-        matches!(result, Err(AppError::PermissionDenied(_))),
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
         "last active Owner must not be deactivated"
     );
 }
@@ -639,7 +669,7 @@ async fn scoped_update_staff_protects_last_active_owner() {
 /// self-deactivation rule can reject this update.
 #[tokio::test]
 async fn scoped_update_staff_denies_self_deactivation_by_manager() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -649,12 +679,8 @@ async fn scoped_update_staff_denies_self_deactivation_by_manager() {
             ('user-hr', 'hr', 'hash', 'HR Admin', 'role-hr', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = scoped_state_with_token(conn, "hr-token", "user-hr", "role-hr", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge = scoped_state_with_token(conn, "hr-token", "user-hr", "role-hr", "store-a");
+    let ctx = bridge.ctx();
     // HR admin deactivates their OWN account, role unchanged.
     let result = update_staff_scoped(
         "hr-token".into(),
@@ -668,11 +694,11 @@ async fn scoped_update_staff_denies_self_deactivation_by_manager() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
     match result {
-        Err(AppError::PermissionDenied(msg)) => {
+        Err(BridgeError::PermissionDenied(msg)) => {
             assert!(
                 msg.contains("your own account"),
                 "expected the self-deactivation message, got: {msg}"
@@ -691,7 +717,7 @@ async fn scoped_update_staff_denies_self_deactivation_by_manager() {
 /// last-active-Owner protection can reject this update.
 #[tokio::test]
 async fn scoped_update_staff_protects_last_owner_from_other_admin() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -702,18 +728,14 @@ async fn scoped_update_staff_protects_last_owner_from_other_admin() {
             ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "hrboss-token",
         "user-hrboss",
         "role-hrboss",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     // Admin deactivates the ONLY active Owner (caller is not an Owner).
     let result = update_staff_scoped(
         "hrboss-token".into(),
@@ -727,11 +749,11 @@ async fn scoped_update_staff_protects_last_owner_from_other_admin() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
     match result {
-        Err(AppError::PermissionDenied(msg)) => {
+        Err(BridgeError::PermissionDenied(msg)) => {
             assert!(
                 msg.contains("last active Owner"),
                 "expected the last-owner message, got: {msg}"
@@ -748,14 +770,11 @@ async fn scoped_update_staff_protects_last_owner_from_other_admin() {
 
 #[tokio::test]
 async fn scoped_update_staff_rotates_pin_when_provided() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     let result = update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -768,26 +787,27 @@ async fn scoped_update_staff_rotates_pin_when_provided() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
     assert_eq!(result.username, "cashier");
 
     // The PIN hash must have changed from the seeded 'hash'.
-    let st = app.state::<AppState>();
-    let db = st.db.lock().await;
+    let db = ctx.lock_global().await;
     let user = Store::new(&db).get_user("user-cashier").unwrap().unwrap();
     assert_ne!(user.pin_hash, "hash");
 }
 
 #[tokio::test]
 async fn scoped_update_staff_pin_rotation_invalidates_sessions() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     // A stale session for the cashier whose PIN we rotate.
-    state.session_store.write().unwrap().insert(
+    bridge.sessions().write().unwrap().insert(
         "cashier-old-session".into(),
         SessionContext::new(
             "user-cashier".into(),
@@ -800,11 +820,6 @@ async fn scoped_update_staff_pin_rotation_invalidates_sessions() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -817,16 +832,16 @@ async fn scoped_update_staff_pin_rotation_invalidates_sessions() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
 
     // The old cashier session must be gone (invalidated by the rotation).
-    let st = app.state::<AppState>();
+    let st = &ctx;
     assert!(matches!(
         st.resolve_session("cashier-old-session"),
-        Err(AppError::InvalidSession)
+        Err(BridgeError::InvalidSession)
     ));
     // The owner session survives (different user).
     assert!(st.resolve_session("owner-token").is_ok());
@@ -836,12 +851,14 @@ async fn scoped_update_staff_pin_rotation_invalidates_sessions() {
 async fn scoped_update_staff_self_rotation_preserves_callers_session() {
     // An Owner rotating their OWN PIN must keep their current session:
     // the UI immediately reloads with the same token after the update.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     // Another terminal session for the same owner (issued under the old
     // PIN) SHOULD be invalidated.
-    state.session_store.write().unwrap().insert(
+    bridge.sessions().write().unwrap().insert(
         "owner-stale-terminal".into(),
         SessionContext::new(
             "user-owner".into(),
@@ -854,11 +871,6 @@ async fn scoped_update_staff_self_rotation_preserves_callers_session() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -871,31 +883,28 @@ async fn scoped_update_staff_self_rotation_preserves_callers_session() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
 
-    let st = app.state::<AppState>();
+    let st = &ctx;
     // Current session survives so the UI can continue working.
     assert!(st.resolve_session("owner-token").is_ok());
     // Stale terminal session is gone.
     assert!(matches!(
         st.resolve_session("owner-stale-terminal"),
-        Err(AppError::InvalidSession)
+        Err(BridgeError::InvalidSession)
     ));
 }
 
 #[tokio::test]
 async fn scoped_update_staff_writes_assignment_scope_atomically() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -919,13 +928,12 @@ async fn scoped_update_staff_writes_assignment_scope_atomically() {
                 scope_id: None,
             }),
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
 
-    let st = app.state::<AppState>();
-    let db = st.db.lock().await;
+    let db = ctx.lock_global().await;
     let assignment = Store::new(&db)
         .assignment_for_user("user-cashier")
         .unwrap()
@@ -941,14 +949,11 @@ async fn scoped_update_staff_writes_assignment_scope_atomically() {
 /// installed then enforces it end to end (deny on the other location).
 #[tokio::test]
 async fn scoped_update_staff_writes_location_scoped_assignment() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -969,13 +974,12 @@ async fn scoped_update_staff_writes_location_scoped_assignment() {
                 scope_id: Some("loc-a".into()),
             }),
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
 
-    let st = app.state::<AppState>();
-    let db = st.db.lock().await;
+    let db = ctx.lock_global().await;
     let assignment = Store::new(&db)
         .assignment_for_user("user-cashier")
         .unwrap()
@@ -991,14 +995,11 @@ async fn scoped_update_staff_writes_location_scoped_assignment() {
 /// typed Invalid error before any write happens.
 #[tokio::test]
 async fn scoped_update_staff_rejects_location_scope_without_id() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     let result = update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -1019,27 +1020,24 @@ async fn scoped_update_staff_rejects_location_scope_without_id() {
                 scope_id: None,
             }),
         },
-        app.state(),
+        &ctx,
     )
     .await;
 
-    assert!(matches!(result, Err(AppError::Invalid(_))));
+    assert!(matches!(result, Err(BridgeError::Invalid(_))));
 }
 
 #[tokio::test]
 async fn scoped_update_staff_pin_rotation_clears_login_attempts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
     // Simulate an accumulated lockout for the cashier.
     let _ = Store::new(&conn).record_login_attempt("cashier", 3, 60);
     let _ = Store::new(&conn).record_login_attempt("cashier", 3, 60);
     let _ = Store::new(&conn).record_login_attempt("cashier", 3, 60);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -1052,14 +1050,13 @@ async fn scoped_update_staff_pin_rotation_clears_login_attempts() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
 
     // The lockout must be cleared — a fresh attempt should succeed.
-    let st = app.state::<AppState>();
-    let db = st.db.lock().await;
+    let db = ctx.lock_global().await;
     let remaining = Store::new(&db)
         .record_login_attempt("cashier", 3, 60)
         .unwrap();
@@ -1070,7 +1067,7 @@ async fn scoped_update_staff_pin_rotation_clears_login_attempts() {
 async fn scoped_update_staff_pin_rotation_never_touches_other_users_sessions() {
     // Isolation guard: rotating one user's PIN must only invalidate that
     // user's own stale sessions — never a different user's active session.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
     // A third user (manager) with an active session on another terminal.
     // DB row id is a generated UUID — the session below keys off
@@ -1079,9 +1076,11 @@ async fn scoped_update_staff_pin_rotation_never_touches_other_users_sessions() {
     Store::new(&conn)
         .create_user("manager", "hash", "Manager", "role-owner")
         .unwrap();
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     // Target user's stale terminal (issued under the old PIN).
-    state.session_store.write().unwrap().insert(
+    bridge.sessions().write().unwrap().insert(
         "cashier-stale-terminal".into(),
         SessionContext::new(
             "user-cashier".into(),
@@ -1095,7 +1094,7 @@ async fn scoped_update_staff_pin_rotation_never_touches_other_users_sessions() {
         ),
     );
     // A DIFFERENT user's active session — must survive the rotation.
-    state.session_store.write().unwrap().insert(
+    bridge.sessions().write().unwrap().insert(
         "manager-token".into(),
         SessionContext::new(
             "user-manager".into(),
@@ -1108,11 +1107,6 @@ async fn scoped_update_staff_pin_rotation_never_touches_other_users_sessions() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -1125,16 +1119,16 @@ async fn scoped_update_staff_pin_rotation_never_touches_other_users_sessions() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
 
-    let st = app.state::<AppState>();
+    let st = &ctx;
     // Target's stale session is gone.
     assert!(matches!(
         st.resolve_session("cashier-stale-terminal"),
-        Err(AppError::InvalidSession)
+        Err(BridgeError::InvalidSession)
     ));
     // Caller's session survives (UI reload path).
     assert!(st.resolve_session("owner-token").is_ok());
@@ -1144,14 +1138,11 @@ async fn scoped_update_staff_pin_rotation_never_touches_other_users_sessions() {
 
 #[tokio::test]
 async fn scoped_update_staff_rejects_short_pin() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
     let result = update_staff_scoped(
         "owner-token".into(),
         UpdateStaffScopedArgs {
@@ -1164,50 +1155,42 @@ async fn scoped_update_staff_rejects_short_pin() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await;
-    assert!(matches!(result, Err(AppError::Invalid(_))));
+    assert!(matches!(result, Err(BridgeError::Invalid(_))));
 }
 
 #[tokio::test]
 async fn scoped_list_staff_requires_staff_read() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = list_staff_scoped("cashier-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let ctx = bridge.ctx();
+    let result = list_staff_scoped("cashier-token".into(), &ctx).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn scoped_list_roles_requires_staff_read() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "cashier-token",
         "user-cashier",
         "role-lite",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = list_roles_scoped("cashier-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let ctx = bridge.ctx();
+    let result = list_roles_scoped("cashier-token".into(), &ctx).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -1215,17 +1198,12 @@ async fn scoped_list_roles_carries_each_roles_granted_permission_keys() {
     // The staff screen shows what each role can do — the role listing
     // must carry the granted keys verbatim (Owner = global wildcard,
     // a narrow custom role = its exact grants).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let roles = list_roles_scoped("owner-token".into(), app.state())
-        .await
-        .unwrap();
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+    let roles = list_roles_scoped("owner-token".into(), &ctx).await.unwrap();
     let owner = roles.iter().find(|r| r.id == "role-owner").unwrap();
     assert_eq!(owner.permissions, vec!["*"]);
     let lite = roles.iter().find(|r| r.id == "role-lite").unwrap();
@@ -1234,17 +1212,12 @@ async fn scoped_list_roles_carries_each_roles_granted_permission_keys() {
 
 #[tokio::test]
 async fn scoped_list_staff_lists_global_identity_db() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
-    let state = scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let staff = list_staff_scoped("owner-token".into(), app.state())
-        .await
-        .unwrap();
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+    let staff = list_staff_scoped("owner-token".into(), &ctx).await.unwrap();
     let names: Vec<&str> = staff.iter().map(|s| s.username.as_str()).collect();
     assert!(names.contains(&"owner"));
     assert!(names.contains(&"cashier"));
@@ -1258,16 +1231,13 @@ async fn scoped_staff_commands_use_global_identity_db_for_any_store() {
     // bound to store B must still resolve the caller from the GLOBAL
     // identity DB (not fail with "user not found" from an empty store
     // DB), and must not observe store A's business data.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
     // Pro tier so the staff-creation quota (C1.1) has headroom.
     seed_subscription_tier(&conn, "pro");
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    let bridge = TestBridge::new().with_conn(conn);
     for (token, store_id) in [("owner-token-a", "store-a"), ("owner-token-b", "store-b")] {
-        state.session_store.write().unwrap().insert(
+        bridge.sessions().write().unwrap().insert(
             token.into(),
             SessionContext::new(
                 "user-owner".into(),
@@ -1281,10 +1251,7 @@ async fn scoped_staff_commands_use_global_identity_db_for_any_store() {
             ),
         );
     }
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let ctx = bridge.ctx();
 
     // Store B's session can create staff (identity + roles are global).
     let created = create_staff_scoped(
@@ -1297,7 +1264,7 @@ async fn scoped_staff_commands_use_global_identity_db_for_any_store() {
             profile: complete_profile_args(),
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();
@@ -1305,7 +1272,7 @@ async fn scoped_staff_commands_use_global_identity_db_for_any_store() {
 
     // Store A's session sees the same global identity set (no cross-store
     // leakage of business data — staff identity is intentionally shared).
-    let staff = list_staff_scoped("owner-token-a".into(), app.state())
+    let staff = list_staff_scoped("owner-token-a".into(), &ctx)
         .await
         .unwrap();
     let names: Vec<&str> = staff.iter().map(|s| s.username.as_str()).collect();
@@ -1371,11 +1338,10 @@ fn bootstrap_owner_result_debug() {
 
 // ── BootstrapOwner logic tests ─────────────────────────────────────
 
-use oz_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    crate::testing::temp_conn()
 }
 
 #[test]
@@ -1421,7 +1387,7 @@ fn bootstrap_owner_rejects_when_users_exist() {
     };
 
     let err = run_bootstrap_owner(&conn, &args).unwrap_err();
-    assert!(matches!(err, AppError::Invalid(msg) if msg.contains("already exist")));
+    assert!(matches!(err, BridgeError::Invalid(msg) if msg.contains("already exist")));
 }
 
 #[test]
@@ -1434,7 +1400,7 @@ fn bootstrap_owner_rejects_empty_username() {
     };
 
     let err = run_bootstrap_owner(&conn, &args).unwrap_err();
-    assert!(matches!(err, AppError::Invalid(msg) if msg.contains("username")));
+    assert!(matches!(err, BridgeError::Invalid(msg) if msg.contains("username")));
 }
 
 #[test]
@@ -1447,7 +1413,7 @@ fn bootstrap_owner_rejects_empty_display_name() {
     };
 
     let err = run_bootstrap_owner(&conn, &args).unwrap_err();
-    assert!(matches!(err, AppError::Invalid(msg) if msg.contains("display_name")));
+    assert!(matches!(err, BridgeError::Invalid(msg) if msg.contains("display_name")));
 }
 
 #[test]
@@ -1460,7 +1426,7 @@ fn bootstrap_owner_rejects_short_pin() {
     };
 
     let err = run_bootstrap_owner(&conn, &args).unwrap_err();
-    assert!(matches!(err, AppError::Invalid(msg) if msg.contains("pin")));
+    assert!(matches!(err, BridgeError::Invalid(msg) if msg.contains("pin")));
 }
 
 #[test]
@@ -1509,7 +1475,7 @@ async fn update_staff_scoped_allows_manager_updating_staff() {
     // STAFF-02 positive path: the Manager preset grants STAFF_UPDATE.
     // A manager editing a staff member's display name must succeed
     // (the role hierarchy allows it — target is not Owner, not self).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -1520,18 +1486,14 @@ async fn update_staff_scoped_allows_manager_updating_staff() {
             ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = scoped_state_with_token(
+    let bridge = scoped_state_with_token(
         conn,
         "manager-token",
         "user-manager",
         "role-manager",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
+    let ctx = bridge.ctx();
     let result = update_staff_scoped(
         "manager-token".into(),
         UpdateStaffScopedArgs {
@@ -1544,7 +1506,7 @@ async fn update_staff_scoped_allows_manager_updating_staff() {
             profile: None,
             assignment: None,
         },
-        app.state(),
+        &ctx,
     )
     .await
     .unwrap();

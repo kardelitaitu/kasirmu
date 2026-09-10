@@ -1387,3 +1387,15 @@ pub async fn bootstrap_owner(
     );
     Ok(result)
 }
+
+#[cfg(test)]
+#[path = "staff_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "staff_security_events_tests.rs"]
+mod security_events_tests;
+
+#[cfg(test)]
+#[path = "staff_role_holders_tests.rs"]
+mod role_holders_tests;

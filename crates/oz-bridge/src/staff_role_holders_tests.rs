@@ -1,3 +1,11 @@
+//! Role-holder reads on the staff surface (Wave-B test relocation: moved
+//! out of `apps/desktop-client/src/commands/staff_role_holders_tests.rs`).
+//!
+//! Mounted at the foot of `staff.rs` beside `staff_tests.rs` (multi-mount
+//! ruling). The desktop file drove the shell command through `AppState` + a
+//! Tauri mock app; here it runs through a same-named desktop-shaped adapter
+//! over a `TestBridge` context with the seeds ported verbatim against
+//! `testing::temp_conn`.
 //! Role-holder reads on the desktop IPC surface.
 //!
 //! A separate module from `staff_tests.rs` on purpose: that file is another
@@ -14,8 +22,24 @@
 
 use super::*;
 
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
+use crate::testing::TestBridge;
+
+// ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
+#[allow(dead_code)]
+mod desktop_shaped {
+    use crate::ctx::BridgeCtx;
+    use crate::error::BridgeError;
+    use crate::staff::RoleHoldersDto;
+
+    pub async fn list_role_holders_scoped(
+        role_id: String,
+        token: String,
+        ctx: &BridgeCtx<'_>,
+    ) -> Result<RoleHoldersDto, BridgeError> {
+        crate::staff::list_role_holders_scoped(ctx, &role_id, &token).await
+    }
+}
+use desktop_shaped::list_role_holders_scoped;
 
 /// An authored role the surface can be asked about.
 const VIEWER: &str = "role-report-viewer";
@@ -23,7 +47,7 @@ const VIEWER: &str = "role-report-viewer";
 const NO_GRANTS: &str = "role-no-grants";
 
 fn base_conn() -> rusqlite::Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -64,22 +88,14 @@ fn add_user(conn: &rusqlite::Connection, id: &str, role: &str) {
 
 /// An app whose `tok` session belongs to `caller` (holding `caller_role`)
 /// and is standing in `store_id`; every name in `holders` holds [`VIEWER`].
-fn app_for(
-    caller: &str,
-    caller_role: &str,
-    store_id: &str,
-    holders: &[&str],
-) -> tauri::App<tauri::test::MockRuntime> {
+fn app_for(caller: &str, caller_role: &str, store_id: &str, holders: &[&str]) -> TestBridge {
     let conn = base_conn();
     add_user(&conn, caller, caller_role);
     for id in holders {
         add_user(&conn, id, VIEWER);
     }
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         "tok".into(),
         oz_core::session::SessionContext::new(
             caller.into(),
@@ -92,20 +108,18 @@ fn app_for(
             0,
         ),
     );
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+    bridge
 }
 
-fn owner_app(store_id: &str, holders: &[&str]) -> tauri::App<tauri::test::MockRuntime> {
+fn owner_app(store_id: &str, holders: &[&str]) -> TestBridge {
     app_for("user-owner", "role-owner", store_id, holders)
 }
 
 #[tokio::test]
 async fn lists_the_accounts_that_hold_a_role() {
-    let app = owner_app("default", &["user-a", "user-b"]);
-    let dto = list_role_holders_scoped(VIEWER.into(), "tok".into(), app.state())
+    let bridge = owner_app("default", &["user-a", "user-b"]);
+    let ctx = bridge.ctx();
+    let dto = list_role_holders_scoped(VIEWER.into(), "tok".into(), &ctx)
         .await
         .unwrap();
 
@@ -156,8 +170,9 @@ async fn holders_are_org_wide_even_for_a_store_bound_session() {
     // sees every holder in the organization. Inventing a per-store filter here
     // would under-report silently, and an admin reading a short list before a
     // revoke is exactly the failure this surface exists to prevent.
-    let app = owner_app("loc-elsewhere", &["user-a", "user-b"]);
-    let dto = list_role_holders_scoped(VIEWER.into(), "tok".into(), app.state())
+    let bridge = owner_app("loc-elsewhere", &["user-a", "user-b"]);
+    let ctx = bridge.ctx();
+    let dto = list_role_holders_scoped(VIEWER.into(), "tok".into(), &ctx)
         .await
         .unwrap();
     assert_eq!(
@@ -172,9 +187,10 @@ async fn the_cap_and_the_uncapped_total_both_cross_the_wire() {
     // total with no reported ceiling leaves the UI to hardcode one.
     let many: Vec<String> = (0..60).map(|i| format!("user-{i:02}")).collect();
     let refs: Vec<&str> = many.iter().map(|s| s.as_str()).collect();
-    let app = owner_app("default", &refs);
+    let bridge = owner_app("default", &refs);
+    let ctx = bridge.ctx();
 
-    let dto = list_role_holders_scoped(VIEWER.into(), "tok".into(), app.state())
+    let dto = list_role_holders_scoped(VIEWER.into(), "tok".into(), &ctx)
         .await
         .unwrap();
     assert_eq!(dto.holders.len(), 50, "capped");
@@ -192,8 +208,9 @@ async fn a_caller_without_staff_read_is_refused() {
     // staff:read is the gate by design (list_staff_scoped already discloses
     // these accounts and their roles) — but read is still a gate, and a
     // grant-less role must not be able to enumerate the organization.
-    let app = app_for("user-plain", NO_GRANTS, "default", &["user-a"]);
-    let err = list_role_holders_scoped(VIEWER.into(), "tok".into(), app.state())
+    let bridge = app_for("user-plain", NO_GRANTS, "default", &["user-a"]);
+    let ctx = bridge.ctx();
+    let err = list_role_holders_scoped(VIEWER.into(), "tok".into(), &ctx)
         .await
         .expect_err("a holder list is not public to the organization");
     assert!(
@@ -204,8 +221,9 @@ async fn a_caller_without_staff_read_is_refused() {
 
 #[tokio::test]
 async fn an_unknown_session_token_is_refused_before_any_read() {
-    let app = owner_app("default", &["user-a"]);
-    let err = list_role_holders_scoped(VIEWER.into(), "not-a-token".into(), app.state())
+    let bridge = owner_app("default", &["user-a"]);
+    let ctx = bridge.ctx();
+    let err = list_role_holders_scoped(VIEWER.into(), "not-a-token".into(), &ctx)
         .await
         .expect_err("a stale token must not read");
     assert!(
@@ -218,8 +236,9 @@ async fn an_unknown_session_token_is_refused_before_any_read() {
 async fn a_missing_role_is_an_error_rather_than_an_empty_list() {
     // "Nobody holds this" and "there is no such role" must not look the same on
     // the wire: the first is the sentence that licenses a delete.
-    let app = owner_app("default", &[]);
-    let err = list_role_holders_scoped("role-typo".into(), "tok".into(), app.state())
+    let bridge = owner_app("default", &[]);
+    let ctx = bridge.ctx();
+    let err = list_role_holders_scoped("role-typo".into(), "tok".into(), &ctx)
         .await
         .expect_err("a typoed role must not read as unheld");
     assert!(
