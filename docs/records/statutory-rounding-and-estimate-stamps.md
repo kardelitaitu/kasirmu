@@ -24,17 +24,25 @@ added** column directly (SQLite only refuses to ALTER one onto an existing colum
   single-id wrapper `:607`). An out-of-alphabet stored value is a **hard Validation error**, not a guess — the
   CHECK makes it hand-edited data. `''` and an unknown id both read `None` — the lookup must never become a
   second failure mode. The preference is the store KV (`crates/oz-core/src/settings.rs:258`, `:281`).
-- A Lua `lua_overrides` line replaces the DB rates and so skips their directive: it rounds with the
-  preference, stamps `preference` (`sales_tax.rs:210-217`) and warns per line
-  (`first_statutory_directive_for_sku:48`, warn `:177`); plugin-vs-statute stays a parked owner question.
+- A Lua `lua_overrides` line REPLACES the DB rate amount but NOT the rounding law (owner ruling D89-1,
+  option B): the plugin owns `rate_bps`/`is_inclusive`, while the winning rate's directive — resolved by
+  the SAME resolver the DB arm uses and taken FIRST-ROW (`rates.first()`, mirroring the DB arm's
+  winning semantics) — rounds the override amount via `effective_rounding_for_rate`. Empty chains fall
+  back to the preference; resolver errors propagate like the DB arm's (the directive is a money input,
+  never silently folded). The D64(d) advisory helper `first_statutory_directive_for_sku` was DELETED
+  (no remaining caller; no second source of truth). Preview/checkout asymmetry stands: cart preview
+  takes no overrides. Pinned by `db/sales_tests.rs` (`lua_override_applies_the_winning_statutory_directive`
+  and `lua_override_with_no_resolved_rates_falls_back_to_preference`).
 
 ## 2. Freeze-at-write: the breakdown says what rounded, and why
 
 Every rate contribution lands in `sale_lines.tax_breakdown_json` with `"rounding"` + `"rounding_source"` =
-`statutory` | `preference` (`db/sales_tax.rs:250-257`), so a ticket states its own provenance forever and a
+`statutory` | `preference` (`db/sales_tax.rs`), so a ticket states its own provenance forever and a
 later edit to the rate row cannot relabel it. Pre-E1 rows carry **neither key** — read them as `preference`,
-the only mode that existed (module doc `:16-20`). Pinned by `db/sales_tests.rs:4336` (statutory `truncate`
-beats a `HalfUp` preference: 3335 x 1000bps = **333**, not 334), `:4364` (the preview agrees), `:4391`.
+the only mode that existed (module doc). Lua-override entries additionally carry `"rate_source": "lua_override"`
+(additive key, no consumers) so a plugin-priced line is distinguishable from a DB-priced one. Pinned by
+`db/sales_tests.rs:4336` (statutory `truncate` beats a `HalfUp` preference: 3335 x 1000bps = **333**, not 334),
+`:4364` (the preview agrees), `:4391`, plus the two Lua-override pins named above.
 
 ## 3. Freeze-at-write: the sale stamp is core-authored, client-claimed
 

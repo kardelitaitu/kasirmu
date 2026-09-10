@@ -38,41 +38,6 @@ impl Store<'_> {
         }
     }
 
-    /// D64(d) minimum (PARKED owner item: do Lua plugins outrank statute?):
-    /// whether the rates a SKU's chain resolves to carry a non-'' statutory
-    /// directive that the override is about to skip. Advisory only — errors
-    /// are folded to `None` so an override line keeps computing exactly as
-    /// before — and deliberately NOT the full resolver: the override branch
-    /// never priced from the DB, so this read exists to make the skip
-    /// visible, not to re-price the line.
-    fn first_statutory_directive_for_sku(&self, sku: &str) -> Option<(String, String)> {
-        let mut rate_ids = self.get_product_tax_rates(sku).ok()?;
-        let category_id: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT category_id FROM products WHERE sku = ?1",
-                params![sku],
-                |row| row.get(0),
-            )
-            .ok();
-        if let Some(category_id) = category_id
-            && let Ok(mut cat_ids) = self.get_category_tax_rates(&category_id)
-        {
-            rate_ids.append(&mut cat_ids);
-        }
-        if let Ok(Some(default)) = self.get_default_tax_rate()
-            && !rate_ids.iter().any(|id| id == &default.id)
-        {
-            rate_ids.push(default.id.clone());
-        }
-        for id in &rate_ids {
-            if let Ok(Some(mode)) = self.tax_rate_rounding_mode(id) {
-                return Some((id.clone(), mode.wire_name().to_owned()));
-            }
-        }
-        None
-    }
-
     /// Compute tax breakdown for a sale in-place.
     ///
     /// For each line resolves ALL applicable tax rates via the chain:
@@ -167,27 +132,28 @@ impl Store<'_> {
 
             if let Some(idx) = override_idx {
                 let (_, rate_bps, is_inclusive) = &lua_overrides[idx];
-                // D64(d) minimum (PARKED: do Lua plugins outrank statute?): an
-                // override replaces the DB rows, so it silently skips any
-                // statutory rounding directive they carry. Warn per line while
-                // the owner ruling is pending; the computation is unchanged.
-                if let Some((rate_id, directive)) =
-                    self.first_statutory_directive_for_sku(&line.sku)
-                {
-                    tracing::warn!(
-                        sku = %line.sku,
-                        rate_id = %rate_id,
-                        statutory_rounding = %directive,
-                        "lua_overrides line skips a statutory rounding directive;                          the preference mode applies until the owner rules on                          plugin-vs-statute precedence"
-                    );
-                }
+                // D89-1 Option B (owner ruling; D90 rulings): the plugin OWNS
+                // the amount — `rate_bps` and `is_inclusive` below are the
+                // plugin's verdict — but the WINNING rate's statutory rounding
+                // directive still governs how that amount is rounded. Same
+                // resolver the DB arm uses, FIRST-ROW directive
+                // (`rates.first()`, mirroring the DB arm's
+                // `line.tax_rate_id = rates.first()` winning semantics);
+                // empty rates fall back to the preference. Resolver errors
+                // propagate like the DB arm's — the directive is a money
+                // input now, so it must never be silently folded away.
+                let rates = self.resolve_best_tax_rates_for_sku_at(&line.sku, scope)?;
+                let (effective, source) = match rates.first() {
+                    Some(winning) => self.effective_rounding_for_rate(&winning.id, mode)?,
+                    None => (mode, "preference"),
+                };
                 let rbps = *rate_bps;
                 let tax = compute_line_tax(
                     line_subtotal.minor_units,
                     rbps,
                     *is_inclusive,
                     line_subtotal.currency,
-                    mode,
+                    effective,
                 )?;
                 line_tax = line_tax
                     .checked_add(tax)
@@ -205,15 +171,18 @@ impl Store<'_> {
                         })?,
                     });
                 }
-                // No DB tax_rate_id for override lines.
+                // No DB tax_rate_id for override lines. `rate_source` marks
+                // the plugin provenance (additive key, no consumers today);
+                // `rounding`/`rounding_source` keep the shared vocabulary.
                 line.tax_rate_id = None;
                 line_breakdown.push(serde_json::json!({
                     "rate_id": null,
                     "rate_bps": rbps,
                     "is_inclusive": *is_inclusive,
                     "tax_minor": tax.minor_units,
-                    "rounding": mode.wire_name(),
-                    "rounding_source": "preference",
+                    "rounding": effective.wire_name(),
+                    "rounding_source": source,
+                    "rate_source": "lua_override",
                 }));
             } else {
                 let rates = self.resolve_best_tax_rates_for_sku_at(&line.sku, scope)?;

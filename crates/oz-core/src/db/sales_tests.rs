@@ -4416,10 +4416,13 @@ fn empty_directive_keeps_the_pre_e1_output_and_stamps_preference() {
     assert_eq!(breakdown[0]["rounding_source"], "preference");
 }
 
-// D64(d) minimum: a Lua override skips the statutory directive (warned);
-// the override still rounds with the preference and stamps it.
+// D89-1 Option B (D90 rulings): the plugin owns the amount/rate, but the
+// WINNING rate's statutory directive governs how that amount is rounded.
+// 3335 x 1000bps = 333.5: the truncate directive applies => 333 statutory,
+// NOT the 334 the HalfUp preference would have produced — the money change
+// on directive-carrying override lines is BY DESIGN.
 #[test]
-fn lua_override_skips_a_statutory_directive_and_stamps_preference() {
+fn lua_override_applies_the_winning_statutory_directive() {
     let conn = fresh();
     let s = store(&conn);
     let rate = seed_tax_rate(&conn, "Statutory 10%", 1000, true, false);
@@ -4440,11 +4443,42 @@ fn lua_override_skips_a_statutory_directive_and_stamps_preference() {
     )
     .unwrap();
     assert_eq!(
+        sale.lines[0].tax_amount.minor_units, 333,
+        "the FIRST-ROW directive (truncate) rounds the override amount"
+    );
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "truncate");
+    assert_eq!(breakdown[0]["rounding_source"], "statutory");
+    assert_eq!(
+        breakdown[0]["rate_source"], "lua_override",
+        "the override provenance rides the same breakdown entry"
+    );
+}
+
+// Option B fallback: with NO rates resolved (no product/category/default
+// rows), there is no winning directive — the preference applies and stamps.
+#[test]
+fn lua_override_with_no_resolved_rates_falls_back_to_preference() {
+    let conn = fresh();
+    let s = store(&conn);
+    // No tax rates seeded at all: the resolver returns an empty chain.
+    seed_product_with_category(&conn, "WATER", None);
+
+    let mut sale = make_single_line_sale("WATER", 1, 3335);
+    s.compute_sale_tax(
+        &mut sale,
+        &[("WATER".into(), 1000, false)],
+        RoundingMode::HalfUp,
+    )
+    .unwrap();
+    assert_eq!(
         sale.lines[0].tax_amount.minor_units, 334,
-        "the override rounds with the preference; the directive is skipped"
+        "no winning rate => the preference rounds the override amount"
     );
     let breakdown: Vec<serde_json::Value> =
         serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
     assert_eq!(breakdown[0]["rounding"], "half_up");
     assert_eq!(breakdown[0]["rounding_source"], "preference");
+    assert_eq!(breakdown[0]["rate_source"], "lua_override");
 }
