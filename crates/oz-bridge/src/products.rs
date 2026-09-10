@@ -8,19 +8,27 @@
 //! `&Store` bodies behind the command file's `run_*` test adapters
 //! ([`run_list_products`], [`run_lookup_by_barcode`],
 //! [`run_lookup_product_by_sku`], [`run_get_product_track_serial_batch`]).
-//! S9b adds the write half (create / update / delete / stock adjust / search
-//! signal) with its transaction and domain-event publishing.
+//! S9b landed the write half: [`create_scoped`], [`update_scoped`],
+//! [`delete_scoped`], [`adjust_stock_scoped`] (one `unchecked_transaction`
+//! + the [`StockAdjusted`] event published via `ctx.publish_event` only
+//! AFTER `tx.commit`) and [`record_product_search`].
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
 //! builds the context, calls one function here, and maps [`BridgeError`]
 //! back to `AppError` so the wire shape never moves.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
+use oz_core::availability::UsageCounts;
 use oz_core::db::Store;
+use oz_core::entitlements::Entitlements;
+use oz_core::events::{ProductCreated, StockAdjusted};
+use oz_core::inventory::{LocationId, CANONICAL_DEFAULT_LOCATION_UUID};
+use oz_core::inventory_transaction::InventoryTransactionId;
 use oz_core::permissions;
+use oz_core::Money;
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;
@@ -436,4 +444,582 @@ pub async fn get_product_track_serial_batch(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     Ok(run_get_product_track_serial_batch(&store, skus))
+}
+
+// ── Stock adjustment (transaction + domain event) ───────────────────
+
+/// Arguments for a stock adjustment.
+#[derive(Debug, Deserialize)]
+pub struct AdjustStockArgs {
+    /// SKU of the product to adjust.
+    pub sku: String,
+    /// Quantity change (positive = restock, negative = removal).
+    pub delta: i64,
+    /// Reason for the adjustment (e.g. "stock-take", "damaged", "return").
+    pub reason: String,
+}
+
+/// Adjust stock for the store resolved from a session token.
+///
+/// ADR #7: Scoped variant of the global `adjust_stock`. Resolves the
+/// token to a `SessionContext`, opens the store-scoped database, and
+/// adjusts stock within that store only. The write runs in a single
+/// `unchecked_transaction` and the `StockAdjusted` domain event is
+/// published only AFTER the transaction commits.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`],
+/// [`BridgeError::PermissionDenied`] without `inventory:adjust`,
+/// [`BridgeError::Invalid`] for empty sku/reason or a zero delta, and
+/// [`BridgeError::Internal`]/[`BridgeError::Core`] on DB failures.
+pub async fn adjust_stock_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: &AdjustStockArgs,
+) -> Result<i64, BridgeError> {
+    // F-017: enforce per-domain permission on this scoped command.
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::INVENTORY_ADJUST)
+        .await?;
+    validate_not_empty("sku", &args.sku).map_err(|e| BridgeError::Invalid(e.to_string()))?;
+    validate_not_empty("reason", &args.reason).map_err(|e| BridgeError::Invalid(e.to_string()))?;
+    if args.delta == 0 {
+        return Err(BridgeError::Invalid("delta must be non-zero".into()));
+    }
+
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+
+    let new_qty = {
+        let tid = ctx.terminal_id().await;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = ctx.store_with_tid(&db, tid);
+        let tx = db
+            .unchecked_transaction()
+            .map_err(|e| BridgeError::Internal(format!("starting tx: {e}")))?;
+        let loc = LocationId::from(CANONICAL_DEFAULT_LOCATION_UUID);
+        let new_qty = store.adjust_stock_at_location_with_reason(
+            &tx,
+            &args.sku,
+            args.delta,
+            &loc,
+            Some(&args.reason),
+            Some(&InventoryTransactionId::new()),
+            Some(&oz_core::terminal::TerminalId::from(
+                session.terminal_id.as_str(),
+            )),
+            Some(&oz_core::user::UserId::from(session.user_id.clone())),
+        )?;
+        tx.commit()
+            .map_err(|e| BridgeError::Internal(format!("commit tx: {e}")))?;
+        new_qty
+    };
+
+    // Publish the StockAdjusted domain event — AFTER the transaction has
+    // committed, so a bus failure can never orphan or undo the write.
+    ctx.publish_event(&StockAdjusted {
+        sku: args.sku.clone(),
+        delta: args.delta,
+        new_qty,
+        reason: args.reason.clone(),
+    })
+    .await;
+
+    tracing::info!(sku = %args.sku, delta = %args.delta, reason = %args.reason, new_qty, "stock adjusted (scoped)");
+    Ok(new_qty)
+}
+
+// ── Create product ──────────────────────────────────────────────────
+
+/// Arguments for creating a product (global variant, `user_id` supplied).
+#[derive(Debug, Deserialize)]
+pub struct CreateProductArgs {
+    /// ID of the associated user.
+    pub user_id: String,
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+    /// Display name.
+    pub name: String,
+    /// Price Minor.
+    pub price_minor: i64,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// ID of the associated category.
+    pub category_id: Option<String>,
+    /// Barcode string.
+    pub barcode: Option<String>,
+    /// Initial Stock.
+    pub initial_stock: i64,
+    /// Tax Rate Ids.
+    pub tax_rate_ids: Vec<String>,
+    #[serde(default = "default_product_type")]
+    /// Product Type.
+    pub product_type: String,
+    #[serde(default)]
+    /// Cost price in minor units (ADR #36, local-only).
+    pub cost_minor: i64,
+    #[serde(default)]
+    /// Brand (free text).
+    pub brand: Option<String>,
+    #[serde(default)]
+    /// Rack position code.
+    pub rack_location: Option<String>,
+    #[serde(default)]
+    /// Free-text notes.
+    pub notes: Option<String>,
+    #[serde(default)]
+    /// Unit of measure.
+    pub unit: Option<String>,
+    #[serde(default = "default_true")]
+    /// Active/sellable status.
+    pub is_active: bool,
+    #[serde(default)]
+    /// Default supplier FK (local-only).
+    pub default_supplier_id: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Args for `create_product_scoped` — identical to [`CreateProductArgs`]
+/// but without `user_id` (read from the session token instead).
+#[derive(Debug, Deserialize)]
+pub struct CreateProductScopedArgs {
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+    /// Display name.
+    pub name: String,
+    /// Price Minor.
+    pub price_minor: i64,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// ID of the associated category.
+    pub category_id: Option<String>,
+    /// Barcode string.
+    pub barcode: Option<String>,
+    /// Initial Stock.
+    pub initial_stock: i64,
+    /// Tax Rate Ids.
+    pub tax_rate_ids: Vec<String>,
+    #[serde(default = "default_product_type")]
+    /// Product Type.
+    pub product_type: String,
+    #[serde(default)]
+    /// Cost price in minor units (ADR #36, local-only).
+    pub cost_minor: i64,
+    #[serde(default)]
+    /// Brand (free text).
+    pub brand: Option<String>,
+    #[serde(default)]
+    /// Rack position code.
+    pub rack_location: Option<String>,
+    #[serde(default)]
+    /// Free-text notes.
+    pub notes: Option<String>,
+    #[serde(default)]
+    /// Unit of measure.
+    pub unit: Option<String>,
+    #[serde(default = "default_true")]
+    /// Active/sellable status.
+    pub is_active: bool,
+    #[serde(default)]
+    /// Default supplier FK (local-only).
+    pub default_supplier_id: Option<String>,
+}
+
+fn default_product_type() -> String {
+    "retail".to_owned()
+}
+
+/// Result of creating a product.
+#[derive(Debug, Serialize)]
+pub struct CreateProductResult {
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+}
+
+/// Create a product within the store resolved from a session token.
+///
+/// ADR #7: the `user_id` for permission checks is read from the resolved
+/// `SessionContext`, not passed as a frontend parameter. The product is
+/// created in the store-scoped database for the session's `store_id`, and
+/// the `ProductCreated` domain event is published after the write.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`],
+/// [`BridgeError::PermissionDenied`] without `products:create` (or
+/// `products:edit_cost` when a non-zero cost is set, ADR #36 D7),
+/// [`BridgeError::Invalid`] for an invalid currency, and
+/// [`BridgeError::Internal`]/[`BridgeError::Core`] for quota,
+/// subscription or DB failures.
+pub async fn create_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: &CreateProductScopedArgs,
+) -> Result<CreateProductResult, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_CREATE)
+        .await?;
+    // ADR #36 D7: setting a cost (HPP) requires the manager-only
+    // products:edit_cost permission — staff can create products without
+    // ever touching cost.
+    if args.cost_minor != 0 {
+        ctx.require_session_permission(&session, permissions::PRODUCTS_EDIT_COST)
+            .await?;
+    }
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+
+    // Quota: the tier's product/menu cap (subscription-tiers.md §Numeric
+    // Limits) is enforced per-location catalog before creation. The tier
+    // comes from the global identity DB; the count from the store DB.
+    let sub = {
+        let global_db = ctx.lock_global().await;
+        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+
+    // Scope the DB borrow so Store (which is !Send) is dropped before
+    // the next .await point when we lock the kernel for event publishing.
+    {
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+
+        store.enforce_product_quota(
+            &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+        )?;
+
+        let currency: oz_core::Currency = args
+            .currency
+            .parse()
+            .map_err(|_| BridgeError::Invalid(format!("invalid currency '{}'", args.currency)))?;
+
+        let price = Money {
+            minor_units: args.price_minor,
+            currency,
+        };
+
+        store.create_product_with_attributes(
+            &args.sku,
+            &args.name,
+            price,
+            args.category_id.as_deref(),
+            args.barcode.as_deref(),
+            args.initial_stock,
+            Some(&args.product_type),
+            &oz_core::db::CreateProductAttributes {
+                cost_minor: args.cost_minor,
+                brand: args.brand.clone(),
+                rack_location: args.rack_location.clone(),
+                notes: args.notes.clone(),
+                unit: args.unit.clone(),
+                is_active: args.is_active,
+                default_supplier_id: args.default_supplier_id.clone(),
+            },
+        )?;
+
+        store.set_product_tax_rates(&args.sku, &args.tax_rate_ids)?;
+    } // db and store dropped here before .await
+
+    // Publish the ProductCreated domain event.
+    ctx.publish_event(&ProductCreated {
+        sku: args.sku.clone(),
+        name: args.name.clone(),
+        price_minor: args.price_minor,
+        currency: args.currency.clone(),
+        category_id: args.category_id.clone(),
+        barcode: args
+            .barcode
+            .as_ref()
+            .and_then(|s| foundation::Barcode::new(s).ok()),
+        initial_stock: args.initial_stock,
+    })
+    .await;
+
+    tracing::info!(sku = %args.sku, name = %args.name, "product created (scoped)");
+    Ok(CreateProductResult {
+        sku: args.sku.clone(),
+    })
+}
+
+// ── Update product ──────────────────────────────────────────────────
+
+/// Arguments for updating a product (global variant, `user_id` supplied).
+#[derive(Debug, Deserialize)]
+pub struct UpdateProductArgs {
+    /// ID of the associated user.
+    pub user_id: String,
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+    /// Display name.
+    pub name: String,
+    /// Price Minor.
+    pub price_minor: i64,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// ID of the associated category.
+    pub category_id: Option<String>,
+    /// Barcode string.
+    pub barcode: Option<String>,
+    /// Tax Rate Ids.
+    pub tax_rate_ids: Vec<String>,
+    /// Product Type.
+    pub product_type: Option<String>,
+    #[serde(default)]
+    /// Updated cost in minor units (None keeps).
+    pub cost_minor: Option<i64>,
+    #[serde(default)]
+    /// Updated brand — `null` clears, string sets, absent keeps.
+    pub brand: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated rack position code — `null` clears, string sets, absent keeps.
+    pub rack_location: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated notes — `null` clears, string sets, absent keeps.
+    pub notes: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated unit — `null` clears, string sets, absent keeps.
+    pub unit: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated active status.
+    pub is_active: Option<bool>,
+    #[serde(default)]
+    /// Updated default supplier — `null` clears, string sets, absent keeps.
+    pub default_supplier_id: Option<Option<String>>,
+}
+
+/// Args for `update_product_scoped` — identical to [`UpdateProductArgs`]
+/// but without `user_id` (read from the session token instead).
+#[derive(Debug, Deserialize)]
+pub struct UpdateProductScopedArgs {
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+    /// Display name.
+    pub name: String,
+    /// Price Minor.
+    pub price_minor: i64,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// ID of the associated category.
+    pub category_id: Option<String>,
+    /// Barcode string.
+    pub barcode: Option<String>,
+    /// Tax Rate Ids.
+    pub tax_rate_ids: Vec<String>,
+    /// Product Type.
+    pub product_type: Option<String>,
+    #[serde(default)]
+    /// Updated cost in minor units (None keeps).
+    pub cost_minor: Option<i64>,
+    #[serde(default)]
+    /// Updated brand — `null` clears, string sets, absent keeps.
+    pub brand: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated rack position code — `null` clears, string sets, absent keeps.
+    pub rack_location: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated notes — `null` clears, string sets, absent keeps.
+    pub notes: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated unit — `null` clears, string sets, absent keeps.
+    pub unit: Option<Option<String>>,
+    #[serde(default)]
+    /// Updated active status.
+    pub is_active: Option<bool>,
+    #[serde(default)]
+    /// Updated default supplier — `null` clears, string sets, absent keeps.
+    pub default_supplier_id: Option<Option<String>>,
+}
+
+impl UpdateProductArgs {}
+
+impl UpdateProductScopedArgs {
+    /// Map the PATCH-style attribute fields onto the core update struct.
+    fn to_update_attributes(&self) -> oz_core::db::UpdateProductAttributes {
+        oz_core::db::UpdateProductAttributes {
+            cost_minor: self.cost_minor,
+            brand: self.brand.clone(),
+            rack_location: self.rack_location.clone(),
+            notes: self.notes.clone(),
+            unit: self.unit.clone(),
+            is_active: self.is_active,
+            default_supplier_id: self.default_supplier_id.clone(),
+        }
+    }
+}
+
+/// Result of updating a product.
+#[derive(Debug, Serialize)]
+pub struct UpdateProductResult {
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+}
+
+/// Update a product within the store resolved from a session token.
+///
+/// ADR #7: the `user_id` for permission checks is read from the resolved
+/// `SessionContext`.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`],
+/// [`BridgeError::PermissionDenied`] without `products:update` (or
+/// `products:edit_cost` when a cost change is present, ADR #36 D7),
+/// [`BridgeError::Invalid`] for an invalid currency, and
+/// [`BridgeError::Core`] on DB failures.
+pub async fn update_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: &UpdateProductScopedArgs,
+) -> Result<UpdateProductResult, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_UPDATE)
+        .await?;
+    // ADR #36 D7: changing a product's cost (HPP) requires the manager-only
+    // products:edit_cost permission. A PATCH that does not touch cost
+    // (cost_minor absent) stays open to PRODUCTS_UPDATE holders.
+    if args.cost_minor.is_some() {
+        ctx.require_session_permission(&session, permissions::PRODUCTS_EDIT_COST)
+            .await?;
+    }
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+
+    // Scope the DB borrow so Store (which is !Send) is dropped before
+    // any future .await points.
+    {
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+
+        let currency: oz_core::Currency = args
+            .currency
+            .parse()
+            .map_err(|_| BridgeError::Invalid(format!("invalid currency '{}'", args.currency)))?;
+
+        let price = Money {
+            minor_units: args.price_minor,
+            currency,
+        };
+
+        store.update_product(
+            &args.sku,
+            &args.name,
+            price,
+            args.category_id.as_deref(),
+            args.barcode.as_deref(),
+            args.product_type.as_deref(),
+            None,
+        )?;
+
+        store.set_product_tax_rates(&args.sku, &args.tax_rate_ids)?;
+
+        store.update_product_attributes(&args.sku, &args.to_update_attributes())?;
+    }
+
+    tracing::info!(sku = %args.sku, name = %args.name, "product updated (scoped)");
+    Ok(UpdateProductResult {
+        sku: args.sku.clone(),
+    })
+}
+
+/// Record an acted-upon product search for the popularity index (ADR #37).
+///
+/// Fire-and-forget: a tracking failure is logged and never fails the
+/// command (ADR #37 D3 — a tracking failure must never fail an add-to-cart).
+///
+/// # Errors
+///
+/// Returns [`BridgeError::Internal`] when the store lock is poisoned;
+/// store-level failures are logged, not propagated.
+pub async fn record_product_search(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    sku: &str,
+) -> Result<(), BridgeError> {
+    let conn = ctx.resolve_store(session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    match store.record_product_search(sku) {
+        Ok(()) => {}
+        Err(e) => {
+            // ADR #37 D3: non-blocking — a tracking failure must never
+            // fail an add-to-cart.
+            tracing::warn!(sku = %sku, error = %e, "product search signal not recorded");
+        }
+    }
+    Ok(())
+}
+
+// ── Delete product ──────────────────────────────────────────────────
+
+/// Arguments for deleting a product (global variant, `user_id` supplied).
+#[derive(Debug, Deserialize)]
+pub struct DeleteProductArgs {
+    /// ID of the associated user.
+    pub user_id: String,
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+}
+
+/// Args for `delete_product_scoped` — no `user_id`; read from session.
+#[derive(Debug, Deserialize)]
+pub struct DeleteProductScopedArgs {
+    /// Stock-keeping unit identifier.
+    pub sku: String,
+}
+
+/// Delete a product within the store resolved from a session token.
+///
+/// ADR #7: the `user_id` for permission checks is read from the resolved
+/// `SessionContext`.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`],
+/// [`BridgeError::PermissionDenied`] without `products:delete`, and
+/// [`BridgeError::Core`] on DB failures.
+pub async fn delete_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: &DeleteProductScopedArgs,
+) -> Result<(), BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_DELETE)
+        .await?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+
+    // Scope the DB borrow so Store (which is !Send) is dropped before
+    // any future .await points.
+    {
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        store.delete_product(&args.sku)?;
+    }
+
+    tracing::info!(sku = %args.sku, "product deleted (scoped)");
+    Ok(())
 }
