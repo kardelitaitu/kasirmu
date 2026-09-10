@@ -592,6 +592,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260926_tax_rate_scoped_authoring.sql".to_string(),
             "20260927_kds_ticket_prefix_stamp.sql".to_string(),
             "20260928_document_kind_check.sql".to_string(),
+            "20260929_tax_rate_rounding_mode.sql".to_string(),
         ]
     );
 
@@ -2102,4 +2103,73 @@ fn ticket_prefix_column_exists_and_backfills_empty_after_upgrade() {
         )
         .unwrap();
     assert_eq!(idx, 1, "the tenant-keyed partial unique index must exist");
+}
+
+#[test]
+fn tax_rate_rounding_mode_column_pins_the_statutory_set() {
+    // E1-1 (owner ruling 2026-09-10): the statutory rounding directive is a
+    // per-rate column. '' = no statutory directive, so the store preference
+    // applies and existing rows are unchanged; 'half_up' / 'truncate' are
+    // modules_tax::models::RoundingMode's serde snake_case names (the enum's
+    // rename_all, mirrored by wire_name()), so a value written through core
+    // can never fail this CHECK. The schema refuses every other spelling -
+    // including the plausible-but-wrong Rust-variant casings.
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let (col_type, notnull, dflt): (String, i64, Option<String>) = conn
+        .query_row(
+            "SELECT type, \"notnull\", dflt_value FROM pragma_table_info('tax_rates')
+             WHERE name = 'rounding_mode'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .expect("tax_rates must carry rounding_mode after the migration");
+    assert_eq!(col_type, "TEXT");
+    assert_eq!(notnull, 1, "the directive column is NOT NULL");
+    assert_eq!(
+        dflt.as_deref(),
+        Some("''"),
+        "no directive defaults to the '' sentinel, so preference applies"
+    );
+
+    // A row written without naming the column lands on the sentinel.
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps) VALUES ('r-default', 'PBN 10%', 1000)",
+        [],
+    )
+    .unwrap();
+    let mode: String = conn
+        .query_row(
+            "SELECT rounding_mode FROM tax_rates WHERE id = 'r-default'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(mode, "", "an unwritten rounding_mode must read back as ''");
+
+    // The full statutory set is accepted.
+    for (id, mode) in [("r-half-up", "half_up"), ("r-truncate", "truncate")] {
+        conn.execute(
+            &format!(
+                "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode) VALUES ('{id}', 'PBN 10%', 1000, '{mode}')"
+            ),
+            [],
+        )
+        .unwrap_or_else(|e| panic!("'{mode}' must satisfy the CHECK: {e}"));
+    }
+
+    // Anything outside the set is refused. 'round_half_up' is the shape of a
+    // plausible-but-wrong spelling (Rust-variant casing) that must never open
+    // a silent third mode - the same failure class the document_kind CHECK
+    // closes.
+    for bad in ["round_half_up", "HALF_UP", "bankers"] {
+        let attempted = conn.execute(
+            &format!(
+                "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode) VALUES ('r-bad-{bad}', 'PBN 10%', 1000, '{bad}')"
+            ),
+            [],
+        );
+        assert!(attempted.is_err(), "'{bad}' must be refused by the CHECK");
+    }
 }

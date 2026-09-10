@@ -909,7 +909,8 @@ CREATE TABLE IF NOT EXISTS "tax_rates" (
     legal_entity_id TEXT REFERENCES legal_entities(id) ON DELETE RESTRICT,
     location_id     TEXT REFERENCES locations(id) ON DELETE RESTRICT,
     effective_from  TEXT,
-    effective_to    TEXT,
+    effective_to    TEXT, rounding_mode TEXT NOT NULL DEFAULT ''
+    CHECK (rounding_mode IN ('', 'half_up', 'truncate')),
     -- One scope, never both: see the header. NULL means "not scoped at this
     -- tier", so (NULL, NULL) is the tenant-global row and stays legal.
     CHECK (legal_entity_id IS NULL OR location_id IS NULL)

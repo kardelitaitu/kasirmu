@@ -240,6 +240,20 @@ pub const ALL: &[Migration] = &[
         id: "20260928_document_kind_check.sql",
         sql: include_str!("../migrations/20260928_document_kind_check.sql"),
     },
+    // E1-1 (owner ruling 2026-09-10): the statutory rounding directive rides
+    // the rate row. '' = no statutory directive (the preference applies); the
+    // two non-empty values are RoundingMode's serde snake_case names, so
+    // storage and wire share one spelling. Registry-chronological date
+    // (c3f5920cf precedent): the work is 09-10, but 20260926 REBUILDS
+    // tax_rates and its INSERT..SELECT copies an enumerated column list,
+    // so anything applied before it would be silently dropped — the file
+    // must sort AFTER the last tax_rates DDL writer. A future rebuild of
+    // this table must carry rounding_mode through both its column lists;
+    // the migrations_tests pin enforces exactly that.
+    Migration {
+        id: "20260929_tax_rate_rounding_mode.sql",
+        sql: include_str!("../migrations/20260929_tax_rate_rounding_mode.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
