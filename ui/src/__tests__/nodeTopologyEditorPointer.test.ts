@@ -313,10 +313,11 @@ const setup = (
     activeState = typeof value === 'function' ? value(activeState) : value;
   });
 
-  // -- parent-owned refs (the hook leaves them where the editor has them) ---
-  //    (panCleanupRef/dragCleanupRef below are legacy fakes since stage 4A: the
-  //    hook owns those teardown refs now and no longer reads these two, so their
-  //    lifecycle assertions observe the vacuous side only.)
+  // -- refs the hook reads in place. Only marqueeCleanupRef still arrives via
+  //    deps (the editor's cancel-time mailbox); since stage 4A the hook owns
+  //    the pan/drag teardown refs itself, so the panCleanupRef/dragCleanupRef
+  //    fakes below are never read by the hook -- disposeAll touches them only
+  //    as inert no-ops.
   const mousePosRef: MutableRefObject<Point> = { current: { x: 0, y: 0 } };
   const marqueeRef: MutableRefObject<MarqueeRect | null> = { current: null };
   const marqueeStartRef: MutableRefObject<Point | null> = { current: null };
@@ -610,11 +611,11 @@ describe('useTopologyEditorPointer -- startPan listener lifecycle', () => {
     expect(h.setPan).toHaveBeenCalledTimes(1);
     expect(h.getPan()).toEqual({ x: 40, y: 10 });
 
-    // The installed mouseup listener runs the SAME disposer the ref exposes,
-    // so the release path and the parent path can never diverge.
+    // The installed mouseup listener runs the SAME hook-owned disposer the
+    // hook's unmount effect runs (stage 4A: the pan teardown ref is a hook
+    // local, so there is no parent channel to diverge from).
     h.docUp();
     expect(h.refs.isPanningRef.current).toBe(false);
-    expect(h.refs.panCleanupRef.current).toBeNull();
     expect(h.getPanActive()).toBe(false);
     expect(document.body.style.cursor).toBe('');
 
@@ -794,7 +795,6 @@ describe('useTopologyEditorPointer -- handleCanvasMouseDown background gate', ()
         expect(h.refs.marqueeStartRef.current).toBeNull();
         expect(h.refs.marqueeCleanupRef.current).toBeNull();
         expect(h.refs.isPanningRef.current).toBe(false);
-        expect(h.refs.panCleanupRef.current).toBeNull();
         expect(h.setPanGestureActive).not.toHaveBeenCalled();
         expect(h.selectMany).not.toHaveBeenCalled();
         expect(h.clearSelection).not.toHaveBeenCalled();
@@ -1244,7 +1244,6 @@ describe('useTopologyEditorPointer -- duplicate-drag cluster lifecycle', () => {
     expect(h.dup.setAlignmentGuide).toHaveBeenLastCalledWith(null);
     expect(h.dup.setLiveAnnouncement).toHaveBeenCalledWith('topology-duplicate-cancel-announce');
     expect(document.body.style.cursor).toBe('');
-    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
 
     // The document mouseup listener is GONE: a leaked finalize would select
     // the discarded copies. Replaying the release changes nothing.
@@ -1280,7 +1279,6 @@ describe('useTopologyEditorPointer -- duplicate-drag cluster lifecycle', () => {
     expect(h.selectMany).not.toHaveBeenCalled();
     expect(h.dup.setLiveAnnouncement).not.toHaveBeenCalled();
     expect(document.body.style.cursor).toBe('');
-    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
 
     h.docUp();
     expect(h.dup.getNodes()[0]).toMatchObject({ x: 0, y: 0 });
@@ -1303,7 +1301,6 @@ describe('useTopologyEditorPointer -- duplicate-drag cluster lifecycle', () => {
     expect(h.dup.getNodes()[0]).toMatchObject({ id: 'n-1', x: 0, y: 0 });
     expect(h.deps.dragStartRef.current.size).toBe(0);
     expect(h.deps.lastDragMovePosRef.current).toBeNull();
-    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
     h.unmount();
   });
 
@@ -1427,7 +1424,6 @@ describe('useTopologyEditorPointer -- duplicate-drag cluster lifecycle', () => {
     expect(h.clearWire).toHaveBeenCalledTimes(1);
     expect(h.refs.userInteractedRef.current).toBe(true);
     // No document mouseup was armed, so a replayed release is inert.
-    expect(h.dragRefs.dragCleanupRef.current).toBeNull();
     h.docUp();
     expect(h.dup.getHistory()).toHaveLength(0);
     expect(h.selectMany).not.toHaveBeenCalled();

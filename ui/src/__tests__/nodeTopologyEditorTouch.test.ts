@@ -277,7 +277,6 @@ describe('useTopologyEditorTouch — node drag through the injected trio', () =>
     h.up(1);
 
     expect(h.finalizeNodeDrag).toHaveBeenCalledTimes(1);
-    expect(h.touchCleanupRef.current).toBeNull();
     // The listeners are gone: a stray move cannot re-feed the drag.
     h.move(1, 999, 999);
     expect(h.applyDragMove).toHaveBeenCalledTimes(1);
@@ -298,7 +297,6 @@ describe('useTopologyEditorTouch — node drag through the injected trio', () =>
     expect(h.beginNodeDrag).toHaveBeenCalledTimes(1);
     expect(h.applyDragMove).toHaveBeenCalledTimes(2);
     expect(h.finalizeNodeDrag).toHaveBeenCalledTimes(1);
-    expect(h.touchCleanupRef.current).toBeNull();
     expect(document.body.style.cursor).toBe('');
 
     h.move(1, 999, 999);
@@ -323,7 +321,6 @@ describe('useTopologyEditorTouch — node drag through the injected trio', () =>
     // A node tap is NOT an empty-canvas tap: the selection stays.
     expect(h.finalizeNodeDrag).not.toHaveBeenCalled();
     expect(h.clearAll).not.toHaveBeenCalled();
-    expect(h.touchCleanupRef.current).toBeNull();
   });
 });
 
@@ -340,7 +337,6 @@ describe('useTopologyEditorTouch — pan, tap and full-state resets', () => {
     h.up(1);
     // Empty-canvas tap == plain click: the selection clears.
     expect(h.clearAll).toHaveBeenCalledTimes(1);
-    expect(h.touchCleanupRef.current).toBeNull();
   });
 
   it('a cancelled pan gesture resets the pan surface and a fresh two-finger gesture re-arms', () => {
@@ -381,7 +377,6 @@ describe('useTopologyEditorTouch — pan, tap and full-state resets', () => {
     h.up(1);
     expect(h.isPanningRef.current).toBe(false);
     expect(document.body.style.cursor).toBe('');
-    expect(h.touchCleanupRef.current).toBeNull();
 
     // A subsequent single-finger node drag works fresh: arm, feed, commit,
     // each exactly once, and no pan state leaks into it.
@@ -393,6 +388,5 @@ describe('useTopologyEditorTouch — pan, tap and full-state resets', () => {
     expect(h.finalizeNodeDrag).toHaveBeenCalledTimes(1);
     expect(h.setPan).toHaveBeenCalledTimes(1);
     expect(h.isPanningRef.current).toBe(false);
-    expect(h.touchCleanupRef.current).toBeNull();
   });
 });
