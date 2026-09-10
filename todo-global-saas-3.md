@@ -183,8 +183,28 @@ deferred behind the license-server work + supervisor go.
     deferred behind the owner: the persisted per-resource `over_quota` marker
     and the per-location KDS/topology dimensions tracked by the downgrade box
     in todo-global-saas-2.md.
-- [ ] **Add regional billing and plan presentation.** Pricing, currencies, tax,
+- [x] **Add regional billing and plan presentation.** Pricing, currencies, tax,
       payment providers, invoices, and plan availability may vary by market.
+      — **CLOSED 2026-09-10 — multi-currency pricing, gateway routing, and webhook-driven invoice generation landed.**
+      (a) **Pricing & Currencies by Market** — Multi-currency tier definitions
+      are codified in `apps/license-server/admin_stats.go` and `web_checkout.go`
+      (`TierPriceUSD`, `TierPriceIDR`, and `PRICE_TIERS_<CURRENCY>` market maps).
+      Pricing displays in tenant-local currency minor units (`IDR` vs `USD`),
+      respecting the strict minor-unit `Money` integer representation without float drift.
+      (b) **Payment Provider Routing** — Dual-gateway architecture is live:
+      Southeast Asian domestic/regional billing routes through Midtrans Snap /
+      Core API (`apps/license-server/midtrans.go`), while international markets
+      route through Paddle Billing (`apps/license-server/paddle.go`). Payment
+      provider affiliation is tracked per-tenant and per-license (`payment_provider`
+      schema field supporting `paddle`, `midtrans`, and `manual` grant overrides).
+      (c) **Tax & Market Variation** — Tax authoring and regional fiscal rules
+      operate under the §K tenant/legal-entity regional engine, where tax inclusive/exclusive
+      rates vary by market jurisdiction (`crates/oz-core/src/regional.rs` & `tax.rs`).
+      (d) **Invoicing & Plan Presentation** — Plan presentation and self-serve tier
+      selection are surfaced via `GET /api/v1/web/plans` and `POST /api/v1/web/checkout`,
+      with webhook-driven invoice generation (`apps/license-server/invoice.go` and
+      provider webhook handlers) guaranteeing idempotency via event deduplication tables
+      (`webhook_events` collection).
 - [x] **Define data residency and retention policy.** Document where tenant data,
       backups, audit events, telemetry, and license records are stored and how
       deletion/export requests are handled.
@@ -207,7 +227,6 @@ deferred behind the license-server work + supervisor go.
       picks residency once, at creation, and moving it later stays an
       explicit support/migration action (the spec sentence above this box
       already said so).
-      slice.
 - [x] **Add support/operator tooling.** Enterprise support may require scoped
       impersonation, diagnostics, tenant health, deployment version, sync health,
       and safe incident access without bypassing tenant isolation.
