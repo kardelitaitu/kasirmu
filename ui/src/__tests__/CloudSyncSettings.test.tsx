@@ -28,6 +28,41 @@ import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 
+// ── Session under test: the settings role gate ──────────────────────
+// SettingsPage.tsx:204-208 gates the whole shell on
+// roleAtLeast(session?.role_name, 'admin') and renders the locked card
+// otherwise. The real AuthProvider starts with session = null, so every
+// nav/section query below would time out on the locked card. Spread the
+// REAL module (AuthProvider stays mountable for the wrapper) and override
+// only useAuth, hoisted so no consumer sees a fresh object identity per
+// render. Same shape as the precedent in SettingsPage.test.tsx:49-82.
+const { authValue } = vi.hoisted(() => ({
+  authValue: {
+    session: {
+      user_id: 'u-ada',
+      username: 'ada',
+      display_name: 'Ada',
+      role_name: 'admin',
+      role_id: 'r-admin',
+      permissions: ['*'],
+    },
+    pickerTicket: null,
+    loading: false,
+    error: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+    clearError: vi.fn(),
+    isManager: true,
+    isOwner: false,
+    swapSession: vi.fn(),
+  },
+}));
+
+vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  useAuth: () => authValue,
+}));
+
 // ── Mock infra ────────────────────────────────────────────────────
 
 const { invokeMock, defaultImpl, failCommands, lastCallArgs } = vi.hoisted(() => {

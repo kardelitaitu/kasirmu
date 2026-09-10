@@ -45,6 +45,41 @@ vi.mock('@/features/locations', () => ({
   TopologyScreen: (props: unknown) => topologyScreenSpy(props),
 }));
 
+// ── Session under test: the settings role gate ──────────────────────
+// SettingsPage.tsx:204-208 gates the whole shell on
+// roleAtLeast(session?.role_name, 'admin') and renders the locked card
+// otherwise. The real AuthProvider starts with session = null, so every
+// nav/section query below would time out on the locked card. Spread the
+// REAL module (AuthProvider stays mountable for the wrapper) and override
+// only useAuth, hoisted so no consumer sees a fresh object identity per
+// render. Same shape as the precedent in SettingsPage.test.tsx:49-82.
+const { authValue } = vi.hoisted(() => ({
+  authValue: {
+    session: {
+      user_id: 'u-ada',
+      username: 'ada',
+      display_name: 'Ada',
+      role_name: 'admin',
+      role_id: 'r-admin',
+      permissions: ['*'],
+    },
+    pickerTicket: null,
+    loading: false,
+    error: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+    clearError: vi.fn(),
+    isManager: true,
+    isOwner: false,
+    swapSession: vi.fn(),
+  },
+}));
+
+vi.mock('@/contexts/AuthContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/AuthContext')>()),
+  useAuth: () => authValue,
+}));
+
 // SettingsPage reads useCurrency/useAuth/useBrand, so it needs the same wrapper the
 // existing SettingsPage suite builds. It does NOT need seeded IPC data here: these tests
 // only assert which section body is mounted, and the section switch happens in the shell
