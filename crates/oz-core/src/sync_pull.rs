@@ -140,6 +140,16 @@ pub(crate) struct SnapshotTaxRate {
     /// `crate::db::tax` and not one per transport.
     #[serde(default)]
     effective_to: Option<String>,
+    /// E1 statutory rounding directive stored on the rate (`''` =
+    /// no directive, the store preference applies; else a `RoundingMode`
+    /// serde snake_case name). D64 binding condition (a): this field exists
+    /// so a hub-authored mode reaches branches instead of landing `''`
+    /// silently. Same back-compat ruling as the scope fields: payloads
+    /// written before 20260929 carry no key, and absence IS the empty
+    /// sentinel — every pre-E1 row. The branch-side reader refuses a value
+    /// outside the statutory alphabet (see `upsert_tax_rates`).
+    #[serde(default)]
+    rounding_mode: String,
 }
 
 /// Placeholder written into `users.pin_hash` for snapshot-imported users.
@@ -370,14 +380,16 @@ fn upsert_tax_rates(
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let mut count = 0usize;
     let mut skipped: Vec<String> = Vec::new();
+    let mut skipped_rounding: Vec<(String, String)> = Vec::new();
     let mut stmt = tx.prepare(
         "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive,
                                 created_at, updated_at,
                                 legal_entity_id, location_id,
-                                effective_from, effective_to)
+                                effective_from, effective_to,
+                                rounding_mode)
          VALUES (?1, ?2, ?3, ?4, ?5,
                  COALESCE(?6, ?8), COALESCE(?7, ?8),
-                 ?9, ?10, ?11, ?12)
+                 ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(id) DO UPDATE SET
              name            = excluded.name,
              rate_bps        = excluded.rate_bps,
@@ -387,11 +399,20 @@ fn upsert_tax_rates(
              legal_entity_id = excluded.legal_entity_id,
              location_id     = excluded.location_id,
              effective_from  = excluded.effective_from,
-             effective_to    = excluded.effective_to",
+             effective_to    = excluded.effective_to,
+             rounding_mode   = excluded.rounding_mode",
     )?;
     for r in rows {
         if !snapshot_tax_rate_scope_is_applicable(tx, r)? {
             skipped.push(r.id.clone());
+            continue;
+        }
+        // E1: a directive outside the statutory alphabet would fail the
+        // schema CHECK mid-pull; skipping keeps the rest of the snapshot
+        // importing and is logged below. Flattening to '' is what is NOT
+        // allowed — that would round a statutory rate with the preference.
+        if !matches!(r.rounding_mode.as_str(), "" | "half_up" | "truncate") {
+            skipped_rounding.push((r.id.clone(), r.rounding_mode.clone()));
             continue;
         }
         // The four scope/window columns are assigned UNCONDITIONALLY on
@@ -413,6 +434,7 @@ fn upsert_tax_rates(
             r.location_id,
             r.effective_from,
             r.effective_to,
+            r.rounding_mode,
         ])?;
         count += 1;
     }
@@ -424,8 +446,19 @@ fn upsert_tax_rates(
             "snapshot tax rates skipped: their scope target is absent locally, or the              row is scoped to both an entity and a location. Flattening the scope would              make a rate meant for one location answer for every location, so the row is              refused instead and the tenant-global rate keeps applying."
         );
     }
+    if !skipped_rounding.is_empty() {
+        tracing::warn!(
+            skipped = ?skipped_rounding,
+            count = skipped_rounding.len(),
+            "snapshot tax rates skipped: rounding_mode outside the statutory              alphabet ('', 'half_up', 'truncate'). Flattening it to '' would round a              statutory rate with the store preference, so the row is refused and the              local copy, if any, keeps its current value."
+        );
+    }
     Ok(count)
 }
+
+#[cfg(test)]
+#[path = "sync_pull_tests.rs"]
+mod tests;
 
 fn upsert_users(tx: &rusqlite::Transaction<'_>, rows: &[SnapshotUser]) -> Result<usize, CoreError> {
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);

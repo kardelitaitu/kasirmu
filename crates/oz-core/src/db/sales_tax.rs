@@ -8,12 +8,71 @@
 //!
 //! Invariants: integer-only arithmetic with explicit rounding modes;
 //! inclusive tax is never added on top of displayed prices.
+//!
+//! E1 (owner ruling 2026-09-10): a rate row may carry a STATUTORY rounding
+//! directive (`tax_rates.rounding_mode`, 20260929). When present it outranks
+//! the `mode` argument — which is the store preference — for that rate's
+//! contribution, and the per-line breakdown JSON stamps `rounding` +
+//! `rounding_source` at write time so a ticket freezes its rounding
+//! provenance. Breakdown rows written before E1 carry neither key: read them
+//! as `preference`, which was the only mode that existed. A line whose rates
+//! carry no directive rounds exactly as before — the zero-behavior-change
+//! invariant, pinned by this module's pre-E1 tests running unmodified.
 
 use super::*;
 use crate::db::tax::TaxSaleScope;
 use crate::tax_rate::{RoundingMode, TaxRate};
 
 impl Store<'_> {
+    /// E1: the mode that rounds THIS rate's contribution — the row's
+    /// statutory directive when it carries one, else the preference — plus
+    /// which of the two decided, for the breakdown's freeze-at-write stamp.
+    fn effective_rounding_for_rate(
+        &self,
+        rate_id: &str,
+        preference: RoundingMode,
+    ) -> Result<(RoundingMode, &'static str), CoreError> {
+        match self.tax_rate_rounding_mode(rate_id)? {
+            Some(statutory) => Ok((statutory, "statutory")),
+            None => Ok((preference, "preference")),
+        }
+    }
+
+    /// D64(d) minimum (PARKED owner item: do Lua plugins outrank statute?):
+    /// whether the rates a SKU's chain resolves to carry a non-'' statutory
+    /// directive that the override is about to skip. Advisory only — errors
+    /// are folded to `None` so an override line keeps computing exactly as
+    /// before — and deliberately NOT the full resolver: the override branch
+    /// never priced from the DB, so this read exists to make the skip
+    /// visible, not to re-price the line.
+    fn first_statutory_directive_for_sku(&self, sku: &str) -> Option<(String, String)> {
+        let mut rate_ids = self.get_product_tax_rates(sku).ok()?;
+        let category_id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT category_id FROM products WHERE sku = ?1",
+                params![sku],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(category_id) = category_id {
+            if let Ok(mut cat_ids) = self.get_category_tax_rates(&category_id) {
+                rate_ids.append(&mut cat_ids);
+            }
+        }
+        if let Ok(Some(default)) = self.get_default_tax_rate() {
+            if !rate_ids.iter().any(|id| id == &default.id) {
+                rate_ids.push(default.id.clone());
+            }
+        }
+        for id in &rate_ids {
+            if let Ok(Some(mode)) = self.tax_rate_rounding_mode(id) {
+                return Some((id.clone(), mode.wire_name().to_owned()));
+            }
+        }
+        None
+    }
+
     /// Compute tax breakdown for a sale in-place.
     ///
     /// For each line resolves ALL applicable tax rates via the chain:
@@ -108,6 +167,20 @@ impl Store<'_> {
 
             if let Some(idx) = override_idx {
                 let (_, rate_bps, is_inclusive) = &lua_overrides[idx];
+                // D64(d) minimum (PARKED: do Lua plugins outrank statute?): an
+                // override replaces the DB rows, so it silently skips any
+                // statutory rounding directive they carry. Warn per line while
+                // the owner ruling is pending; the computation is unchanged.
+                if let Some((rate_id, directive)) =
+                    self.first_statutory_directive_for_sku(&line.sku)
+                {
+                    tracing::warn!(
+                        sku = %line.sku,
+                        rate_id = %rate_id,
+                        statutory_rounding = %directive,
+                        "lua_overrides line skips a statutory rounding directive;                          the preference mode applies until the owner rules on                          plugin-vs-statute precedence"
+                    );
+                }
                 let rbps = *rate_bps;
                 let tax = compute_line_tax(
                     line_subtotal.minor_units,
@@ -139,17 +212,22 @@ impl Store<'_> {
                     "rate_bps": rbps,
                     "is_inclusive": *is_inclusive,
                     "tax_minor": tax.minor_units,
+                    "rounding": mode.wire_name(),
+                    "rounding_source": "preference",
                 }));
             } else {
                 let rates = self.resolve_best_tax_rates_for_sku_at(&line.sku, scope)?;
 
                 for rate in &rates {
+                    // E1: per rate — two rates with different directives on
+                    // one line each round their own contribution.
+                    let (effective, source) = self.effective_rounding_for_rate(&rate.id, mode)?;
                     let tax = compute_line_tax(
                         line_subtotal.minor_units,
                         rate.rate_bps,
                         rate.is_inclusive,
                         line_subtotal.currency,
-                        mode,
+                        effective,
                     )?;
                     line_tax = line_tax
                         .checked_add(tax)
@@ -174,6 +252,8 @@ impl Store<'_> {
                         "rate_bps": rate.rate_bps,
                         "is_inclusive": rate.is_inclusive,
                         "tax_minor": tax.minor_units,
+                        "rounding": effective.wire_name(),
+                        "rounding_source": source,
                     }));
                 }
 
@@ -314,12 +394,13 @@ impl Store<'_> {
             let rates = self.resolve_best_tax_rates_for_sku_at(&line.sku, scope)?;
 
             for rate in &rates {
+                let (effective, _source) = self.effective_rounding_for_rate(&rate.id, mode)?;
                 let tax = compute_line_tax(
                     line_total_minor,
                     rate.rate_bps,
                     rate.is_inclusive,
                     currency,
-                    mode,
+                    effective,
                 )?;
                 if !rate.is_inclusive {
                     has_exclusive = true;

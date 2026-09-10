@@ -4237,3 +4237,117 @@ fn a_malformed_business_date_errors_rather_than_priceing() {
         "expected the same as_of validation error the resolver raises, got {err:?}"
     );
 }
+// E1-2: a statutory directive outranks the caller's preference mode, per
+// rate, in both compute loops.
+#[test]
+fn statutory_truncate_outranks_the_half_up_preference_in_the_sale() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "Statutory 10%", 1000, true, false);
+    conn.execute(
+        "UPDATE tax_rates SET rounding_mode = 'truncate' WHERE id = ?1",
+        [&rate],
+    )
+    .unwrap();
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+
+    // 3335 * 1000 / 10000 = 333.5: HalfUp gives 334, truncate gives 333.
+    let mut sale = make_single_line_sale("COFFEE", 1, 3335);
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::HalfUp)
+        .unwrap();
+    assert_eq!(
+        sale.lines[0].tax_amount.minor_units, 333,
+        "the row's statutory truncate must outrank the HalfUp preference"
+    );
+
+    // The freeze-at-write stamp records WHAT rounded and WHY.
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "truncate");
+    assert_eq!(breakdown[0]["rounding_source"], "statutory");
+}
+
+#[test]
+fn statutory_truncate_outranks_the_preference_in_the_cart_preview() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "Statutory 10%", 1000, true, false);
+    conn.execute(
+        "UPDATE tax_rates SET rounding_mode = 'truncate' WHERE id = ?1",
+        [&rate],
+    )
+    .unwrap();
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+
+    // The preview and the receipt must round the same way, or they disagree
+    // about what the customer owes (the scope-preview contract, extended to
+    // rounding).
+    let lines = vec![CartLineTaxInput {
+        sku: "COFFEE".into(),
+        qty: 1,
+        unit_price_minor: 3335,
+    }];
+    let r = s
+        .compute_cart_tax(&lines, usd(), RoundingMode::HalfUp)
+        .unwrap();
+    assert_eq!(r.tax_minor, 333);
+}
+
+#[test]
+fn empty_directive_keeps_the_pre_e1_output_and_stamps_preference() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "VAT 10%", 1000, true, false);
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+
+    // 3335 * 1000 / 10000 = 333.5 → HalfUp 334: the same answer the pre-E1
+    // code produced for this shape (the zero-behavior-change invariant; the
+    // whole pre-E1 suite runs unmodified with '' rows).
+    let mut sale = make_single_line_sale("COFFEE", 1, 3335);
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::HalfUp)
+        .unwrap();
+    assert_eq!(sale.lines[0].tax_amount.minor_units, 334);
+
+    // New sales always carry the stamp; pre-E1 rows carry neither key and
+    // read as preference (the only mode that existed) — documented in the
+    // sales_tax module doc.
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "half_up");
+    assert_eq!(breakdown[0]["rounding_source"], "preference");
+}
+
+// D64(d) minimum: a Lua override skips the statutory directive (warned);
+// the override still rounds with the preference and stamps it.
+#[test]
+fn lua_override_skips_a_statutory_directive_and_stamps_preference() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "Statutory 10%", 1000, true, false);
+    conn.execute(
+        "UPDATE tax_rates SET rounding_mode = 'truncate' WHERE id = ?1",
+        [&rate],
+    )
+    .unwrap();
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", &[rate.clone()]).unwrap();
+
+    let mut sale = make_single_line_sale("COFFEE", 1, 3335);
+    s.compute_sale_tax(
+        &mut sale,
+        &[("COFFEE".into(), 1000, false)],
+        RoundingMode::HalfUp,
+    )
+    .unwrap();
+    assert_eq!(
+        sale.lines[0].tax_amount.minor_units, 334,
+        "the override rounds with the preference; the directive is skipped"
+    );
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "half_up");
+    assert_eq!(breakdown[0]["rounding_source"], "preference");
+}
