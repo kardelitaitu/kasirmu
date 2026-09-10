@@ -449,12 +449,12 @@ pub fn validate_tax_rate_write(
                 .into(),
         )
     })?;
-    if let TaxRateScope::LegalEntity(id) | TaxRateScope::Location(id) = &scope {
-        if id.trim().is_empty() {
-            return Err(PgError::Validation(
-                "scope id must not be empty: omit the field for the tenant-global tier".into(),
-            ));
-        }
+    if let TaxRateScope::LegalEntity(id) | TaxRateScope::Location(id) = &scope
+        && id.trim().is_empty()
+    {
+        return Err(PgError::Validation(
+            "scope id must not be empty: omit the field for the tenant-global tier".into(),
+        ));
     }
     let window = TaxRateWindow {
         effective_from: effective_from.map(str::to_owned),
@@ -633,6 +633,7 @@ pub async fn create_tax_rate_scoped(
 /// this endpoint to say. Moving a row between tiers is allowed; the tier it
 /// leaves then has no default, which is why the flag is only ever claimed inside
 /// the tier being written.
+#[allow(clippy::too_many_arguments)]
 pub async fn update_tax_rate_scoped(
     pool: &Pool,
     tenant_id: &str,
@@ -2402,9 +2403,9 @@ pub async fn ack_memo(
         .execute(
             "UPDATE memo_recipients
              SET delivery_status = 'acknowledged',
-                 delivered_at = COALESCE(delivered_at, $4),
-                 acknowledged_at = $4,
-                 acknowledged_by = COALESCE($5, acknowledged_by)
+                 delivered_at = COALESCE(delivered_at, $3),
+                 acknowledged_at = $3,
+                 acknowledged_by = COALESCE($4, acknowledged_by)
              WHERE memo_id = $1 AND terminal_id = $2
                AND delivery_status IN ('pending', 'delivered')",
             &[&memo_id, &terminal_id, &now, &acknowledged_by],

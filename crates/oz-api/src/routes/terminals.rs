@@ -139,19 +139,18 @@ pub async fn register_terminal_handler(
         )
             .into_response();
     }
-    if let Some(tenant) = body.tenant_id.as_deref() {
-        if tenant.trim().is_empty()
+    if let Some(tenant) = body.tenant_id.as_deref()
+        && (tenant.trim().is_empty()
             || tenant.len() > 64
             || !tenant
                 .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-        {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "invalid_tenant", "tenant": tenant})),
-            )
-                .into_response();
-        }
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid_tenant", "tenant": tenant})),
+        )
+            .into_response();
     }
 
     let device_secret = generate_device_secret();

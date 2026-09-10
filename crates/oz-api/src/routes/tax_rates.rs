@@ -206,6 +206,7 @@ fn check_scope_target_sqlite(
 /// Shared by both engines so the boundary rules cannot drift: a both-set scope,
 /// a blank scope id, a non-`YYYY-MM-DD` arm and an empty period are all 400
 /// with the same message whichever backend the hub runs on.
+#[allow(clippy::result_large_err)]
 fn resolve_write(
     legal_entity_id: Option<&str>,
     location_id: Option<&str>,
@@ -307,18 +308,18 @@ pub async fn create_tax_rate(
             // IPC stays preference-only, D61 ruling 3), so the hub mirrors
             // its own tenant_id post-write stamp for a hub-authored mode.
             // '' and omitted leave the column at its '' default — no write.
-            if let Some(mode) = body.rounding_mode.as_deref().filter(|m| !m.is_empty()) {
-                if let Err(e) = db.execute(
+            if let Some(mode) = body.rounding_mode.as_deref().filter(|m| !m.is_empty())
+                && let Err(e) = db.execute(
                     "UPDATE tax_rates SET rounding_mode = ?1 WHERE id = ?2",
                     rusqlite::params![mode, rate.id],
-                ) {
-                    tracing::warn!(
-                        tenant_id = tenant_id,
-                        tax_rate_id = %rate.id,
-                        error = %e,
-                        "failed to stamp rounding_mode on tax rate — hub-authored mode may not reach branches"
-                    );
-                }
+                )
+            {
+                tracing::warn!(
+                    tenant_id = tenant_id,
+                    tax_rate_id = %rate.id,
+                    error = %e,
+                    "failed to stamp rounding_mode on tax rate — hub-authored mode may not reach branches"
+                );
             }
             (StatusCode::CREATED, Json(rate)).into_response()
         }
@@ -411,18 +412,18 @@ pub async fn update_tax_rate(
             // E1-9: same mirror-stamp as the create arm — the mode was
             // boundary-validated in resolve_write, and '' is a no-op that
             // leaves the column at its store-preference default.
-            if let Some(mode) = body.rounding_mode.as_deref().filter(|m| !m.is_empty()) {
-                if let Err(e) = db.execute(
+            if let Some(mode) = body.rounding_mode.as_deref().filter(|m| !m.is_empty())
+                && let Err(e) = db.execute(
                     "UPDATE tax_rates SET rounding_mode = ?1 WHERE id = ?2",
                     rusqlite::params![mode, id],
-                ) {
-                    tracing::warn!(
-                        tenant_id = tenant_id,
-                        tax_rate_id = %id,
-                        error = %e,
-                        "failed to stamp rounding_mode on tax rate — hub-authored mode may not reach branches"
-                    );
-                }
+                )
+            {
+                tracing::warn!(
+                    tenant_id = tenant_id,
+                    tax_rate_id = %id,
+                    error = %e,
+                    "failed to stamp rounding_mode on tax rate — hub-authored mode may not reach branches"
+                );
             }
             (StatusCode::OK, Json(rate)).into_response()
         }

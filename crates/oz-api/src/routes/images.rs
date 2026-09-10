@@ -229,14 +229,14 @@ pub async fn put_image(
     // front means a mismatch returns 409 with the bytes genuinely discarded
     // (never written, never refcounted) instead of orphaning a stored file.
     let hash16 = sha256_hex16(&body);
-    if let Some(expected) = query.hash.as_deref() {
-        if !is_valid_hash16(expected) || expected != hash16 {
-            return (
-                StatusCode::CONFLICT,
-                Json(serde_json::json!({"error": "hash mismatch"})),
-            )
-                .into_response();
-        }
+    if let Some(expected) = query.hash.as_deref()
+        && (!is_valid_hash16(expected) || expected != hash16)
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "hash mismatch"})),
+        )
+            .into_response();
     }
     let outcome = process_image(&state, &claims, &body).await;
     match outcome {

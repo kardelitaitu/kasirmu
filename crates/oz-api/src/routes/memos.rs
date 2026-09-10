@@ -37,6 +37,7 @@ pub struct MemoSyncRequest {
 /// admin key (the terminal-credential path must not be able to mint a
 /// tenant-wide write for a tenant it is not registered to — the claims'
 /// tenant is authoritative regardless).
+#[allow(clippy::result_large_err)]
 fn require_tenant_write(
     headers: &HeaderMap,
     claims: &ApiTokenClaims,
@@ -187,14 +188,14 @@ pub async fn list_active_memos_handler(
     // its tenant matches the bill being scoped. Deliberate: the desktop
     // must poll arbitrary terminals. Reads stay within-tenant (tenant comes
     // from claims, never the query).
-    if let Some(claimed) = &claims.terminal_id {
-        if claimed != &query.terminal_id {
-            return (
-                axum::http::StatusCode::FORBIDDEN,
-                Json(serde_json::json!({"error": "terminal_mismatch"})),
-            )
-                .into_response();
-        }
+    if let Some(claimed) = &claims.terminal_id
+        && claimed != &query.terminal_id
+    {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "terminal_mismatch"})),
+        )
+            .into_response();
     }
     let tenant_id = claims.tenant_id.clone().unwrap_or_else(|| "default".into());
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
