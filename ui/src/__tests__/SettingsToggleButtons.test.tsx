@@ -1,18 +1,21 @@
 /**
  * @file SettingsToggleButtons.test.tsx
  * @description Regression test suite ensuring all settings toggle buttons (enable/disable switches)
- * across SettingsPage, AppearanceSettings, and DataManagementScreen are properly structured as <label htmlFor="...">
+ * across the receipt/sync toggle owners (ReceiptSection/SyncSection), AppearanceSettings, and DataManagementScreen
+ * are properly structured as <label htmlFor="...">
  * elements or wrap their inputs so that clicks on the visual slider track/wrapper delegate to the checkbox input.
  * Prevents regression where wrapper divs/spans blocked toggle button clicks.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import SettingsPage from '@/features/settings/SettingsPage';
+import ReceiptSection from '@/features/settings/sections/ReceiptSection';
+import SyncSection from '@/features/settings/sections/SyncSection';
 import { AppearanceSettings } from '@/features/settings/AppearanceSettings';
 import DataManagementScreen from '@/features/settings/DataManagementScreen';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -20,6 +23,9 @@ import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
+import type { ReactLocalization } from '@fluent/react';
+import type { SyncSettingsDto } from '@/api/offline';
+import type { ReceiptSettingsDto } from '@/api/settings';
 
 // ── Session under test: the settings role gate ──────────────────────
 // SettingsPage.tsx:204-208 gates the whole shell on
@@ -233,6 +239,87 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 Element.prototype.scrollIntoView = vi.fn();
 
+// Minimal ReactLocalization stand-in: the receipt/sync toggle owners (ReceiptSection,
+// SyncSection) take `l10n` as a prop. This suite only asserts their toggle DOM, so a
+// pass-through getString (ids fall back to themselves via requiredLocalized) suffices.
+const testL10n = {
+  getString: (id: string) => id,
+} as unknown as ReactLocalization;
+
+const INITIAL_RECEIPT: ReceiptSettingsDto = {
+  showCurrency: false,
+  decimalSeparator: 'dot',
+  showTax: true,
+  footer: '',
+  paperWidth: 'standard',
+  showTableNumber: false,
+  marginTop: 0,
+  marginBottom: 0,
+  marginLeft: 0,
+  marginRight: 0,
+};
+
+// Stateful hosts: the old suite reached these toggles through SettingsPage, which owned
+// the receipt/sync state, so clicking a wrapper flipped the checked state via the real
+// setter. The hosts preserve that stateful arrangement around the direct section mounts.
+function ReceiptToggleHost() {
+  const [receipt, setReceipt] = useState(INITIAL_RECEIPT);
+  return (
+    <ReceiptSection
+      receipt={receipt}
+      setReceipt={setReceipt}
+      setDecimalSep={vi.fn()}
+      markDirty={vi.fn()}
+      l10n={testL10n}
+    />
+  );
+}
+
+const INITIAL_SYNC: SyncSettingsDto = { serverUrl: null, hasApiKey: false, enabled: false };
+
+function SyncToggleHost() {
+  const [sync, setSync] = useState(INITIAL_SYNC);
+  return (
+    <SyncSection
+      sync={sync}
+      setSync={setSync}
+      syncServerUrl=""
+      setSyncServerUrl={vi.fn()}
+      syncApiKey=""
+      setSyncApiKey={vi.fn()}
+      syncApiKeyVisible={false}
+      setSyncApiKeyVisible={vi.fn()}
+      syncing={false}
+      setSyncing={vi.fn()}
+      pulling={false}
+      setPulling={vi.fn()}
+      syncResult={null}
+      setSyncResult={vi.fn()}
+      pullResult={null}
+      setPullResult={vi.fn()}
+      queueSummary={null}
+      syncPlan={null}
+      testing={false}
+      setTesting={vi.fn()}
+      pingResult={null}
+      setPingResult={vi.fn()}
+      requesting={false}
+      setRequesting={vi.fn()}
+      tokenExpiresAt={null}
+      setTokenExpiresAt={vi.fn()}
+      cmInput={{} as React.HTMLAttributes<HTMLInputElement>}
+      markDirty={vi.fn()}
+      refreshQueueSummary={vi.fn()}
+      testSyncConnection={vi.fn()}
+      syncRun={vi.fn()}
+      syncPull={vi.fn()}
+      requestSyncToken={vi.fn()}
+      l10n={testL10n}
+      addToast={vi.fn()}
+    />
+  );
+}
+
 describe('Settings Toggle Buttons Regression Suite', () => {
   beforeEach(() => {
     mockSetHwAccelEnabled.mockClear();
@@ -243,17 +330,23 @@ describe('Settings Toggle Buttons Regression Suite', () => {
     (invokeMock as any).mockImplementation((cmd: any) => defaultImpl(cmd));
   });
 
-  it('ensures all 4 toggle buttons in SettingsPage are structured as <label htmlFor="..."> and delegate clicks', async () => {
+  it('ensures all 4 toggle buttons are structured as <label htmlFor="..."> and delegate clicks', async () => {
     const user = userEvent.setup();
-    renderWithProvidersSync(<TestWrapper><SettingsPage /></TestWrapper>, settingsFtl, sharedFtl);
+    // The flat-IA settings rebuild replaced the Operations → Receipt / Cloud Sync tab tree
+    // with 13 scaffold pages that intentionally render no controls (SettingsNavTree.tsx;
+    // screens/GeneralScreen.tsx:5 "Intentionally renders no controls"). The receipt and sync
+    // toggles still live in their owning components (sections/ReceiptSection.tsx,
+    // sections/SyncSection.tsx), so this suite mounts those directly — the DOM contract under
+    // test (label[for] + click delegation) is unchanged. No current page button renders them.
+    renderWithProvidersSync(
+      <TestWrapper>
+        <ReceiptToggleHost />
+      </TestWrapper>,
+      settingsFtl,
+      sharedFtl,
+    );
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /operations/i })).toBeInTheDocument();
-    });
-
-    // Navigate to Receipt section where show-currency, show-tax, show-table-number live
-    await user.click(screen.getByRole('button', { name: /operations/i }));
-    await user.click(screen.getByRole('button', { name: 'Receipt' }));
+    // Receipt section: show-currency, show-tax, show-table-number live here
     await waitFor(() => {
       expect(document.getElementById('receipt-show-currency')).not.toBeNull();
     });
@@ -279,8 +372,16 @@ describe('Settings Toggle Buttons Regression Suite', () => {
       expect(input.checked, `Clicking .settings-toggle wrapper should toggle input #${inputId}`).toBe(!initialChecked);
     }
 
-    // Navigate to Cloud Sync section where sync-enabled lives
-    await user.click(screen.getByRole('button', { name: 'Cloud Sync' }));
+    // Sync section: sync-enabled lives here. The old IA reached it by clicking the
+    // "Cloud Sync" nav button; the flat IA has no such page, so mount the owner directly.
+    cleanup();
+    renderWithProvidersSync(
+      <TestWrapper>
+        <SyncToggleHost />
+      </TestWrapper>,
+      settingsFtl,
+      sharedFtl,
+    );
     await waitFor(() => {
       expect(document.getElementById('sync-enabled')).not.toBeNull();
     });
