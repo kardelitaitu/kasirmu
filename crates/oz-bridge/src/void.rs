@@ -67,3 +67,7 @@ pub async fn void_sale_scoped(
     tracing::info!(sale_id = %args.sale_id, reason = %args.reason, "sale voided (scoped)");
     Ok(sale)
 }
+
+#[cfg(test)]
+#[path = "void_tests.rs"]
+mod void_tests;

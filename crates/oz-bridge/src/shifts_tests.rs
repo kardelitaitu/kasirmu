@@ -1,10 +1,20 @@
+//! Unit tests for the shift command bodies (Wave-D test relocation:
+//! moved out of `apps/desktop-client/src/commands/shifts_tests.rs`).
+//!
+//! Mounted at the foot of `shifts.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs and args directly. The desktop file
+//! exercised session validation through `AppState`; here the same
+//! rejection goes through the bridge context's shared session map. DTO
+//! and serde assertions are verbatim.
+
 use super::*;
+use crate::testing::TestBridge;
 
 #[test]
 fn shifts_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let result = bridge.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // -- DTO struct tests --

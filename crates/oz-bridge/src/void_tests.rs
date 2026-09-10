@@ -1,4 +1,14 @@
+//! Unit tests for the void-sale command body (Wave-D test relocation:
+//! moved out of `apps/desktop-client/src/commands/void_tests.rs`).
+//!
+//! Mounted at the foot of `void.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the args DTOs directly. The desktop file
+//! exercised session validation through `AppState`; here the same
+//! rejection goes through the bridge context's shared session map. The
+//! frontend camelCase parity assertions (Bug #13) are verbatim.
+
 use super::*;
+use crate::testing::TestBridge;
 
 #[test]
 fn void_sale_args_deserialize() {
@@ -35,9 +45,9 @@ fn void_sale_scoped_args_deserialize() {
 
 #[test]
 fn void_sale_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let result = bridge.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]

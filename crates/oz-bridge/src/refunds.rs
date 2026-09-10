@@ -267,3 +267,7 @@ pub async fn list_refunds_scoped(
     drop(db);
     Ok(refunds)
 }
+
+#[cfg(test)]
+#[path = "refunds_tests.rs"]
+mod refunds_tests;

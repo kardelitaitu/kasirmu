@@ -32,9 +32,3 @@ pub async fn void_sale_scoped(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "void_tests.rs"]
-mod tests;

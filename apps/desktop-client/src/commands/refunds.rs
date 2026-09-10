@@ -91,6 +91,3 @@ pub async fn list_refunds_scoped(
         .map_err(Into::into)
 }
 
-#[cfg(test)]
-#[path = "refunds_tests.rs"]
-mod tests;

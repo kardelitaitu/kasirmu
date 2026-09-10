@@ -109,6 +109,3 @@ pub async fn get_shift_report_scoped(
         .map_err(Into::into)
 }
 
-#[cfg(test)]
-#[path = "shifts_tests.rs"]
-mod tests;

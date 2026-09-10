@@ -1,4 +1,16 @@
+//! Unit tests for the refund command bodies (Wave-D test relocation:
+//! moved out of `apps/desktop-client/src/commands/refunds_tests.rs`).
+//!
+//! Mounted at the foot of `refunds.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs, args and the `oz_core` store types
+//! the module imports. The two Store-level refund-arithmetic tests run
+//! against `oz_core`'s fully migrated in-memory database exactly as
+//! before (the store work is not Tauri-coupled); session rejection goes
+//! through the bridge context's shared session map; DTO and serde
+//! assertions are verbatim.
+
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::migrations;
 use rusqlite::Connection;
 
@@ -191,9 +203,9 @@ fn process_refund_scoped_args_debug() {
 
 #[test]
 fn process_refund_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = TestBridge::new();
+    let result = bridge.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Bug #11: invalid currency must not silently fall back ────
