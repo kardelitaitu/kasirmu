@@ -4369,6 +4369,7 @@ dependencies = [
  "chrono",
  "foundation",
  "hex",
+ "hmac 0.12.1",
  "image",
  "modules-currency",
  "oz-core",
@@ -4382,6 +4383,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "uuid",
  "webp",
 ]
 
