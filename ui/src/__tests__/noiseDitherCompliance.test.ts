@@ -25,7 +25,10 @@ const COMPONENTS_CSS = resolve(UI_SRC, 'frontend/themes/components.css');
 // When a new shadow-using component is added, its CSS class selector
 // must be added to the ::after list in components.css AND to this set.
 //
-// Current count: 42 selectors (6 core + 1 utility + 35 feature-specific).
+// Current count: 121 selectors (3 added for the org selector / org switcher
+// surfaces). The original "6 core + 1 utility + 35 feature-specific" split
+// stopped matching the list long ago — the inline group comments are the
+// authoritative breakdown.
 // Increment when adding new selectors; decrement when cleaning up legacy.
 const KNOWN_NOISE_SELECTORS = [
   // Core pattern classes (always covered)
@@ -162,6 +165,14 @@ const KNOWN_NOISE_SELECTORS = [
   '.customer-mgmt-history',
   '.panel',
   ':global(.dark) .panel',
+  // Org selector + org switcher surfaces (shadow-lg / shadow-xl, theme-tokenized).
+  // All three are positioned absolute with an explicit z-index, so the
+  // .noise-dither relative utility would fight their anchoring — they use the
+  // explicit ::after path, wired in components.css main list + both @media
+  // parity blocks.
+  '.org-selector-list',
+  '.org-switcher-list',
+  '.org-switcher-modal',
 ];
 
 /** CSS selectors that are exempt from noise-dither even though they use --shadow-* */

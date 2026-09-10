@@ -426,6 +426,12 @@
   .customer-mgmt-history::after,
   .panel::after,
   .warehouse-popup::after,
+  /* Org selector + org switcher dropdown/modal surfaces. Positioned absolute
+     with an explicit z-index, so the .noise-dither relative utility would
+     fight their anchoring — they use the explicit ::after path. */
+  .org-selector-list::after,
+  .org-switcher-list::after,
+  .org-switcher-modal::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -562,6 +568,9 @@
   .customer-mgmt-history::after,
   .panel::after,
   .warehouse-popup::after,
+  .org-selector-list::after,
+  .org-switcher-list::after,
+  .org-switcher-modal::after,
   :global(.dark) .panel::after { display: none; }
 }
 
@@ -685,6 +694,9 @@
 .customer-mgmt-history::after,
 .panel::after,
 .warehouse-popup::after,
+.org-selector-list::after,
+.org-switcher-list::after,
+.org-switcher-modal::after,
 :global(.dark) .panel::after { display: none; }
 }
 
