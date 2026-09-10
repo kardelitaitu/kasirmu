@@ -100,6 +100,11 @@ pub struct SaleDetail {
     pub created_at: String,
     /// Lines.
     pub lines: Vec<oz_core::SaleLine>,
+    /// F2-7: the core-authored tax-estimate stamp (F2-5) when the checkout
+    /// claimed an estimate; `None` = unstamped (absence is never a claim).
+    /// Field-level camelCase rename (same rationale as the desktop twin).
+    #[serde(rename = "taxEstimateNote")]
+    pub tax_estimate_note: Option<String>,
 }
 
 #[command]
@@ -111,6 +116,11 @@ pub async fn get_sale(
     let db = state.db.lock().await;
     let store = Store::new(&db);
     let sale = store.get_sale(&id)?;
+    // F2-7: single-row getter on the detail door only (no list N+1).
+    let tax_estimate_note = match &sale {
+        Some(s) => store.sale_tax_estimate_note(&s.id)?,
+        None => None,
+    };
     drop(db);
     Ok(sale.map(|s| SaleDetail {
         id: s.id,
@@ -122,6 +132,7 @@ pub async fn get_sale(
         user_id: s.user_id,
         created_at: s.created_at,
         lines: s.lines,
+        tax_estimate_note,
     }))
 }
 
@@ -314,6 +325,11 @@ pub async fn get_sale_scoped(
     let db = &*db_guard;
     let store = Store::new(&db);
     let sale = store.get_sale(&id)?;
+    // F2-7: single-row getter on the detail door only (no list N+1).
+    let tax_estimate_note = match &sale {
+        Some(s) => store.sale_tax_estimate_note(&s.id)?,
+        None => None,
+    };
     drop(db);
     Ok(sale.map(|s| SaleDetail {
         id: s.id,
@@ -325,6 +341,7 @@ pub async fn get_sale_scoped(
         user_id: s.user_id,
         created_at: s.created_at,
         lines: s.lines,
+        tax_estimate_note,
     }))
 }
 

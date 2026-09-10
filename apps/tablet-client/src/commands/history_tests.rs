@@ -33,6 +33,50 @@ fn make_sale_line(sale_id: &str, sku: &str, qty: i64, unit: i64) -> SaleLine {
 
 // ── SaleListItem ───────────────────────────────────────────────────
 
+// ── F2-7: the estimate note rides the detail DTO ───────────────────
+
+#[test]
+fn sale_detail_carries_the_estimate_stamp_when_claimed() {
+    let detail = SaleDetail {
+        id: "s-est".into(),
+        total: price(770),
+        line_count: 1,
+        status: "Pending".into(),
+        payment_method: Some("cash".into()),
+        tendered_minor: Some(770),
+        user_id: None,
+        created_at: "2026-09-10T00:00:00.000Z".into(),
+        lines: vec![],
+        tax_estimate_note: Some("{\"estimated\":true,\"computed_tax\":70}".into()),
+    };
+    let json = serde_json::to_value(&detail).unwrap();
+    assert_eq!(
+        json["taxEstimateNote"], "{\"estimated\":true,\"computed_tax\":70}",
+        "the badge source rides the wire camelCase"
+    );
+}
+
+#[test]
+fn sale_detail_serializes_null_when_unstamped() {
+    let detail = SaleDetail {
+        id: "s-est".into(),
+        total: price(770),
+        line_count: 1,
+        status: "Pending".into(),
+        payment_method: None,
+        tendered_minor: None,
+        user_id: None,
+        created_at: "2026-09-10T00:00:00.000Z".into(),
+        lines: vec![],
+        tax_estimate_note: None,
+    };
+    let json = serde_json::to_value(&detail).unwrap();
+    assert!(
+        json["taxEstimateNote"].is_null(),
+        "NULL = unstamped — absence must never read as a claim"
+    );
+}
+
 #[test]
 fn sale_list_item_debug() {
     let item = SaleListItem {
@@ -83,6 +127,7 @@ fn sale_detail_debug() {
         user_id: Some("u2".into()),
         created_at: "2025-03-15".into(),
         lines: vec![make_sale_line("sd1", "SKU-A", 2, 5000)],
+        tax_estimate_note: None,
     };
     let d = format!("{detail:?}");
     assert!(d.contains("sd1"));
@@ -101,6 +146,7 @@ fn sale_detail_serialize() {
         user_id: None,
         created_at: "2025-01-01".into(),
         lines: vec![],
+        tax_estimate_note: None,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");
