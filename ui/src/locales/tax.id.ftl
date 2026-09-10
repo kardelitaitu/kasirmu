@@ -88,4 +88,10 @@ tax-config-delete-deps-categories = { $count ->
 tax-config-rounding-statutory = Pembulatan: { $mode } (statutori)
 tax-config-rounding-preference = Pembulatan: { $mode } (preferensi toko)
 
+# E1-6: per-rate rounding authoring (device-global arm only; scoped rows are hub-authored)
+tax-config-rounding-label = Mode Pembulatan
+tax-config-rounding-aria = Mode pembulatan
+tax-config-rounding-preference-option = Preferensi toko ({ $mode })
+tax-config-rounding-scoped-readonly = Tarif tercakup ditulis di hub — pembulatan hanya-baca di sini.
+
 # ── Multi-Store ──

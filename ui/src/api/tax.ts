@@ -63,6 +63,12 @@ export interface CreateTaxRateArgs {
   /** EXCLUSIVE last business date, "YYYY-MM-DD". undefined = never
    *  expires. */
   effectiveTo?: string;
+  /** E1-6: statutory rounding directive for the device-global authoring
+   *  arm only. ''/undefined = the store preference applies and the key
+   *  is omitted from the payload. Wire-additive: the backend Args do not
+   *  carry the field yet and serde drops unknown keys, so sending it is
+   *  a no-op until that slice lands. */
+  roundingMode?: RoundingModeKey | '';
 }
 
 /** Arguments for updating an existing tax rate. Optional scope/window
@@ -83,6 +89,10 @@ export interface UpdateTaxRateArgs {
   effectiveFrom?: string;
   /** New exclusive last business date, "YYYY-MM-DD". */
   effectiveTo?: string;
+  /** E1-6: see {@link CreateTaxRateArgs.roundingMode} — same
+   *  device-global-arm-only rule; '' = clear back to the preference.
+   *  Wire-additive until the backend Args slice lands. */
+  roundingMode?: RoundingModeKey | '';
 }
 
 /** A product category and its assigned tax rate identifiers. */
@@ -172,19 +182,38 @@ export const listTaxRateRoundingModesScoped = (
 export const listTaxRatesScoped = (sessionToken: string): Promise<TaxRateDto[]> =>
   loggedInvoke<TaxRateDto[]>('list_tax_rates_scoped', { sessionToken });
 
-/** Create a tax rate in the store resolved from a session token. ADR #7. */
+/** Create a tax rate in the store resolved from a session token. ADR #7.
+ *
+ *  E1-6: the payload never carries `roundingMode: ''` — the empty value
+ *  (the store-preference arm) is dropped at this boundary, so no caller
+ *  can accidentally wire a claimed-directive-shaped key with an empty
+ *  value. The backend column accepts ''|half_up|truncate either way,
+ *  but omit is the contract the screen's select already renders. */
 export const createTaxRateScoped = (
   sessionToken: string,
   args: CreateTaxRateArgs,
-): Promise<TaxRateDto> =>
-  loggedInvoke<TaxRateDto>('create_tax_rate_scoped', { sessionToken, args });
+): Promise<TaxRateDto> => {
+  const { roundingMode, ...rest } = args;
+  return loggedInvoke<TaxRateDto>('create_tax_rate_scoped', {
+    sessionToken,
+    args: roundingMode ? { ...rest, roundingMode } : rest,
+  });
+};
 
-/** Update a tax rate in the store resolved from a session token. ADR #7. */
+/** Update a tax rate in the store resolved from a session token. ADR #7.
+ *
+ *  E1-6: same boundary rule as {@link createTaxRateScoped} — `''`/absent
+ *  roundingMode is omitted from the payload, never sent as a claim. */
 export const updateTaxRateScoped = (
   sessionToken: string,
   args: UpdateTaxRateArgs,
-): Promise<TaxRateDto> =>
-  loggedInvoke<TaxRateDto>('update_tax_rate_scoped', { sessionToken, args });
+): Promise<TaxRateDto> => {
+  const { roundingMode, ...rest } = args;
+  return loggedInvoke<TaxRateDto>('update_tax_rate_scoped', {
+    sessionToken,
+    args: roundingMode ? { ...rest, roundingMode } : rest,
+  });
+};
 
 /** Delete a tax rate in the store resolved from a session token. ADR #7. */
 export const deleteTaxRateScoped = (sessionToken: string, id: string): Promise<void> =>

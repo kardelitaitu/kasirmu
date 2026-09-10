@@ -89,3 +89,9 @@ tax-config-delete-deps-categories = { $count ->
 # E1-8: per-rate rounding provenance (statutory directive vs store preference)
 tax-config-rounding-statutory = Rounding: { $mode } (statutory)
 tax-config-rounding-preference = Rounding: { $mode } (store preference)
+
+# E1-6: per-rate rounding authoring (device-global arm only; scoped rows are hub-authored)
+tax-config-rounding-label = Rounding Mode
+tax-config-rounding-aria = Rounding mode
+tax-config-rounding-preference-option = Store preference ({ $mode })
+tax-config-rounding-scoped-readonly = Scoped rates are authored at the hub — rounding is read-only here.

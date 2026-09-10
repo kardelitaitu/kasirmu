@@ -42,6 +42,10 @@ interface TaxFormData {
   // Strict YYYY-MM-DD; exclusive end. Empty = unbounded on that arm.
   effectiveFrom: string;
   effectiveTo: string;
+  // E1-6: statutory rounding directive. '' = the store preference
+  // applies (omitted from the write payload); the select is editable
+  // ONLY on the tenant-global authoring arm (D8 hub-only authoring).
+  roundingMode: RoundingModeKey | '';
 }
 
 const EMPTY_TAX_FORM: TaxFormData = {
@@ -53,6 +57,7 @@ const EMPTY_TAX_FORM: TaxFormData = {
   locationId: '',
   effectiveFrom: '',
   effectiveTo: '',
+  roundingMode: '',
 };
 
 /** Tax configuration screen — CRUD for tax rates, inclusive/exclusive toggle, and per-category tax rate assignment. */
@@ -89,6 +94,10 @@ export default function TaxConfigurationScreen() {
   // (fetch failed) renders the same preference label as null — but
   // nothing invents a directive that was never signed.
   const [roundingModes, setRoundingModes] = useState<Record<string, RoundingModeKey | null>>({});
+  // E1-6: D8 hub-only authoring — the rounding select is editable only
+  // while neither scoped tier is targeted in the form (the same
+  // mutually-exclusive arms the scope fields enforce).
+  const isGlobalRoundingArm = form.legalEntityId.trim() === '' && form.locationId.trim() === '';
   // F1: the tier the edit dialog opened with, so a changed tier can warn —
   // the backend move leaves the vacated tier without a default silently.
   const originalScopeRef = useRef<{ legalEntityId: string; locationId: string } | null>(null);
@@ -194,6 +203,9 @@ export default function TaxConfigurationScreen() {
       locationId: r.scope?.scope === 'location' ? (r.scope?.locationId ?? '') : '',
       effectiveFrom: r.window?.effectiveFrom ?? '',
       effectiveTo: r.window?.effectiveTo ?? '',
+      // E1-6: seed from the E1-5 batch read; null (no directive)
+      // maps to '' = the preference arm.
+      roundingMode: roundingModes[r.id] ?? '',
     });
     originalScopeRef.current = {
       legalEntityId: r.scope?.scope === 'legal_entity' ? (r.scope?.legalEntityId ?? '') : '',
@@ -201,7 +213,9 @@ export default function TaxConfigurationScreen() {
     };
     setEditingId(r.id);
     setShowModal(true);
-  }, []);
+    // Depends on the E1-5 batch map — the editor seeds the rounding
+    // select from it, so a stale empty map must not be captured.
+  }, [roundingModes]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -229,6 +243,10 @@ export default function TaxConfigurationScreen() {
         ...(form.locationId.trim() ? { locationId: form.locationId.trim() } : {}),
         ...(form.effectiveFrom ? { effectiveFrom: form.effectiveFrom } : {}),
         ...(form.effectiveTo ? { effectiveTo: form.effectiveTo } : {}),
+        // E1-6: '' (the preference arm) is OMITTED, never sent — the
+        // backend column accepts ''|half_up|truncate, and omitting keeps
+        // the payload free of a claimed directive when none was chosen.
+        ...(form.roundingMode ? { roundingMode: form.roundingMode } : {}),
       };
       // F1 debt: moving a rate between tiers empties the vacated tier's
       // default silently — warn before the write, not after the damage.
@@ -711,6 +729,32 @@ export default function TaxConfigurationScreen() {
               </Localized>
             </button>
           </div>
+        </div>
+
+        {/* E1-6: statutory rounding authoring. Editable only on the
+            tenant-global arm — scoped/hub-authored rows are read-only
+            here (D8); their directive arrives from the hub instead. */}
+        <div className="tax-config-field tax-config-field--horizontal">
+          <Localized id="tax-config-rounding-label">
+            <span className="tax-config-label">Rounding Mode</span>
+          </Localized>
+          <select
+            className="tax-config-input"
+            id="tax-field-rounding"
+            aria-label={l10n.getString('tax-config-rounding-aria')}
+            value={form.roundingMode}
+            disabled={!isGlobalRoundingArm}
+            onChange={(e) => setForm((prev) => ({ ...prev, roundingMode: e.target.value as RoundingModeKey | '' }))}
+          >
+            <option value="">{l10n.getString('tax-config-rounding-preference-option', { mode: preferenceMode })}</option>
+            <option value="half_up">half_up</option>
+            <option value="truncate">truncate</option>
+          </select>
+          {!isGlobalRoundingArm && (
+            <Localized id="tax-config-rounding-scoped-readonly">
+              <span className="tax-config-hint">Scoped rates are authored at the hub — rounding is read-only here.</span>
+            </Localized>
+          )}
         </div>
 
         <label className="tax-config-checkbox">

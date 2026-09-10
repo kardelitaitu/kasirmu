@@ -570,3 +570,74 @@ describe('TaxConfigurationScreen rounding provenance (E1-8)', () => {
     expect(screen.queryByText(/statutory/i)).not.toBeInTheDocument();
   });
 });
+
+describe('TaxConfigurationScreen rounding select (E1-6)', () => {
+  beforeEach(() => {
+    invokeMock.mockClear();
+    resetUnmatchedInvokes();
+    setRoundingModesMock({});
+  });
+
+  it("select defaults to '' and the payload omits roundingMode on the preference arm", async () => {
+    setRoundingModesMock({ 'tax-1': null, 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+    const dialog = screen.getByRole('dialog');
+    // The '' option states WHICH preference applies — no bare 'default'.
+    expect(within(dialog).getByLabelText(/rounding mode/i)).toHaveValue('');
+    expect(within(dialog).getByText(/store preference/i)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText('Tax Name'), 'Room Tax');
+    await userEvent.type(within(dialog).getByLabelText('Rate (%)'), '500');
+    await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('create_tax_rate_scoped', expect.objectContaining({
+        args: expect.not.objectContaining({ roundingMode: expect.anything() }),
+      }));
+    });
+  });
+
+  it('sends the chosen statutory mode through the create payload', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Tax Name'), 'Room Tax');
+    await userEvent.type(within(dialog).getByLabelText('Rate (%)'), '500');
+    await userEvent.selectOptions(within(dialog).getByLabelText(/rounding mode/i), 'half_up');
+    await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('create_tax_rate_scoped', expect.objectContaining({
+        args: expect.objectContaining({ roundingMode: 'half_up' }),
+      }));
+    });
+  });
+
+  it('scoped rows render the select READ-ONLY (D8 hub-only authoring)', async () => {
+    setRoundingModesMock({ 'tax-1': 'truncate', 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    // The editor seeds its select from the batch map — wait until the
+    // E1-8 badge fetch has actually resolved and rendered.
+    await screen.findByText(/Rounding: truncate \(statutory\)/i);
+    // tax-1 is location-scoped — its directive comes from the hub and
+    // the device arm must not be able to edit it.
+    const scopedRow = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(scopedRow).getByRole('button', { name: /edit/i }));
+    let dialog = screen.getByRole('dialog');
+    const scopedSelect = within(dialog).getByLabelText(/rounding mode/i) as HTMLSelectElement;
+    expect(scopedSelect).toBeDisabled();
+    expect(scopedSelect).toHaveValue('truncate');
+    expect(within(dialog).getByText(/authored at the hub/i)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: /cancel/i }));
+    // tax-2 is tenant-global: the device authoring arm, seeded with its
+    // stored directive (none → the preference arm).
+    const globalRow = screen.getAllByText('VAT')[0]!.closest('tr')!;
+    await userEvent.click(within(globalRow).getByRole('button', { name: /edit/i }));
+    dialog = screen.getByRole('dialog');
+    const globalSelect = within(dialog).getByLabelText(/rounding mode/i) as HTMLSelectElement;
+    expect(globalSelect).toBeEnabled();
+    expect(globalSelect).toHaveValue('');
+    expect(within(dialog).queryByText(/authored at the hub/i)).toBeNull();
+  });
+});

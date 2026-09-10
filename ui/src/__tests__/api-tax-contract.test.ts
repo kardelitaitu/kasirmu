@@ -132,4 +132,32 @@ describe('tax.ts API contract', () => {
     // so a caller can never mistake the missing session for a real zero.
     expect(mockInvoke).not.toHaveBeenCalled();
   });
+
+  it('createTaxRateScoped carries an optional roundingMode (E1-6)', async () => {
+    mockInvoke.mockResolvedValue({ id: 't1', name: 'PPN' });
+    await createTaxRateScoped(TOKEN, {
+      name: 'PPN',
+      rateBps: 1100,
+      isDefault: false,
+      isInclusive: true,
+      roundingMode: 'truncate',
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('create_tax_rate_scoped', {
+      sessionToken: TOKEN,
+      args: expect.objectContaining({ roundingMode: 'truncate' }),
+    });
+  });
+
+  it('createTaxRateScoped omits roundingMode on the preference arm (E1-6)', async () => {
+    mockInvoke.mockResolvedValue({ id: 't1', name: 'PPN' });
+    await createTaxRateScoped(TOKEN, {
+      name: 'PPN',
+      rateBps: 1100,
+      isDefault: false,
+      isInclusive: true,
+      roundingMode: '',
+    });
+    const call = mockInvoke.mock.calls.find((c) => c[0] === 'create_tax_rate_scoped');
+    expect(call?.[1].args).not.toHaveProperty('roundingMode');
+  });
 });
