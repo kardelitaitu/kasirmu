@@ -1,11 +1,19 @@
 //! Tauri commands for multi-location inventory, shifts, transactions, thresholds, and pending sale checkout.
+//!
+//! The bodies live in `oz_bridge::inventory` (Wave C / C1); every command here
+//! is a thin shim that builds the per-call [`BridgeCtx`] and maps `BridgeError`
+//! back onto `AppError` variant-for-variant. The global-DB gate adapter below
+//! stays because the sibling test module exercises it directly.
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::availability::UsageCounts;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::entitlements::Entitlements;
 
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::{
     InventoryLocation, InventoryShift, InventoryTransaction, InventoryTransactionLine,
     StockThreshold, Store, WorkspaceInventoryLocation,
@@ -23,6 +31,7 @@ use tauri::State;
 /// contain no users. Every inventory command must authorise through this
 /// helper rather than `require_permission_for_user(&store, …)` on the store
 /// connection, which would fail with "user not found" for every caller.
+#[allow(dead_code)] // command bodies now delegate to the bridge gate
 async fn require_inventory_permission(
     state: &AppState,
     user_id: &str,
@@ -47,41 +56,16 @@ pub async fn create_inventory_location(
     description: String,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_LOCATIONS_MANAGE,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::create_inventory_location(
+        &ctx,
+        &session_token,
+        name,
+        location_type,
+        description,
     )
-    .await?;
-
-    // Warehouse quota enforcement: Free allows 1, Plus 2, Pro 3,
-    // Premium/Enterprise unlimited. Only fires for warehouse-type locations.
-    // Load subscription from the identity DB first (tenant_subscription lives
-    // there), then release the lock before opening the scoped store DB.
-    let effective_tier = {
-        let identity = state.db.lock().await;
-        let sub = oz_core::subscription::TenantSubscription::load(&identity, "default")?
-            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-        sub.verify_signature()?;
-        // Source the quota tier from the entitlements read model (Phase B one
-        // limit table) so the warehouse gate shares the caps projection's
-        // single source instead of a second subscription derivation.
-        Entitlements::from_subscription(&sub, UsageCounts::default()).tier
-    };
-
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.enforce_warehouse_quota(&effective_tier, &location_type)?;
-
-    let id = store.create_inventory_location(&name, &location_type, &description)?;
-    Ok(id)
+    .await
+    .map_err(Into::into)
 }
 
 /// List all inventory locations.
@@ -93,24 +77,10 @@ pub async fn list_inventory_locations(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryLocation>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_VIEW,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let locs = store.list_inventory_locations()?;
-    Ok(locs)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::list_inventory_locations(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update details of an existing inventory location.
@@ -125,24 +95,17 @@ pub async fn update_inventory_location(
     description: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_LOCATIONS_MANAGE,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::update_inventory_location(
+        &ctx,
+        &session_token,
+        id,
+        name,
+        location_type,
+        description,
     )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.update_inventory_location(&id, &name, &location_type, &description)?;
-    Ok(())
+    .await
+    .map_err(Into::into)
 }
 
 /// Deactivate an inventory location (fails if contains stock or pending transfers).
@@ -154,24 +117,10 @@ pub async fn deactivate_inventory_location(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_LOCATIONS_MANAGE,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.deactivate_inventory_location(&id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::deactivate_inventory_location(&ctx, &session_token, id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Resolve locations bound to a workspace instance (unified resolver ADR-19 §10).
@@ -185,23 +134,15 @@ pub async fn get_workspace_locations_scoped(
     type_key: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceLocationBinding>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_VIEW,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::get_workspace_locations_scoped(
+        &ctx,
+        &session_token,
+        instance_id,
+        type_key,
     )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-
-    let binding = get_workspace_locations(&db, &instance_id, &type_key)?;
-    Ok(binding)
+    .await
+    .map_err(Into::into)
 }
 
 /// Invalidate the location resolver cache.
@@ -213,15 +154,10 @@ pub async fn invalidate_location_cache_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_VIEW,
-    )
-    .await?;
-    invalidate_location_cache();
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::invalidate_location_cache_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Workspace Location Bindings ─────────────────────────────────────
@@ -237,24 +173,15 @@ pub async fn set_workspace_inventory_locations(
     locations: Vec<WorkspaceInventoryLocation>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_LOCATIONS_MANAGE,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::set_workspace_inventory_locations(
+        &ctx,
+        &session_token,
+        instance_id,
+        locations,
     )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.set_workspace_inventory_locations(&instance_id, &locations)?;
-    Ok(())
+    .await
+    .map_err(Into::into)
 }
 
 /// Get inventory location bindings for a workspace instance.
@@ -266,24 +193,10 @@ pub async fn get_workspace_inventory_locations(
     instance_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceInventoryLocation>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::INVENTORY_VIEW,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let locs = store.get_workspace_inventory_locations(&instance_id)?;
-    Ok(locs)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::get_workspace_inventory_locations(&ctx, &session_token, instance_id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Inventory Shifts ────────────────────────────────────────────────
@@ -298,29 +211,10 @@ pub async fn start_inventory_shift(
     notes: String,
     state: State<'_, AppState>,
 ) -> Result<InventoryShift, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let shift = store.start_inventory_shift(
-        &session.user_id,
-        &location_id,
-        Some(&session.terminal_id),
-        &notes,
-    )?;
-    Ok(shift)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::start_inventory_shift(&ctx, &session_token, location_id, notes)
+        .await
+        .map_err(Into::into)
 }
 
 /// End an active inventory shift.
@@ -332,24 +226,10 @@ pub async fn end_inventory_shift(
     shift_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.end_inventory_shift(&shift_id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::end_inventory_shift(&ctx, &session_token, shift_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Retrieve the active inventory shift for the current user, if any.
@@ -360,24 +240,10 @@ pub async fn get_active_inventory_shift(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Option<InventoryShift>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let shift = store.get_active_inventory_shift(&session.user_id)?;
-    Ok(shift)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::get_active_inventory_shift(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// List all inventory shifts history.
@@ -388,24 +254,10 @@ pub async fn list_inventory_shifts(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryShift>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let shifts = store.list_inventory_shifts()?;
-    Ok(shifts)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::list_inventory_shifts(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Inventory Transaction Logs ──────────────────────────────────────
@@ -422,33 +274,17 @@ pub async fn create_inventory_transaction(
     lines: Vec<InventoryTransactionLineInput>,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::create_inventory_transaction(
+        &ctx,
+        &session_token,
+        type_str,
+        location_id,
+        notes,
+        lines,
     )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let ttype = InventoryTransactionType::from_stored_str(&type_str)
-        .ok_or_else(|| AppError::Invalid(format!("invalid transaction type: {}", type_str)))?;
-
-    let tx_id = store.create_inventory_transaction(
-        ttype,
-        &location_id,
-        &session.user_id,
-        &notes,
-        &lines,
-    )?;
-    Ok(tx_id)
+    .await
+    .map_err(Into::into)
 }
 
 /// List all inventory transactions.
@@ -459,24 +295,10 @@ pub async fn list_inventory_transactions(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryTransaction>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let txs = store.list_inventory_transactions()?;
-    Ok(txs)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::list_inventory_transactions(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// List inventory transactions for a specific shift (staff + location + time window).
@@ -490,25 +312,15 @@ pub async fn list_inventory_transactions_for_shift(
     since: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryTransaction>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::list_inventory_transactions_for_shift(
+        &ctx,
+        &session_token,
+        location_id,
+        since,
     )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let txs =
-        store.list_inventory_transactions_for_shift(&session.user_id, &location_id, &since)?;
-    Ok(txs)
+    .await
+    .map_err(Into::into)
 }
 
 /// Retrieve details of a single transaction, including its lines.
@@ -520,24 +332,10 @@ pub async fn get_inventory_transaction(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<(InventoryTransaction, Vec<InventoryTransactionLine>)>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let detail = store.get_inventory_transaction(&id)?;
-    Ok(detail)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::get_inventory_transaction(&ctx, &session_token, id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Stock Thresholds ────────────────────────────────────────────────
@@ -554,24 +352,17 @@ pub async fn set_stock_threshold(
     enabled: bool,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::set_stock_threshold(
+        &ctx,
+        &session_token,
+        product_id,
+        location_id,
+        threshold,
+        enabled,
     )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.set_stock_threshold(&product_id, location_id.as_deref(), threshold, enabled)?;
-    Ok(())
+    .await
+    .map_err(Into::into)
 }
 
 /// Get stock alert thresholds for a location.
@@ -583,24 +374,10 @@ pub async fn get_stock_thresholds(
     location_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<StockThreshold>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let thresholds = store.get_stock_thresholds(location_id.as_deref())?;
-    Ok(thresholds)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::get_stock_thresholds(&ctx, &session_token, location_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Delete a stock alert threshold boundary.
@@ -612,24 +389,10 @@ pub async fn delete_stock_threshold(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.delete_stock_threshold(&id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::delete_stock_threshold(&ctx, &session_token, id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Get per-location low stock alerts.
@@ -642,24 +405,15 @@ pub async fn get_low_stock_alerts_at_location_scoped(
     default_threshold: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_core::db::reports::LowStockAlert>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::get_low_stock_alerts_at_location_scoped(
+        &ctx,
+        &session_token,
+        location_id,
+        default_threshold,
     )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let alerts = store.low_stock_alerts_at_location(&location_id, default_threshold)?;
-    Ok(alerts)
+    .await
+    .map_err(Into::into)
 }
 
 // ── Stock Alerts ─────────────────────────────────────────────────────
@@ -673,24 +427,10 @@ pub async fn active_stock_alerts_scoped(
     location_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_core::db::reports::StockAlertEvent>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let alerts = store.active_stock_alerts(&location_id)?;
-    Ok(alerts)
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::active_stock_alerts_scoped(&ctx, &session_token, location_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Acknowledge a stock alert event (records who acknowledged it).
@@ -702,24 +442,10 @@ pub async fn acknowledge_stock_alert_scoped(
     alert_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.acknowledge_stock_alert(&alert_id, &session.user_id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::acknowledge_stock_alert_scoped(&ctx, &session_token, alert_id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Pending Sale Capture / Void ─────────────────────────────────────
@@ -733,24 +459,10 @@ pub async fn finalize_sale(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.finalize_sale(&sale_id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::finalize_sale(&ctx, &session_token, sale_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Void a pending sale and restore stock.
@@ -762,24 +474,10 @@ pub async fn void_pending_sale(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_inventory_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
-    )
-    .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.void_pending_sale(&sale_id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::inventory::void_pending_sale(&ctx, &session_token, sale_id)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
