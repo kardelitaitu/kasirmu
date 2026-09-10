@@ -38,7 +38,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::db::tax::TaxRateScope;
-use crate::tax_rate::TaxRate;
+use crate::tax_rate::{RoundingMode, TaxRate};
 
 /// Built-in locale used when no scope in the chain sets one. Matches the
 /// pre-regional behaviour, where the UI negotiated purely from the browser.
@@ -353,10 +353,12 @@ impl RegionalConfig {
     /// entity `country_code` — plus the winning tax-rate row and the tier
     /// that supplied it, with provenance.
     ///
-    /// `resolved` pairs the two read-only outputs of the landed tax
+    /// `resolved` triples the read-only outputs of the landed tax
     /// resolver: the winner of
-    /// `Store::resolve_tax_rate_for_location` and that row's scope from
-    /// `Store::tax_rate_scope`. The resolver returns the row alone, and
+    /// `Store::resolve_tax_rate_for_location`, that row's scope from
+    /// `Store::tax_rate_scope`, and the row's statutory rounding directive
+    /// from `Store::list_tax_rate_rounding_modes` (`None` = `''`, the
+    /// store preference applies). The resolver returns the row alone, and
     /// the tier it won is exactly the provenance a diagnostics surface
     /// needs; pairing them is the caller's one-line job, because
     /// re-deriving the tier inside this method would need a second query
@@ -366,11 +368,15 @@ impl RegionalConfig {
     ///
     /// Derived, never stored: the regional migration deliberately refused
     /// to share a column with tax, so the two configurations cannot drift.
-    pub fn tax_regime(&self, resolved: Option<(&TaxRate, &TaxRateScope)>) -> TaxRegime {
-        let rate = resolved.map(|(rate, scope)| TaxRegimeRate {
+    pub fn tax_regime(
+        &self,
+        resolved: Option<(&TaxRate, &TaxRateScope, Option<RoundingMode>)>,
+    ) -> TaxRegime {
+        let rate = resolved.map(|(rate, scope, rounding)| TaxRegimeRate {
             rate_id: rate.id.clone(),
             rate_name: rate.name.clone(),
             rate_bps: rate.rate_bps,
+            rounding,
             scope: match scope {
                 TaxRateScope::Location(_) => TaxRegimeScope::Location,
                 TaxRateScope::LegalEntity(_) => TaxRegimeScope::LegalEntity,
@@ -412,6 +418,13 @@ pub struct TaxRegimeRate {
     pub rate_name: String,
     /// The winning rate in basis points (825 = 8.25%).
     pub rate_bps: i64,
+    /// The statutory rounding directive the winning row carries — `None`
+    /// when the row says `''`, i.e. the store preference applies. Read by
+    /// the caller through `Store::list_tax_rate_rounding_modes`, the same
+    /// column the sale compute path consults, so a provenance surface and
+    /// the computation can never disagree about what the row says. E1-7:
+    /// the provenance badge consumes this (E1-8).
+    pub rounding: Option<RoundingMode>,
     /// Which tier of the resolver walk supplied this row.
     pub scope: TaxRegimeScope,
 }

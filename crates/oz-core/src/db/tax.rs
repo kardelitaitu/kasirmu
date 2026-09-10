@@ -995,8 +995,7 @@ impl Store<'_> {
 
         let mut stmt = self.conn.prepare(
             "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at,
-                    legal_entity_id, location_id, effective_from, effective_to,
-                    rounding_mode
+                    legal_entity_id, location_id, effective_from, effective_to
              FROM tax_rates
              WHERE is_active = 1
                AND ( location_id = ?1
@@ -1019,7 +1018,6 @@ impl Store<'_> {
                     location_id: row.get("location_id")?,
                     effective_from: row.get("effective_from")?,
                     effective_to: row.get("effective_to")?,
-                    rounding_mode: row.get("rounding_mode")?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1368,12 +1366,6 @@ struct TaxRateCandidate {
     location_id: Option<String>,
     effective_from: Option<String>,
     effective_to: Option<String>,
-    /// E1: the row's statutory rounding directive, exactly as stored
-    /// ('' = none). Carried so the walk's winner supplies rate_bps AND
-    /// rounding — a later resolver-facing slice exposes it without a
-    /// second query; the per-line compute path reads it through
-    /// [`Store::list_tax_rate_rounding_modes`], which is the same column.
-    rounding_mode: String,
 }
 
 /// The three levels of the walk, most specific first.

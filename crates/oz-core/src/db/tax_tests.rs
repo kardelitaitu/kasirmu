@@ -1986,6 +1986,78 @@ fn the_sales_reference_check_still_wins_over_the_coverage_guard() {
     );
 }
 #[test]
+fn tax_rate_writers_bump_updated_at_for_the_snapshot_fingerprint() {
+    // E1-4 / D64(e): the branch snapshot-cache fingerprint is
+    // (COUNT, MAX(updated_at)) on tax_rates — every writer must bump
+    // updated_at or a reconfigure stops invalidating the pull cache. The
+    // rounding-mode column (20260929) changed no writer shape; this pin
+    // guards it against regressing later. Seeded with a frozen-old
+    // updated_at so the assertion cannot flake on same-millisecond writes.
+    let conn = fresh();
+    let s = store(&conn);
+
+    // create_tax_rate: the INSERT stamps updated_at (row exists => COUNT moves).
+    let created_rate = s.create_tax_rate("VAT 10%", 1000, true, false).unwrap();
+    let id = created_rate.id.clone();
+    let created: String = conn
+        .query_row(
+            "SELECT updated_at FROM tax_rates WHERE id = ?1",
+            [&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(!created.is_empty(), "create must stamp updated_at");
+
+    // update_tax_rate must BUMP it.
+    conn.execute(
+        "UPDATE tax_rates SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?1",
+        [&id],
+    )
+    .unwrap();
+    s.update_tax_rate(&id, "VAT 11%", 1100, true, false)
+        .unwrap();
+    let after: String = conn
+        .query_row(
+            "SELECT updated_at FROM tax_rates WHERE id = ?1",
+            [&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(
+        after, "2020-01-01T00:00:00.000Z",
+        "update_tax_rate must bump updated_at"
+    );
+
+    // update_tax_rate_scoped — the B1 authoring surface — must bump too.
+    conn.execute(
+        "UPDATE tax_rates SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?1",
+        [&id],
+    )
+    .unwrap();
+    s.update_tax_rate_scoped(
+        &id,
+        "VAT 12%",
+        1200,
+        true,
+        false,
+        &TaxRateScope::Global,
+        &TaxRateWindow::default(),
+    )
+    .unwrap();
+    let after_scoped: String = conn
+        .query_row(
+            "SELECT updated_at FROM tax_rates WHERE id = ?1",
+            [&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(
+        after_scoped, "2020-01-01T00:00:00.000Z",
+        "update_tax_rate_scoped must bump updated_at"
+    );
+}
+
+#[test]
 fn list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
     // E1-2: the batch read door behind the compute loops. 'half_up' and
     // 'truncate' map to their modes; '' and unknown ids read as None (the

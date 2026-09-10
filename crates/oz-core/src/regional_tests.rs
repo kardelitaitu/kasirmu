@@ -297,7 +297,7 @@ fn tax_regime_maps_every_resolver_tier_to_its_provenance() {
         ),
         (TaxRateScope::Global, TaxRegimeScope::Global),
     ] {
-        let regime = cfg.tax_regime(Some((&r, &scope)));
+        let regime = cfg.tax_regime(Some((&r, &scope, None)));
         let got = regime.rate.expect("a resolved rate must carry one");
         assert_eq!(got.scope, expected);
         assert_eq!(got.rate_id, "rate-1");
@@ -340,6 +340,40 @@ fn insert_rate(
 }
 
 #[test]
+fn tax_regime_carries_the_statutory_rounding_directive() {
+    // E1-7: the provenance surface exposes the row's statutory directive so
+    // the badge (E1-8) and the compute path agree without a second read.
+    let cfg = RegionalConfig::resolve(
+        "loc-1",
+        Some("ent-1".into()),
+        &[layer(
+            ConfigScope::LegalEntity,
+            None,
+            None,
+            None,
+            Some("ID"),
+        )],
+    );
+    let r = rate("rate-1", "PBJT", 1100);
+    use crate::db::tax::TaxRateScope;
+    let regime = cfg.tax_regime(Some((
+        &r,
+        &TaxRateScope::Location("loc-1".into()),
+        Some(crate::tax_rate::RoundingMode::Truncate),
+    )));
+    let got = regime.rate.expect("a resolved rate must carry one");
+    assert_eq!(
+        got.rounding,
+        Some(crate::tax_rate::RoundingMode::Truncate),
+        "a statutory directive rides the regime"
+    );
+
+    // '' = no directive: the preference applies, nothing statutory to show.
+    let plain = cfg.tax_regime(Some((&r, &TaxRateScope::Global, None)));
+    assert_eq!(plain.rate.as_ref().unwrap().rounding, None);
+}
+
+#[test]
 fn tax_regime_derivation_matches_the_landed_resolver_end_to_end() {
     // The whole point of the seam: the regime the pure type derives is the
     // regime the STORE resolver actually answers, tier for tier. Location
@@ -372,7 +406,7 @@ fn tax_regime_derivation_matches_the_landed_resolver_end_to_end() {
                 Some("ID"),
             )],
         )
-        .tax_regime(Some((&won, &scope)))
+        .tax_regime(Some((&won, &scope, None)))
     };
 
     let regime = win(&store);
