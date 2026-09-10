@@ -396,6 +396,7 @@ fn typed_response() -> SyncSnapshotResponse {
             location_id: None,
             effective_from: None,
             effective_to: None,
+            rounding_mode: String::new(),
         }],
         users: vec![SnapshotUser {
             id: "u-1".into(),

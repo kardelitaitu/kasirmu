@@ -397,7 +397,8 @@ impl PgTransport {
                         (is_inclusive::TEXT IN ('1', 't', 'true')) AS is_inclusive,
                         created_at::TEXT, updated_at::TEXT,
                         legal_entity_id, location_id,
-                        effective_from, effective_to
+                        effective_from, effective_to,
+                        rounding_mode
                  FROM tax_rates
                  WHERE tenant_id = $1
                  ORDER BY id ASC",
@@ -418,6 +419,11 @@ impl PgTransport {
                 location_id: row.get("location_id"),
                 effective_from: row.get("effective_from"),
                 effective_to: row.get("effective_to"),
+                // Option-read so a NULL from any hub state lands as the ''
+                // sentinel rather than an error.
+                rounding_mode: row
+                    .get::<_, Option<String>>("rounding_mode")
+                    .unwrap_or_default(),
             })
             .collect();
 

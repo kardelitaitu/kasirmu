@@ -342,9 +342,10 @@ pub(crate) fn import_snapshot(
                 "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive,
                                         created_at, updated_at,
                                         legal_entity_id, location_id,
-                                        effective_from, effective_to)
+                                        effective_from, effective_to,
+                                        rounding_mode)
                  VALUES (?1, ?2, ?3, ?4, ?5, COALESCE(?6, ?8), COALESCE(?7, ?8),
-                         ?9, ?10, ?11, ?12)
+                         ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT(id) DO UPDATE SET
                      name            = excluded.name,
                      rate_bps        = excluded.rate_bps,
@@ -354,7 +355,8 @@ pub(crate) fn import_snapshot(
                      legal_entity_id = excluded.legal_entity_id,
                      location_id     = excluded.location_id,
                      effective_from  = excluded.effective_from,
-                     effective_to    = excluded.effective_to",
+                     effective_to    = excluded.effective_to,
+                     rounding_mode   = excluded.rounding_mode",
             )
             .map_err(|e| SyncError::Replication(format!("prepare tax_rates: {e}")))?;
 
@@ -382,6 +384,7 @@ pub(crate) fn import_snapshot(
                 r.location_id.as_deref(),
                 r.effective_from.as_deref(),
                 r.effective_to.as_deref(),
+                r.rounding_mode.as_str(),
             ])
             .map_err(|e| SyncError::Replication(format!("upsert tax_rate: {e}")))?;
             count += 1;

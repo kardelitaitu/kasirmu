@@ -214,6 +214,15 @@ pub struct SnapshotTaxRate {
     /// does not expire.
     #[serde(default)]
     pub effective_to: Option<String>,
+    /// E1 statutory rounding directive stored on the rate (`''` = no
+    /// directive, the store preference applies; else a `RoundingMode` serde
+    /// snake_case name, the alphabet the 20260929 schema CHECK enforces).
+    /// D64 binding condition (a): the mode must travel or a hub-authored
+    /// directive lands `''` at the branch silently. Same back-compat ruling
+    /// as the scope fields: payloads written before 20260929 carry no key,
+    /// and absence IS the empty sentinel — every pre-E1 row.
+    #[serde(default)]
+    pub rounding_mode: String,
 }
 
 /// A user row in a server snapshot (typed, RUST-04).
