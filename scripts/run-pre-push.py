@@ -14,6 +14,16 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+# Windows consoles default to legacy codepages (e.g. cp1252) that cannot encode
+# gate output containing Unicode symbols (U+276F, checkmarks, box drawing), which
+# crashed the failure reporter mid-print. Force UTF-8 with lossless-where-possible
+# replacement so gate results always print completely.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ANSI colors
