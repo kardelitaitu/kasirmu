@@ -378,6 +378,8 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             promotion_ids: None,
             // No attempt id: this fixture exercises the unguarded legacy path.
             attempt_id: None,
+            // F2-6: no estimate claim — the note must stay NULL.
+            tax_estimated: None,
         },
         app.state(),
     )

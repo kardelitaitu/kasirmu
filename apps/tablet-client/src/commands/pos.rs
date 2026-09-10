@@ -894,6 +894,12 @@ pub struct CompleteSaleScopedArgs {
     /// the application rows persist inside the checkout transaction;
     /// payment splits are validated against the reduced total.
     pub promotion_ids: Option<Vec<String>>,
+    /// F2-6: the client's claim that the displayed tax was an ESTIMATE (tax
+    /// cache stale/unknown at checkout). Core verifies by computing the tax
+    /// itself and stamps claim + computed tax into `sales.tax_estimate_note`
+    /// (D61 ruling 4: flag for recompute, never silent). Absent/false is
+    /// the zero-change default: no stamp.
+    pub tax_estimated: Option<bool>,
 }
 
 /// Arguments for previewing the promotion-reduced payable of a cart.
@@ -1225,7 +1231,7 @@ pub async fn complete_sale_scoped(
             None,
         )
         .unwrap_or_else(|_| oz_core::location_resolver::get_default_location_id());
-        store.complete_sale_deduction_with_locations(
+        store.complete_sale_deduction_with_locations_and_estimate(
             &sale,
             Some(&session.instance_id),
             &[primary],
@@ -1233,6 +1239,7 @@ pub async fn complete_sale_scoped(
             &session.user_id,
             Some(&session.terminal_id),
             &checkout_applications,
+            args.tax_estimated.unwrap_or(false),
         )?
     };
 
