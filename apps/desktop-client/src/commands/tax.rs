@@ -7,8 +7,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use oz_core::db::tax::TaxRateWindow;
 use oz_core::db::Store;
+use oz_core::db::tax::TaxRateWindow;
 use oz_core::tax_rate::RoundingMode;
 
 use crate::commands::authz::require_permission_for_user;
