@@ -8,7 +8,7 @@
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
   color: inherit;
   border-radius: 8px;
-  padding: 6px 12px;
+  padding: var(--space-1_5) var(--space-3);
   cursor: pointer;
   font: inherit;
 }
@@ -28,7 +28,7 @@
   background: var(--surface, #1f2430);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
   z-index: 50;
 }
 
@@ -55,11 +55,11 @@
   top: calc(100% + 4px);
   right: 0;
   width: 240px;
-  padding: 14px;
+  padding: var(--space-3_5);
   background: var(--surface, #1f2430);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
   z-index: 60;
 }
 
@@ -88,20 +88,20 @@
 .org-switcher-error {
   margin: 8px 0 0;
   color: var(--danger, #ff6b6b);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .org-switcher-modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
 .org-switcher-cancel,
 .org-switcher-confirm {
   border-radius: 8px;
-  padding: 6px 12px;
+  padding: var(--space-1_5) var(--space-3);
   cursor: pointer;
   font: inherit;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
@@ -110,7 +110,7 @@
 .org-switcher-confirm {
   background: var(--accent, #3b82f6);
   border-color: var(--accent, #3b82f6);
-  color: #fff;
+  color: var(--accent-contrast, #fff);
 }
 
 .org-switcher-confirm:disabled {
