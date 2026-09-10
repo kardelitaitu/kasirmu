@@ -66,6 +66,7 @@ COPY crates/oz-reporting/Cargo.toml crates/oz-reporting/
 COPY crates/oz-cli/Cargo.toml crates/oz-cli/
 COPY crates/oz-crypto/Cargo.toml crates/oz-crypto/
 COPY crates/oz-media/Cargo.toml crates/oz-media/
+COPY crates/oz-lan/Cargo.toml crates/oz-lan/
 COPY foundation/Cargo.toml foundation/
 COPY platform/core/Cargo.toml platform/core/
 COPY platform/kernel/Cargo.toml platform/kernel/
@@ -94,7 +95,7 @@ RUN mkdir -p crates/oz-core/src crates/oz-api/src crates/oz-logging/src \
              crates/oz-hal/src crates/oz-lua/src crates/oz-notification/src \
              crates/oz-plugin/src crates/oz-security/src crates/oz-payment/src \
              crates/oz-reporting/src crates/oz-cli/src \
-             crates/oz-crypto/src crates/oz-media/src \
+             crates/oz-crypto/src crates/oz-media/src crates/oz-lan/src \
              foundation/src \
              platform/core/src platform/kernel/src platform/startup/src \
              platform/sync/src \
@@ -118,6 +119,7 @@ RUN mkdir -p crates/oz-core/src crates/oz-api/src crates/oz-logging/src \
     && echo "// dummy" > crates/oz-cli/src/lib.rs \
     && echo "// dummy" > crates/oz-crypto/src/lib.rs \
     && echo "// dummy" > crates/oz-media/src/lib.rs \
+    && echo "// dummy" > crates/oz-lan/src/lib.rs \
     && echo "// dummy" > foundation/src/lib.rs \
     && echo "// dummy" > platform/core/src/lib.rs \
     && echo "// dummy" > platform/kernel/src/lib.rs \

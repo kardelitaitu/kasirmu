@@ -4363,6 +4363,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "oz-bridge"
+version = "0.0.37"
+dependencies = [
+ "foundation",
+ "modules-currency",
+ "oz-core",
+ "oz-security",
+ "platform-core",
+ "platform-kernel",
+ "rusqlite",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "oz-cli"
 version = "0.0.37"
 dependencies = [
@@ -4492,6 +4508,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "oz-lan"
+version = "0.0.37"
+dependencies = [
+ "anyhow",
+ "foundation",
+ "hmac 0.12.1",
+ "oz-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "snow",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "oz-logging"
 version = "0.0.37"
 dependencies = [
@@ -4610,8 +4642,10 @@ dependencies = [
  "modules-terminal",
  "notify",
  "oz-api",
+ "oz-bridge",
  "oz-core",
  "oz-hal",
+ "oz-lan",
  "oz-logging",
  "oz-lua",
  "oz-plugin",

@@ -36,8 +36,10 @@ lettre = { workspace = true }
 axum = { workspace = true }
 oz-api = { workspace = true }
 oz-core = { workspace = true }
+oz-bridge = { workspace = true }
 reqwest = { workspace = true }
 oz-hal = { workspace = true }
+oz-lan = { workspace = true }
 oz-logging = { workspace = true }
 oz-lua = { workspace = true }
 oz-plugin = { workspace = true }
