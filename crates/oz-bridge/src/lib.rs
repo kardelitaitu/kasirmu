@@ -56,5 +56,16 @@ pub mod security;
 /// Staff and role command bodies (Wave B). Not yet extracted.
 pub mod staff;
 
+/// Inventory CRUD and stock-adjustment command bodies (Wave C). Not yet extracted.
+pub mod inventory;
+/// Stock-count command bodies (Wave C). Not yet extracted.
+pub mod inventory_counts;
+/// Accounts-payable command bodies (Wave C). Not yet extracted.
+pub mod payables;
+/// Purchase-order command bodies (Wave C). Not yet extracted.
+pub mod purchasing;
+/// Inter-location stock-transfer command bodies (Wave C). Not yet extracted.
+pub mod stock_transfers;
+
 #[cfg(test)]
 mod testing;
