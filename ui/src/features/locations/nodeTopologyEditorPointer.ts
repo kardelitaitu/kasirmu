@@ -26,9 +26,9 @@
 //! only — every pre-existing parent effect kept the relative order it had before.
 //! The hook now registers effects of its own: one per cleanup ref it
 //! writes (drag/pan — hook-local since stage 4A — and marquee, still parent-owned),
-//! each firing that ref's disposer at unmount so listener disposal no longer
-//! depends on the editor's unmount sweep (every disposer is a functional no-op
-//! on second invocation).
+//! each firing that ref's disposer at unmount. Since stage 4A these are the sole
+//! unmount disposers — the editor's sweep is retired and clears only the
+//! add-node timers (every disposer is a functional no-op on second invocation).
 //! Owns the seven gestures the canvas element itself receives: handleCanvasMouseMove
 //! (node-drag feed + marquee rect tracking + connection snap-to-port, including the
 //! hoveredTarget identity-preserve rule that keeps memoized cards from re-rendering),

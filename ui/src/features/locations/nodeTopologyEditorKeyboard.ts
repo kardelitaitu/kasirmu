@@ -27,9 +27,9 @@
 //! What deliberately stayed parent-side and arrives through deps:
 //! - Every gesture ref (dragStartRef, duplicateDragRef, bendDragRef,
 //!   dragHasMovedRef, marqueeStartRef) plus userInteractedRef — the pointer and
-//!   touch hooks, the unmount listener sweep and resetTransientCanvasState all
-//!   read or write them, so hoisting any of them here would split one gesture
-//!   across two owners.
+//!   touch hooks and resetTransientCanvasState all read or write them (the
+//!   editor's unmount sweep is retired and touches no listener refs any more),
+//!   so hoisting any of them here would split one gesture across two owners.
 //! - migrationDismissedRef — "Later" and Escape set it, the load effect reads it.
 //! - handleAddNodeRef — it is WRITTEN below this call (it mirrors handleAddNode,
 //!   declared after the original effect), so it stays a parent-declared ref

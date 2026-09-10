@@ -14,10 +14,10 @@
 //! The hook owns only the callbacks. The gesture refs (bendDragRef,
 //! bendDragCleanupRef) and the graph mirrors they read stay parent-owned and
 //! arrive through deps: the editor cancelBendDrag (Escape / canvas replacement)
-//! and the unmount listener sweep both consume them, so hoisting them here
-//! would split one gesture across two owners. The call site sits at the exact
-//! position of the original trio, so hook order — and therefore effect order —
-//! is unchanged.
+//! still consumes them mid-session. Unmount disposal is the hook's own — the
+//! tail effect below fires the disposer and the editor's listener sweep is
+//! retired for it. The call site sits at the exact position of the original
+//! trio, so hook order — and therefore effect order — is unchanged.
 
 import { useCallback, useEffect, type MutableRefObject, type SetStateAction } from 'react';
 import type { TopologyHistoryEntry } from './nodeTopologyEditorState';
@@ -45,8 +45,8 @@ export interface TopologyBendDragDeps {
   /** Parent-owned in-flight gesture ref, also read by cancelBendDrag and the
    *  keyboard handler that decides whether a bend is in flight. */
   bendDragRef: MutableRefObject<BendGestureState | null>;
-  /** Parent-owned document-listener cleanup ref: both the editor unmount sweep
-   *  and cancelBendDrag disarm a live drag through it. */
+  /** Parent-owned cleanup ref: cancelBendDrag disarms a live drag through it;
+   *  unmount disposal is the hook's own tail effect (the editor sweep is gone). */
   bendDragCleanupRef: MutableRefObject<(() => void) | null>;
   /** Parent-owned history-push mirror: the REF is a stable identity and is
    *  listed as a dep; pushHistory itself stays unlisted — it re-keys whenever
@@ -190,13 +190,13 @@ export function useTopologyEditorBendDrag(deps: TopologyBendDragDeps): {
     // these handlers stay referentially stable while pushHistory re-keys.
   }, [setWires, pushHistoryRef]);
 
-  // The hook registers its own unmount cleanup so listener disposal no longer
-  // depends solely on the editor's unmount sweep. Until the sweep is retired,
-  // both run at unmount — accepted by design: the disposer is idempotent
-  // (removeEventListener + ref-nulling only), so the second invocation no-ops.
-  // bendDragCleanupRef is a parent-owned stable ref identity, listed per the
-  // linter's demand — a no-op for churn since the ref object never changes —
-  // so the effect arms once.
+  // The hook registers its own unmount cleanup: since the editor's listener
+  // sweep was retired for this ref it is the SOLE unmount disposer (the sweep
+  // keeps only the add-node timers now). The disposer is idempotent
+  // (removeEventListener + ref-nulling only), so cancelBendDrag's mid-session
+  // call stays safe. bendDragCleanupRef is a parent-owned stable ref identity,
+  // listed per the linter's demand — a no-op for churn since the ref object
+  // never changes — so the effect arms once.
   useEffect(() => () => { bendDragCleanupRef.current?.(); }, [bendDragCleanupRef]);
 
   return { startBendDrag, startGhostBendDrag, removeBend };

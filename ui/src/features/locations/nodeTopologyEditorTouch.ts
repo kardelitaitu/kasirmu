@@ -20,11 +20,11 @@
 //! longer touches this ref; the disposer stays idempotent).
 //!
 //! Ownership of the gesture state: touchPointersRef and touchGestureRef have no
-//! reader outside this loop, so they moved with it. touchCleanupRef did NOT —
-//! the editor's unmount listener sweep fires it (a branch switch mid-pinch
-//! otherwise leaves three document listeners attached), so it stays
-//! parent-declared beside its pan/drag/marquee siblings and arrives through
-//! deps. The call site sits at the exact position of the original block, so the
+//! reader outside this loop, so they moved with it — and since stage 4A so did
+//! touchCleanupRef: the hook declares it locally and its own tail effect is the
+//! sole unmount disposer, so a branch switch mid-pinch can no longer leave
+//! three document listeners attached — the retired sweep disposes nothing here.
+//! The call site sits at the exact position of the original block, so the
 //! component's hook order is unchanged.
 
 import { useEffect, useRef, type MutableRefObject, type SetStateAction } from 'react';
