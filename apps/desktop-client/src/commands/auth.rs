@@ -299,12 +299,6 @@ pub async fn refresh_picker_ticket(
     oz_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "auth_tests.rs"]
-mod tests;
-
 #[cfg(test)]
 #[path = "security_scoped_integration_tests.rs"]
 mod security_integration_tests;
