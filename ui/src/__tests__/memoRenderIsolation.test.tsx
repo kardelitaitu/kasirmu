@@ -215,13 +215,44 @@ beforeEach(() => {
   );
 });
 
+/**
+ * Settle-aware render-count baseline — the house pattern from
+ * nodeTopologyMemo.test.tsx (`settleCounts`).
+ *
+ * The shell's mount keeps settling AFTER the host screen first becomes
+ * visible: the contexts it reads resolve on timers and a late provider update
+ * re-renders the host. A baseline snapshotted mid-settle turns those
+ * mount-time renders into a phantom delta — exactly how the exact-equality
+ * pins below flaked ("expected 2 to be 1") when this file was co-run with
+ * NodeTopologyEditor.test.tsx, while passing standalone.
+ *
+ * Reads the counter until two consecutive 60ms samples agree, with a ~150ms
+ * floor so a timer armed just before the settle still lands inside it. Every
+ * wait runs in `act` so React flushes the work it releases. The returned
+ * count is quiescent, so a delta asserted against it (or re-checked through
+ * it) measures the interaction under test, not the mount.
+ */
+async function settleRenders(read: () => number): Promise<number> {
+  const startedAt = Date.now();
+  let previous = -1;
+  let current = read();
+  while (previous !== current || Date.now() - startedAt < 150) {
+    previous = current;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    current = read();
+  }
+  return current;
+}
+
 describe('memo render isolation (banner state never re-renders the app)', () => {
   it('a memo arriving re-renders only the banner, not the host screen', async () => {
     await renderWithProviders(<AppShell />, staffFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
     });
-    const baseline = posScreenRenders;
+    const baseline = await settleRenders(() => posScreenRenders);
     expect(baseline).toBeGreaterThan(0);
     expect(screen.queryByText('Restock aisle 3')).not.toBeInTheDocument();
 
@@ -237,8 +268,10 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     await waitFor(() => {
       expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
     });
-    // …and the host screen did not render again for it.
-    expect(posScreenRenders).toBe(baseline);
+    // …and the host screen did not render again for it. The settle is the
+    // same one the baseline used: a memo-caused host render still lands in
+    // the delta and fails here; only mount-time settling is absorbed.
+    expect(await settleRenders(() => posScreenRenders)).toBe(baseline);
   });
 
   it('an idempotent poll (same memo list) re-renders neither the screen nor shows churn', async () => {
@@ -247,7 +280,7 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     await waitFor(() => {
       expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
     });
-    const baseline = posScreenRenders;
+    const baseline = await settleRenders(() => posScreenRenders);
 
     // The next poll returns the SAME list; the hook replaces its state with
     // a fresh array (new identity), so the banner re-renders — but the host
@@ -259,7 +292,7 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
       expect(mockList).toHaveBeenCalledTimes(2);
     });
     expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
-    expect(posScreenRenders).toBe(baseline);
+    expect(await settleRenders(() => posScreenRenders)).toBe(baseline);
   });
 
   it('first spawn and second spawn (stacking) are both host-screen-stable', async () => {
@@ -271,7 +304,7 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     await waitFor(() => {
       expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
     });
-    const baseline = posScreenRenders;
+    const baseline = await settleRenders(() => posScreenRenders);
 
     // Stage 1 — first spawn (empty stack → 1 bubble; the .memo-stack
     // container mounts for the first time).
@@ -282,7 +315,7 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     await waitFor(() => {
       expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
     });
-    const afterFirst = posScreenRenders;
+    const afterFirst = await settleRenders(() => posScreenRenders);
 
     // Stage 2 — second spawn (stacks on top; container already mounted).
     mockList.mockResolvedValue({
@@ -298,7 +331,7 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
 
     // BOTH stages must leave the host screen untouched.
     expect(afterFirst).toBe(baseline);
-    expect(posScreenRenders).toBe(baseline);
+    expect(await settleRenders(() => posScreenRenders)).toBe(baseline);
   });
 
   it('HOMESCREEN: first and second spawn are both host-screen-stable', async () => {
@@ -311,7 +344,7 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     await waitFor(() => {
       expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
     });
-    const baseline = homeRenders;
+    const baseline = await settleRenders(() => homeRenders);
     expect(baseline).toBeGreaterThan(0);
 
     // First spawn.
@@ -322,7 +355,7 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     await waitFor(() => {
       expect(screen.getByText('Restock aisle 3')).toBeInTheDocument();
     });
-    const afterFirst = homeRenders;
+    const afterFirst = await settleRenders(() => homeRenders);
 
     // Second spawn (stacks).
     mockList.mockResolvedValue({
@@ -337,6 +370,6 @@ describe('memo render isolation (banner state never re-renders the app)', () => 
     });
 
     expect(afterFirst).toBe(baseline);
-    expect(homeRenders).toBe(baseline);
+    expect(await settleRenders(() => homeRenders)).toBe(baseline);
   });
 });

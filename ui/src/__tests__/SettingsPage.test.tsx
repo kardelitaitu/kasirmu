@@ -349,15 +349,30 @@ describe('SettingsPage admin shell — flat 13-page IA', () => {
     expect(within(topbar).getByRole('heading', { name: navLabel('tax-configuration') })).toBeInTheDocument();
   });
 
-  it('every renderSection key lazy-renders its localized placeholder screen', async () => {
+  it('every renderSection key mounts its own screen under the shared scaffold', async () => {
     await openShell();
 
-    // Loop over the nav registry: one key must map to one screen, and the
-    // screen must be honest about being a rebuild placeholder.
+    // Loop over the nav registry: one key must map to one screen. Most
+    // screens are still the rebuild placeholder; a screen that has migrated
+    // onto real content is listed in MIGRATED below and must mount THAT, so
+    // the sweep keeps covering every key instead of skipping the built ones.
     const placeholder = ftlValue('settings-screen-placeholder');
     const migrating = ftlValue('settings-screen-migrating');
     expect(placeholder).not.toBe('');
     expect(migrating).not.toBe('');
+
+    // key -> the markers its real screens own, asserted as class selectors
+    // inside the section. Business Defaults hosts the four regional-slice
+    // cards; with the mocked IPC (no location configured) each renders its
+    // own empty/error state, which is the element that proves it mounted.
+    const migrated: Record<string, string[]> = {
+      'business-defaults': [
+        'regional-settings-empty',
+        'localpay-empty',
+        'rcptfmt-empty',
+        'fiscalnum-error',
+      ],
+    };
 
     for (const item of NAV_ITEMS) {
       const label = navLabel(item.key);
@@ -367,8 +382,19 @@ describe('SettingsPage admin shell — flat 13-page IA', () => {
       const root = sectionRoot();
       const section = root.querySelector('section.settings-screen-placeholder');
       expect(section, item.key + ' body must be the shared placeholder section').not.toBeNull();
-      expect(within(section as HTMLElement).getAllByText(placeholder)).toHaveLength(1);
-      expect(within(section as HTMLElement).getByText(migrating)).toBeInTheDocument();
+      const body = section as HTMLElement;
+
+      const markers = migrated[item.key];
+      if (markers) {
+        // A migrated screen must NOT fall back to the placeholder copy.
+        expect(within(body).queryByText(placeholder), item.key + ' still shows the placeholder').toBeNull();
+        for (const marker of markers) {
+          expect(body.querySelector('.' + marker), item.key + ' must mount its .' + marker + ' screen').not.toBeNull();
+        }
+      } else {
+        expect(within(body).getAllByText(placeholder)).toHaveLength(1);
+      }
+      expect(within(body).getByText(migrating)).toBeInTheDocument();
     }
   });
 
