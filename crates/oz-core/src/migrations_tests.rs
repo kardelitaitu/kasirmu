@@ -593,6 +593,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260927_kds_ticket_prefix_stamp.sql".to_string(),
             "20260928_document_kind_check.sql".to_string(),
             "20260929_tax_rate_rounding_mode.sql".to_string(),
+            "20260930_sales_tax_estimate_note.sql".to_string(),
         ]
     );
 
@@ -2172,4 +2173,85 @@ fn tax_rate_rounding_mode_column_pins_the_statutory_set() {
         );
         assert!(attempted.is_err(), "'{bad}' must be refused by the CHECK");
     }
+}
+
+#[test]
+fn sales_tax_estimate_note_column_pins_the_audit_stamp_shape() {
+    // F2-4 (T1 dossier D64 slice 4): the per-sale audit stamp for a tax
+    // computed against a non-fresh estimate. The column is NULLABLE by
+    // design — legacy rows are unstamped (they were computed live under the
+    // old path), and a missing stamp must never read as a claim — so there
+    // is deliberately NO default and NO backfill: the absence IS the
+    // answer. Pins mirror the rounding_mode pin's shape, minus the CHECK
+    // (a free-text stamp accepts arbitrary content; there is no closed
+    // vocabulary to enforce).
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let (col_type, notnull, dflt): (String, i64, Option<String>) = conn
+        .query_row(
+            "SELECT type, \"notnull\", dflt_value FROM pragma_table_info('sales')
+             WHERE name = 'tax_estimate_note'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .expect("sales must carry tax_estimate_note after the migration");
+    assert_eq!(col_type, "TEXT");
+    assert_eq!(notnull, 0, "the stamp must be nullable — NULL = unstamped");
+    assert!(
+        dflt.is_none(),
+        "no default: an unwritten stamp must land on NULL, not on a sentinel"
+    );
+
+    // A sale inserted WITHOUT naming the column reads back NULL — the
+    // unstamped state the legacy-path invariant requires.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count) VALUES ('s-no-stamp', 1000, 'USD', 1)",
+        [],
+    )
+    .unwrap();
+    let stamp: Option<String> = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = 's-no-stamp'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        stamp.is_none(),
+        "an unwritten tax_estimate_note must read back as NULL"
+    );
+
+    // Arbitrary text is accepted — the stamp is a free-text audit note
+    // (client claim + core-verified delta), not a constrained vocabulary.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, tax_estimate_note) VALUES
+         ('s-stamped', 1000, 'USD', 1, 'estimated 1200; verified 1180 (delta 20)')",
+        [],
+    )
+    .unwrap();
+    let stamped: String = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = 's-stamped'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stamped, "estimated 1200; verified 1180 (delta 20)");
+
+    // And the column survives an insert that omits it entirely — the shape
+    // every pre-F2-5 writer keeps using until the stamping half lands.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count) VALUES ('s-legacy-shape', 500, 'USD', 1)",
+        [],
+    )
+    .unwrap();
+    let omitted: Option<String> = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = 's-legacy-shape'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(omitted.is_none());
 }

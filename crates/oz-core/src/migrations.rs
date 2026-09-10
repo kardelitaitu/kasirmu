@@ -254,6 +254,20 @@ pub const ALL: &[Migration] = &[
         id: "20260929_tax_rate_rounding_mode.sql",
         sql: include_str!("../migrations/20260929_tax_rate_rounding_mode.sql"),
     },
+    // F2-4 (T1 dossier D64 slice 4): the per-sale audit stamp for a tax
+    // computed against a non-fresh estimate. NULL = unstamped — legacy rows
+    // were computed live and a missing stamp must never read as a claim, so
+    // there is deliberately no backfill and no default. Date 20260930 sorts
+    // after the last sales DDL writer (20260923_fiscal_numbering, which is
+    // an ADD COLUMN, not a rebuild — no sales rebuild exists in the
+    // registry); the same never-date-before-the-last-DDL-writer rule E1-1
+    // recorded applies, and a future sales rebuild must carry
+    // tax_estimate_note through both its column lists (the migrations_tests
+    // pin enforces exactly that).
+    Migration {
+        id: "20260930_sales_tax_estimate_note.sql",
+        sql: include_str!("../migrations/20260930_sales_tax_estimate_note.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

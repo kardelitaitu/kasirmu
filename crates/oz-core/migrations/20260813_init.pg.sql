@@ -1015,7 +1015,7 @@ CREATE TABLE IF NOT EXISTS "sales" (
     pending_expires_at  TEXT,
     payment_reference   TEXT,
     captured_at         TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0, statutory_number TEXT);
+, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0, statutory_number TEXT, tax_estimate_note TEXT);
 
 CREATE TABLE IF NOT EXISTS inventory_shifts (
     id          TEXT PRIMARY KEY,                              -- UUID v7
