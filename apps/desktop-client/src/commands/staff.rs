@@ -41,7 +41,8 @@ pub use oz_bridge::staff::{
     AssignmentArgs, AssignmentDto, BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs,
     CreateStaffArgs, CreateStaffScopedArgs, PermissionKeyDto, ProfileArgs, ProfileViewDto, RoleDto,
     RoleHolderDto, RoleHoldersDto, StaffMemberDto, UpdateRoleArgs, UpdateStaffArgs,
-    UpdateStaffScopedArgs,
+    UpdateStaffScopedArgs, assignment_dto, assignment_spec, enforce_role_assignment_policy,
+    parse_scope_mode, to_staff_dto,
 };
 
 /// Serialize a grant set into the JSON array roles.permissions stores.

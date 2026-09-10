@@ -564,7 +564,9 @@ fn require_permission_for_user(
         .map_err(map_gate_error)
 }
 
-fn to_staff_dto(
+/// Build the wire DTO for one staff member from its role list, profile and
+/// assignment. Exposed for the shell re-export and the sibling test modules.
+pub fn to_staff_dto(
     user: &User,
     roles: &[Role],
     profile: Option<&UserProfile>,
@@ -594,7 +596,7 @@ fn to_staff_dto(
 /// Render an assignment for the wire. Legacy users without an assignment
 /// row (pre-0048 databases) resolve as global all/all — the same effective
 /// semantics as `users.role_id` alone.
-fn assignment_dto(assignment: Option<&Assignment>) -> AssignmentDto {
+pub fn assignment_dto(assignment: Option<&Assignment>) -> AssignmentDto {
     match assignment {
         Some(a) => AssignmentDto {
             scope_mode: a.scope_mode.as_str().to_string(),
@@ -622,12 +624,12 @@ fn assignment_dto(assignment: Option<&Assignment>) -> AssignmentDto {
 }
 
 /// Parse the wire `scope_mode` string, rejecting anything else.
-fn parse_scope_mode(s: &str) -> Result<ScopeMode, BridgeError> {
+pub fn parse_scope_mode(s: &str) -> Result<ScopeMode, BridgeError> {
     ScopeMode::parse(s).ok_or_else(|| BridgeError::Invalid(format!("invalid scope_mode: {s}")))
 }
 
 /// Map the wire args to an oz-core assignment spec.
-fn assignment_spec(args: &AssignmentArgs) -> Result<AssignmentSpec, BridgeError> {
+pub fn assignment_spec(args: &AssignmentArgs) -> Result<AssignmentSpec, BridgeError> {
     // ADR #47 resource axis: absent/empty is the org-wide default so
     // pre-ADR-47 callers are unchanged; anything else must parse and carry
     // a valid (type, id) pair — the same rule the SQL pair triggers
@@ -710,7 +712,7 @@ pub fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, BridgeError> {
 ///   carries `*`) may create or promote an account to the Owner role.
 /// - A caller may not change their own role (no self-promotion).
 /// - The last active Owner may not be deactivated, demoted, or edited away.
-fn enforce_role_assignment_policy(
+pub fn enforce_role_assignment_policy(
     store: &Store<'_>,
     caller_user_id: &str,
     target_user_id: Option<&str>,
