@@ -7,72 +7,48 @@ findings: closed C-1 (Epic X-3, see audit doc §11); no remaining findings in th
 //! Exchange rate commands.
 //!
 //! R2 Phase 2: DTO types moved to [`modules_currency::commands`].
-//! The command handler functions themselves remain here because they
-//! depend on Tauri-specific types (`State`, `#[command]`) and the
-//! app-level `AppState` / `AppError`.
+//!
+//! Wave A / S4: the handler bodies now live in the headless
+//! `oz_bridge::currency` module. Each `#[tauri::command]` below keeps its
+//! exact name, parameter list and `Result<_, AppError>` return so the
+//! registered IPC surface and the serialized error shape never move; it
+//! borrows a `BridgeCtx` from `AppState`, calls the bridge, and maps
+//! `BridgeError` back to `AppError` variant-for-variant.
+//! `validate_create_rate_args` stays here as an `AppError`-returning adapter
+//! over the bridge validator, because `exchange_rates_tests.rs` calls it
+//! directly and matches on `AppError::Invalid`.
 
 use tauri::State;
 
-use foundation::validate_not_empty;
-use modules_currency::commands::{CreateExchangeRateArgs, ExchangeRateDto};
-use modules_currency::repository::CurrencyRepository;
+// Retained for the sibling test module, which reaches this through
+// `use super::*`; the command bodies no longer name it.
+#[allow(unused_imports)]
+use oz_core::db::Store;
 
-use crate::commands::authz::require_permission_for_session;
+use modules_currency::commands::{CreateExchangeRateArgs, ExchangeRateDto};
+
 use crate::error::AppError;
 use crate::state::AppState;
-use oz_core::db::Store;
+
+/// Shared validation for exchange-rate creation (CUR-05), used by both
+/// the legacy and scoped command paths so the two cannot drift.
+///
+/// The rules live in `oz_bridge::currency::validate_create_rate_args`; this
+/// adapter exists so both the shell and its tests keep seeing `AppError`.
+#[allow(dead_code)] // retained for exchange_rates_tests.rs, which calls it directly
+fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), AppError> {
+    oz_bridge::currency::validate_create_rate_args(args).map_err(AppError::from)
+}
 
 #[tauri::command]
 /// List exchange rates.
 pub async fn list_exchange_rates(
     state: State<'_, AppState>,
 ) -> Result<Vec<ExchangeRateDto>, AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    let rows = repo.list_exchange_rates()?;
-    Ok(rows.into_iter().map(ExchangeRateDto::from).collect())
-}
-
-/// Shared validation for exchange-rate creation (CUR-05), used by both
-/// the legacy and scoped command paths so the two cannot drift.
-fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), AppError> {
-    validate_not_empty("from_currency", &args.from_currency)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_not_empty("to_currency", &args.to_currency)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-    if args.rate_millionths <= 0 {
-        return Err(AppError::Invalid(
-            "rate must be strictly positive (zero and negative are not valid exchange rates)"
-                .into(),
-        ));
-    }
-    // CUR-05: field-level validation. The repository/DB only rejects
-    // non-empty strings and relies on FKs for currency existence — a
-    // same-currency pair, a non-ISO-4217 code, or a malformed effective
-    // date would otherwise persist as semantically invalid configuration
-    // that the "latest effective rate" selection can never match. Fail here
-    // with a field-specific error before any write.
-    if args.from_currency == args.to_currency {
-        return Err(AppError::Invalid(
-            "from_currency and to_currency must differ".into(),
-        ));
-    }
-    for field in ["from_currency", "to_currency"] {
-        let code: &str = if field == "from_currency" {
-            &args.from_currency
-        } else {
-            &args.to_currency
-        };
-        code.parse::<oz_core::Currency>().map_err(|_| {
-            AppError::Invalid(format!("{field}: not a valid ISO-4217 currency code"))
-        })?;
-    }
-    if let Some(date) = &args.effective_date {
-        chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| {
-            AppError::Invalid(format!("effective_date: must be YYYY-MM-DD, got {date}"))
-        })?;
-    }
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::list_exchange_rates(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -89,30 +65,19 @@ pub async fn create_exchange_rate(
     args: CreateExchangeRateArgs,
     state: State<'_, AppState>,
 ) -> Result<ExchangeRateDto, AppError> {
-    validate_create_rate_args(&args)?;
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    let date = args
-        .effective_date
-        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
-    let source = args.source.unwrap_or_else(|| "manual".to_string());
-    let row = repo.create_exchange_rate(
-        &args.from_currency,
-        &args.to_currency,
-        args.rate_millionths,
-        &source,
-        &date,
-    )?;
-    Ok(ExchangeRateDto::from(row))
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::create_exchange_rate(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
 /// Delete exchange rate.
 pub async fn delete_exchange_rate(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    repo.delete_exchange_rate(&id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::delete_exchange_rate(&ctx, &id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Scoped variants (CUR-03) ─────────────────────────────────────────
@@ -122,6 +87,7 @@ pub async fn delete_exchange_rate(id: String, state: State<'_, AppState>) -> Res
 // variants resolve the store from the session token and enforce
 // `SETTINGS_READ` / `SETTINGS_EDIT` on the backend, so multi-store
 // deployments cannot mutate another store's currency configuration.
+// The gates now run inside the bridge, in the same order as before.
 
 /// List exchange rates in the store resolved from a session token. ADR #7.
 ///
@@ -132,16 +98,10 @@ pub async fn list_exchange_rates_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ExchangeRateDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    let rows = repo.list_exchange_rates()?;
-    drop(db);
-    Ok(rows.into_iter().map(ExchangeRateDto::from).collect())
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::list_exchange_rates_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// The current rate for every pair (CUR-11), store resolved from a
@@ -155,16 +115,10 @@ pub async fn list_latest_exchange_rates_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ExchangeRateDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    let rows = repo.list_latest_exchange_rates()?;
-    drop(db);
-    Ok(rows.into_iter().map(ExchangeRateDto::from).collect())
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::list_latest_exchange_rates_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Create an exchange rate in the store resolved from a session token. ADR #7.
@@ -178,35 +132,10 @@ pub async fn create_exchange_rate_scoped(
     args: CreateExchangeRateArgs,
     state: State<'_, AppState>,
 ) -> Result<ExchangeRateDto, AppError> {
-    validate_create_rate_args(&args)?;
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_EDIT).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    // ADR #48 (Decision 3): default the effective date to the business date in
-    // the store's IANA zone, not raw UTC.
-    let timezone = oz_core::db::Store::new(&db)
-        .get_location_profile(&session.store_id)
-        .ok()
-        .flatten()
-        .map(|p| p.timezone)
-        .unwrap_or_else(|| "UTC".to_string());
-    let date = args
-        .effective_date
-        .unwrap_or_else(|| oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
-    let source = args.source.unwrap_or_else(|| "manual".to_string());
-    let row = repo.create_exchange_rate(
-        &args.from_currency,
-        &args.to_currency,
-        args.rate_millionths,
-        &source,
-        &date,
-    )?;
-    drop(db);
-    Ok(ExchangeRateDto::from(row))
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::create_exchange_rate_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Delete an exchange rate in the store resolved from a session token. ADR #7.
@@ -219,16 +148,10 @@ pub async fn delete_exchange_rate_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_EDIT).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    repo.delete_exchange_rate(&id)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::delete_exchange_rate_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Return the latest exchange rate for a pair effective on/before
@@ -245,25 +168,16 @@ pub async fn get_latest_exchange_rate_scoped(
     effective_date: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Option<ExchangeRateDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    let as_of = effective_date.unwrap_or_else(|| {
-        let tz = Store::new(&db)
-            .get_location_profile(&session.store_id)
-            .ok()
-            .flatten()
-            .map(|p| p.timezone)
-            .unwrap_or_else(|| "UTC".to_string());
-        oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &tz)
-    });
-    let row = repo.get_latest_exchange_rate(&from_currency, &to_currency, &as_of)?;
-    drop(db);
-    Ok(row.map(ExchangeRateDto::from))
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::get_latest_exchange_rate_scoped(
+        &ctx,
+        &session_token,
+        &from_currency,
+        &to_currency,
+        effective_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

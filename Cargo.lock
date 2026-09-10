@@ -4366,6 +4366,7 @@ dependencies = [
 name = "oz-bridge"
 version = "0.0.37"
 dependencies = [
+ "chrono",
  "foundation",
  "hex",
  "image",

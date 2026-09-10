@@ -14,6 +14,7 @@ workspace = true
 # Headless by contract: no tauri / gtk / webkit2gtk / tauri-plugin dependency may
 # ever be added here. See the crate doc in src/lib.rs.
 [dependencies]
+chrono = { workspace = true }
 foundation = { workspace = true }
 hex = { workspace = true }
 image = { workspace = true }
