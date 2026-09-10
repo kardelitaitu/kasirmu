@@ -32,22 +32,23 @@ export interface SubscriptionCapabilities {
    *  to `tier` on purpose: a trial resolves to Free (the quota answer)
    *  and this flag is the fact that collapse loses. `false` when
    *  fail-closed - unreadable data is never reported as a trial.
-   *  Optional like `markers` below: current backends always emit it,
-   *  but a payload from an older build omits it (undefined = not a
-   *  trial, the same fail-closed reading). */
-  isTrial?: boolean;
+   *  HARD-REQUIRED (W7-C residual): the Rust DTO emits `is_trial: bool`
+   *  unconditionally, so every backend payload carries the key - the
+   *  interface no longer tolerates its absence. */
+  isTrial: boolean;
   /** When the trial ends (RFC3339, from the signed payload); `null`
    *  when this is not a trial or the date is absent/unparseable.
-   *  Null-when-absent semantics: no default is invented client-side,
-   *  and a missing field (older build) reads the same as `null`. */
-  trialEndsAt?: string | null;
+   *  Null-when-absent semantics: no default is invented client-side.
+   *  HARD-REQUIRED (W7-C residual): the key is always emitted
+   *  (`trial_ends_at: Option<String>` serializes `null`, never absent). */
+  trialEndsAt: string | null;
   /** The signed payload's explicit per-feature instructions (Phase D1):
    *  the server's `features` map keyed by the canonical
    *  `AvailabilityFeature` wire names (e.g. `supports_analytics`).
    *  Empty when the payload has no opinion - no default grant is ever
-   *  invented here; an absent field (older build) reads the same as
-   *  an empty map (the tier's own answer stands). */
-  features?: Record<string, boolean>;
+   *  invented here. HARD-REQUIRED (W7-C residual): the map is always
+   *  emitted; an empty map means the tier's own answer stands. */
+  features: Record<string, boolean>;
   // ── Quota limits (`null` = unlimited) ─────────────────────
   /** Location quota — wire field keeps the historical `maxLocations` name (1g wire rename pending). */
   maxLocations: number | null;

@@ -49,6 +49,11 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 const caps: SubscriptionCapabilities = {
   tier: 'pro',
   state: 'active',
+  // Hard-required C+D-RES-1 keys (W7-C residual): paid Pro, no trial,
+  // no payload feature overrides.
+  isTrial: false,
+  trialEndsAt: null,
+  features: {},
   maxLocations: 10,
   maxPosInstances: 5,
   maxWarehouses: 3,
