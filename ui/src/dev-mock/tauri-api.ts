@@ -3001,6 +3001,13 @@ const handlers: Record<string, (args: unknown) => unknown> = {
   'get_subscription_capabilities': () => ({
     tier: 'premium',
     state: 'active',
+    // C+D-RES-1: trial state + feature-grant map ride the caps payload.
+    // The mock tenant is a paid premium subscription: not a trial, no
+    // payload feature overrides - exactly the null/empty-when-absent
+    // shape the api-subscription-contract test pins (no invented defaults).
+    isTrial: false,
+    trialEndsAt: null,
+    features: {},
     maxLocations: null,
     maxPosInstances: null,
     maxWarehouses: null,

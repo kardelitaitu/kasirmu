@@ -18,7 +18,7 @@ use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
 use oz_core::downgrade::{OverQuotaMarker, OverQuotaReport, OverQuotaSeverity, QuotaDimension};
-use oz_core::entitlements::{Entitlements, build_entitlements};
+use oz_core::entitlements::{Entitlements, SubscriptionLoader, build_entitlements};
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
@@ -38,6 +38,23 @@ pub struct SubscriptionCapabilitiesDto {
     /// `expired`, `canceled`, `paused`, or `unavailable`. Anything other
     /// than `active`/`grace` carries Free-tier entitlements below.
     pub state: String,
+    /// Whether the signed payload marks this period as a trial (Phase C,
+    /// C+D-RES-1). Orthogonal to `tier` on purpose: a trial resolves to
+    /// Free - the quota answer - and this flag is the fact that collapse
+    /// used to lose. `false` when fail-closed: an unreadable row is never
+    /// reported as a trial.
+    pub is_trial: bool,
+    /// When the trial ends (RFC3339, from the signed payload); `None`
+    /// when this is not a trial or the date is absent/unparseable.
+    /// Null-when-absent semantics: no default is ever invented here.
+    pub trial_ends_at: Option<String>,
+    /// The signed payload's explicit per-feature instructions (Phase D1,
+    /// surfaced over the caps wire by C+D-RES-1): the server's `features`
+    /// map keyed by the canonical
+    /// [`oz_core::availability::AvailabilityFeature`] wire names. Empty
+    /// when the payload has no opinion - silence is the only safe reading
+    /// of data that cannot be trusted, so no default grant is invented.
+    pub features: std::collections::HashMap<String, bool>,
     /// Maximum locations allowed (`None` = unlimited). Wire name renamed
     /// from `maxStores` — the §B gate the Phase-3 observability slice was
     /// waiting on (UI consumers renamed in the same commit).
@@ -113,10 +130,19 @@ fn gather_usage(store: &Store<'_>) -> UsageCounts {
 /// `Entitlements` instance the verdict gathers from, so the two surfaces
 /// cannot disagree. The limits route through `QuotaDimension::limit_for`
 /// (Phase B), matching the creation gates.
-fn project_capabilities(ent: &Entitlements) -> SubscriptionCapabilitiesDto {
+fn project_capabilities(
+    ent: &Entitlements,
+    features: &std::collections::HashMap<String, bool>,
+) -> SubscriptionCapabilitiesDto {
     SubscriptionCapabilitiesDto {
         tier: ent.tier.tier_key().to_string(),
         state: ent.state.as_str().to_string(),
+        // C+D-RES-1 (W7-C): trial state + feature grants ride the caps
+        // payload so the UI reads the whole subscription picture from ONE
+        // IPC instead of inferring it from a verdict it may never request.
+        is_trial: ent.is_trial,
+        trial_ends_at: ent.trial_ends_at.clone(),
+        features: features.clone(),
         // Canonical wire name (the 1b staged migration completes here):
         // the field is `max_locations`, the quota method always was.
         max_locations: ent.max_locations(),
@@ -148,7 +174,15 @@ fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabiliti
     // `debug_upgrade: true` is the desktop side of the per-client
     // divergence: only a genuinely active Free row is promoted in dev.
     let ent = build_entitlements(&store, gather_usage(&store), true);
-    Ok(project_capabilities(&ent))
+    // The server's explicit feature-grant map is only readable from the
+    // verified row itself (it is not on `Entitlements`), so it is loaded
+    // here with the same fail-closed semantics the verdict path uses: a
+    // missing/tampered/unreadable row is `None`, whose map is empty.
+    let features = store
+        .load_verified_subscription()
+        .map(|sub| sub.payload_features())
+        .unwrap_or_default();
+    Ok(project_capabilities(&ent, &features))
 }
 
 // ── Feature-availability verdicts (Phase 3 observability) ───────────

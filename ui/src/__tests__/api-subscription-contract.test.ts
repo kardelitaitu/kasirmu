@@ -38,6 +38,9 @@ import {
 const CAPS = {
   tier: 'plus',
   state: 'active',
+  isTrial: false,
+  trialEndsAt: null,
+  features: {},
   maxLocations: 5,
   maxPosInstances: 3,
   maxWarehouses: 2,
@@ -65,6 +68,23 @@ describe('subscription.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('get_subscription_capabilities', undefined);
     expect(result.tier).toBe('plus');
     expect(result.maxLocations).toBe(5);
+    // C+D-RES-1: the trial-state + feature-grant projection is pinned -
+    // the fields must EXIST and carry null-when-absent semantics, never
+    // invented defaults.
+    expect(result.isTrial).toBe(false);
+    expect(result.trialEndsAt).toBeNull();
+    expect(result.features).toEqual({});
+    const trialCaps = {
+      ...CAPS,
+      isTrial: true,
+      trialEndsAt: '2026-12-01T00:00:00Z',
+      features: { supports_analytics: true },
+    } satisfies SubscriptionCapabilities;
+    mockInvoke.mockResolvedValue(trialCaps);
+    const trial = await getSubscriptionCapabilities();
+    expect(trial.isTrial).toBe(true);
+    expect(trial.trialEndsAt).toBe('2026-12-01T00:00:00Z');
+    expect(trial.features).toEqual({ supports_analytics: true });
   });
 
   it('explainFeatureAvailability → explain_feature_availability_scoped with sessionToken + feature', async () => {
