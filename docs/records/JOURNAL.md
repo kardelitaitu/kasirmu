@@ -1,4 +1,22 @@
 
+## 2026-09-10 — TDD: Enforce read-only subscription lock on checkout deduction (core/sales)
+
+**Context & Identified Weakness:**
+When an offline terminal's subscription expired past its offline grace period (`pos_read_only == true`), `complete_sale_deduction_with_locations_and_estimate` and `complete_sale_with_resolved_shortfalls` still allowed completing sales, deducting inventory, and inserting sale records. The operational contract requires the POS to be read-only once grace expires, locking checkout and order mutations.
+
+**Changes & Design:**
+1. Added `Store::enforce_pos_writable(&self) -> Result<(), CoreError>` in `crates/oz-core/src/db/quota_gate.rs` delegating to `sub.enforce_pos_writable_for_connection(self.conn)`.
+2. Called `self.enforce_pos_writable()?;` at the start of `complete_sale_deduction_with_locations_and_estimate` in `crates/oz-core/src/db/sales_checkout.rs`.
+3. Called `self.enforce_pos_writable()?;` at the start of `complete_sale_with_resolved_shortfalls` in `crates/oz-core/src/db/sales_lifecycle.rs`.
+4. Added unit tests `test_complete_sale_deduction_fails_when_subscription_read_only` and `test_complete_sale_with_resolved_shortfalls_fails_when_subscription_read_only` in `crates/oz-core/src/db/sales_tests.rs`.
+5. Verified that no sale or stock modification occurs when read-only mode is active.
+
+**Verification:**
+- Verified RED phase: `test_complete_sale_deduction_fails_when_subscription_read_only` failed with `called Result::unwrap_err() on an Ok value`.
+- Verified GREEN phase: both tests passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
 ## 2026-09-10 — TDD: Connection-aware write enforcement enforce_pos_writable_for_connection (core/subscription)
 
 **Context & Identified Weakness:**

@@ -201,6 +201,10 @@ impl Store<'_> {
             }
         }
 
+        // Enforce subscription offline grace period / read-only lock.
+        // Once the grace period expires, the register cannot process sales.
+        self.enforce_pos_writable()?;
+
         // ADR-19 §5.2: single transaction prevents two concurrent sales from
         // racing on the same inventory row. Same pattern as create_sale().
         let tx = self.conn.unchecked_transaction()?;

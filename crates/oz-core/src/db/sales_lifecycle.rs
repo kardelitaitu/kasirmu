@@ -172,6 +172,9 @@ impl Store<'_> {
             }
         }
 
+        // Enforce subscription offline grace period / read-only lock.
+        self.enforce_pos_writable()?;
+
         // ── BEGIN IMMEDIATE ───────────────────────────────────────
         let tx = self.conn.unchecked_transaction()?;
 

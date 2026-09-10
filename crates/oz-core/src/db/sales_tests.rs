@@ -4482,3 +4482,106 @@ fn lua_override_with_no_resolved_rates_falls_back_to_preference() {
     assert_eq!(breakdown[0]["rounding_source"], "preference");
     assert_eq!(breakdown[0]["rate_source"], "lua_override");
 }
+
+#[test]
+fn test_complete_sale_deduction_fails_when_subscription_read_only() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Update the seeded bootstrap subscription to Plus, expiring 30 days ago (past the 14-day offline grace period).
+    let past_expiry = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET
+            tier_key = 'plus', status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        rusqlite::params![past_expiry],
+    )
+    .unwrap();
+
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    let sale = make_single_line_sale("COFFEE", 2, 350);
+
+    let err = s
+        .complete_sale_deduction(&sale, None, &tender(700), "cashier-1", None)
+        .unwrap_err();
+
+    assert!(
+        matches!(err, CoreError::SubscriptionReadOnly(_)),
+        "expected SubscriptionReadOnly error, got: {err:?}"
+    );
+
+    // Verify no sale row was persisted.
+    let sale_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    assert!(
+        !sale_exists,
+        "sale row must not exist when POS is read-only"
+    );
+}
+
+#[test]
+fn test_complete_sale_with_resolved_shortfalls_fails_when_subscription_read_only() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let past_expiry = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET
+            tier_key = 'plus', status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        rusqlite::params![past_expiry],
+    )
+    .unwrap();
+
+    setup_locations_with_stock(
+        &conn,
+        "COFFEE",
+        crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        10,
+        "loc-wh",
+        20,
+    );
+
+    let sale = make_single_line_sale("COFFEE", 3, 350);
+    let resolution = crate::sale_deduction::ResolvedShortfall {
+        sku: "COFFEE".into(),
+        allocations: vec![crate::sale_deduction::LocationAllocation {
+            location_id: crate::inventory::LocationId::from("loc-wh"),
+            qty: 3,
+        }],
+    };
+
+    let err = s
+        .complete_sale_with_resolved_shortfalls(
+            &sale,
+            None,
+            &tender(1050),
+            "cashier-1",
+            None,
+            &[resolution],
+            &[],
+        )
+        .unwrap_err();
+
+    assert!(
+        matches!(err, CoreError::SubscriptionReadOnly(_)),
+        "expected SubscriptionReadOnly error, got: {err:?}"
+    );
+
+    let sale_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    assert!(
+        !sale_exists,
+        "sale row must not exist when POS is read-only"
+    );
+}

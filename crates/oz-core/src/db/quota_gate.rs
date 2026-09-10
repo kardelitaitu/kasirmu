@@ -62,6 +62,17 @@ impl Store<'_> {
         })
     }
 
+    /// Enforce that POS runtime is not locked in a read-only state.
+    ///
+    /// Evaluates subscription validity against monotonic ledger time. Returns
+    /// [`CoreError::SubscriptionReadOnly`] if the offline grace window has lapsed.
+    pub fn enforce_pos_writable(&self) -> Result<(), CoreError> {
+        if let Some(sub) = TenantSubscription::load(self.conn, TENANT_ID)? {
+            sub.enforce_pos_writable_for_connection(self.conn)?;
+        }
+        Ok(())
+    }
+
     /// The live count the legacy gate for `dimension` consulted. One arm
     /// per tenant-global dimension; KDS is refused (see the module doc).
     fn quota_count(&self, dimension: QuotaDimension) -> Result<i64, CoreError> {
