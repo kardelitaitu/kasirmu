@@ -263,6 +263,9 @@ sales-history-line-cost = Cost
 sales-history-line-margin = Margin
 sales-history-line-margin-pct = Margin %
 sales-history-line-tax = Tax
+# F2-7 — the audit-stamp badge: shown on the detail's tax line when core
+# stamped the sale as computed against a non-fresh tax estimate.
+sales-history-tax-estimated-badge = Estimated
 sales-history-status-all = All
 sales-history-status-completed = Completed
 sales-history-status-pending = Pending

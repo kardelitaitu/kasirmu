@@ -326,6 +326,57 @@ describe('SalesHistoryScreen', () => {
     expect(screen.getByText('Rp 15.000')).toBeInTheDocument();
   });
 
+  // ── F2-7: the estimated-stamp badge ─────────────────────────────────
+  it('shows the estimated badge on a sale stamped as tax-estimated', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    // The core-authored stamp shape (F2-5): client claim + core-verified delta.
+    mockGetSaleScoped.mockResolvedValue({
+      ...sampleDetail,
+      taxTotal: { minor_units: 1200, currency: 'IDR' },
+      taxEstimateNote: '{"estimated":true,"claim":1200,"verified":1180,"delta":-20}',
+    });
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Estimated')).toBeInTheDocument();
+    });
+  });
+
+  it('shows no estimated badge when the sale is unstamped or live-computed', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    // Plain detail (no taxEstimateNote at all — the pre-F2-6 wire shape).
+    mockGetSaleScoped.mockResolvedValue({
+      ...sampleDetail,
+      // Positive tax so the tax row (and thus the badge slot) renders — the
+      // badge's absence is then the stamp logic's doing, not the row's.
+      taxTotal: { minor_units: 1200, currency: 'IDR' },
+    });
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    await waitFor(() => {
+      // Detail is open (the total renders as the formatMoney id-ID shape;
+      // the list row carries the same figure, so assert on ANY instance).
+      expect(screen.getAllByText('Rp 50.000').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText('Estimated')).not.toBeInTheDocument();
+  });
+
   it('shows a negative margin in red for loss-leader lines', async () => {
     const user = userEvent.setup();
     mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });

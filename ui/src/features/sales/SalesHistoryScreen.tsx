@@ -54,6 +54,20 @@ function statusFluentId(status: string): string {
   }
 }
 
+/** F2-7: whether the F2 audit stamp marks this sale's tax as estimated.
+ *  The note is core-authored JSON (F2-5: client claim + core-verified
+ *  delta); the badge keys off the `estimated` flag with minimal parsing —
+ *  a non-JSON or absent note means NOT estimated, which is the honest
+ *  default for legacy rows (NULL) whose tax was computed live. */
+function isTaxEstimated(note: string | null | undefined): boolean {
+  if (!note) return false;
+  try {
+    return JSON.parse(note)?.estimated === true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Swipeable order row ──────────────────────────────────────────────
 
 interface SwipeableOrderRowProps {
@@ -89,6 +103,9 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
             <span>{sale.status}</span>
           </Localized>
         </Badge>
+        {/* F2-7: the audit stamp is a DETAIL-level fact (the note rides the
+            sale row, not the list projection), so the badge renders in the
+            detail dialog only. */}
       </td>
       <td>{sale.paymentMethod ?? '\u2014'}</td>
       <td className="sales-history-cell-cashier">{cashierName}</td>
@@ -1172,6 +1189,13 @@ export default function SalesHistoryScreen() {
                         <strong><span>Tax:</span></strong>
                       </Localized>
                       {' '}{formatMoney(detail.taxTotal)}
+                      {isTaxEstimated(detail.taxEstimateNote) && (
+                        <Badge variant="warning" style={{ marginLeft: 8 }}>
+                          <Localized id="sales-history-tax-estimated-badge">
+                            <span>Estimated</span>
+                          </Localized>
+                        </Badge>
+                      )}
                     </div>
                   )}
                   <div>

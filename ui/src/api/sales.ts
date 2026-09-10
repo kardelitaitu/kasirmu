@@ -457,6 +457,12 @@ export interface SaleDetail {
   userId: string | null;
   createdAt: string;
   lines: SaleLineDto[];
+  /** F2-7 (forward-wired): the F2 audit stamp when the sale's tax was
+   *  computed against a non-fresh estimate. Optional until F2-6 threads
+   *  `Store::sale_tax_estimate_note` through the detail command — the same
+   *  optional-field rule the caps DTO used (runtime presence pinned by the
+   *  badge test, absence renders no badge). */
+  taxEstimateNote?: string | null;
   /** CUR-02: original sale currency when multi-currency checkout was used. */
   baseCurrency?: string | null;
   /** CUR-02: original sale total in baseCurrency minor units. */

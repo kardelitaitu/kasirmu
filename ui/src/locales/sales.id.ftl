@@ -250,6 +250,9 @@ sales-history-line-cost = HPP
 sales-history-line-margin = Margin
 sales-history-line-margin-pct = Margin %
 sales-history-line-tax = Pajak
+# F2-7 — lencana stempel audit: tampil pada baris pajak detail saat core
+# menandai penjualan dihitung dari estimasi pajak yang tidak segar.
+sales-history-tax-estimated-badge = Estimasi
 sales-history-status-all = Semua
 sales-history-status-completed = Selesai
 sales-history-status-pending = Tertunda
