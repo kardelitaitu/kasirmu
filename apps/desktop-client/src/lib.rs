@@ -782,6 +782,10 @@ pub fn run() {
             commands::audit::get_audit_review_status_scoped,
             commands::audit::mark_audit_reviewed_scoped,
             commands::audit::export_audit_log_scoped,
+            // Security-event CSV export (owner ruling D61-7): AUD-09
+            // narrowed to SECURITY_ACTIONS, reading the SAME global
+            // identity DB as the trail read below.
+            commands::audit::export_security_events_scoped,
             // Organization-level security trail from the global identity DB
             // (todo-global-saas-2.md P1). Reads a DIFFERENT file than the
             // store-scoped audit list above — see the command doc.

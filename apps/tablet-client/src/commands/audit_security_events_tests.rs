@@ -196,3 +196,172 @@ fn security_events_args_deserialize_camel_case_and_default_the_limit() {
     );
     assert_eq!(full.before_id.as_deref(), Some("aud-1"));
 }
+
+// ── export_security_events_scoped (owner ruling D61-7 / D84) ────────
+
+fn export_args(
+    actor: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> ExportSecurityEventsArgs {
+    ExportSecurityEventsArgs {
+        actor: actor.map(str::to_string),
+        date_from: from.map(str::to_string),
+        date_to: to.map(str::to_string),
+    }
+}
+
+/// Two extra security rows in the GLOBAL DB: a second user-owner event
+/// and a system-actor login failure (the unknown-account case).
+async fn seed_actor_rows(app: &tauri::App<tauri::test::MockRuntime>) {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().await;
+    db.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES ('aud-sys','system','login.failed','user',NULL,'{}','failure','2026-08-02T00:00:00.000Z'),
+                 ('aud-owner2','user-owner','logout','user','user-owner','{}','success','2026-08-03T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+}
+
+/// Three security rows around the Aug-5/Aug-6 boundary in the GLOBAL DB.
+async fn seed_date_rows(app: &tauri::App<tauri::test::MockRuntime>) {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().await;
+    db.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES ('aud-d1','user-owner','login','user','user-owner','{}','success','2026-08-05T09:30:00.000Z'),
+                 ('aud-d2','user-owner','login','user','user-owner','{}','success','2026-08-05T23:59:59.999Z'),
+                 ('aud-d3','user-owner','login','user','user-owner','{}','success','2026-08-06T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn export_contains_only_security_rows() {
+    let app = app_for("user-owner", "role-owner", "premium");
+    let out =
+        export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
+            .await
+            .unwrap();
+    assert_eq!(out.row_count, 1, "the business row must not export");
+    assert!(out.csv.starts_with('\u{FEFF}'), "BOM required");
+    assert!(
+        out.csv
+            .contains("id,created_at,user_id,action,target_type,target_id,outcome,details\n")
+    );
+    assert!(out.csv.contains("login"));
+    assert!(!out.csv.contains("sale.void"));
+    assert_eq!(out.requested_by, "user-owner");
+}
+
+#[tokio::test]
+async fn actor_filter_is_exact_and_system_resolves() {
+    let app = app_for("user-owner", "role-owner", "premium");
+    seed_actor_rows(&app).await;
+    // Exact user_id: only that actor's rows.
+    let owner = export_security_events_scoped(
+        "tok".into(),
+        export_args(Some("user-owner"), None, None),
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(owner.row_count, 2, "seeded login + logout for user-owner");
+    // "system" resolves to SYSTEM_ACTOR and matches only those rows.
+    let sys = export_security_events_scoped(
+        "tok".into(),
+        export_args(Some("system"), None, None),
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(sys.row_count, 1);
+    assert!(sys.csv.contains("login.failed"));
+    assert!(!sys.csv.contains("logout"));
+}
+
+#[tokio::test]
+async fn date_range_normalizes_day_bounds() {
+    let app = app_for("user-owner", "role-owner", "premium");
+    seed_date_rows(&app).await;
+    // dateTo = 2026-08-05 must INCLUDE the whole day (the exclusive
+    // bound normalizes to midnight of Aug 6) and exclude Aug 6.
+    let out = export_security_events_scoped(
+        "tok".into(),
+        export_args(None, Some("2026-08-05"), Some("2026-08-05")),
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(out.row_count, 2, "both Aug-5 events, none of Aug-6");
+    assert!(out.csv.contains("aud-d1"));
+    assert!(out.csv.contains("aud-d2"));
+    assert!(!out.csv.contains("aud-d3"));
+}
+
+#[tokio::test]
+async fn a_malformed_day_is_rejected_not_silently_ignored() {
+    let app = app_for("user-owner", "role-owner", "premium");
+    let err = export_security_events_scoped(
+        "tok".into(),
+        export_args(None, Some("2026-13-01"), None),
+        app.state(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, AppError::Invalid(_)), "got {err:?}");
+}
+
+#[tokio::test]
+async fn export_refuses_below_the_premium_tier() {
+    let app = app_for("user-owner", "role-owner", "plus");
+    let err =
+        export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
+            .await
+            .unwrap_err();
+    assert!(
+        matches!(err, AppError::PermissionDenied(_)),
+        "tier gate must refuse below Premium: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn export_refuses_a_caller_without_audit_export() {
+    let app = app_for("user-lite", "role-lite", "premium");
+    let err =
+        export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
+            .await
+            .unwrap_err();
+    assert!(
+        matches!(err, AppError::PermissionDenied(_)),
+        "non-exporter must be refused: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_handoff_writes_a_self_audit_row_to_the_store_log() {
+    let app = app_for("user-owner", "role-owner", "premium");
+    export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
+        .await
+        .unwrap();
+    // AUD-09's surface reads the store DB: the self-audit row must be
+    // visible there (it is deliberately NOT in SECURITY_ACTIONS, so it
+    // never re-enters this export).
+    let full = export_audit_log_scoped(
+        "tok".into(),
+        ExportAuditLogArgs {
+            outcome: None,
+            query: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        full.csv.contains("system.export"),
+        "self-audit row must land in the store log"
+    );
+}

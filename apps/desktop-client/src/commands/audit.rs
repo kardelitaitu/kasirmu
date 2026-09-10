@@ -421,6 +421,30 @@ fn csv_row(fields: &[&str]) -> String {
     escaped.join(",")
 }
 
+/// Build the full AUD-09 export CSV (BOM + header + newest-first rows)
+/// from audit entries. Shared by the full-log export and the
+/// security-event export so the columns, BOM and RFC-4180 quoting can
+/// never drift apart.
+fn audit_csv(entries: &[oz_core::AuditEntry]) -> String {
+    let mut csv = String::with_capacity(entries.len() * 160 + 256);
+    csv.push('\u{FEFF}'); // UTF-8 BOM for spreadsheet compatibility
+    csv.push_str("id,created_at,user_id,action,target_type,target_id,outcome,details\n");
+    for e in entries {
+        csv.push_str(&csv_row(&[
+            &e.id,
+            &e.created_at,
+            &e.user_id,
+            &e.action,
+            e.target_type.as_deref().unwrap_or(""),
+            e.target_id.as_deref().unwrap_or(""),
+            &e.outcome,
+            &e.details,
+        ]));
+        csv.push('\n');
+    }
+    csv
+}
+
 /// Export the session store's audit log to CSV (AUD-09).
 ///
 /// Resolves the store and authenticated user from the session token,
@@ -447,23 +471,7 @@ pub async fn export_audit_log_scoped(
     let store = Store::new(&db);
     let entries =
         store.list_audit_entries_export(args.outcome.as_deref(), args.query.as_deref())?;
-
-    let mut csv = String::with_capacity(entries.len() * 160 + 256);
-    csv.push('\u{FEFF}'); // UTF-8 BOM for spreadsheet compatibility
-    csv.push_str("id,created_at,user_id,action,target_type,target_id,outcome,details\n");
-    for e in &entries {
-        csv.push_str(&csv_row(&[
-            &e.id,
-            &e.created_at,
-            &e.user_id,
-            &e.action,
-            e.target_type.as_deref().unwrap_or(""),
-            e.target_id.as_deref().unwrap_or(""),
-            &e.outcome,
-            &e.details,
-        ]));
-        csv.push('\n');
-    }
+    let csv = audit_csv(&entries);
 
     // The export action itself becomes an audit event (AUD-09 handoff scope),
     // persisted to the store DB so it appears in the same audit log being
@@ -496,6 +504,135 @@ pub async fn export_audit_log_scoped(
 #[cfg(test)]
 #[path = "audit_tests.rs"]
 mod tests;
+
+// ── Security-event export (owner ruling D61-7 / D84) ────────────────
+
+/// Arguments for the security-event CSV export (owner ruling D61-7, D84).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportSecurityEventsArgs {
+    /// Optional EXACT actor filter: a staff `user_id`, or `"system"` for
+    /// the unknown-account security failures (D84 ruling 2 — no fuzzy
+    /// matching; usernames quoted inside `details` are not an actor).
+    pub actor: Option<String>,
+    /// Inclusive range start, `"YYYY-MM-DD"` — normalized at this layer
+    /// into a fixed-width ISO lower bound before the core read.
+    pub date_from: Option<String>,
+    /// Exclusive range end, `"YYYY-MM-DD"` — normalized to midnight of
+    /// the FOLLOWING day so the whole end day is included (D84 ruling 3).
+    pub date_to: Option<String>,
+}
+
+/// Normalize a `"YYYY-MM-DD"` day into the fixed-width ISO instant the
+/// core audit WHERE builder compares against. `end_of_day` produces the
+/// EXCLUSIVE upper bound: midnight of the following day. The comparison
+/// stays a plain fixed-width string compare inside SQLite (D84 ruling 3).
+fn normalize_day_bound(day: &str, end_of_day: bool) -> Result<String, AppError> {
+    let parsed = chrono::NaiveDate::parse_from_str(day.trim(), "%Y-%m-%d").map_err(|_| {
+        AppError::Invalid(format!("invalid date filter {day:?}: expected YYYY-MM-DD"))
+    })?;
+    let bound = if end_of_day {
+        parsed
+            .succ_opt()
+            .ok_or_else(|| AppError::Invalid(format!("date out of range: {day:?}")))?
+    } else {
+        parsed
+    };
+    Ok(format!("{}T00:00:00.000Z", bound.format("%Y-%m-%d")))
+}
+
+/// Export the ORGANIZATION-level security trail to CSV (owner ruling
+/// D61-7, D84): the AUD-09 export narrowed to the SECURITY_ACTIONS
+/// allowlist, with an exact-actor filter and a day-range filter.
+///
+/// Reads the GLOBAL identity database — the same one
+/// [`list_security_events_scoped`] reads — because security events
+/// cannot live in store-scoped files (identity is global; logins happen
+/// before a store is chosen). Gate order per D84: tier (Premium+)
+/// FIRST, then `audit:export` (Owner/Manager/Admin; Auditor has no
+/// export permission).
+///
+/// The handoff itself is auditable: a `system.export` row lands in the
+/// session store's audit log exactly as AUD-09's does, so the general
+/// audit page records who exported what. It is deliberately NOT in
+/// SECURITY_ACTIONS, so it never re-enters this export.
+#[tauri::command]
+pub async fn export_security_events_scoped(
+    session_token: String,
+    args: ExportSecurityEventsArgs,
+    state: State<'_, AppState>,
+) -> Result<AuditExportDto, AppError> {
+    let (session, conn) = state.resolve_scope(&session_token)?;
+    require_audit_tier(&state).await?;
+    require_audit_permission(&state, &session.user_id, permissions::AUDIT_EXPORT).await?;
+
+    // D84 ruling 3: normalize the day filters into fixed-width ISO
+    // bounds at this layer; from = inclusive midnight, to = EXCLUSIVE
+    // (day + 1) so the whole end day is included.
+    let created_after = match args.date_from.as_deref() {
+        Some(d) => Some(normalize_day_bound(d, false)?),
+        None => None,
+    };
+    let created_before = match args.date_to.as_deref() {
+        Some(d) => Some(normalize_day_bound(d, true)?),
+        None => None,
+    };
+    // D84 ruling 2: EXACT user_id; "system" resolves through the core
+    // SYSTEM_ACTOR constant (currently the same string, but the mapping
+    // is the contract, not the coincidence).
+    let actor = match args.actor.as_deref() {
+        Some(a) if a == oz_core::db::audit_security::SYSTEM_ACTOR => {
+            Some(oz_core::db::audit_security::SYSTEM_ACTOR.to_string())
+        }
+        other => other.map(str::to_string),
+    };
+
+    // Read the GLOBAL identity DB (see list_security_events_scoped's doc):
+    // a store-scoped read would find no security rows at all.
+    let entries = {
+        let db = state.db.lock().await;
+        Store::new(&db).list_audit_entries_export_filtered(
+            Some(oz_core::db::audit_security::SECURITY_ACTIONS),
+            actor.as_deref(),
+            created_after,
+            created_before,
+            None,
+            None,
+        )?
+    };
+    let csv = audit_csv(&entries);
+
+    // AUD-09-style self-audit row, written to the session store's audit
+    // log so the general audit page records the handoff.
+    let details = serde_json::json!({
+        "actions": "security",
+        "actor": args.actor,
+        "date_from": args.date_from,
+        "date_to": args.date_to,
+        "row_count": entries.len(),
+    })
+    .to_string();
+    {
+        let db = conn
+            .lock()
+            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+        Store::new(&db).log_audit(&oz_core::AuditEntry::new(
+            session.user_id.clone(),
+            "system.export",
+            Some("audit"),
+            None::<String>,
+            Some(details),
+            "success",
+        ))?;
+    }
+
+    Ok(AuditExportDto {
+        csv,
+        row_count: entries.len() as u64,
+        generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        requested_by: session.user_id,
+    })
+}
 
 #[cfg(test)]
 #[path = "audit_security_events_tests.rs"]
