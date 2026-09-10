@@ -4374,6 +4374,7 @@ dependencies = [
  "modules-currency",
  "oz-core",
  "oz-hal",
+ "oz-lua",
  "oz-plugin",
  "oz-security",
  "platform-core",
