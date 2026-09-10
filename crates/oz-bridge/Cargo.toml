@@ -1,0 +1,26 @@
+[package]
+name = "oz-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Headless command middleware: the BridgeCtx contract and BridgeError shared by the desktop and tablet IPC shims."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+# Headless by contract: no tauri / gtk / webkit2gtk / tauri-plugin dependency may
+# ever be added here. See the crate doc in src/lib.rs.
+[dependencies]
+foundation = { workspace = true }
+modules-currency = { workspace = true }
+oz-core = { workspace = true }
+oz-security = { workspace = true }
+platform-core = { workspace = true }
+platform-kernel = { workspace = true }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
