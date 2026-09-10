@@ -1,25 +1,21 @@
 // ── Settings deep-link section switching ──────────────────────────
 //
 // WorkspaceHome's tool cards navigate by writing window.location.hash and letting the
-// Settings page read the sub-section out of it. SettingsPage.tsx:314-328 does exactly
-// that: KEPT_SECTIONS lists the accepted names ('sync' and 'topology' among them) and a
-// useEffect maps `#/settings/<section>` onto activeSection.
+// Settings page read the sub-section out of it. SettingsPage.tsx:255-276 does exactly
+// that: KEPT_SECTIONS (:72) lists the accepted names and a useEffect maps
+// `#/settings/<section>` onto activeSection -- on mount and on every hashchange.
 //
-// The effect's dependency array is `[]`, so it runs once, on mount. That is fine when the
-// card is clicked from ANOTHER workspace: AppShell.tsx:217 tries getPage('settings/sync'),
-// fails because only 'settings' is registered, falls to the else branch, and sets
-// currentRoute from the workspace default (L231 maps admin -> 'settings'), which mounts
-// SettingsPage, which then reads the hash. The deep-link works by accident of remounting.
+// The listener is there because AppShell refuses `settings/...` (only 'settings' is a
+// registered page), so while the page is ALREADY MOUNTED nothing else re-reads the hash.
+// A mount-only effect made every card click from the admin workspace change the URL and
+// nothing else -- the defect this suite pins.
 //
-// When SettingsPage is ALREADY mounted -- the user is on the admin workspace looking at
-// settings and clicks the topology or cloud-sync card -- nothing remounts. AppShell's
-// hashchange listener (L244-252) deliberately refuses unregistered routes ("prevents
-// garbage hashes"), so currentRoute never changes and the mount-only effect never re-runs.
-// The URL updates and the visible section does not. Both WorkspaceHome.tsx:865 (topology,
-// committed) and the in-flight cloud-sync card hit this.
-//
-// The marker is settings-section-content--full, applied at SettingsPage.tsx:1003 if and
-// only if activeSection === 'topology', so it is an unambiguous read of the live section.
+// 3c76e6c97 flattened the settings IA: the 'topology' section is gone and KEPT_SECTIONS
+// now lists the 13 rebuild screens ('general', 'data-sync', 'sync-status', ...). The old
+// settings-section-content--full marker was removed with it, so the live section is read
+// off the nav's active item instead. A link to a key the guard does not accept is ignored:
+// the hub keeps its default 'general' body and the hash stays unconsumed -- the fallback
+// the removed-section cases below assert.
 
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { waitFor, cleanup } from '@testing-library/react';
@@ -114,6 +110,11 @@ function isTopologySection() {
   return !!document.querySelector('.settings-section-content--full');
 }
 
+/** The section the hub is showing, read off the sidebar's active nav item. */
+function activeSectionLabel(): string | null {
+  return document.querySelector('.settings-nav-item--active')?.getAttribute('aria-label') ?? null;
+}
+
 async function renderAtSettingsRoot() {
   window.location.hash = '#/settings';
   renderWithProvidersSync(
@@ -130,27 +131,34 @@ async function renderAtSettingsRoot() {
 }
 
 describe('Settings deep-links while the page is already mounted', () => {
-  it('switches to the topology section when the hash changes after mount', async () => {
+  it('switches to a kept section when the hash changes after mount', async () => {
     await renderAtSettingsRoot();
 
-    // Baseline: arriving at plain #/settings opens the default section, not topology.
+    // Baseline: arriving at plain #/settings opens the default section.
+    const defaultSection = activeSectionLabel();
+    expect(defaultSection).not.toBeNull();
     expect(isTopologySection()).toBe(false);
 
     // What a card click does: assign the hash, which fires hashchange in a real browser.
-    window.location.hash = '#/settings/topology';
+    // 'data-sync' stands in for the old 'topology' target, which 3c76e6c97 removed from
+    // KEPT_SECTIONS -- the switching path is pinned against a section that still exists.
+    window.location.hash = '#/settings/data-sync';
     window.dispatchEvent(new HashChangeEvent('hashchange'));
 
     // The defect: nothing re-reads the hash once the page is mounted, so the URL changes
     // and the section does not.
     await waitFor(() => {
-      expect(isTopologySection()).toBe(true);
+      expect(activeSectionLabel()).not.toBe(defaultSection);
     });
+    // A bare link to a kept section is consumed, so a later remount cannot re-arm it.
+    expect(window.location.hash).toBe('');
   });
 
   it('still honours a deep-link already present at mount time', async () => {
     // Guards the path that works today, so the fix cannot regress it: arriving from
     // another workspace mounts the page with the hash already set.
-    window.location.hash = '#/settings/topology';
+    // 'tax-configuration' is a KEPT_SECTIONS key since 3c76e6c97 removed 'topology'.
+    window.location.hash = '#/settings/tax-configuration';
     renderWithProvidersSync(
       <TestWrapper>
         <SettingsPage />
@@ -159,9 +167,19 @@ describe('Settings deep-links while the page is already mounted', () => {
       sharedFtl,
     );
 
+    // The section body is IPC-driven and Suspense-wrapped; wait for the shell.
     await waitFor(() => {
-      expect(isTopologySection()).toBe(true);
+      expect(document.querySelector('.settings-section-content')).toBeTruthy();
     });
+
+    // Only an accepted section clears the hash, so an empty hash plus an active nav item
+    // that is not the default page proves the mount-time branch mapped the deep link.
+    expect(window.location.hash).toBe('');
+    const defaultLabel = /^settings-nav-general\s*=\s*(.*)$/m.exec(settingsFtl)![1]!.trim();
+    const active = activeSectionLabel();
+    expect(active).not.toBeNull();
+    expect(active).not.toBe(defaultLabel);
+    expect(isTopologySection()).toBe(false);
   });
 
   it('ignores a deep-link to a section that is not in KEPT_SECTIONS', async () => {
@@ -176,11 +194,10 @@ describe('Settings deep-links while the page is already mounted', () => {
     expect(isTopologySection()).toBe(false);
   });
 
-  it('applies ?branch= and ?create=1 hints to the topology editor and clears the hash', async () => {
-    // Locations → Configure topology: the scope must survive the section
-    // switch (applyHashSection must NOT clear a hint-carrying hash — the
-    // hand-off would be lost between the hashchange and the section mount)
-    // and reach the editor as mount props.
+  it('leaves a hint-carrying link to the removed topology section unconsumed', async () => {
+    // Locations → Configure topology. 3c76e6c97 removed the topology section, so
+    // the hand-off has no target: the guard rejects the key, the hub keeps a real
+    // default body, and the hash survives because only an accepted section clears it.
     window.location.hash = '#/settings/topology?branch=store-9&create=1';
     renderWithProvidersSync(
       <TestWrapper>
@@ -190,27 +207,22 @@ describe('Settings deep-links while the page is already mounted', () => {
       sharedFtl,
     );
 
+    // Fallback, not a blank or crashed section: the default placeholder screen mounts.
     await waitFor(() => {
-      expect(isTopologySection()).toBe(true);
+      expect(document.querySelector('section.settings-screen-placeholder')).toBeTruthy();
     });
-    expect(topologyScreenSpy).toHaveBeenCalled();
-    const props = topologyScreenSpy.mock.lastCall![0] as {
-      initialBranchId?: string;
-      openCreateOnMount?: boolean;
-    };
-    expect(props.initialBranchId).toBe('store-9');
-    expect(props.openCreateOnMount).toBe(true);
+    expect(isTopologySection()).toBe(false);
+    expect(topologyScreenSpy).not.toHaveBeenCalled();
+    expect(activeSectionLabel()).not.toBeNull();
 
-    // Consumed: the hash is cleared once the hints have been handed off,
-    // so a stale scope cannot re-arm on a later remount.
-    await waitFor(() => {
-      expect(window.location.hash).toBe('');
-    });
+    // A hint-carrying hash is still never cleared (unchanged contract) — here
+    // because nothing consumed it, so a stale scope cannot re-arm a removed section.
+    expect(window.location.hash).toBe('#/settings/topology?branch=store-9&create=1');
   });
 
-  it('applies no hints for a bare #/settings/topology deep link', async () => {
-    // The plain section deep link (pre-existing behaviour) must keep
-    // mounting the editor without a branch scope.
+  it('ignores a bare link to the removed topology section without a blank body', async () => {
+    // The plain section deep link. 3c76e6c97 removed the topology section, so
+    // the hub now falls back to its default page instead of mounting the editor.
     window.location.hash = '#/settings/topology';
     renderWithProvidersSync(
       <TestWrapper>
@@ -221,14 +233,13 @@ describe('Settings deep-links while the page is already mounted', () => {
     );
 
     await waitFor(() => {
-      expect(isTopologySection()).toBe(true);
+      expect(document.querySelector('section.settings-screen-placeholder')).toBeTruthy();
     });
-    expect(topologyScreenSpy).toHaveBeenCalled();
-    const props = topologyScreenSpy.mock.lastCall![0] as {
-      initialBranchId?: string;
-      openCreateOnMount?: boolean;
-    };
-    expect(props.initialBranchId).toBeUndefined();
-    expect(props.openCreateOnMount).toBeUndefined();
+    expect(isTopologySection()).toBe(false);
+    expect(topologyScreenSpy).not.toHaveBeenCalled();
+
+    // Bare links ARE consumed, but only once accepted — a rejected key leaves the
+    // URL alone, which is what keeps the guard honest for both link shapes.
+    expect(window.location.hash).toBe('#/settings/topology');
   });
 });
