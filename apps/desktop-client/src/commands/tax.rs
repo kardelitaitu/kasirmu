@@ -3,197 +3,56 @@
 //! These commands provide CRUD access to the `tax_rates` table and
 //! category-level tax rate assignments for the TaxConfigurationScreen
 //! front-end.
+//!
+//! Wave A / S5: the bodies now live in the headless `oz_bridge::tax` module.
+//! Each `#[tauri::command]` below keeps its exact name, parameter list and
+//! `Result<_, AppError>` return so the registered IPC surface and the
+//! serialized error shape are unchanged; it borrows a `BridgeCtx` from
+//! `AppState`, calls the bridge, and maps `BridgeError` back to `AppError`
+//! variant-for-variant. The DTOs moved with the bodies and are re-exported so
+//! `use super::*` in `tax_tests.rs` still resolves them, and the `run_*`
+//! helpers stay here as thin `AppError`-returning adapters because the
+//! sibling test module calls them directly and matches on `AppError::Core`.
+//!
+//! The permission gate (TAX-01) and store resolution run inside the bridge, in
+//! the same order as before: resolve the session, authorize the user against
+//! the GLOBAL identity DB (`Store::require_permission`, non-scope-aware — the
+//! gate is deliberately unchanged), then open the store-scoped connection.
 
+// Retained for the sibling test module, which reaches these through
+// `use super::*`; the command bodies themselves no longer name them.
+#[allow(unused_imports)]
+use oz_core::db::Store;
+#[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use oz_core::db::Store;
-use oz_core::db::tax::TaxRateWindow;
 use oz_core::tax_rate::RoundingMode;
 
-use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
+pub use oz_bridge::tax::{
+    CategoryTaxRateRow, CreateTaxRateArgs, SetCategoryTaxRatesArgs, TaxRateDependencyCountsDto,
+    TaxRateDto, TaxRateScopeDto, TaxRateWindowDto, UpdateTaxRateArgs,
+};
+
 /// Verify a tax permission against the global identity database.
 ///
-/// Users and roles are global authentication records (ADR #4 / ADR #7);
-/// tax business data is read from the store-scoped connection after this
-/// check succeeds. Mirror of `require_loyalty_permission` in loyalty.rs.
+/// Thin adapter over `oz_bridge::tax::require_tax_permission`: the name,
+/// parameter list and `Result<_, AppError>` type are unchanged so the sibling
+/// test module keeps exercising the global-identity-DB gate (ADR #4 / ADR #7)
+/// through `AppState`.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 async fn require_tax_permission(
     state: &AppState,
     user_id: &str,
     permission: &str,
 ) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, user_id, permission)
-}
-
-// ── DTOs ──────────────────────────────────────────────────────────────
-
-/// DTO for a tax rate sent to the front-end.
-#[derive(Debug, Serialize)]
-pub struct TaxRateDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Rate Bps.
-    pub rate_bps: i64,
-    /// Whether this is default.
-    pub is_default: bool,
-    /// Whether this is inclusive.
-    pub is_inclusive: bool,
-    /// Display Rate.
-    pub display_rate: String,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 last-update timestamp.
-    pub updated_at: String,
-    /// The rate's authoring scope, joined from `list_tax_rate_scopes`
-    /// (Option B side-channel: the core `TaxRate` struct stays 7 fields and
-    /// the sync snapshot wire is untouched). `None` only when the active
-    /// row has no scope entry, which a migrated database does not produce.
-    pub scope: Option<TaxRateScopeDto>,
-    /// The rate's validity window, joined the same way.
-    pub window: Option<TaxRateWindowDto>,
-}
-
-/// The authoring scope of a tax-rate row, in wire form.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TaxRateScopeDto {
-    /// `global` | `legal_entity` | `location`.
-    pub scope: String,
-    /// The owning legal entity, for entity-scoped rows.
-    pub legal_entity_id: Option<String>,
-    /// The owning location, for location-scoped rows.
-    pub location_id: Option<String>,
-}
-
-/// The validity window of a tax-rate row, in wire form.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TaxRateWindowDto {
-    /// Inclusive first business date, `YYYY-MM-DD`. `None` = no lower bound.
-    pub effective_from: Option<String>,
-    /// EXCLUSIVE last business date, `YYYY-MM-DD`. `None` = never expires.
-    pub effective_to: Option<String>,
-}
-
-fn scope_dto(s: &oz_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
-    use oz_core::db::tax::TaxRateScope;
-    match s {
-        TaxRateScope::Global => TaxRateScopeDto {
-            scope: "global".into(),
-            legal_entity_id: None,
-            location_id: None,
-        },
-        TaxRateScope::LegalEntity(id) => TaxRateScopeDto {
-            scope: "legal_entity".into(),
-            legal_entity_id: Some(id.clone()),
-            location_id: None,
-        },
-        TaxRateScope::Location(id) => TaxRateScopeDto {
-            scope: "location".into(),
-            legal_entity_id: None,
-            location_id: Some(id.clone()),
-        },
-    }
-}
-
-fn window_dto(w: &oz_core::db::tax::TaxRateWindow) -> TaxRateWindowDto {
-    TaxRateWindowDto {
-        effective_from: w.effective_from.clone(),
-        effective_to: w.effective_to.clone(),
-    }
-}
-
-fn to_dto(r: oz_core::tax_rate::TaxRate) -> TaxRateDto {
-    let display_rate = r.display_rate();
-    TaxRateDto {
-        id: r.id,
-        name: r.name,
-        rate_bps: r.rate_bps,
-        is_default: r.is_default,
-        is_inclusive: r.is_inclusive,
-        display_rate,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        scope: None,
-        window: None,
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Createtaxrateargs.
-pub struct CreateTaxRateArgs {
-    /// Display name.
-    pub name: String,
-    /// Rate Bps.
-    pub rate_bps: i64,
-    /// Whether this is default.
-    pub is_default: bool,
-    /// Whether this is inclusive.
-    pub is_inclusive: bool,
-    /// Scope the rate to this legal entity (mutually exclusive with
-    /// `location_id`; omit both for the tenant-global arm).
-    pub legal_entity_id: Option<String>,
-    /// Scope the rate to this location (mutually exclusive with
-    /// `legal_entity_id`).
-    pub location_id: Option<String>,
-    /// Inclusive first business date, `YYYY-MM-DD`. Strict; `None` = no
-    /// lower bound.
-    pub effective_from: Option<String>,
-    /// EXCLUSIVE last business date, `YYYY-MM-DD`. Strict; `None` = never
-    /// expires.
-    pub effective_to: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Updatetaxrateargs.
-pub struct UpdateTaxRateArgs {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Rate Bps.
-    pub rate_bps: i64,
-    /// Whether this is default.
-    pub is_default: bool,
-    /// Whether this is inclusive.
-    pub is_inclusive: bool,
-    /// New scope for the rate (mutually exclusive with `location_id`).
-    /// F1 SURFACING DEBT: moving a rate between tiers silently empties the
-    /// vacated tier's default — the configuration UI must warn.
-    pub legal_entity_id: Option<String>,
-    /// New location scope (mutually exclusive with `legal_entity_id`).
-    pub location_id: Option<String>,
-    /// New inclusive first business date, `YYYY-MM-DD`.
-    pub effective_from: Option<String>,
-    /// New exclusive last business date, `YYYY-MM-DD`.
-    pub effective_to: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Setcategorytaxratesargs.
-pub struct SetCategoryTaxRatesArgs {
-    /// ID of the associated category.
-    pub category_id: String,
-    /// Tax Rate Ids.
-    pub tax_rate_ids: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Categorytaxraterow.
-pub struct CategoryTaxRateRow {
-    /// ID of the associated category.
-    pub category_id: String,
-    /// Tax Rate Ids.
-    pub tax_rate_ids: Vec<String>,
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::require_tax_permission(&ctx, user_id, permission)
+        .await
+        .map_err(AppError::from)
 }
 
 // ── Tax Rate CRUD ─────────────────────────────────────────────────────
@@ -206,45 +65,23 @@ pub async fn list_tax_rates_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TaxRateDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let rows = run_list_tax_rates(&db);
-    drop(db);
-    rows
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::list_rates_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for listing tax rates (extracted for testing).
 ///
-/// Joins `list_tax_rate_scopes()` so each row carries its authoring scope
-/// and validity window (Option B side-channel composition — the core
-/// `TaxRate` struct is not widened, and the sync snapshot wire is
-/// untouched: this join lives entirely in the IPC response).
+/// Thin adapter over `oz_bridge::tax::run_list_tax_rates` — unchanged name,
+/// parameter list and `Result<_, AppError>` type so the sibling test module
+/// keeps matching on `AppError::Core`. The bridge joins
+/// `list_tax_rate_scopes()` so each row carries its authoring scope and
+/// validity window (Option B side-channel composition: the core `TaxRate`
+/// struct is not widened and the sync snapshot wire is untouched).
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_tax_rates(conn: &rusqlite::Connection) -> Result<Vec<TaxRateDto>, AppError> {
-    let store = Store::new(conn);
-    let rates = store.list_tax_rates()?;
-    let scopes = store.list_tax_rate_scopes()?;
-    let by_id: std::collections::HashMap<&str, &oz_core::db::tax::TaxRateScopeInfo> =
-        scopes.iter().map(|s| (s.id.as_str(), s)).collect();
-    Ok(rates
-        .into_iter()
-        .map(|r| {
-            let mut dto = to_dto(r);
-            if let Some(info) = by_id.get(dto.id.as_str()) {
-                dto.scope = Some(scope_dto(&info.scope));
-                dto.window = Some(window_dto(&info.window));
-            }
-            dto
-        })
-        .collect())
+    oz_bridge::tax::run_list_tax_rates(conn).map_err(AppError::from)
 }
 
 /// Create a tax rate in the store resolved from a session token. ADR #7.
@@ -257,87 +94,25 @@ pub async fn create_tax_rate_scoped(
     args: CreateTaxRateArgs,
     state: State<'_, AppState>,
 ) -> Result<TaxRateDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_create_tax_rate(&db, &args)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::create_rate_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for creating a tax rate (extracted for testing).
 ///
-/// Routes on the optional scope/window args: any of them present sends the
-/// write to the tier-scoped core fn (`create_tax_rate_scoped`, which
-/// validates the window and the scope target and clears only its own
-/// tier's default); all absent keeps the legacy global-arm write so
+/// Thin adapter over `oz_bridge::tax::run_create_tax_rate`, which routes on
+/// the optional scope/window args: any of them present sends the write to the
+/// tier-scoped core fn; all absent keeps the legacy global-arm write so
 /// existing callers behave byte-identically. Both-set entity+location is
-/// refused here, before the core could see it.
+/// refused there, before the core could see it.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_create_tax_rate(
     conn: &rusqlite::Connection,
     args: &CreateTaxRateArgs,
 ) -> Result<TaxRateDto, AppError> {
-    let store = Store::new(conn);
-    let wants_scope = args.legal_entity_id.is_some()
-        || args.location_id.is_some()
-        || args.effective_from.is_some()
-        || args.effective_to.is_some();
-    let dto = if wants_scope {
-        let scope = scoped_scope(args.legal_entity_id.as_deref(), args.location_id.as_deref())?;
-        let window = TaxRateWindow {
-            effective_from: args.effective_from.clone(),
-            effective_to: args.effective_to.clone(),
-        };
-        let rate = store.create_tax_rate_scoped(
-            &args.name,
-            args.rate_bps,
-            args.is_default,
-            args.is_inclusive,
-            &scope,
-            &window,
-        )?;
-        let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&scope));
-        dto.window = Some(window_dto(&window));
-        dto
-    } else {
-        let rate = store.create_tax_rate(
-            &args.name,
-            args.rate_bps,
-            args.is_default,
-            args.is_inclusive,
-        )?;
-        let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&oz_core::db::tax::TaxRateScope::Global));
-        dto.window = Some(window_dto(&TaxRateWindow {
-            effective_from: None,
-            effective_to: None,
-        }));
-        dto
-    };
-    Ok(dto)
-}
-
-/// Resolve the optional scope args to a core scope, refusing the both-set
-/// combination the core CHECK would reject anyway — at the boundary, with
-/// a message that names the mistake rather than a SQLite error.
-fn scoped_scope(
-    legal_entity_id: Option<&str>,
-    location_id: Option<&str>,
-) -> Result<oz_core::db::tax::TaxRateScope, AppError> {
-    oz_core::db::tax::TaxRateScope::classify(legal_entity_id, location_id).ok_or_else(|| {
-        AppError::from(oz_core::CoreError::Validation {
-            field: "legal_entity_id",
-            message: "legal_entity_id and location_id are mutually exclusive: a tax rate                       is entity-scoped OR location-scoped OR tenant-global"
-                .into(),
-        })
-    })
+    oz_bridge::tax::run_create_tax_rate(conn, args).map_err(AppError::from)
 }
 
 /// Update a tax rate in the store resolved from a session token. ADR #7.
@@ -350,72 +125,24 @@ pub async fn update_tax_rate_scoped(
     args: UpdateTaxRateArgs,
     state: State<'_, AppState>,
 ) -> Result<TaxRateDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_update_tax_rate(&db, &args)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::update_rate_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for updating a tax rate (extracted for testing).
 ///
-/// Same routing rule as [`run_create_tax_rate`]: scope/window args present
-/// route to the tier-scoped core fn, all absent keep the legacy global-arm
-/// write. F1 SURFACING DEBT: a tier change (new legal_entity_id or
-/// location_id) silently empties the vacated tier's default — the UI must
-/// warn before saving, because nothing re-fills that tier.
+/// Thin adapter over `oz_bridge::tax::run_update_tax_rate` — same routing
+/// rule as [`run_create_tax_rate`]. F1 SURFACING DEBT: a tier change (new
+/// legal_entity_id or location_id) silently empties the vacated tier's
+/// default — the UI must warn before saving, because nothing re-fills it.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_update_tax_rate(
     conn: &rusqlite::Connection,
     args: &UpdateTaxRateArgs,
 ) -> Result<TaxRateDto, AppError> {
-    let store = Store::new(conn);
-    let wants_scope = args.legal_entity_id.is_some()
-        || args.location_id.is_some()
-        || args.effective_from.is_some()
-        || args.effective_to.is_some();
-    let dto = if wants_scope {
-        let scope = scoped_scope(args.legal_entity_id.as_deref(), args.location_id.as_deref())?;
-        let window = TaxRateWindow {
-            effective_from: args.effective_from.clone(),
-            effective_to: args.effective_to.clone(),
-        };
-        let rate = store.update_tax_rate_scoped(
-            &args.id,
-            &args.name,
-            args.rate_bps,
-            args.is_default,
-            args.is_inclusive,
-            &scope,
-            &window,
-        )?;
-        let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&scope));
-        dto.window = Some(window_dto(&window));
-        dto
-    } else {
-        let rate = store.update_tax_rate(
-            &args.id,
-            &args.name,
-            args.rate_bps,
-            args.is_default,
-            args.is_inclusive,
-        )?;
-        let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&oz_core::db::tax::TaxRateScope::Global));
-        dto.window = Some(window_dto(&TaxRateWindow {
-            effective_from: None,
-            effective_to: None,
-        }));
-        dto
-    };
-    Ok(dto)
+    oz_bridge::tax::run_update_tax_rate(conn, args).map_err(AppError::from)
 }
 
 /// Delete (archive) a tax rate in the store resolved from a session token.
@@ -438,38 +165,13 @@ pub async fn delete_tax_rate_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.delete_tax_rate(&id)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::delete_rate_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Dependency Counts (TAX-03) ───────────────────────────────────────
-
-/// DTO for tax-rate reference counts sent to the front-end.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Taxratedependencycountsdto.
-pub struct TaxRateDependencyCountsDto {
-    /// Number of product assignments referencing this rate.
-    pub products: i64,
-    /// Number of category assignments referencing this rate.
-    pub categories: i64,
-    /// Number of historical sale lines referencing this rate.
-    pub sale_lines: i64,
-}
 
 /// Get dependency (reference) counts for a tax rate in the store resolved
 /// from a session token. ADR #7.
@@ -485,25 +187,10 @@ pub async fn get_tax_rate_dependency_counts_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<TaxRateDependencyCountsDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let counts = store.tax_rate_dependency_counts(&id)?;
-    drop(db);
-    Ok(TaxRateDependencyCountsDto {
-        products: counts.products,
-        categories: counts.categories,
-        sale_lines: counts.sale_lines,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::dependency_counts_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Category Tax Rates ───────────────────────────────────────────────
@@ -515,40 +202,21 @@ pub async fn list_category_tax_rates_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryTaxRateRow>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let rows = run_list_category_tax_rates(&db);
-    drop(db);
-    rows
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::list_category_rates_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for listing category tax rates (extracted for testing).
+///
+/// Thin adapter over `oz_bridge::tax::run_list_category_tax_rates`:
+/// unchanged name, parameter list and `Result<_, AppError>` type.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_category_tax_rates(
     db: &rusqlite::Connection,
 ) -> Result<Vec<CategoryTaxRateRow>, AppError> {
-    let store = Store::new(db);
-    let categories = store.list_categories()?;
-
-    let mut rows = Vec::new();
-    for cat in &categories {
-        let ids = store.get_category_tax_rates(&cat.id)?;
-        if !ids.is_empty() {
-            rows.push(CategoryTaxRateRow {
-                category_id: cat.id.clone(),
-                tax_rate_ids: ids,
-            });
-        }
-    }
-    Ok(rows)
+    oz_bridge::tax::run_list_category_tax_rates(db).map_err(AppError::from)
 }
 
 /// Set (replace) the tax rates assigned to a category in the store resolved
@@ -559,22 +227,10 @@ pub async fn set_category_tax_rates_scoped(
     args: SetCategoryTaxRatesArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.set_category_tax_rates(&args.category_id, &args.tax_rate_ids)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::set_category_rates_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── E1-5: statutory rounding-mode read surface ────────────────────────
@@ -597,32 +253,24 @@ pub async fn list_tax_rate_rounding_modes_scoped(
     rate_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_tax_permission(
-        &state,
-        &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
-    )
-    .await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let refs: Vec<&str> = rate_ids.iter().map(String::as_str).collect();
-    let out = Store::new(&db).list_tax_rate_rounding_modes(&refs)?;
-    drop(db);
-    Ok(out)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tax::rounding_modes_scoped(&ctx, &session_token, &rate_ids)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for the batch rounding-mode read (extracted for
 /// testing, mirroring `run_list_tax_rates`).
+///
+/// Thin adapter over `oz_bridge::tax::run_list_tax_rate_rounding_modes`:
+/// unchanged name, parameter list and `Result<_, AppError>` type, and still
+/// test-only.
 #[cfg(test)]
 fn run_list_tax_rate_rounding_modes(
     conn: &rusqlite::Connection,
     rate_ids: &[&str],
 ) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
-    let store = Store::new(conn);
-    Ok(store.list_tax_rate_rounding_modes(rate_ids)?)
+    oz_bridge::tax::run_list_tax_rate_rounding_modes(conn, rate_ids).map_err(AppError::from)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
