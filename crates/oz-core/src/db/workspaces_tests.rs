@@ -1835,3 +1835,87 @@ fn enforce_instance_quota_bundle_plus_kds_gets_two_screen_budget() {
         .enforce_instance_quota(&sub, "kds", store_id)
         .expect("bundle Plus gets a 2-screen budget; 1 active leaves room for the second");
 }
+
+// ── Topology-node marker counters (read-computed QuotaDimension::TopologyNodes) ──
+
+#[test]
+fn count_topology_nodes_excludes_archived_only() {
+    // Non-archived = active AND quota_suspended both count: suspension
+    // frees a creation slot but the node still exists in the topology.
+    // Only 'archived' removes a node. No tier cap exists for this
+    // dimension (limit_for -> None ALWAYS), so these counters are purely
+    // the read fan-out's inputs.
+    let (store, _) = fresh();
+    let store_id = "topo-count";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('topo-count', 'Topo Count')",
+            [],
+        )
+        .unwrap();
+    let seed_instance = |id: &str, status: &str| {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'store-pos', ?2, ?3, ?4, '2026-01-01', '2026-01-01')",
+                rusqlite::params![id, store_id, format!("Node {id}"), status],
+            )
+            .unwrap();
+    };
+    seed_instance("topo-1", "active");
+    seed_instance("topo-2", "active");
+    seed_instance("topo-3", "quota_suspended");
+    seed_instance("topo-4", "archived");
+
+    assert_eq!(store.count_topology_nodes(store_id).unwrap(), 3);
+    // The all-types active count (suspended excluded) stays the legacy
+    // creation-gate input and must not be conflated with the node count.
+    assert_eq!(store.count_active_instances(store_id).unwrap(), 2);
+    // A different store contributes nothing.
+    assert_eq!(store.count_topology_nodes("other-store").unwrap(), 0);
+}
+
+#[test]
+fn count_quota_suspended_instances_counts_only_suspended() {
+    // The suspension half of the marker verdict: exactly the rows in the
+    // 'quota_suspended' status — active rows are not suspended, and an
+    // archived former-suspension is no longer reported.
+    let (store, _) = fresh();
+    let store_id = "susp-count";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('susp-count', 'Susp Count')",
+            [],
+        )
+        .unwrap();
+    let seed_instance = |id: &str, type_key: &str, status: &str| {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, '2026-01-01', '2026-01-01')",
+                rusqlite::params![id, type_key, store_id, format!("Node {id}"), status],
+            )
+            .unwrap();
+    };
+    seed_instance("susp-1", "store-pos", "quota_suspended");
+    seed_instance("susp-2", "kds", "quota_suspended");
+    seed_instance("susp-3", "warehouse", "active");
+    seed_instance("susp-4", "retail-pos", "archived");
+
+    assert_eq!(store.count_quota_suspended_instances(store_id).unwrap(), 2);
+    // The suspended instance is BOTH a current topology node and a
+    // suspended one — the marker verdict is "over" iff either the node
+    // total exceeds the summed caps OR at least one is suspended.
+    assert_eq!(store.count_topology_nodes(store_id).unwrap(), 3);
+    // A different store contributes nothing.
+    assert_eq!(
+        store
+            .count_quota_suspended_instances("other-store")
+            .unwrap(),
+        0
+    );
+}

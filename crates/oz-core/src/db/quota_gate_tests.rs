@@ -152,6 +152,26 @@ fn kds_screens_are_refused_loud_not_silently_allowed() {
 }
 
 #[test]
+fn topology_nodes_is_refused_loud_not_silently_read() {
+    // TopologyNodes is a read-computed marker only — never persisted and
+    // never gated. It has no per-creation count, so a generic loop would
+    // read QuotaCounts' 0 and allow every creation; the count consult must
+    // refuse loudly instead of answering a wrong number.
+    let conn = fresh();
+    seed(&conn);
+    let s = store(&conn);
+    let err = s
+        .quota_count(QuotaDimension::TopologyNodes)
+        .expect_err("gate counting must refuse TopologyNodes");
+    match err {
+        CoreError::Internal(message) => {
+            assert!(message.contains("read-computed"), "got: {message}");
+        }
+        other => panic!("expected Internal refusal, got {other:?}"),
+    }
+}
+
+#[test]
 fn missing_subscription_fails_closed_to_free() {
     // A tenant with no subscriptions row resolves to Free (most
     // restrictive), never a crash and never a free pass.

@@ -172,3 +172,38 @@ fn evaluate_leaves_markers_empty_pure_path_does_not_persist() {
     let report = evaluate(&SubscriptionTier::Free, &counts(3, 2, 2, 2, 5));
     assert!(report.markers.is_empty());
 }
+
+#[test]
+fn topology_nodes_has_no_tier_cap_and_stays_out_of_the_report() {
+    // Owner ruling: topology nodes are a marker-only dimension riding the
+    // existing per-location caps. There is no tier cap — `limit_for` answers
+    // None for EVERY tier — and the variant is absent from DIMENSION_ORDER,
+    // so `evaluate` can never emit a topology row. QuotaCounts carries no
+    // count for it either (the count lives in each store's own database).
+    for tier in [
+        SubscriptionTier::Free,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+        SubscriptionTier::Premium,
+        SubscriptionTier::Enterprise,
+    ] {
+        assert_eq!(
+            QuotaDimension::TopologyNodes.limit_for(&tier),
+            None,
+            "topology nodes must have no tier cap on {tier:?}"
+        );
+    }
+    assert!(!DIMENSION_ORDER.contains(&QuotaDimension::TopologyNodes));
+    assert_eq!(QuotaCounts::default().get(QuotaDimension::TopologyNodes), 0);
+}
+
+#[test]
+fn topology_nodes_key_round_trips() {
+    // The read fan-out names its marker rows "topology_nodes"; the reader
+    // must parse that key back instead of skipping it as unknown.
+    assert_eq!(QuotaDimension::TopologyNodes.as_str(), "topology_nodes");
+    assert_eq!(
+        QuotaDimension::from_key("topology_nodes"),
+        Some(QuotaDimension::TopologyNodes)
+    );
+}

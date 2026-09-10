@@ -70,6 +70,21 @@ pub enum QuotaDimension {
     /// per-store cap; [`QuotaCounts::get`] has no count for it, because the count
     /// lives in each store's own database.
     KdsScreens,
+    /// Topology nodes (workspace instances) aggregated across one store, as
+    /// named by that store's over-quota marker row (`topology_nodes`).
+    ///
+    /// Read-computed marker only — never persisted; persist_over_quota_markers
+    /// wipes unknown rows (clear-then-insert) and gate logic refuses this
+    /// dimension.
+    ///
+    /// There is no tier cap for this dimension: [`Self::limit_for`] answers
+    /// `None` ALWAYS — the constraint is the SUM of the per-location caps
+    /// (`max_pos_instances` + `max_warehouses` + `max_kds_screens`), computed
+    /// at read time from each store's own database by the marker fan-out.
+    /// Like [`QuotaDimension::KdsScreens`], it is absent from
+    /// [`DIMENSION_ORDER`] (there is no honest tenant-global row for it) and
+    /// [`QuotaCounts::get`] carries no count for it.
+    TopologyNodes,
 }
 
 impl QuotaDimension {
@@ -85,6 +100,9 @@ impl QuotaDimension {
             // [`QuotaDimension::from_key`], which is what lets the persisted-marker
             // reader tell a known row from an unknown one.
             Self::KdsScreens => "kds_screens",
+            // Machine key for the per-store topology-node marker rows; same
+            // round-trip contract, so the read fan-out's rows parse back.
+            Self::TopologyNodes => "topology_nodes",
         }
     }
 
@@ -104,6 +122,12 @@ impl QuotaDimension {
             // location it is asking about. Reached by the per-location fan-out,
             // never by `evaluate` — see the variant doc.
             Self::KdsScreens => tier.max_kds_screens(),
+            // No tier cap — None ALWAYS (owner ruling: topology nodes are a
+            // marker-only dimension riding the existing per-location caps).
+            // The constraint is the SUM of per-location caps, computed at
+            // read time; `evaluate` can therefore never assess this
+            // dimension and no creation gate ever consults a limit for it.
+            Self::TopologyNodes => None,
         }
     }
 
@@ -123,6 +147,7 @@ impl QuotaDimension {
             "staff" => Some(Self::Staff),
             "products" => Some(Self::Products),
             "kds_screens" => Some(Self::KdsScreens),
+            "topology_nodes" => Some(Self::TopologyNodes),
             _ => None,
         }
     }
@@ -170,6 +195,13 @@ impl QuotaCounts {
             // structure that never carries this dimension; `evaluate` cannot reach
             // it because `DIMENSION_ORDER` omits it.
             QuotaDimension::KdsScreens => 0,
+            // Same reasoning as KdsScreens: there is no tenant-global count
+            // field — each store's non-archived instance count lives in that
+            // store's own database and is gathered by the read fan-out. 0 is
+            // the honest empty answer for a structure that never carries this
+            // dimension; `evaluate` cannot reach it because `DIMENSION_ORDER`
+            // omits it.
+            QuotaDimension::TopologyNodes => 0,
         }
     }
 }

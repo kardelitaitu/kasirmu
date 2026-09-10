@@ -31,6 +31,9 @@
 //!   everywhere. The per-location KDS cap keeps its bespoke logic in
 //!   `enforce_instance_quota`; asking this gate for KDS is an `Internal`
 //!   error, not a wrong answer.
+//! * **TopologyNodes is a read-computed marker only — never persisted**;
+//!   persist_over_quota_markers wipes unknown rows (clear-then-insert) and
+//!   gate logic refuses this dimension (same `Internal` refusal as KDS).
 
 use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
@@ -74,6 +77,18 @@ impl Store<'_> {
                 "quota_gate: KdsScreens is a per-location dimension; use enforce_instance_quota"
                     .into(),
             )),
+            // Read-computed marker only — never persisted;
+            // persist_over_quota_markers wipes unknown rows (clear-then-insert)
+            // and gate logic refuses this dimension. There is no per-creation
+            // count for topology nodes (the constraint is the SUM of
+            // per-location caps, computed at read time by the marker fan-out),
+            // so a generic loop would read QuotaCounts' 0 and silently allow
+            // every creation. Reaching this gate with TopologyNodes is a
+            // programming error, made loud instead of wrong.
+            QuotaDimension::TopologyNodes => Err(CoreError::Internal(
+                "quota_gate: TopologyNodes is a read-computed marker dimension with no per-creation count"
+                    .into(),
+            )),
         }
     }
 
@@ -113,6 +128,14 @@ impl Store<'_> {
             // Unreachable: quota_count refuses KdsScreens before any limit
             // is consulted, so no cap can ever be exceeded for it here.
             QuotaDimension::KdsScreens => QuotaError::StoreLimit {
+                tier: tier.name().into(),
+                limit,
+                current,
+            },
+            // Unreachable: quota_count refuses TopologyNodes before any limit
+            // is consulted (and limit_for answers None for it, so this arm is
+            // doubly dead), mirroring the KdsScreens placeholder.
+            QuotaDimension::TopologyNodes => QuotaError::StoreLimit {
                 tier: tier.name().into(),
                 limit,
                 current,

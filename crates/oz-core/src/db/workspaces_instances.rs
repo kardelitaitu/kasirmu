@@ -345,6 +345,42 @@ impl Store<'_> {
         )?;
         Ok(count)
     }
+
+    /// Count non-archived workspace instances ("topology nodes") in the
+    /// given store — the `current` side of the read-computed
+    /// [`crate::downgrade::QuotaDimension::TopologyNodes`] over-quota marker.
+    ///
+    /// A `quota_suspended` instance still counts: suspension frees a
+    /// creation slot for its type but the node still exists in the topology,
+    /// so it contributes to the node total (and is reported separately by
+    /// [`Store::count_quota_suspended_instances`]). Only `archived` removes
+    /// a node. There is no tier cap for this dimension — the constraint is
+    /// the SUM of the per-location caps, computed at read time by the marker
+    /// fan-out — so this counter is never consulted by the creation gates.
+    pub fn count_topology_nodes(&self, store_id: &str) -> Result<i64, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM workspace_instances
+             WHERE location_id = ?1
+               AND status NOT IN ('archived')",
+            params![store_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    /// Count quota-suspended workspace instances in the given store — the
+    /// suspension half of the read-computed topology-node marker verdict
+    /// ("over" iff at least one instance had to be suspended for quota).
+    pub fn count_quota_suspended_instances(&self, store_id: &str) -> Result<i64, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM workspace_instances
+             WHERE location_id = ?1
+               AND status = 'quota_suspended'",
+            params![store_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
 }
 
 impl Store<'_> {
