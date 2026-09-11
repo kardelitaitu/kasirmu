@@ -474,8 +474,14 @@ fn set_setting_enqueues_settings_update_item() {
 /// therefore still lands — is false, and a funnel seed would fail on the write
 /// before the read boundary was ever exercised. The read is still the thing
 /// under test, which is why the row has to exist for it to mean anything.
+///
+/// Named for the two INDEPENDENT facts it pins: the row is in the table (when
+/// a raw door put it there) and the read still refuses it. The first half used
+/// to read "set_setting persists", which stopped being true at 0f26a4b29 — the
+/// funnel refuses the write now — so the persistence claim is scoped to the
+/// door that actually performed it.
 #[test]
-fn set_setting_denied_key_persists_but_get_refuses_it() {
+fn denied_key_persists_when_written_raw_but_get_refuses_it() {
     let conn = fresh_conn();
     // Seed door: the untracked `Settings::set`. The funnel refuses this write
     // now, so it cannot be the scaffolding for a read-side test.
