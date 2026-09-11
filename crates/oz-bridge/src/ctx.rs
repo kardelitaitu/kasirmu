@@ -86,6 +86,11 @@ pub struct BridgeCtx<'a> {
     /// `oneshot::Sender` while a loop is running; dropping or signalling it
     /// stops the loop gracefully.
     pub scanner_cancel: &'a Mutex<Option<oneshot::Sender<()>>>,
+    /// Serializes topology Applies within this process: mirrors
+    /// `AppState::topology_apply_lock` and guards the cross-database topology
+    /// diff, which spans the global and store databases and cannot compare
+    /// revisions or recover partial work concurrently.
+    pub topology_apply_lock: &'a Mutex<()>,
 }
 
 /// Map a gate denial to the client's `permissionDenied` wire shape.
@@ -261,6 +266,35 @@ impl<'a> BridgeCtx<'a> {
             Some(&session.store_id),
             Some(&session.type_key),
         )
+    }
+
+    /// Look up the user by `user_id`, load their role, and verify the role
+    /// has the given permission, over a caller-built [`Store`].
+    ///
+    /// This is the NON-scope-aware identity gate: the backend always derives
+    /// the role from the user, so a tampered front end cannot forge a
+    /// different `role_id`, but no branch/workspace assignment is checked.
+    /// Where a session-scoped check is wanted use
+    /// [`BridgeCtx::require_user_permission_scoped`] instead; where the
+    /// caller's assignment must also COVER a resource use
+    /// [`BridgeCtx::require_permission_for_session_resource`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BridgeError::PermissionDenied`] if the user is not found,
+    /// the role is missing, or the permission is not granted. Returns
+    /// [`BridgeError::Core`] on DB errors.
+    ///
+    /// Mirrors `commands/authz.rs::require_permission_for_user`.
+    pub fn require_permission_for_user(
+        &self,
+        store: &Store<'_>,
+        user_id: &str,
+        required: &str,
+    ) -> Result<(), BridgeError> {
+        store
+            .require_permission(user_id, required)
+            .map_err(map_gate_error)
     }
 
     /// The scope-aware gate over a caller-built [`Store`] (ADR #35 D5 /

@@ -93,5 +93,26 @@ pub mod stock_transfers;
 /// Void command bodies (Wave D). Not yet extracted.
 pub mod void;
 
+/// Product-usage and sales analytics command bodies (Wave E). Not yet extracted.
+pub mod analytics;
+/// Audit-trail read and export command bodies (Wave E). Not yet extracted.
+pub mod audit;
+/// License status and hardware-fingerprint command bodies (Wave E). Not yet extracted.
+pub mod license;
+/// Location-profile command bodies (Wave E). Not yet extracted.
+pub mod locations;
+/// Report generation command bodies (Wave E). Not yet extracted.
+pub mod reports;
+/// Settings command bodies (Wave E). Not yet extracted.
+pub mod settings;
+/// Setup-wizard command bodies (Wave E). Not yet extracted.
+pub mod setup;
+/// Subscription and entitlement command bodies (Wave E). Not yet extracted.
+pub mod subscription;
+/// Topology command bodies (Wave E). Not yet extracted.
+pub mod topology;
+/// Workspace and instance command bodies (Wave E). Not yet extracted.
+pub mod workspaces;
+
 #[cfg(test)]
 mod testing;

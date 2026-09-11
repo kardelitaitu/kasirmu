@@ -219,6 +219,7 @@ impl crate::state::AppState {
                 Arc::new(sink) as Arc<dyn EventSink>
             }),
             scanner_cancel: &self.scanner_cancel,
+            topology_apply_lock: &self.topology_apply_lock,
         }
     }
 }

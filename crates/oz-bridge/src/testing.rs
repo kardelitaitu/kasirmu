@@ -115,6 +115,10 @@ pub struct TestBridge {
     emitter: Option<Arc<dyn EventSink>>,
     /// Unused scanner-cancel slot (hardware tests inject their own).
     scanner_cancel: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    /// Harness-owned topology apply lock. Tests never run topology Applies
+    /// concurrently, so an uncontended unit lock is enough to satisfy the
+    /// borrow `BridgeCtx` expects.
+    topology_apply_lock: Mutex<()>,
 }
 
 impl TestBridge {
@@ -145,6 +149,7 @@ impl TestBridge {
             plugins: Arc::new(Mutex::new(None)),
             emitter: None,
             scanner_cancel: Arc::new(Mutex::new(None)),
+            topology_apply_lock: Mutex::new(()),
         }
     }
 
@@ -232,6 +237,7 @@ impl TestBridge {
             plugins: &self.plugins,
             emitter: self.emitter.clone(),
             scanner_cancel: &self.scanner_cancel,
+            topology_apply_lock: &self.topology_apply_lock,
         }
     }
 }
