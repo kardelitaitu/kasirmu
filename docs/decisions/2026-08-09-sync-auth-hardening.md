@@ -62,9 +62,14 @@ Harden sync auth in four independent, individually-shippable phases.
   body; when present it verifies the terminal and issues a token carrying a
   `terminal_id` claim. The legacy `label`-only path remains for admin-minted
   tokens.
-- The client stores the device secret in settings (`sync.terminal_secret`),
+- The client stores the device secret in settings (`sync_terminal_secret`),
   registers itself once during debug bootstrap, and uses client credentials
   for minting + refresh thereafter.
+- Settings keys named in ADRs are the literal constants in
+  `platform/core/src/settings/keys.rs` (`SYNC_TERMINAL_SECRET = "sync_terminal_secret"`,
+  not the dotted `sync.terminal_secret` once written here); the deny list that was
+  hand-copied from this ADR is now generated from those constants, which is where
+  an author must look.
 
 ### P4 — Structured 401 responses
 
