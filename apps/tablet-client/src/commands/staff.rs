@@ -1075,8 +1075,12 @@ pub async fn update_staff_scoped(
         )?;
     }
 
-    // STAFF-05 compensation: snapshot the profile BEFORE the update so we can
-    // restore it if the store-scoped workspace write fails afterwards.
+    // Snapshot the profile BEFORE the update. Used below ONLY to default the
+    // returned DTO's profile when the caller didn't send one — there is no
+    // restore/compensation path and none is needed: the legacy store-scoped
+    // `workspace_keys` write this snapshot once compensated was retired
+    // (50337ba1b), and the assignment scope now joins the same transaction
+    // as the user update below, so any later failure rolls both back.
     let previous_profile = {
         let store = Store::new(&db);
         let user = store.get_user(&args.id)?;

@@ -684,3 +684,103 @@ async fn scoped_update_staff_protects_last_owner_from_other_admin() {
         ),
     }
 }
+
+// STAFF-05 atomicity pin for the recurring audit question "does the tablet's
+// staff update hold a cross-database write together with only an in-memory
+// snapshot/restore?": it does not. The user update and the assignment scope
+// ride ONE transaction on the one AppState connection (update_staff_scoped),
+// so a failure AFTER the scope write must roll BOTH writes back. This fires
+// exactly that failure — the short-PIN branch validates after the scope
+// write — and asserts on the rows themselves, not the DTO.
+#[tokio::test]
+async fn scoped_update_staff_rolls_back_user_and_assignment_on_late_failure() {
+    let conn = oz_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    store.seed_default_roles().unwrap();
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-lite', 'Lite', 'Limited', '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
+            ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z'),
+            ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         -- assignment_workspaces.workspace_key carries an FK to workspaces(key)
+         -- in the SAME identity DB; seed the grant target so the scope write
+         -- succeeds and the failure lands strictly after it.
+         INSERT INTO workspaces (id, key, name) VALUES ('ws-b', 'ws-b', 'Workspace B');",
+    )
+    .unwrap();
+    let app = build_app(scoped_state_with_token(
+        conn,
+        "owner-token",
+        "user-owner",
+        "role-owner",
+        "store-a",
+    ));
+
+    // Role stays role-lite (require_role_assignable short-circuits on an
+    // unchanged role), the display-name change is write 1, the assignment
+    // upsert is write 2, and THEN the 3-char PIN fails validation — the
+    // first failure point after write 2 inside the transaction.
+    let result = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Renamed Cashier".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: Some("123".into()),
+            profile: None,
+            assignment: Some(AssignmentArgs {
+                scope_mode: "scoped".into(),
+                branches_all: false,
+                branch_ids: vec![],
+                workspaces_all: false,
+                workspace_keys: vec!["ws-b".into()],
+                scope_type: None,
+                scope_id: None,
+            }),
+        },
+        app.state(),
+    )
+    .await;
+    match result {
+        Err(AppError::Invalid(_)) => {}
+        other => panic!("a 3-char PIN must fail validation after the scope write, got: {other:?}"),
+    }
+
+    // Both writes are gone: the user row kept its old display name and no
+    // assignment row / workspace dimension row exists for the target.
+    let state = app.state::<AppState>();
+    let db = state.db.lock().await;
+    let display_name: String = db
+        .query_row(
+            "SELECT display_name FROM users WHERE id = 'user-cashier'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(display_name, "Cashier", "user write must roll back");
+    let assignments: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM assignments WHERE user_id = 'user-cashier'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        assignments, 0,
+        "assignment scope write must roll back with the failed update"
+    );
+    let workspace_keys: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM assignment_workspaces WHERE assignment_user_id = 'user-cashier'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        workspace_keys, 0,
+        "no workspace dimension row may survive the rollback"
+    );
+}
