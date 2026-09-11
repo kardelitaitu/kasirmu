@@ -41,6 +41,90 @@ impl Store<'_> {
     ///
     /// Returns the **post-update qty at the location** so the caller can
     /// detect post-commit state without a separate SELECT.
+    /// The ONE "does this product already track per-location stock" predicate.
+    ///
+    /// Deliberately scoped to `item_id` ALONE, never to `(item_id, location_id)`:
+    /// those two questions have opposite answers and conflating them is the bug.
+    /// A product that HAS summary rows but none at location L genuinely holds 0
+    /// at L — inventing a fallback there would double-count. A product with NO
+    /// summary rows anywhere is a legacy install whose stock lives only in the
+    /// single-PK `inventory` table, and reading 0 there destroys the aggregate.
+    ///
+    /// Every reader that must tell the two apart calls this: the Layer-1
+    /// pre-check and the batch Phase-1 pre-read (via
+    /// [`Store::legacy_aware_location_qty`]), the legacy bridge gate below, and
+    /// the sync dispatcher in `platform_sync::queue`. Public so that last one
+    /// can reach it: the alternative was a fourth copy of the same EXISTS.
+    pub fn product_has_location_rows(
+        tx: &rusqlite::Transaction<'_>,
+        product_id: &str,
+    ) -> Result<bool, CoreError> {
+        let exists: i64 = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM stock_summary WHERE item_id = ?1)",
+            rusqlite::params![product_id],
+            |row| row.get(0),
+        )?;
+        Ok(exists != 0)
+    }
+
+    /// Current qty at `(product_id, location_id)`, legacy-aware.
+    ///
+    /// The per-location SUM of `stock_summary` for that product and location —
+    /// except when the product has NO summary rows at all
+    /// ([`Store::product_has_location_rows`]), where the stock is still only in
+    /// the legacy single-PK `inventory` table and reading the SUM would return
+    /// 0. In that one case the legacy aggregate is returned, so the caller's
+    /// write lands on top of the real number instead of replacing it.
+    ///
+    /// The fallback is a GUESS about attribution: on a legacy install the
+    /// aggregate moves to whichever location writes first. That is the only
+    /// place in the system that guesses, so it logs at info! (sku, location,
+    /// qty — never on the hot path where rows exist).
+    pub(crate) fn legacy_aware_location_qty(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        product_id: &str,
+        location_id: &str,
+    ) -> Result<i64, CoreError> {
+        let qty: i64 = tx.query_row(
+            "SELECT COALESCE(SUM(qty), 0) FROM stock_summary \
+             WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![product_id, location_id],
+            |row| row.get(0),
+        )?;
+        if Self::product_has_location_rows(tx, product_id)? {
+            return Ok(qty);
+        }
+        let legacy_qty: Option<i64> = tx
+            .query_row(
+                "SELECT qty FROM inventory WHERE product_id = ?1",
+                rusqlite::params![product_id],
+                |row| row.get(0),
+            )
+            .ok();
+        match legacy_qty {
+            Some(legacy) if legacy != 0 => {
+                let sku: String = self
+                    .conn()
+                    .query_row(
+                        "SELECT sku FROM products WHERE id = ?1",
+                        rusqlite::params![product_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or_else(|_| product_id.to_owned());
+                tracing::info!(
+                    sku = %sku,
+                    location_id = %location_id,
+                    qty = legacy,
+                    "legacy inventory fallback: no stock_summary rows for this product, \
+                     attributing its inventory.qty aggregate to this location"
+                );
+                Ok(legacy)
+            }
+            _ => Ok(qty),
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     /// Adjust stock with an explicit reason at a specific location (ADR-19 §3.1 canonical API).
     ///
@@ -89,16 +173,12 @@ impl Store<'_> {
         //
         // Explicit match guards against DB errors: QueryReturnedNoRows → 0
         // (no stock at this location), any other error → propagate.
-        let current_qty: i64 = match tx.query_row(
-            "SELECT COALESCE(qty, 0) FROM stock_summary \
-             WHERE item_id = ?1 AND location_id = ?2",
-            rusqlite::params![product_id, location_id.as_str()],
-            |row| row.get(0),
-        ) {
-            Ok(q) => q,
-            Err(rusqlite::Error::QueryReturnedNoRows) => 0,
-            Err(e) => return Err(CoreError::Db(e)),
-        };
+        // Legacy-aware: the per-location SUM, falling back to inventory.qty ONLY
+        // when the product has no summary rows anywhere. Reading the bare SUM
+        // here made a first-touch positive delta REPLACE the legacy aggregate
+        // instead of adding to it, and inventory (recomputed as SUM below) became
+        // the delta — the whole class of silent stock loss.
+        let current_qty = self.legacy_aware_location_qty(tx, &product_id, location_id.as_str())?;
 
         let mut allow_negative = false;
         if let Some(t_id) = terminal_id
@@ -271,12 +351,7 @@ impl Store<'_> {
         tx: &rusqlite::Transaction<'_>,
         product_id: &str,
     ) -> Result<(), CoreError> {
-        let summary_rows: i64 = tx.query_row(
-            "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1",
-            rusqlite::params![product_id],
-            |row| row.get(0),
-        )?;
-        if summary_rows > 0 {
+        if Self::product_has_location_rows(tx, product_id)? {
             return Ok(());
         }
         let legacy_qty: Option<i64> = tx
@@ -428,16 +503,11 @@ impl Store<'_> {
 
             // Distinguish QueryReturnedNoRows (no stock at this location → 0)
             // from real DB errors (corruption, lock → propagate).
-            let current_qty: i64 = match tx.query_row(
-                "SELECT COALESCE(qty, 0) FROM stock_summary \
-                 WHERE item_id = ?1 AND location_id = ?2",
-                rusqlite::params![product_id, d.location_id.as_str()],
-                |row| row.get(0),
-            ) {
-                Ok(q) => q,
-                Err(rusqlite::Error::QueryReturnedNoRows) => 0,
-                Err(e) => return Err(CoreError::Db(e)),
-            };
+            // Same legacy-aware read as the canonical adjust; Phase 1 and
+            // Phase 2 must agree or the pre-check green-lights a deduction the
+            // writer then refuses (or vice versa).
+            let current_qty =
+                self.legacy_aware_location_qty(tx, &product_id, d.location_id.as_str())?;
 
             let mut allow_negative = false;
             if let Some(t_id) = terminal_id

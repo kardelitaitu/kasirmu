@@ -131,15 +131,21 @@ fn apply_stock_adjustment_delta_in_tx(
 
 /// Whether the product behind sku already has any per-location
 /// stock_summary row (i.e. the install tracks per-location stock for it).
+///
+/// Delegates to `Store::product_has_location_rows` in oz-core — the ONE
+/// item_id-scoped existence predicate, shared with the Layer-1 pre-check, the
+/// batch Phase-1 pre-read and the legacy bridge gate. This lane keeps only the
+/// sku-to-id resolution, because the sync payload carries a sku and the
+/// predicate takes an id; the SQL itself exists in exactly one place now.
+/// An unknown sku resolves to `false`, which is what the in-line EXISTS over a
+/// subselect returned before, so a delta for a product that does not exist
+/// here still takes the same path.
 fn product_has_location_rows(tx: &rusqlite::Transaction<'_>, sku: &str) -> Result<bool, CoreError> {
-    let exists: i64 = tx
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM stock_summary WHERE item_id = (SELECT id FROM products WHERE sku = ?1))",
-            [sku],
-            |row| row.get(0),
-        )
-        .map_err(CoreError::Db)?;
-    Ok(exists != 0)
+    let product_id = Store::new(tx).product_id_by_sku(sku)?;
+    match product_id {
+        Some(id) => Store::product_has_location_rows(tx, &id),
+        None => Ok(false),
+    }
 }
 
 /// Payload for the `stock.movement` sync action (ADR #6 cross-store routing).

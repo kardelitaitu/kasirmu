@@ -397,3 +397,160 @@ fn count_path_bridges_legacy_inventory_seed() {
     assert_eq!(inventory_qty(&conn, &pid).0, 8);
     assert_eq!(reader_stock_qty(&conn, &pid), 8);
 }
+
+// ── LEGACY-AWARE READ: the two stock reads that disagreed with every other read ──
+
+/// A positive delta at a NAMED location on a legacy install (inventory rows,
+/// zero stock_summary rows) must ADD to the legacy aggregate, not replace it.
+/// Before the guard the Layer-1 read returned 0, the write created one row of
+/// 3, and the aggregate recompute at the inventory upsert made inventory.qty
+/// BECOME 3 — 87 units gone, no error. Fails against HEAD.
+#[test]
+fn legacy_positive_delta_at_named_location_adds_to_the_aggregate() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-LPOS");
+    seed_location(&conn, "loc-a", "Store A");
+    seed_legacy_inventory(&conn, &pid, 90);
+
+    adjust_at(&s, "SKU-LPOS", 3, "loc-a");
+
+    assert_eq!(
+        inventory_qty(&conn, &pid).0,
+        93,
+        "a first-touch +3 must not turn a legacy aggregate of 90 into 3"
+    );
+    assert_eq!(reader_stock_qty(&conn, &pid), 93);
+}
+
+/// A negative delta on the same legacy shape is REFUSED today, because Layer 1
+/// reads 0 at the location and 0 - 10 underflows. It must now succeed against
+/// the real legacy number. Fails against HEAD (it returns the error).
+#[test]
+fn legacy_negative_delta_at_named_location_succeeds_against_the_aggregate() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-LNEG");
+    seed_location(&conn, "loc-a", "Store A");
+    seed_legacy_inventory(&conn, &pid, 40);
+
+    adjust_at(&s, "SKU-LNEG", -10, "loc-a");
+
+    assert_eq!(inventory_qty(&conn, &pid).0, 30);
+    assert_eq!(summary_rows(&conn, &pid), vec![("loc-a".to_string(), 30)]);
+    assert_eq!(reader_stock_qty(&conn, &pid), 30);
+}
+
+/// The batch path has its OWN pre-read (Phase 1), which can regress
+/// independently of the canonical single-write read. Same legacy shape,
+/// deducted through adjust_stock_batch: HEAD's Phase-1 read sees 0 and rejects.
+#[test]
+fn legacy_batch_pre_read_is_legacy_aware_too() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-LBAT");
+    seed_location(&conn, "loc-a", "Store A");
+    seed_legacy_inventory(&conn, &pid, 20);
+
+    let tx = conn.unchecked_transaction().unwrap();
+    s.adjust_stock_batch(
+        &tx,
+        &[crate::sale_deduction::StockDeduction {
+            sku: "SKU-LBAT".into(),
+            location_id: crate::inventory::LocationId::from("loc-a"),
+            delta: -5,
+        }],
+        Some("test"),
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+
+    assert_eq!(inventory_qty(&conn, &pid).0, 15);
+    assert_eq!(reader_stock_qty(&conn, &pid), 15);
+}
+
+/// END-TO-END reachability for the family that destroys stock silently from a
+/// UI button: receive_purchase_order (db/purchase_orders.rs) is local,
+/// positive-delta and routes through the canonical adjust at the default
+/// location, so on a legacy install receiving 5 units of a product holding 70
+/// rewrote the aggregate to 5. Fails against HEAD.
+#[test]
+fn receive_po_on_legacy_inventory_keeps_the_aggregate() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-LPO");
+    seed_legacy_inventory(&conn, &pid, 70);
+    conn.execute(
+        "INSERT INTO suppliers (id, code, name, status, created_at, updated_at) VALUES ('sup-legacy', 'SUP-L', 'Legacy Supplier', 'active', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+
+    let po = s
+        .create_purchase_order(
+            "PO-LEGACY",
+            "sup-legacy",
+            "",
+            "",
+            None,
+            &[crate::db::purchase_orders::CreatePoLineInput {
+                sku: "SKU-LPO".into(),
+                product_name: "Widget".into(),
+                qty: 5,
+                unit_cost_minor: 1000,
+            }],
+        )
+        .unwrap();
+    s.update_po_status(&po.order.id, "approved").unwrap();
+    s.receive_purchase_order(&po.order.id).unwrap();
+
+    assert_eq!(
+        inventory_qty(&conn, &pid).0,
+        75,
+        "receiving 5 onto a legacy aggregate of 70 must not rewrite it to 5"
+    );
+    assert_eq!(reader_stock_qty(&conn, &pid), 75);
+}
+
+/// CHARACTERISATION, not a passing guard — hence #[ignore].
+///
+/// rebuild_stock_summary DELETEs every row of stock_summary with NO WHERE
+/// clause (products_stock_adjust.rs:722), so it is TABLE-WIDE: a sync cycle
+/// that touches product A rebuilds product B from the ledger too. It is only
+/// reached from apply_pulled_page (daemon_tick.rs:479-480, pg_daemon.rs:719),
+/// both gated on has_stock_movements, which a LOCAL write never sets — and
+/// create_product (:374-386) and the legacy adjuster (:548) both write a
+/// movement, so for any product created through the app the ledger SUM equals
+/// inventory and a rebuild is harmless.
+///
+/// The exposure is therefore the UPGRADE and EVAL path, not the default one:
+/// stock that predates ADR #6 (or the demo seed at seed_demo.rs:337-342) sits
+/// in inventory with no movement behind it. After a rebuild the product HAS
+/// summary rows — ledger-derived, short by the opening stock — so the
+/// legacy-aware fallback correctly stops firing, and the next write recomputes
+/// the aggregate from that short SUM. This pins the loss as measured.
+#[test]
+#[ignore = "characterises the table-wide rebuild against pre-ADR-6 opening stock; upgrade/eval path only, its fix is a separate slice"]
+fn rebuild_after_ledger_short_opening_stock_loses_the_unbacked_units() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-RBS");
+    seed_legacy_inventory(&conn, &pid, 60);
+    conn.execute(
+        "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES ('mv-1', ?1, 'default', 40, 'opening', '2025-01-01T00:00:00.000Z')",
+        params![pid],
+    )
+    .unwrap();
+
+    s.rebuild_stock_summary().unwrap();
+    adjust_at(&s, "SKU-RBS", 5, "default");
+
+    assert_eq!(
+        inventory_qty(&conn, &pid).0,
+        45,
+        "the 20 units with no movement behind them are destroyed by rebuild + recompute"
+    );
+}
