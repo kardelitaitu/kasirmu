@@ -1684,56 +1684,21 @@ pub struct CompleteSaleWithResolvedShortfallsArgs {
     pub attempt_id: Option<String>,
 }
 
-/// Complete a sale with cashier-resolved shortfalls (split fulfillment).
-///
-/// This is the second command in the two-command flow (ADR-19 §6b).
-/// After `complete_sale_scoped` returns a `PartialStockResult` error,
-/// the cashier resolves shortfalls via the Stock Shortfall dialog.
-/// This command re-checks stock at the resolved locations and deducts
-/// accordingly.
-#[command]
-pub async fn complete_sale_with_resolved_shortfalls_scoped(
-    session_token: String,
-    args: CompleteSaleWithResolvedShortfallsArgs,
-    state: State<'_, AppState>,
-) -> Result<CompleteSaleResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-
-    // §B read-only lock: a lapsed grace window rejects new sales.
-    {
-        let db = state.db.lock().await;
-        let sub = oz_core::TenantSubscription::load(&db, "default")?
-            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-        sub.verify_signature()?;
-        sub.enforce_pos_writable()?;
-    }
-
-    // ── COR-7 replay guard — before any write ────────────────────────
-    // This is the path the guard matters most on: the command rebuilds its
-    // cart from the request body and carries a synthetic `resolved-<ts>`
-    // cart id, so unlike `complete_sale_scoped` it has no cart to run out of
-    // and would otherwise re-sell the same basket on every retry.
-    let attempt = normalized_attempt_id(args.attempt_id.as_deref());
-    let mut effective_attempt_id = attempt.clone();
-    {
-        let db = state.db.lock().await;
-        match replay_verdict(&Store::new(&db), attempt.as_deref(), Some(&args.cart_id))? {
-            ReplayVerdict::Replayed(receipt) => {
-                tracing::info!(
-                    sale_id = %receipt.sale_id,
-                    "shortfall retry replayed an existing attempt — returning the original receipt"
-                );
-                return Ok(receipt);
-            }
-            ReplayVerdict::Fresh => {}
-            ReplayVerdict::Rekey(rekey_stem) => {
-                tracing::warn!(
-                    "replay attempt id points at a voided sale — stamping a deterministic re-key"
-                );
-                effective_attempt_id = Some(rekey_stem);
-            }
-        }
-    }
+/// The write half of `complete_sale_with_resolved_shortfalls_scoped`:
+/// cart rebuild from the request body, tax, promotions, split stamping, the
+/// settlement write, and the UNIQUE-index replay conversion. The caller MUST
+/// have run the replay guard under the SAME db lock — the lock is what
+/// closes the same-process double-tap; this fn is deliberately guard-free so
+/// the tests can model the cross-process window where the guard read raced
+/// the winner's commit.
+fn settle_shortfall_resolved(
+    db: &rusqlite::Connection,
+    session: &SessionContext,
+    args: &CompleteSaleWithResolvedShortfallsArgs,
+    attempt_id: Option<&str>,
+    effective_attempt_id: Option<&str>,
+) -> Result<SaleSettlement, AppError> {
+    let store = Store::new(db);
 
     // ── Reconstruct the Cart from front-end line data ─────────────
     let currency: oz_core::Currency = args
@@ -1772,46 +1737,40 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     sale.tip_minor = args.tip_minor.unwrap_or(0);
     sale.service_charge_minor = args.service_charge_minor.unwrap_or(0);
 
-    let sale_id = sale.id.clone();
+    store.compute_sale_tax_for_location(
+        &mut sale,
+        &[],
+        oz_core::Settings::get_tax_rounding_mode(db)?,
+        Some(&tax_scope_now(&store, &session.store_id)),
+    )?;
 
-    // ── Lock: Compute tax + execute the resolved deduction ────────
-    let _result = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
+    // PROMO-3 checkout integration: engine-apply the selected
+    // promotions against the post-tax sale; sale.total is reduced in
+    // place and the application rows persist inside the checkout tx.
+    let checkout_applications = store.compute_checkout_promotions(
+        &mut sale,
+        args.promotion_ids.as_deref().unwrap_or(&[]),
+        chrono::Utc::now(),
+    )?;
 
-        store.compute_sale_tax_for_location(
-            &mut sale,
-            &[],
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
-            Some(&tax_scope_now(&store, &session.store_id)),
-        )?;
+    let mut splits = if let Some(ref splits) = args.payment_splits {
+        splits.clone()
+    } else {
+        vec![PaymentSplitArg {
+            method: args.payment_method.clone(),
+            amount_minor: sale.total.minor_units,
+            gateway_reference: args.customer_name.clone(),
+            gateway_status: None,
+            gateway_response: None,
+            idempotency_key: None,
+        }]
+    };
+    // COR-7: one key per split from the attempt id, so a retry of this
+    // submission resolves back to the sale it already created.
+    stamp_attempt_split_keys(effective_attempt_id, &mut splits);
 
-        // PROMO-3 checkout integration: engine-apply the selected
-        // promotions against the post-tax sale; sale.total is reduced in
-        // place and the application rows persist inside the checkout tx.
-        let checkout_applications = store.compute_checkout_promotions(
-            &mut sale,
-            args.promotion_ids.as_deref().unwrap_or(&[]),
-            chrono::Utc::now(),
-        )?;
-
-        let mut splits = if let Some(ref splits) = args.payment_splits {
-            splits.clone()
-        } else {
-            vec![PaymentSplitArg {
-                method: args.payment_method.clone(),
-                amount_minor: sale.total.minor_units,
-                gateway_reference: args.customer_name.clone(),
-                gateway_status: None,
-                gateway_response: None,
-                idempotency_key: None,
-            }]
-        };
-        // COR-7: one key per split from the attempt id, so a retry of this
-        // submission resolves back to the sale it already created.
-        stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
-
-        store.complete_sale_with_resolved_shortfalls(
+    match store
+        .complete_sale_with_resolved_shortfalls(
             &sale,
             Some(&session.instance_id),
             &splits,
@@ -1819,13 +1778,160 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             Some(&session.terminal_id),
             &args.resolutions,
             &checkout_applications,
+        )
+        .map_err(AppError::from)
+    {
+        Ok(_) => Ok(SaleSettlement {
+            result: CompleteSaleResult {
+                sale_id: sale.id.clone(),
+                total: Some(sale.total),
+                line_count,
+            },
+            sale: Some(sale),
+        }),
+        Err(e) => {
+            // The re-lookup runs by the BASE attempt id (not the re-key
+            // stem): `replay_verdict` consults the re-keyed key itself, so
+            // the base id resolves a winner settled under either stamping.
+            let receipt = replay_on_unique_collision(&store, attempt_id, Some(&args.cart_id), e)?;
+            Ok(SaleSettlement {
+                result: receipt,
+                sale: None,
+            })
+        }
+    }
+}
+
+/// Convert a lost cross-process idempotency race into a replay receipt.
+///
+/// The UNIQUE index on `payments.idempotency_key` is the only guard that
+/// spans processes (`state.rs`'s tokio Mutex is process-local and no
+/// single-instance guard exists), so a loser that passed the replay guard
+/// before the winner committed still reaches the settlement write and fails
+/// with `UNIQUE constraint failed: payments.idempotency_key`. Surfacing
+/// that as a Db error turns a double-tap into a failed-checkout toast — the
+/// exact failure the replay design exists to eliminate — so the collision is
+/// converted: the replay lookup is re-run by the attempt stem and, when it
+/// resolves to a COMPLETED sale, the winner's receipt is returned exactly as
+/// the `Replayed` verdict does, publishing nothing extra.
+///
+/// Absorbed: only a Db UNIQUE violation on the stamped idempotency key whose
+/// re-lookup resolves to a completed sale. NOT absorbed: any other error
+/// kind, any other UNIQUE violation, and a collision whose re-lookup comes
+/// back `Fresh` (the collided key belongs to something this attempt cannot
+/// name — returning a receipt would mean handing back a stranger's sale) or
+/// `Rekey` (the winner was voided; re-settling would need the re-key dance,
+/// so the original error propagates unchanged).
+fn replay_on_unique_collision(
+    store: &Store,
+    attempt_id: Option<&str>,
+    request_cart_id: Option<&CartId>,
+    err: AppError,
+) -> Result<CompleteSaleResult, AppError> {
+    let AppError::Core {
+        sub_kind: oz_core::CoreErrorKind::Db,
+        message,
+    } = &err
+    else {
+        return Err(err);
+    };
+    if !(message.contains("UNIQUE constraint failed") && message.contains("idempotency_key")) {
+        return Err(err);
+    }
+    match replay_verdict(store, attempt_id, request_cart_id)? {
+        ReplayVerdict::Replayed(receipt) => {
+            tracing::info!(
+                sale_id = %receipt.sale_id,
+                "settlement lost the cross-process idempotency race — returning the winner's receipt"
+            );
+            Ok(receipt)
+        }
+        _ => Err(err),
+    }
+}
+
+/// Complete a sale with cashier-resolved shortfalls (split fulfillment).
+///
+/// This is the second command in the two-command flow (ADR-19 §6b).
+/// After `complete_sale_scoped` returns a `PartialStockResult` error,
+/// the cashier resolves shortfalls via the Stock Shortfall dialog.
+/// This command re-checks stock at the resolved locations and deducts
+/// accordingly.
+#[command]
+pub async fn complete_sale_with_resolved_shortfalls_scoped(
+    session_token: String,
+    args: CompleteSaleWithResolvedShortfallsArgs,
+    state: State<'_, AppState>,
+) -> Result<CompleteSaleResult, AppError> {
+    let session = state.resolve_session(&session_token)?;
+
+    // §B read-only lock: a lapsed grace window rejects new sales.
+    {
+        let db = state.db.lock().await;
+        let sub = oz_core::TenantSubscription::load(&db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub.enforce_pos_writable()?;
+    }
+
+    // ── COR-7: replay guard + settlement under ONE lock ─────────────
+    // This is the path the guard matters most on: the command rebuilds its
+    // cart from the request body and carries a synthetic `resolved-<ts>`
+    // cart id, so unlike `complete_sale_scoped` it has no cart to run out of
+    // and would otherwise re-sell the same basket on every retry.
+    //
+    // The guard and the write share one lock span. Tablet `state.db` is a
+    // `tokio::sync::Mutex` (state.rs:50), whose guard may be held across
+    // `.await`, and the whole lookup→write segment below contains no await
+    // point — the cart is rebuilt in memory from the request body — so one
+    // `lock().await` covers the replay lookup through the settlement write
+    // and a same-process double-tap serialises: the loser re-runs the guard
+    // AFTER the winner committed and answers with the winner's receipt.
+    // DRIFT NOTE (deliberate, not carelessness): the desktop shell cannot
+    // hold its equivalent span — its store connection is a STD `Mutex` and
+    // the plugin hooks + event publish sitting between its two lock regions
+    // are `.await` points (crates/oz-bridge/src/pos.rs:1740-1754), so the
+    // desktop two-lock gap is still open for structural reasons and relies
+    // on fail-closed settlement + the UNIQUE index instead.
+    let attempt = normalized_attempt_id(args.attempt_id.as_deref());
+    let settlement = {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        let mut effective_attempt_id = attempt.clone();
+        match replay_verdict(&store, attempt.as_deref(), Some(&args.cart_id))? {
+            ReplayVerdict::Replayed(receipt) => {
+                tracing::info!(
+                    sale_id = %receipt.sale_id,
+                    "shortfall retry replayed an existing attempt — returning the original receipt"
+                );
+                return Ok(receipt);
+            }
+            ReplayVerdict::Fresh => {}
+            ReplayVerdict::Rekey(rekey_stem) => {
+                tracing::warn!(
+                    "replay attempt id points at a voided sale — stamping a deterministic re-key"
+                );
+                effective_attempt_id = Some(rekey_stem);
+            }
+        }
+        settle_shortfall_resolved(
+            &db,
+            &session,
+            &args,
+            attempt.as_deref(),
+            effective_attempt_id.as_deref(),
         )?
     };
 
-    // Promotion-reduced payable (cart.total() would ignore promotions).
-    let total = Some(sale.total);
+    // A replay (guard or UNIQUE-index conversion) wrote nothing, so it must
+    // publish nothing: the domain event already fired with the original
+    // sale, and firing it twice would deduct stock and re-credit customer
+    // spend for one payment.
+    let Some(sale) = settlement.sale else {
+        return Ok(settlement.result);
+    };
 
-    tracing::info!(%sale_id, store_id = %session.store_id, "sale completed with resolved shortfalls");
+    tracing::info!(sale_id = %sale.id, store_id = %session.store_id, "sale completed with resolved shortfalls");
 
     // ── Event publishing (no DB lock held) ────────────────────────
     {
@@ -1844,22 +1950,18 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             .collect();
 
         if let Err(e) = bus.publish(&oz_core::events::SaleCompleted {
-            sale_id: sale_id.clone(),
+            sale_id: sale.id.clone(),
             store_id: Some(session.store_id.clone()),
             line_items,
             total_minor: sale.total.minor_units,
             currency: String::from_utf8_lossy(&sale.currency.0).into_owned(),
             customer_id: args.customer_id.clone(),
         }) {
-            tracing::warn!(%sale_id, error = %e, "event bus publish failed");
+            tracing::warn!(sale_id = %sale.id, error = %e, "event bus publish failed");
         }
     }
 
-    Ok(CompleteSaleResult {
-        sale_id,
-        total,
-        line_count,
-    })
+    Ok(settlement.result)
 }
 
 // ── Hold Orders ──────────────────────────────────────────────────────

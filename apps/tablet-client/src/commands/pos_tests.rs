@@ -819,3 +819,167 @@ fn scoped_args_accept_every_field_the_shipped_ui_sends() {
         "an unknown field must be refused, not dropped"
     );
 }
+
+/// Shortfall args that vary only by SKU and attempt id, mirroring
+/// `scoped_args` so a test's two settlements differ by nothing else. The
+/// synthetic cart id is a fresh in-memory Cart — the shortfall command
+/// rebuilds its basket from the request body and never persists a cart row.
+fn shortfall_args(sku: &str, attempt: Option<&str>) -> CompleteSaleWithResolvedShortfallsArgs {
+    CompleteSaleWithResolvedShortfallsArgs {
+        cart_id: oz_core::Cart::new(usd()).id(),
+        payment_method: "cash".into(),
+        tendered_minor: Some(700),
+        customer_id: None,
+        payment_splits: None,
+        customer_name: None,
+        serial_numbers: None,
+        lines: vec![CartLineData {
+            sku: sku.into(),
+            qty: 2,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        }],
+        total_minor: 700,
+        currency: "USD".into(),
+        discount_percent: 0,
+        discount_label: None,
+        resolutions: vec![],
+        base_currency: None,
+        base_total_minor: None,
+        tender_rate_millionths: None,
+        tip_minor: None,
+        service_charge_minor: None,
+        promotion_ids: None,
+        attempt_id: attempt.map(str::to_owned),
+    }
+}
+
+#[test]
+fn shortfall_collision_on_one_attempt_returns_first_sale_id() {
+    // The cross-process interleaving, entered at the window no in-process
+    // lock can close: the loser's guard read `Fresh` BEFORE the winner
+    // committed (asserted below), the winner then committed, and the loser's
+    // write half runs against the same file — the point where a second app
+    // instance (two processes, one oz-pos.db, no single-instance guard)
+    // reaches the UNIQUE index. Two live connections cannot reproduce the
+    // window deterministically — SQLite answers the loser's write with
+    // SQLITE_BUSY while the winner's tx holds the write lock, not UNIQUE —
+    // so the window is modeled by calling the write half directly, which is
+    // exactly what the command does after a Fresh guard.
+    let conn = fresh_conn();
+    seed_cashier_without_override_permission(&conn, "user-cashier");
+    seed_stock(&conn, "SF-COLLIDE");
+    let session = replay_session();
+    let args = shortfall_args("SF-COLLIDE", Some("att-c"));
+    let cart_id = args.cart_id.clone();
+
+    let pre = replay_verdict(&Store::new(&conn), Some("att-c"), Some(&cart_id)).unwrap();
+    assert!(
+        matches!(pre, ReplayVerdict::Fresh),
+        "the race window starts Fresh"
+    );
+
+    let winner = settle_shortfall_resolved(&conn, &session, &args, Some("att-c"), Some("att-c"))
+        .expect("the winner settles normally");
+    assert!(winner.sale.is_some(), "the winner created the sale");
+
+    // Loser: same attempt id, same basket, guard already passed. The write
+    // hits UNIQUE on payments.idempotency_key and must be CONVERTED into the
+    // winner's receipt, not surfaced as a failed-checkout error.
+    let loser = settle_shortfall_resolved(&conn, &session, &args, Some("att-c"), Some("att-c"))
+        .expect("a lost idempotency race must return the winner's receipt, not a UNIQUE error");
+    assert_eq!(
+        loser.result.sale_id, winner.result.sale_id,
+        "the loser must return the FIRST sale id"
+    );
+    assert!(loser.sale.is_none(), "the loser publishes nothing extra");
+    assert_eq!(
+        sale_rows(&conn),
+        1,
+        "one attempt, one sale — the loser wrote nothing"
+    );
+    assert_eq!(keyed_payment_rows(&conn), 1, "no extra keyed payment rows");
+    // Cart decision (recorded): the shortfall basket lives in the request
+    // body, so there is no cart row to lose, and folding the cart-path
+    // delete_active_cart into the settlement tx would need a new oz-core
+    // settlement API outside this fence — the deletion deliberately stays
+    // where it is, and the shared lock keeps a same-process loser from ever
+    // reaching it.
+    assert!(
+        !cart_is_live(&conn, &cart_id),
+        "the shortfall basket is request-body state; no cart row exists to lose"
+    );
+}
+
+#[test]
+fn unique_collision_that_resolves_to_nothing_propagates_unchanged() {
+    // Absorption contract: ONLY a Db UNIQUE violation on the stamped
+    // idempotency key whose re-lookup resolves to a completed sale is
+    // converted. Everything else propagates unchanged.
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+
+    // a) Not a Core/Db error at all — passthrough, byte-identical.
+    let out = replay_on_unique_collision(
+        &store,
+        Some("att-z"),
+        None,
+        AppError::Invalid("boom".into()),
+    );
+    assert!(
+        matches!(out, Err(AppError::Invalid(ref m)) if m == "boom"),
+        "a non-Db error must not be absorbed"
+    );
+
+    // b) A UNIQUE violation on some other column — not the replay key.
+    let err = AppError::Core {
+        sub_kind: oz_core::CoreErrorKind::Db,
+        message: "sqlite: UNIQUE constraint failed: payments.id".into(),
+    };
+    assert!(
+        replay_on_unique_collision(&store, Some("att-z"), None, err).is_err(),
+        "a UNIQUE violation outside idempotency_key must not be absorbed"
+    );
+
+    // c) The replay-key UNIQUE whose re-lookup comes back Fresh: the collided
+    // key belongs to something this attempt cannot name, so the original
+    // error propagates unchanged rather than a stranger's receipt.
+    let err = AppError::Core {
+        sub_kind: oz_core::CoreErrorKind::Db,
+        message: "sqlite: UNIQUE constraint failed: payments.idempotency_key".into(),
+    };
+    match replay_on_unique_collision(&store, Some("no-such-attempt"), None, err) {
+        Err(AppError::Core { message, .. }) => assert!(
+            message.contains("idempotency_key"),
+            "the ORIGINAL error must propagate unchanged, got: {message}"
+        ),
+        other => panic!("a Fresh re-lookup must propagate the original error, got {other:?}"),
+    }
+}
+
+#[test]
+fn shortfall_args_refuse_unknown_fields() {
+    // Pinned alongside `scoped_args_accept_every_field_the_shipped_ui_sends`:
+    // the tablet shortfall DTO carries `deny_unknown_fields` while the
+    // bridge DTO has none, so a key forwarded through the PaymentModal
+    // `as CompleteSaleScopedArgs` casts (which suppress excess-property
+    // checking) silently DROPS on desktop and HARD-FAILS tablet checkout.
+    // This pins the tablet half of that disagreement so it is documented
+    // behaviour, not a surprise; no bridge-side twin is added (that would
+    // freeze the disagreement), and the UI cast is the real fix.
+    let base = r#"{"cartId":"550e8400-e29b-41d4-a716-446655440009","paymentMethod":"CASH","tenderedMinor":700,"lines":[{"sku":"SF-COLLIDE","qty":2,"unitPriceMinor":350}],"totalMinor":700,"currency":"USD","discountPercent":0,"resolutions":[],"attemptId":"att-1"}"#;
+    let ok = serde_json::from_str::<CompleteSaleWithResolvedShortfallsArgs>(base);
+    assert!(
+        ok.is_ok(),
+        "the live shortfall payload must parse, got {ok:?}"
+    );
+
+    let with_extra = base.replace(
+        "\"attemptId\":\"att-1\"",
+        "\"attemptId\":\"att-1\",\"tenderSnapshotExtra\":1",
+    );
+    assert!(
+        serde_json::from_str::<CompleteSaleWithResolvedShortfallsArgs>(&with_extra).is_err(),
+        "an unknown field must hard-fail on tablet (the bridge drops it — the shells differ deliberately)"
+    );
+}
