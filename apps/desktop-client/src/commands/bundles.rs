@@ -1,41 +1,20 @@
-use serde::Deserialize;
+//! Tauri commands for product bundles (ADR #7 scoped variants).
+//!
+//! Wave F: every body lives in the headless `oz_bridge::bundles` module. Each
+//! `#[tauri::command]` below keeps its exact name, parameter list and
+//! `Result<_, AppError>` return; it borrows a `BridgeCtx` from `AppState`,
+//! calls the bridge and maps `BridgeError` back to `AppError`
+//! variant-for-variant. The args structs moved with the bodies and are
+//! re-exported so `use super::*;` in `bundles_tests.rs` still resolves them.
+
 use tauri::State;
 
-use oz_core::Store;
-use oz_core::product_bundle::{BundleItem, BundleWithItems, ProductBundle};
+use oz_core::product_bundle::BundleWithItems;
 
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
-use oz_core::permissions;
 
-/// Arguments for creating a bundle.
-#[derive(Debug, Deserialize)]
-pub struct CreateBundleArgs {
-    /// Bundle Sku.
-    pub bundle_sku: String,
-    /// Display name.
-    pub name: String,
-    /// Human-readable description.
-    pub description: Option<String>,
-    /// Bundle Price Minor.
-    pub bundle_price_minor: Option<i64>,
-    /// ISO-4217 currency code.
-    pub currency: Option<String>,
-    /// Items.
-    pub items: Vec<CreateBundleItemArg>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Createbundleitemarg.
-pub struct CreateBundleItemArg {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit Price Minor.
-    pub unit_price_minor: Option<i64>,
-}
+pub use oz_bridge::bundles::{CreateBundleArgs, CreateBundleItemArg};
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
@@ -47,14 +26,10 @@ pub async fn list_bundles_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<BundleWithItems>, AppError> {
-    let (session, _conn) = state.resolve_scope(&session_token)?;
-    // F-017: enforce per-domain permission on this scoped command.
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let db = _conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.list_bundles()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::bundles::list_bundles_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Scoped variant of `get_bundle` (ADR #7).
@@ -64,14 +39,10 @@ pub async fn get_bundle_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Option<BundleWithItems>, AppError> {
-    let (session, _conn) = state.resolve_scope(&session_token)?;
-    // F-017: enforce per-domain permission on this scoped command.
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let db = _conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.get_bundle(&id)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::bundles::get_bundle_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Scoped variant of `update_bundle` (ADR #7).
@@ -81,18 +52,10 @@ pub async fn update_bundle_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<BundleWithItems, AppError> {
-    let (session, _conn) = state.resolve_scope(&session_token)?;
-    // F-017: enforce per-domain permission on this scoped command.
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
-    let db = _conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let mut updated = bundle.bundle;
-    updated.updated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-    Ok(store.update_bundle(&updated, &bundle.items)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::bundles::update_bundle_scoped(&ctx, &session_token, bundle)
+        .await
+        .map_err(Into::into)
 }
 
 /// Scoped variant of `delete_bundle` (ADR #7).
@@ -102,15 +65,10 @@ pub async fn delete_bundle_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, _conn) = state.resolve_scope(&session_token)?;
-    // F-017: enforce per-domain permission on this scoped command.
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_DELETE).await?;
-    let db = _conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.delete_bundle(&id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::bundles::delete_bundle_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Scoped variant of `lookup_bundle_by_sku` (ADR #7).
@@ -120,14 +78,10 @@ pub async fn lookup_bundle_by_sku_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Option<BundleWithItems>, AppError> {
-    let (session, _conn) = state.resolve_scope(&session_token)?;
-    // F-017: enforce per-domain permission on this scoped command.
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let db = _conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.get_bundle_by_sku(&sku)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::bundles::lookup_bundle_by_sku_scoped(&ctx, &session_token, &sku)
+        .await
+        .map_err(Into::into)
 }
 
 /// Create a new bundle (scoped).
@@ -137,42 +91,10 @@ pub async fn create_bundle_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<BundleWithItems, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    // F-017: enforce per-domain permission on this scoped command.
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_CREATE).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-    let bundle = ProductBundle {
-        id: id.clone(),
-        bundle_sku: args.bundle_sku,
-        name: args.name,
-        description: args.description.unwrap_or_default(),
-        bundle_price_minor: args.bundle_price_minor,
-        currency: args.currency.unwrap_or_else(|| "USD".into()),
-        active: true,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-
-    let items: Vec<BundleItem> = args
-        .items
-        .into_iter()
-        .map(|i| BundleItem {
-            id: uuid::Uuid::now_v7().to_string(),
-            bundle_id: id.clone(),
-            sku: i.sku,
-            qty: i.qty,
-            unit_price_minor: i.unit_price_minor,
-        })
-        .collect();
-
-    Ok(store.create_bundle(&bundle, &items)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::bundles::create_bundle_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
