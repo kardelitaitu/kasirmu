@@ -550,7 +550,7 @@ pub async fn apply_topology_diff(
                 format!(
                     "topology revision conflict: expected {base_revision}, current {current_revision}"
                 ),
-            ));
+            ).into());
         }
     }
 
@@ -623,7 +623,7 @@ pub async fn apply_topology_diff(
             format!(
                 "topology branch {requested_branch_id} does not match Branch Location {branch_profile_id}"
             ),
-        ));
+        ).into());
     }
     for creation in &workspace_creations {
         if creation.store_id != effective_store_id {

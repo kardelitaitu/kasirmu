@@ -101,7 +101,7 @@ pub(crate) fn normalize_topology_change_note(raw: Option<&str>) -> Result<String
             format!(
                 "change note must be {TOPOLOGY_CHANGE_NOTE_MAX_CHARS} characters or fewer (got {chars})"
             ),
-        ));
+        ).into());
     }
     Ok(note.to_owned())
 }
