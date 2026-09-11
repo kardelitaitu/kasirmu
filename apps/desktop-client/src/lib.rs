@@ -665,7 +665,19 @@ pub fn run() {
                 let bind = oz_core::Settings::get(&db, "lan_server.bind")
                     .unwrap_or(None)
                     .unwrap_or_else(|| "127.0.0.1".to_string());
-                let psk = oz_core::Settings::get(&db, "lan_server.psk")
+                // Read through the TYPED getter, not a raw Settings::get.
+                // `set_lan_server_psk` (platform/core/src/settings/typed.rs)
+                // encrypts at rest, so a raw read would hand the forwarder
+                // base64 ciphertext where it expects the PSK bytes.
+                //
+                // `get_lan_server_psk` is deliberately the *tolerant* form:
+                // decrypt-or-passthrough. That tolerance exists so an install
+                // that saved a plaintext PSK before this line changed keeps
+                // working — it is NOT evidence that the stored value is
+                // encrypted. A plaintext credential stays readable as
+                // plaintext here, indefinitely and silently; do not read this
+                // call as an at-rest guarantee for this key.
+                let psk = platform_core::settings::Settings::get_lan_server_psk(&db)
                     .unwrap_or(None)
                     .filter(|s| !s.is_empty());
                 // Reject external bind without a PSK.
