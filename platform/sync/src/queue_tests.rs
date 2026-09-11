@@ -1045,3 +1045,130 @@ fn crdt_merge_end_to_end_resolve_to_apply() {
     queue.apply_remote(&store, winner).unwrap();
     assert_eq!(inventory_qty(&store, "COFFEE"), 57, "50 + 10 - 3");
 }
+
+/// Seed a product whose stock lives at TWO named locations via the canonical
+/// per-location writer (summary {loc-a: 7, loc-b: 3}, aggregate 10).
+fn seed_two_location_stock(store: &Store<'_>) -> String {
+    let conn = store.conn();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+         VALUES ('prod-loc', 'LOC-TWO', 'Loc Two', 100, 'USD',
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    for loc in ["loc-a", "loc-b"] {
+        conn.execute(
+            "INSERT INTO inventory_locations (id, name, type, created_at, updated_at)
+             VALUES (?1, ?1, 'store', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            [loc],
+        )
+        .unwrap();
+    }
+    let tx = conn.unchecked_transaction().unwrap();
+    for (loc, delta) in [("loc-a", 7), ("loc-b", 3)] {
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "LOC-TWO",
+                delta,
+                &oz_core::inventory::LocationId::from(loc),
+                Some("seed"),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+    }
+    tx.commit().unwrap();
+    store.product_id_by_sku("LOC-TWO").unwrap().unwrap()
+}
+
+fn location_carrying_crdt_winner() -> OfflineQueueItem {
+    let local = OfflineQueueItem {
+        id: "crdt-loc-local".into(),
+        action: "stock.adjusted".into(),
+        payload: r#"{"sku":"LOC-TWO","delta":10,"location_id":"loc-a"}"#.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+    let remote = OfflineQueueItem {
+        id: "crdt-loc-remote".into(),
+        action: "stock.adjusted".into(),
+        payload: r#"{"sku":"LOC-TWO","delta":-3,"location_id":"loc-b"}"#.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+    crate::conflict::resolve_stock_crdt(&local, &remote).winner
+}
+
+/// The three per-location assertions every CRDT stock merge must satisfy.
+fn assert_location_scoped_merge(store: &Store<'_>, pid: &str) {
+    let conn = store.conn();
+    let mut stmt = conn
+        .prepare(
+            "SELECT location_id, qty FROM stock_summary WHERE item_id = ?1 ORDER BY location_id",
+        )
+        .unwrap();
+    let rows: Vec<(String, i64)> = stmt
+        .query_map([pid], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    drop(stmt);
+
+    // 1. Each location row moved by its OWN delta (7+10, 3-3).
+    assert_eq!(
+        rows,
+        vec![("loc-a".to_string(), 17), ("loc-b".to_string(), 0)],
+        "per-location rows must carry their own deltas"
+    );
+    // 2. The legacy aggregate equals the SUM over BOTH locations.
+    let sum: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(qty), 0) FROM stock_summary WHERE item_id = ?1",
+            [pid],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inventory_qty(store, "LOC-TWO"), 17);
+    assert_eq!(sum, 17, "aggregate must equal the sum of both locations");
+    // 3. Rows not collapsed into the canonical default location.
+    let default_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            [pid, oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(default_rows, 0, "no phantom row at the default location");
+}
+
+/// SYNC-05 regression (a04865100 follow-up): a CRDT conflict envelope whose
+/// INNER local and remote objects each name a location_id must apply each
+/// delta at its own location through the atomic pull path - the same
+/// apply_remote_in_tx stock.adjusted arm the daemon pull uses.
+#[ignore = "FINDING (bug, not coverage gap): both stock.adjusted CRDT arms (queue.rs apply_remote_in_tx :342-344 and legacy apply_remote :479-488) parse StockAdjustmentPayload {sku, delta} and silently DROP the inner location_id - both deltas land at the canonical default location and stock_summary keeps a phantom aggregate row (rows become [default:17, loc-a:7, loc-b:3]); fix payload+arms then delete this ignore"]
+#[test]
+fn apply_remote_atomic_crdt_envelope_applies_location_scoped_deltas() {
+    let store = setup_store();
+    let pid = seed_two_location_stock(&store);
+    let winner = location_carrying_crdt_winner();
+    assert!(
+        SyncQueue::new()
+            .apply_remote_atomic(&store, &winner)
+            .unwrap(),
+        "merged crdt winner must apply"
+    );
+    assert_location_scoped_merge(&store, &pid);
+}
+
+/// Same envelope through the deprecated non-atomic apply_remote mirror -
+/// both pull arms must treat location_id identically (and correctly).
+#[ignore = "see the atomic-arm twin above - legacy arm shows the identical collapse"]
+#[test]
+fn apply_remote_crdt_envelope_applies_location_scoped_deltas() {
+    let store = setup_store();
+    let pid = seed_two_location_stock(&store);
+    let winner = location_carrying_crdt_winner();
+    SyncQueue::new().apply_remote(&store, &winner).unwrap();
+    assert_location_scoped_merge(&store, &pid);
+}

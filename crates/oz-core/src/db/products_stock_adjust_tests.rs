@@ -329,6 +329,33 @@ fn count_path_agrees_with_reader() {
     assert_eq!(reader_stock_qty(&conn, &pid), 8);
 }
 
+/// Store-level contract the sync CRDT merge path must meet (a04865100
+/// follow-up): location-scoped deltas applied through the canonical writer
+/// move each NAMED location row by its own delta, keep the legacy aggregate
+/// equal to the SUM over BOTH locations, and never materialise a phantom row
+/// at the canonical default location. The exact-vec assertion below doubles
+/// as the no-collapse check.
+#[test]
+fn location_scoped_deltas_keep_named_rows_and_aggregate() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-LOC-MERGE");
+    seed_location(&conn, "loc-a", "Store A");
+    seed_location(&conn, "loc-b", "Store B");
+    adjust_at(&s, "SKU-LOC-MERGE", 7, "loc-a");
+    adjust_at(&s, "SKU-LOC-MERGE", 3, "loc-b");
+    // The two deltas a conflicted sync envelope would carry:
+    adjust_at(&s, "SKU-LOC-MERGE", 10, "loc-a");
+    adjust_at(&s, "SKU-LOC-MERGE", -3, "loc-b");
+
+    assert_eq!(
+        summary_rows(&conn, &pid),
+        vec![("loc-a".to_string(), 17), ("loc-b".to_string(), 0)]
+    );
+    assert_eq!(inventory_qty(&conn, &pid).0, 17);
+    assert_eq!(reader_stock_qty(&conn, &pid), 17);
+}
+
 /// A count against legacy inventory-only seed data bridges the aggregate into
 /// stock_summary at the canonical default location and stays reader-consistent.
 #[test]
