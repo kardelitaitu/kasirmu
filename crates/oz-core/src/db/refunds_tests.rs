@@ -906,3 +906,190 @@ fn create_refund_spend_reversal_floors_at_zero() {
         .unwrap();
     assert_eq!(spent, 0, "spend floors at zero, never negative");
 }
+
+// ── Cumulative QUANTITY bound ──────────────────────────────────
+//
+// The sale total bounds VALUE; nothing bounded UNITS per sale line, so one
+// line could be refunded again and again — each refund restoring stock — as
+// long as each refund stayed inside the money bound. These tests pin the
+// quantity bound. The seeded sale also carries a second line, so a rejection
+// can be attributed to the quantity guard rather than to the money guard.
+
+/// The canonical default location, seeded by migration 078.
+const DEFAULT_LOC: &str = "01926b3a-0000-7000-8000-000000000001";
+
+/// Seed a completed sale whose first line sold 10 units of TEA at 100 (1000)
+/// plus a second line of 1 unit of JAM at 500, for a sale total of 1500, with
+/// both lines deducted from the default location.
+///
+/// The 500 of non-TEA value matters: it lets a repeated refund stay inside the
+/// cumulative MONEY bound while exceeding the TEA line's sold quantity —
+/// exactly the hole the cumulative QUANTITY bound closes.
+fn seed_quantity_sale(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('qty-p1', 'TEA', 'Tea', 100, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z'),
+            ('qty-p2', 'JAM', 'Jam', 500, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('qty-sale-1', 1500, 'USD', 2, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"qty-sl-1\",\"sku\":\"TEA\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":10}]},{\"sale_line_id\":\"qty-sl-2\",\"sku\":\"JAM\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":1}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('qty-sl-1', 'qty-sale-1', 'TEA', 10, 100, 1000, 'USD', 1),
+            ('qty-sl-2', 'qty-sale-1', 'JAM', 1, 500, 500, 'USD', 2);"
+    ).unwrap();
+}
+
+/// A refund of [qty] units of the 10-unit TEA line, charged at [minor] minor
+/// units in the sale's currency.
+fn tea_refund(qty: i64, minor: i64) -> Refund {
+    let line = RefundLine::new("qty-sl-1", "TEA", qty, price(100), price(minor));
+    Refund::new(
+        "qty-sale-1",
+        price(minor),
+        "quantity bound",
+        "",
+        "user-1",
+        vec![line],
+    )
+}
+
+/// Repeated 60%-of-sold refunds of one line: the FIRST is legitimate, the
+/// SECOND already returns 12 of the 10 units sold and must be rejected (and
+/// not by the money bound — 600 + 600 is 1200 of a 1500 sale), and nothing
+/// after it is accepted for that line.
+#[test]
+fn create_refund_rejects_repeated_60_percent_quantity_refunds() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    // 60% of the 10 units sold = 6 units.
+    s.create_refund(&tea_refund(6, 600)).unwrap();
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        6,
+        "the first 60% refund credits its own units"
+    );
+
+    let err = s.create_refund(&tea_refund(6, 600)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "12 cumulative units of a 10-unit line must be rejected by the \
+         QUANTITY bound (the money bound cannot fire: 1200 of 1500), got: {err:?}"
+    );
+
+    // A third refund of the same line — priced so low that only a quantity
+    // guard can object — is still rejected.
+    let third = s.create_refund(&tea_refund(6, 100)).unwrap_err();
+    assert!(
+        matches!(third, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "a third refund of an exhausted line must be rejected, got: {third:?}"
+    );
+
+    let refund_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM refunds WHERE sale_id = 'qty-sale-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let line_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refund_lines", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(refund_rows, 1, "a rejected refund persists no header row");
+    assert_eq!(line_rows, 1, "a rejected refund persists no line row");
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        6,
+        "rejected refunds must not restore a single unit"
+    );
+}
+
+/// Two legitimate partial refunds that together reach the sold quantity, then a
+/// third unit that overshoots: 6 + 4 = 10 accepted, +1 rejected. This is the
+/// shape the missing bound allowed — one line refunded several times — stopped
+/// exactly at the sold quantity.
+#[test]
+fn create_refund_accepts_partials_to_full_qty_and_rejects_the_third() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&tea_refund(6, 600)).unwrap(); // 60% of sold
+    s.create_refund(&tea_refund(4, 400)).unwrap(); // remaining 40%
+
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        10,
+        "two partial refunds summing to the sold quantity credit all 10 units"
+    );
+
+    let err = s.create_refund(&tea_refund(1, 100)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "one unit past the sold quantity must be rejected, got: {err:?}"
+    );
+    assert_eq!(get_stock_at(&conn, "TEA", DEFAULT_LOC), 10);
+    assert_eq!(s.list_refunds_for_sale("qty-sale-1").unwrap().len(), 2);
+}
+
+/// A legitimate full-quantity refund — the whole line at full value — must
+/// still succeed and must restore the entire quantity. Guards against a bound
+/// that rejects the boundary case it exists to allow (prior + requested ==
+/// sold).
+#[test]
+fn create_refund_full_quantity_refund_still_succeeds() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&tea_refund(10, 1000)).unwrap();
+
+    let refunds = s.list_refunds_for_sale("qty-sale-1").unwrap();
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(refunds[0].lines[0].qty, 10);
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        10,
+        "a full-quantity refund credits the whole line back"
+    );
+    assert_eq!(
+        s.total_refunded_for_sale("qty-sale-1").unwrap().minor_units,
+        1000
+    );
+}
+
+/// The bound is per sale line, not per sale: exhausting the TEA line must not
+/// block a refund of the JAM line on the same sale.
+#[test]
+fn create_refund_quantity_bound_is_per_line_not_per_sale() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&tea_refund(10, 1000)).unwrap();
+
+    let jam = RefundLine::new("qty-sl-2", "JAM", 1, price(500), price(500));
+    let refund = Refund::new(
+        "qty-sale-1",
+        price(500),
+        "other line",
+        "",
+        "user-1",
+        vec![jam],
+    );
+    s.create_refund(&refund)
+        .unwrap_or_else(|e| panic!("a distinct sale line must stay refundable, got: {e:?}"));
+
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        10,
+        "the exhausted TEA line is credited once, not twice"
+    );
+    assert_eq!(
+        get_stock_at(&conn, "JAM", DEFAULT_LOC),
+        1,
+        "the second line's refund credits its own unit"
+    );
+}

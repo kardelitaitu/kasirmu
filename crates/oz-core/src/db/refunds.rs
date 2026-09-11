@@ -10,8 +10,18 @@ next: none for the guard path | perf: N/A
 //! source locations in FIFO order (oldest deduction first for full refunds;
 //! reverse-chronological for partial refunds). The `deduction_locations` JSON
 //! column on the `sales` table records the per-line, per-location breakdown.
+//!
+//! Two cumulative bounds run inside the refund transaction, both reading the
+//! rows already persisted for the same sale: a MONEY bound (cumulative
+//! refunded minor units may not exceed the sale total) and a QUANTITY bound
+//! (cumulative refunded units per sale line may not exceed the units that
+//! line sold). The money bound alone does not stop stock leakage — a partial
+//! refund priced below the line's unit price can be repeated inside the sale
+//! total while restoring more units than were ever deducted.
 
-use rusqlite::params;
+use std::collections::HashMap;
+
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::CoreError;
 use crate::money::Currency;
@@ -22,6 +32,18 @@ use super::Store;
 impl Store<'_> {
     /// Process a refund — persist refund + lines inside a transaction
     /// and restore stock to the original deduction sources.
+    ///
+    /// **Two cumulative bounds, both read and enforced inside this
+    /// transaction** (the refund rows are written before the stock credit, so
+    /// the reads must exclude the refund under construction):
+    /// - MONEY — `SUM(refunds.total_minor)` for this sale and currency may not
+    ///   exceed `sales.total_minor` (COR-25).
+    /// - QUANTITY — `SUM(refund_lines.qty)` per sale line may not exceed the
+    ///   quantity that line sold (`sale_lines.qty`), and a line's cumulative
+    ///   credit may not exceed what it deducted. The money bound does not
+    ///   imply this one: under-priced repeat refunds stay inside the money
+    ///   bound while returning more units than were ever sold.
+    /// Both bounds fail CLOSED — a failed cumulative read aborts the refund.
     ///
     /// **Stock restoration (ADR-19 §5.3):**
     /// - Reads the sale's `deduction_locations` JSON column.
@@ -106,6 +128,69 @@ impl Store<'_> {
                     already_refunded
                 ),
             });
+        }
+
+        // ── 0b. Cumulative QUANTITY bound ─────────────────────
+        // The money guard above bounds VALUE, never UNITS. A sale line that
+        // sold N units can still be refunded over and over in units, as long
+        // as each refund is priced low enough to keep the running money total
+        // under the sale total — and every one of those refunds pushes stock
+        // back into inventory. Reject when the units already refunded for a
+        // sale line plus the units requested here exceed the quantity that
+        // line sold. Same transaction as the writes below, so the
+        // check-then-act window stays closed (the COR-25 shape for money),
+        // and the cumulative read fails CLOSED like the money read above.
+        //
+        // Requested units are aggregated per sale_line_id first: one refund
+        // carrying two lines for the same sale line counts as their sum, not
+        // as two independent refunds.
+        let mut requested_qty: HashMap<&str, i64> = HashMap::new();
+        for line in &refund.lines {
+            if line.qty > 0 {
+                *requested_qty.entry(&line.sale_line_id).or_insert(0) += line.qty;
+            }
+        }
+        for (sale_line_id, qty) in &requested_qty {
+            let sold_qty: Option<i64> = tx
+                .query_row(
+                    "SELECT qty FROM sale_lines WHERE id = ?1 AND sale_id = ?2",
+                    params![sale_line_id, refund.sale_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(CoreError::Db)?;
+            // No sale_lines row for this sale → no per-line sold quantity to
+            // bound against. Such a line is still caught downstream: against
+            // deduction_locations when the sale has them, and by the
+            // cumulative deducted-quantity bound inside the credit path.
+            let Some(sold_qty) = sold_qty else { continue };
+            let already_refunded_qty = self.refunded_qty_for_sale_line_in_tx(
+                &tx,
+                &refund.sale_id,
+                sale_line_id,
+                &refund.id,
+            )?;
+            let after_qty =
+                already_refunded_qty
+                    .checked_add(*qty)
+                    .ok_or_else(|| CoreError::Validation {
+                        field: "refund_line.qty",
+                        message: "refund quantity overflow".into(),
+                    })?;
+            if after_qty > sold_qty {
+                return Err(CoreError::Validation {
+                    field: "refund_line.qty",
+                    message: format!(
+                        "refund qty {} exceeds refundable quantity {} for line {} of sale {} (already refunded {} of {} units sold)",
+                        qty,
+                        sold_qty - already_refunded_qty,
+                        sale_line_id,
+                        refund.sale_id,
+                        already_refunded_qty,
+                        sold_qty
+                    ),
+                });
+            }
         }
 
         // ── 1. Persist refund + lines ──────────────────────────────
@@ -239,6 +324,41 @@ impl Store<'_> {
         Ok(())
     }
 
+    /// Cumulative units already refunded for one sale line, across every
+    /// prior refund of that sale, read inside the caller's transaction.
+    ///
+    /// Joined through refunds.sale_id rather than filtered on refund_lines
+    /// alone, so the sum cannot pick up an identically-named line belonging to
+    /// a different sale. Non-positive quantities contribute nothing (the
+    /// refund_lines CHECK rejects them anyway).
+    ///
+    /// A read failure is returned, never swallowed into a zero: the caller
+    /// aborts the refund, matching the fail-closed money guard (COR-25).
+    ///
+    /// `exclude_refund_id` drops the refund under construction from the sum.
+    /// `create_refund` inserts the refund rows BEFORE it restores stock, so a
+    /// bound read inside the credit path would otherwise count this refund's
+    /// own units twice; passing the id keeps both reads meaning the same thing
+    /// — units refunded by EARLIER refunds.
+    fn refunded_qty_for_sale_line_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        sale_id: &str,
+        sale_line_id: &str,
+        exclude_refund_id: &str,
+    ) -> Result<i64, CoreError> {
+        tx.query_row(
+            "SELECT COALESCE(SUM(rl.qty), 0)
+             FROM refund_lines rl
+             JOIN refunds r ON r.id = rl.refund_id
+             WHERE r.sale_id = ?1 AND rl.sale_line_id = ?2 AND rl.qty > 0
+               AND r.id <> ?3",
+            params![sale_id, sale_line_id, exclude_refund_id],
+            |row| row.get(0),
+        )
+        .map_err(CoreError::Db)
+    }
+
     /// Credit stock back to original deduction sources per ADR-19 §5.3 FIFO.
     ///
     /// For each refund line:
@@ -294,12 +414,27 @@ impl Store<'_> {
                 continue;
             }
 
-            if refund_qty > total_deducted {
+            // COR-25 shape for units: this bound is CUMULATIVE, so a
+            // repeat refund of the same line only gets the units that are
+            // still outstanding against what was deducted here. Without
+            // the sum, two refunds that each fit inside total_deducted
+            // credit more stock than the line ever sold.
+            let already_credited = self.refunded_qty_for_sale_line_in_tx(
+                tx,
+                &refund.sale_id,
+                &refund_line.sale_line_id,
+                &refund.id,
+            )?;
+            if already_credited + refund_qty > total_deducted {
                 return Err(CoreError::Validation {
                     field: "refund_line.qty",
                     message: format!(
-                        "refund qty {} exceeds original deduction qty {} for line {}",
-                        refund_qty, total_deducted, refund_line.sale_line_id
+                        "refund qty {} exceeds remaining deductible qty {} for line {} ({} of {} already credited)",
+                        refund_qty,
+                        total_deducted - already_credited,
+                        refund_line.sale_line_id,
+                        already_credited,
+                        total_deducted
                     ),
                 });
             }
