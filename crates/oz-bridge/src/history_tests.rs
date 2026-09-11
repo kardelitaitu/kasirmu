@@ -1,4 +1,13 @@
+//! Unit tests for the sales-history DTOs and session rejection (test
+//! relocation: moved out of `apps/desktop-client/src/commands/history_tests.rs`).
+//!
+//! Mounted at the foot of `history.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs from the bridge module directly. The
+//! three token-rejection tests drive `BridgeCtx::resolve_session` through
+//! the headless `TestBridge` harness instead of the tauri `AppState`.
+
 use super::*;
+use crate::testing::TestBridge;
 use foundation::{Currency, Money};
 use oz_core::SaleLine;
 
@@ -237,21 +246,24 @@ fn eod_report_serialize() {
 
 #[test]
 fn list_sales_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let tb = TestBridge::new();
+    let ctx = tb.ctx();
+    let result = ctx.resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
 fn get_sale_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("bad-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let tb = TestBridge::new();
+    let ctx = tb.ctx();
+    let result = ctx.resolve_session("bad-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
 fn export_reports_scoped_reject_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let tb = TestBridge::new();
+    let ctx = tb.ctx();
+    let result = ctx.resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }

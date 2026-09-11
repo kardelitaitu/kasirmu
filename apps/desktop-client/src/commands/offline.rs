@@ -39,10 +39,6 @@ fn run_list_remote_failures(
     oz_bridge::offline::run_list_remote_failures(conn).map_err(Into::into)
 }
 
-#[cfg(test)]
-#[path = "offline_tests.rs"]
-mod tests;
-
 /// Enqueue a transaction for later sync (scoped).
 #[tauri::command]
 pub async fn enqueue_offline_scoped(

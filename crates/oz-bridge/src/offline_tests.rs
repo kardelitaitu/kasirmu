@@ -1,3 +1,11 @@
+//! Unit tests for the offline-queue command helpers (test relocation:
+//! moved out of `apps/desktop-client/src/commands/offline_tests.rs`).
+//!
+//! Mounted at the foot of `offline.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the `run_*` helpers and DTOs from the bridge
+//! module directly — the desktop `run_*` shims are thin `AppError`
+//! adapters over these same functions.
+
 use super::*;
 use oz_core::migrations;
 use rusqlite::Connection;
@@ -29,7 +37,7 @@ fn run_requeue_remote_failure_unknown_id_errors() {
     let conn = fresh_conn();
     let err = run_requeue_remote_failure(&conn, "never-seen").unwrap_err();
     match err {
-        AppError::Core { sub_kind, .. } => {
+        BridgeError::Core { sub_kind, .. } => {
             assert_eq!(format!("{sub_kind:?}"), "NotFound");
         }
         other => panic!("expected NotFound Core error, got {other:?}"),

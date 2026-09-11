@@ -101,7 +101,3 @@ pub async fn export_eod_report_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "history_tests.rs"]
-mod tests;

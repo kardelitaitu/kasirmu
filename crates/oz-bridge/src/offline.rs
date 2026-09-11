@@ -439,3 +439,7 @@ pub async fn list_remote_failures_scoped(
     drop(db);
     Ok(failures)
 }
+
+#[cfg(test)]
+#[path = "offline_tests.rs"]
+mod offline_tests;

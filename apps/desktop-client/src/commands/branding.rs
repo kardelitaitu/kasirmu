@@ -171,7 +171,3 @@ pub async fn pick_logo_file_scoped(
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     pick_logo_file(app_handle).await
 }
-
-#[cfg(test)]
-#[path = "branding_tests.rs"]
-mod tests;

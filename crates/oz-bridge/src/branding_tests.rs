@@ -1,3 +1,12 @@
+//! Unit tests for the branding DTOs and logo-path validation (test
+//! relocation: moved out of `apps/desktop-client/src/commands/branding_tests.rs`).
+//!
+//! Mounted at the foot of `branding.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves `BrandSettingsDto` and `ALLOWED_LOGO_EXTENSIONS`
+//! from the bridge module directly. The dialog-backed `pick_logo_file`
+//! commands stay desktop-side (parked tauri-plugin-dialog seam) and carry
+//! no unit tests of their own.
+
 use super::*;
 #[test]
 fn brand_settings_debug() {
@@ -57,7 +66,7 @@ fn validate_logo_empty_path_is_allowed_duplicate() {
 }
 
 /// Inline helper that bypasses the AppHandle requirement for unit tests.
-fn validate_logo_path_inner(path: &str) -> Result<String, AppError> {
+fn validate_logo_path_inner(path: &str) -> Result<String, BridgeError> {
     if path.is_empty() {
         return Ok(String::new());
     }
@@ -69,7 +78,7 @@ fn validate_logo_path_inner(path: &str) -> Result<String, AppError> {
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
     if !ALLOWED_LOGO_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(AppError::Invalid(format!(
+        return Err(BridgeError::Invalid(format!(
             "logo file type '.{ext}' is not allowed"
         )));
     }

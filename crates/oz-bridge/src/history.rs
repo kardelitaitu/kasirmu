@@ -346,3 +346,7 @@ fn build_eod_report(db: &rusqlite::Connection) -> Result<EodReport, BridgeError>
         hourly_breakdown: hourly,
     })
 }
+
+#[cfg(test)]
+#[path = "history_tests.rs"]
+mod history_tests;

@@ -256,3 +256,7 @@ pub async fn set_brand_logo_path_scoped(
         Ok(Settings::set_brand_logo_path(&conn, path)?)
     }
 }
+
+#[cfg(test)]
+#[path = "branding_tests.rs"]
+mod branding_tests;
