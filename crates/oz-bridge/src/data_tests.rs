@@ -1,3 +1,15 @@
+//! Relocated data-command tests (Wave-F test relocation: moved out of
+//! `apps/desktop-client/src/commands/data_tests.rs`).
+//!
+//! Mounted at the foot of `data.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the eight wire DTOs, `exportable_settings_rows`
+//! and the two batch quota gates exactly as the desktop sibling module did
+//! (its `AppError` adapters were thin wrappers over these bridge fns). No
+//! context or harness is needed: every case is a pure DTO/serde check or a
+//! direct `&Store` gate drive. The two typed quota refusals rename
+//! `AppError::Core` to `BridgeError::Core` 1:1 — the gate now returns
+//! `BridgeError` natively and the asserted message texts are unchanged.
+
 use super::*;
 
 // ── Settings export redaction (review MED-2) ────────────────────────
@@ -295,7 +307,7 @@ fn import_gate_rejects_at_cap_and_writes_nothing() {
     ];
     let err = gate_import_product_batch(&store, &payload).unwrap_err();
     match err {
-        AppError::Core { message, .. } => {
+        BridgeError::Core { message, .. } => {
             assert!(message.contains("maximum 200 products"), "got: {message}");
             assert!(message.contains("currently have 199"), "got: {message}");
         }
@@ -419,7 +431,7 @@ fn import_gate_users_rejects_at_cap_and_writes_nothing() {
     let payload = vec![user_value("u-new-1", "new-1")];
     let err = gate_import_user_batch(&store, &payload).unwrap_err();
     match err {
-        AppError::Core { message, .. } => {
+        BridgeError::Core { message, .. } => {
             assert!(message.contains("maximum 1 staff users"), "got: {message}");
             assert!(message.contains("currently have 1"), "got: {message}");
         }

@@ -137,7 +137,3 @@ pub async fn create_backup_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "data_tests.rs"]
-mod tests;

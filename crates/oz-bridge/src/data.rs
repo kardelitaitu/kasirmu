@@ -726,3 +726,7 @@ pub async fn create_backup_scoped(
         .await?;
     create_backup(ctx, db_path).await
 }
+
+#[cfg(test)]
+#[path = "data_tests.rs"]
+mod data_tests;
