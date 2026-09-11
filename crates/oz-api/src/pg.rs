@@ -46,6 +46,59 @@ use crate::routes::terminals::RegisteredTerminal;
 /// Default inventory location UUID (must match the port schema's default).
 const CANONICAL_DEFAULT_LOCATION_UUID: &str = "01926b3a-0000-7000-8000-000000000001";
 
+/// The PostgreSQL ceiling on parameters per statement: **65 535**.
+///
+/// Where it comes from: the extended query protocol carries the parameter count of
+/// both the `Parse` and the `Bind` message as an `Int16`, and the server rejects
+/// anything above `INT16_MAX` with `too many parameters specified in bind
+/// message`. It is a wire-format limit, NOT a GUC — no server setting raises it,
+/// so unlike SQLite's `SQLITE_MAX_VARIABLE_NUMBER` (32 766 on the bundled 3.4x,
+/// 999 on pre-3.32 builds) the ceiling is identical on every supported server.
+const PG_MAX_PARAMS: usize = 65_535;
+
+/// Parameters a chunked `IN` statement binds BESIDES the chunk itself — the
+/// leading `$1` tenant id in [`list_missing_hashes`]. Placeholder numbering
+/// starts at `1 + PG_LEAD_PARAMS`, so the ceiling check has to count them too.
+const PG_LEAD_PARAMS: usize = 1;
+
+/// How many values one data-driven `IN (…)` list in this module may bind at a
+/// time.
+///
+/// Both data-driven lists here — [`attach_product_images`]'s product ids and
+/// [`list_missing_hashes`]'s candidate hashes — bind ONE PARAMETER PER VALUE, and
+/// their length comes from DATA (a tenant's whole catalog on
+/// `GET /api/v1/products`, a caller-supplied `?hashes=a,b,c` on
+/// `GET /api/v1/images:missing`), not from a fixed schema. Above [`PG_MAX_PARAMS`]
+/// the statement stops executing: the handler answers 500, or — where the caller
+/// swallows the error with `unwrap_or_default()` — silently answers the empty set.
+/// 10 000 keeps a 6.5x margin under the ceiling and stays small enough that one
+/// chunk is a single round trip.
+///
+/// This is a CHUNK SIZE, never a threshold that switches the filter off: a long
+/// list is read in MORE chunks, not in an unscoped sweep that would return rows
+/// outside the tenant or the whole table.
+const PG_IN_CHUNK: usize = 10_000;
+
+/// Pin the invariant at COMPILE time: a chunk plus the leading parameters it also
+/// binds must stay under the wire ceiling, or the chunking is itself the bug. A
+/// `const` assert fails every build, not only a test run someone remembers.
+const _: () = assert!(
+    PG_IN_CHUNK + PG_LEAD_PARAMS < PG_MAX_PARAMS,
+    "PG_IN_CHUNK must stay below PostgreSQL's 65535-parameters-per-statement ceiling"
+);
+
+/// Build the `$start .. $start+len-1` placeholder list for one `IN (…)` chunk.
+///
+/// Pure, so the chunk arithmetic — numbering, contiguity, no overlap between
+/// chunks — is testable without a live Postgres. See
+/// `pg_in_chunking_survives_a_list_longer_than_the_chunk`.
+fn pg_placeholders(start: usize, len: usize) -> String {
+    (start..start + len)
+        .map(|i| format!("${i}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 // ── Settings ────────────────────────────────────────────────────────────
 
 /// Read a raw `settings` value from Postgres (`None` when absent).
@@ -1079,25 +1132,37 @@ async fn attach_product_images(
         return Ok(());
     }
     let ids: Vec<&str> = products.iter().map(|p| p.product.id.as_str()).collect();
-    // Build a parameterised query with placeholders
-    let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${i}")).collect();
-    let sql = format!(
-        "SELECT product_id, slot, hash, position FROM product_images \
-         WHERE product_id IN ({}) ORDER BY slot ASC",
-        placeholders.join(", ")
-    );
-    let stmt = tx
-        .prepare(&sql)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = ids
-        .iter()
-        .map(|s| s as &(dyn tokio_postgres::types::ToSql + Sync))
-        .collect();
-    let rows = tx
-        .query(&stmt, &params)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
+    // THE CHUNK LOOP. `ids` carries one entry per product being listed, so its
+    // length is a tenant's catalog size and not a fixed schema width —
+    // `list_products` has no LIMIT. Chunks are DISJOINT by product_id and every
+    // product lands in exactly one chunk, so one query per chunk computes the same
+    // map as one query over the whole list (`ORDER BY slot` orders within a
+    // product, so chunking cannot reorder it either). The loop runs inside the
+    // CALLER's transaction — both `list_products` and `get_product` commit after
+    // this returns — so splitting the read across statements changes no atomicity.
+    // Nothing here falls back to an unscoped sweep when the list is long; that is
+    // the hole PG_IN_CHUNK exists to close.
+    let mut rows: Vec<tokio_postgres::Row> = Vec::new();
+    for chunk in ids.chunks(PG_IN_CHUNK) {
+        let sql = format!(
+            "SELECT product_id, slot, hash, position FROM product_images \
+             WHERE product_id IN ({}) ORDER BY slot ASC",
+            pg_placeholders(1, chunk.len())
+        );
+        let stmt = tx
+            .prepare(&sql)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = chunk
+            .iter()
+            .map(|s| s as &(dyn tokio_postgres::types::ToSql + Sync))
+            .collect();
+        let chunk_rows = tx
+            .query(&stmt, &params)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        rows.extend(chunk_rows);
+    }
     let mut by_product: std::collections::HashMap<
         String,
         Vec<oz_core::db::products::ProductImage>,
@@ -1154,26 +1219,43 @@ pub async fn list_missing_hashes(
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
 
-    let placeholders: Vec<String> = (1..=candidates.len()).map(|i| format!("${i}")).collect();
-    let sql = format!(
-        "SELECT hash FROM image_refs WHERE tenant_id = $1 AND hash IN ({}) AND refcount > 0",
-        placeholders.join(", ")
-    );
-    let stmt = tx
-        .prepare(&sql)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-        vec![&tenant_id as &(dyn tokio_postgres::types::ToSql + Sync)];
-    for c in candidates {
-        params.push(c);
+    // THE CHUNK LOOP, and the ACCUMULATOR the chunks feed. `candidates` is a
+    // caller-supplied list — `?hashes=a,b,c` on GET /api/v1/images:missing, or
+    // every distinct image hash in a tenant's catalog from `list_products` — so
+    // its length is unbounded and each value costs one parameter. Chunks are
+    // DISJOINT by hash and this query is a pure filter, so the union of the
+    // per-chunk hits is exactly the set one query over the whole list returns.
+    // The loop sits inside the transaction this function already opens and commits
+    // below, so splitting the read across statements changes no atomicity.
+    //
+    // The hash list starts at $2, NOT $1: $1 is the tenant id, which `params`
+    // binds first. Numbering it from $1 both collided with the tenant value and
+    // left one MORE parameter than the statement declared, which PostgreSQL
+    // rejects at Bind time ("bind message supplies N+1 parameters, but prepared
+    // statement requires N") — so every non-empty call here failed, and both
+    // callers swallow the error into an empty `missing_hashes`.
+    let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for chunk in candidates.chunks(PG_IN_CHUNK) {
+        let sql = format!(
+            "SELECT hash FROM image_refs WHERE tenant_id = $1 AND hash IN ({}) AND refcount > 0",
+            pg_placeholders(1 + PG_LEAD_PARAMS, chunk.len())
+        );
+        let stmt = tx
+            .prepare(&sql)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            Vec::with_capacity(chunk.len() + PG_LEAD_PARAMS);
+        params.push(&tenant_id as &(dyn tokio_postgres::types::ToSql + Sync));
+        for c in chunk {
+            params.push(c);
+        }
+        let rows = tx
+            .query(&stmt, &params)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        present.extend(rows.iter().map(|r| r.get::<_, String>("hash")));
     }
-    let rows = tx
-        .query(&stmt, &params)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let present: std::collections::HashSet<String> =
-        rows.iter().map(|r| r.get::<_, String>("hash")).collect();
     tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
     Ok(candidates
         .iter()

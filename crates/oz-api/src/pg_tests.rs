@@ -1960,3 +1960,70 @@ fn validate_tax_rate_write_rounding_mode_boundaries() {
     assert!(validate_tax_rate_write(None, None, None, None, Some("HALF_UP")).is_err());
     assert!(validate_tax_rate_write(None, None, None, None, Some("half-up")).is_err());
 }
+// ── Dynamic `IN (…)` chunking (pure, no database) ────────────────────────
+
+/// The chunk size is a CHUNK SIZE, never a threshold that switches the filter
+/// off: a list longer than [`PG_IN_CHUNK`] must be split, and the split must bind
+/// every value exactly once, in order, with no chunk bleeding into the next.
+///
+/// The server-side half of this needs a live Postgres (`OZ_TEST_PG_URL`) and
+/// skips in this suite, so the invariant is pinned by assertion on the arithmetic
+/// the two chunked sites actually run — placeholder numbering, parameters bound
+/// per statement, and the total — rather than by a fixture that cannot execute
+/// here.
+#[test]
+fn pg_in_chunking_survives_a_list_longer_than_the_chunk() {
+    // THE INVARIANT, pinned directly: raising `PG_IN_CHUNK` past the ceiling fails
+    // here as well as at compile time via `const _: () = assert!(…)` in pg.rs.
+    assert_eq!(PG_MAX_PARAMS, 65_535);
+    assert!(PG_IN_CHUNK + PG_LEAD_PARAMS < PG_MAX_PARAMS);
+
+    // One value past a boundary, so the loop MUST run twice.
+    let values: Vec<String> = (0..PG_IN_CHUNK + 100).map(|i| format!("h{i:06}")).collect();
+    let mut bound: Vec<String> = Vec::new();
+    let mut chunks = 0usize;
+    for chunk in values.chunks(PG_IN_CHUNK) {
+        chunks += 1;
+        assert!(chunk.len() <= PG_IN_CHUNK, "a chunk outgrew the chunk size");
+        // Exactly what `list_missing_hashes` builds: tenant at $1, then the list.
+        let placeholders = pg_placeholders(1 + PG_LEAD_PARAMS, chunk.len());
+        let names: Vec<&str> = placeholders.split(", ").collect();
+        assert_eq!(names.len(), chunk.len(), "one placeholder per value");
+        let mut params: Vec<&str> = vec!["tenant"];
+        params.extend(chunk.iter().map(|s| s.as_str()));
+        assert_eq!(params.len(), chunk.len() + PG_LEAD_PARAMS);
+        // The statement may never declare more parameters than the wire allows.
+        assert!(params.len() < PG_MAX_PARAMS);
+        for (offset, name) in names.iter().enumerate() {
+            let n = 1 + PG_LEAD_PARAMS + offset;
+            assert_eq!(*name, format!("${n}"), "placeholder numbering broke");
+            // NO BLEED: $n resolves to THIS chunk's value, never a neighbour's.
+            assert_eq!(params[n - 1], chunk[offset].as_str());
+        }
+        bound.extend(chunk.iter().cloned());
+    }
+    assert_eq!(
+        chunks, 2,
+        "PG_IN_CHUNK + 100 must cross exactly one boundary"
+    );
+    assert_eq!(bound.len(), values.len(), "every value bound exactly once");
+    assert_eq!(bound, values, "no chunk skipped, reordered or duplicated");
+}
+
+/// Placeholder numbering is the other half of the fix. `$1` is the tenant id in
+/// `list_missing_hashes`, so its hash list starts at `$2`; numbering it from `$1`
+/// (as it was) made the first candidate bind the tenant value AND left one more
+/// parameter than the statement declared, which PostgreSQL rejects at Bind time —
+/// so every non-empty call failed and both callers answered an empty
+/// `missing_hashes`. `attach_product_images` has no leading parameter, so its
+/// list starts at `$1`.
+#[test]
+fn pg_placeholders_number_from_their_start_index() {
+    assert_eq!(pg_placeholders(1, 1), "$1");
+    assert_eq!(pg_placeholders(1, 3), "$1, $2, $3");
+    assert_eq!(pg_placeholders(1 + PG_LEAD_PARAMS, 3), "$2, $3, $4");
+    assert_eq!(pg_placeholders(2, 0), "", "an empty chunk binds nothing");
+    for len in [1usize, 2, 9, 10, 11, 99, 100, PG_IN_CHUNK] {
+        assert_eq!(pg_placeholders(2, len).split(", ").count(), len);
+    }
+}
