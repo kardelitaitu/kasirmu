@@ -2,10 +2,8 @@
 //! ids and names, coordinate extremes, null/absent optional fields, and
 //! wire/port/direction combinations.
 //!
-//! Split from topology_tests.rs so every test file in the commands dir
-//! stays under the ~3k-line guideline. `use super::*` resolves the root's
-//! flat namespace; the payload types come from the typed model surface.
-
+//! Mounted as `topology_field_tests` beside `model.rs` in `oz_bridge::topology`
+//! via `#[path]`; the flat namespace resolves through `use super::*`.
 use super::*;
 
 // ── Field-level edge cases ────────────────────────────────────

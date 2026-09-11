@@ -2,13 +2,43 @@
 //! the compiled runtime plan, trait implementations, and partial /
 //! incremental save patterns.
 //!
-//! Split from topology_tests.rs so every test file in the commands dir
-//! stays under the ~3k-line guideline. `use super::*` resolves the root's
-//! flat namespace; `use super::topology_tests::*` shares the module's test
-//! helpers (fresh_conn, semantic_node, semantic_location_wire).
-
-use super::topology_tests::*;
+//! Mounted as `topology_persistence_tests` beside `persistence.rs` in
+//! `oz_bridge::topology` via `#[path]`; the flat namespace resolves through
+//! `use super::*`. The former `super::topology_tests::*` helpers are
+//! embedded test-locally: `fresh_conn` delegates to the shared headless
+//! harness (`crate::testing::temp_conn`), the payload builders are copied
+//! verbatim.
 use super::*;
+
+fn fresh_conn() -> rusqlite::Connection {
+    crate::testing::temp_conn()
+}
+
+pub(crate) fn semantic_node(id: &str, node_type: &str, store_profile_id: Option<&str>) -> Value {
+    let mut node = serde_json::json!({
+        "id": id,
+        "type": node_type,
+        "name": id,
+        "x": 0.0,
+        "y": 0.0,
+    });
+    if let Some(store_profile_id) = store_profile_id {
+        node["store_profile_id"] = Value::String(store_profile_id.into());
+    }
+    node
+}
+
+pub(crate) fn semantic_location_wire(id: &str, to_node_id: &str) -> Value {
+    serde_json::json!({
+        "id": id,
+        "from_node_id": "branch",
+        "to_node_id": to_node_id,
+        "direction": "one-way",
+        "from_port_id": "location-out",
+        "to_port_id": "location-in",
+        "relationship_type": "location",
+    })
+}
 
 // ── Persistence edge cases ─────────────────────────────────────
 
@@ -694,7 +724,18 @@ fn template_list_does_not_see_the_diagram_or_runtime_plan() {
     // `.../topology-runtime/main`. Neither may surface as a template name.
     let conn = fresh_conn();
     let topo = topology_setting_key(Some("main")).unwrap();
-    save_topology_json_at_key(&conn, vec![], vec![], &topo).unwrap();
+    save_topology_json_at_key_with_revision(
+        &conn,
+        vec![],
+        vec![],
+        &topo,
+        &[],
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     let runtime_key = topology_runtime_setting_key(&topo).unwrap();
     oz_core::Settings::set(&conn, &runtime_key, "{}").unwrap();
 

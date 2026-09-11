@@ -76,12 +76,6 @@ pub(crate) use semantics::*;
 #[cfg(test)]
 mod topology_command_tests;
 #[cfg(test)]
-mod topology_field_tests;
-#[cfg(test)]
-mod topology_persistence_tests;
-#[cfg(test)]
-mod topology_revision_tests;
-#[cfg(test)]
 mod topology_serde_tests;
 #[cfg(test)]
 mod topology_stress_tests;

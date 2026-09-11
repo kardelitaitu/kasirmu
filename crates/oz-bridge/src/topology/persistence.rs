@@ -851,3 +851,7 @@ pub fn validate_topology_structure(
 #[cfg(test)]
 #[path = "persistence_tests.rs"]
 mod persistence_tests;
+
+#[cfg(test)]
+#[path = "topology_persistence_tests.rs"]
+mod topology_persistence_tests;

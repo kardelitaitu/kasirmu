@@ -316,3 +316,7 @@ pub struct UpdateInstanceRequest {
 #[cfg(test)]
 #[path = "model_tests.rs"]
 mod model_tests;
+
+#[cfg(test)]
+#[path = "topology_field_tests.rs"]
+mod topology_field_tests;

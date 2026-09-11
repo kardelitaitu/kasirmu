@@ -584,3 +584,7 @@ pub fn insert_topology_revision(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "topology_revision_tests.rs"]
+mod topology_revision_tests;

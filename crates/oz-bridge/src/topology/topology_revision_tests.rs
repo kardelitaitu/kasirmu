@@ -1,18 +1,21 @@
 //! ADR #46 Phase 1: topology revision history write path.
 //!
-//! Declared at the topology root (house pattern) so `use super::*` resolves
-//! the flat namespace — including `revisions::*`, re-exported there under
-//! `cfg(test)` — and `super::topology_tests::*` shares `fresh_conn`.
-//!
-//! The load-bearing test here is
-//! [`a_rejected_save_writes_no_revision_row`]. ADR #46 §3 argues the INSERT
-//! must live inside Apply's transaction rather than at the call site; that
-//! argument is only real if a save that aborts leaves no row behind.
-
-use super::topology_tests::*;
+//! Mounted as `topology_revision_tests` beside `revisions.rs` in
+//! `oz_bridge::topology` via `#[path]`; the flat namespace resolves through
+//! `use super::*`. `fresh_conn` delegates to the shared headless harness
+//! (`crate::testing::temp_conn`). The load-bearing test here is
+//! [`a_rejected_save_writes_no_revision_row`]: a save that aborts must
+//! leave no revision row behind (ADR #46 §3).
 use super::*;
+use crate::topology::model::TOPOLOGY_SETTING_KEY;
+use crate::topology::persistence::save_topology_json_at_key_with_revision;
+use crate::topology::semantics::current_topology_revision;
 
-use crate::error::AppError;
+fn fresh_conn() -> rusqlite::Connection {
+    crate::testing::temp_conn()
+}
+
+use crate::error::BridgeError;
 use rusqlite::OptionalExtension;
 use serde_json::Value;
 
@@ -44,7 +47,7 @@ fn save(
     nodes: Vec<Value>,
     expected: Option<u64>,
     context: Option<&TopologyRevisionContext<'_>>,
-) -> Result<u64, AppError> {
+) -> Result<u64, BridgeError> {
     save_topology_json_at_key_with_revision(
         conn,
         nodes,
@@ -562,7 +565,7 @@ fn the_change_note_limit_is_counted_in_characters_not_bytes() {
     let over = "a".repeat(TOPOLOGY_CHANGE_NOTE_MAX_CHARS + 1);
     let err = normalize_topology_change_note(Some(&over)).unwrap_err();
     assert!(
-        matches!(&err, AppError::TopologyValidation { code, .. }
+        matches!(&err, BridgeError::TopologyValidation { code, .. }
             if code == "topology-change-note-too-long"),
         "one over the limit must be rejected, not truncated: {err:?}"
     );
