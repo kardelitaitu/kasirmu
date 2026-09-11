@@ -138,7 +138,3 @@ pub async fn release_table_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "tables_tests.rs"]
-mod tests;

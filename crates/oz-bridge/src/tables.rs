@@ -199,3 +199,7 @@ pub async fn release_table_scoped(
     drop(db);
     Ok(table)
 }
+
+#[cfg(test)]
+#[path = "tables_tests.rs"]
+mod tables_tests;
