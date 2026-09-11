@@ -84,7 +84,7 @@ implementation-status walkthrough.
   [Phase 4 verification](./2026-08-09-local-sync-phase4-verification.md),
   [isolated E2E harness](./2026-08-09-local-sync-isolated-e2e-harness.md),
   [status/retry](./2026-08-09-local-sync-status-retry.md),
-  [auth hardening](./2026-08-09-sync-auth-hardening.md),
+  [auth hardening / ADR #50](./2026-09-11-adr50-sync-auth-hardening.md),
   [plan gating](./2026-08-09-sync-plan-gating.md)
 - **Topology:** [Phase 1 branch persistence](./2026-08-09-topology-phase1-branch-persistence.md),
   [Phase 2 KDS source parity](./2026-08-09-topology-phase2-kds-source-parity.md),
