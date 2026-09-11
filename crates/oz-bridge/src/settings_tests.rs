@@ -768,3 +768,92 @@ fn device_identity_keys_stay_readable_but_never_exportable() {
     assert!(is_non_exportable_key(keys::SYNC_TERMINAL_ID));
     assert!(is_non_exportable_key(keys::MACHINE_ID));
 }
+// ── SYNC egress: a locally written secret must not be offered to peers ──
+
+/// The enqueue leg was the one settings surface with no guard at all: reads
+/// refused the deny list, writes refused the manager prefixes, and
+/// `enqueue_settings_updates` queued anything. Fails against HEAD, where a
+/// `local_api.secret` saved locally replicated to every terminal in the tenant.
+#[test]
+fn enqueue_settings_updates_does_not_replicate_secret_or_device_keys() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    let entries = HashMap::from([
+        ("store.name".to_string(), "Warung Sedap".to_string()),
+        ("receipt.footer".to_string(), "Terima kasih".to_string()),
+        (
+            "local_api.secret".to_string(),
+            "own-signing-secret".to_string(),
+        ),
+        ("local_api.enabled".to_string(), "true".to_string()),
+        (
+            "machine_id".to_string(),
+            "own-machine-fingerprint".to_string(),
+        ),
+        (
+            "sync_terminal_secret".to_string(),
+            "own-terminal-secret".to_string(),
+        ),
+        ("license.api_key".to_string(), "own-license-key".to_string()),
+        ("lan_server.bind".to_string(), "0.0.0.0".to_string()),
+    ]);
+
+    enqueue_settings_updates(&store, &entries, "term-1", "store-x").unwrap();
+
+    let pending = store.list_pending_offline_for_tenant("store-x").unwrap();
+    let queued: Vec<String> = pending
+        .iter()
+        .map(|item| {
+            serde_json::from_str::<serde_json::Value>(&item.payload)
+                .ok()
+                .and_then(|v| v["key"].as_str().map(String::from))
+                .unwrap_or_default()
+        })
+        .collect();
+    assert!(
+        queued.contains(&"store.name".to_string()),
+        "ordinary key must replicate: {queued:?}"
+    );
+    assert!(
+        queued.contains(&"receipt.footer".to_string()),
+        "ordinary key must replicate: {queued:?}"
+    );
+    for forbidden in [
+        "local_api.secret",
+        "local_api.enabled",
+        "machine_id",
+        "sync_terminal_secret",
+        "license.api_key",
+        "lan_server.bind",
+    ] {
+        assert!(
+            !queued.iter().any(|k| k == forbidden),
+            "{forbidden} must never be offered to the network; queued {queued:?}"
+        );
+    }
+    assert_eq!(
+        pending.len(),
+        2,
+        "exactly the two portable rows may be queued"
+    );
+}
+
+/// The egress gate must agree with the ingest gate, or the two halves disagree
+/// silently the way the two shell deny lists did.
+#[test]
+fn sync_egress_gate_agrees_with_the_sealed_policy() {
+    for key in ["store.name", "currency.default", "theme"] {
+        assert!(remote_sync_admits(key), "{key} must replicate");
+    }
+    for key in [
+        "local_api.secret",
+        "local_api.enabled",
+        "lan_server.psk",
+        "machine_id",
+        "sync_terminal_id",
+        "sync_terminal_secret",
+        "stripe.api_key",
+    ] {
+        assert!(!remote_sync_admits(key), "{key} must not replicate");
+    }
+}

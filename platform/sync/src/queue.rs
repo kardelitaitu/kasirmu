@@ -8,14 +8,60 @@ next: malformed/conflicting pull items are permanent failures but still burn the
 //!
 //! Wraps the `oz_core` offline queue Store methods into a clean interface
 //! with additional tracking for conflict resolution and last-sync timing.
+//!
+//! Settings items are the one action type that is NOT applied verbatim: both
+//! dispatchers (`apply_remote_in_tx` and the legacy `apply_remote`) gate the key
+//! through [`remote_sync_admits`], the sealed `IngestPolicy::RemoteSync` policy
+//! owned by platform-core, so a remote item cannot plant a credential
+//! (`local_api.secret`, `license.api_key`, the gateway keys) or a device-bound
+//! identity (`machine_id`, `sync_terminal_id`) on this install. Nothing in
+//! `transport` or `sync_api` signs or MACs an item, so the sender is not an
+//! authority. A refusal warns and continues — it never aborts the batch and
+//! never logs the value.
 
 use oz_core::db::Store;
 use oz_core::db::offline::SyncStatusSummary;
 use oz_core::error::CoreError;
 use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 use oz_core::settings::Settings;
+use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use serde::Deserialize;
 use serde_json::Value;
+
+/// The ONE remote-ingest gate for the sync lane.
+///
+/// Delegates to the sealed [`IngestPolicy::RemoteSync`] policy owned by
+/// platform-core (re-exported through `oz_core::settings`), which refuses every
+/// credential in `SECRET_KEY_DENY_LIST`, every device-bound identity in
+/// `NON_EXPORTABLE_DEVICE_KEYS` (`machine_id`, `sync_terminal_id`) and every
+/// lifecycle-manager prefix (`local_api.*`, `lan_server.*`). This lane owns no
+/// key list of its own.
+///
+/// Why the policy is asked directly rather than calling
+/// `Settings::set_with_policy`: that accessor is an inherent method of
+/// `platform_core::settings::Settings`, while this crate's `Settings` is
+/// `oz_core`'s delegating facade, which does not expose it yet, and
+/// `platform/sync` has no `platform-core` dependency edge. Both dispatchers
+/// below therefore gate on this boundary and then call the existing
+/// `Settings::set`; swapping the body for `set_with_policy` is a one-line change
+/// once `crates/oz-core/src/settings.rs` delegates the accessor.
+///
+/// A refusal is warn-and-continue, never an error: the precedent is the
+/// unsupported-action arm at the foot of `apply_remote` and the non-fatal delta
+/// write in both settings arms. Aborting a pull over one disallowed key would
+/// let the server deny service to the whole tenant.
+fn remote_sync_admits(key: &str) -> bool {
+    IngestPolicy::RemoteSync.admits(key)
+}
+
+/// Warn for one refused key. Names the key and the policy, never the value.
+fn warn_refused_settings_key(key: &str) {
+    tracing::warn!(
+        key = %key,
+        policy = IngestPolicy::RemoteSync.label(),
+        "remote settings key refused by ingest policy (skipped, batch continues)"
+    );
+}
 
 #[derive(Deserialize)]
 struct SalePayload {
@@ -480,16 +526,23 @@ impl SyncQueue {
             "settings.update" | "settings.change" => {
                 let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid settings payload: {e}")))?;
-                Settings::set(tx, &payload.key, &payload.value)?;
-                if let Err(e) =
-                    Settings::write_delta(tx, &payload.key, &payload.value, &payload.terminal_id)
-                {
-                    tracing::warn!(
-                        key = %payload.key,
-                        terminal_id = %payload.terminal_id,
-                        error = %e,
-                        "sync settings delta write failed (non-fatal)"
-                    );
+                if !remote_sync_admits(&payload.key) {
+                    warn_refused_settings_key(&payload.key);
+                } else {
+                    Settings::set(tx, &payload.key, &payload.value)?;
+                    if let Err(e) = Settings::write_delta(
+                        tx,
+                        &payload.key,
+                        &payload.value,
+                        &payload.terminal_id,
+                    ) {
+                        tracing::warn!(
+                            key = %payload.key,
+                            terminal_id = %payload.terminal_id,
+                            error = %e,
+                            "sync settings delta write failed (non-fatal)"
+                        );
+                    }
                 }
             }
             // A sale completed on the CLOUD (payment captured via the
@@ -635,6 +688,10 @@ impl SyncQueue {
             "settings.update" | "settings.change" => {
                 let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid settings payload: {e}")))?;
+                if !remote_sync_admits(&payload.key) {
+                    warn_refused_settings_key(&payload.key);
+                    return Ok(());
+                }
                 Settings::set(store.conn(), &payload.key, &payload.value)?;
                 if let Err(e) = Settings::write_delta(
                     store.conn(),
@@ -681,6 +738,12 @@ fn settings_change_of(item: &OfflineQueueItem) -> Option<(String, String)> {
         return None;
     }
     let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload).ok()?;
+    // A refused key was never applied, so it must not be reported as a change:
+    // the daemon publishes `SettingsUpdated` from this and the UI would refetch
+    // a value that the ingest gate deliberately did not write.
+    if !remote_sync_admits(&payload.key) {
+        return None;
+    }
     Some((payload.key, payload.terminal_id))
 }
 

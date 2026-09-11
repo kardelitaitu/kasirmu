@@ -1231,3 +1231,132 @@ fn apply_remote_atomic_crdt_envelope_mixed_location_and_unscoped_sides() {
     assert_eq!(inventory_qty(&store, "LOC-TWO"), 25);
     assert_eq!(sum, 25, "aggregate must equal the SUM over all rows");
 }
+// ── SYNC ingest policy: a remote settings write cannot plant credentials ──
+
+/// Helper: a remote `settings.update` for an arbitrary key/value, as the
+/// cloud server or a compromised peer would deliver it.
+fn remote_settings_kv(id: &str, key: &str, value: &str) -> OfflineQueueItem {
+    let payload = serde_json::json!({
+        "key": key,
+        "value": value,
+        "terminal_id": "term-remote",
+        "version": 3,
+    });
+    let mut item = OfflineQueueItem::new("settings.update", &payload.to_string());
+    item.id = id.into();
+    item.created_at = "2026-01-02T00:00:00.000Z".into();
+    item
+}
+
+/// The live hole: a `settings.update` carrying `machine_id` — the device-bound
+/// KDF factor and trial lock — must NOT be applied. Fails against HEAD, where
+/// the arm called `Settings::set` with no predicate at all.
+#[test]
+fn remote_settings_update_refuses_machine_id_and_keeps_local_value() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
+
+    let outcome = queue
+        .apply_remote_atomic_full(
+            &store,
+            &remote_settings_kv("ingest-mid", "machine_id", "PLANTED"),
+        )
+        .unwrap();
+    assert_eq!(
+        Settings::get(store.conn(), "machine_id")
+            .unwrap()
+            .as_deref(),
+        Some("own-machine-fingerprint"),
+        "a remote item must not overwrite this install's machine_id"
+    );
+    assert_eq!(
+        outcome.settings_change, None,
+        "a refused key must not be reported as a settings change either"
+    );
+}
+
+/// Same for the lifecycle-manager prefixes: `local_api.secret` is the per-install
+/// JWT signing key and `local_api.enabled` is manager-owned intent. Fails against
+/// HEAD.
+#[test]
+fn remote_settings_update_refuses_local_api_and_lan_server_keys() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    Settings::set(store.conn(), "local_api.secret", "own-signing-secret").unwrap();
+
+    for (id, key) in [
+        ("ingest-las", "local_api.secret"),
+        ("ingest-lae", "local_api.enabled"),
+        ("ingest-lsb", "lan_server.bind"),
+        ("ingest-sts", "sync_terminal_secret"),
+        ("ingest-sti", "sync_terminal_id"),
+        ("ingest-lak", "license.api_key"),
+    ] {
+        queue
+            .apply_remote_atomic(&store, &remote_settings_kv(id, key, "PLANTED"))
+            .unwrap();
+        let value = Settings::get(store.conn(), key).unwrap();
+        assert!(
+            value.as_deref() != Some("PLANTED"),
+            "{key} was applied from a remote sync item"
+        );
+    }
+}
+
+/// The regression guard for the queue suite: a refusal must not abort the batch,
+/// so an ordinary key arriving alongside a planted one still lands — under BOTH
+/// dispatchers, since the legacy `apply_remote` arm is a separate copy of the
+/// logic.
+#[test]
+fn remote_settings_batch_continues_past_a_refused_key() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
+
+    for (n, apply) in [("atomic", true), ("legacy", false)] {
+        let key = format!("store.name-{n}");
+        if apply {
+            queue
+                .apply_remote_atomic(
+                    &store,
+                    &remote_settings_kv("b-mid-a", "machine_id", "PLANTED"),
+                )
+                .unwrap();
+            queue
+                .apply_remote_atomic(
+                    &store,
+                    &remote_settings_kv("b-ok-a", "receipt.footer", "Terima kasih"),
+                )
+                .unwrap();
+        } else {
+            queue
+                .apply_remote(
+                    &store,
+                    &remote_settings_kv("b-mid-l", "machine_id", "PLANTED"),
+                )
+                .unwrap();
+            queue
+                .apply_remote(
+                    &store,
+                    &remote_settings_kv("b-ok-l", "receipt.footer", "Terima kasih"),
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            Settings::get(store.conn(), "receipt.footer")
+                .unwrap()
+                .as_deref(),
+            Some("Terima kasih"),
+            "the ordinary key after a refused one must still apply ({n} dispatcher)"
+        );
+        assert_eq!(
+            Settings::get(store.conn(), "machine_id")
+                .unwrap()
+                .as_deref(),
+            Some("own-machine-fingerprint"),
+            "{n} dispatcher must still refuse machine_id"
+        );
+        let _ = key;
+    }
+}

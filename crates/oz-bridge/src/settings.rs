@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use oz_core::permissions;
+use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use oz_core::{Settings, Store, UserPreferences};
 use platform_core::terminal_profile::TerminalProfile;
 use serde::{Deserialize, Serialize};
@@ -439,6 +440,19 @@ pub fn run_set_setting(
 /// settings.update wire contract: payload shape, Low priority, and
 /// supersede-any-pending-same-key semantics. Callers enqueue on the GLOBAL db (the
 /// sync daemon only watches the global queue), never the store db the value was written to.
+///
+/// Egress gate: a key that the ingest side would refuse is not offered to the
+/// network either. Both directions ask the SAME sealed
+/// [`IngestPolicy::RemoteSync`] through [`remote_sync_admits`], so a locally
+/// written credential (the write-side check at [ `run_set_setting` guards only
+/// the manager prefixes, and the read side at [`run_get_setting`] guards the
+/// deny list) can no longer replicate in cleartext to every peer in the tenant.
+/// A refused key is warned about and skipped — never an error, because the
+/// caller treats a failed enqueue as non-fatal already, and the warn names the
+/// key and the policy, never the value.
+///
+/// This is the one settings leg that had no guard at all: reads refused the deny
+/// list, writes refused the manager prefixes, and the enqueue carried anything.
 pub fn enqueue_settings_updates(
     store: &Store,
     entries: &HashMap<String, String>,
@@ -446,10 +460,38 @@ pub fn enqueue_settings_updates(
     tenant_id: &str,
 ) -> Result<(), BridgeError> {
     for (key, value) in entries {
+        if !remote_sync_admits(key) {
+            warn_refused_settings_key(key);
+            continue;
+        }
         store.enqueue_settings_update_superseding(key, value, terminal_id, tenant_id)?;
     }
     Ok(())
 }
+
+/// The ONE remote-replication gate for this lane.
+///
+/// Delegates to the sealed [`IngestPolicy::RemoteSync`] owned by platform-core
+/// (re-exported through `oz_core::settings`, so no new dependency edge). Used by
+/// [`enqueue_settings_updates`], the single egress funnel for all three
+/// settings-write commands in this module.
+///
+/// Symmetric with the ingest gate in `platform_sync::queue`: a key that cannot
+/// be APPLIED from the network must not be OFFERED to the network either, or the
+/// two halves would disagree exactly the way the two shell deny lists did.
+fn remote_sync_admits(key: &str) -> bool {
+    IngestPolicy::RemoteSync.admits(key)
+}
+
+/// Warn for one key refused on the replication egress. Key and policy only.
+fn warn_refused_settings_key(key: &str) {
+    tracing::warn!(
+        key = %key,
+        policy = IngestPolicy::RemoteSync.label(),
+        "settings key refused by sync egress policy (not enqueued, batch continues)"
+    );
+}
+
 // ---------------------------------------------------------------- readers
 
 /// Get receipt settings (global DB; gate-free exactly as in the shell).
