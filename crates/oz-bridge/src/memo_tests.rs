@@ -1,4 +1,13 @@
+//! Unit tests for the memo command surface (DTO wire shapes and the
+//! 2026-09-07 stop-gate ruling).
+//!
+//! Relocated from `apps/desktop-client/src/commands/memo_tests.rs`
+//! (Wave F); the tauri `test_state` mock becomes `TestBridge::with_conn`
+//! over the seeded global identity DB.
+
 use super::*;
+
+use crate::testing::TestBridge;
 
 fn memo_dto(location_ids: Vec<String>, published_at: Option<String>) -> MemoDto {
     MemoDto {
@@ -167,14 +176,13 @@ fn create_args_rejects_missing_required_fields() {
 // evaluated is the same one production uses (roles resolved server-side).
 //
 // Harness notes: the memo tables live in the GLOBAL identity DB, which is
-// exactly the DB `AppState::for_test_with_conn` hands the command — no
+// exactly the DB `TestBridge::with_conn` hands the command — no
 // store-DB isolation is needed (unlike the store-scoped customer
 // commands). `SessionContext::new(user_id, role_id, terminal, store,
 // instance, type_key, token?, expiry)`; the role_id on the session is
 // cosmetic, the gate resolves the user's role row.
 
 use oz_core::session::SessionContext;
-use tauri::Manager as _;
 
 /// Seed roles + a fixed-id user with the given role on the identity DB.
 fn seed_user(conn: &rusqlite::Connection, user_id: &str, role_id: &str) {
@@ -219,13 +227,6 @@ fn seed_published_memo(conn: &rusqlite::Connection) -> String {
     store.publish_memo("default", &draft.id).unwrap().id
 }
 
-fn test_state(conn: rusqlite::Connection) -> tauri::App<tauri::test::MockRuntime> {
-    tauri::test::mock_builder()
-        .manage(AppState::for_test_with_conn(conn))
-        .build(tauri::generate_context!())
-        .unwrap()
-}
-
 #[tokio::test]
 async fn author_can_stop_their_own_memo_without_memo_stop() {
     // A manager author holds only `memo:write` — the author short-circuit
@@ -233,15 +234,12 @@ async fn author_can_stop_their_own_memo_without_memo_stop() {
     let conn = oz_core::migrations::fresh_db();
     seed_user(&conn, "user-manager", "role-manager");
     let memo_id = seed_published_memo(&conn);
-    let app = test_state(conn);
-    app.state::<AppState>()
-        .session_store
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions()
         .write()
         .unwrap()
         .insert("tok".into(), session_for("user-manager", "role-manager"));
-    let dto = stop_memo_scoped(memo_id, "tok".into(), app.state())
-        .await
-        .unwrap();
+    let dto = stop_memo_scoped(&tb.ctx(), "tok", &memo_id).await.unwrap();
     assert_eq!(dto.status, "stopped");
     assert_eq!(dto.author_user_id, "user-manager");
 }
@@ -253,15 +251,12 @@ async fn admin_can_stop_another_authors_memo() {
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-admin", "role-admin");
     let memo_id = seed_published_memo(&conn);
-    let app = test_state(conn);
-    app.state::<AppState>()
-        .session_store
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions()
         .write()
         .unwrap()
         .insert("tok".into(), session_for("user-admin", "role-admin"));
-    let dto = stop_memo_scoped(memo_id, "tok".into(), app.state())
-        .await
-        .unwrap();
+    let dto = stop_memo_scoped(&tb.ctx(), "tok", &memo_id).await.unwrap();
     assert_eq!(dto.status, "stopped");
 }
 
@@ -274,14 +269,13 @@ async fn peer_manager_cannot_stop_another_managers_memo() {
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-peer", "role-manager");
     let memo_id = seed_published_memo(&conn);
-    let app = test_state(conn);
-    app.state::<AppState>()
-        .session_store
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions()
         .write()
         .unwrap()
         .insert("tok".into(), session_for("user-peer", "role-manager"));
-    let result = stop_memo_scoped(memo_id, "tok".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = stop_memo_scoped(&tb.ctx(), "tok", &memo_id).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -294,19 +288,18 @@ async fn staff_cannot_stop_any_memo_even_their_own_claim_is_checked() {
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-staff", "role-staff");
     let memo_id = seed_published_memo(&conn);
-    let app = test_state(conn);
-    app.state::<AppState>()
-        .session_store
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions()
         .write()
         .unwrap()
         .insert("tok".into(), session_for("user-staff", "role-staff"));
-    let result = stop_memo_scoped(memo_id, "tok".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = stop_memo_scoped(&tb.ctx(), "tok", &memo_id).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn stop_rejects_invalid_session() {
-    let app = test_state(oz_core::migrations::fresh_db());
-    let result = stop_memo_scoped("memo-1".into(), "missing-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let tb = TestBridge::new().with_conn(oz_core::migrations::fresh_db());
+    let result = stop_memo_scoped(&tb.ctx(), "missing-token", "memo-1").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }

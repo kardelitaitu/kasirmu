@@ -336,3 +336,7 @@ pub async fn revise_memo_scoped(
         &args.body,
     )?))
 }
+
+#[cfg(test)]
+#[path = "memo_tests.rs"]
+mod tests;

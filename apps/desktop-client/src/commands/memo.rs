@@ -146,7 +146,3 @@ pub async fn revise_memo_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "memo_tests.rs"]
-mod tests;

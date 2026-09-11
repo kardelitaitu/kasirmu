@@ -1,12 +1,15 @@
 //! Tests for the local payment method commands (slice 6).
+//!
+//! Relocated from `apps/desktop-client/src/commands/local_payment_tests.rs`
+//! (Wave F); the tauri `flow_state`/`mock_app` pair becomes `TestBridge`
+//! with an isolated store-db manager over a unique temp directory.
 
 use super::*;
-use crate::state::AppState;
+use crate::testing::TestBridge;
 use oz_core::migrations;
 use oz_core::regional::ConfigScope;
 use oz_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
-use tauri::Manager;
 
 /// Seed roles + the owner user (full permissions) into the global DB.
 fn seed_owner(conn: &rusqlite::Connection) {
@@ -20,24 +23,37 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-/// AppState with a fresh migrated global DB and an isolated store-db dir.
-fn flow_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    let path = temp_dir.keep();
-    state.db_manager = StoreDatabaseManager::new(path, migrations::ALL);
-    state
+static STORE_DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Unique store-db directory per test - the mechanical twin of the desktop
+/// `flow_state`'s `tempfile::tempdir().unwrap().keep()`.
+fn unique_store_dir() -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "oz-bridge-local-payment-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        STORE_DIR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
 }
 
-fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+/// `TestBridge` with a fresh migrated global DB and an isolated store-db
+/// manager over a unique directory - the bridge twin of the desktop
+/// `flow_state` + `mock_app` pair.
+fn flow_bridge(conn: rusqlite::Connection) -> TestBridge {
+    TestBridge::new()
+        .with_conn(conn)
+        .with_db_manager(StoreDatabaseManager::new(
+            unique_store_dir(),
+            migrations::ALL,
+        ))
 }
 
-fn owner_session(state: &AppState, token: &str) {
-    state.session_store.write().unwrap().insert(
+fn owner_session(tb: &TestBridge, token: &str) {
+    tb.sessions().write().unwrap().insert(
         token.to_string(),
         SessionContext::new(
             "user-owner".into(),
@@ -56,20 +72,19 @@ fn owner_session(state: &AppState, token: &str) {
 async fn set_then_get_round_trips_the_rail_surface() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let tb = flow_bridge(conn);
+    owner_session(&tb, "owner-tok");
 
     let effective = set_local_payment_methods_scoped(
-        "default".into(),
+        &tb.ctx(),
+        "default",
         vec![LocalPaymentRailArgs {
             rail_code: "qris".into(),
             label: "QRIS".into(),
             is_enabled: true,
             parameters: "{}".into(),
         }],
-        "owner-tok".into(),
-        app.state(),
+        "owner-tok",
     )
     .await
     .unwrap();
@@ -80,7 +95,7 @@ async fn set_then_get_round_trips_the_rail_surface() {
 
     // A plain read (slice-6 read command) must agree with the write's
     // read-back.
-    let again = get_local_payment_methods_scoped("default".into(), "owner-tok".into(), app.state())
+    let again = get_local_payment_methods_scoped(&tb.ctx(), "default", "owner-tok")
         .await
         .unwrap();
     assert_eq!(again, effective);
@@ -90,25 +105,24 @@ async fn set_then_get_round_trips_the_rail_surface() {
 async fn write_rejects_credential_shaped_parameters_as_validation() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let tb = flow_bridge(conn);
+    owner_session(&tb, "owner-tok");
 
     let result = set_local_payment_methods_scoped(
-        "default".into(),
+        &tb.ctx(),
+        "default",
         vec![LocalPaymentRailArgs {
             rail_code: "qris".into(),
             label: "QRIS".into(),
             is_enabled: true,
             parameters: r#"{"gateway_credential": "x"}"#.into(),
         }],
-        "owner-tok".into(),
-        app.state(),
+        "owner-tok",
     )
     .await;
 
     match result {
-        Err(AppError::Core { sub_kind, .. }) => {
+        Err(BridgeError::Core { sub_kind, .. }) => {
             assert!(
                 matches!(sub_kind, oz_core::CoreErrorKind::Validation),
                 "{sub_kind:?}"
@@ -122,11 +136,10 @@ async fn write_rejects_credential_shaped_parameters_as_validation() {
 async fn read_answers_empty_for_a_location_with_no_market_rows() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    owner_session(&state, "owner-tok");
-    let app = mock_app(state);
+    let tb = flow_bridge(conn);
+    owner_session(&tb, "owner-tok");
 
-    let rails = get_local_payment_methods_scoped("default".into(), "owner-tok".into(), app.state())
+    let rails = get_local_payment_methods_scoped(&tb.ctx(), "default", "owner-tok")
         .await
         .unwrap();
     assert!(rails.is_empty());
@@ -146,8 +159,8 @@ async fn denies_staff_without_settings_edit() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = flow_state(conn);
-    state.session_store.write().unwrap().insert(
+    let tb = flow_bridge(conn);
+    tb.sessions().write().unwrap().insert(
         "lite-tok".into(),
         SessionContext::new(
             "user-lite".into(),
@@ -160,20 +173,19 @@ async fn denies_staff_without_settings_edit() {
             0,
         ),
     );
-    let app = mock_app(state);
 
     let result = set_local_payment_methods_scoped(
-        "default".into(),
+        &tb.ctx(),
+        "default",
         vec![LocalPaymentRailArgs {
             rail_code: "qris".into(),
             label: "QRIS".into(),
             is_enabled: true,
             parameters: "{}".into(),
         }],
-        "lite-tok".into(),
-        app.state(),
+        "lite-tok",
     )
     .await;
 
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }

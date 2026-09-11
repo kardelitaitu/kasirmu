@@ -75,7 +75,3 @@ pub async fn set_local_payment_methods_scoped(
     .await
     .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "local_payment_tests.rs"]
-mod tests;

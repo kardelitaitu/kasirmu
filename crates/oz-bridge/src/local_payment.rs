@@ -94,3 +94,7 @@ pub async fn set_local_payment_methods_scoped(
     store.replace_local_payment_methods("location", location_id, &submitted, &now)?;
     Ok(store.local_payment_methods_for_location(location_id)?)
 }
+
+#[cfg(test)]
+#[path = "local_payment_tests.rs"]
+mod tests;
