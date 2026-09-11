@@ -37,14 +37,14 @@ use serde_json::Value;
 /// lifecycle-manager prefix (`local_api.*`, `lan_server.*`). This lane owns no
 /// key list of its own.
 ///
-/// Why the policy is asked directly rather than calling
-/// `Settings::set_with_policy`: that accessor is an inherent method of
-/// `platform_core::settings::Settings`, while this crate's `Settings` is
-/// `oz_core`'s delegating facade, which does not expose it yet, and
-/// `platform/sync` has no `platform-core` dependency edge. Both dispatchers
-/// below therefore gate on this boundary and then call the existing
-/// `Settings::set`; swapping the body for `set_with_policy` is a one-line change
-/// once `crates/oz-core/src/settings.rs` delegates the accessor.
+/// Both dispatchers now WRITE through the funnel accessor
+/// `Settings::set_with_policy(..., IngestPolicy::RemoteSync)`, which decides and
+/// warns in one place (delegated to platform-core through the `oz_core::Settings`
+/// facade, so this crate needs no `platform-core` dependency edge). This
+/// boundary remains for the one place that must ask the question WITHOUT
+/// writing: [`settings_change_of`], which must not report a refused key as a
+/// change. It is the same predicate the accessor applies, so the two cannot
+/// disagree.
 ///
 /// A refusal is warn-and-continue, never an error: the precedent is the
 /// unsupported-action arm at the foot of `apply_remote` and the non-fatal delta
@@ -52,15 +52,6 @@ use serde_json::Value;
 /// let the server deny service to the whole tenant.
 fn remote_sync_admits(key: &str) -> bool {
     IngestPolicy::RemoteSync.admits(key)
-}
-
-/// Warn for one refused key. Names the key and the policy, never the value.
-fn warn_refused_settings_key(key: &str) {
-    tracing::warn!(
-        key = %key,
-        policy = IngestPolicy::RemoteSync.label(),
-        "remote settings key refused by ingest policy (skipped, batch continues)"
-    );
 }
 
 #[derive(Deserialize)]
@@ -526,10 +517,16 @@ impl SyncQueue {
             "settings.update" | "settings.change" => {
                 let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid settings payload: {e}")))?;
-                if !remote_sync_admits(&payload.key) {
-                    warn_refused_settings_key(&payload.key);
-                } else {
-                    Settings::set(tx, &payload.key, &payload.value)?;
+                // The funnel accessor decides AND warns (key + policy label,
+                // never the value). A false return is a refusal — the row and its
+                // delta are both skipped and the batch continues; an Err is a SQL
+                // failure, which `?` propagates exactly as before.
+                if Settings::set_with_policy(
+                    tx,
+                    &payload.key,
+                    &payload.value,
+                    IngestPolicy::RemoteSync,
+                )? {
                     if let Err(e) = Settings::write_delta(
                         tx,
                         &payload.key,
@@ -688,8 +685,15 @@ impl SyncQueue {
             "settings.update" | "settings.change" => {
                 let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid settings payload: {e}")))?;
-                if !remote_sync_admits(&payload.key) {
-                    warn_refused_settings_key(&payload.key);
+                // Same accessor as the atomic arm. A refusal returns false,
+                // writes nothing, and consumes the item rather than retrying it
+                // forever; the accessor already emitted the warn line.
+                if !Settings::set_with_policy(
+                    store.conn(),
+                    &payload.key,
+                    &payload.value,
+                    IngestPolicy::RemoteSync,
+                )? {
                     return Ok(());
                 }
                 Settings::set(store.conn(), &payload.key, &payload.value)?;
