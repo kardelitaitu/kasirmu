@@ -23,7 +23,6 @@ import { formatMoney, COURSES, type CartLine, type LineId, type Product, type Sk
 import { animDuration } from '@/utils/animation';
 import { triggerInteraction } from '@/utils/interaction';
 import { useSwipe } from '@/hooks/useSwipe';
-import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import {
   deleteHeldCartScoped,
 } from '@/api/sales';
@@ -558,6 +557,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleDecreaseQty,
     handleIncreaseQty,
     handleOverrideConfirm,
+    handleApplyDiscount,
+    handleClearDiscount,
+    handleSelectPromotions,
+    animatedUndoStack,
+    handleRemoveLine,
+    handleUndoRemove,
+    handleDismissUndo,
   } = usePosCartActions({
     sessionToken,
     addToast,
@@ -566,6 +572,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     addProduct,
     updateQty,
     updateLinePrice,
+    removeLine,
+    setLines,
+    setDiscount,
+    discountInput,
+    discountName,
+    setShowDiscountInput,
+    setDiscountInput,
+    setDiscountName,
+    setShowPromotions,
+    setAppliedPromotions,
   });
   // ── Barcode scanner integration ─────────────────────────────
   useBarcodeScanner({
@@ -729,31 +745,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     customerDisplayPaymentComplete();
   }, [resetCart, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken]);
 
-  const handleApplyDiscount = useCallback(() => {
-    // Whole percentage only — reject fractional input instead of
-    // silently truncating it via parseInt.
-    const pct = Number(discountInput);
-    if (!Number.isInteger(pct) || pct < 1 || pct > 100) return;
-    setDiscount(pct, discountName.trim() || `${pct}% Discount`);
-    setShowDiscountInput(false);
-    setDiscountInput('');
-    setDiscountName('');
-  }, [discountInput, discountName, setDiscount]);
-
-  const handleClearDiscount = useCallback(() => {
-    setDiscount(0, '');
-  }, [setDiscount]);
-
-  // PROMO-3: accumulate the picker selection (multi-select, stacking).
-  const handleSelectPromotions = useCallback((selected: Promotion[]) => {
-    setAppliedPromotions(selected);
-    setShowPromotions(false);
-    const names = selected.map((p) => p.name).join(', ');
-    if (selected.length > 0) {
-      addToast({ message: l10nRef.current.getString('pos-promotions-applied', { name: names }) || names, type: 'success' });
-    }
-  }, [addToast]);
-
   // ── Lock: save cart state to localStorage, then logout ───────────
 
   const handleLock = useCallback(() => {
@@ -781,44 +772,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     } catch { /* storage quota or unavailable — ignore */ }
     logout();
   }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, logout]);
-
-  // ── Multi-step undo stack ───────────────────────────────────
-  // Each removed line is pushed onto the stack. Pressing Undo pops
-  // the most recent one and re-inserts it. The state machine and
-  // race-safe exit fade are owned by `useAnimatedUndoStack` so the
-  // contract can be tested directly via renderHook — bypassing the
-  // CartLineItem 200ms exit timer that prevents concurrent pushes
-  // from landing during the fade on the component layer. MAX size
-  // 5 so the cashier can recover from a batch of mistakes.
-  const animatedUndoStack = useAnimatedUndoStack<CartLine>({
-    maxSize: 5,
-    getId: (line) => String(line.id),
-  });
-
-  // Push a removed cart line onto the undo stack so the cashier
-  // can recover up to the last 5 removes via the floating pill.
-  const handleRemoveLine = useCallback((line: CartLine) => {
-    removeLine(line.id);
-    animatedUndoStack.push(line);
-  }, [removeLine, animatedUndoStack]);
-
-  // Pop the top of the undo stack and re-insert the line into the
-  // cart. When the pop empties the stack, the hook schedules the
-  // fade so the pill unmounts via the exit keyframe instead of
-  // snapping away.
-  const handleUndoRemove = useCallback(() => {
-    const popped = animatedUndoStack.pop();
-    if (popped === undefined) return;
-    triggerInteraction('undo-cart');
-    setLines((prev) => [popped, ...prev]);
-  }, [animatedUndoStack, setLines]);
-
-  // Dismiss the pill via the race-safe exit fade. Concurrent
-  // pushes during the 200 ms window abort the clear (see the
-  // useAnimatedUndoStack contract + the applyExitAnimation skill).
-  const handleDismissUndo = useCallback(() => {
-    animatedUndoStack.dismiss();
-  }, [animatedUndoStack]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ────────
   // The cart panel handles keys when its focus, or any descendant

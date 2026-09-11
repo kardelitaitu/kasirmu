@@ -1,8 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { useToast } from '@/frontend/shared/Toast';
 import type { usePosState } from '../usePosState';
 import { requiredLocalized } from '@/frontend/shared';
 import { plainErrorMessage } from '@/utils/app-error';
+import { triggerInteraction } from '@/utils/interaction';
+import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
+import type { Promotion } from '@/api/promotions';
 import {
   startSaleScoped,
   getCartDeductionLocation,
@@ -30,6 +34,17 @@ export interface UsePosCartActionsParams {
   addProduct: PosState['addProduct'];
   updateQty: PosState['updateQty'];
   updateLinePrice: PosState['updateLinePrice'];
+  removeLine: PosState['removeLine'];
+  setLines: PosState['setLines'];
+  setDiscount: PosState['setDiscount'];
+  /** Discount form fields — the inputs stay owned by PosScreen's JSX. */
+  discountInput: string;
+  discountName: string;
+  setShowDiscountInput: Dispatch<SetStateAction<boolean>>;
+  setDiscountInput: Dispatch<SetStateAction<string>>;
+  setDiscountName: Dispatch<SetStateAction<string>>;
+  setShowPromotions: Dispatch<SetStateAction<boolean>>;
+  setAppliedPromotions: Dispatch<SetStateAction<Promotion[]>>;
 }
 
 /**
@@ -49,6 +64,16 @@ export function usePosCartActions({
   addProduct,
   updateQty,
   updateLinePrice,
+  removeLine,
+  setLines,
+  setDiscount,
+  discountInput,
+  discountName,
+  setShowDiscountInput,
+  setDiscountInput,
+  setDiscountName,
+  setShowPromotions,
+  setAppliedPromotions,
 }: UsePosCartActionsParams) {
   const [overrideTarget, setOverrideTarget] = useState<CartLine | null>(null);
   const [showFastPINOverlay, setShowFastPINOverlay] = useState(false);
@@ -156,6 +181,69 @@ export function usePosCartActions({
     }
   }, [overrideTarget, cartId, addToast, updateLinePrice, sessionToken]);
 
+
+    const handleApplyDiscount = useCallback(() => {
+    // Whole percentage only — reject fractional input instead of
+    // silently truncating it via parseInt.
+    const pct = Number(discountInput);
+    if (!Number.isInteger(pct) || pct < 1 || pct > 100) return;
+    setDiscount(pct, discountName.trim() || `${pct}% Discount`);
+    setShowDiscountInput(false);
+    setDiscountInput('');
+    setDiscountName('');
+  }, [discountInput, discountName, setDiscount]);
+
+  const handleClearDiscount = useCallback(() => {
+    setDiscount(0, '');
+  }, [setDiscount]);
+
+  // PROMO-3: accumulate the picker selection (multi-select, stacking).
+  const handleSelectPromotions = useCallback((selected: Promotion[]) => {
+    setAppliedPromotions(selected);
+    setShowPromotions(false);
+    const names = selected.map((p) => p.name).join(', ');
+    if (selected.length > 0) {
+      addToast({ message: l10nRef.current.getString('pos-promotions-applied', { name: names }) || names, type: 'success' });
+    }
+  }, [addToast]);
+
+    // ── Multi-step undo stack ───────────────────────────────────
+  // Each removed line is pushed onto the stack. Pressing Undo pops
+  // the most recent one and re-inserts it. The state machine and
+  // race-safe exit fade are owned by `useAnimatedUndoStack` so the
+  // contract can be tested directly via renderHook — bypassing the
+  // CartLineItem 200ms exit timer that prevents concurrent pushes
+  // from landing during the fade on the component layer. MAX size
+  // 5 so the cashier can recover from a batch of mistakes.
+  const animatedUndoStack = useAnimatedUndoStack<CartLine>({
+    maxSize: 5,
+    getId: (line) => String(line.id),
+  });
+
+  // Push a removed cart line onto the undo stack so the cashier
+  // can recover up to the last 5 removes via the floating pill.
+  const handleRemoveLine = useCallback((line: CartLine) => {
+    removeLine(line.id);
+    animatedUndoStack.push(line);
+  }, [removeLine, animatedUndoStack]);
+
+  // Pop the top of the undo stack and re-insert the line into the
+  // cart. When the pop empties the stack, the hook schedules the
+  // fade so the pill unmounts via the exit keyframe instead of
+  // snapping away.
+  const handleUndoRemove = useCallback(() => {
+    const popped = animatedUndoStack.pop();
+    if (popped === undefined) return;
+    triggerInteraction('undo-cart');
+    setLines((prev) => [popped, ...prev]);
+  }, [animatedUndoStack, setLines]);
+
+  // Dismiss the pill via the race-safe exit fade. Concurrent
+  // pushes during the 200 ms window abort the clear (see the
+  // useAnimatedUndoStack contract + the applyExitAnimation skill).
+  const handleDismissUndo = useCallback(() => {
+    animatedUndoStack.dismiss();
+  }, [animatedUndoStack]);
   return {
     overrideTarget,
     setOverrideTarget,
@@ -174,5 +262,12 @@ export function usePosCartActions({
     handleDecreaseQty,
     handleIncreaseQty,
     handleOverrideConfirm,
+    handleApplyDiscount,
+    handleClearDiscount,
+    handleSelectPromotions,
+    animatedUndoStack,
+    handleRemoveLine,
+    handleUndoRemove,
+    handleDismissUndo,
   };
 }
