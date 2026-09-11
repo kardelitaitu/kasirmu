@@ -886,3 +886,7 @@ pub async fn resolve_boot_store(
         instance_id: None,
     })
 }
+
+#[cfg(test)]
+#[path = "workspaces_tests.rs"]
+mod workspaces_tests;

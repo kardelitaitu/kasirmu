@@ -1,12 +1,22 @@
+//! Unit tests for the workspaces bridge module.
+//!
+//! Relocated from the desktop command module (Wave E / EW7). The shell's
+//! `AppState::for_test` / tauri mock app are replaced by the headless
+//! `TestBridge` harness (`crate::testing`); global-identity-DB mutations
+//! are hoisted into the `picker_state` seed closure so they land on the
+//! connection BEFORE `with_conn` hands it to the bridge (BW1b/CW1).
+
 use super::*;
+
+use crate::testing::TestBridge;
 
 // ── Token Rejection ─────────────────────────────────────────────────
 
 #[test]
 fn workspaces_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let tb = crate::testing::TestBridge::new();
+    let result = tb.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── WorkspaceTypeDto ─────────────────────────────────────────────────
@@ -132,8 +142,6 @@ fn boot_resolution_dto_debug() {
 use oz_core::LocationProfile;
 use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::migrations;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 /// Seed the GLOBAL identity DB with an owner and a limited user whose
 /// role has no workspace-type grants (so it sees no instances — the
@@ -165,18 +173,19 @@ fn make_profile(id: &str, name: &str) -> LocationProfile {
     }
 }
 
-/// Build an AppState with a global identity DB (users seeded) and a
-/// temp-dir store manager with store-a (1 instance) and store-b (1
-/// instance) so cross-store isolation can be exercised.
-fn picker_state() -> (AppState, tempfile::TempDir) {
+/// Build a TestBridge whose global identity DB is seeded with users (plus
+/// any caller-supplied global-DB mutation, applied BEFORE the connection is
+/// handed to the bridge) and whose file-backed store manager carries
+/// store-a (1 instance) and store-b (1 instance) so cross-store isolation
+/// can be exercised. The harness owns a unique temp store dir.
+fn picker_state(global_seed: impl FnOnce(&rusqlite::Connection)) -> TestBridge {
     let conn = migrations::fresh_db();
     seed_global_users(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    global_seed(&conn);
+    let tb = crate::testing::TestBridge::new().with_conn(conn);
 
     for (store_id, instance_id) in [("store-a", "ws-a-1"), ("store-b", "ws-b-1")] {
-        let conn = state.db_manager.open_store(store_id).unwrap();
+        let conn = tb.db_manager().open_store(store_id).unwrap();
         let db = conn.lock().unwrap();
         let store = Store::new(&db);
         store
@@ -186,27 +195,22 @@ fn picker_state() -> (AppState, tempfile::TempDir) {
             .create_workspace_instance(instance_id, "store-pos", store_id, "POS", "", None)
             .unwrap();
     }
-    (state, temp_dir)
+    tb
 }
 
 #[tokio::test]
 async fn list_workspaces_for_store_scoped_rejects_invalid_session() {
-    let (state, _dir) = picker_state();
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = picker_state(|_| {});
 
     let result =
-        list_workspaces_for_store_scoped("missing-token".into(), "store-a".into(), app.state())
-            .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+        list_workspaces_for_store_scoped(&tb.ctx(), "missing-token", "store-a".into()).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn list_workspaces_for_store_scoped_uses_session_role() {
-    let (state, _dir) = picker_state();
-    state.session_store.write().unwrap().insert(
+    let tb = picker_state(|_| {});
+    tb.sessions().write().unwrap().insert(
         "cashier-token".into(),
         oz_core::session::SessionContext::new(
             "user-cashier".into(),
@@ -219,17 +223,12 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     // The session token binds the real role — a limited session listing
     // store-a must not see owner-level instances (same as the ticket path).
-    let rows =
-        list_workspaces_for_store_scoped("cashier-token".into(), "store-a".into(), app.state())
-            .await
-            .unwrap();
+    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "cashier-token", "store-a".into())
+        .await
+        .unwrap();
     assert!(
         rows.is_empty(),
         "cashier session must not enumerate store-a instances, got {rows:?}"
@@ -246,8 +245,8 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
 // allows it (so tier entitlement filtering cannot hide it — only the
 // assignment can).
 
-fn mint_session(state: &mut AppState, token: &str, user: &str, role: &str, store: &str) {
-    state.session_store.write().unwrap().insert(
+fn mint_session(tb: &TestBridge, token: &str, user: &str, role: &str, store: &str) {
+    tb.sessions().write().unwrap().insert(
         token.into(),
         oz_core::session::SessionContext::new(
             user.into(),
@@ -264,27 +263,13 @@ fn mint_session(state: &mut AppState, token: &str, user: &str, role: &str, store
 
 #[tokio::test]
 async fn scoped_assignment_filters_session_workspace_listing() {
-    let (mut state, _dir) = picker_state();
     // A second store-a instance of a type the Free tier ALLOWS
-    // (restaurant-pos) so only the assignment scope can hide it.
-    {
-        let conn = state.db_manager.open_store("store-a").unwrap();
-        let db = conn.lock().unwrap();
-        Store::new(&db)
-            .create_workspace_instance(
-                "ws-a-rest",
-                "restaurant-pos",
-                "store-a",
-                "Restaurant",
-                "",
-                None,
-            )
-            .unwrap();
-    }
-    // Owner scoped to workspace type `store-pos` only.
-    {
-        let db = state.db.lock().await;
-        Store::new(&db)
+    // (restaurant-pos) so only the assignment scope can hide it. Owner
+    // scoped to workspace type `store-pos` only — the assignment lives on
+    // the global DB and is seeded BEFORE with_conn; the instance is added
+    // to the store DB after the bridge is built.
+    let tb = picker_state(|conn| {
+        Store::new(conn)
             .set_assignment(
                 "user-owner",
                 "role-owner",
@@ -299,20 +284,24 @@ async fn scoped_assignment_filters_session_workspace_listing() {
                 },
             )
             .unwrap();
+    });
+    {
+        let conn = tb.db_manager().open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        Store::new(&db)
+            .create_workspace_instance(
+                "ws-a-rest",
+                "restaurant-pos",
+                "store-a",
+                "Restaurant",
+                "",
+                None,
+            )
+            .unwrap();
     }
-    mint_session(
-        &mut state,
-        "owner-token",
-        "user-owner",
-        "role-owner",
-        "store-a",
-    );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows = list_workspaces_scoped("owner-token".into(), app.state())
+    let rows = list_workspaces_scoped(&tb.ctx(), "owner-token")
         .await
         .unwrap();
     assert!(
@@ -327,13 +316,11 @@ async fn scoped_assignment_filters_session_workspace_listing() {
 
 #[tokio::test]
 async fn scoped_assignment_branch_dimension_denies_out_of_scope_store_for_session() {
-    let (mut state, _dir) = picker_state();
     // Owner scoped to branch store-a only — store-b is out of scope, so
     // the terminal-management listing of store-b must yield nothing
-    // (fail closed, same as the picker).
-    {
-        let db = state.db.lock().await;
-        Store::new(&db)
+    // (fail closed, same as the picker). Global DB seeded before with_conn.
+    let tb = picker_state(|conn| {
+        Store::new(conn)
             .set_assignment(
                 "user-owner",
                 "role-owner",
@@ -348,29 +335,17 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store_for_sessio
                 },
             )
             .unwrap();
-    }
-    mint_session(
-        &mut state,
-        "owner-token",
-        "user-owner",
-        "role-owner",
-        "store-a",
-    );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    });
+    mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let in_scope =
-        list_workspaces_for_store_scoped("owner-token".into(), "store-a".into(), app.state())
-            .await
-            .unwrap();
+    let in_scope = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
+        .await
+        .unwrap();
     assert!(in_scope.iter().any(|d| d.instance_id == "ws-a-1"));
 
-    let out_of_scope =
-        list_workspaces_for_store_scoped("owner-token".into(), "store-b".into(), app.state())
-            .await
-            .unwrap();
+    let out_of_scope = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-b".into())
+        .await
+        .unwrap();
     assert!(
         out_of_scope.is_empty(),
         "branch out of scope must deny the whole store listing, got {out_of_scope:?}"
@@ -379,26 +354,12 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store_for_sessio
 
 #[tokio::test]
 async fn scoped_assignment_workspace_dimension_filters_for_store_listing() {
-    let (mut state, _dir) = picker_state();
     // Same Free-tier-allowed out-of-scope type as the session listing test.
-    {
-        let conn = state.db_manager.open_store("store-a").unwrap();
-        let db = conn.lock().unwrap();
-        Store::new(&db)
-            .create_workspace_instance(
-                "ws-a-rest",
-                "restaurant-pos",
-                "store-a",
-                "Restaurant",
-                "",
-                None,
-            )
-            .unwrap();
-    }
-    // Owner scoped to workspace type `store-pos` only.
-    {
-        let db = state.db.lock().await;
-        Store::new(&db)
+    // Owner scoped to workspace type `store-pos` only — the assignment lives
+    // on the global DB and is seeded BEFORE with_conn; the instance is added
+    // to the store DB after the bridge is built.
+    let tb = picker_state(|conn| {
+        Store::new(conn)
             .set_assignment(
                 "user-owner",
                 "role-owner",
@@ -413,23 +374,26 @@ async fn scoped_assignment_workspace_dimension_filters_for_store_listing() {
                 },
             )
             .unwrap();
-    }
-    mint_session(
-        &mut state,
-        "owner-token",
-        "user-owner",
-        "role-owner",
-        "store-a",
-    );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let rows =
-        list_workspaces_for_store_scoped("owner-token".into(), "store-a".into(), app.state())
-            .await
+    });
+    {
+        let conn = tb.db_manager().open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        Store::new(&db)
+            .create_workspace_instance(
+                "ws-a-rest",
+                "restaurant-pos",
+                "store-a",
+                "Restaurant",
+                "",
+                None,
+            )
             .unwrap();
+    }
+    mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
+
+    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
+        .await
+        .unwrap();
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),
         "in-scope workspace type must list, got {rows:?}"
@@ -442,33 +406,22 @@ async fn scoped_assignment_workspace_dimension_filters_for_store_listing() {
 
 #[tokio::test]
 async fn list_workspaces_for_store_scoped_filters_by_tier_entitlement() {
-    let (mut state, _dir) = picker_state();
+    let tb = picker_state(|_| {});
     // Add a kds instance to store-a. The Free tier (default subscription)
     // does NOT allow kds — only store-pos, restaurant-pos, admin.
     // The scoped listing must filter it out.
     {
-        let conn = state.db_manager.open_store("store-a").unwrap();
+        let conn = tb.db_manager().open_store("store-a").unwrap();
         let db = conn.lock().unwrap();
         Store::new(&db)
             .create_workspace_instance("ws-a-kds", "kds", "store-a", "KDS", "", None)
             .unwrap();
     }
-    mint_session(
-        &mut state,
-        "owner-token",
-        "user-owner",
-        "role-owner",
-        "store-a",
-    );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows =
-        list_workspaces_for_store_scoped("owner-token".into(), "store-a".into(), app.state())
-            .await
-            .unwrap();
+    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
+        .await
+        .unwrap();
     // store-pos (ws-a-1) is allowed by the Free tier → must be present.
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),
@@ -487,11 +440,10 @@ async fn list_workspaces_scoped_rejects_tampered_subscription_signature() {
     // trusting command: the tenant_subscription row's RSA signature must
     // be verified before its tier/allowed-types are honored. A tampered
     // row (forged pro tier + kds, invalid signature) must fail closed.
-    let (mut state, _dir) = picker_state();
-    // Tamper the subscription before minting the session.
-    {
-        let db = state.db.lock().await;
-        db.execute(
+    // Tamper the subscription before minting the session (global DB seeded
+    // before with_conn).
+    let tb = picker_state(|conn| {
+        conn.execute(
             "UPDATE tenant_subscription
              SET tier_key = 'pro',
                  allowed_types_json = '[\"store-pos\",\"restaurant-pos\",\"admin\",\"kds\"]',
@@ -500,30 +452,20 @@ async fn list_workspaces_scoped_rejects_tampered_subscription_signature() {
             [],
         )
         .unwrap();
-    }
-    mint_session(
-        &mut state,
-        "owner-token",
-        "user-owner",
-        "role-owner",
-        "store-a",
-    );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    });
+    mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let result = list_workspaces_scoped("owner-token".into(), app.state()).await;
+    let result = list_workspaces_scoped(&tb.ctx(), "owner-token").await;
     let err = result.expect_err("tampered subscription must fail the scoped listing");
     match err {
-        AppError::Invalid(msg) => {
+        BridgeError::Invalid(msg) => {
             assert!(
                 msg.contains("signature") || msg.contains("subscription"),
                 "error must name the signature gate, got: {msg}"
             );
         }
-        AppError::Core { .. } => {}
-        other => panic!("expected AppError::Invalid/Core, got {other:?}"),
+        BridgeError::Core { .. } => {}
+        other => panic!("expected BridgeError::Invalid/Core, got {other:?}"),
     }
 }
 
@@ -569,8 +511,8 @@ fn remediation_target_refuses_a_store_that_is_not_a_location() {
     let err = remediation_target(&conn, "store-9", Some("store-does-not-exist".into()))
         .expect_err("unknown store must be refused");
     match err {
-        AppError::Invalid(msg) => assert!(msg.contains("unknown store"), "got: {msg}"),
-        other => panic!("expected AppError::Invalid, got {other:?}"),
+        BridgeError::Invalid(msg) => assert!(msg.contains("unknown store"), "got: {msg}"),
+        other => panic!("expected BridgeError::Invalid, got {other:?}"),
     }
 }
 
@@ -584,10 +526,10 @@ fn remediation_target_refuses_a_blank_id_instead_of_defaulting() {
     let err = remediation_target(&conn, "store-9", Some("   ".into()))
         .expect_err("blank store_id must be refused");
     match err {
-        AppError::Invalid(msg) => {
+        BridgeError::Invalid(msg) => {
             assert!(msg.contains("must not be blank"), "got: {msg}");
         }
-        other => panic!("expected AppError::Invalid, got {other:?}"),
+        other => panic!("expected BridgeError::Invalid, got {other:?}"),
     }
 }
 

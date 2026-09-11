@@ -331,9 +331,3 @@ pub async fn resolve_boot_store(
         .await
         .map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "workspaces_tests.rs"]
-mod tests;
