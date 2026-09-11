@@ -2,12 +2,12 @@
 //! (`topology_setting_key`, `topology_runtime_setting_key`) and the
 //! diagram-payload validation gate.
 //!
-//! Loaded as the `tests` module of `persistence.rs` via `#[path]`; the
-//! flat namespace resolves through `use super::*`.
-
+//! Mounted as `persistence_tests` beside `persistence.rs` in
+//! `oz_bridge::topology` via `#[path]`; the flat namespace resolves
+//! through `use super::*`.
 use super::*;
-use crate::commands::topology::model::TOPOLOGY_RUNTIME_SETTING_KEY;
-use crate::commands::topology::model::TOPOLOGY_SETTING_KEY;
+use crate::topology::model::TOPOLOGY_RUNTIME_SETTING_KEY;
+use crate::topology::model::TOPOLOGY_SETTING_KEY;
 
 // ── topology_setting_key ────────────────────────────────────
 

@@ -2,9 +2,8 @@
 //! (`From<&str>` / `PartialEq<&str>`), serde round-trips, and the
 //! resilient f64/null/direction deserialization helpers.
 //!
-//! Loaded as the `tests` module of `model.rs` via `#[path]`; the
-//! flat namespace resolves through `use super::*`.
-
+//! Mounted as `model_tests` beside `model.rs` in `oz_bridge::topology`
+//! via `#[path]`; the flat namespace resolves through `use super::*`.
 use super::*;
 
 // ── NodeType From<&str> ─────────────────────────────────────

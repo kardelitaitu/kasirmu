@@ -9,7 +9,3 @@
 //! `commands::topology::model::*` and the mounted test file resolving.
 
 pub use oz_bridge::topology::model::*;
-
-#[cfg(test)]
-#[path = "model_tests.rs"]
-mod tests;

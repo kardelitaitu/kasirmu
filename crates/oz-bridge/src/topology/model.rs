@@ -312,3 +312,7 @@ pub struct UpdateInstanceRequest {
     #[serde(default)]
     pub purpose_key: Option<String>,
 }
+
+#[cfg(test)]
+#[path = "model_tests.rs"]
+mod model_tests;

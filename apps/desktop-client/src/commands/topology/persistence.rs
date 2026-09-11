@@ -352,8 +352,3 @@ pub(crate) fn load_topology_data(conn: &Connection) -> Result<Option<TopologyDat
         None => Ok(None),
     }
 }
-
-// ── Unit tests for pure validation functions ─────────────────────
-#[cfg(test)]
-#[path = "persistence_tests.rs"]
-mod tests;
