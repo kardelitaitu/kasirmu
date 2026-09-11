@@ -235,9 +235,61 @@ impl Store<'_> {
         tenant_id: &str,
         priority: SyncPriority,
     ) -> Result<OfflineQueueItem, CoreError> {
+        // Enforce subscription offline grace period / read-only lock.
+        // Once the offline grace period expires, transactions cannot be enqueued.
+        self.enforce_pos_writable_for_tenant(tenant_id)?;
+
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
         self.conn.execute(
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],
+        )?;
+        Ok(item)
+    }
+
+    /// OUTBOX PRIMITIVE: write the queue row inside a CALLER-OWNED
+    /// transaction, so the row is committed or rolled back together with the
+    /// business write it describes.
+    ///
+    /// Why it exists: sync for sales is outbox-only - push reads
+    /// `list_pending_offline` and nothing else, and there is no
+    /// reconciliation sweep anywhere in the tree (every sweep found is
+    /// session/memo expiry, audit retention or a cloud prune, and
+    /// `payment_settlements.rs:9` says "stubs until the reconciliation job
+    /// is implemented"). An enqueue that runs AFTER the sale commits - today
+    /// it runs in an event handler on a SEPARATE connection
+    /// (`platform/startup/src/lib.rs:112`), because the bus is in-process and
+    /// the settlement's DB lock is already dropped - can be lost forever by a
+    /// crash or a handler error in that window. `event_bus.rs:259-267` logs a
+    /// handler Err and continues and `:268-281` catches a handler panic and
+    /// continues, so the loss is silent; and it is invisible to the operator,
+    /// because the queue screen reports pending / synced / failed /
+    /// oldest-pending and a sale that was never enqueued contributes to none
+    /// of them.
+    ///
+    /// Tenant is a REQUIRED argument on purpose. `enqueue_offline_priority`
+    /// hardcodes `"default"` while the `SaleCompleted` event carries a
+    /// `store_id`, so a multi-store caller that reaches for the priority
+    /// helper enqueues another store's sale under `"default"` - a real
+    /// pre-existing bug, found here and NOT fixed here because its callers are
+    /// outside this change. This helper cannot be called that way by accident.
+    ///
+    /// Deliberately does NOT call `enforce_pos_writable_for_tenant`: the
+    /// settlement path already enforced it on its own transaction
+    /// (`sales_lifecycle.rs:176`), and re-checking through `self.conn` here
+    /// would read outside the very transaction whose atomicity is the point.
+    pub fn enqueue_offline_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        action: &str,
+        payload: &str,
+        tenant_id: &str,
+        priority: SyncPriority,
+    ) -> Result<OfflineQueueItem, CoreError> {
+        let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
+        item.priority = priority;
+        tx.execute(
             "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],

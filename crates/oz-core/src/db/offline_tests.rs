@@ -966,3 +966,102 @@ fn status_summary_timestamps_survive_after_mark_synced() {
     );
     assert_eq!(summary.oldest_pending_at, None, "no pending items left");
 }
+
+#[test]
+fn test_enqueue_offline_fails_when_subscription_read_only() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Update the seeded bootstrap subscription to Plus, expiring 30 days ago (past the 14-day offline grace period).
+    let past_expiry = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET
+            tier_key = 'plus', status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        rusqlite::params![past_expiry],
+    )
+    .unwrap();
+
+    let err = s.enqueue_offline("sale.create", "{}").unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionReadOnly(_)),
+        "expected SubscriptionReadOnly error, got: {err:?}"
+    );
+
+    // Verify queue remains empty.
+    let items = s.list_all_offline().unwrap();
+    assert_eq!(
+        items.len(),
+        0,
+        "no offline items may be enqueued when POS is read-only"
+    );
+}
+
+// ── Transactional outbox primitive ──────────────────────────────
+
+/// The row written by `enqueue_offline_in_tx` must live or die with the
+/// caller's transaction - that IS the fix for the commit-then-enqueue loss
+/// window. Rolled back: no queue row, so a settlement that never happened
+/// can never be pushed.
+#[test]
+fn enqueue_offline_in_tx_rolls_back_with_its_transaction() {
+    let conn = fresh();
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::enqueue_offline_in_tx(
+            &tx,
+            "complete_sale",
+            "{\"sale_id\":\"s-9\"}",
+            "store-7",
+            SyncPriority::Critical,
+        )
+        .unwrap();
+        // Visible inside the same transaction, and only there.
+        let inside: i64 = tx
+            .query_row("SELECT COUNT(*) FROM offline_queue", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(inside, 1);
+        drop(tx); // rusqlite rolls back a dropped transaction
+    }
+    let after: i64 = conn
+        .query_row("SELECT COUNT(*) FROM offline_queue", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        after, 0,
+        "a rolled-back settlement must leave no outbox row"
+    );
+}
+
+/// Committed: the row is there, with the tenant it was given and the
+/// priority tier the sale lane needs. The tenant is the part worth pinning -
+/// `enqueue_offline_priority` hardcodes "default", so a helper that silently
+/// did the same would reintroduce the multi-store bug this one avoids.
+#[test]
+fn enqueue_offline_in_tx_commits_with_its_transaction_and_keeps_the_tenant() {
+    let conn = fresh();
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::enqueue_offline_in_tx(
+            &tx,
+            "complete_sale",
+            "{\"sale_id\":\"s-8\"}",
+            "store-7",
+            SyncPriority::Critical,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+    }
+    let (tenant, priority, status): (String, i32, String) = conn
+        .query_row(
+            "SELECT tenant_id, priority, status FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        tenant, "store-7",
+        "the real tenant, not a hardcoded default"
+    );
+    assert_eq!(priority, SyncPriority::Critical as i32);
+    assert_eq!(status, "pending");
+}
