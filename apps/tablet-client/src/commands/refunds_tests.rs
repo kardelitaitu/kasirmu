@@ -250,7 +250,10 @@ fn refund_line_currency_mismatch_returns_error() {
 
 #[test]
 fn refund_line_arg_deserialize() {
-    let json = r#"{"sale_line_id":"sl-1","sku":"CAKE","qty":1,"unit_price_minor":500,"currency":"USD","line_total_minor":500}"#;
+    // camelCase — the wire format the shipped UI sends (Bug #13 parity with
+    // the bridge fix in 8d91454f; RefundModal.tsx maps
+    // saleLineId/unitPriceMinor/lineTotalMinor).
+    let json = r#"{"saleLineId":"sl-1","sku":"CAKE","qty":1,"unitPriceMinor":500,"currency":"USD","lineTotalMinor":500}"#;
     let arg: RefundLineArg = serde_json::from_str(json).unwrap();
     assert_eq!(arg.sale_line_id, "sl-1");
     assert_eq!(arg.sku, "CAKE");
@@ -260,9 +263,12 @@ fn refund_line_arg_deserialize() {
 }
 
 #[test]
-fn process_refund_args_deserialize() {
-    let json = r#"{"sale_id":"s1","reason":"damaged","note":"box was crushed","user_id":"u1","lines":[{"sale_line_id":"sl-1","sku":"CAKE","qty":1,"unit_price_minor":500,"currency":"USD","line_total_minor":500}]}"#;
-    let args: ProcessRefundArgs = serde_json::from_str(json).unwrap();
+fn process_refund_scoped_args_deserialize() {
+    // Repointed from the dead `process_refund` args (registered nowhere on
+    // tablet — lib.rs registers only the three *_scoped commands) to the
+    // live scoped struct. camelCase — the wire format the UI sends.
+    let json = r#"{"saleId":"s1","reason":"damaged","note":"box was crushed","lines":[{"saleLineId":"sl-1","sku":"CAKE","qty":1,"unitPriceMinor":500,"currency":"USD","lineTotalMinor":500}]}"#;
+    let args: ProcessRefundScopedArgs = serde_json::from_str(json).unwrap();
     assert_eq!(args.sale_id, "s1");
     assert_eq!(args.reason, "damaged");
     assert_eq!(args.note, Some("box was crushed".into()));
@@ -279,4 +285,40 @@ fn process_refund_result_serialize() {
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("ref-1"));
     assert!(json.contains("1500"));
+    // Response-side wire contract (Bug #13 twin): the UI reads
+    // result.refundId / result.totalMinor (RefundModal.tsx, api/sales.ts),
+    // so the serialized keys must be camelCase.
+    assert!(
+        json.contains("\"refundId\""),
+        "expected camelCase refundId, got: {json}"
+    );
+    assert!(
+        json.contains("\"totalMinor\""),
+        "expected camelCase totalMinor, got: {json}"
+    );
+    assert!(
+        !json.contains("refund_id") && !json.contains("total_minor"),
+        "snake_case keys leaked: {json}"
+    );
+}
+
+#[test]
+fn process_refund_scoped_args_deserialize_exact_ui_payload() {
+    // The exact payload RefundModal.tsx:76-90 ships, key for key: each line
+    // is { saleLineId, sku, qty, unitPriceMinor, currency, lineTotalMinor }
+    // and the scoped args are { saleId, reason, note, lines } with
+    // `note: null` when empty (`note.trim() || null`). Nothing fed the
+    // tablet shell its own real payload before — each shell pinned its own
+    // shape while the UI contract test ran against a vi.fn mock, so the
+    // drift shipped green.
+    let json = r##"{"saleId":"sale-1","reason":"Damaged carton","note":null,"lines":[{"saleLineId":"sl-1","sku":"COFFEE","qty":2,"unitPriceMinor":350,"currency":"USD","lineTotalMinor":700}]}"##;
+    let args: ProcessRefundScopedArgs = serde_json::from_str(json)
+        .expect("tablet ProcessRefundScopedArgs must accept the exact RefundModal payload");
+    assert_eq!(args.sale_id, "sale-1");
+    assert_eq!(args.reason, "Damaged carton");
+    assert!(args.note.is_none());
+    assert_eq!(args.lines.len(), 1);
+    assert_eq!(args.lines[0].sale_line_id, "sl-1");
+    assert_eq!(args.lines[0].unit_price_minor, 350);
+    assert_eq!(args.lines[0].line_total_minor, 700);
 }

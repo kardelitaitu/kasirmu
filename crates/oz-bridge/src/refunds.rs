@@ -74,6 +74,7 @@ pub struct ProcessRefundScopedArgs {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Processrefundresult.
 pub struct ProcessRefundResult {
     /// ID of the associated refund.

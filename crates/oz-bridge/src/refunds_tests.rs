@@ -252,3 +252,30 @@ fn process_refund_scoped_args_deserialize_frontend_camelcase() {
     assert_eq!(args.reason, "Customer return");
     assert!(args.lines.is_empty());
 }
+
+#[test]
+fn process_refund_result_serializes_frontend_camelcase() {
+    // Response-side half of Bug #13: the UI reads result.refundId /
+    // result.totalMinor (ui/src/api/sales.ts ProcessRefundResult,
+    // RefundModal.tsx:32,154,157), so the serialized keys must be
+    // camelCase — snake_case here rendered an undefined amount on desktop
+    // while the call itself succeeded (same class as the SaleDetail drift
+    // fixed in bfe8b885, backend as the drift side).
+    let result = ProcessRefundResult {
+        refund_id: "ref-1".into(),
+        total_minor: 700,
+    };
+    let json = serde_json::to_string(&result).expect("ProcessRefundResult must serialize");
+    assert!(
+        json.contains("\"refundId\""),
+        "expected camelCase refundId, got: {json}"
+    );
+    assert!(
+        json.contains("\"totalMinor\""),
+        "expected camelCase totalMinor, got: {json}"
+    );
+    assert!(
+        !json.contains("refund_id") && !json.contains("total_minor"),
+        "snake_case keys leaked: {json}"
+    );
+}
