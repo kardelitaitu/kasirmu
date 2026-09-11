@@ -640,6 +640,15 @@ fn is_credential_family(name: &str) -> bool {
         // server URL cannot sync at all. Refusing an endpoint is not the
         // same act as refusing a secret.
         "REDIS_URL",
+        // `sync.auth_token` is a second cleartext copy of the sync API key.
+        // It matched nothing above until it was declared as a constant at
+        // all, which is the whole reason it needed a marker of its own: the
+        // name carries neither SECRET nor API_KEY nor PASSWORD, so the
+        // family test could only catch it by the token word itself. Narrowed
+        // to the full constant name for the same reason REDIS_URL is — a
+        // bare "TOKEN" would sweep any future `*_TOKEN` setting into the
+        // credential family before anyone had decided it was one.
+        "AUTH_TOKEN",
     ];
     MARKERS.iter().any(|marker| name.contains(marker))
 }
@@ -708,8 +717,9 @@ fn every_credential_family_key_declared_in_keys_rs_is_blocked() {
 /// parsing the registry: name -> constant -> both verdicts.
 #[test]
 fn credential_table_is_blocked_by_both_surfaces() {
-    let table: [(&str, &str); 19] = [
+    let table: [(&str, &str); 20] = [
         ("SYNC_API_KEY", keys::SYNC_API_KEY),
+        ("AUTH_TOKEN", keys::AUTH_TOKEN),
         ("SYNC_TERMINAL_SECRET", keys::SYNC_TERMINAL_SECRET),
         ("PG_SYNC_PASSWORD", keys::PG_SYNC_PASSWORD),
         ("REDIS_URL", keys::REDIS_URL),

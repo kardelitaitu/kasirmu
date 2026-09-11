@@ -455,12 +455,44 @@ fn set_setting_enqueues_settings_update_item() {
     assert_eq!(v["terminal_id"], "term-1");
 }
 
+/// INVERTED from `set_setting_persists_and_get_returns_it`, which asserted
+/// that `sync.auth_token` round-trips back to the renderer through
+/// `get_setting`. That claim was never testable, because the reader it
+/// described does not exist: `git grep -n auth_token -- ui/src` returns the
+/// writer (`SettingsPage.tsx`) and a copy of that writer inside a UI test,
+/// and nothing else — no `getSettingScoped(.., 'sync.auth_token')` call, no
+/// Rust reader outside this suite. A test that asserts a round trip needs two
+/// ends; this one only ever exercised the write, so it was pinning the
+/// storage layer to itself and calling the pair a contract.
+///
+/// The key is now registered as `keys::AUTH_TOKEN` and sits on the shared
+/// credential deny list, so the honest assertion is the refusal — the same
+/// shape `get_setting_redacts_secret_keys` already takes. The write still
+/// lands (the funnel refuses manager-owned keys, not deny-listed ones), which
+/// is exactly why the read is the boundary that has to be pinned.
 #[test]
-fn set_setting_persists_and_get_returns_it() {
+fn set_setting_denied_key_persists_but_get_refuses_it() {
     let conn = fresh_conn();
-    run_set_setting(&conn, "sync.auth_token", "sk_test_abc123", "term-1").unwrap();
-    let result = run_get_setting(&conn, "sync.auth_token").unwrap();
-    assert_eq!(result, Some("sk_test_abc123".into()));
+    run_set_setting(
+        &conn,
+        oz_core::settings::keys::AUTH_TOKEN,
+        "sk_test_abc123",
+        "term-1",
+    )
+    .unwrap();
+    assert_eq!(
+        run_get_setting(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
+        None,
+        "sync.auth_token is a cleartext copy of the sync API key and must never reach the renderer"
+    );
+    // The row is still there — the refusal is at the IPC surface, not in the
+    // table. Naming the difference keeps the next reader from "fixing" this
+    // by deleting the write and concluding the guard works.
+    assert_eq!(
+        Settings::get(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
+        Some("sk_test_abc123".into()),
+        "the write is not refused; only the read is"
+    );
 }
 
 #[test]
@@ -578,22 +610,76 @@ fn run_set_setting_store_name_control_still_writes() {
     );
 }
 
+/// INVERTED from `sync_auth_token_cross_screen_roundtrip`, which pinned the
+/// opposite contract: that a token saved on SettingsPage must be readable by
+/// "another screen (RetailOptionsScreen / useCloudSync)" through
+/// `get_setting`. No such reader exists. `useCloudSync` is not in the tree at
+/// all — the only surviving mention of it is the comment on the writer at
+/// `ui/src/features/settings/SettingsPage.tsx:478` and a doc line in
+/// `ui/src/hooks/useSyncConnection.ts` saying that hook replaced it — and
+/// `RetailOptionsScreen` survives only as two prose mentions in
+/// `PosScreen.tsx`. So the "cross-screen" leg this test claimed to verify was
+/// never a screen: both ends of the round trip were the same test writing and
+/// reading one row, which is why it could assert a contract the code had no
+/// way to honour and still pass.
+///
+/// What the key actually did was leave the device: a second cleartext copy of
+/// the sync API key, posted through the generic funnel, on no deny list, so
+/// both untrusted lanes carried it. Now that it is registered as
+/// `keys::AUTH_TOKEN` and denied, the honest assertion is the refusal on the
+/// read surface AND on the sync egress surface.
 #[test]
-fn sync_auth_token_cross_screen_roundtrip() {
-    // C-3 fix verification: the sync.auth_token key written by
-    // one screen (SettingsPage) must be readable by another
-    // (RetailOptionsScreen / useCloudSync) via get_setting.
+fn sync_auth_token_is_refused_on_read_and_never_replicated() {
+    use oz_core::settings::IngestPolicyKind as _;
     let conn = fresh_conn();
+    let key = oz_core::settings::keys::AUTH_TOKEN;
 
-    // Simulate SettingsPage saving a token
-    run_set_setting(&conn, "sync.auth_token", "jwt-token-xyz", "term-1").unwrap();
-
-    // Simulate useCloudSync loading the token on the other screen
-    let loaded = run_get_setting(&conn, "sync.auth_token").unwrap();
+    // The write still lands — the funnel guards manager-owned keys, not the
+    // credential list — so every refusal below is a refusal of an existing
+    // row, not a vacuous pass over a missing one.
+    run_set_setting(&conn, key, "jwt-token-xyz", "term-1").unwrap();
     assert_eq!(
-        loaded,
+        Settings::get(&conn, key).unwrap(),
         Some("jwt-token-xyz".into()),
-        "C-3 regression: token saved via SettingsPage must be readable via get_setting"
+        "the row must exist for the refusals below to mean anything"
+    );
+
+    // Read surface: no screen gets it back, which is the claim this test used
+    // to make in the opposite direction.
+    assert_eq!(
+        run_get_setting(&conn, key).unwrap(),
+        None,
+        "sync.auth_token is a cleartext copy of the sync API key and must never reach the renderer"
+    );
+    assert!(
+        platform_core::settings::keys::is_secret_setting_key(key),
+        "it must be denied as a credential, not merely absent"
+    );
+    assert!(
+        !platform_core::settings::keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&key),
+        "it is a credential, not device identity — the two lists record different acts"
+    );
+
+    // Both untrusted lanes refuse it; the local lane still admits it, because
+    // SettingsPage writes it locally and that write is not what is being
+    // refused here.
+    for policy in [IngestPolicy::RemoteSync, IngestPolicy::PortablePackage] {
+        assert!(
+            !policy.admits(key),
+            "{policy:?} must refuse sync.auth_token"
+        );
+    }
+    assert!(
+        IngestPolicy::TrustedLocal.admits(key),
+        "the local write must keep working"
+    );
+
+    // Egress: a locally saved token must not be offered to the network.
+    let store = Store::new(&conn);
+    enqueue_settings_update(&store, key, "jwt-token-xyz", "term-1").unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "the duplicate sync secret must not be queued for sync egress"
     );
 }
 

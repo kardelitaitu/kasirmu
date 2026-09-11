@@ -75,6 +75,24 @@ pub const SCANNER_INPUT_MODE: &str = "scanner.input_mode";
 pub const SYNC_SERVER_URL: &str = "sync_server_url";
 /// API key for server authentication.
 pub const SYNC_API_KEY: &str = "sync_api_key";
+/// Second cleartext copy of [`SYNC_API_KEY`], posted by the Settings -> Cloud
+/// Sync card as a "mirror" for a screen that was supposed to load it back.
+///
+/// Declared here for the first time because the key had no constant at all:
+/// it existed only as the bare literal `"sync.auth_token"`, which is exactly
+/// how a key stays off both deny lists - the lists below are built FROM the
+/// constants declared in this module, so an unregistered key is a key the
+/// guard never sees. It is a credential in every respect (the same sync API
+/// key, copied into a second row), so it belongs on [`SECRET_KEY_DENY_LIST`]
+/// and NOT in [`NON_EXPORTABLE_DEVICE_KEYS`]: it is not per-device identity,
+/// it is the tenant's sync secret.
+///
+/// There is NO reader for this key anywhere in the tree - not in `ui/src`,
+/// not in Rust outside tests - so refusing it breaks nothing that works
+/// today. What it was costing was egress: on no deny list, it left the
+/// device on BOTH untrusted lanes (the `settings.update` sync queue and the
+/// portable `.ozpkg` package) as a duplicate cleartext secret.
+pub const AUTH_TOKEN: &str = "sync.auth_token";
 /// Whether cloud sync is enabled. `"1"` or `"0"`. Default `"0"`.
 pub const SYNC_ENABLED: &str = "sync_enabled";
 /// Registered terminal identifier used for client-credentials minting
@@ -246,6 +264,7 @@ pub const HARDWARE_FINGERPRINT: &str = "hardware_fingerprint";
 /// [`NON_EXPORTABLE_DEVICE_KEYS`].
 pub const SECRET_KEY_DENY_LIST: &[&str] = &[
     SYNC_API_KEY,
+    AUTH_TOKEN,
     SYNC_TERMINAL_SECRET,
     PG_SYNC_PASSWORD,
     REDIS_URL,
