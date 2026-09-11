@@ -1333,3 +1333,51 @@ fn deduction_path_rejects_unknown_line_and_still_bounds_cumulative_qty() {
     );
     assert_eq!(get_stock_at(&conn, "TEA", DEFAULT_LOC), 10);
 }
+
+/// The shape the shifts drawer test needs: a LEGACY sale (deduction_locations
+/// NULL) with exactly one 1-unit line, refunded in full — the money bound at
+/// its equality boundary (1000 of 1000) and the quantity bound at its equality
+/// boundary (1 of 1 sold). Both must accept it and the unit must come back to
+/// the default location. This is the proof that a fixture which names the line
+/// it refunds is not blocked by either bound.
+#[test]
+fn legacy_sale_full_value_single_unit_refund_is_accepted() {
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at, product_type)
+         VALUES ('p-sku', 'SKU', 'Sku', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'retail');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                            created_at, updated_at, user_id, version, deduction_locations)
+         VALUES ('refund-sale-1', 1000, 'USD', 1, 'completed', 'cash',
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'user-1', 1, NULL);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('sl-1', 'refund-sale-1', 'SKU', 1, 1000, 1000, 'USD', 1);"
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("sl-1", "SKU", 1, price(1000), price(1000));
+    let refund = Refund::new(
+        "refund-sale-1",
+        price(1000),
+        "cash refund",
+        "",
+        "user-1",
+        vec![line],
+    );
+    s.create_refund(&refund).unwrap_or_else(|e| {
+        panic!("a 1-unit line refunded 1 unit at full value must pass both bounds, got: {e:?}")
+    });
+
+    assert_eq!(
+        get_stock_at(&conn, "SKU", DEFAULT_LOC),
+        1,
+        "the unit comes back to the default location"
+    );
+    assert_eq!(
+        s.total_refunded_for_sale("refund-sale-1")
+            .unwrap()
+            .minor_units,
+        1000
+    );
+}
