@@ -119,13 +119,31 @@ pub async fn list_products(
         let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
         return match crate::pg::list_products(pool, tenant_id).await {
             Ok(products) => {
-                let missing = crate::pg::list_missing_hashes(
+                // ADVISORY, deliberately: `missing_hashes` is a push-priority
+                // nudge only — the desktop uploads what its OWN queue holds
+                // (platform/sync/src/image_push.rs `peek_push_batch`), and this
+                // list merely reorders it — so a failed lookup must not take the
+                // product listing down with it. The cost is that an empty list
+                // here is AMBIGUOUS: "nothing is missing" or "the lookup
+                // failed". The warning is how you tell them apart; keep it loud.
+                let missing = match crate::pg::list_missing_hashes(
                     pool,
                     tenant_id,
                     &collect_image_hashes(&products),
                 )
                 .await
-                .unwrap_or_default();
+                {
+                    Ok(missing) => missing,
+                    Err(e) => {
+                        tracing::warn!(
+                            tenant_id,
+                            operation = "pg::list_missing_hashes",
+                            error = %e,
+                            "products list: missing-hash lookup failed, omitting the nudge (advisory: desktop falls back to queue order)"
+                        );
+                        Vec::new()
+                    }
+                };
                 Json(ListProductsResponse {
                     products,
                     missing_hashes: missing,
@@ -142,12 +160,20 @@ pub async fn list_products(
         Ok(products) => {
             let hashes = collect_image_hashes(&products);
             let hash_refs: Vec<&str> = hashes.iter().map(String::as_str).collect();
-            let missing = store
-                .missing_hashes("default", &hash_refs)
-                .unwrap_or_default()
-                .into_iter()
-                .map(str::to_owned)
-                .collect();
+            // Same advisory contract as the PG branch above: an empty list here
+            // means either "nothing is missing" or "the lookup failed", and the
+            // warning is the only way to tell them apart.
+            let missing = match store.missing_hashes("default", &hash_refs) {
+                Ok(missing) => missing.into_iter().map(str::to_owned).collect(),
+                Err(e) => {
+                    tracing::warn!(
+                        operation = "Store::missing_hashes",
+                        error = %e,
+                        "products list: missing-hash lookup failed, omitting the nudge (advisory: desktop falls back to queue order)"
+                    );
+                    Vec::new()
+                }
+            };
             Json(ListProductsResponse {
                 products,
                 missing_hashes: missing,

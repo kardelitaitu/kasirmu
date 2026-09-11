@@ -415,7 +415,24 @@ pub async fn get_image_pack(
         let referenced = {
             let db = state.db.lock().await;
             let store = Store::new(&db);
-            store.image_ref_exists(tenant_id, h).unwrap_or_default()
+            // Fail-CLOSED by decision, not by accident: this is the content-spine
+            // tenancy gate, so an error must read as "not referenced" and skip the
+            // frame — never as "referenced". Skipping is recoverable (the puller
+            // treats a missing frame as a 404 for that hash and retries), but it
+            // is otherwise silent, so name it.
+            match store.image_ref_exists(tenant_id, h) {
+                Ok(referenced) => referenced,
+                Err(e) => {
+                    tracing::warn!(
+                        tenant_id,
+                        hash = h,
+                        operation = "Store::image_ref_exists",
+                        error = %e,
+                        "images:pack spine lookup failed, treating the hash as unreferenced (fail-closed, frame skipped)"
+                    );
+                    false
+                }
+            }
         };
         if !referenced {
             continue;
@@ -481,20 +498,42 @@ pub async fn get_image_missing(
             .collect()
     };
 
+    // ADVISORY, and the fallback below is a deliberate availability choice, not
+    // an oversight: this response only REORDERS the desktop's push queue — the
+    // set it uploads comes from the local queue (platform/sync/src/image_push.rs
+    // `peek_push_batch`), never from this list — so a failed lookup must not
+    // fail the request. The cost is that an empty answer is now AMBIGUOUS: it
+    // means either "nothing is missing" or "the lookup failed", and the warning
+    // is the only way to tell them apart. Keep it loud.
     let missing = if let Some(pool) = &state.pg {
-        crate::pg::list_missing_hashes(pool, tenant_id, &candidates)
-            .await
-            .unwrap_or_default()
+        match crate::pg::list_missing_hashes(pool, tenant_id, &candidates).await {
+            Ok(missing) => missing,
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id,
+                    operation = "pg::list_missing_hashes",
+                    error = %e,
+                    "images:missing lookup failed, answering an empty set (advisory: desktop falls back to queue order)"
+                );
+                Vec::new()
+            }
+        }
     } else {
         let db = state.db.lock().await;
         let store = Store::new(&db);
         let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
-        store
-            .missing_hashes(tenant_id, &refs)
-            .unwrap_or_default()
-            .into_iter()
-            .map(str::to_owned)
-            .collect()
+        match store.missing_hashes(tenant_id, &refs) {
+            Ok(missing) => missing.into_iter().map(str::to_owned).collect(),
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id,
+                    operation = "Store::missing_hashes",
+                    error = %e,
+                    "images:missing lookup failed, answering an empty set (advisory: desktop falls back to queue order)"
+                );
+                Vec::new()
+            }
+        }
     };
 
     (
