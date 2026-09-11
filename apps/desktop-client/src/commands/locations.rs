@@ -165,7 +165,3 @@ pub async fn set_location_ticket_prefix_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "locations_tests.rs"]
-mod tests;

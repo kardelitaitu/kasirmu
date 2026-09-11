@@ -3,16 +3,21 @@
 // those aliases retired with the Store → Location caller migration
 // (todo-global-saas-1.md slice 1c/1d), so the suite now exercises the
 // canonical names only.
+//! Location command tests relocated from the desktop
+//! `commands/locations_tests.rs` (EW8). The scoped flows target
+//! `oz_bridge::locations` through the headless `TestBridge` harness;
+//! serde shapes, seeding, and every assertion are unchanged from the
+//! desktop originals (error variants map AppError -> BridgeError 1:1,
+//! call args flip to (ctx, token, &args)).
 #![allow(deprecated)]
 
 use super::*;
-use crate::state::AppState;
 use oz_core::db::Store;
 use oz_core::migrations;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
 use serde_json::json;
-use tauri::Manager;
+
+use crate::testing::TestBridge;
 
 // ── DTO + args serde shapes ─────────────────────────────────────────
 
@@ -81,25 +86,6 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-/// AppState with a fresh migrated global DB and an isolated location-db dir
-/// (mirrors the security_scoped_integration_tests harness).
-fn flow_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    // Leak the tempdir for the lifetime of the test process — the manager
-    // keeps connections open and the path must outlive the state.
-    let path = temp_dir.keep();
-    state.db_manager = StoreDatabaseManager::new(path, migrations::ALL);
-    state
-}
-
-fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
-}
-
 /// The full happy path on a fresh migrated state: the location db the session
 /// resolves to already contains exactly one `default` profile row (the
 /// migration seed). Debug builds mirror `get_subscription_capabilities`'s
@@ -111,8 +97,8 @@ fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
 async fn create_location_profile_scoped_end_to_end_owner() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    state.session_store.write().unwrap().insert(
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
         "owner-tok".into(),
         SessionContext::new(
             "user-owner".into(),
@@ -125,10 +111,11 @@ async fn create_location_profile_scoped_end_to_end_owner() {
             0,
         ),
     );
-    let app = mock_app(state);
 
     let result = create_location_profile_scoped(
-        CreateLocationArgs {
+        &tb.ctx(),
+        "owner-tok",
+        &CreateLocationArgs {
             id: "location-test-1".into(),
             name: "Second Branch".into(),
             address: None,
@@ -136,8 +123,6 @@ async fn create_location_profile_scoped_end_to_end_owner() {
             currency: None,
             timezone: None,
         },
-        "owner-tok".into(),
-        app.state(),
     )
     .await;
 
@@ -147,11 +132,7 @@ async fn create_location_profile_scoped_end_to_end_owner() {
     assert!(!created.is_primary);
 
     // The row must now exist in the location-scoped profile registry.
-    let conn = app
-        .state::<AppState>()
-        .db_manager
-        .open_store("default")
-        .unwrap();
+    let conn = tb.db_manager().open_store("default").unwrap();
     let count: i64 = conn
         .lock()
         .unwrap()
@@ -169,8 +150,8 @@ async fn create_location_profile_scoped_end_to_end_owner() {
 async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
     let conn = migrations::fresh_db();
     seed_owner(&conn);
-    let state = flow_state(conn);
-    state.session_store.write().unwrap().insert(
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
         "owner-tok".into(),
         SessionContext::new(
             "user-owner".into(),
@@ -187,7 +168,7 @@ async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
     // migration-seeded `default` profile). Debug builds shim only Free, so
     // this row exercises the real quota gate.
     {
-        let store_conn = state.db_manager.open_store("default").unwrap();
+        let store_conn = tb.db_manager().open_store("default").unwrap();
         store_conn
             .lock()
             .unwrap()
@@ -197,10 +178,11 @@ async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
             )
             .unwrap();
     }
-    let app = mock_app(state);
 
     let result = create_location_profile_scoped(
-        CreateLocationArgs {
+        &tb.ctx(),
+        "owner-tok",
+        &CreateLocationArgs {
             id: "location-test-2".into(),
             name: "Third Branch".into(),
             address: None,
@@ -208,15 +190,13 @@ async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
             currency: None,
             timezone: None,
         },
-        "owner-tok".into(),
-        app.state(),
     )
     .await;
 
     match result {
         // Typed quota rejection is the CORRECT outcome (mapped to the
         // subscription error copy on the front-end).
-        Err(AppError::Core { sub_kind, .. }) => {
+        Err(BridgeError::Core { sub_kind, .. }) => {
             assert_eq!(
                 format!("{sub_kind:?}").to_lowercase(),
                 "subscriptionlimitexceeded"
@@ -242,8 +222,8 @@ async fn create_location_profile_scoped_denies_staff_without_settings_edit() {
          VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
     )
     .unwrap();
-    let state = flow_state(conn);
-    state.session_store.write().unwrap().insert(
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
         "lite-tok".into(),
         SessionContext::new(
             "user-lite".into(),
@@ -256,10 +236,11 @@ async fn create_location_profile_scoped_denies_staff_without_settings_edit() {
             0,
         ),
     );
-    let app = mock_app(state);
 
     let result = create_location_profile_scoped(
-        CreateLocationArgs {
+        &tb.ctx(),
+        "lite-tok",
+        &CreateLocationArgs {
             id: "location-test-3".into(),
             name: "Staff Branch".into(),
             address: None,
@@ -267,12 +248,10 @@ async fn create_location_profile_scoped_denies_staff_without_settings_edit() {
             currency: None,
             timezone: None,
         },
-        "lite-tok".into(),
-        app.state(),
     )
     .await;
 
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── ADR #47 resource-scope gating ───────────────────────────────────
@@ -297,8 +276,8 @@ fn seed_location_scoped_manager(conn: &rusqlite::Connection, location_id: &str) 
     .unwrap();
 }
 
-fn manager_session(state: &AppState, token: &str) {
-    state.session_store.write().unwrap().insert(
+fn manager_session(tb: &TestBridge, token: &str) {
+    tb.sessions().write().unwrap().insert(
         token.to_string(),
         SessionContext::new(
             "user-manager".into(),
@@ -321,12 +300,13 @@ fn manager_session(state: &AppState, token: &str) {
 async fn update_location_profile_scoped_denies_manager_of_other_location() {
     let conn = migrations::fresh_db();
     seed_location_scoped_manager(&conn, "loc-a");
-    let state = flow_state(conn);
-    manager_session(&state, "mgr-tok");
-    let app = mock_app(state);
+    let tb = TestBridge::new().with_conn(conn);
+    manager_session(&tb, "mgr-tok");
 
     let result = update_location_profile_scoped(
-        UpdateLocationArgs {
+        &tb.ctx(),
+        "mgr-tok",
+        &UpdateLocationArgs {
             id: "loc-b".into(),
             name: "Hostile Rename".into(),
             address: "1 Elsewhere".into(),
@@ -334,12 +314,10 @@ async fn update_location_profile_scoped_denies_manager_of_other_location() {
             currency: "USD".into(),
             timezone: "UTC".into(),
         },
-        "mgr-tok".into(),
-        app.state(),
     )
     .await;
 
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 /// The mirror pin: the SAME manager CAN update the location their
@@ -350,12 +328,13 @@ async fn update_location_profile_scoped_denies_manager_of_other_location() {
 async fn update_location_profile_scoped_allows_manager_of_own_location() {
     let conn = migrations::fresh_db();
     seed_location_scoped_manager(&conn, "default");
-    let state = flow_state(conn);
-    manager_session(&state, "mgr-tok");
-    let app = mock_app(state);
+    let tb = TestBridge::new().with_conn(conn);
+    manager_session(&tb, "mgr-tok");
 
     let result = update_location_profile_scoped(
-        UpdateLocationArgs {
+        &tb.ctx(),
+        "mgr-tok",
+        &UpdateLocationArgs {
             id: "default".into(),
             name: "Renamed Flagship".into(),
             address: "1 Main St".into(),
@@ -363,8 +342,6 @@ async fn update_location_profile_scoped_allows_manager_of_own_location() {
             currency: "USD".into(),
             timezone: "UTC".into(),
         },
-        "mgr-tok".into(),
-        app.state(),
     )
     .await;
 
@@ -379,12 +356,13 @@ async fn update_location_profile_scoped_allows_manager_of_own_location() {
 async fn update_location_profile_scoped_rejects_unsupported_timezone() {
     let conn = migrations::fresh_db();
     seed_location_scoped_manager(&conn, "default");
-    let state = flow_state(conn);
-    manager_session(&state, "mgr-tok");
-    let app = mock_app(state);
+    let tb = TestBridge::new().with_conn(conn);
+    manager_session(&tb, "mgr-tok");
 
     let result = update_location_profile_scoped(
-        UpdateLocationArgs {
+        &tb.ctx(),
+        "mgr-tok",
+        &UpdateLocationArgs {
             id: "default".into(),
             name: "Renamed Flagship".into(),
             address: "1 Main St".into(),
@@ -392,10 +370,8 @@ async fn update_location_profile_scoped_rejects_unsupported_timezone() {
             currency: "USD".into(),
             timezone: "Europe/Berlin".into(),
         },
-        "mgr-tok".into(),
-        app.state(),
     )
     .await;
 
-    assert!(matches!(result, Err(AppError::Invalid(_))));
+    assert!(matches!(result, Err(BridgeError::Invalid(_))));
 }

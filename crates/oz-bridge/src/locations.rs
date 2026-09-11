@@ -464,3 +464,7 @@ pub async fn set_location_ticket_prefix_scoped(
     store.set_location_ticket_prefix(id, prefix)?;
     Ok(store.location_ticket_prefix(id)?)
 }
+
+#[cfg(test)]
+#[path = "locations_tests.rs"]
+mod locations_tests;
