@@ -286,7 +286,3 @@ pub async fn complete_sale_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "pos_tests.rs"]
-mod tests;

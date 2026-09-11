@@ -1,6 +1,13 @@
+//! Unit tests for the POS bridge module.
+//!
+//! Relocated from `apps/desktop-client/src/commands/pos_tests.rs` (Wave D /
+//! D-rel-1). The shell's `tauri::test` mock app is replaced by the headless
+//! `TestBridge` harness ([`crate::testing`]) and every scoped command call
+//! targets `oz_bridge::pos` directly through a borrowed `BridgeCtx` — the
+//! same delegation the landed desktop shims perform.
+
 use super::*;
-use oz_core::Currency;
-use tauri::Manager as _;
+use oz_core::session::SessionContext;
 
 fn usd() -> Currency {
     "USD".parse().unwrap()
@@ -251,29 +258,24 @@ fn hold_cart_args_from_camel_case_json() {
 
 #[test]
 fn pos_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = crate::testing::TestBridge::new();
+    let result = bridge.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
 fn complete_sale_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("bad-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let bridge = crate::testing::TestBridge::new();
+    let result = bridge.ctx().resolve_session("bad-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
-    use crate::commands::topology::TOPOLOGY_RUNTIME_SETTING_KEY;
-    use oz_core::migrations;
-    use oz_core::session::SessionContext;
-    use platform_core::StoreDatabaseManager;
-
     let store_id = "store-stock-route-e2e";
     let pos_instance_id = "pos-stock-route-e2e";
     let warehouse_instance_id = "warehouse-stock-route-e2e";
-    let global = migrations::fresh_db();
+    let global = crate::testing::temp_conn();
     let runtime_key = format!("{TOPOLOGY_RUNTIME_SETTING_KEY}/{store_id}");
     let runtime_plan = serde_json::json!({
         "routes": [{
@@ -296,10 +298,13 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
         .unwrap();
     }
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
-    let store_conn = manager.open_store(store_id).unwrap();
+    // The harness owns a file-backed per-store manager over a unique temp
+    // directory (tempfile is not a bridge dependency), so the store DB is
+    // seeded through the bridge's own manager — the same shape the shell's
+    // `AppState::for_test_with_conn` + manager swap produced.
+    let bridge = crate::testing::TestBridge::new().with_conn(global);
     {
+        let store_conn = bridge.db_manager().open_store(store_id).unwrap();
         let db = store_conn.lock().unwrap();
         db.execute_batch(
             "INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-stock-route-e2e', 'Stock Route E2E', 0);
@@ -318,10 +323,7 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
         )
         .unwrap();
     }
-
-    let mut state = AppState::for_test_with_conn(global);
-    state.db_manager = manager;
-    state.session_store.write().unwrap().insert(
+    bridge.sessions().write().unwrap().insert(
         "stock-route-token".into(),
         SessionContext::new(
             "stock-route-user".into(),
@@ -334,22 +336,19 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             0,
         ),
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
 
     let started = start_sale_scoped(
-        "stock-route-token".into(),
+        &bridge.ctx(),
+        "stock-route-token",
         StartSaleArgs {
             currency: "USD".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
     add_line_scoped(
-        "stock-route-token".into(),
+        &bridge.ctx(),
+        "stock-route-token",
         AddLineArgs {
             cart_id: started.cart_id,
             sku: Sku::new("STOCK-ROUTE-COFFEE"),
@@ -357,12 +356,12 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             unit_price_minor: 1000,
             unit_price_currency: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
     complete_sale_scoped(
-        "stock-route-token".into(),
+        &bridge.ctx(),
+        "stock-route-token",
         CompleteSaleScopedArgs {
             cart_id: started.cart_id,
             payment_method: "cash".into(),
@@ -382,13 +381,11 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             // F2-6: no estimate claim — the note must stay NULL.
             tax_estimated: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let state = app.state::<AppState>();
-    let store_conn = state.db_manager.open_store(store_id).unwrap();
+    let store_conn = bridge.db_manager().open_store(store_id).unwrap();
     let db = store_conn.lock().unwrap();
     let pos_qty: i64 = db
         .query_row(
@@ -497,9 +494,6 @@ fn runtime_plan_preserves_distinct_stock_targets_in_route_order() {
 
 // ── Scoped command integration tests ─────────────────────────────
 
-use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-
 fn seed_owner(conn: &rusqlite::Connection) {
     let store = Store::new(conn);
     store.seed_default_roles().unwrap();
@@ -511,18 +505,15 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn scoped_state(
+fn scoped_bridge(
     conn: rusqlite::Connection,
     token: &str,
     user_id: &str,
     role_id: &str,
     store_id: &str,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> crate::testing::TestBridge {
+    let bridge = crate::testing::TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -535,22 +526,19 @@ fn scoped_state(
             0,
         ),
     );
-    state
+    bridge
 }
 
-// ── Session validation ────────────────────────────────────────────
+// ── Session validation ────────────────────────────────────────
 
 #[tokio::test]
 async fn scoped_hold_cart_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = crate::testing::temp_conn();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     let result = hold_cart_scoped(
-        "bad-token".into(),
+        &bridge.ctx(),
+        "bad-token",
         HoldCartArgs {
             label: "Test".into(),
             cart_data: "{}".into(),
@@ -561,39 +549,31 @@ async fn scoped_hold_cart_rejects_invalid_token() {
             customer_name: None,
             deduction_location_id: None,
         },
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_list_held_carts_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = crate::testing::temp_conn();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let result = list_held_carts_scoped("bad-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_held_carts_scoped(&bridge.ctx(), "bad-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Owner hold_cart CRUD ─────────────────────────────────────────
 
 #[tokio::test]
 async fn owner_can_hold_cart() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     let result = hold_cart_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         HoldCartArgs {
             label: "Table 5".into(),
             cart_data: r#"{"lines":[]}"#.into(),
@@ -604,7 +584,6 @@ async fn owner_can_hold_cart() {
             customer_name: None,
             deduction_location_id: None,
         },
-        app.state(),
     )
     .await;
     assert!(result.is_ok(), "owner should hold a cart");
@@ -612,18 +591,15 @@ async fn owner_can_hold_cart() {
 
 #[tokio::test]
 async fn owner_can_list_held_carts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     // Hold two carts.
     for i in 0..2 {
         hold_cart_scoped(
-            "tok".into(),
+            &bridge.ctx(),
+            "tok",
             HoldCartArgs {
                 label: format!("Table {i}"),
                 cart_data: "{}".into(),
@@ -634,31 +610,22 @@ async fn owner_can_list_held_carts() {
                 customer_name: None,
                 deduction_location_id: None,
             },
-            app.state(),
         )
         .await
         .unwrap();
     }
 
-    let carts = list_held_carts_scoped("tok".into(), app.state())
-        .await
-        .unwrap();
+    let carts = list_held_carts_scoped(&bridge.ctx(), "tok").await.unwrap();
     assert_eq!(carts.len(), 2);
 }
 
 #[tokio::test]
 async fn list_held_carts_empty_when_none() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let carts = list_held_carts_scoped("tok".into(), app.state())
-        .await
-        .unwrap();
+    let carts = list_held_carts_scoped(&bridge.ctx(), "tok").await.unwrap();
     assert!(carts.is_empty());
 }
 
@@ -666,17 +633,11 @@ async fn list_held_carts_empty_when_none() {
 
 #[tokio::test]
 async fn owner_can_list_open_bills_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let bills = list_open_bills_scoped("tok".into(), app.state())
-        .await
-        .unwrap();
+    let bills = list_open_bills_scoped(&bridge.ctx(), "tok").await.unwrap();
     assert!(bills.is_empty());
 }
 
@@ -684,7 +645,7 @@ async fn owner_can_list_open_bills_empty() {
 
 #[tokio::test]
 async fn staff_can_hold_cart() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
@@ -692,14 +653,11 @@ async fn staff_can_hold_cart() {
         [],
     )
     .unwrap();
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
 
     let result = hold_cart_scoped(
-        "tok".into(),
+        &bridge.ctx(),
+        "tok",
         HoldCartArgs {
             label: "Staff hold".into(),
             cart_data: "{}".into(),
@@ -710,7 +668,6 @@ async fn staff_can_hold_cart() {
             customer_name: None,
             deduction_location_id: None,
         },
-        app.state(),
     )
     .await;
     assert!(result.is_ok(), "staff has SALES_PROCESS permission");
@@ -718,7 +675,7 @@ async fn staff_can_hold_cart() {
 
 #[tokio::test]
 async fn staff_can_list_held_carts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
@@ -726,13 +683,9 @@ async fn staff_can_list_held_carts() {
         [],
     )
     .unwrap();
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
 
-    let result = list_held_carts_scoped("tok".into(), app.state()).await;
+    let result = list_held_carts_scoped(&bridge.ctx(), "tok").await;
     assert!(result.is_ok(), "staff has SALES_PROCESS permission");
     assert!(result.unwrap().is_empty());
 }
@@ -798,7 +751,7 @@ fn tax_scope_now_carries_the_location_and_a_date_the_resolver_accepts() {
     // right. A scope the core resolver rejects fails EVERY sale at this
     // location — loudly, which is the intended failure mode, but loudly at
     // checkout is still a broken checkout.
-    let db = oz_core::migrations::fresh_db();
+    let db = crate::testing::temp_conn();
     let store = Store::new(&db);
     let scope = tax_scope_now(&store, "loc-42");
     assert_eq!(
@@ -819,7 +772,7 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
     // tax_scope_now + compute_sale_tax_for_location + the settings rounding
     // mode — so a location with its own rate stops inheriting the tenant
     // default at the command layer, and does not leak it next door.
-    let db = oz_core::migrations::fresh_db();
+    let db = crate::testing::temp_conn();
     let store = Store::new(&db);
     db.execute(
         "INSERT INTO legal_entities (id, tenant_id, name) VALUES ('ent-1', 'default', 'Ent')",

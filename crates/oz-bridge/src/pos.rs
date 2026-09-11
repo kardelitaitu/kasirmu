@@ -1793,3 +1793,7 @@ pub async fn complete_sale_scoped(
         line_count,
     })
 }
+
+#[cfg(test)]
+#[path = "pos_tests.rs"]
+mod tests;
