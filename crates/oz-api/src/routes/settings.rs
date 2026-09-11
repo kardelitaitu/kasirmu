@@ -18,13 +18,15 @@ next: none here | perf: N/A
 //! "Absent is left untouched" is a per-TOP-LEVEL-field rule, and the SMTP
 //! blob is one top-level field whose value is written whole. `SmtpConfig`
 //! declares no serde defaults but does carry two `Option`s, so a blob that
-//! supplies host/port/from/use_tls and omits `password` validates clean and
-//! used to persist `password: null` - destroying the secret the live report
-//! loop reads. The write now goes through the same keep-on-blank merge the
-//! desktop and tablet funnels use ([`merge_smtp_password_json`]), against
-//! the scoped row this handler owns ([`stored_smtp_raw`]): an absent
-//! password keeps the stored one, a supplied password replaces it, and an
-//! explicit empty string clears it.
+//! supplies host/port/from/use_tls and omits `password` used to persist
+//! `password: null` - destroying the secret the live report loop reads - and
+//! one that omitted `username` did the same to the account that secret
+//! belongs to. The write now goes through the same keep-on-blank merge the
+//! desktop and tablet funnels use ([`merge_smtp_password_json`]), against the
+//! scoped row this handler owns ([`stored_smtp_raw`]): EVERY absent optional
+//! field keeps its stored value, a supplied one replaces it, and an explicit
+//! empty string clears it. The blob is also run through `SmtpConfig::validate`
+//! first, so this door refuses what this lane's sender would refuse anyway.
 //!
 //! Both are gated by the same `OZ_ADMIN_KEY` as token minting and plan
 //! assignment (ADR sync-auth-hardening P2): when the admin key is
@@ -288,18 +290,64 @@ pub async fn put_settings_handler(
     let smtp_op = match &body.smtp_config {
         Some(Field::Value(value)) => match serde_json::from_value::<SmtpConfig>(value.clone()) {
             Ok(config) => {
-                // Keep-on-blank, through the ONE merge the two single-write
-                // funnels now use as well: `Store::merged_smtp_password_json`
-                // (crates/oz-core/src/export/email_report.rs:218) is a thin
-                // wrapper over this same `merge_smtp_password_json`, pinned
-                // to the BARE key — which is not the row this handler writes.
-                // Asking the merge directly is what lets the cloud lane
-                // preserve the secret in the SCOPED row it actually owns.
+                // The door and the SENDER on this lane must agree about what a
+                // valid SMTP config is, and they did not: this handler only
+                // DESERIALISED, so an empty host, port 0 and a from of
+                // "not-an-email" were all accepted and stored, while the cloud
+                // report loop refuses to send anything that fails this same
+                // validate() (apps/cloud-server/src/email.rs:49-51; the PG lane
+                // reaches it through the same send_email at email_pg.rs:244).
+                // So nothing rejected here was ever SENDABLE on this lane — the
+                // write only moved the failure from the console to 08:00. It
+                // runs before the merge and long before write_settings, so the
+                // documented validate-and-canonicalize-before-any-write
+                // invariant holds.
                 //
-                // `SmtpConfig` has no serde defaults and `password` is an
-                // Option, so a blob that omits the password deserializes to
-                // `password: null` and the whole-blob write below destroyed
-                // the stored secret. The merge carries it forward instead.
+                // This is NOT a claim that the desktop door applies the same
+                // rule. It does not: outside this handler, `SmtpConfig::validate`
+                // has exactly one production caller — the cloud sender. The
+                // desktop write funnel (crates/oz-bridge/src/settings.rs
+                // ::run_set_setting) and the desktop sender
+                // (crates/oz-bridge/src/email.rs:77) never call it. The seam
+                // this closes is cloud-door to cloud-sender, not desktop to
+                // cloud, and reading it as the latter would make the one shape
+                // below look like a desktop parity change when it is not.
+                //
+                // The one shape newly refused here that was storable before is
+                // a from-address whose domain has no dot — `reports@localhost`
+                // — rejected by the `!self.from.contains('.')` clause of
+                // SmtpConfig::validate (email_report.rs:101). A desktop install
+                // can legitimately run that shape, because its sender skips
+                // validate(); a cloud tenant never could, because its sender
+                // already refused it. So the shape stays storable where it
+                // works and stops being storable where it does not.
+                if let Err(e) = config.validate() {
+                    tracing::warn!(
+                        error = %e,
+                        tenant,
+                        "rejected an smtp_config the report sender could not use"
+                    );
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": "invalid_smtp_config"})),
+                    )
+                        .into_response();
+                }
+                // Keep-on-blank, through the ONE merge the two single-write
+                // funnels use as well. Do NOT swap this for its wrapper,
+                // `Store::merged_smtp_password_json`: that one reads the BARE
+                // key, which is the desktop's single-tenant row and NOT the row
+                // this handler writes. Merging against it would carry some
+                // other tenant's secret into this one and still blank the
+                // scoped row. The underlying `merge_smtp_password_json` plus
+                // [stored_smtp_raw] is what keeps the cloud lane preserving the
+                // secret it actually owns.
+                //
+                // `SmtpConfig` declares no serde defaults, so every field a
+                // blob can omit is an Option — and the merge now carries all of
+                // them forward, not just the password. Before that, a PUT that
+                // omitted `username` left a stored relay password
+                // authenticating as nobody.
                 //
                 // The merge also owns the at-rest encryption, so the blob
                 // handed to it is PLAINTEXT — pre-encrypting here would

@@ -259,6 +259,89 @@ fn save_smtp_config_supplied_password_still_overwrites() {
     );
 }
 
+/// The bug the password-only merge left behind: `SmtpConfig` has TWO optional
+/// fields and the carry-over named one of them. A relay account is not a
+/// secret, but a stored password with a nulled account authenticates as
+/// nobody, and the card cannot read either back (the whole key is
+/// deny-listed). The rule is now derived from the struct, so this test is
+/// about the SHAPE of the fix, not about `username`: any optional field added
+/// to `SmtpConfig` later is preserved by the same code path with no edit here.
+#[test]
+fn merge_preserves_every_absent_optional_field_not_just_the_password() {
+    let stored = r#"{"host":"smtp.old.com","port":587,"username":"relay-account","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#;
+    // A save that moves the relay and supplies neither optional field.
+    let merged = merge_smtp_password_json(
+        r#"{"host":"smtp.new.com","port":465,"from":"changed@mystore.com","use_tls":false}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&merged).unwrap();
+    assert_eq!(parsed.username.as_deref(), Some("relay-account"));
+    assert_eq!(parsed.password.as_deref(), Some("stored-secret"));
+    // The supplied fields still move.
+    assert_eq!(parsed.host, "smtp.new.com");
+    assert_eq!(parsed.port, 465);
+    assert_eq!(parsed.from, "changed@mystore.com");
+    assert!(!parsed.use_tls);
+    // And an explicit null behaves exactly like an absent key.
+    let also = merge_smtp_password_json(
+        r#"{"host":"smtp.new.com","port":465,"username":null,"password":null,"from":"changed@mystore.com","use_tls":false}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let also: SmtpConfig = serde_json::from_str(&also).unwrap();
+    assert_eq!(also.username.as_deref(), Some("relay-account"));
+    assert_eq!(also.password.as_deref(), Some("stored-secret"));
+}
+
+/// Keep-on-blank must not become keep-forever on the field that was never
+/// covered: a supplied account still replaces the stored one, and an explicit
+/// empty string still clears it.
+#[test]
+fn merge_supplied_username_overwrites_and_empty_username_clears() {
+    let stored = r#"{"host":"smtp.old.com","port":587,"username":"relay-account","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#;
+    let rotated = merge_smtp_password_json(
+        r#"{"host":"smtp.old.com","port":587,"username":"new-account","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&rotated).unwrap();
+    assert_eq!(
+        parsed.username.as_deref(),
+        Some("new-account"),
+        "a supplied username must replace the stored one"
+    );
+
+    let cleared = merge_smtp_password_json(
+        r#"{"host":"smtp.old.com","port":587,"username":"","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&cleared).unwrap();
+    assert!(
+        parsed.username.is_none(),
+        "an explicit empty username is a clear, not a keep: {cleared}"
+    );
+
+    // The password in this blob is SUPPLIED, not absent, so it takes the one
+    // per-field branch the merge has: it is replaced by its ciphertext. That
+    // is the only way this assertion differs from the absent-password one
+    // above, and pinning it here keeps the two policies from being conflated.
+    let supplied = parsed
+        .password
+        .as_deref()
+        .expect("a supplied password must survive the merge");
+    assert_ne!(
+        supplied, "stored-secret",
+        "a supplied password must be encrypted at rest, never written as cleartext: {cleared}"
+    );
+    assert_eq!(
+        crate::crypto::decrypt_smtp_at_rest(supplied).unwrap(),
+        "stored-secret",
+        "the ciphertext must decode to the password the caller supplied"
+    );
+}
+
 /// The generic settings write stores whatever blob it is handed, so a password
 /// saved from the card lands as PLAINTEXT in the settings row — only
 /// `save_smtp_config` encrypts. This pins the two properties that make the

@@ -302,18 +302,24 @@ async fn null_deletes_scoped_override() {
 // and omitted password validated clean and persisted password null,
 // destroying the secret the live report loop reads back.
 
-/// An SMTP blob in the shape an admin client posts when it only wants to
-/// move the relay: every required field, and a password only when the
-/// caller actually supplied one.
-fn smtp_json_passworded(host: &str, port: u16, password: Option<&str>) -> String {
-    match password {
-        None => format!(
-            r#"{{"host":"{host}","port":{port},"username":"u","from":"r@example.com","use_tls":true}}"#
-        ),
-        Some(pwd) => format!(
-            r#"{{"host":"{host}","port":{port},"username":"u","password":"{pwd}","from":"r@example.com","use_tls":true}}"#
-        ),
+/// An SMTP blob carrying exactly the fields the caller supplied. `None`
+/// means the key is ABSENT from the JSON, which is what a client that never
+/// rendered the field posts — and `SmtpConfig` declares no serde defaults, so
+/// absent and `null` both deserialize to `None` on the way in.
+fn smtp_blob(host: &str, port: u16, username: Option<&str>, password: Option<&str>) -> String {
+    let mut fields = vec![
+        format!(r#""host":"{host}""#),
+        format!(r#""port":{port}"#),
+        r#""from":"r@example.com""#.to_string(),
+        r#""use_tls":true"#.to_string(),
+    ];
+    if let Some(u) = username {
+        fields.push(format!(r#""username":"{u}""#));
     }
+    if let Some(p) = password {
+        fields.push(format!(r#""password":"{p}""#));
+    }
+    format!("{{{}}}", fields.join(","))
 }
 
 async fn put_raw(state: &AppState, body: &str) -> axum::response::Response {
@@ -356,7 +362,7 @@ async fn put_omitting_smtp_password_preserves_the_stored_secret() {
     // Now move the relay, omitting the password entirely.
     let body = format!(
         r#"{{"smtp_config":{},"store_name":"Renamed"}}"#,
-        smtp_json_passworded("smtp2.example.com", 465, None)
+        smtp_blob("smtp2.example.com", 465, None, None)
     );
     let resp = put_raw(&state, &body).await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -385,7 +391,7 @@ async fn put_supplying_smtp_password_still_overwrites_it() {
     // works. A genuinely supplied password must still replace the old one.
     let state = state_with(None);
     put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
-    let rotated = smtp_json_passworded("smtp.example.com", 587, Some("rotated"));
+    let rotated = smtp_blob("smtp.example.com", 587, Some("u"), Some("rotated"));
     let body = format!(r#"{{"smtp_config":{}}}"#, rotated);
     let resp = put_raw(&state, &body).await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -405,7 +411,7 @@ async fn put_empty_smtp_password_clears_it() {
     // documented "clear it", distinct from an absent field.
     let state = state_with(None);
     put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
-    let clearing = smtp_json_passworded("smtp.example.com", 587, Some(""));
+    let clearing = smtp_blob("smtp.example.com", 587, Some("u"), Some(""));
     let resp = put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, clearing)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
@@ -414,6 +420,123 @@ async fn put_empty_smtp_password_clears_it() {
         None,
         "an explicit empty password must clear the stored one; row: {raw}"
     );
+}
+
+#[tokio::test]
+async fn put_omitting_smtp_username_preserves_the_stored_account_and_secret() {
+    // The merge was password-only, and SmtpConfig has TWO optional fields.
+    // A relay account is not a secret, but a password with no account
+    // authenticates as nobody: the pair is one credential and the card can
+    // read neither back, because the whole key is deny-listed.
+    let state = state_with(None);
+    let provision = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob(
+            "smtp.example.com",
+            587,
+            Some("relay-account"),
+            Some("secret")
+        )
+    );
+    put_raw(&state, &provision).await;
+
+    // Move the relay, omitting BOTH optional fields.
+    let body = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob("smtp2.example.com", 465, None, None)
+    );
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    // The supplied fields still move — that is the control inside the fix.
+    assert_eq!(json["smtp_config"]["host"], "smtp2.example.com");
+    assert_eq!(json["smtp_config"]["port"], 465);
+    assert_eq!(json["smtp_config"]["use_tls"], true);
+    // And both absent fields survive, in the response...
+    assert_eq!(json["smtp_config"]["username"], "relay-account");
+    assert_eq!(json["smtp_config"]["password"], "secret");
+    // ...and in the row the sender reads.
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    let stored: SmtpConfig = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        stored.username.as_deref(),
+        Some("relay-account"),
+        "an absent username must not blank the stored account; row: {raw}"
+    );
+    assert_eq!(
+        decrypted_password(&raw),
+        Some("secret".into()),
+        "an absent password must not blank the stored secret; row: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_supplying_smtp_username_still_overwrites_it() {
+    // Control: a carry-over that never let a supplied value through would pass
+    // the test above. A genuinely supplied account still replaces the old one.
+    let state = state_with(None);
+    let provision = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob("smtp.example.com", 587, Some("old-account"), Some("secret"))
+    );
+    put_raw(&state, &provision).await;
+    let body = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob("smtp.example.com", 587, Some("new-account"), Some("secret"))
+    );
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["smtp_config"]["username"], "new-account");
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    let stored: SmtpConfig = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        stored.username.as_deref(),
+        Some("new-account"),
+        "a supplied username must replace the stored one; row: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_rejects_smtp_config_the_cloud_sender_cannot_send() {
+    // The report loop refuses to send anything that fails SmtpConfig::validate
+    // (apps/cloud-server/src/email.rs:50), so every shape below was already
+    // unsendable the moment it was stored — the handler accepted it and left
+    // the tenant with a config that fails at send time instead of a 400 at
+    // the console.
+    for (label, blob) in [
+        (
+            "smtp_host must not be empty",
+            r#"{"host":"","port":587,"from":"r@example.com","use_tls":true}"#,
+        ),
+        (
+            "smtp_port must be between 1 and 65535",
+            r#"{"host":"smtp.example.com","port":0,"from":"r@example.com","use_tls":true}"#,
+        ),
+        (
+            "smtp_from must not be empty",
+            r#"{"host":"smtp.example.com","port":587,"from":"   ","use_tls":true}"#,
+        ),
+        (
+            "smtp_from must be a valid email",
+            r#"{"host":"smtp.example.com","port":587,"from":"not-an-email","use_tls":true}"#,
+        ),
+    ] {
+        let state = state_with(None);
+        let body = format!(r#"{{"smtp_config":{blob}}}"#);
+        let resp = put_raw(&state, &body).await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "{label} must be rejected, not stored"
+        );
+        let json = body_json(resp).await;
+        assert_eq!(json["error"], "invalid_smtp_config", "{label}");
+        assert!(
+            raw_smtp_row(&state, "smtp_config:default").await.is_none(),
+            "{label} must write nothing at all"
+        );
+    }
 }
 
 // ── Validation ────────────────────────────────────────────────
