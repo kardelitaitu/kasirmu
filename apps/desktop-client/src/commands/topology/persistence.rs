@@ -177,9 +177,10 @@ pub(crate) fn save_topology_json_at_key_with_revision(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::validate_semantic_ownership`].
-/// Reached only by the mounted tests: production calls the `_in` variant, so the
-/// library build would report this wrapper as never used.
-#[cfg(test)]
+/// Caller set collapsed when the desktop topology unit tests relocated to
+/// oz-bridge: production calls the `_in` variant directly and no mounted test
+/// reaches this wrapper in either build.
+#[allow(dead_code)]
 pub(crate) fn validate_semantic_ownership(
     conn: &Connection,
     nodes: &[Value],
@@ -234,25 +235,6 @@ pub(crate) fn save_topology_json_at_key(
         None,
         None,
     )
-}
-
-#[cfg(test)]
-/// Test convenience wrapper: unscoped save used only by the unit tests.
-///
-/// Production's unscoped save is the `save_topology` command with
-/// `branch_id: None`, which resolves the same key through
-/// `topology_setting_key(None)` and calls `save_topology_json_at_key`
-/// directly — this wrapper is a byte-equivalent alias of that exact path
-/// (same `TOPOLOGY_SETTING_KEY` constant, same keyed function), kept as a
-/// concise abbreviation for the test call sites. Do NOT wire it into
-/// production: the command's single key-resolution + single save is the
-/// cleaner expression of the unscoped case.
-pub(crate) fn save_topology_json(
-    conn: &Connection,
-    nodes: Vec<Value>,
-    wires: Vec<Value>,
-) -> Result<(), AppError> {
-    save_topology_json_at_key(conn, nodes, wires, TOPOLOGY_SETTING_KEY).map(|_| ())
 }
 
 /// Test-only legacy compat: serialise typed topology payloads to the

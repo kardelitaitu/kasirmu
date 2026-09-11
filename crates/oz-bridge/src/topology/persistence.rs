@@ -2,7 +2,8 @@
 //! cross-database Apply recovery journal.
 //!
 //! Extracted from commands/topology.rs. Depends on the semantic engine
-//! (`super::semantics`) for the save/Apply-time gates.//!
+//! (`super::semantics`) for the save/Apply-time gates.
+//!
 //! Ported verbatim from
 //! `apps/desktop-client/src/commands/topology/persistence.rs` (Wave E step d)
 //! as the fifth leaf of the `oz_bridge::topology` mirror, after model,
@@ -437,6 +438,11 @@ pub async fn recover_pending_topology_apply_at_startup(
 ///
 /// Shared by the startup recovery daemon and the tests; verifies the journal
 /// belongs to the expected store before touching either database.
+///
+/// Precondition: the caller must already hold the topology apply lock (see
+/// [`recover_pending_topology_apply_at_startup`]) and must have authorized the
+/// topology write through the command-layer gate; this helper performs no
+/// permission gate of its own.
 pub async fn recover_pending_topology_apply(
     db: &tokio::sync::Mutex<Connection>,
     db_manager: &StoreDatabaseManager,
@@ -490,6 +496,11 @@ pub async fn recover_pending_topology_apply(
 }
 
 /// Capture rows that the workspace portion of Apply will update or archive.
+///
+/// Precondition: internally ungated - call only from inside an authorized
+/// topology Apply (the command layer holds the apply lock and the
+/// `topology_settings_write` gate there); this helper locks the store
+/// connection itself and needs no caller-held lock.
 pub async fn snapshot_workspace_rows(
     db_manager: &StoreDatabaseManager,
     store_id: &str,
@@ -529,6 +540,12 @@ pub async fn snapshot_workspace_rows(
 }
 
 /// Compensate workspace mutations after a global diagram write fails.
+///
+/// Precondition: internally ungated - call only to roll back an already
+/// authorized topology Apply whose global write failed (the command layer
+/// holds the apply lock and the `topology_settings_write` gate in that
+/// window); this helper locks the store connection itself and writes in one
+/// transaction.
 pub async fn compensate_workspace_diff(
     db_manager: &StoreDatabaseManager,
     store_id: &str,

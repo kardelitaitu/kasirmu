@@ -4,7 +4,8 @@
 //! contract (topologySemantics.json) and the ADR #34 typed-connection gates.
 //! Includes the apply-key/revision/fingerprint/ledger JSON helpers, which are
 //! value-level and deliberately Tauri-free. Extracted from
-//! commands/topology.rs.//!
+//! commands/topology.rs.
+//!
 //! Ported verbatim from
 //! `apps/desktop-client/src/commands/topology/semantics.rs` (Wave E step E9c) as
 //! the second leaf of the `oz_bridge::topology` mirror: `super::model::*` and
