@@ -10,39 +10,21 @@ next: none | perf: N/A
 //! to the front-end. Other settings (store name, currency, features) are
 //! managed by the setup wizard and may be exposed here in the future.
 
-#[allow(unused_imports)] // sibling settings_tests.rs depends on the derives
-use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use std::collections::HashMap;
 
-#[allow(unused_imports)]
-// the write commands moved to oz_bridge::settings; the relocated test surface may still depend on it
-use oz_core::permissions;
-#[allow(unused_imports)]
-// the write commands moved to oz_bridge::settings; the relocated test surface may still depend on it
-use oz_core::{Settings, Store, UserPreferences};
-
-#[allow(unused_imports)]
-// the write commands moved to oz_bridge::settings; the relocated test surface may still depend on it
-use platform_core::terminal_profile::TerminalProfile;
-
-#[allow(unused_imports)] // the writer commands and sibling settings_tests.rs depend on it
-use crate::commands::authz::require_permission_for_session;
-#[allow(unused_imports)] // set_setting gate sites moved to ctx.require_permission_for_user
-use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// The shared key guards, the DTOs and the read-side business logic live in
-// oz_bridge::settings (Wave E). They are re-exported here so the sibling
-// settings_tests.rs mount keeps resolving them by name and so commands/data.rs
-// keeps reaching is_non_exportable_key without any edit on its side.
+// The settings DTOs are defined in oz_bridge::settings (Wave E) and re-exported
+// here because they name the types in the command signatures below, which are
+// the IPC wire surface the renderer invokes. is_non_exportable_key is
+// re-exported for commands/data.rs, which reaches it through this module.
 pub(crate) use oz_bridge::settings::is_non_exportable_key;
 pub use oz_bridge::settings::{
     CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, HardwareSettingsDto,
-    ReceiptSettingsDto, SECRET_KEY_DENY_LIST, StoreSettingsDto, UserPrefEntry, is_managed_key,
-    is_secret_key, managed_key_owner,
+    ReceiptSettingsDto, StoreSettingsDto, UserPrefEntry,
 };
 
 // ── Receipt settings DTO ─────────────────────────────────
@@ -396,72 +378,4 @@ pub async fn get_deployment_info(
     oz_bridge::settings::get_deployment_info(&ctx, &session_token)
         .await
         .map_err(Into::into)
-}
-
-// Adapters over the moved business logic.
-
-// settings_tests.rs calls these by name and matches AppError variants, so they
-// stay in this module as thin AppError-returning wrappers over the bridge. The
-// write commands below still call run_set_setting and enqueue_settings_updates.
-
-#[allow(dead_code)]
-fn run_get_receipt_settings(conn: &rusqlite::Connection) -> Result<ReceiptSettingsDto, AppError> {
-    oz_bridge::settings::run_get_receipt_settings(conn).map_err(Into::into)
-}
-
-#[allow(dead_code)]
-fn run_get_store_settings(conn: &rusqlite::Connection) -> Result<StoreSettingsDto, AppError> {
-    oz_bridge::settings::run_get_store_settings(conn).map_err(Into::into)
-}
-
-#[allow(dead_code)]
-fn run_list_credit_sales(conn: &rusqlite::Connection) -> Result<Vec<CreditSaleDto>, AppError> {
-    oz_bridge::settings::run_list_credit_sales(conn).map_err(Into::into)
-}
-
-#[allow(dead_code)]
-fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>, AppError> {
-    oz_bridge::settings::run_get_setting(conn, key).map_err(Into::into)
-}
-
-#[allow(dead_code)]
-fn run_set_setting(
-    conn: &rusqlite::Connection,
-    key: &str,
-    value: &str,
-    terminal_id: &str,
-) -> Result<(), AppError> {
-    oz_bridge::settings::run_set_setting(conn, key, value, terminal_id).map_err(Into::into)
-}
-
-#[allow(dead_code)]
-fn enqueue_settings_updates(
-    store: &Store,
-    entries: &HashMap<String, String>,
-    terminal_id: &str,
-    tenant_id: &str,
-) -> Result<(), AppError> {
-    oz_bridge::settings::enqueue_settings_updates(store, entries, terminal_id, tenant_id)
-        .map_err(Into::into)
-}
-
-#[allow(dead_code)]
-fn build_deployment_info() -> DeploymentInfo {
-    oz_bridge::settings::build_deployment_info()
-}
-
-#[allow(dead_code)]
-fn run_set_receipt_settings(
-    conn: &rusqlite::Connection,
-    args: &ReceiptSettingsDto,
-) -> Result<(), AppError> {
-    oz_bridge::settings::run_set_receipt_settings(conn, args).map_err(Into::into)
-}
-
-#[allow(dead_code)]
-fn run_set_store_settings(
-    conn: &rusqlite::Connection,
-    args: &StoreSettingsDto,
-) -> Result<(), AppError> {
-    oz_bridge::settings::run_set_store_settings(conn, args).map_err(Into::into)
 }
