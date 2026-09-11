@@ -521,3 +521,301 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
     store.compute_sale_tax(&mut forgot, &[], mode).unwrap();
     assert_eq!(forgot.tax_total.minor_units, 70);
 }
+
+// ── COR-7 (tablet port): per-attempt checkout idempotency ─────────
+//
+// The tablet command layer is a fork of the desktop one and shared none of
+// its COR-7 machinery: `complete_sale_scoped` never read an attempt id and
+// stamped every payment with `idempotency_key: None`, so a tablet
+// double-tap rang up two sales for one payment. These tests pin the ported
+// semantics — one attempt, one sale; no attempt, no guard; a reused key on
+// a live cart is refused, never silently re-keyed.
+
+/// A session bound to the `sales:process` cashier seeded by
+/// `seed_cashier_without_override_permission`.
+fn replay_session() -> oz_core::session::SessionContext {
+    oz_core::session::SessionContext::new(
+        "user-cashier".into(),
+        "role-lite".into(),
+        "tablet-terminal".into(),
+        "store-replay".into(),
+        "tablet-instance".into(),
+        "store-pos".into(),
+        None,
+        0,
+    )
+}
+
+/// Checkout args that vary only by cart and attempt id, so a test's two
+/// settlements differ by nothing else.
+fn scoped_args(cart_id: CartId, attempt: Option<&str>) -> CompleteSaleScopedArgs {
+    CompleteSaleScopedArgs {
+        cart_id,
+        payment_method: "cash".into(),
+        tendered_minor: Some(700),
+        customer_id: None,
+        payment_splits: None,
+        customer_name: None,
+        serial_numbers: None,
+        base_currency: None,
+        base_total_minor: None,
+        tender_rate_millionths: None,
+        tip_minor: None,
+        service_charge_minor: None,
+        promotion_ids: None,
+        attempt_id: attempt.map(str::to_owned),
+        tax_estimated: None,
+    }
+}
+
+/// Seed an active cart holding one line and return its id.
+fn seed_cart_with_line(conn: &Connection, sku: &str, qty: i64, unit_minor: i64) -> CartId {
+    conn.execute(
+        "INSERT OR IGNORE INTO inventory_locations (id, name, created_at, updated_at)
+         VALUES ('loc-warehouse-1', 'Warehouse', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let mut cart = oz_core::Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new(sku), qty, price(unit_minor)))
+        .unwrap();
+    let cart_id = cart.id();
+    conn.execute(
+        "INSERT INTO active_carts (id, cart_data, deduction_location_id, updated_at)
+         VALUES (?1, ?2, 'loc-warehouse-1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        rusqlite::params![cart_id.to_string(), serde_json::to_string(&cart).unwrap()],
+    )
+    .unwrap();
+    cart_id
+}
+
+/// Seed a sellable product with ample stock at the canonical default
+/// location, which is what `run_complete_sale_scoped` resolves as its
+/// deduction target for an unbound workspace instance.
+fn seed_stock(conn: &Connection, sku: &str) {
+    conn.execute(
+        "INSERT OR IGNORE INTO inventory_locations (id, name, type)\n         VALUES ('01926b3a-0000-7000-8000-000000000001', 'Default', 'store')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type)\n         VALUES (?1, ?1, ?1, 350, 'USD', 'retail')",
+        rusqlite::params![sku],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO stock_summary (item_id, location_id, qty)\n         VALUES (?1, '01926b3a-0000-7000-8000-000000000001', 1000)",
+        rusqlite::params![sku],
+    )
+    .unwrap();
+}
+
+fn sale_rows(conn: &Connection) -> i64 {
+    conn.query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0))
+        .unwrap()
+}
+
+fn keyed_payment_rows(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM payments WHERE idempotency_key IS NOT NULL",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+fn cart_is_live(conn: &Connection, cart_id: &CartId) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM active_carts WHERE id = ?1",
+        rusqlite::params![cart_id.to_string()],
+        |r| r.get::<_, i64>(0),
+    )
+    .unwrap()
+        > 0
+}
+
+#[test]
+fn double_submit_with_one_attempt_id_creates_one_sale() {
+    let conn = fresh_conn();
+    seed_cashier_without_override_permission(&conn, "user-cashier");
+    seed_stock(&conn, "REPLAY-COFFEE");
+    let cart_id = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
+    let session = replay_session();
+
+    let first = run_complete_sale_scoped(
+        &conn,
+        &session,
+        &scoped_args(cart_id.clone(), Some("att-1")),
+    )
+    .expect("first settlement must succeed");
+    let second = run_complete_sale_scoped(&conn, &session, &scoped_args(cart_id, Some("att-1")))
+        .expect("a replay answers with a receipt, not an error");
+
+    assert_eq!(
+        first.result.sale_id, second.result.sale_id,
+        "the second submit must return the FIRST sale id, not a new one"
+    );
+    assert_eq!(sale_rows(&conn), 1, "one payment must be one sale row");
+    assert_eq!(
+        keyed_payment_rows(&conn),
+        1,
+        "exactly one keyed payment row exists — the replay wrote nothing"
+    );
+}
+
+#[test]
+fn absent_attempt_id_creates_two_sales_and_stamps_no_key() {
+    // The unguarded path must stay exactly as it was: no dedup, and no key
+    // invented server-side for a client that never asked for a guard.
+    let conn = fresh_conn();
+    seed_cashier_without_override_permission(&conn, "user-cashier");
+    seed_stock(&conn, "REPLAY-COFFEE");
+    let cart_a = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
+    let cart_b = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
+    let session = replay_session();
+
+    let first = run_complete_sale_scoped(&conn, &session, &scoped_args(cart_a, None)).unwrap();
+    let second = run_complete_sale_scoped(&conn, &session, &scoped_args(cart_b, None)).unwrap();
+
+    assert_ne!(first.result.sale_id, second.result.sale_id);
+    assert_eq!(sale_rows(&conn), 2, "no attempt id means no guard");
+    assert_eq!(
+        keyed_payment_rows(&conn),
+        0,
+        "an unguarded checkout must never mint an idempotency key"
+    );
+}
+
+#[test]
+fn whitespace_attempt_id_creates_two_sales_and_writes_no_key() {
+    // "   " is not an attempt id. Stamped untrimmed it would become the stem
+    // "   :0" — a key no client can replay, which would guard nothing while
+    // looking guarded, and would collide across every blank attempt.
+    let conn = fresh_conn();
+    seed_cashier_without_override_permission(&conn, "user-cashier");
+    seed_stock(&conn, "REPLAY-COFFEE");
+    let cart_a = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
+    let cart_b = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
+    let session = replay_session();
+
+    let first =
+        run_complete_sale_scoped(&conn, &session, &scoped_args(cart_a, Some("   "))).unwrap();
+    let second =
+        run_complete_sale_scoped(&conn, &session, &scoped_args(cart_b, Some("  \t "))).unwrap();
+
+    assert_ne!(
+        first.result.sale_id, second.result.sale_id,
+        "a blank attempt id must not dedup two settlements"
+    );
+    assert_eq!(sale_rows(&conn), 2);
+    assert_eq!(
+        keyed_payment_rows(&conn),
+        0,
+        "a blank attempt id must store NULL, never a key of just the suffix"
+    );
+}
+
+#[test]
+fn one_attempt_id_reused_on_a_second_live_cart_is_refused_as_a_collision() {
+    // Key equality is not basket identity. Cart A is settled under att-x and
+    // consumed; cart B is a DIFFERENT basket that still exists, so the
+    // att-x:0 match cannot be its receipt. The guard must refuse loudly and
+    // must not delete cart B on the way out.
+    let conn = fresh_conn();
+    seed_cashier_without_override_permission(&conn, "user-cashier");
+    seed_stock(&conn, "REPLAY-COFFEE");
+    let cart_a = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
+    let session = replay_session();
+    run_complete_sale_scoped(&conn, &session, &scoped_args(cart_a, Some("att-x"))).unwrap();
+
+    let cart_b = seed_cart_with_line(&conn, "REPLAY-BAGEL", 1, 450);
+    let err = match run_complete_sale_scoped(
+        &conn,
+        &session,
+        &scoped_args(cart_b.clone(), Some("att-x")),
+    ) {
+        Ok(_) => panic!("a base-key match while the request cart exists must be refused"),
+        Err(e) => e,
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("different basket"),
+        "collision must be operator-visible, got: {msg}"
+    );
+
+    assert_eq!(
+        sale_rows(&conn),
+        1,
+        "a refused collision must not settle a sale"
+    );
+    assert!(
+        cart_is_live(&conn, &cart_b),
+        "the refusal must not consume the live cart"
+    );
+}
+
+#[test]
+fn per_split_keys_are_indexed_and_a_blank_attempt_stamps_nothing() {
+    // The per-split index is load-bearing: a shared key would make one
+    // multi-tender sale collide with itself on its second row.
+    let mut splits = vec![
+        PaymentSplitArg {
+            method: "CASH".into(),
+            amount_minor: 300,
+            gateway_reference: None,
+            gateway_status: None,
+            gateway_response: None,
+            idempotency_key: None,
+        },
+        PaymentSplitArg {
+            method: "CARD".into(),
+            amount_minor: 400,
+            gateway_reference: None,
+            gateway_status: None,
+            gateway_response: None,
+            idempotency_key: None,
+        },
+    ];
+    stamp_attempt_split_keys(normalized_attempt_id(Some("att-9")).as_deref(), &mut splits);
+    assert_eq!(splits[0].idempotency_key.as_deref(), Some("att-9:0"));
+    assert_eq!(splits[1].idempotency_key.as_deref(), Some("att-9:1"));
+
+    stamp_attempt_split_keys(normalized_attempt_id(Some("  \n")).as_deref(), &mut splits);
+    assert_eq!(
+        splits[0].idempotency_key.as_deref(),
+        Some("att-9:0"),
+        "a blank attempt must leave already-stamped keys alone, never re-stamp a suffix"
+    );
+    assert_eq!(
+        normalized_attempt_id(Some("  att-10  ")).as_deref(),
+        Some("att-10")
+    );
+    assert!(normalized_attempt_id(Some("")).is_none());
+    assert!(normalized_attempt_id(None).is_none());
+}
+
+#[test]
+fn scoped_args_accept_every_field_the_shipped_ui_sends() {
+    // The `deny_unknown_fields` decision, pinned: this JSON is the union of
+    // what the two PaymentModal senders actually put on the wire (main path +
+    // QRIS path, including the `tenderSnapshot` spread), so it must parse.
+    let json = r#"{"cartId":"550e8400-e29b-41d4-a716-446655440009",
+        "paymentMethod":"SPLIT","tenderedMinor":null,"customerId":"cust-1",
+        "paymentSplits":[{"method":"CASH","amountMinor":300}],
+        "customerName":"Ann","serialNumbers":[{"sku":"COFFEE","serial":"S-1"}],
+        "promotionIds":["promo-1"],"attemptId":"att-1","taxEstimated":true,
+        "tipMinor":50,"serviceChargeMinor":25,"baseCurrency":"IDR",
+        "baseTotalMinor":1000,"tenderRateMillionths":1500000}"#;
+    let args: CompleteSaleScopedArgs = serde_json::from_str(json)
+        .unwrap_or_else(|e| panic!("the live checkout payload must deserialize, got {e}"));
+    assert_eq!(args.attempt_id.as_deref(), Some("att-1"));
+
+    // And the reason the attribute went on: a key the DTO does not have is
+    // now a loud failure instead of a silently dropped attempt id.
+    let typo = r#"{"cartId":"550e8400-e29b-41d4-a716-446655440009",
+        "paymentMethod":"CASH","tenderedMinor":null,"attemptIden":"att-1"}"#;
+    assert!(
+        serde_json::from_str::<CompleteSaleScopedArgs>(typo).is_err(),
+        "an unknown field must be refused, not dropped"
+    );
+}
