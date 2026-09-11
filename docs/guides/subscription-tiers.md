@@ -235,6 +235,14 @@ export, and compliance views. Retention is measured from the event timestamp;
 Enterprise supports a configurable contract override. Free has no
 tenant-facing audit logs.
 
+Retention applies to rows that are actually written, and the write path for sale
+completion differs by settling door: as of the 2026-09-12 audit fix (`d7bd33ea8`) the
+two wired settlement doors write the `sale.completed` row inside the sale transaction,
+while the legacy `complete_sale` lane still writes it after the fact via the event
+handler — a window in which a crash loses the row — so a sale settled through that lane
+may contribute nothing for the retention window to retain (see
+`docs/security/PCI-DSS_CHECKLIST.md` §10.2.1).
+
 ### Workspace Types
 
 These are terminal workspace contexts, not hierarchy resources. The canonical
