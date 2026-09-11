@@ -258,17 +258,3 @@ pub async fn list_tax_rate_rounding_modes_scoped(
         .await
         .map_err(Into::into)
 }
-
-/// Business logic for the batch rounding-mode read (extracted for
-/// testing, mirroring `run_list_tax_rates`).
-///
-/// Thin adapter over `oz_bridge::tax::run_list_tax_rate_rounding_modes`:
-/// unchanged name, parameter list and `Result<_, AppError>` type, and still
-/// test-only.
-#[cfg(test)]
-fn run_list_tax_rate_rounding_modes(
-    conn: &rusqlite::Connection,
-    rate_ids: &[&str],
-) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
-    oz_bridge::tax::run_list_tax_rate_rounding_modes(conn, rate_ids).map_err(AppError::from)
-}
