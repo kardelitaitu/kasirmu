@@ -4,21 +4,25 @@
 //!
 //! Written at 5a536af6a, when `Settings::set_tracked` stored every key it was
 //! handed. `0f26a4b29` made that funnel refuse every `SECRET_KEY_DENY_LIST`
-//! credential except `smtp_config`, so the funnel paragraphs below describe
-//! the old behaviour. Which cases now exercise what:
+//! credential except `smtp_config`. Which cases now exercise what — the file
+//! is a map of the doors, not a list of accidents:
 //!
 //! - The 14 per-key cases and both count tests are untouched: they write
 //!   through the ordinary typed setters and plain `Settings::set`, which
 //!   carry no refusal, so they still measure the stored form.
-//! - The three funnel cases (`every_key_lands_plaintext_in_both_tables_
-//!   through_the_funnel`, `a_cleartext_delta_survives_a_later_encrypted_
-//!   save`, `zero_keys_land_in_ciphertext_form_through_the_funnel`) hand
-//!   deny-listed keys to `set_tracked` and now hit the refusal — 11 of the
-//!   14 SPEC keys bounce off it, `smtp_config` still writes (the named
-//!   exception), and `machine_id` / `hardware_fingerprint` are not
-//!   credentials. They exercise the refusal now, not the stored form; a
-//!   funnel-form census for the keys the funnel still accepts is a
-//!   separate decision, not silently assumed here.
+//! - The three former funnel cases moved to the doors that still accept the
+//!   write, assertions intact, door in the name: the unfiltered
+//!   `Settings::set` for the every-key-plaintext and zero-ciphertext
+//!   counts, and the ledger's own unguarded `Settings::write_delta` for
+//!   the delta-survives case (the tracked funnel refuses `sync_api_key`
+//!   now, so the cleartext delta arrives by the door the refusal does not
+//!   cover).
+//! - `the_funnel_refuses_every_deny_listed_credential_except_smtp_config`
+//!   pins what the refusal made true: a deny-listed credential cannot be
+//!   written through the funnel at all — the call errors and no row is left
+//!   in either table. That is why the plaintext cases above no longer run
+//!   through the funnel: a door that refuses the write can no longer answer
+//!   the at-rest question for the keys it refuses.
 //!
 //! Every existing test asks whether a deny-listed key is *refused on read*
 //! (`crates/oz-bridge/src/settings_tests.rs:404-413`) or whether it is *a
@@ -34,9 +38,9 @@
 //!
 //! Two tables are read, not one: `Settings::set_tracked` copies the value a
 //! second time into the `setting_updated` delta ledger
-//! (`platform/core/src/settings/raw.rs:313-327`, the copy at `:323`), so a
-//! credential written in cleartext through the funnel exists in cleartext in
-//! TWO tables. The two
+//! (`platform/core/src/settings/raw.rs`, the tracked write), so a
+//! credential written in cleartext through a tracked door exists in cleartext
+//! in TWO tables. The two
 //! verdicts are reported separately because they can disagree — the live row
 //! is overwritten, the ledger row is append-only. See
 //! `a_cleartext_delta_survives_a_later_encrypted_save`.
@@ -426,23 +430,28 @@ fn smtp_config_blob_seals_only_its_password_field() {
     );
 }
 
-// -- The funnel: what the shells actually call ------------------------------
+// -- The doors: same census, door in the name -------------------------------
 
-/// Both shells write settings through `Settings::set_tracked`, which calls the
-/// UNENCRYPTING `Settings::set` and then copies the same bytes into
-/// `setting_updated`. So the form a key holds in production is set by the
-/// funnel, not by the typed setter — and through the funnel not one of these
-/// keys is ciphertext in either table.
+/// The tracked funnel the shells call now REFUSES deny-listed credentials
+/// (`0f26a4b29`, pinned by the refusal case below), so the plaintext census
+/// runs through the door that still accepts the write: the unfiltered
+/// `Settings::set`, the UNENCRYPTING writer the funnel itself calls after
+/// its guard. Same 14 keys, same at-rest claim — every one of them lands as
+/// plaintext in `settings.value`. The ledger claim changed WITH the door:
+/// the tracked funnel copied each value into `setting_updated`, the
+/// unfiltered set feeds it nothing, so the cleartext sits in exactly one
+/// table — the live row — and the ledger stays empty.
 #[test]
-fn every_key_lands_plaintext_in_both_tables_through_the_funnel() {
+fn every_key_lands_plaintext_through_the_unfiltered_set() {
     let mut offenders = Vec::new();
     for spec in SPEC {
         let conn = setup();
-        Settings::set_tracked(&conn, spec.key, SENTINEL, TERM).expect("funnel write");
+        Settings::set(&conn, spec.key, SENTINEL)
+            .expect("unfiltered Settings::set must accept the write");
 
         let live = live_form(&conn, spec.key);
         let deltas = delta_forms(&conn, spec.key);
-        if live != Form::Plaintext || deltas != vec![Form::Plaintext] {
+        if live != Form::Plaintext || !deltas.is_empty() {
             offenders.push(format!(
                 "{} live={} deltas={:?}",
                 spec.key,
@@ -453,19 +462,28 @@ fn every_key_lands_plaintext_in_both_tables_through_the_funnel() {
     }
     assert!(
         offenders.is_empty(),
-        "the funnel is expected to store every key as plaintext in BOTH tables; these differ: {offenders:?}"
+        "Settings::set is expected to store every key as plaintext in settings.value and write no setting_updated row; these differ: {offenders:?}"
     );
 }
 
 /// The live row can be re-encrypted by a later save while the cleartext copy
-/// written by the earlier funnel save stays in the ledger forever:
-/// `settings.value` is overwritten, `setting_updated.value` is append-only.
+/// written earlier stays in the ledger forever: `settings.value` is
+/// overwritten, `setting_updated.value` is append-only. The door that
+/// plants the first row is part of the claim — the two tables disagree over
+/// TIME, and the disagreement begins when a tracked copy lands. The tracked
+/// funnel now refuses `sync_api_key`, so the cleartext delta arrives by the
+/// ledger's own door, `Settings::write_delta` — the append half the tracked
+/// write is built from, which `0f26a4b29` did NOT guard (raw.rs refuses in
+/// `set_tracked` and `set_batch_tracked` only). Same key, same
+/// cleartext-in-both-tables start, same survival.
 #[test]
-fn a_cleartext_delta_survives_a_later_encrypted_save() {
+fn a_cleartext_delta_survives_a_later_encrypted_save_through_the_delta_door() {
     let conn = setup();
 
-    // 1. A funnel write (the bridge/tablet settings command): cleartext, twice.
-    Settings::set_tracked(&conn, "sync_api_key", SENTINEL, TERM).unwrap();
+    // 1. Cleartext at rest, twice: the live row via the unfiltered set, the
+    //    ledger row via the delta door (no refusal on it).
+    Settings::set(&conn, "sync_api_key", SENTINEL).unwrap();
+    Settings::write_delta(&conn, "sync_api_key", SENTINEL, TERM).unwrap();
     assert_eq!(live_form(&conn, "sync_api_key"), Form::Plaintext);
     assert_eq!(delta_forms(&conn, "sync_api_key"), vec![Form::Plaintext]);
 
@@ -483,6 +501,47 @@ fn a_cleartext_delta_survives_a_later_encrypted_save() {
         "the ledger still holds the pre-encryption cleartext row"
     );
     assert_eq!(raw_delta_values(&conn, "sync_api_key")[0], SENTINEL);
+}
+
+/// The thing the refusal made true: through the renderer-reachable funnel a
+/// deny-listed credential cannot be written AT ALL. This is why the plaintext
+/// cases above no longer run through the funnel — a door that refuses the
+/// write answers no at-rest question. The case walks the live deny list (the
+/// `smtp_config` exception is the funnel's one named admit) and asserts the
+/// refusal three ways: the call errors, the error names the key and never
+/// quotes the value, and neither table holds a row afterwards.
+#[test]
+fn the_funnel_refuses_every_deny_listed_credential_except_smtp_config() {
+    use oz_core::settings::keys::SECRET_KEY_DENY_LIST;
+    let refused: Vec<&str> = SECRET_KEY_DENY_LIST
+        .iter()
+        .copied()
+        .filter(|k| *k != "smtp_config")
+        .collect();
+    assert_eq!(
+        refused.len(),
+        SECRET_KEY_DENY_LIST.len() - 1,
+        "every deny-list entry except the smtp_config exception must be walked"
+    );
+    for key in refused {
+        let conn = setup();
+        let err = Settings::set_tracked(&conn, key, SENTINEL, TERM)
+            .expect_err("the tracked funnel must refuse a deny-listed credential");
+        let msg = err.to_string();
+        assert!(msg.contains(key), "the refusal names the key, got: {msg}");
+        assert!(
+            !msg.contains(SENTINEL),
+            "the refusal never quotes the value, got: {msg}"
+        );
+        assert!(
+            raw_settings_value(&conn, key).is_none(),
+            "{key}: the refused write leaves no settings row"
+        );
+        assert!(
+            raw_delta_values(&conn, key).is_empty(),
+            "{key}: the refused write leaves no setting_updated row"
+        );
+    }
 }
 
 // -- The count, so a new key moves a number ---------------------------------
@@ -514,18 +573,21 @@ fn exactly_four_keys_land_in_ciphertext_form() {
     );
 }
 
-/// The same census through the funnel the shells use: zero.
+/// The same census through the unfiltered set: zero — `Settings::set` never
+/// encrypts, whoever calls it. (The four ciphertext landers arrive only
+/// through their typed encrypting setters, which the count test above
+/// measures; the unfiltered writer this case uses is not one of them.)
 #[test]
-fn zero_keys_land_in_ciphertext_form_through_the_funnel() {
+fn zero_keys_land_in_ciphertext_form_through_the_unfiltered_set() {
     let mut n = 0;
     for spec in SPEC {
         let conn = setup();
-        Settings::set_tracked(&conn, spec.key, SENTINEL, TERM).unwrap();
+        Settings::set(&conn, spec.key, SENTINEL).unwrap();
         if live_form(&conn, spec.key) == Form::Ciphertext {
             n += 1;
         }
     }
-    assert_eq!(n, 0, "set_tracked never encrypts");
+    assert_eq!(n, 0, "the unfiltered set never encrypts");
 }
 
 // -- Why there is no gate to hang on the stored form ------------------------
