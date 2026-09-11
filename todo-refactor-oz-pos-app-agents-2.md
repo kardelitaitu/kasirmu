@@ -135,17 +135,17 @@ Extract order processing, shift reconciliation, kitchen routing, and peripherals
 
 Extract workspace instances, locations, topology graph, analytics, licensing, and audit.
 
-> **Status at 2026-09-11 — IN PROGRESS, nothing extracted.** Only the pre-wire landed: `9e7dee045` `feat(bridge): pre-wire wave-E modules in oz-bridge`. Its ten modules are 2-line stub declarations (`analytics.rs`, `audit.rs`, `license.rs`, `locations.rs`, `reports.rs`, `settings.rs`, `setup.rs`, `subscription.rs`, `topology.rs`, `workspaces.rs`) while the desktop bodies are still whole (`commands/settings.rs` 1,216 ln, `workspaces.rs` 938, `license.rs` 886, `subscription.rs` 714, `audit.rs` 640, `reports.rs` 610, `locations.rs` 388, `setup.rs` 197, `analytics.rs` 146, plus the `topology/` group). Order is fixed by cross-module imports: workspaces before topology, license before subscription, settings early, topology last. Every box below stays unchecked until its slice is gated.
+> **Status CORRECTED 2026-09-11.** The original note said 'IN PROGRESS, nothing extracted - only the pre-wire landed', which is false as of this completion pass. What actually happened: the pre-wire `9e7dee045` landed first (ten 2-line stub modules), then the extraction landed as ten module extraction commits plus the six-commit `topology/` sub-chain (five extractions plus the `2e0c46adc` `TopologyValidation` error-variant commit), and Wave E alone moved **124 commands** (metric: `#[tauri::command]` attributes on their own line in the Wave E desktop files) out of `apps/desktop-client/src/commands/*.rs` into `crates/oz-bridge`, leaving every command a thin desktop shim. The original ordering note held (workspaces before topology, license before subscription, settings early, topology last). All boxes in this phase are checked; evidence in the Phase 2.5 completion record at the foot of this document.
 
-- [ ] Modules to extract:
+- [x] Modules to extract: -> all ten landed one-for-one under their command-file names (the sub-list below is the plan as written); ledger and SHAs in the Wave E record at the foot of this document. Deviation 6's naming rule held - no umbrella modules.
   - `workspaces.rs`, `locations.rs`, `topology.rs`
   - `analytics.rs`, `reports.rs`, `audit.rs`
   - `license.rs`, `subscription.rs`, `settings.rs`, `setup.rs`
-- [ ] Implement headless handlers in `oz-bridge::workspace`, `oz-bridge::topology`, `oz-bridge::licensing`.
-- [ ] Wire `desktop-client` commands to delegate to `oz-bridge`.
-- [ ] Verify: `python scripts/verify-ipc-parity.py`.
-- [ ] Run `cargo check -p oz-bridge` and `cargo check -p oz-pos-app`.
-- [ ] **Commit Milestone:**
+- [x] Implement headless handlers in `oz-bridge::workspaces`, `oz-bridge::topology`, `oz-bridge::license`. -> **defect fix (this doc pass)**: the plan named `workspace`/`licensing`; the landed module names are `workspaces` and `license` (**measured here**: `crates/oz-bridge/src/workspaces.rs` and `license.rs` exist; no `workspace.rs`/`licensing.rs`). `topology` is a module group (`topology/{model,semantics,revisions,persistence,commands}.rs`).
+- [x] Wire `desktop-client` commands to delegate to `oz-bridge`. -> thin shims with identical signatures; Wave E moved **124 commands** (metric: `#[tauri::command]` attributes on their own line in the Wave E desktop files) into `oz-bridge` (provenance in the Wave E record below).
+- [x] Verify: `python scripts/verify-ipc-parity.py`. -> **EXIT=0** at the final Wave E/F gate (`IPC parity: OK`; desktop 452 UI strings / 448 registered / 27 unregistered refs).
+- [x] Run `cargo check -p oz-bridge` and `cargo check -p oz-pos-app`. -> G1 forced bridge check: real `Checking oz-bridge` line, 2.44s, 0 warnings. G3 `cargo check -p oz-pos-app --tests`: 52.46s, exit 0, 0 warnings (manager-run 14:07:50-14:08:43Z).
+- [x] **Commit Milestone:** -> landed as the `9e7dee045` pre-wire + ten module extraction commits + the six-commit `topology/` sub-chain, closed by gate fix `927894830`, instead of the single commit below (deviation 8's rationale). Ledger in the Wave E record below.
   ```bash
   git commit -m "feat(bridge): extract enterprise and settings commands to oz-bridge (Wave E)" crates/oz-bridge/ apps/desktop-client/src/commands/
   ```
@@ -156,7 +156,7 @@ Extract workspace instances, locations, topology graph, analytics, licensing, an
 
 Recorded on branch `0.0.37`. Every SHA below was resolved individually (`git show -s --format=%h %s <sha>`) and re-checked with `git merge-base --is-ancestor`: all 37 hashes cited in this document exist, carry the subjects quoted here verbatim, and are ancestors of HEAD at this doc pass. `3917cd165` is the Wave-D gate HEAD, not the tip — the tree has kept moving (Agent 3's relocations and `9e7dee045` sit on top). **No cargo, python, build or test command was run for this record** — anything labelled *gate evidence* was measured by the campaign at its own wave gate, and only lines marked **measured here** come from this doc pass.
 
-Phases 2.0-2.4 are closed and gated: 252 commands across four waves (A 54 · B 49 · C 68 · D 81 — per-wave counts are gate-ledger figures). Phase 2.5 is open.
+Phases 2.0-2.4 are closed and gated: 252 commands across four waves (A 54 · B 49 · C 68 · D 81 — per-wave counts are gate-ledger figures). Phase 2.5 was open when this was written; it is closed by the Phase 2.5 completion record at the foot of this document.
 
 ### SHA log — 2.0 scaffold
 
@@ -251,7 +251,9 @@ The suite that runs against the bridge has grown **128 → 215 → 366 → 447**
 8. **Manifest lines crossed commit boundaries (deviations 2, 3).** The crate is auto-membered by the root `crates/*` glob, and the scaffold's workspace/desktop manifest lines landed inside Agent 1's `7000e84fd`. Expect attribution noise in shared files; the content is correct and the gates ran on it.
 9. **`--no-verify` was used on several slice commits** where the pre-commit hook's workspace-wide `cargo fmt --all` would have reformatted *other* workers' in-flight files. Each use is answered by the workspace-level `cargo fmt --all --check` run at the wave gate, which is 0 diffs at the proof line.
 
-### Not done — deliberately unchecked above
+### Not done — snapshot at the previous doc pass (dated corrections below)
+
+> **Corrections 2026-09-11 (completion pass):** the bullets below are the previous doc pass's snapshot, preserved as written. Since then: Phase 2.5 closed (completion record at the foot of this document) and its gates ran green; the two deferred test files were relocated (`ebf0a13e9` product-image, `f7d850095` auth security-scoped integration - both in this pass's git log); Wave F extraction commits are in the log (the `3c4941f6b` Wave F pre-wire and extraction subjects for tables, health, offline, sync, branding, browser, features, terminals, email, local_payment, history and data are visible in this pass's grep window) - a full Wave F accounting is not part of this record.
 
 - **Phase 2.5 (Wave E): in progress, nothing extracted.** Only the pre-wire landed (`9e7dee045` `feat(bridge): pre-wire wave-E modules in oz-bridge`); the ten modules are stubs and the desktop bodies are intact (see the status note under the phase). Order is fixed by imports: workspaces → topology, license → subscription, settings early, the `topology/` group last and as one unit.
 - **Wave F is not in this document's phase list but is committed work.** The 16 no-wave-mapped domains (tables, terminals, data, features, sync, offline, history, branding, browser, bundles, email, legal_entities, memo, picker_ticket, local_payment) still have no bridge module, and the Goal line above ("all 120+ command files") covers them. They are sequenced after Wave E.
@@ -260,4 +262,80 @@ The suite that runs against the bridge has grown **128 → 215 → 366 → 447**
 
 ### Hand-off
 
-Agent 3's relocation waves for B, C and D are already fired and gated on these commits (their A/B/C waves closed at 128, then 366 passed). Their 3.2 thin-shell pass and the desktop test-runner re-enable stay blocked on **this** document's Phase 2.5, and on the two deferred test files above. Nothing in Waves A-D touched `apps/desktop-client/src/lib.rs`, the `invoke_handler` list, or `state.rs`.
+Agent 3's relocation waves for B, C and D are already fired and gated on these commits (their A/B/C waves closed at 128, then 366 passed). Their 3.2 thin-shell pass and the desktop test-runner re-enable stay blocked on **this** document's Phase 2.5, and on the two deferred test files above. Nothing in Waves A-D touched `apps/desktop-client/src/lib.rs`, the `invoke_handler` list, or `state.rs`. **[Correction 2026-09-11: Phase 2.5 is closed by the completion record below; the Phase 2.5 blocker described above is discharged, and both deferred test files have since been relocated.]**
+
+---
+
+## Phase 2.5 completion record - Wave E closed (recorded 2026-09-11; host clock at the start of this pass: 14:15:05Z; HEAD `927894830`, branch `0.0.37`)
+
+Docs-only pass: **no cargo, python, build or test command was run for this record.** Every gate number below is the campaign manager's measurement at the final Wave E/F gate (run window 14:03-14:08Z against the working tree at HEAD `927894830`), each quoting the metric it names. **Measured here** marks what this pass itself ran: `git log` / `git show --stat` / file and glob checks. Every hash this record adds to this document was resolved from that `git log`/`git show` output and is an ancestor of HEAD `927894830`.
+
+### Correction 1 - the "nothing extracted" claim is false
+
+The status note under Phase 2.5 said 'IN PROGRESS, nothing extracted - only the pre-wire landed'. False as of this pass. Measured from `git log --grep='feat(bridge):' --grep='chore(bridge):' --grep='test(bridge):'` and `git show --stat`:
+
+- `9e7dee045` pre-wired the ten 2-line stub modules (14 files, +72).
+- **Ten module extraction commits** then moved the desktop bodies: workspaces, locations, setup+analytics, subscription, settings (three commits: shared surface/readers, consumers, write commands), license, audit, reports.
+- The `topology/` group moved as its own **six-commit sub-chain**: data layer, semantics, revisions, persistence, commands, plus the `2e0c46adc` commit that added the `TopologyValidation` variant to `BridgeError` first. This chain landed interleaved with Wave F extractions and Agent 3's relocations - wave boundaries in history are by commit subject, not contiguous runs.
+- Wave E alone moved **124 commands**. Metric: `#[tauri::command]` attributes on their own line, summed over the Wave E desktop files at commit `927894830` - manager-measured, and re-measured here from the committed bytes with the same metric: workspaces.rs 15, locations.rs 10, analytics.rs 2, setup.rs 5, subscription.rs 4, settings.rs 23, license.rs 17, audit.rs 6, reports.rs 32, topology/commands.rs 10 (the other `topology/` files and the `topology.rs` root carry none) = **124**. Every command remains a thin desktop shim with an identical signature.
+
+### Correction 2 - module names
+
+This document named `oz-bridge::workspace` and `oz-bridge::licensing`. The landed modules are **`workspaces`** and **`license`** (**measured here**: `crates/oz-bridge/src/workspaces.rs` and `crates/oz-bridge/src/license.rs` exist; no `workspace.rs` or `licensing.rs` anywhere in the crate - glob count 0 for both). The box above is fixed.
+
+### SHA log - 2.5 Wave E
+
+| Slice | Commit | Subject (verbatim) | `git show --stat` |
+|---|---|---|---|
+| pre-wire | `9e7dee045` | `feat(bridge): pre-wire wave-E modules in oz-bridge` | 14 files, +72/-0 |
+| workspaces | `a7485e17a` | `feat(bridge): extract workspace commands into oz_bridge::workspaces` | 2 files, +993/-704 |
+| locations | `b51ba70f9` | `feat(bridge): extract location commands into oz_bridge::locations` | 2 files, +517/-268 |
+| setup + analytics | `cb53a79eb` | `feat(bridge): extract setup and analytics commands into oz_bridge` | 4 files, +362/-236 |
+| subscription | `0f2ee7ad7` | `feat(bridge): extract subscription commands into oz_bridge::subscription` | 2 files, +817/-594 |
+| settings shared surface + readers | `6a9bc8cdd` | `feat(bridge): extract settings shared surface and readers into oz_bridge::settings` | 1 file, +765/-1 |
+| license | `cd80b9a11` | `feat(bridge): extract license commands into oz_bridge::license` | 2 files, +987/-683 |
+| audit | `f2557c6d2` | `feat(bridge): extract audit commands into oz_bridge::audit` | 2 files, +686/-563 |
+| reports | `f837f6453` | `feat(bridge): extract report commands into oz_bridge::reports` | 4 files, +807/-241 |
+| settings consumers | `667e381f9` | `feat(bridge): convert settings commands into oz_bridge::settings consumers` | 1 file, +121/-610 |
+| topology data layer | `27621900f` | `feat(bridge): extract topology data layer into oz_bridge::topology` | 3 files, +329/-306 |
+| settings write commands | `636b0c942` | `feat(bridge): extract settings write commands into oz_bridge::settings` | 1 file, +7/-0 |
+| TopologyValidation variant | `2e0c46adc` | `feat(bridge): add TopologyValidation to BridgeError for the topology extraction` | 2 files, +28/-0 |
+| topology semantics | `01f7b10ae` | `feat(bridge): extract topology semantics into oz_bridge::topology::semantics` | 6 files, +307/-276 |
+| topology revisions | `748ef59cd` | `feat(bridge): extract topology revisions into oz_bridge::topology::revisions` | 3 files, +616/-510 |
+| topology persistence | `79e8c26f2` | `feat(bridge): extract topology persistence into oz_bridge::topology::persistence` | 3 files, +1000/-781 |
+| topology commands (last slice) | `ae02a2216` | `feat(bridge): extract topology commands into oz-bridge` | 6 files, +1171/-922 |
+| gate fix (closes the wave) | `927894830` | `chore(bridge): gate follow-ups - silence collapsed desktop topology adapters and fix moved-file doc headers` | 3 files, +24/-24 |
+
+### Final Wave E/F gate (manager-run, 14:03-14:08Z, working tree at HEAD `927894830`)
+
+| Gate | Command (metric) | Result |
+|---|---|---|
+| G1 | forced `cargo check -p oz-bridge` | real `Checking oz-bridge` line; 2.44s; exit 0; **0 warnings** |
+| G2 | `cargo test -p oz-bridge` whole-crate test pass count | **1243 passed / 0 failed** in 190.99s, with a real `Compiling oz-bridge` line. Label: measured on the working tree at 14:03Z = HEAD `927894830` plus one in-flight Agent 3 test file (`crates/oz-bridge/src/workspaces_tests.rs`) |
+| G2 filtered | `cargo test -p oz-bridge -- topology` | **314 passed / 0 failed / 929 filtered out** |
+| G3 | `cargo check -p oz-pos-app --tests` | manager-run 14:07:50-14:08:43Z; real `Checking oz-pos-app` line; 52.46s; exit 0; **0 warnings** |
+| G4 | `cargo test -p oz-pos-app -- topology` | **52 passed / 0 failed / 73 filtered out** in 46.79s, with a real `Compiling oz-pos-app` line |
+| G5 | `python scripts/verify-ipc-parity.py` | exit 0, `IPC parity: OK` (desktop 452 UI strings / 448 registered / 27 unregistered refs) |
+| G6 | command-surface pin: non-recursive `pub async fn` count over `apps/desktop-client/src/commands/*.rs`, and the recursive count over the whole commands tree | **488 / 499, delta 11** (11 = the 10 topology IPC commands whose bodies moved + 1 non-command helper; the pre-extraction condition of validity was delta 12) |
+| G7 | `cargo fmt -p oz-bridge --check` and `cargo fmt -p oz-pos-app --check` | both exit 0 |
+
+Suite-growth note, same metric as the proof line above (whole-crate `cargo test -p oz-bridge` pass count at a wave gate): 128 -> 215 -> 366 -> 447 across waves A-D (line above) -> **1243** at this gate. The manager arithmetic ties the +16 step to `8630d50b9` `test(bridge): relocate topology command unit test subset to oz-bridge` (same tests crossing the seam); the earlier 365 -> 298 desktop-topology drop remains an open finding, not explained in this record.
+
+### Known limits (recorded, not fixed here)
+
+- Three desktop command areas can never be headless under the current `BridgeCtx` contract (no port for long-lived services): the pg_sync daemon commands (3) and the `local_api` commands (6) stay desktop-side.
+- 2 branding picker commands keep a desktop-side dialog seam (`tauri_plugin_dialog`).
+- The `#[cfg(test)] mod testing;` line in `crates/oz-bridge/src/lib.rs` is Agent 3's mount line; it has been dropped three times by lanes rebuilding the file and is present at this pass (**measured here**: exactly 1 occurrence, at `lib.rs`:149).
+- The bridge crate's TEST build emits 6 warnings (unused imports in relocated test files and 3 unused harness builder methods in `src/testing.rs`). Those files are Agent 3's fence and were deliberately left alone by this pass. The zero-warning standard is about the LIB build of both crates; it holds (G1 and G3 above).
+
+### Shape at this pass (measured here, no cargo)
+
+- `crates/oz-bridge/src`: **132** `.rs` files, **66** of them relocated `*_tests.rs` (glob this pass).
+- Checkbox state after this pass: **37 checked, 0 unchecked** (grep this pass; the six flipped boxes are the Phase 2.5 lines above).
+- The working tree still carries in-flight WIP in `apps/desktop-client/src/commands/workspaces.rs`, `commands/locations.rs` and `crates/oz-bridge/src/workspaces_tests.rs` - not this record bytes; the G2 label above covers exactly that file.
+
+### Quoted, not re-verified here
+
+- The G6 pin (488 / 499 / delta 11): quoted from the gate. A re-count on the current working tree would measure the in-flight WIP above, not the gate.
+- Headlessness: no re-check this pass. The textual manifest check recorded at Phase 2.0 above and the campaign `cargo tree -p oz-bridge -i tauri` result remain the standing proofs.
+
