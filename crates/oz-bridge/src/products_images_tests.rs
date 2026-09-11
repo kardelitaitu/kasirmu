@@ -93,14 +93,14 @@ fn transcode_rejects_oversized_input() {
         .unwrap();
     // 5000*5000 = 25M pixels > 16.7M cap → rejected
     let err = transcode_to_webp(&out).unwrap_err();
-    assert!(matches!(err, AppError::Invalid(_)));
+    assert!(matches!(err, BridgeError::Invalid(_)));
 }
 
 #[test]
 fn transcode_rejects_garbage_bytes() {
     let garbage = vec![0x00u8; 512];
     let err = transcode_to_webp(&garbage).unwrap_err();
-    assert!(matches!(err, AppError::Invalid(_)));
+    assert!(matches!(err, BridgeError::Invalid(_)));
 }
 
 #[test]

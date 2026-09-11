@@ -155,9 +155,3 @@ fn resolve_image_path(app_handle: &tauri::AppHandle, hash16: &str) -> Result<Pat
         .map_err(|e| AppError::Internal(format!("resolving app cache dir: {e}")))?;
     Ok(cache_dir.join("images").join(format!("{hash16}.webp")))
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "products_images_tests.rs"]
-mod tests;

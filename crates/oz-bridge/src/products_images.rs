@@ -355,3 +355,7 @@ pub fn sha256_hex16(bytes: &[u8]) -> String {
     let digest = hasher.finalize();
     hex::encode(&digest[..HASH16_CHARS / 2]) // 8 bytes → 16 hex chars
 }
+
+#[cfg(test)]
+#[path = "products_images_tests.rs"]
+mod products_images_tests;
