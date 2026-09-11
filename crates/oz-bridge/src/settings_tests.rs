@@ -940,3 +940,103 @@ fn sync_egress_gate_agrees_with_the_sealed_policy() {
         assert!(!remote_sync_admits(key), "{key} must not replicate");
     }
 }
+
+// ── The batch door: set_settings_scoped used to write straight through
+// `Settings::set_tracked`, bypassing `run_set_setting` entirely, so neither
+// the manager-key refusal nor the smtp_config keep-on-blank merge reached it.
+
+/// A batch write of `smtp_config` that omits the password must preserve the
+/// stored secret, exactly like the single-write funnel now does.
+#[test]
+fn batch_smtp_config_write_preserves_the_stored_password() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    store
+        .save_smtp_config(&oz_core::export::email_report::SmtpConfig {
+            host: "smtp.old.com".into(),
+            from: "a@b.com".into(),
+            password: Some("stored-secret".into()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    run_set_settings_batch(
+        &conn,
+        &HashMap::from([(
+            SMTP_CONFIG_SETTINGS_KEY.to_string(),
+            r#"{"host":"smtp.new.com","port":465,"username":null,"password":null,"from":"b@c.com","use_tls":true}"#
+                .to_string(),
+        )]),
+        "term-1",
+    )
+    .unwrap();
+
+    let loaded = store.get_smtp_config().unwrap().unwrap();
+    assert_eq!(
+        loaded.password.as_deref(),
+        Some("stored-secret"),
+        "a batch save that omits the password must not destroy it"
+    );
+    assert_eq!(
+        loaded.host, "smtp.new.com",
+        "the other fields must still update"
+    );
+    assert_eq!(loaded.from, "b@c.com");
+}
+
+/// A batch containing a manager-owned key is refused and writes NOTHING — not
+/// even the innocent sibling key. Refusal is batch-wide and pre-flight, which
+/// is what the command's documented all-or-nothing semantics require.
+#[test]
+fn batch_write_refuses_local_api_secret_and_writes_nothing() {
+    let conn = fresh_conn();
+    let err = run_set_settings_batch(
+        &conn,
+        &HashMap::from([
+            (
+                "local_api.secret".to_string(),
+                "attacker-secret".to_string(),
+            ),
+            ("store_name".to_string(), "My Store".to_string()),
+        ]),
+        "term-1",
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&err, BridgeError::Invalid(m) if m.contains("local_api.secret")),
+        "refusal must be the Invalid error naming the key: {err:?}"
+    );
+    assert!(
+        Settings::get(&conn, "local_api.secret").unwrap().is_none(),
+        "a refused write must not reach the settings table"
+    );
+    assert!(
+        Settings::get(&conn, "store_name").unwrap().is_none(),
+        "one bad row must abort the batch, not skip its own row"
+    );
+}
+
+/// Control, and the guard against over-correction: refusing a bad row by
+/// aborting the WHOLE batch is only safe because it is what the single-write
+/// funnel does too. Two ordinary keys must both land.
+#[test]
+fn batch_write_of_two_ordinary_keys_lands_both() {
+    let conn = fresh_conn();
+    run_set_settings_batch(
+        &conn,
+        &HashMap::from([
+            ("store_name".to_string(), "My Store".to_string()),
+            ("currency".to_string(), "IDR".to_string()),
+        ]),
+        "term-1",
+    )
+    .unwrap();
+    assert_eq!(
+        Settings::get(&conn, "store_name").unwrap().as_deref(),
+        Some("My Store")
+    );
+    assert_eq!(
+        Settings::get(&conn, "currency").unwrap().as_deref(),
+        Some("IDR")
+    );
+}

@@ -434,6 +434,48 @@ pub fn run_set_setting(
     Ok(Settings::set_tracked(conn, key, value, terminal_id)?)
 }
 
+/// Business logic for the `set_settings_scoped` batch write (extracted for
+/// testing). The command owns the transaction; this is the loop that runs
+/// inside it.
+///
+/// It is the SECOND door into the settings table. `run_set_setting` guards
+/// manager-owned keys and merges `smtp_config`, but this loop used to call
+/// `Settings::set_tracked` directly, so a batch write reached the row with
+/// neither guard — and `smtp_config` is deny-listed against
+/// [`run_get_setting`], so the email-report card can never read the stored
+/// password back and posts a blob whose `password` is null. Both halves of
+/// the funnel therefore live here: the same manager-key refusal, and the
+/// same `merged_smtp_password_json` seam the single write asks.
+///
+/// Refusal is batch-wide and happens BEFORE any write, matching what the
+/// single-write funnel does — it returns `Invalid` rather than skipping the
+/// row — so the command's documented all-or-nothing semantics hold: one
+/// managed key aborts the batch, it does not quietly drop that one entry.
+pub fn run_set_settings_batch(
+    conn: &rusqlite::Connection,
+    entries: &HashMap<String, String>,
+    terminal_id: &str,
+) -> Result<(), BridgeError> {
+    if let Some(key) = entries.keys().find(|k| is_managed_key(k)) {
+        let owner = managed_key_owner(key).unwrap_or("a dedicated");
+        return Err(BridgeError::Invalid(format!(
+            "{key} is managed by the {owner} controls — use those"
+        )));
+    }
+    let store = Store::new(conn);
+    for (key, value) in entries {
+        let merged;
+        let value = if key == SMTP_CONFIG_SETTINGS_KEY {
+            merged = store.merged_smtp_password_json(value)?;
+            &merged
+        } else {
+            value
+        };
+        Settings::set_tracked(conn, key, value, terminal_id)?;
+    }
+    Ok(())
+}
+
 /// Enqueue one settings.update sync item per changed key (SYNC-10).
 ///
 /// Delegates to Store::enqueue_settings_update_superseding (oz-core), which owns the
@@ -1153,16 +1195,6 @@ pub async fn set_settings_scoped(
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
 
-    // Managed keys are rejected batch-wide before any write so the
-    // all-or-nothing transaction semantics hold (same guard as
-    // `run_set_setting`; the batch loop below bypasses it by design).
-    if let Some(key) = entries.keys().find(|k| is_managed_key(k)) {
-        let owner = managed_key_owner(key).unwrap_or("a dedicated");
-        return Err(BridgeError::Invalid(format!(
-            "{key} is managed by the {owner} controls — use those"
-        )));
-    }
-
     let terminal_id = ctx
         .terminal_id
         .lock()
@@ -1183,9 +1215,7 @@ pub async fn set_settings_scoped(
         let store = oz_core::db::Store::new(&db);
         ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
         let tx = db.unchecked_transaction()?;
-        for (key, value) in &entries {
-            Settings::set_tracked(&tx, key, value, &terminal_id)?;
-        }
+        run_set_settings_batch(&tx, &entries, &terminal_id)?;
         tx.commit()?;
     }
 
