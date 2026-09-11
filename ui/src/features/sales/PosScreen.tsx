@@ -12,7 +12,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
-import { plainErrorMessage } from '@/utils/app-error';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
@@ -20,16 +19,13 @@ import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 
 import WorkspaceSettingsModal from '@/features/settings/WorkspaceSettingsModal';
-import { formatMoney, COURSES, type CartId, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
+import { formatMoney, COURSES, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
 import { animDuration } from '@/utils/animation';
 import { triggerInteraction } from '@/utils/interaction';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import {
   deleteHeldCartScoped,
-  startSaleScoped,
-  getCartDeductionLocation,
-  getCartDeductionLocationScoped,
 } from '@/api/sales';
 import { getReceiptSettingsScoped } from '@/api/settings';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
@@ -45,12 +41,12 @@ import { useBarcodeScanner } from './useBarcodeScanner';
 import { useCustomerDisplay } from './useCustomerDisplay';
 import { usePosShifts } from './hooks/usePosShifts';
 import { usePosHeldCarts } from './hooks/usePosHeldCarts';
+import { usePosCartActions } from './hooks/usePosCartActions';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
-import { overrideLinePriceScoped, overrideCartDeductionLocation } from '@/api/sales';
 
 import './PosScreen.css';
 import './CartPanel.css';
@@ -543,82 +539,34 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleOpenShiftClick,
     handleConfirmOpenShift,
   } = usePosShifts({ sessionToken, userId, lines, l10nRef });
-  const [overrideTarget, setOverrideTarget] = useState<CartLine | null>(null);
-  const [showFastPINOverlay, setShowFastPINOverlay] = useState(false);
-  const [cartId, setCartId] = useState<CartId | null>(null);
-  // ADR-19 §5.1: deduction location locked at cart-start time.
-  // Use a ref for synchronous reads inside callbacks; state drives renders.
-  const deductionLocationIdRef = useRef<string | null>(null);
-  const [deductionLocationName, setDeductionLocationName] = useState<string | null>(null);
-  const ensureCart = useCallback(async (currency: string): Promise<CartId | null> => {
-    if (cartId) return cartId;
-    try {
-      const { cartId: newCartId, deductionLocationId: locId } = await startSaleScoped(sessionToken, { currency });
-      setCartId(newCartId);
-      deductionLocationIdRef.current = locId ?? null;
-      if (locId) {
-        // Fetch the real location name from the backend. Scoped per ADR #7: the ambient
-        // get_cart_deduction_location is registered by tablet only, so on desktop this call threw
-        // "command not found" -- and the outer catch then reported it as a cart-creation failure
-        // even though startSaleScoped had already succeeded and setCartId had already run.
-        //
-        // So the lookup now has its own guard. It resolves display metadata only; the fallback at
-        // `?? locId` below is the degradation this code always intended, and it can only happen if
-        // the name was never fetched. A cart that exists must be returned as existing.
-        try {
-          const info = sessionToken
-            ? await getCartDeductionLocationScoped(sessionToken, newCartId)
-            : await getCartDeductionLocation(newCartId);
-          setDeductionLocationName(info?.locationName ?? locId);
-          if (info?.overriddenAt) setDeductionOverridden(true);
-        } catch {
-          setDeductionLocationName(locId);
-        }
-      } else {
-        setDeductionLocationName(null);
-      }
-      return newCartId;
-    } catch {
-      addToast({ message: 'Failed to create sale cart', type: 'error' });
-      return null;
-    }
-  }, [cartId, addToast, sessionToken]);
-
-  const handleAddProduct = useCallback(
-    (product: Product, qty?: number) => {
-      if (!activeShiftRef.current) {
-        addToast({ message: 'Open a shift first', type: 'warning' });
-        return;
-      }
-      // ADR-19 §5.1: reject add_line when cart exists but has no deduction location
-      if (cartId && !deductionLocationIdRef.current) {
-        addToast({ message: requiredLocalized(l10nRef.current, 'pos-cart-unbound-error'), type: 'error' });
-        return;
-      }
-      addProduct(product, qty);
-    },
-    [addProduct, addToast, cartId], // l10n via ref
-  );
-
-  // ADR-19 §17: badge click → FastPINOverlay for manager override
-  const handleDeductionBadgeClick = useCallback(() => {
-    setShowFastPINOverlay(true);
-  }, []);
-
-  const [deductionOverridden, setDeductionOverridden] = useState(false);
-
-  const handleDeductionPinVerified = useCallback(async () => {
-    if (!cartId) return;
-    if (!sessionToken) return;
-    try {
-      await overrideCartDeductionLocation(sessionToken, cartId);
-      setDeductionOverridden(true);
-      addToast({ message: 'Deduction location override recorded', type: 'success' });
-    } catch {
-      addToast({ message: 'Failed to record override', type: 'error' });
-    }
-  }, [cartId, sessionToken, addToast]);
-
+  // ── Cart actions: cart handle, deduction binding, add/qty/override ──
+  const {
+    overrideTarget,
+    setOverrideTarget,
+    showFastPINOverlay,
+    setShowFastPINOverlay,
+    setCartId,
+    deductionLocationIdRef,
+    deductionLocationName,
+    setDeductionLocationName,
+    ensureCart,
+    handleAddProduct,
+    handleDeductionBadgeClick,
+    deductionOverridden,
+    setDeductionOverridden,
+    handleDeductionPinVerified,
+    handleDecreaseQty,
+    handleIncreaseQty,
+    handleOverrideConfirm,
+  } = usePosCartActions({
+    sessionToken,
+    addToast,
+    activeShiftRef,
+    l10nRef,
+    addProduct,
+    updateQty,
+    updateLinePrice,
+  });
   // ── Barcode scanner integration ─────────────────────────────
   useBarcodeScanner({
     sessionToken,
@@ -871,36 +819,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const handleDismissUndo = useCallback(() => {
     animatedUndoStack.dismiss();
   }, [animatedUndoStack]);
-
-  const handleDecreaseQty = useCallback((line: CartLine) => {
-    updateQty(line.id, line.qty - 1);
-  }, [updateQty]);
-
-  const handleIncreaseQty = useCallback((line: CartLine) => {
-    updateQty(line.id, line.qty + 1);
-  }, [updateQty]);
-
-  const handleOverrideConfirm = useCallback(async (newPriceMinor: number, _authorizingUserId: string) => {
-    if (!overrideTarget) return;
-    const cId = cartId;
-    if (!cId) {
-      addToast({ message: 'No active sale cart', type: 'error' });
-      setOverrideTarget(null);
-      return;
-    }
-    try {
-      await overrideLinePriceScoped(sessionToken, cId, overrideTarget.id, newPriceMinor);
-      updateLinePrice(overrideTarget.id, {
-        minor_units: newPriceMinor,
-        currency: overrideTarget.unit_price.currency,
-      });
-    } catch (err) {
-      const msg = plainErrorMessage(err, 'Override failed');
-      addToast({ message: msg, type: 'error' });
-    } finally {
-      setOverrideTarget(null);
-    }
-  }, [overrideTarget, cartId, addToast, updateLinePrice, sessionToken]);
 
   // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ────────
   // The cart panel handles keys when its focus, or any descendant
