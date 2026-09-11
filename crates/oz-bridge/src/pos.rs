@@ -1743,6 +1743,18 @@ pub async fn complete_sale_scoped(
     // found" on a sale that actually completed. Key equality is not basket
     // identity: while the request's cart still exists, a key match belongs to
     // a DIFFERENT basket and must not be handed back as this receipt.
+    //
+    // Concurrency note (the two-lock shape is deliberate): this lookup runs
+    // under its own lock and the settlement two locks below, because the
+    // plugin hooks and event publish between them await — the store
+    // connection is a std Mutex, whose guard cannot be held across an
+    // await, so ONE lock spanning lookup-to-write is impossible without
+    // restructuring the hook layout. The gap is still money-safe: two
+    // concurrent submits of one attempt both pass this lookup, then
+    // serialise on Lock 1 — the loser fails "cart not found" and never
+    // settles — and the UNIQUE index on payments.idempotency_key closes the
+    // key-write race. The only residual is a transient "cart not found" for
+    // a retry racing an in-flight commit; it replays correctly on re-tap.
     let attempt = validated_attempt_id(args.attempt_id.as_deref())?;
     // Basket identity anchoring the re-key stem: the REAL cart id is stable
     // across retries of the same basket (the shortfall command hashes its

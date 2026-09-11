@@ -1310,6 +1310,56 @@ fn attempt_ids_with_colons_are_rejected_and_rekey_stems_stay_disjoint() {
         "every re-key stem carries the re-key segment base keys can never have"
     );
 }
+
+#[tokio::test]
+async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
+    // Trim-parity pin: the tablet's normalized_attempt_id collapses
+    // absent/empty/whitespace-only to UNGUARDED (NULL keys) — never a
+    // guarded stem. The bridge validator must agree, or the two shells
+    // disagree about what an empty attempt means.
+    let bridge = replay_guard_bridge();
+    let started = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 2,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let sale = settle_replay_cart(&bridge, "replay-tok", started.cart_id, Some("   "))
+        .await
+        .unwrap();
+    let store_conn = bridge
+        .db_manager()
+        .open_store("store-replay-guard")
+        .unwrap();
+    let db = store_conn.lock().unwrap();
+    let keyed: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM payments WHERE sale_id = ?1 AND idempotency_key IS NOT NULL",
+            rusqlite::params![sale.sale_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        keyed, 0,
+        "a whitespace-only attempt id must stamp NULL keys, exactly like the tablet normalizer"
+    );
+}
 // ── Tax scope at the command layer (tax-separation P1) ─────────────
 
 fn single_line_cart() -> oz_core::Cart {
