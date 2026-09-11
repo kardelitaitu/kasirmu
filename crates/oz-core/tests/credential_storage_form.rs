@@ -1,5 +1,25 @@
 //! Storage-form census for the settings credential deny list.
 //!
+//! # This census predates the tracked-funnel credential refusal
+//!
+//! Written at 5a536af6a, when `Settings::set_tracked` stored every key it was
+//! handed. `0f26a4b29` made that funnel refuse every `SECRET_KEY_DENY_LIST`
+//! credential except `smtp_config`, so the funnel paragraphs below describe
+//! the old behaviour. Which cases now exercise what:
+//!
+//! - The 14 per-key cases and both count tests are untouched: they write
+//!   through the ordinary typed setters and plain `Settings::set`, which
+//!   carry no refusal, so they still measure the stored form.
+//! - The three funnel cases (`every_key_lands_plaintext_in_both_tables_
+//!   through_the_funnel`, `a_cleartext_delta_survives_a_later_encrypted_
+//!   save`, `zero_keys_land_in_ciphertext_form_through_the_funnel`) hand
+//!   deny-listed keys to `set_tracked` and now hit the refusal — 11 of the
+//!   14 SPEC keys bounce off it, `smtp_config` still writes (the named
+//!   exception), and `machine_id` / `hardware_fingerprint` are not
+//!   credentials. They exercise the refusal now, not the stored form; a
+//!   funnel-form census for the keys the funnel still accepts is a
+//!   separate decision, not silently assumed here.
+//!
 //! Every existing test asks whether a deny-listed key is *refused on read*
 //! (`crates/oz-bridge/src/settings_tests.rs:404-413`) or whether it is *a
 //! member of the list*. None asks what actually landed in the column. A key
@@ -294,7 +314,11 @@ const SPEC: &[Spec] = &[
         typed: None,
         expected: Form::Plaintext,
     },
-    // NO crypto family, and no keys:: constant either — a bare string literal
+    // NO crypto family. Written 5a536af6a as a bare string literal with no
+    // keys:: constant; b2196d701 registered it as keys::AUTH_TOKEN and put it
+    // on SECRET_KEY_DENY_LIST. Still true: no reader of the key exists anywhere
+    // in the tree, so the row remains a write-only cleartext duplicate of
+    // sync_api_key.
     Spec {
         key: "sync.auth_token",
         setter: "NO crypto family",

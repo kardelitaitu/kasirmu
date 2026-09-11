@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (tablet-client UI-1 investigation + fix)
 crate: tablet-client | status: SAFE | lint: CLEAN
-findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); new gateway_status command computes configured/online booleans server-side; deny-list test extended with the three keys. Verified during UI-1: deny-list check on run_get_setting, sync.auth_token cross-screen readability test retained
+findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); new gateway_status command computes configured/online booleans server-side; deny-list test extended with the three keys. Verified during UI-1: deny-list check on run_get_setting. sync.auth_token: the cross-screen readability tests were inverted by b2196d701 — they now assert the read is refused while the written row persists, and that both untrusted ingest policies (RemoteSync, PortablePackage) refuse to carry it; no readability test is retained
 next: none | perf: N/A
 */
 //!
