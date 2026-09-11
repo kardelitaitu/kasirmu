@@ -638,3 +638,40 @@ async fn scoped_user_preferences_roundtrip_targets_session_store_and_user() {
         "another user in the same store must not see cashier-a preferences"
     );
 }
+/// The bypass reproduce (egress-gate parity with the bridge funnel): a
+/// locally written credential must NOT leave the device in a settings.update
+/// sync item, even though the local write itself succeeds and is non-fatal.
+#[test]
+fn enqueue_settings_update_refuses_credential_key_for_egress() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    enqueue_settings_update(
+        &store,
+        oz_core::settings::keys::LOCAL_API_SECRET,
+        "signing-secret",
+        "term-1",
+    )
+    .unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "local_api.secret must not be queued for sync egress"
+    );
+}
+
+/// Control for the gate: an ordinary key still queues, so the refusal above
+/// is the policy and not a broken enqueue path.
+#[test]
+fn enqueue_settings_update_still_queues_ordinary_key() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    enqueue_settings_update(
+        &store,
+        oz_core::settings::keys::STORE_NAME,
+        "Renamed",
+        "term-1",
+    )
+    .unwrap();
+    let pending = store.list_pending_offline().unwrap();
+    assert_eq!(pending.len(), 1, "store.name must still queue for egress");
+    assert_eq!(pending[0].action, "settings.update");
+}

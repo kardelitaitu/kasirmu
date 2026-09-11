@@ -17,6 +17,7 @@ use tauri::command;
 use std::collections::HashMap;
 
 use oz_core::permissions;
+use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use oz_core::{Settings, Store, UserPreferences};
 
 use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
@@ -593,6 +594,20 @@ fn enqueue_settings_update(
     value: &str,
     terminal_id: &str,
 ) -> Result<(), AppError> {
+    // Egress gate — symmetric with the bridge funnel (`oz_bridge::settings`):
+    // a key the ingest side would refuse must not be OFFERED to the network
+    // either. Both tablet call sites (global and scoped set_setting) funnel
+    // through THIS function, so this is the one boundary to keep in sync.
+    // Warn-and-skip, never an error: the local write already committed, and
+    // the warn names the key and the policy, never the value.
+    if !IngestPolicy::RemoteSync.admits(key) {
+        tracing::warn!(
+            key = %key,
+            policy = IngestPolicy::RemoteSync.label(),
+            "settings key refused by sync egress policy (not enqueued)"
+        );
+        return Ok(());
+    }
     Ok(store.enqueue_settings_update_superseding(key, value, terminal_id, "default")?)
 }
 

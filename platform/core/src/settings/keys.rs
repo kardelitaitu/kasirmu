@@ -208,6 +208,12 @@ pub const MIDTRANS_SERVER_KEY: &str = "midtrans.server_key";
 /// Persisted machine fingerprint: the KDF factor for every machine-bound
 /// encryption family and the one-trial-per-device lock.
 pub const MACHINE_ID: &str = "machine_id";
+/// Persisted hardware fingerprint (`hw_` + full SHA-256 hex of the system
+/// UUID anchor): the license server's one-trial-per-device lock. Like
+/// [`MACHINE_ID`] it is per-device identity — shipping it to a peer hands
+/// it this machine's identity — so it is refused on both untrusted lanes
+/// while `license.rs` keeps minting it under TrustedLocal.
+pub const HARDWARE_FINGERPRINT: &str = "hardware_fingerprint";
 
 /// Settings keys that must never be returned by the raw `get_setting` IPC
 /// surface, nor travel in a portable export/restore package.
@@ -245,7 +251,8 @@ pub const SECRET_KEY_DENY_LIST: &[&str] = &[
 /// install would hand it the source machine's identity (duplicate terminal
 /// registration; a restored trial lock), which is the same per-install
 /// property review MED-2 protected for `local_api.secret`.
-pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] = &[SYNC_TERMINAL_ID, MACHINE_ID];
+pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
+    &[SYNC_TERMINAL_ID, MACHINE_ID, HARDWARE_FINGERPRINT];
 
 /// Returns true when the given settings key holds a credential that the raw
 /// get_setting IPC surface must never return (C-2).

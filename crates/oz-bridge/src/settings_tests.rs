@@ -620,6 +620,7 @@ fn is_credential_family(name: &str) -> bool {
         "SMTP_CONFIG",
         "TERMINAL_ID",
         "MACHINE_ID",
+        "FINGERPRINT",
     ];
     MARKERS.iter().any(|marker| name.contains(marker))
 }
@@ -688,7 +689,7 @@ fn every_credential_family_key_declared_in_keys_rs_is_blocked() {
 /// parsing the registry: name -> constant -> both verdicts.
 #[test]
 fn credential_table_is_blocked_by_both_surfaces() {
-    let table: [(&str, &str); 16] = [
+    let table: [(&str, &str); 17] = [
         ("SYNC_API_KEY", keys::SYNC_API_KEY),
         ("SYNC_TERMINAL_SECRET", keys::SYNC_TERMINAL_SECRET),
         ("PG_SYNC_PASSWORD", keys::PG_SYNC_PASSWORD),
@@ -705,6 +706,7 @@ fn credential_table_is_blocked_by_both_surfaces() {
         ("MIDTRANS_SERVER_KEY", keys::MIDTRANS_SERVER_KEY),
         ("SYNC_TERMINAL_ID", keys::SYNC_TERMINAL_ID),
         ("MACHINE_ID", keys::MACHINE_ID),
+        ("HARDWARE_FINGERPRINT", keys::HARDWARE_FINGERPRINT),
     ];
     for (name, key) in table {
         assert!(
@@ -718,6 +720,23 @@ fn credential_table_is_blocked_by_both_surfaces() {
             "{name} = {key:?}: credentials are IPC-blocked, device identity is not"
         );
     }
+}
+
+/// The hardware fingerprint is device identity like machine_id (it is the
+/// license server's one-trial-per-device lock), so BOTH untrusted lanes
+/// refuse it while the local manager lane keeps minting it.
+#[test]
+fn hardware_fingerprint_is_refused_on_both_untrusted_lanes() {
+    for policy in [IngestPolicy::RemoteSync, IngestPolicy::PortablePackage] {
+        assert!(
+            !policy.admits(keys::HARDWARE_FINGERPRINT),
+            "{policy:?} must refuse the device fingerprint"
+        );
+    }
+    assert!(
+        IngestPolicy::TrustedLocal.admits(keys::HARDWARE_FINGERPRINT),
+        "license.rs mints the fingerprint locally and must keep working"
+    );
 }
 
 /// The typo regression itself: the stored key is UNDERSCORED, the old entry
