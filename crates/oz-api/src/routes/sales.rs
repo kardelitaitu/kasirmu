@@ -6,16 +6,24 @@ findings: clean — currency inferred from first line and enforced per-line by C
 next: none | perf: N/A
 */
 //!
-//! `POST /api/v1/sales` — create a sale from cart lines.
+//! `POST /api/v1/sales` — create a sale from cart lines, behind the
+//! `Idempotency-Key` guard: an opaque client-supplied key, bound to the sale it
+//! created, so a retry replays that sale (200 + the original body) instead of
+//! booking a second one. Absent, empty or whitespace-only means unguarded and
+//! keeps answering 201 with a new sale; the key is never parsed beyond the
+//! blank test, never normalised, and never minted server-side. Request content
+//! is never a deduplication input. Scope is (tenant_id, key) on both branches
+//! — see `crates/oz-core/migrations/20261001_sale_idempotency.sql`.
 //! `PATCH /api/v1/sales/{id}/status` — transition sale status.
 //! `GET /api/v1/sales/{id}` — get sale detail with line items.
 
 use axum::{
     Extension, Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use oz_core::db::Store;
@@ -89,16 +97,177 @@ pub struct SaleStatusResponse {
 
 // ── Handlers ──────────────────────────────────────────────────────────
 
-/// Create a sale from cart lines.
+// ──────────────────── Idempotency guard ────────────────────
+
+/// Request header carrying the opaque client-supplied idempotency key.
+pub const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
+
+/// Longest key the guard accepts, in bytes.
 ///
+/// The key is opaque and never interpreted, so the cap exists only to stop a
+/// hostile client turning the receipt table into a blob store.
+pub const IDEMPOTENCY_KEY_MAX_LEN: usize = 200;
+
+/// Read the guard key out of the request headers.
+///
+/// Absent, empty and whitespace-only all yield `None` (unguarded). A present value
+/// is used EXACTLY as handed over — no trimming, no case folding, no
+/// re-formatting — because a replay is matched by exact equality, and any
+/// normalisation here would silently split one client key into two slots. The
+/// blank test is the only thing that looks inside the string, which is why an
+/// all-whitespace key becomes unguarded instead of a stored key.
+fn guard_key(headers: &HeaderMap) -> Option<&str> {
+    let raw = headers
+        .get(IDEMPOTENCY_KEY_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.trim().is_empty())?;
+    Some(raw)
+}
+
+/// Reject a key that cannot be stored, BEFORE any lookup or write.
+///
+/// Accepts an absent key. A present key must fit `IDEMPOTENCY_KEY_MAX_LEN` bytes and
+/// the opaque-token charset; anything else is a 400, because silently ignoring
+/// it would hand back a 201 for a request the client believed was protected.
+/// Never re-keys and never substitutes a different key for the client.
+fn guard_key_reject(key: Option<&str>) -> Option<String> {
+    let Some(k) = key else { return None };
+    if k.len() > IDEMPOTENCY_KEY_MAX_LEN {
+        return Some("idempotency key too long".into());
+    }
+    if !k
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'-'))
+    {
+        return Some("idempotency key must be opaque token characters only".into());
+    }
+    None
+}
+
+/// SQLite half of the guard, on the connection the handler already locks.
+///
+/// `AppState.db` is one `Arc<Mutex<Connection>>`, so a claim and the ledger write it
+/// guards cannot interleave with another request's — the pair is serialised by
+/// the lock, and only a genuine slot conflict (an earlier, already-acked
+/// request) can make the insert affect zero rows. No race handling is needed
+/// here for exactly that reason, and none is invented.
+fn claim_sqlite(
+    db: &rusqlite::Connection,
+    tenant_id: &str,
+    key: &str,
+    sale_id: &str,
+) -> Result<crate::pg::SaleClaim, rusqlite::Error> {
+    let tx = db.unchecked_transaction()?;
+    let held = tx.execute(
+        "INSERT INTO sale_idempotency (tenant_id, key, sale_id) VALUES (?1, ?2, ?3)
+         ON CONFLICT (tenant_id, key) DO NOTHING",
+        params![tenant_id, key, sale_id],
+    )?;
+    if held == 1 {
+        tx.commit()?;
+        return Ok(crate::pg::SaleClaim::Held);
+    }
+    let winner = tx
+        .query_row(
+            "SELECT sale_id FROM sale_idempotency WHERE tenant_id = ?1 AND key = ?2",
+            params![tenant_id, key],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?;
+    tx.commit()?;
+    Ok(match winner {
+        Some(id) => crate::pg::SaleClaim::Replay(id),
+        None => crate::pg::SaleClaim::Held,
+    })
+}
+
+/// Release a SQLite slot whose sale write failed, so a retry is not locked out
+/// by a receipt naming a sale that does not exist.
+fn release_sqlite(
+    db: &rusqlite::Connection,
+    tenant_id: &str,
+    key: &str,
+    sale_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let tx = db.unchecked_transaction()?;
+    tx.execute(
+        "DELETE FROM sale_idempotency WHERE tenant_id = ?1 AND key = ?2 AND sale_id = ?3",
+        params![tenant_id, key, sale_id],
+    )?;
+    tx.commit()
+}
+
+/// Record an unguarded sale (no usable key) as a NULL-keyed row: bookkeeping
+/// only. NULL is distinct in the unique index in both engines, so such a row
+/// can never resolve or block a later request.
+fn note_unguarded_sqlite(
+    db: &rusqlite::Connection,
+    tenant_id: &str,
+    sale_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let tx = db.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO sale_idempotency (tenant_id, key, sale_id) VALUES (?1, NULL, ?2)",
+        params![tenant_id, sale_id],
+    )?;
+    tx.commit()
+}
+
+/// Answer a replayed guarded submit with the ORIGINAL sale body and 200.
+///
+/// Never a second sale and never an error for a key that resolved. The one
+/// degenerate case is a slot whose sale row has since been deleted: there is
+/// no body to replay, and inventing one would be worse than naming it, so that
+/// reads as a 404 while still writing nothing.
+async fn sale_receipt(pool: &deadpool_postgres::Pool, tenant_id: &str, sale_id: &str) -> Response {
+    match crate::pg::get_sale(pool, tenant_id, sale_id).await {
+        Ok(Some(sale)) => (StatusCode::OK, Json(sale)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "idempotency key holds no readable sale"})),
+        )
+            .into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// SQLite twin of `sale_receipt`: same 200, same original body.
+fn sale_receipt_sqlite(store: &Store, sale_id: &str) -> Response {
+    match store.get_sale(sale_id) {
+        Ok(Some(sale)) => (StatusCode::OK, Json(sale)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "idempotency key holds no readable sale"})),
+        )
+            .into_response(),
+        Err(e) => store_error_response(e),
+    }
+}
+
+/// Create a sale from cart lines.
 /// Accepts `{ "lines": [{ "sku": "...", "qty": N, "unit_price": {...} }, ...] }`.
 /// Builds a `Cart`, converts to `Sale` via the domain type, and persists
 /// header + lines in a single transaction. Returns 201 with the full sale.
+///
+/// When `Idempotency-Key` carries an opaque key, the slot is claimed BEFORE any
+/// write: the request that wins the slot creates the sale and answers 201, and
+/// any later request with the same (tenant_id, key) is answered 200 with the
+/// ORIGINAL sale body read back through `get_sale` — never an error, never a
+/// second sale. Absent, empty or whitespace-only leaves the create unguarded.
 pub async fn create_sale(
     State(state): State<AppState>,
     Extension(claims): Extension<ApiTokenClaims>,
+    headers: HeaderMap,
     Json(body): Json<CreateSaleRequest>,
 ) -> Response {
+    let key = guard_key(&headers);
+    if let Some(reject) = guard_key_reject(key) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": reject})),
+        )
+            .into_response();
+    }
     if body.lines.is_empty() {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -133,20 +302,75 @@ pub async fn create_sale(
         }
     };
 
+    let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
+
+    // Both branches resolve the guard BEFORE any ledger write, and both scope
+    // it to (tenant_id, key), so the two surfaces answer identically.
     if let Some(pool) = &state.pg {
-        let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
+        if let Some(k) = key {
+            match crate::pg::claim_sale_idempotency(pool, tenant_id, k, &sale.id).await {
+                Ok(crate::pg::SaleClaim::Held) => {}
+                Ok(crate::pg::SaleClaim::Replay(held)) => {
+                    return sale_receipt(pool, tenant_id, &held).await;
+                }
+                Err(e) => return e.into_response(),
+            }
+        }
         return match crate::pg::create_sale(pool, tenant_id, &sale).await {
-            Ok(()) => (StatusCode::CREATED, Json(sale)).into_response(),
-            Err(e) => e.into_response(),
+            Ok(()) => {
+                if key.is_none() {
+                    // The sale is written; a failed receipt note must not
+                    // turn a booked sale into an error.
+                    if let Err(e) =
+                        crate::pg::record_unguarded_sale(pool, tenant_id, &sale.id).await
+                    {
+                        tracing::warn!("unguarded sale receipt note failed: {e}");
+                    }
+                }
+                (StatusCode::CREATED, Json(sale)).into_response()
+            }
+            Err(e) => {
+                if let Some(k) = key
+                    && let Err(release) =
+                        crate::pg::release_sale_idempotency(pool, tenant_id, k, &sale.id).await
+                {
+                    tracing::warn!("failed to release an unused idempotency slot: {release}");
+                }
+                e.into_response()
+            }
         };
     }
 
     let db = state.db.lock().await;
     let store = Store::new(&db);
 
+    if let Some(k) = key {
+        match claim_sqlite(&db, tenant_id, k, &sale.id) {
+            Ok(crate::pg::SaleClaim::Held) => {}
+            Ok(crate::pg::SaleClaim::Replay(held)) => {
+                return sale_receipt_sqlite(&store, &held);
+            }
+            Err(e) => return store_error_response(e.into()),
+        }
+    }
+
     match store.create_sale(&sale) {
-        Ok(()) => (StatusCode::CREATED, Json(sale)).into_response(),
-        Err(e) => store_error_response(e),
+        Ok(()) => {
+            if key.is_none() {
+                if let Err(e) = note_unguarded_sqlite(&db, tenant_id, &sale.id) {
+                    tracing::warn!("unguarded sale receipt note failed: {e}");
+                }
+            }
+            (StatusCode::CREATED, Json(sale)).into_response()
+        }
+        Err(e) => {
+            if let Some(k) = key
+                && let Err(release) = release_sqlite(&db, tenant_id, k, &sale.id)
+            {
+                tracing::warn!("failed to release an unused idempotency slot: {release}");
+            }
+            store_error_response(e)
+        }
     }
 }
 
@@ -231,3 +455,7 @@ pub async fn update_sale_status(
 #[cfg(test)]
 #[path = "sales_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "sales_idempotency_tests.rs"]
+mod idempotency_tests;

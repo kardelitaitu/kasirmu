@@ -1662,6 +1662,141 @@ fn pg_row_to_sale_line(row: &tokio_postgres::Row) -> Result<SaleLine, PgError> {
     })
 }
 
+// ────────────────────── Sale idempotency guard ───────────────────
+
+/// Verdict of a claim attempt on one (tenant_id, key) slot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SaleClaim {
+    /// This request holds the slot for the sale id it supplied, so it must go
+    /// on and write that sale.
+    Held,
+    /// An earlier request already holds the slot. The payload is the ORIGINAL
+    /// sale id, which the caller reads back and returns as the receipt.
+    Replay(String),
+}
+
+/// Claim (tenant_id, key) on behalf of sale_id, BEFORE any ledger write.
+///
+/// Insert-first, then read the row back: a concurrent loser's
+/// ON CONFLICT (tenant_id, key) DO NOTHING waits on the winner's unique-index
+/// entry, affects zero rows, and then SELECTs the WINNER's sale id. That is why
+/// 23505 (unique_violation) never reaches PgError::Db here, and why exactly one
+/// of two racing submits answers 201 while the other answers 200 with the same
+/// sale body. The key is the client's opaque string, matched by exact equality
+/// only; nothing here parses it, and a request with no usable key never calls
+/// this function at all.
+///
+/// RLS: sale_idempotency is a covered table, so the pair runs inside one
+/// transaction with set_config('oz.tenant_id', …, true) exactly like every
+/// other tenant-scoped helper in this module — one tenant can neither resolve
+/// nor block another tenant's slot.
+pub async fn claim_sale_idempotency(
+    pool: &Pool,
+    tenant_id: &str,
+    key: &str,
+    sale_id: &str,
+) -> Result<SaleClaim, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    let claimed = tx
+        .execute(
+            "INSERT INTO sale_idempotency (tenant_id, key, sale_id)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (tenant_id, key) DO NOTHING",
+            &[&tenant_id, &key, &sale_id],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    let verdict = if claimed == 1 {
+        SaleClaim::Held
+    } else {
+        match tx
+            .query_opt(
+                "SELECT sale_id FROM sale_idempotency WHERE tenant_id = $1 AND key = $2",
+                &[&tenant_id, &key],
+            )
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?
+        {
+            Some(row) => SaleClaim::Replay(row.get::<_, String>(0)),
+            // A conflicting slot rolled back between the two statements leaves
+            // nothing to replay; inventing a sale is not this function's call.
+            None => return Err(PgError::Db("idempotency slot vanished mid-race".into())),
+        }
+    };
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(verdict)
+}
+
+/// Drop a slot this request held but could not turn into a sale.
+///
+/// Called when the create behind a Held claim failed: leaving the slot bound to
+/// a sale id that was never written would make every later retry resolve to a
+/// receipt with no sale behind it. The delete is narrowed to our own sale_id,
+/// so a concurrent winner's slot is never touched.
+pub async fn release_sale_idempotency(
+    pool: &Pool,
+    tenant_id: &str,
+    key: &str,
+    sale_id: &str,
+) -> Result<(), PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute(
+        "DELETE FROM sale_idempotency WHERE tenant_id = $1 AND key = $2 AND sale_id = $3",
+        &[&tenant_id, &key, &sale_id],
+    )
+    .await
+    .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(())
+}
+
+/// Record an UNGUARDED sale — one whose request carried no usable key — as a
+/// row with a NULL key.
+///
+/// NULL is distinct in a SQL unique index in both engines, so these rows can
+/// never resolve or block a later request: an unbounded number of unguarded
+/// sales per tenant stays legal, which is the whole point of the nullable
+/// column. This is bookkeeping, never a guard, and its failure must not turn an
+/// already-written sale into an error response.
+pub async fn record_unguarded_sale(
+    pool: &Pool,
+    tenant_id: &str,
+    sale_id: &str,
+) -> Result<(), PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute(
+        "INSERT INTO sale_idempotency (tenant_id, key, sale_id) VALUES ($1, NULL, $2)",
+        &[&tenant_id, &sale_id],
+    )
+    .await
+    .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(())
+}
+
 /// Get a single sale by id, including line items.
 pub async fn get_sale(pool: &Pool, tenant_id: &str, id: &str) -> Result<Option<Sale>, PgError> {
     let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;

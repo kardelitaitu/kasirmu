@@ -459,15 +459,20 @@ pub(super) fn build_base_paths() -> Value {
             "post": {
                 "tags": ["Sales"],
                 "summary": "Create a new sale",
-                "description": "Creates a sale in 'pending' status with the given line items. Each line item specifies SKU, quantity, and unit price. At least one line item is required.",
+                "description": "Creates a sale in 'pending' status with the given line items. Each line item specifies SKU, quantity, and unit price. At least one line item is required. The body is the published content contract and carries NO idempotency field: retry protection rides the optional Idempotency-Key header. That key is an opaque client-supplied string, matched by exact equality within the caller's tenant, never parsed and never minted server-side; two requests with the same (tenant, key) produce ONE sale — the first answers 201, any retry answers 200 with the original sale body. Absent, empty or whitespace-only means unguarded: a new sale and a 201 every time, so clients that never send the header are unaffected. Identical baskets under different keys are identical-but-separate sales; content is never a deduplication input.",
                 "operationId": "createSale",
                 "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "Idempotency-Key", "in": "header", "required": false, "schema": { "type": "string", "maxLength": 200 }, "description": "Opaque retry key, at most 200 characters of [A-Za-z0-9._:-]. Scope is (tenant, key): the same key from two tenants is two separate sales, and no tenant can resolve or block another's key. Send a fresh key per attempt you want distinguished; reuse it only to retry a request whose response you did not get. Omit it (or send blank) for an unguarded create." }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSaleRequest" }, "example": { "lines": [{ "sku": "COFFEE-001", "qty": 2, "unit_price": { "minor_units": 350, "currency": "USD" } }, { "sku": "MUFFIN-001", "qty": 1, "unit_price": { "minor_units": 425, "currency": "USD" } }] } } }
                 },
                 "responses": {
                     "201": { "description": "Sale created (status: pending)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SaleDetail" }, "example": { "id": "sale-abc123", "status": "pending", "lines": [{ "sku": "COFFEE-001", "qty": 2, "unit_price": { "minor_units": 350, "currency": "USD" } }], "total": { "minor_units": 1125, "currency": "USD" }, "created_at": "2026-08-12T10:30:00Z" } } } },
+                    "200": { "description": "Idempotent replay: the ORIGINAL sale created by an earlier request carrying the same Idempotency-Key. Same schema and same sale id as the 201 — a receipt, not an error, and never a second sale.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SaleDetail" } } } },
+                    "400": { "description": "Idempotency-Key present but unstorable (over 200 bytes or outside the opaque-token charset); the key is rejected rather than silently ignored or replaced", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "422": { "description": "Empty lines array", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
                 }
