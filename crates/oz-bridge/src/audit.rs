@@ -628,3 +628,11 @@ pub async fn export_security_events_scoped(
         requested_by: session.user_id,
     })
 }
+
+#[cfg(test)]
+#[path = "audit_tests.rs"]
+mod audit_tests;
+
+#[cfg(test)]
+#[path = "audit_security_events_tests.rs"]
+mod audit_security_events_tests;

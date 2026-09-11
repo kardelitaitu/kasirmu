@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::testing::TestBridge;
+
 // ── AuditEntryDto ───────────────────────────────────────────────────
 
 #[test]
@@ -102,9 +104,6 @@ fn export_dto_serialize_has_all_fields() {
 // in JavaScript without running Rust. These are those missing tests, and they
 // fail with the panic if the gate is ever reverted.
 
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
-
 /// Global DB with an owner (all permissions) on the given tier.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
     let conn = oz_core::migrations::fresh_db();
@@ -127,13 +126,10 @@ fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
 }
 
 /// An app whose `tok` session is the owner, with a real store DB behind it.
-fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
+fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> TestBridge {
     let conn = seeded_conn(tier_key);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         "tok".into(),
         oz_core::session::SessionContext::new(
             user_id.into(),
@@ -146,17 +142,16 @@ fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> tauri::App<tauri::te
             0,
         ),
     );
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+    bridge
 }
 
 #[tokio::test]
 async fn list_command_passes_the_tier_gate_without_panicking() {
-    let app = app_for("user-owner", "role-owner", "premium");
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
     let page = list_audit_log_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         ListAuditLogScopedArgs {
             limit: 50,
             outcome: None,
@@ -164,7 +159,6 @@ async fn list_command_passes_the_tier_gate_without_panicking() {
             before_created_at: None,
             before_id: None,
         },
-        app.state(),
     )
     .await;
     assert!(page.is_ok(), "{:?}", page.err());
@@ -173,21 +167,23 @@ async fn list_command_passes_the_tier_gate_without_panicking() {
 
 #[tokio::test]
 async fn review_status_command_passes_the_tier_gate_without_panicking() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    let status = get_audit_review_status_scoped("tok".into(), app.state()).await;
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    let status = get_audit_review_status_scoped(&ctx, "tok").await;
     assert!(status.is_ok(), "{:?}", status.err());
 }
 
 #[tokio::test]
 async fn export_command_passes_the_tier_gate_without_panicking() {
-    let app = app_for("user-owner", "role-owner", "premium");
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
     let exported = export_audit_log_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         ExportAuditLogArgs {
             outcome: None,
             query: None,
         },
-        app.state(),
     )
     .await;
     assert!(exported.is_ok(), "{:?}", exported.err());
@@ -197,9 +193,11 @@ async fn export_command_passes_the_tier_gate_without_panicking() {
 async fn the_gate_still_denies_a_session_without_audit_view() {
     // Making the gate async must not have softened it: the permission check
     // still runs and still refuses.
-    let app = app_for("user-owner", "role-owner", "premium");
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
     let err = list_audit_log_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         ListAuditLogScopedArgs {
             limit: 50,
             outcome: None,
@@ -207,31 +205,26 @@ async fn the_gate_still_denies_a_session_without_audit_view() {
             before_created_at: None,
             before_id: None,
         },
-        app.state(),
     )
     .await
     .err();
     assert!(err.is_none(), "owner has audit:view: {err:?}");
 
-    let lite = app_for("user-owner", "role-owner", "premium");
-    {
-        let state = lite.state::<AppState>();
-        let db = state.db.lock().await;
-        db.execute(
-            r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
-             VALUES ('role-lite', 'Lite', 'Limited', '["sales:view"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
-            [],
-        )
-        .unwrap();
-        db.execute(
-            "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
-             VALUES ('user-lite', 'lite', 'hash', 'Lite', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
-            [],
-        )
-        .unwrap();
-    }
-    let state = lite.state::<AppState>();
-    state.session_store.write().unwrap().insert(
+    let lite_conn = seeded_conn("premium");
+    lite_conn.execute(
+        r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-lite', 'Lite', 'Limited', '["sales:view"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
+        [],
+    )
+    .unwrap();
+    lite_conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-lite', 'lite', 'hash', 'Lite', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let lite = TestBridge::new().with_conn(lite_conn);
+    lite.sessions().write().unwrap().insert(
         "lite-tok".into(),
         oz_core::session::SessionContext::new(
             "user-lite".into(),
@@ -244,8 +237,10 @@ async fn the_gate_still_denies_a_session_without_audit_view() {
             0,
         ),
     );
+    let lite_ctx = lite.ctx();
     let denied = list_audit_log_scoped(
-        "lite-tok".into(),
+        &lite_ctx,
+        "lite-tok",
         ListAuditLogScopedArgs {
             limit: 50,
             outcome: None,
@@ -253,11 +248,10 @@ async fn the_gate_still_denies_a_session_without_audit_view() {
             before_created_at: None,
             before_id: None,
         },
-        lite.state(),
     )
     .await;
     assert!(
-        matches!(denied, Err(AppError::PermissionDenied(_))),
+        matches!(denied, Err(BridgeError::PermissionDenied(_))),
         "the gate must still refuse: {denied:?}"
     );
 }

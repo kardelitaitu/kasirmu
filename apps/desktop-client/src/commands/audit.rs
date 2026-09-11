@@ -108,12 +108,6 @@ pub async fn export_audit_log_scoped(
         .map_err(Into::into)
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "audit_tests.rs"]
-mod tests;
-
 /// Export the ORGANIZATION-level security trail to CSV (owner ruling
 /// D61-7, D84) — see `oz_bridge::audit::export_security_events_scoped`.
 #[tauri::command]
@@ -127,7 +121,3 @@ pub async fn export_security_events_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "audit_security_events_tests.rs"]
-mod security_events_tests;

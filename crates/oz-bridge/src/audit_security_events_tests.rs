@@ -11,8 +11,7 @@
 
 use super::*;
 
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
+use crate::testing::TestBridge;
 
 /// Global DB: owner (all permissions) + a Lite user (none), on a paid tier.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
@@ -54,14 +53,11 @@ fn seed_global_rows(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
+fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> TestBridge {
     let conn = seeded_conn(tier_key);
     seed_global_rows(&conn);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
         "tok".into(),
         oz_core::session::SessionContext::new(
             user_id.into(),
@@ -74,10 +70,7 @@ fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> tauri::App<tauri::te
             0,
         ),
     );
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
+    bridge
 }
 
 fn args(limit: u64) -> ListSecurityEventsScopedArgs {
@@ -92,8 +85,9 @@ fn args(limit: u64) -> ListSecurityEventsScopedArgs {
 
 #[tokio::test]
 async fn security_events_page_shows_only_the_security_class() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    let page = list_security_events_scoped("tok".into(), args(50), app.state())
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    let page = list_security_events_scoped(&ctx, "tok", args(50))
         .await
         .unwrap();
     assert_eq!(page.total, 1, "the business row must not count");
@@ -105,10 +99,10 @@ async fn security_events_page_shows_only_the_security_class() {
 
 #[tokio::test]
 async fn security_events_page_clamps_the_limit_and_reports_more() {
-    let app = app_for("user-owner", "role-owner", "premium");
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
     {
-        let state = app.state::<AppState>();
-        let db = state.db.lock().await;
+        let db = ctx.lock_global().await;
         for i in 0..3 {
             let n = i + 2;
             db.execute(
@@ -119,7 +113,7 @@ async fn security_events_page_clamps_the_limit_and_reports_more() {
             .unwrap();
         }
     }
-    let page = list_security_events_scoped("tok".into(), args(2), app.state())
+    let page = list_security_events_scoped(&ctx, "tok", args(2))
         .await
         .unwrap();
     assert_eq!(page.items.len(), 2);
@@ -134,23 +128,25 @@ async fn security_events_page_clamps_the_limit_and_reports_more() {
 async fn security_events_page_denies_a_session_without_audit_view() {
     // Same permission surface as the audit screen: a session that cannot open
     // the audit log cannot open this either.
-    let app = app_for("user-lite", "role-lite", "premium");
-    let err = list_security_events_scoped("tok".into(), args(50), app.state())
+    let bridge = app_for("user-lite", "role-lite", "premium");
+    let ctx = bridge.ctx();
+    let err = list_security_events_scoped(&ctx, "tok", args(50))
         .await
         .unwrap_err();
     assert!(
-        matches!(err, AppError::PermissionDenied(_)),
+        matches!(err, BridgeError::PermissionDenied(_)),
         "expected a permission denial, got {err:?}"
     );
 }
 
 #[tokio::test]
 async fn security_events_page_rejects_an_unknown_session() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    let err = list_security_events_scoped("nope".into(), args(50), app.state())
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    let err = list_security_events_scoped(&ctx, "nope", args(50))
         .await
         .unwrap_err();
-    assert!(matches!(err, AppError::InvalidSession), "got {err:?}");
+    assert!(matches!(err, BridgeError::InvalidSession), "got {err:?}");
 }
 
 #[test]
@@ -188,9 +184,9 @@ fn export_args(
 
 /// Two extra security rows in the GLOBAL DB: a second user-owner event
 /// and a system-actor login failure (the unknown-account case).
-async fn seed_actor_rows(app: &tauri::App<tauri::test::MockRuntime>) {
-    let state = app.state::<AppState>();
-    let db = state.db.lock().await;
+async fn seed_actor_rows(bridge: &TestBridge) {
+    let ctx = bridge.ctx();
+    let db = ctx.lock_global().await;
     db.execute(
         "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
          VALUES ('aud-sys','system','login.failed','user',NULL,'{}','failure','2026-08-02T00:00:00.000Z'),
@@ -201,9 +197,9 @@ async fn seed_actor_rows(app: &tauri::App<tauri::test::MockRuntime>) {
 }
 
 /// Three security rows around the Aug-5/Aug-6 boundary in the GLOBAL DB.
-async fn seed_date_rows(app: &tauri::App<tauri::test::MockRuntime>) {
-    let state = app.state::<AppState>();
-    let db = state.db.lock().await;
+async fn seed_date_rows(bridge: &TestBridge) {
+    let ctx = bridge.ctx();
+    let db = ctx.lock_global().await;
     db.execute(
         "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
          VALUES ('aud-d1','user-owner','login','user','user-owner','{}','success','2026-08-05T09:30:00.000Z'),
@@ -216,11 +212,11 @@ async fn seed_date_rows(app: &tauri::App<tauri::test::MockRuntime>) {
 
 #[tokio::test]
 async fn export_contains_only_security_rows() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    let out =
-        export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
-            .await
-            .unwrap();
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    let out = export_security_events_scoped(&ctx, "tok", export_args(None, None, None))
+        .await
+        .unwrap();
     assert_eq!(out.row_count, 1, "the business row must not export");
     assert!(out.csv.starts_with('\u{FEFF}'), "BOM required");
     assert!(
@@ -234,25 +230,19 @@ async fn export_contains_only_security_rows() {
 
 #[tokio::test]
 async fn actor_filter_is_exact_and_system_resolves() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    seed_actor_rows(&app).await;
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    seed_actor_rows(&bridge).await;
     // Exact user_id: only that actor's rows.
-    let owner = export_security_events_scoped(
-        "tok".into(),
-        export_args(Some("user-owner"), None, None),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let owner =
+        export_security_events_scoped(&ctx, "tok", export_args(Some("user-owner"), None, None))
+            .await
+            .unwrap();
     assert_eq!(owner.row_count, 2, "seeded login + logout for user-owner");
     // "system" resolves to SYSTEM_ACTOR and matches only those rows.
-    let sys = export_security_events_scoped(
-        "tok".into(),
-        export_args(Some("system"), None, None),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let sys = export_security_events_scoped(&ctx, "tok", export_args(Some("system"), None, None))
+        .await
+        .unwrap();
     assert_eq!(sys.row_count, 1);
     assert!(sys.csv.contains("login.failed"));
     assert!(!sys.csv.contains("logout"));
@@ -260,14 +250,15 @@ async fn actor_filter_is_exact_and_system_resolves() {
 
 #[tokio::test]
 async fn date_range_normalizes_day_bounds() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    seed_date_rows(&app).await;
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    seed_date_rows(&bridge).await;
     // dateTo = 2026-08-05 must INCLUDE the whole day (the exclusive
     // bound normalizes to midnight of Aug 6) and exclude Aug 6.
     let out = export_security_events_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         export_args(None, Some("2026-08-05"), Some("2026-08-05")),
-        app.state(),
     )
     .await
     .unwrap();
@@ -279,59 +270,58 @@ async fn date_range_normalizes_day_bounds() {
 
 #[tokio::test]
 async fn a_malformed_day_is_rejected_not_silently_ignored() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    let err = export_security_events_scoped(
-        "tok".into(),
-        export_args(None, Some("2026-13-01"), None),
-        app.state(),
-    )
-    .await
-    .unwrap_err();
-    assert!(matches!(err, AppError::Invalid(_)), "got {err:?}");
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    let err =
+        export_security_events_scoped(&ctx, "tok", export_args(None, Some("2026-13-01"), None))
+            .await
+            .unwrap_err();
+    assert!(matches!(err, BridgeError::Invalid(_)), "got {err:?}");
 }
 
 #[tokio::test]
 async fn export_refuses_below_the_premium_tier() {
-    let app = app_for("user-owner", "role-owner", "plus");
-    let err =
-        export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
-            .await
-            .unwrap_err();
+    let bridge = app_for("user-owner", "role-owner", "plus");
+    let ctx = bridge.ctx();
+    let err = export_security_events_scoped(&ctx, "tok", export_args(None, None, None))
+        .await
+        .unwrap_err();
     assert!(
-        matches!(err, AppError::PermissionDenied(_)),
+        matches!(err, BridgeError::PermissionDenied(_)),
         "tier gate must refuse below Premium: {err:?}"
     );
 }
 
 #[tokio::test]
 async fn export_refuses_a_caller_without_audit_export() {
-    let app = app_for("user-lite", "role-lite", "premium");
-    let err =
-        export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
-            .await
-            .unwrap_err();
+    let bridge = app_for("user-lite", "role-lite", "premium");
+    let ctx = bridge.ctx();
+    let err = export_security_events_scoped(&ctx, "tok", export_args(None, None, None))
+        .await
+        .unwrap_err();
     assert!(
-        matches!(err, AppError::PermissionDenied(_)),
+        matches!(err, BridgeError::PermissionDenied(_)),
         "non-exporter must be refused: {err:?}"
     );
 }
 
 #[tokio::test]
 async fn the_handoff_writes_a_self_audit_row_to_the_store_log() {
-    let app = app_for("user-owner", "role-owner", "premium");
-    export_security_events_scoped("tok".into(), export_args(None, None, None), app.state())
+    let bridge = app_for("user-owner", "role-owner", "premium");
+    let ctx = bridge.ctx();
+    export_security_events_scoped(&ctx, "tok", export_args(None, None, None))
         .await
         .unwrap();
     // AUD-09's surface reads the store DB: the self-audit row must be
     // visible there (it is deliberately NOT in SECURITY_ACTIONS, so it
     // never re-enters this export).
     let full = export_audit_log_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         ExportAuditLogArgs {
             outcome: None,
             query: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
