@@ -1519,3 +1519,204 @@ fn overridden_price_line_refunds_at_its_booked_value() {
         2400
     );
 }
+
+// ── Line identity: the claimed sku must be the sku that line sold ──
+//
+// Both cumulative bounds are measured against the sale line a refund names.
+// If the sku on the refund line is free text, the bounds measure one product
+// while the credit moves another: the default-location arm credits
+// refund_line.sku, so naming TEA's line as GOLD passes quantity 1-of-1 and
+// money 0-of-ceiling and mints a unit of GOLD. The deduction arm cannot be
+// spoofed this way - it takes the sku from the recorded JSON
+// (dl_line["sku"], falling back to the caller only when the JSON omits it) -
+// which is exactly why the mint lives on the legacy/imported path.
+
+/// Seed a legacy sale (deduction_locations NULL) with one line of [sku] at
+/// [qty] units, priced so the money ceiling is never the binding constraint.
+fn seed_identity_sale(conn: &Connection, sale_id: &str, line_id: &str, sku: &str, qty: i64) {
+    let pid = format!("{sale_id}-p");
+    let unit = 1000;
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+         VALUES (?1, ?2, ?2, 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        params![pid, sku],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations)
+         VALUES (?1, ?2, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z', NULL)",
+        params![sale_id, unit * qty],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'USD', 1)",
+        params![line_id, sale_id, sku, qty, unit, unit * qty],
+    )
+    .unwrap();
+}
+
+/// THE MINT REPRODUCE, and it FAILS AGAINST HEAD: a legacy sale with one line
+/// of TEA, qty 1, refunded through that line id but claiming sku GOLD, with
+/// line and header value 0. HEAD's quantity bound saw 1 of 1 and its money
+/// ceiling saw 0 of 1001, both passed, and the default-location arm credited a
+/// unit of a product that was never sold. Must be refused, persisting nothing
+/// and moving no stock for either sku.
+#[test]
+fn create_refund_rejects_wrong_sku_on_a_legacy_sale_line() {
+    let conn = fresh();
+    seed_identity_sale(&conn, "idn-sale-1", "idn-sl-1", "TEA", 1);
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+         VALUES ('idn-gold', 'GOLD', 'Gold bar', 999000, 'USD', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("idn-sl-1", "GOLD", 1, price(0), price(0));
+    let refund = Refund::new("idn-sale-1", price(0), "sku swap", "", "user-1", vec![line]);
+    let err = s.create_refund(&refund).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "a refund line whose sku is not the line's sku must be refused, got: {err:?}",
+    );
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refunds", [], |r| r.get(0))
+        .unwrap();
+    let line_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refund_lines", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        (rows, line_rows),
+        (0, 0),
+        "a refused refund persists nothing"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "no stock moves for a misidentified line");
+    assert_eq!(
+        get_stock_at(&conn, "GOLD", DEFAULT_LOC),
+        0,
+        "GOLD is not minted"
+    );
+    assert_eq!(get_stock_at(&conn, "TEA", DEFAULT_LOC), 0);
+
+    // Two lines naming the SAME sale line with different skus cannot let one
+    // satisfy the identity check while the other is credited.
+    let pair = vec![
+        RefundLine::new("idn-sl-1", "TEA", 1, price(0), price(0)),
+        RefundLine::new("idn-sl-1", "GOLD", 1, price(0), price(0)),
+    ];
+    let err = s
+        .create_refund(&Refund::new(
+            "idn-sale-1",
+            price(0),
+            "split claim",
+            "",
+            "user-1",
+            pair,
+        ))
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "disagreeing skus on one sale line must be refused, got: {err:?}",
+    );
+}
+
+/// The happy path, and the rule's edges: naming the recorded sku refunds
+/// normally, a padded sku still matches (the domain type trims), and a
+/// differently-cased sku does NOT (the domain type does not case-fold). A
+/// guard like this breaks real refunds on a case or space difference, so both
+/// halves are pinned here.
+#[test]
+fn create_refund_matches_the_recorded_sku_exactly_after_trimming() {
+    let conn = fresh();
+    seed_identity_sale(&conn, "idn-sale-2", "idn-sl-2", "TEA3", 3);
+    let s = store(&conn);
+
+    let claim = |sku: &str| -> Refund {
+        let line = RefundLine::new("idn-sl-2", sku, 1, price(1000), price(1000));
+        Refund::new(
+            "idn-sale-2",
+            price(1000),
+            "identity",
+            "",
+            "user-1",
+            vec![line],
+        )
+    };
+
+    s.create_refund(&claim("TEA3"))
+        .unwrap_or_else(|e| panic!("the recorded sku must refund normally, got: {e:?}"));
+    s.create_refund(&claim("  TEA3  "))
+        .unwrap_or_else(|e| panic!("a padded sku is the same sku after trimming, got: {e:?}"));
+    let err = s.create_refund(&claim("tea3")).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "case is part of the identity - the domain type does not fold it, got: {err:?}",
+    );
+
+    assert_eq!(
+        get_stock_at(&conn, "TEA3", DEFAULT_LOC),
+        2,
+        "only the two accepted refunds credited stock"
+    );
+}
+
+/// The empty-sku rule, chosen and justified: a sale line that records no sku
+/// cannot have any refund line identified against it, so the refund is
+/// REFUSED rather than falling back to the caller's sku - the fallback is the
+/// mint. sale_lines.sku is NOT NULL, so this covers the empty and
+/// whitespace-only shapes a legacy or imported row can hold.
+#[test]
+fn create_refund_refuses_a_line_that_records_no_sku() {
+    let conn = fresh();
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations)
+         VALUES ('idn-sale-3', 1000, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z', NULL)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('idn-sl-3', 'idn-sale-3', '', 1, 1000, 1000, 'USD', 1)",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("idn-sl-3", "ANYTHING", 1, price(1000), price(1000));
+    let err = s
+        .create_refund(&Refund::new(
+            "idn-sale-3",
+            price(1000),
+            "no sku",
+            "",
+            "user-1",
+            vec![line],
+        ))
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "a line recording no sku must be refused, not trusted, got: {err:?}",
+    );
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refunds", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "the refused refund persists nothing");
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        movements, 0,
+        "and mints no stock for an unverifiable identity"
+    );
+}

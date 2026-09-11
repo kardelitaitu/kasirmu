@@ -148,8 +148,25 @@ impl Store<'_> {
         // written rather than separately per path.
         let mut requested_qty: HashMap<&str, i64> = HashMap::new();
         let mut claimed_value: HashMap<&str, i64> = HashMap::new();
+        let mut claimed_sku: HashMap<&str, &str> = HashMap::new();
         for line in &refund.lines {
             if line.qty > 0 {
+                // Two lines naming the SAME sale line must not disagree about
+                // which product it was - that would let one of them carry the
+                // identity check while the other gets credited.
+                if let Some(prior) = claimed_sku.get(line.sale_line_id.as_str()) {
+                    if *prior != line.sku.as_str() {
+                        return Err(CoreError::Validation {
+                            field: "refund_line.sku",
+                            message: format!(
+                                "sale line {} is claimed as both {} and {} in one refund",
+                                line.sale_line_id, prior, line.sku
+                            ),
+                        });
+                    }
+                } else {
+                    claimed_sku.insert(line.sale_line_id.as_str(), line.sku.as_str());
+                }
                 *requested_qty.entry(&line.sale_line_id).or_insert(0) += line.qty;
                 let claimed = claimed_value.entry(&line.sale_line_id).or_insert(0);
                 *claimed = claimed
@@ -169,8 +186,53 @@ impl Store<'_> {
             // out of nothing. Legacy and imported sales reach this path
             // because create_sale never writes deduction_locations, so the
             // deduction_locations bound below cannot be relied on to catch it.
-            let (sold_qty, line_minor) =
+            let (sold_qty, line_minor, recorded_sku) =
                 self.sold_line_for_sale_line_in_tx(&tx, &refund.sale_id, sale_line_id)?;
+
+            // ── IDENTITY: the claimed sku must BE the sku that line sold ───
+            // Both bounds above are measured against the named line, so they
+            // are only as good as that line's identity: refund TEA's line
+            // claiming GOLD and the quantity ceiling becomes "units of any
+            // product" and GOLD is minted at the default location. The
+            // deduction_locations arm cannot be spoofed this way (it takes the
+            // sku from the recorded JSON, falling back to the caller only when
+            // the JSON omits it); the default-location arm credits
+            // refund_line.sku directly, which is where the mint lives.
+            //
+            // Rule, decided once: compare TRIMMED, CASE-SENSITIVE equality -
+            // the same normalisation the domain type itself applies
+            // (Sku::new trims and requires non-empty, foundation/src/sku.rs
+            // :34-38; it does NOT case-fold, so neither does this). No
+            // case-insensitive match: 'gold' is not 'GOLD' anywhere else in
+            // this path either.
+            //
+            // Empty or whitespace-only recorded sku (possible in legacy and
+            // imported rows; sale_lines.sku is NOT NULL so NULL is not):
+            // REFUSE. Falling back to the caller's sku would reopen exactly
+            // the mint this check exists to close, and a line that records no
+            // product cannot have a unit of any product returned against it.
+            // That turns a previously-working refund on a corrupt row into a
+            // visible rejection, which is the intended trade: the row is the
+            // defect, not the refund.
+            let claimed = claimed_sku[sale_line_id];
+            if recorded_sku.trim().is_empty() {
+                return Err(CoreError::Validation {
+                    field: "refund_line.sku",
+                    message: format!(
+                        "sale line {} of sale {} records no sku, so no refund line can be identified against it",
+                        sale_line_id, refund.sale_id
+                    ),
+                });
+            }
+            if claimed.trim() != recorded_sku.trim() {
+                return Err(CoreError::Validation {
+                    field: "refund_line.sku",
+                    message: format!(
+                        "refund line {} claims sku {} but sale line {} of sale {} sold {}",
+                        sale_line_id, claimed, sale_line_id, refund.sale_id, recorded_sku
+                    ),
+                });
+            }
             let already_refunded_qty = self.refunded_qty_for_sale_line_in_tx(
                 &tx,
                 &refund.sale_id,
@@ -414,20 +476,21 @@ impl Store<'_> {
     /// so a line id belonging to a DIFFERENT sale cannot borrow that sale's
     /// sold quantity either.
     ///
-    /// Returns (units sold, booked line total in minor units) from ONE read:
-    /// the quantity bound needs the first, the per-line money ceiling below
-    /// needs the second, and taking both from the same row keeps the two
-    /// bounds from looking at two snapshots of it.
+    /// Returns (units sold, booked line total in minor units, sold sku) from
+    /// ONE read: the quantity bound needs the first, the per-line money
+    /// ceiling needs the second, and the identity check needs the third. All
+    /// three from the same row, so no bound can be measured against a
+    /// different snapshot of it than the one the others saw.
     fn sold_line_for_sale_line_in_tx(
         &self,
         tx: &rusqlite::Transaction<'_>,
         sale_id: &str,
         sale_line_id: &str,
-    ) -> Result<(i64, i64), CoreError> {
+    ) -> Result<(i64, i64, String), CoreError> {
         tx.query_row(
-            "SELECT qty, line_minor FROM sale_lines WHERE id = ?1 AND sale_id = ?2",
+            "SELECT qty, line_minor, sku FROM sale_lines WHERE id = ?1 AND sale_id = ?2",
             params![sale_line_id, sale_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()
         .map_err(CoreError::Db)?
@@ -661,7 +724,7 @@ impl Store<'_> {
             // each look plausible and together return more stock than was
             // sold. checked_add, not +: a near-i64::MAX quantity must be
             // rejected rather than wrapped negative past the comparison.
-            let (sold_qty, _) =
+            let (sold_qty, _, recorded_sku) =
                 self.sold_line_for_sale_line_in_tx(tx, &refund.sale_id, &refund_line.sale_line_id)?;
             let already_credited = self.refunded_qty_for_sale_line_in_tx(
                 tx,
@@ -689,9 +752,15 @@ impl Store<'_> {
                     ),
                 });
             }
+            // Credit the RECORDED sku, not the caller's copy of it - the same
+            // property the deduction arm already has, where the sku comes from
+            // the recorded JSON. create_refund's identity guard has proved the
+            // two agree once trimmed, so this only stops a padded caller string
+            // (" TEA3 ") from reaching the product lookup as its own id and
+            // failing there with NotFound after the guard said it was fine.
             self.adjust_stock_at_location_with_reason(
                 tx,
-                &refund_line.sku,
+                &recorded_sku,
                 refund_line.qty,
                 &default_loc,
                 Some("refund"),
