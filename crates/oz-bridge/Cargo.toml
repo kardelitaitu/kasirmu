@@ -24,6 +24,7 @@ oz-core = { workspace = true }
 oz-hal = { workspace = true }
 oz-lua = { workspace = true }
 oz-plugin = { workspace = true }
+oz-reporting = { workspace = true }
 oz-security = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }

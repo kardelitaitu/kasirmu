@@ -4376,6 +4376,7 @@ dependencies = [
  "oz-hal",
  "oz-lua",
  "oz-plugin",
+ "oz-reporting",
  "oz-security",
  "platform-core",
  "platform-kernel",

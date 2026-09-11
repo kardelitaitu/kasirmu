@@ -2,9 +2,22 @@
 //!
 //! These commands expose the `oz_core::db::reports` Store methods as
 //! Tauri IPC handlers for the dashboard and analytics front-end.
+//!
+//! Wave E / E6: the bodies now live in the headless `oz_bridge::reports` module.
+//! Each `#[tauri::command]` below keeps its exact name, parameter list, attributes
+//! and `Result<_, AppError>` wire contract; it builds a `BridgeCtx` from
+//! `AppState` and delegates. Order is preserved byte for byte: the shared
+//! `resolve_report_scope` gate stays non-scope-aware (identity-store check
+//! through a plain `Store::new`, global lock released before the store DB opens),
+//! the bound-check validators still run ahead of the gate, the global-database
+//! variants still drop their guard, and `reports:export` is still required only by
+//! the custom-report builder. The gate helper survives here as an `AppError` adapter
+//! and the validators plus their caps are re-exported, so `use super::*` in
+//! `reports_tests.rs` keeps resolving.
 
 use tauri::State;
 
+#[allow(unused_imports)] // sibling reports_tests.rs depends on it
 use oz_core::db::Store;
 use oz_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
 use oz_core::db::reports::{
@@ -14,81 +27,32 @@ use oz_core::db::reports::{
     TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
 };
 use oz_core::export::{CustomReportRequest, CustomReportResponse};
+#[allow(unused_imports)] // sibling reports_tests.rs depends on it
 use oz_core::permissions;
 
-use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-const MAX_TOP_PRODUCTS: i64 = 100;
+pub use oz_bridge::reports::{
+    MAX_CATEGORY_TOP, MAX_TOP_PRODUCTS, MAX_TREND_CATEGORIES, validate_category_top,
+    validate_top_product_limit, validate_top_product_order, validate_trend_args,
+};
 
+/// Resolve the session's store database for a report command.
+///
+/// Thin `AppError` adapter over `oz_bridge::reports::resolve_report_scope`; the
+/// body moved with the command bodies, but the sibling tests assert on this
+/// signature.
+#[allow(dead_code)] // retained by the Wave-E extraction contract for sibling tests
 async fn resolve_report_scope(
     state: &AppState,
     session_token: &str,
     permission: &str,
 ) -> Result<std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>, AppError> {
-    let session = state.resolve_session(session_token)?;
-    {
-        let db = state.db.lock().await;
-        let identity_store = Store::new(&db);
-        require_permission_for_user(&identity_store, &session.user_id, permission)?;
-    }
-    state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))
-}
-
-fn validate_top_product_limit(limit: i64) -> Result<(), AppError> {
-    if !(1..=MAX_TOP_PRODUCTS).contains(&limit) {
-        return Err(AppError::Invalid(format!(
-            "top product limit must be between 1 and {MAX_TOP_PRODUCTS}"
-        )));
-    }
-    Ok(())
-}
-
-/// Per-category popularity limits: a category's leaderboard needs only a
-/// handful of entries (the UI shows the top 3).
-const MAX_CATEGORY_TOP: i64 = 20;
-
-fn validate_category_top(top_per_category: i64) -> Result<(), AppError> {
-    if !(1..=MAX_CATEGORY_TOP).contains(&top_per_category) {
-        return Err(AppError::Invalid(format!(
-            "top per category must be between 1 and {MAX_CATEGORY_TOP}"
-        )));
-    }
-    Ok(())
-}
-
-/// Trend series limit: the chart shows one line per category, so more than
-/// a handful of series becomes unreadable.
-const MAX_TREND_CATEGORIES: i64 = 10;
-
-fn validate_trend_args(granularity: &str, top_categories: i64) -> Result<(), AppError> {
-    if !oz_core::db::popularity::TREND_GRANULARITIES.contains(&granularity) {
-        return Err(AppError::Invalid(format!(
-            "granularity must be one of {:?}",
-            oz_core::db::popularity::TREND_GRANULARITIES
-        )));
-    }
-    if !(1..=MAX_TREND_CATEGORIES).contains(&top_categories) {
-        return Err(AppError::Invalid(format!(
-            "top categories must be between 1 and {MAX_TREND_CATEGORIES}"
-        )));
-    }
-    Ok(())
-}
-
-/// The top-products ranking keys accepted by the command layer (whitelist
-/// — the store query falls back to revenue for anything else).
-fn validate_top_product_order(order_by: &str) -> Result<(), AppError> {
-    if !matches!(order_by, "revenue" | "profit") {
-        return Err(AppError::Invalid(format!(
-            "top product order must be 'revenue' or 'profit', got '{order_by}'"
-        )));
-    }
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::resolve_report_scope(&ctx, session_token, permission)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -100,11 +64,10 @@ pub async fn get_menu_engineering(
     start_date: String,
     end_date: String,
 ) -> Result<oz_reporting::menu_engineering::MenuEngineeringResult, AppError> {
-    let db = state.db.lock().await;
-    let result =
-        oz_reporting::menu_engineering::query_menu_engineering(&db, &start_date, &end_date)?;
-    drop(db);
-    Ok(result)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_menu_engineering(&ctx, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -116,15 +79,10 @@ pub async fn get_menu_engineering_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<oz_reporting::menu_engineering::MenuEngineeringResult, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(oz_reporting::menu_engineering::query_menu_engineering(
-        &db,
-        &start_date,
-        &end_date,
-    )?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_menu_engineering_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -137,13 +95,10 @@ pub async fn get_sale_line_margins_scoped(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_reporting::margin::SaleLineMargin>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(oz_reporting::margin::query_sale_lines_with_margin(
-        &db, &sale_id,
-    )?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_sale_line_margins_scoped(&ctx, &session_token, &sale_id)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -153,11 +108,10 @@ pub async fn get_daily_revenue(
     start_date: String,
     end_date: String,
 ) -> Result<Vec<DailyRevenueRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = store.daily_revenue(&start_date, &end_date)?;
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_daily_revenue(&ctx, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -168,11 +122,10 @@ pub async fn get_daily_revenue_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<DailyRevenueRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).daily_revenue(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_daily_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -182,11 +135,10 @@ pub async fn get_weekly_revenue(
     start_date: String,
     end_date: String,
 ) -> Result<Vec<WeeklyRevenueRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = store.weekly_revenue(&start_date, &end_date)?;
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_weekly_revenue(&ctx, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -197,11 +149,10 @@ pub async fn get_weekly_revenue_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<WeeklyRevenueRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).weekly_revenue(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_weekly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -211,11 +162,10 @@ pub async fn get_monthly_revenue(
     start_date: String,
     end_date: String,
 ) -> Result<Vec<MonthlyRevenueRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = store.monthly_revenue(&start_date, &end_date)?;
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_monthly_revenue(&ctx, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -226,11 +176,10 @@ pub async fn get_monthly_revenue_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<MonthlyRevenueRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).monthly_revenue(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_monthly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -242,12 +191,10 @@ pub async fn get_top_products(
     limit: i64,
     order_by: String,
 ) -> Result<Vec<TopProductRow>, AppError> {
-    validate_top_product_order(&order_by)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = store.top_products(&start_date, &end_date, limit, &order_by)?;
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_top_products(&ctx, &start_date, &end_date, limit, &order_by)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -260,13 +207,17 @@ pub async fn get_top_products_scoped(
     order_by: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TopProductRow>, AppError> {
-    validate_top_product_limit(limit)?;
-    validate_top_product_order(&order_by)?;
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).top_products(&start_date, &end_date, limit, &order_by)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_top_products_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+        limit,
+        &order_by,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -278,12 +229,10 @@ pub async fn get_category_popularity_scoped(
     top_per_category: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryPopularityRow>, AppError> {
-    validate_category_top(top_per_category)?;
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).category_popularity(top_per_category)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_category_popularity_scoped(&ctx, &session_token, top_per_category)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -299,17 +248,17 @@ pub async fn get_category_popularity_trend_scoped(
     top_categories: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryTrendPoint>, AppError> {
-    validate_trend_args(&granularity, top_categories)?;
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).category_popularity_trend(
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_category_popularity_trend_scoped(
+        &ctx,
+        &session_token,
         &start_date,
         &end_date,
         &granularity,
         top_categories,
-    )?)
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -323,12 +272,17 @@ pub async fn get_category_forecast_scoped(
     top_categories: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryForecastRow>, AppError> {
-    validate_trend_args(&granularity, top_categories)?;
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).category_forecast(&start_date, &end_date, &granularity, top_categories)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_category_forecast_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+        &granularity,
+        top_categories,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -338,11 +292,10 @@ pub async fn get_hourly_heatmap(
     start_date: String,
     end_date: String,
 ) -> Result<Vec<HourlyHeatmapRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = store.hourly_heatmap(&start_date, &end_date)?;
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_hourly_heatmap(&ctx, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -353,11 +306,10 @@ pub async fn get_hourly_heatmap_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<HourlyHeatmapRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).hourly_heatmap(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_hourly_heatmap_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -367,11 +319,10 @@ pub async fn get_low_stock_alerts(
     state: State<'_, AppState>,
     threshold: i64,
 ) -> Result<Vec<LowStockAlert>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = store.low_stock_alerts(threshold)?;
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_low_stock_alerts(&ctx, threshold)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -381,14 +332,10 @@ pub async fn get_low_stock_alerts_scoped(
     threshold: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<LowStockAlert>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).low_stock_alerts_at_location(
-        oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
-        threshold,
-    )?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_low_stock_alerts_scoped(&ctx, &session_token, threshold)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -398,11 +345,10 @@ pub async fn get_category_breakdown(
     start_date: String,
     end_date: String,
 ) -> Result<Vec<CategoryBreakdownRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = store.category_breakdown(&start_date, &end_date)?;
-    drop(db);
-    Ok(rows)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_category_breakdown(&ctx, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -413,11 +359,10 @@ pub async fn get_category_breakdown_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryBreakdownRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).category_breakdown(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_category_breakdown_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -428,11 +373,15 @@ pub async fn get_payment_method_breakdown_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<PaymentMethodRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).payment_method_breakdown(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_payment_method_breakdown_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -443,11 +392,15 @@ pub async fn get_voided_sales_summary_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<VoidedSummaryRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).voided_sales_summary(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_voided_sales_summary_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -459,11 +412,10 @@ pub async fn get_voided_items_scoped(
     limit: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<VoidedItemRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).voided_items(&start_date, &end_date, limit)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_voided_items_scoped(&ctx, &session_token, &start_date, &end_date, limit)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -474,11 +426,10 @@ pub async fn get_basket_size_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<BasketSizeRow, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).avg_basket_size(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_basket_size_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -489,11 +440,10 @@ pub async fn get_basket_size_trend_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<BasketTrendRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).basket_size_trend(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_basket_size_trend_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -504,11 +454,10 @@ pub async fn get_customer_split_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<CustomerSplitRow, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).customer_split(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_customer_split_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -519,11 +468,10 @@ pub async fn get_discounts_summary_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<DiscountsSummaryRow, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).discounts_summary(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_discounts_summary_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -535,11 +483,16 @@ pub async fn get_inventory_turnover_scoped(
     location_id: String,
     state: State<'_, AppState>,
 ) -> Result<InventoryTurnoverRow, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).inventory_turnover(&start_date, &end_date, &location_id)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_inventory_turnover_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+        &location_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -550,11 +503,10 @@ pub async fn get_inventory_trend_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryTrendRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).inventory_trend(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_inventory_trend_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -565,11 +517,10 @@ pub async fn get_table_turnover_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TableTurnoverRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).table_turnover(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_table_turnover_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -580,11 +531,10 @@ pub async fn get_hourly_occupancy_scoped(
     end_date: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<HourlyOccupancyRow>, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).hourly_table_activity(&start_date, &end_date)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::get_hourly_occupancy_scoped(&ctx, &session_token, &start_date, &end_date)
+        .await
+        .map_err(Into::into)
 }
 
 /// Build a custom report for the session's store.
@@ -597,11 +547,10 @@ pub async fn build_custom_report_scoped(
     request: CustomReportRequest,
     state: State<'_, AppState>,
 ) -> Result<CustomReportResponse, AppError> {
-    let conn = resolve_report_scope(&state, &session_token, permissions::REPORTS_EXPORT).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(Store::new(&db).build_custom_report(request)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::reports::build_custom_report_scoped(&ctx, &session_token, request)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
