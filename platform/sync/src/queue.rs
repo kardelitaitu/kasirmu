@@ -10,9 +10,10 @@ next: malformed/conflicting pull items are permanent failures but still burn the
 //! with additional tracking for conflict resolution and last-sync timing.
 //!
 //! Settings items are the one action type that is NOT applied verbatim: both
-//! dispatchers (`apply_remote_in_tx` and the legacy `apply_remote`) gate the key
-//! through [`remote_sync_admits`], the sealed `IngestPolicy::RemoteSync` policy
-//! owned by platform-core, so a remote item cannot plant a credential
+//! dispatchers (`apply_remote_in_tx` and the legacy `apply_remote`) write through
+//! `Settings::set_with_policy(..., IngestPolicy::RemoteSync)`, the sealed policy
+//! owned by platform-core and delegated by the `oz_core::Settings` facade, so a
+//! remote item cannot plant a credential
 //! (`local_api.secret`, `license.api_key`, the gateway keys) or a device-bound
 //! identity (`machine_id`, `sync_terminal_id`) on this install. Nothing in
 //! `transport` or `sync_api` signs or MACs an item, so the sender is not an
