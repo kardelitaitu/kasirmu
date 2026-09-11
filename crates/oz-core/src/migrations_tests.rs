@@ -395,13 +395,16 @@ fn init_sql_creates_complete_schema_surface() {
     // over_quota_markers; 20260923_fiscal_numbering.sql added the 115th
     // and 116th: fiscal_schemes + document_number_sequences;
     // 20260924_local_payment_methods.sql added the 117th;
-    // 20260925_receipt_formats.sql added the 118th.)
+    // 20260925_receipt_formats.sql added the 118th;
+    // 20261001_sale_idempotency.sql added the 119th (the Idempotency-Key
+    // receipt table for POST /api/v1/sales). Count measured, not guessed: the
+    // whole registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        118,
+        119,
         "table surface drifted"
     );
     assert_eq!(
@@ -439,8 +442,13 @@ fn init_sql_creates_complete_schema_surface() {
         // prefix.) Plus the tenant-keyed partial unique index
         // `idx_locations_tenant_ticket_prefix` from
         // `20260926_location_ticket_prefix.sql` — +1; its WHERE clause keeps
-        // the all-empty backfill out of the index entirely.
-        175,
+        // the all-empty backfill out of the index entirely. Plus the 2 named
+        // indexes from `20261001_sale_idempotency.sql` —
+        // `idx_sale_idempotency_tenant_key` (the UNIQUE (tenant_id, key) slot
+        // that carries the guard, UNIQUE-in-an-index rather than a composite
+        // PRIMARY KEY so a NULL key stays storable for unguarded sales) and
+        // `idx_sale_idempotency_sale` — +2. Measured by replaying the registry.
+        177,
         "index surface drifted"
     );
     assert_eq!(
@@ -594,6 +602,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260928_document_kind_check.sql".to_string(),
             "20260929_tax_rate_rounding_mode.sql".to_string(),
             "20260930_sales_tax_estimate_note.sql".to_string(),
+            "20261001_sale_idempotency.sql".to_string(),
         ]
     );
 
@@ -620,13 +629,14 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // 111 pinned before 20260918, plus payables and payable_payments from
     // 20260918, plus over_quota_markers from 20260922, plus fiscal_schemes
     // and document_number_sequences from 20260923, plus
-    // local_payment_methods from 20260924 - recorded once, idempotently).
+    // local_payment_methods from 20260924, plus sale_idempotency from
+    // 20261001 - recorded once, idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        118,
+        119,
         "table surface must be unchanged after upgrade"
     );
 }
