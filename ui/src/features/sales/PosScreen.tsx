@@ -24,17 +24,12 @@ import { formatMoney, COURSES, type CartId, type CartLine, type LineId, type Pro
 import { animDuration } from '@/utils/animation';
 import { triggerInteraction } from '@/utils/interaction';
 import { useSwipe } from '@/hooks/useSwipe';
-import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import {
-  holdCartScoped,
-  listOpenBillsScoped,
-  getHeldCartScoped,
   deleteHeldCartScoped,
   startSaleScoped,
   getCartDeductionLocation,
   getCartDeductionLocationScoped,
-  type HeldCartRow,
 } from '@/api/sales';
 import { getReceiptSettingsScoped } from '@/api/settings';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
@@ -49,6 +44,7 @@ import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { useCustomerDisplay } from './useCustomerDisplay';
 import { usePosShifts } from './hooks/usePosShifts';
+import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
@@ -706,21 +702,35 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     },
   });
 
-  // ── Open Bill state ──────────────────────────────────────────────
-  const [activeOpenBillId, setActiveOpenBillId] = useState<string | null>(null);
-  const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
-  const [showOpenBills, setShowOpenBills] = useState(false);
-  // Fade the Open Bills list modal out before the parent setter
-  // flips showOpenBills to false. Used by the close button + Resume.
-  const openBillsExit = useExitAnimation(
-    showOpenBills,
-    () => setShowOpenBills(false),
-  );
-  const loadOpenBills = useCallback(() => {
-    listOpenBillsScoped(sessionToken).then(setOpenBills).catch(() => {
-      addToast({ message: 'Failed to load open bills', type: 'error' });
-    });
-  }, [addToast, sessionToken]);
+  // ── Open Bill / held-cart state ──────────────────────────────────
+  const {
+    activeOpenBillId,
+    setActiveOpenBillId,
+    openBills,
+    setShowOpenBills,
+    openBillsExit,
+    loadOpenBills,
+    setShowOpenBillInput,
+    openBillInputExit,
+    openBillName,
+    setOpenBillName,
+    openingBill,
+    handleOpenBill,
+    handleResumeOpenBill,
+  } = usePosHeldCarts({
+    sessionToken,
+    addToast,
+    activeShift,
+    lines,
+    subtotal,
+    discountPercent,
+    discountLabel,
+    resetCart,
+    setAppliedPromotions,
+    setLines,
+    setDiscount,
+    setTableNumber,
+  });
 
   const { handlePaymentComplete: customerDisplayPaymentComplete } = useCustomerDisplay({
     sessionToken,
@@ -985,91 +995,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .then((s) => setShowTableNumberSetting(s.showTableNumber))
       .catch(() => addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' }));
   }, [addToast, sessionToken]); // l10n via ref — stable dep chain
-
-  // ── Open Bill inline state ────────────────────────────────────
-  const [showOpenBillInput, setShowOpenBillInput] = useState(false);
-  // Fade the Open Bill Input modal out (mirror of pos-modal-slide-up
-  // via .pos-hold-modal--exiting) before the parent setter flips
-  // showOpenBillInput to false. Used by cancel + Save-success.
-  const openBillInputExit = useExitAnimation(
-    showOpenBillInput,
-    () => setShowOpenBillInput(false),
-  );
-  const [openBillName, setOpenBillName] = useState('');
-  const [openingBill, setOpeningBill] = useState(false);
-
-  useEffect(() => {
-    if (showOpenBills) {
-      loadOpenBills();
-    }
-  }, [showOpenBills, loadOpenBills]);
-
-  const handleOpenBill = useCallback(async () => {
-    if (!activeShift) {
-      addToast({ message: 'Open a shift first', type: 'warning' });
-      return;
-    }
-    if (!subtotal || lines.length === 0) return;
-    setOpeningBill(true);
-    try {
-      const cartData = JSON.stringify({
-        lines: lines.map((l) => ({
-          sku: l.sku,
-          name: l.name,
-          qty: l.qty,
-          unit_price: l.unit_price,
-        })),
-        discountPercent,
-        discountLabel,
-      });
-      await holdCartScoped(sessionToken, {
-        label: openBillName.trim() || `Open Bill #${Date.now()}`,
-        cart_data: cartData,
-        item_count: lines.length,
-        total_minor: subtotal.minor_units,
-        currency: subtotal.currency,
-        bill_type: 'open_bill',
-        customer_name: openBillName.trim(),
-      });
-    resetCart();
-    setAppliedPromotions([]);
-    openBillInputExit.requestClose();
-    setOpenBillName('');
-    loadOpenBills();
-    } catch {
-      addToast({ message: 'Failed to save open bill', type: 'error' });
-    } finally {
-      setOpeningBill(false);
-    }
-  }, [activeShift, lines, subtotal, openBillName, discountPercent, discountLabel, resetCart, loadOpenBills, addToast, openBillInputExit, sessionToken]);
-
-  const handleResumeOpenBill = useCallback(async (id: string) => {
-    try {
-      const full = await getHeldCartScoped(sessionToken, id);
-      if (!full) return;
-      const data = JSON.parse(full.cart_data);
-      if (data.lines && Array.isArray(data.lines)) {
-        setLines(data.lines.map((l: { sku: string; name?: string; qty: number; unit_price: { minor_units: number; currency: string }; category?: string }) => ({
-          id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
-          sku: l.sku as Sku,
-          name: l.name,
-          category: l.category,
-          qty: l.qty,
-          unit_price: l.unit_price,
-        })));
-      }
-      if (typeof data.discountPercent === 'number') {
-        setDiscount(data.discountPercent, data.discountLabel || '');
-      }
-      if (typeof data.tableNumber === 'string') {
-        setTableNumber(data.tableNumber);
-      }
-    setActiveOpenBillId(id);
-    openBillsExit.requestClose();
-    } catch {
-      addToast({ message: 'Failed to resume open bill', type: 'error' });
-    }
-  }, [setLines, setDiscount, setTableNumber, addToast, openBillsExit, sessionToken]);
 
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
