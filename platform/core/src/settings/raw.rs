@@ -299,6 +299,42 @@ impl Settings {
         }
     }
 
+    /// The one deny-listed credential the tracked funnel still writes:
+    /// `smtp_config` is legitimately funnel-written by both shells today —
+    /// each merges its password JSON (`Store::merged_smtp_password_json`)
+    /// before the write, and the key has its own merge and encryption path —
+    /// so the refusal below excepts it by name. The exception lives HERE,
+    /// beside the refusal, and is deliberately not threaded through the
+    /// callers: a policy that exists in three call sites is exactly the one
+    /// the fourth funnel forgets.
+    const CLEARTEXT_CREDENTIAL_EXCEPTION: &str = crate::settings::keys::SMTP_CONFIG;
+
+    /// Refuse to store a deny-listed credential in cleartext through the
+    /// tracked funnel.
+    ///
+    /// `crate::settings::keys::is_secret_setting_key` is the same predicate
+    /// the raw `get_setting` IPC surface refuses reads with (C-2); this is
+    /// its write face. Unlike the ingest-policy refusal (warn-and-skip), a
+    /// tracked refusal is an ERROR — the renderer-reachable doors must fail
+    /// loudly, not quietly drop a credential write the operator believes
+    /// happened — and like the manager-key guard and the ingest refusal
+    /// alike, the message names the key and never the value, because a value
+    /// in an error string is a leak through the log lane.
+    fn refuse_cleartext_credential(key: &str) -> Result<(), PlatformError> {
+        if crate::settings::keys::is_secret_setting_key(key)
+            && key != Self::CLEARTEXT_CREDENTIAL_EXCEPTION
+        {
+            tracing::warn!(
+                key,
+                "cleartext credential write refused by the tracked settings funnel"
+            );
+            return Err(PlatformError::Internal(format!(
+                "{key} holds a credential — the tracked settings funnel refuses to store it in cleartext"
+            )));
+        }
+        Ok(())
+    }
+
     /// Set a value AND write a delta record — both in a single transaction.
     ///
     /// This is the recommended method for Tauri command handlers that have
@@ -310,12 +346,19 @@ impl Settings {
     /// Delta write failures are logged but do not roll back the `set()` —
     /// delta loss is non-fatal; the sync layer can reconstruct from the
     /// settings table.
+    ///
+    /// A deny-listed credential key (`keys::is_secret_setting_key`) is
+    /// REFUSED here with an error — the write face of the same predicate the
+    /// raw `get_setting` IPC surface refuses reads with — excepting only
+    /// `smtp_config`, which both shells legitimately funnel-write after
+    /// merging. See `refuse_cleartext_credential`.
     pub fn set_tracked(
         conn: &Connection,
         key: &str,
         value: &str,
         terminal_id: &str,
     ) -> Result<(), PlatformError> {
+        Self::refuse_cleartext_credential(key)?;
         let tx = conn.unchecked_transaction()?;
         Self::set(conn, key, value)?;
         // Inline delta write within the existing transaction to avoid
@@ -331,11 +374,22 @@ impl Settings {
     ///
     /// Like `set_batch()`, but also writes a delta row for each key/value
     /// pair. All operations run in a single transaction.
+    ///
+    /// Same refusal as `set_tracked`, applied batch-wide BEFORE any write:
+    /// one deny-listed credential row aborts the whole batch rather than
+    /// silently dropping one entry, so this batch door cannot become the
+    /// front door the single-write guard closed.
     pub fn set_batch_tracked(
         conn: &Connection,
         rows: &[(String, String)],
         terminal_id: &str,
     ) -> Result<(), PlatformError> {
+        // Batch-wide refusal BEFORE any write — one deny-listed row aborts
+        // the whole batch, matching the bridge's `run_set_settings_batch`
+        // guard, so the batch door cannot become the new front door.
+        for (key, _) in rows {
+            Self::refuse_cleartext_credential(key)?;
+        }
         let tx = conn.unchecked_transaction()?;
         for (key, value) in rows {
             Self::set(conn, key, value)?;

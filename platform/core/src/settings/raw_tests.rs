@@ -184,3 +184,137 @@ fn manager_owned_prefixes_follow_the_policy() {
         );
     }
 }
+
+// ── Cleartext-credential refusal at the tracked funnel ───────────────────
+
+/// The write face of the credential deny list: `set_tracked` — the one door
+/// all three renderer-reachable funnels (desktop bridge single write, desktop
+/// bridge batch, tablet set_setting) pass through — refuses every key on
+/// [`keys::SECRET_KEY_DENY_LIST`] with an ERROR (not the ingest policy's
+/// warn-and-skip), names the key in the message and never the value, and
+/// writes nothing. Iterating the live list (minus the named exception) means
+/// a deny-list key another worker registers is covered here the moment it
+/// lands — that composition is intended, not a conflict.
+#[test]
+fn set_tracked_refuses_every_deny_listed_credential_as_an_error() {
+    let conn = fresh();
+    assert!(
+        !keys::SECRET_KEY_DENY_LIST.is_empty(),
+        "the shared deny list must be populated"
+    );
+    let mut refused = 0usize;
+    for key in keys::SECRET_KEY_DENY_LIST {
+        if *key == keys::SMTP_CONFIG {
+            continue; // the one funnel-written exception, proven below
+        }
+        let err = Settings::set_tracked(&conn, key, "leaked-credential-value", "term-a")
+            .expect_err("a deny-listed credential must be refused with an error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(key),
+            "the refusal must name the key, got: {msg}"
+        );
+        assert!(
+            !msg.contains("leaked-credential-value"),
+            "the refusal must never echo the value (log-lane leak), got: {msg}"
+        );
+        assert_eq!(
+            Settings::get(&conn, key).unwrap(),
+            None,
+            "a refusal must not write the row"
+        );
+        refused += 1;
+    }
+    // A floor, not an exact count: the list grows, it does not shrink.
+    assert!(
+        refused >= 16,
+        "the refusal must cover the real deny list, refused {refused}"
+    );
+}
+
+/// Positive control for the refusal above: an ordinary key still writes
+/// through the tracked funnel, so the guard cannot be satisfied by an
+/// accessor that refuses everything.
+#[test]
+fn set_tracked_still_writes_ordinary_keys() {
+    let conn = fresh();
+    Settings::set_tracked(&conn, keys::STORE_NAME, "Warung Sedap", "term-a").unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::STORE_NAME).unwrap().as_deref(),
+        Some("Warung Sedap")
+    );
+}
+
+/// The named exception: `smtp_config` is deny-listed but legitimately
+/// funnel-written — both shells merge its password JSON upstream and then
+/// write the merged blob through the tracked path so the ADR #22 delta still
+/// records the change — so the refusal must except it by name.
+#[test]
+fn set_tracked_exception_still_writes_smtp_config() {
+    let conn = fresh();
+    Settings::set_tracked(&conn, keys::SMTP_CONFIG, "{\"password\":\"pw\"}", "term-a").unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::SMTP_CONFIG).unwrap().as_deref(),
+        Some("{\"password\":\"pw\"}")
+    );
+}
+
+/// The batch door gets the same check: one deny-listed row aborts the whole
+/// batch BEFORE any write (all-or-nothing, matching the bridge's
+/// `run_set_settings_batch` guard), so `set_batch_tracked` cannot become
+/// the new front door — the gap the census found once already.
+#[test]
+fn set_batch_tracked_refuses_a_deny_listed_row_before_any_write() {
+    let conn = fresh();
+    let rows: Vec<(String, String)> = vec![
+        (keys::STORE_NAME.to_string(), "ok".to_string()),
+        (
+            keys::STRIPE_API_KEY.to_string(),
+            "sk_live_leaked".to_string(),
+        ),
+    ];
+    let err = Settings::set_batch_tracked(&conn, &rows, "term-a")
+        .expect_err("a batch containing a deny-listed credential must be refused");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::STRIPE_API_KEY),
+        "the refusal must name the offending key, got: {msg}"
+    );
+    assert!(
+        !msg.contains("sk_live_leaked"),
+        "the refusal must never echo the value, got: {msg}"
+    );
+    assert_eq!(
+        Settings::get(&conn, keys::STORE_NAME).unwrap(),
+        None,
+        "the refusal must happen before any row is written"
+    );
+    assert_eq!(
+        Settings::get(&conn, keys::STRIPE_API_KEY).unwrap(),
+        None,
+        "the offending row must not be written either"
+    );
+}
+
+/// The batch door still admits the `smtp_config` exception and ordinary
+/// keys — a mixed batch without a credential writes every row.
+#[test]
+fn set_batch_tracked_admits_the_smtp_exception_and_ordinary_keys() {
+    let conn = fresh();
+    let rows: Vec<(String, String)> = vec![
+        (keys::STORE_NAME.to_string(), "ok".to_string()),
+        (
+            keys::SMTP_CONFIG.to_string(),
+            "{\"password\":\"pw\"}".to_string(),
+        ),
+    ];
+    Settings::set_batch_tracked(&conn, &rows, "term-a").unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::SMTP_CONFIG).unwrap().as_deref(),
+        Some("{\"password\":\"pw\"}")
+    );
+    assert_eq!(
+        Settings::get(&conn, keys::STORE_NAME).unwrap().as_deref(),
+        Some("ok")
+    );
+}
