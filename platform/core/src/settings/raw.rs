@@ -469,10 +469,20 @@ impl IngestPolicyKind for IngestPolicy {
 ///   `PortablePackage` starts refusing them. Non-credential rows, but
 ///   manager-owned, so the refusal is correct — and it is the one conversion
 ///   that is not purely mechanical.
-/// * Sync ingest (`platform/sync/src/queue.rs`) — CHANGES, strictly new
-///   refusals: that lane applies ANY key the server sends with no check at all
-///   today, so `RemoteSync` refuses both the deny list and these prefixes for
-///   the first time.
+/// * Sync ingest (`platform/sync/src/queue.rs`) — ALREADY CONVERTED, so this
+///   lane refuses the deny list and these prefixes on ingest, symmetrically
+///   with egress. Both dispatchers write through the ONE funnel accessor
+///   `Settings::set_with_policy(..., IngestPolicy::RemoteSync)` — the atomic
+///   arm at `queue.rs:531-536` and the legacy arm at `queue.rs:698-703` — and
+///   `queue.rs:41-56` is the read-only face of that same predicate, kept so a
+///   refused key is never reported as a change.
+///
+///   What is still NOT checked is the FORM of the stored value. `admits` is a
+///   key-only predicate; once it passes, the accessor hands the value to
+///   `Settings::set` verbatim, with no shape check and no encryption. A
+///   plaintext credential arriving under an admitted key therefore survives
+///   ingest. That is the live open question on this lane, so do not read the
+///   refusal above as a value guard — it is a key guard.
 ///
 /// Nothing is refused under [`IngestPolicy::TrustedLocal`]: the managers that
 /// own these keys write them locally, and filtering that would break them.

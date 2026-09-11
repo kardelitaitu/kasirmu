@@ -76,8 +76,32 @@ pub async fn set_setting_pg(pool: &Pool, key: &str, value: &str) -> Result<(), S
 }
 
 /// Scoped settings key — suffix form (`{base}:{tenant}`), matching
-/// `email_pg`'s per-tenant keys so the admin endpoint provisions exactly
-/// what the report loop reads.
+/// `email_pg`'s per-tenant keys.
+///
+/// "The admin endpoint provisions exactly what the report loop reads" holds on
+/// cloud-server and is FALSE on the desktop loopback. Do not rely on it as a
+/// property of this function; it is a property of the deployment.
+///
+/// * Cloud — holds. `apps/cloud-server/src/main.rs:351` starts
+///   `email_pg::start_report_sender_loop_pg`, whose read is
+///   `get_smtp_config_pg` (`apps/cloud-server/src/email_pg.rs:207`, defined at
+///   `:467-468`): scoped key first, bare fallback. This is the same scoped key
+///   `PUT /api/v1/settings` writes, so the two agree.
+/// * Desktop loopback — does not hold. The same handler reaches
+///   `apply_ops_sqlite`, which writes this scoped key unconditionally, so a
+///   write with the default tenant lands on `smtp_config:default`. The
+///   desktop's own report loop never looks there: it reads only the bare
+///   `smtp_config` (`crates/oz-bridge/src/email.rs:35-43` →
+///   `Store::get_smtp_config`, likewise the scheduler loop in
+///   `crates/oz-notification/src/email_scheduler.rs:44-45`).
+///
+/// The consequence on desktop is a fork, not a miss. `stored_smtp_raw` reads
+/// scoped-then-bare and the keep-on-blank merge carries whatever it finds into
+/// the value being written, so after ONE loopback write the bare secret is
+/// copied into a scoped row — and the two secret-bearing rows then drift
+/// independently: the settings page saves to bare, the API writes
+/// scoped-first, and each keeps reading its own half. Closing the split is a
+/// design decision taken elsewhere, not a bug to fix in this doc.
 pub fn scoped_setting_key(base: &str, tenant: &str) -> String {
     format!("{base}:{tenant}")
 }
