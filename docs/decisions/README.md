@@ -6,7 +6,7 @@ an ADR in this directory (`docs/decisions/`). Each ADR follows the
 its header. Some ADRs have a companion `*.status.md` file with a fuller
 implementation-status walkthrough.
 
-- Numbered ADRs (#1–#47) are the primary record. **Seven numbers are unused** —
+- Numbered ADRs (#1–#51) are the primary record. **Seven numbers are unused** —
   #16 and #24–#29 are claimed by no file and cited by nothing anywhere in the repo
   (verified: zero references to `ADR #16` or `ADR #24`–`#29` in any `*.md`). They are
   skipped numbers, not lost documents; do not go looking for them.
@@ -24,6 +24,10 @@ implementation-status walkthrough.
   phases) are recorded here too, keyed by date rather than number.
 
 ## Numbered ADRs
+
+> **[`docs/records/README.md`](../records/README.md) is the generated, authoritative index** — produced by
+> `scripts/generate-records-index.mjs` from each record's YAML front matter. The table below is a
+> hand-maintained convenience copy: it can lag, and where the two disagree the generated index wins.
 
 | # | Title | Status |
 |---|-------|--------|
@@ -68,6 +72,10 @@ implementation-status walkthrough.
 | 45 | [Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](./2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
 | 46 | [Topology Revision History, Change Notes, and Draft Restore](./2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted (2026-09-07) — Phase 1 complete (racing-publishes gate met), Phase 2 in progress (graph differ 51ad987f) |
 | 47 | [Scoped Authorization — Role Assignments with Explicit Scopes](./2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted (2026-09-07, sole-maintainer ruling — all five recommendations adopted: `role_assignments` table, single scoped choke point, downward-only inheritance, key-set custom roles, org-wide backfill) — assignment model built across slices (scope axis 94e8a100, scoped pairs 8c0ae0b4, staff UI 7f7d4ec4, choke-point gate 453c629f); gates §B entitlements, audit baseline, Phase 3 roles |
+| 48 | [Location Timezone Representation & as_of Semantics](./2026-09-09-timezone-representation.md) | Accepted (2026-09-09) |
+| 49 | [Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](./2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
+| 50 | [Sync Authentication Hardening (token refresh, gating, terminal credentials)](./2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
+| 51 | [Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](./2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 
 ## Research notes
 
