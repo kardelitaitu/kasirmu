@@ -106,6 +106,16 @@ pub const PG_SYNC_REQUIRE_TLS: &str = "pg_sync.require_tls";
 
 // ── Redis Cache settings ─────────────────────────────────────
 /// Redis server URL. Default `"redis://localhost:6379"`.
+///
+/// Credential-bearing even though it is spelled as an endpoint: the
+/// URL-embedded form `redis://:PASSWORD@host:6379` is what operators
+/// actually save (and what `config_validator` already redacts before
+/// logging — see `crates/oz-core/src/config_validator.rs`, COR-3), so the
+/// whole value is a password in every respect. It is therefore on
+/// [`SECRET_KEY_DENY_LIST`]: never readable through the raw `get_setting`
+/// IPC, never replicated to a peer, never packaged. The daemon keeps
+/// working because it reads it through the typed accessor
+/// (`Settings::get_redis_url`), which is not an egress surface.
 pub const REDIS_URL: &str = "redis.url";
 /// Redis cache TTL in seconds. Default `300`.
 pub const REDIS_CACHE_TTL: &str = "redis.cache_ttl";
@@ -219,7 +229,11 @@ pub const HARDWARE_FINGERPRINT: &str = "hardware_fingerprint";
 /// surface, nor travel in a portable export/restore package.
 ///
 /// Each entry is a credential, API key, password or pre-shared key
-/// (C-2: CWE-200 information disclosure). Adding a credential constant here
+/// (C-2: CWE-200 information disclosure). A connection string counts as a
+/// credential when its URL form can carry the password inside it
+/// ([`REDIS_URL`] does: `redis://:PASSWORD@host:6379` is the form operators
+/// save), so refusing the endpoint is refusing the secret, not the host.
+/// Adding a credential constant here
 /// is mandatory; `crates/oz-bridge/src/settings_tests.rs` walks every
 /// credential-family constant declared in this module and fails if any of
 /// them is missing from [`SECRET_KEY_DENY_LIST`] or
@@ -228,6 +242,7 @@ pub const SECRET_KEY_DENY_LIST: &[&str] = &[
     SYNC_API_KEY,
     SYNC_TERMINAL_SECRET,
     PG_SYNC_PASSWORD,
+    REDIS_URL,
     RATE_SYNC_API_KEY,
     LAN_SERVER_PSK,
     LOCAL_API_SECRET,

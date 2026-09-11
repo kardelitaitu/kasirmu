@@ -658,6 +658,35 @@ fn enqueue_settings_update_refuses_credential_key_for_egress() {
     );
 }
 
+/// Tablet-lane mirror of the bridge finding: `redis.url` is spelled like an
+/// endpoint but the form operators save is `redis://:PASSWORD@host:6379`, so
+/// the value IS the credential. It must not be readable through this shell's
+/// get_setting and must not be queued for peers, while the daemon's typed
+/// accessor keeps reading it for cache setup.
+#[test]
+fn redis_url_with_embedded_password_is_refused_for_read_and_egress() {
+    let conn = fresh_conn();
+    let url = "redis://:s3cr3t@10.0.0.5:6379";
+    let key = oz_core::settings::keys::REDIS_URL;
+    run_set_setting(&conn, key, url, "term-1").unwrap();
+    assert_eq!(
+        run_get_setting(&conn, key).unwrap(),
+        None,
+        "the redis password must never reach the renderer"
+    );
+    let store = Store::new(&conn);
+    enqueue_settings_update(&store, key, url, "term-1").unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "redis.url must not be queued for sync egress"
+    );
+    assert_eq!(
+        oz_core::Settings::get_redis_url(&conn).unwrap(),
+        url,
+        "the local typed accessor is not an egress surface"
+    );
+}
+
 /// Control for the gate: an ordinary key still queues, so the refusal above
 /// is the policy and not a broken enqueue path.
 #[test]

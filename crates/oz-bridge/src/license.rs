@@ -32,6 +32,7 @@ use oz_core::license_verification::{
 };
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionTier, TenantSubscription};
+use platform_core::settings::keys;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -220,14 +221,17 @@ pub async fn get_machine_id(ctx: &BridgeCtx<'_>) -> Result<String, BridgeError> 
 pub async fn get_hardware_fingerprint(ctx: &BridgeCtx<'_>) -> Result<String, BridgeError> {
     let conn = ctx.lock_global().await;
     // Return the persisted fingerprint if one already exists.
-    if let Some(existing) = Settings::get(&conn, "hardware_fingerprint")?
+    if let Some(existing) = Settings::get(&conn, keys::HARDWARE_FINGERPRINT)?
         && !existing.is_empty()
     {
         return Ok(existing);
     }
     // Generate a new one and persist it.
     let fp = generate_hardware_fingerprint();
-    Settings::set_batch(&conn, &[("hardware_fingerprint".to_string(), fp.clone())])?;
+    Settings::set_batch(
+        &conn,
+        &[(keys::HARDWARE_FINGERPRINT.to_string(), fp.clone())],
+    )?;
     Ok(fp)
 }
 

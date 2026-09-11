@@ -632,6 +632,14 @@ fn is_credential_family(name: &str) -> bool {
         "TERMINAL_ID",
         "MACHINE_ID",
         "FINGERPRINT",
+        // `redis.url` carries its password INSIDE the URL
+        // (`redis://:PASSWORD@host:6379`), so the whole value is a
+        // credential. The marker is the full constant name on purpose:
+        // "_URL" would also sweep `sync_server_url`, which is an endpoint
+        // and must stay replicable — a second install that is not told the
+        // server URL cannot sync at all. Refusing an endpoint is not the
+        // same act as refusing a secret.
+        "REDIS_URL",
     ];
     MARKERS.iter().any(|marker| name.contains(marker))
 }
@@ -700,10 +708,11 @@ fn every_credential_family_key_declared_in_keys_rs_is_blocked() {
 /// parsing the registry: name -> constant -> both verdicts.
 #[test]
 fn credential_table_is_blocked_by_both_surfaces() {
-    let table: [(&str, &str); 17] = [
+    let table: [(&str, &str); 18] = [
         ("SYNC_API_KEY", keys::SYNC_API_KEY),
         ("SYNC_TERMINAL_SECRET", keys::SYNC_TERMINAL_SECRET),
         ("PG_SYNC_PASSWORD", keys::PG_SYNC_PASSWORD),
+        ("REDIS_URL", keys::REDIS_URL),
         ("RATE_SYNC_API_KEY", keys::RATE_SYNC_API_KEY),
         ("LAN_SERVER_PSK", keys::LAN_SERVER_PSK),
         ("LOCAL_API_SECRET", keys::LOCAL_API_SECRET),
@@ -748,6 +757,50 @@ fn hardware_fingerprint_is_refused_on_both_untrusted_lanes() {
         IngestPolicy::TrustedLocal.admits(keys::HARDWARE_FINGERPRINT),
         "license.rs mints the fingerprint locally and must keep working"
     );
+}
+
+/// The reviewer's finding: `redis.url` is spelled like an endpoint and
+/// declared like one, but the form operators actually save embeds the
+/// password in the URL — `redis://:PASSWORD@10.0.0.5:6379`. It was absent
+/// from the credential list, so `RemoteSync` admitted it verbatim and every
+/// peer got the cleartext password; symmetrically a peer could repoint this
+/// install's Redis. Both untrusted lanes now refuse it, and the local lane
+/// still admits it because the operator has to be able to save it.
+#[test]
+fn redis_url_with_embedded_password_is_refused_on_both_untrusted_lanes() {
+    let conn = fresh_conn();
+    let url = "redis://:s3cr3t@10.0.0.5:6379";
+    // Ingress: a peer cannot write it onto this install.
+    for policy in [IngestPolicy::RemoteSync, IngestPolicy::PortablePackage] {
+        assert!(
+            !policy.admits(keys::REDIS_URL),
+            "{policy:?} must refuse redis.url"
+        );
+        assert!(
+            !Settings::set_with_policy(&conn, keys::REDIS_URL, url, policy).unwrap(),
+            "{policy:?} must write nothing"
+        );
+    }
+    assert_eq!(Settings::get(&conn, keys::REDIS_URL).unwrap(), None);
+    // Egress: saving it locally must not queue it for peers.
+    Settings::set(&conn, keys::REDIS_URL, url).unwrap();
+    let store = Store::new(&conn);
+    let entries = HashMap::from([(keys::REDIS_URL.to_string(), url.to_string())]);
+    enqueue_settings_updates(&store, &entries, "term-1", "store-x").unwrap();
+    assert!(
+        store
+            .list_pending_offline_for_tenant("store-x")
+            .unwrap()
+            .is_empty(),
+        "the redis password must not be offered to the network"
+    );
+    // Reads: the raw IPC surface must not hand it to the renderer...
+    assert_eq!(run_get_setting(&conn, keys::REDIS_URL).unwrap(), None);
+    // ...while the daemon's own typed accessor still works, which is what
+    // keeps terminal startup reading its cache config.
+    assert_eq!(Settings::get_redis_url(&conn).unwrap(), url);
+    // And the local lane that owns the write still admits it.
+    assert!(IngestPolicy::TrustedLocal.admits(keys::REDIS_URL));
 }
 
 /// The typo regression itself: the stored key is UNDERSCORED, the old entry
