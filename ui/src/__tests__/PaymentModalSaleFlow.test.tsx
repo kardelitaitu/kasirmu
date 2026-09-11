@@ -76,6 +76,26 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
+// The QRIS display is stubbed so the test can drive PaymentModal's confirm
+// callback directly — including the poll race where the display reports the
+// payment TWICE for one scan, which is the double-settlement shape the
+// attempt id must absorb. The real component's internals (QR canvas,
+// polling) are not under test here.
+vi.mock('@/components/QrisQrDisplay', () => ({
+  default: (props: { isOpen: boolean; onPaymentConfirmed: () => void }) =>
+    props.isOpen ? (
+      <button
+        type="button"
+        onClick={() => {
+          props.onPaymentConfirmed();
+          props.onPaymentConfirmed();
+        }}
+      >
+        qris-poll-double-confirm
+      </button>
+    ) : null,
+}));
+
 beforeEach(() => {
   invokeMock.mockClear();
 });
@@ -605,5 +625,106 @@ describe('PaymentModal — taxEstimated claim', () => {
     view.unmount();
 
     expect(completeArgs()[0]).not.toHaveProperty('taxEstimated');
+  });
+});
+
+// ── QRIS attempt id (COR-7 on the scan-and-wait path) ────────────────
+//
+// The QRIS confirm callback can legally fire MORE than once for one QR (a
+// poll that returns pending and then succeeds twice), so every firing must
+// carry the SAME attempt id — the backend then replays the first receipt
+// instead of ringing a second sale. A new attempt (close + reopen, which
+// re-mints in the open-reset effect) must carry a different one.
+
+describe('PaymentModal — QRIS attempt id', () => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  const qrisAttemptIds = () =>
+    (invokeMock.mock.calls as unknown[][])
+      .filter((c) => c[0] === 'complete_sale_scoped')
+      .map((c) => (c[1] as { args?: { attemptId?: string } } | undefined)?.args?.attemptId);
+
+  const mount = () =>
+    renderInAct(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+
+  // One attempt: select the QRIS tender, generate the QR, then the display's
+  // poll fires the confirm callback TWICE for the single scan. `previous` is
+  // how many complete calls earlier attempts already produced.
+  const openQrAndDoubleConfirm = async (previous = 0) => {
+    await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /pay with qr|payment-qris-pay/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /qris-poll-double-confirm/i }),
+    );
+    await waitFor(() => expect(qrisAttemptIds().length).toBe(previous + 2));
+  };
+
+  it('sends the SAME attempt id when the QRIS poll confirms twice for one scan', async () => {
+    await mount();
+    await openQrAndDoubleConfirm();
+
+    const [first, second] = qrisAttemptIds();
+    expect(first).toMatch(UUID_RE);
+    expect(second).toBe(first);
+  });
+
+  it('mints a different attempt id for the next QRIS attempt', async () => {
+    const view = await mount();
+    await openQrAndDoubleConfirm();
+    const firstAttempt = qrisAttemptIds()[0];
+
+    view.rerender(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open={false}
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+    view.rerender(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            lineItems={[lineItem({ id: 'line-2' as LineId, qty: 3 })]}
+            total={usd(900)}
+            userId="test-user-id"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+    await openQrAndDoubleConfirm(2);
+
+    const ids = qrisAttemptIds();
+    expect(ids.length).toBe(4);
+    expect(ids[2]).toBe(ids[3]);
+    expect(ids[2]).toMatch(UUID_RE);
+    expect(ids[2]).not.toBe(firstAttempt);
   });
 });

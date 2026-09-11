@@ -711,6 +711,15 @@ export default function PaymentModal({
             cartId,
             paymentMethod: 'QRIS',
             tenderedMinor: null,
+            // COR-7: the scan-and-wait flow is ONE checkout attempt. The QR
+            // was generated under this attempt's id (attemptIdRef only
+            // re-mints on an open transition, so it is the same id the QR
+            // generation ran under), and the confirm callback can legally
+            // fire MORE than once for one QR — a poll that returns pending
+            // and then succeeds twice. Every firing carries the same id, so
+            // the backend's replay guard answers the second settlement with
+            // the FIRST receipt instead of ringing a second sale.
+            attemptId: attemptIdRef.current ?? undefined,
             ...(selectedCustomer ? { customerId: selectedCustomer.id } : {}),
             ...(serialNumberArgs && serialNumberArgs.length > 0 ? { serialNumbers: serialNumberArgs } : {}),
             paymentSplits: [
