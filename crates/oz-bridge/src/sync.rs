@@ -759,3 +759,7 @@ pub async fn settings_changed_sink_scoped(
     ctx.resolve_scope(session_token)?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "sync_tests.rs"]
+mod sync_tests;

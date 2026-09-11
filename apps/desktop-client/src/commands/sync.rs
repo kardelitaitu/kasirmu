@@ -331,7 +331,3 @@ pub async fn settings_changed_sink_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "sync_tests.rs"]
-mod tests;
