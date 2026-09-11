@@ -522,6 +522,12 @@ const BRIDGE_GATES: &[&str] = &[
     ".require_permission(&",
 ];
 
+// `require_audit_tier(` (bridge audit/auth, tablet audit) is deliberately not
+// counted in either vocabulary: it is a subscription-tier/plan check on the
+// entitlement read model, not a permission gate — it never consults the 0046
+// registry, so it stays out of this census. Enumerating `require_` names and
+// adding it to the lists above would reach the opposite conclusion.
+
 /// The gate census for one module: `(gate_call_count, sorted_keys)`.
 ///
 /// Mirrors the generator that produced the pins: comments and `use` lines
@@ -681,6 +687,14 @@ struct Root<'a> {
     skip: &'a [&'a str],
 }
 
+/// Compare the merged two-root census against the pin, and report EVERY
+/// drifted row in one failure.
+///
+/// A pinned census is only worth what it shows when it breaks: an assertion
+/// that panics on the first mismatch turns a fifty-row drift into a one-row
+/// report and queues the rest behind repeated reruns. Count drift, key-set
+/// drift, a pinned row with no module on disk, and a gating module missing
+/// from the pin are all collected first, then reported together as one table.
 fn assert_pin(roots: &[Root], pinned: &[(&str, usize, &[&str])]) {
     let mut actual: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
     for root in roots {
@@ -699,31 +713,51 @@ fn assert_pin(roots: &[Root], pinned: &[(&str, usize, &[&str])]) {
         }
     }
 
+    // Collect every mismatch before reporting — the full table is the review
+    // signal; the first row alone is a queue.
+    let mut rows: Vec<String> = Vec::new();
     for (stem, exp_calls, exp_keys) in pinned {
-        let (got_calls, got_keys) = actual
-            .get(*stem)
-            .unwrap_or_else(|| panic!("module `{stem}` is pinned but not found on disk"));
-        assert_eq!(
-            *exp_calls, *got_calls,
-            "`{stem}.rs` gate-call count drifted: pin says {exp_calls}, source has {got_calls}. \
-             Update the pin deliberately — a changed gate call is the review signal."
-        );
+        let Some((got_calls, got_keys)) = actual.get(*stem) else {
+            rows.push(format!(
+                "{stem:<20} absent   pinned, but no module on disk (pin: {exp_calls} gate calls, keys {exp_keys:?})"
+            ));
+            continue;
+        };
+        if *exp_calls != *got_calls {
+            rows.push(format!(
+                "{stem:<20} count    pin {exp_calls}, source {got_calls}"
+            ));
+        }
         let got: Vec<&str> = got_keys.iter().map(String::as_str).collect();
-        assert_eq!(
-            *exp_keys,
-            &got[..],
-            "`{stem}.rs` permission surface drifted from the pin. \
-             Update the pin deliberately."
-        );
+        if *exp_keys != &got[..] {
+            rows.push(format!(
+                "{stem:<20} keys     pin {exp_keys:?}, source {got:?}"
+            ));
+        }
+    }
+    for stem in actual.keys() {
+        if !pinned.iter().any(|(s, _, _)| s == stem) {
+            let (calls, keys) = &actual[stem];
+            rows.push(format!(
+                "{stem:<20} unpinned gates permissions on disk but is NOT in the pinned \
+                 census (source: {calls} gate calls, keys {keys:?})"
+            ));
+        }
     }
 
-    for stem in actual.keys() {
-        assert!(
-            pinned.iter().any(|(s, _, _)| s == stem),
-            "module `{stem}` gates permissions but is NOT in the pinned census. \
-             Every permission-sensitive command must be reviewed and pinned."
-        );
-    }
+    assert!(
+        rows.is_empty(),
+        "gate-census drift: {} of {} pinned rows disagree. Update every pin deliberately — \
+         the full set is the review signal.\n  {:<20} {}\n{}",
+        rows.len(),
+        pinned.len(),
+        "module",
+        "drift",
+        rows.into_iter()
+            .map(|r| format!("  {r}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
 }
 
 #[test]
