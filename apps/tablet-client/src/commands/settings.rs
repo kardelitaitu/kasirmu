@@ -474,24 +474,14 @@ fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<Stri
     Ok(Settings::get(conn, key)?)
 }
 
-/// Keys that must never be returned via the raw `get_setting` IPC.
-/// C-2: CWE-200 information disclosure prevention.
-const SECRET_KEY_DENY_LIST: &[&str] = &[
-    "sync_api_key",
-    "sync.terminal_secret",
-    "pg_sync.password",
-    "rate_sync.api_key",
-    "lan_server.psk",
-    "smtp_config",
-    "license.api_key",
-    "license.payload",
-    "license.signature",
-    "license.tenant_id",
-    // UI-1: payment gateway credentials must never reach the renderer.
-    "stripe.api_key",
-    "square.api_key",
-    "midtrans.server_key",
-];
+// The hand copy of SECRET_KEY_DENY_LIST that used to sit here is deleted. The
+// tablet and the desktop lane now answer from the SAME list, owned by
+// platform_core::settings::keys and built there from the key constants.
+// The private copy had drifted exactly the way an unenforced duplicate
+// drifts: it spelled the terminal secret "sync.terminal_secret" while the
+// stored key is "sync_terminal_secret", and it omitted "local_api.secret"
+// entirely - so both credentials were readable through this shell's
+// get_setting while the tests that named them stayed green.
 
 /// Status entry for one payment gateway.
 #[derive(Debug, Serialize)]
@@ -509,8 +499,9 @@ pub struct GatewayStatusEntry {
 /// Report which payment gateways have credentials configured.
 ///
 /// UI-1: computes the configured/online booleans server-side so the raw
-/// credential values never leave the backend — the gateway keys are on
-/// the `SECRET_KEY_DENY_LIST`, and the renderer only ever sees booleans.
+/// credential values never leave the backend — the gateway keys are on the
+/// shared `SECRET_KEY_DENY_LIST` (platform_core::settings::keys), and the
+/// renderer only ever sees booleans.
 #[tauri::command]
 pub async fn gateway_status(
     state: State<'_, AppState>,
@@ -543,8 +534,10 @@ pub async fn gateway_status(
 
 /// Returns `true` if the given settings key should be blocked from
 /// the raw `get_setting` IPC surface.
+///
+/// Thin delegation to the shared predicate: one list, one match, both shells.
 fn is_secret_key(key: &str) -> bool {
-    SECRET_KEY_DENY_LIST.contains(&key)
+    platform_core::settings::keys::is_secret_setting_key(key)
 }
 
 /// Write (or overwrite) a single setting value.

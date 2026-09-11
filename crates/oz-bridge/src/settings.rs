@@ -33,31 +33,28 @@ use serde::{Deserialize, Serialize};
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
-/// Keys or key prefixes that must never be returned via the raw get_setting IPC
-/// command. These contain credentials, API keys, passwords, or pre-shared keys
-/// (C-2: CWE-200 information disclosure).
-pub const SECRET_KEY_DENY_LIST: &[&str] = &[
-    "sync_api_key",
-    "sync.terminal_secret",
-    "pg_sync.password",
-    "rate_sync.api_key",
-    "lan_server.psk",
-    "local_api.secret",
-    "smtp_config",
-    "license.api_key",
-    "license.payload",
-    "license.signature",
-    "license.tenant_id",
-    // UI-1: payment gateway credentials must never reach the renderer.
-    "stripe.api_key",
-    "square.api_key",
-    "midtrans.server_key",
-];
+/// The credential deny list — the ONE shared source of truth, owned by
+/// `platform_core::settings::keys` and re-exported here so the desktop lane
+/// keeps its historical `oz_bridge::settings::SECRET_KEY_DENY_LIST` path.
+///
+/// It holds every key that must never be returned via the raw get_setting IPC
+/// command nor travel in a portable package: credentials, API keys, passwords
+/// and pre-shared keys (C-2: CWE-200 information disclosure). The list is
+/// built FROM the key constants in that module rather than from retyped
+/// literals, so a rename moves the guard with the key; the tablet shell
+/// imports the same list instead of carrying its own copy.
+pub use platform_core::settings::keys::{
+    NON_EXPORTABLE_DEVICE_KEYS, SECRET_KEY_DENY_LIST, is_non_exportable_setting_key,
+    is_secret_setting_key,
+};
 
 /// Returns true if the given settings key should be blocked from
 /// the raw get_setting IPC surface.
+///
+/// Delegates to the shared predicate in platform_core so the tablet shell and
+/// this lane can never answer the same question differently.
 pub fn is_secret_key(key: &str) -> bool {
-    SECRET_KEY_DENY_LIST.contains(&key)
+    is_secret_setting_key(key)
 }
 
 /// Which dedicated lifecycle manager owns a key, if any.
@@ -83,14 +80,20 @@ pub fn is_managed_key(key: &str) -> bool {
     managed_key_owner(key).is_some()
 }
 
-/// Returns true if a key must never leave the backend through a bulk surface: the
-/// deny-listed credential secrets, or keys owned by a dedicated lifecycle manager
-/// (local_api.* - writing/restoring those through the generic path desyncs the
-/// manager, see is_managed_key). Used by the data export (review MED-2: the export
+/// Returns true if a key must never leave the backend through a bulk surface:
+/// the deny-listed credential secrets, keys owned by a dedicated lifecycle
+/// manager (local_api.* - writing/restoring those through the generic path
+/// desyncs the manager, see is_managed_key), and the device-bound identity keys
+/// (sync_terminal_id, machine_id - see NON_EXPORTABLE_DEVICE_KEYS). Used by the
+/// data export and, symmetrically, by the import arm (review MED-2: the export
 /// carried local_api.secret, so an exported-then-restored backup would give two
 /// installs the same signing secret, breaking the per-install property).
+///
+/// Note this is WIDER than the IPC guard: the device-bound identity keys stay
+/// readable through get_setting (they are identifiers the shipped UI reads),
+/// they are only barred from portable packages.
 pub fn is_non_exportable_key(key: &str) -> bool {
-    is_secret_key(key) || is_managed_key(key)
+    is_non_exportable_setting_key(key) || is_managed_key(key)
 }
 
 /// All receipt display options in one shot - the UI loads these on

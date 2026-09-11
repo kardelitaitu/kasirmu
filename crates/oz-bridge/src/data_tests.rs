@@ -22,6 +22,14 @@ fn export_drops_secret_and_managed_keys() {
         ("local_api.enabled".into(), "1".into()),
         ("smtp_config".into(), r#"{"password":"hunter2"}"#.into()),
         ("lan_server.psk".into(), "psk".into()),
+        // C-2 typo regression: the stored key is UNDERSCORED, while the deny
+        // list carried only the dotted "sync.terminal_secret", so the terminal
+        // secret rode out in every .ozpkg. The device-bound identity keys are
+        // export-barred too (they fingerprint this install), even though they
+        // stay readable through get_setting.
+        ("sync_terminal_secret".into(), "enc:v1:ciphertext".into()),
+        ("sync_terminal_id".into(), "term-42".into()),
+        ("machine_id".into(), "MACHINE-FP".into()),
     ];
     let out = exportable_settings_rows(rows);
     let keys: Vec<&str> = out.iter().map(|v| v["key"].as_str().unwrap()).collect();

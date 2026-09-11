@@ -172,3 +172,99 @@ pub const EDC_DEFAULT_TERMINAL: &str = "edc.default_terminal";
 /// anywhere in the repo; `oz_core::regional` now consumes it as the
 /// organization layer of the locale chain.
 pub const UI_LOCALE: &str = "ui.locale";
+
+// ── Credential-bearing keys (C-2) ───────────────────────────
+//
+// The two deny lists at the foot of this module are the ONE shared source of
+// truth for both shells: the desktop lane re-exports them through
+// `oz_bridge::settings` and `apps/tablet-client` imports them directly. They
+// are built FROM the constants declared here — never from retyped literals —
+// so renaming a key value moves the guard with it instead of silently
+// dropping coverage (the original `sync.terminal_secret` typo left the
+// stored key `sync_terminal_secret` readable through `get_setting` and
+// exportable in a `.ozpkg` for exactly that reason).
+
+/// Per-install Local API JWT signing secret. Mirrors
+/// `oz_local_api::SETTINGS_SECRET`; declared as a literal here because
+/// platform-core must not depend on the Local API crate.
+pub const LOCAL_API_SECRET: &str = "local_api.secret";
+/// Serialised SMTP account JSON, whose `password` field is encrypted at rest.
+pub const SMTP_CONFIG: &str = "smtp_config";
+/// API key issued by the license server.
+pub const LICENSE_API_KEY: &str = "license.api_key";
+/// Signed license payload — replaying it into another install re-binds a
+/// license, so it never leaves the backend.
+pub const LICENSE_PAYLOAD: &str = "license.payload";
+/// Signature over [`LICENSE_PAYLOAD`].
+pub const LICENSE_SIGNATURE: &str = "license.signature";
+/// Tenant id issued by the license server; identifies the paying tenant.
+pub const LICENSE_TENANT_ID: &str = "license.tenant_id";
+/// Stripe secret API key.
+pub const STRIPE_API_KEY: &str = "stripe.api_key";
+/// Square API key.
+pub const SQUARE_API_KEY: &str = "square.api_key";
+/// Midtrans (QRIS) server key.
+pub const MIDTRANS_SERVER_KEY: &str = "midtrans.server_key";
+/// Persisted machine fingerprint: the KDF factor for every machine-bound
+/// encryption family and the one-trial-per-device lock.
+pub const MACHINE_ID: &str = "machine_id";
+
+/// Settings keys that must never be returned by the raw `get_setting` IPC
+/// surface, nor travel in a portable export/restore package.
+///
+/// Each entry is a credential, API key, password or pre-shared key
+/// (C-2: CWE-200 information disclosure). Adding a credential constant here
+/// is mandatory; `crates/oz-bridge/src/settings_tests.rs` walks every
+/// credential-family constant declared in this module and fails if any of
+/// them is missing from [`SECRET_KEY_DENY_LIST`] or
+/// [`NON_EXPORTABLE_DEVICE_KEYS`].
+pub const SECRET_KEY_DENY_LIST: &[&str] = &[
+    SYNC_API_KEY,
+    SYNC_TERMINAL_SECRET,
+    PG_SYNC_PASSWORD,
+    RATE_SYNC_API_KEY,
+    LAN_SERVER_PSK,
+    LOCAL_API_SECRET,
+    SMTP_CONFIG,
+    LICENSE_API_KEY,
+    LICENSE_PAYLOAD,
+    LICENSE_SIGNATURE,
+    LICENSE_TENANT_ID,
+    STRIPE_API_KEY,
+    SQUARE_API_KEY,
+    MIDTRANS_SERVER_KEY,
+];
+
+/// Device-bound identity keys: like the credential list above they must
+/// never leave the backend in a portable package, but they are identifiers
+/// rather than credentials, so they stay readable through `get_setting`.
+///
+/// `sync_terminal_id` is the cleartext half of the client-credentials pair
+/// whose secret is [`SYNC_TERMINAL_SECRET`], and [`MACHINE_ID`] is the KDF
+/// factor for the machine-bound families. Shipping either into a second
+/// install would hand it the source machine's identity (duplicate terminal
+/// registration; a restored trial lock), which is the same per-install
+/// property review MED-2 protected for `local_api.secret`.
+pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] = &[SYNC_TERMINAL_ID, MACHINE_ID];
+
+/// Returns true when the given settings key holds a credential that the raw
+/// get_setting IPC surface must never return (C-2).
+///
+/// Both shells route through this one predicate so the match cannot drift the
+/// way the two hand-copied lists did; the bridge layer adds only the
+/// lifecycle-manager prefix rule on top of it.
+pub fn is_secret_setting_key(key: &str) -> bool {
+    SECRET_KEY_DENY_LIST.contains(&key)
+}
+
+/// Returns true when the given key must never leave the backend inside a
+/// portable export/restore package: every credential from
+/// [SECRET_KEY_DENY_LIST] plus the device-bound identity keys from
+/// [NON_EXPORTABLE_DEVICE_KEYS].
+///
+/// Lifecycle-manager-owned prefixes (local_api.*, lan_server.*) are refused
+/// on top of this by the bridge lane, which owns the manager names; the
+/// tablet shell has no such manager surface, so this is the whole rule there.
+pub fn is_non_exportable_setting_key(key: &str) -> bool {
+    is_secret_setting_key(key) || NON_EXPORTABLE_DEVICE_KEYS.contains(&key)
+}

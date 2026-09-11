@@ -580,3 +580,191 @@ fn build_deployment_info_returns_pkg_version() {
     let info = build_deployment_info();
     assert_eq!(info.app_version, env!("CARGO_PKG_VERSION"));
 }
+
+// ── Shared credential deny list (C-2 · the sync_terminal_secret typo) ──
+
+use platform_core::settings::keys;
+
+use crate::data::exportable_settings_rows;
+
+/// The platform-core key registry, read as text so this test can sweep every
+/// declared constant instead of trusting a hand-typed list of them.
+const KEYS_RS: &str = include_str!("../../../platform/core/src/settings/keys.rs");
+
+/// Every `pub const NAME: &str = "value";` declared in the platform-core key
+/// registry, as (const name, key value) pairs.
+fn declared_keys() -> Vec<(String, String)> {
+    KEYS_RS
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("pub const ")?;
+            let (name, tail) = rest.split_once(": &str = \"")?;
+            let value = tail.split_terminator('"').next()?.to_string();
+            Some((name.to_string(), value))
+        })
+        .collect()
+}
+
+/// True when a constant NAME marks the credential / device-identity family.
+///
+/// Judged on the NAME, not the value, so a new secret cannot escape the guard
+/// by being spelled like an ordinary setting key.
+fn is_credential_family(name: &str) -> bool {
+    const MARKERS: &[&str] = &[
+        "SECRET",
+        "API_KEY",
+        "PASSWORD",
+        "SERVER_KEY",
+        "PSK",
+        "LICENSE_",
+        "SMTP_CONFIG",
+        "TERMINAL_ID",
+        "MACHINE_ID",
+    ];
+    MARKERS.iter().any(|marker| name.contains(marker))
+}
+
+#[test]
+fn every_credential_family_key_declared_in_keys_rs_is_blocked() {
+    let declared = declared_keys();
+    assert!(
+        declared.len() > 40,
+        "parsed only {} key constants out of keys.rs - the parser broke, not the guard",
+        declared.len()
+    );
+
+    // (1) forward: every credential-family constant is denied somewhere - the
+    // credentials on both surfaces, the two device-identity keys on the export
+    // surface only (that asymmetry is a recorded decision, see the table test).
+    let mut swept = 0;
+    for (name, key) in &declared {
+        if !is_credential_family(name) {
+            continue;
+        }
+        swept += 1;
+        assert!(
+            is_non_exportable_key(key),
+            "credential {name} = {key:?} leaks through the GUI export/restore redaction"
+        );
+        if !NON_EXPORTABLE_DEVICE_KEYS.contains(&key.as_str()) {
+            assert!(
+                is_secret_key(key),
+                "credential {name} = {key:?} is readable through the raw get_setting IPC"
+            );
+        }
+    }
+    // (2) reverse: nothing is denied by an ad-hoc literal that no constant
+    // declares - that is exactly how the dotted "sync.terminal_secret" entry
+    // looked correct while covering nothing.
+    for key in SECRET_KEY_DENY_LIST
+        .iter()
+        .chain(NON_EXPORTABLE_DEVICE_KEYS.iter())
+    {
+        assert!(
+            declared.iter().any(|(_, v)| v.as_str() == *key),
+            "deny-list entry {key:?} is a retyped literal, not a declared key constant"
+        );
+    }
+    // (3) no entry is only half-registered: the swept set and the two lists
+    // must be the same size, so a family constant cannot be added outside a
+    // list and a list entry cannot be dropped without a name change.
+    assert_eq!(
+        swept,
+        SECRET_KEY_DENY_LIST.len() + NON_EXPORTABLE_DEVICE_KEYS.len(),
+        "keys.rs declares a different credential family than the deny lists cover"
+    );
+
+    let mut dedup: Vec<&str> = SECRET_KEY_DENY_LIST.iter().copied().collect();
+    dedup.sort_unstable();
+    dedup.dedup();
+    assert_eq!(
+        dedup.len(),
+        SECRET_KEY_DENY_LIST.len(),
+        "the shared deny list carries a duplicate entry"
+    );
+}
+
+/// The same family stated as a table, so a review reads the coverage without
+/// parsing the registry: name -> constant -> both verdicts.
+#[test]
+fn credential_table_is_blocked_by_both_surfaces() {
+    let table: [(&str, &str); 16] = [
+        ("SYNC_API_KEY", keys::SYNC_API_KEY),
+        ("SYNC_TERMINAL_SECRET", keys::SYNC_TERMINAL_SECRET),
+        ("PG_SYNC_PASSWORD", keys::PG_SYNC_PASSWORD),
+        ("RATE_SYNC_API_KEY", keys::RATE_SYNC_API_KEY),
+        ("LAN_SERVER_PSK", keys::LAN_SERVER_PSK),
+        ("LOCAL_API_SECRET", keys::LOCAL_API_SECRET),
+        ("SMTP_CONFIG", keys::SMTP_CONFIG),
+        ("LICENSE_API_KEY", keys::LICENSE_API_KEY),
+        ("LICENSE_PAYLOAD", keys::LICENSE_PAYLOAD),
+        ("LICENSE_SIGNATURE", keys::LICENSE_SIGNATURE),
+        ("LICENSE_TENANT_ID", keys::LICENSE_TENANT_ID),
+        ("STRIPE_API_KEY", keys::STRIPE_API_KEY),
+        ("SQUARE_API_KEY", keys::SQUARE_API_KEY),
+        ("MIDTRANS_SERVER_KEY", keys::MIDTRANS_SERVER_KEY),
+        ("SYNC_TERMINAL_ID", keys::SYNC_TERMINAL_ID),
+        ("MACHINE_ID", keys::MACHINE_ID),
+    ];
+    for (name, key) in table {
+        assert!(
+            is_non_exportable_key(key),
+            "{name} = {key:?} must never be exported"
+        );
+        let credential = !keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&key);
+        assert_eq!(
+            is_secret_key(key),
+            credential,
+            "{name} = {key:?}: credentials are IPC-blocked, device identity is not"
+        );
+    }
+}
+
+/// The typo regression itself: the stored key is UNDERSCORED, the old entry
+/// was DOTTED, so get_setting handed back the terminal secret ciphertext.
+#[test]
+fn get_setting_blocks_underscored_sync_terminal_secret() {
+    let conn = fresh_conn();
+    Settings::set(&conn, keys::SYNC_TERMINAL_SECRET, "enc:v1:deadbeef").unwrap();
+    Settings::set(&conn, keys::LOCAL_API_SECRET, "a1b2c3").unwrap();
+    assert_eq!(
+        run_get_setting(&conn, keys::SYNC_TERMINAL_SECRET).unwrap(),
+        None,
+        "sync_terminal_secret ciphertext must never reach the raw get_setting IPC"
+    );
+    assert_eq!(
+        run_get_setting(&conn, keys::LOCAL_API_SECRET).unwrap(),
+        None,
+        "local_api.secret must be blocked on both shells (the tablet list omitted it)"
+    );
+    let rows = exportable_settings_rows(vec![(
+        keys::SYNC_TERMINAL_SECRET.to_string(),
+        "enc:v1:deadbeef".to_string(),
+    )]);
+    assert!(
+        rows.is_empty(),
+        "the terminal secret must not ride in a package"
+    );
+}
+
+/// Deliberate asymmetry, recorded: the cleartext half of the credential pair
+/// and the machine fingerprint stay IPC-readable (the shipped UI reads them
+/// back through get_setting) while being barred from portable packages.
+#[test]
+fn device_identity_keys_stay_readable_but_never_exportable() {
+    let conn = fresh_conn();
+    Settings::set(&conn, keys::SYNC_TERMINAL_ID, "term-42").unwrap();
+    Settings::set(&conn, keys::MACHINE_ID, "MACHINE-FP").unwrap();
+    assert_eq!(
+        run_get_setting(&conn, keys::SYNC_TERMINAL_ID).unwrap(),
+        Some("term-42".into()),
+        "sync_terminal_id stays IPC-readable by decision - it is an identifier"
+    );
+    assert_eq!(
+        run_get_setting(&conn, keys::MACHINE_ID).unwrap(),
+        Some("MACHINE-FP".into()),
+        "machine_id stays IPC-readable by decision - get_machine_id has no gate"
+    );
+    assert!(is_non_exportable_key(keys::SYNC_TERMINAL_ID));
+    assert!(is_non_exportable_key(keys::MACHINE_ID));
+}
