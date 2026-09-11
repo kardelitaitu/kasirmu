@@ -12,7 +12,3 @@
 //! tickets are defined exactly once, in the bridge.
 
 pub use oz_bridge::picker::{PICKER_TICKET_TTL_SECS, sign_picker_ticket, verify_picker_ticket};
-
-#[cfg(test)]
-#[path = "picker_ticket_tests.rs"]
-mod tests;

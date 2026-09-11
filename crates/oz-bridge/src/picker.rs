@@ -80,3 +80,7 @@ pub fn verify_picker_ticket(secret: &[u8], ticket: &str, now_ts: i64) -> Option<
 
     Some(user_id.to_owned())
 }
+
+#[cfg(test)]
+#[path = "picker_ticket_tests.rs"]
+mod picker_ticket_tests;
