@@ -147,9 +147,17 @@ impl Store<'_> {
         // on both credit paths, so it is enforced here before any row is
         // written rather than separately per path.
         let mut requested_qty: HashMap<&str, i64> = HashMap::new();
+        let mut claimed_value: HashMap<&str, i64> = HashMap::new();
         for line in &refund.lines {
             if line.qty > 0 {
                 *requested_qty.entry(&line.sale_line_id).or_insert(0) += line.qty;
+                let claimed = claimed_value.entry(&line.sale_line_id).or_insert(0);
+                *claimed = claimed
+                    .checked_add(line.line_total.minor_units)
+                    .ok_or_else(|| CoreError::Validation {
+                        field: "refund_line.line_total",
+                        message: "refund line total overflow".into(),
+                    })?;
             }
         }
         for (sale_line_id, qty) in &requested_qty {
@@ -161,7 +169,8 @@ impl Store<'_> {
             // out of nothing. Legacy and imported sales reach this path
             // because create_sale never writes deduction_locations, so the
             // deduction_locations bound below cannot be relied on to catch it.
-            let sold_qty = self.sold_qty_for_sale_line_in_tx(&tx, &refund.sale_id, sale_line_id)?;
+            let (sold_qty, line_minor) =
+                self.sold_line_for_sale_line_in_tx(&tx, &refund.sale_id, sale_line_id)?;
             let already_refunded_qty = self.refunded_qty_for_sale_line_in_tx(
                 &tx,
                 &refund.sale_id,
@@ -186,6 +195,79 @@ impl Store<'_> {
                         refund.sale_id,
                         already_refunded_qty,
                         sold_qty
+                    ),
+                });
+            }
+
+            // ── per-line MONEY ceiling ─────────────────────────────
+            // line_total_minor is the last caller-supplied money figure in
+            // this path: it used to be persisted verbatim. The line is now
+            // GUARANTEED to exist (the lookup above refuses it otherwise), so
+            // the server can always derive what that line can refund and
+            // refuse anything above it.
+            //
+            // A RANGE, not an equality, for two verified reasons. (a) A price
+            // override legitimately stores line_minor != unit_minor * qty:
+            // CartLine::total uses the overridden price (foundation/cart.rs
+            // :54-57, :94-106) while the model keeps unit_price as the BASE
+            // and line_total as the OVERRIDE (modules/sales/src/models.rs
+            // :181-188) - equality would reject refunds on lines the server
+            // itself sold at a changed price. (b) The UI rounds: RefundModal
+            // derives unitPriceMinor = round(total_minor / qty) and multiplies
+            // back (:71-84) while its on-screen estimate uses the fractional
+            // form (:59-62, :240), so the two already disagree by up to half
+            // of sold_qty minor units whenever line_minor is not divisible.
+            // The one-minor-unit tolerance absorbs that; an equality would not.
+            //
+            // Discounts never touch per-line figures, so this ceiling may sit
+            // ABOVE what the customer actually paid for the line: cart percent
+            // and fixed discounts apply to the summed total only
+            // (foundation/cart.rs:284-296), promotions subtract at sale level
+            // and promotion_applications carries no sale_line_id
+            // (20260813_init.sql:459-466), loyalty is sale-level
+            // (db/loyalty.rs:447-459), and tax-inclusive vs exclusive adds to
+            // sale.total (db/sales_tax.rs:273-290). The SALE-LEVEL ceiling
+            // above - SUM(refunds.total_minor) bounded by sales.total_minor -
+            // is what absorbs all of them. A per-line figure at or under its
+            // pro-rata share is therefore intended to pass even when the
+            // customer paid less for that line; that is not a hole.
+            //
+            // Booked value: refuse above the ceiling, store the supplied
+            // figure UNCHANGED below it. Clamping to min(supplied, ceiling)
+            // would silently rewrite a receipt. This also leaves every
+            // downstream number alone: loyalty reversal, customer
+            // lifetime-spend reversal, is_full_refund KDS cancellation, shift
+            // cash reconciliation (db/shifts.rs:158, :170) and report netting
+            // (db/reports.rs:467, :534) all read refunds.total_minor, never
+            // refund_lines.line_minor - which only list_refunds_for_sale and
+            // the printed line consume.
+            //
+            // Joining a pattern, not inventing one: create_purchase_order
+            // takes no total at all and re-derives it in the insert loop under
+            // MONEY-05 (db/purchase_orders.rs:198-214); MONEY-01 recomputes
+            // the IPC line total with checked_mul (db/sales_tax.rs:352-362);
+            // F2-5 has the client supply only a boolean claim
+            // (db/sales_checkout.rs:464-477). It is NOT the case that this
+            // codebase always recomputes - hold_cart (oz-bridge/src/pos.rs
+            // :621-630) and base_total_minor (:1446) still trust caller money.
+            let claimed = claimed_value[sale_line_id];
+            let numerator = i128::from(line_minor)
+                .checked_mul(i128::from(*qty))
+                .ok_or_else(|| CoreError::Validation {
+                    field: "refund_line.line_total",
+                    message: "refund line total overflow".into(),
+                })?;
+            // sale_lines.qty has CHECK (qty > 0); max(1) keeps this division
+            // infallible without relying on the constraint, and i128 keeps it
+            // exact - no float anywhere on money.
+            let ratio = numerator / i128::from(sold_qty).max(1);
+            let ceiling = ratio.max(0) + 1;
+            if i128::from(claimed) > ceiling {
+                return Err(CoreError::Validation {
+                    field: "refund_line.line_total",
+                    message: format!(
+                        "refund line total {} exceeds the {} minor units refundable for line {} of sale {} (line booked {}, {} units sold, {} refunded)",
+                        claimed, ceiling, sale_line_id, refund.sale_id, line_minor, sold_qty, qty
                     ),
                 });
             }
@@ -331,23 +413,28 @@ impl Store<'_> {
     /// reach the credit path unbounded. Scope is enforced by "AND sale_id",
     /// so a line id belonging to a DIFFERENT sale cannot borrow that sale's
     /// sold quantity either.
-    fn sold_qty_for_sale_line_in_tx(
+    ///
+    /// Returns (units sold, booked line total in minor units) from ONE read:
+    /// the quantity bound needs the first, the per-line money ceiling below
+    /// needs the second, and taking both from the same row keeps the two
+    /// bounds from looking at two snapshots of it.
+    fn sold_line_for_sale_line_in_tx(
         &self,
         tx: &rusqlite::Transaction<'_>,
         sale_id: &str,
         sale_line_id: &str,
-    ) -> Result<i64, CoreError> {
+    ) -> Result<(i64, i64), CoreError> {
         tx.query_row(
-            "SELECT qty FROM sale_lines WHERE id = ?1 AND sale_id = ?2",
+            "SELECT qty, line_minor FROM sale_lines WHERE id = ?1 AND sale_id = ?2",
             params![sale_line_id, sale_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
         .map_err(CoreError::Db)?
         .ok_or_else(|| CoreError::Validation {
             field: "refund_line.sale_line_id",
             message: format!(
-                "sale_line_id {} is not a line of sale {}; refusing to credit stock against an unknown line",
+                "sale_line_id {} is not a line of sale {}; refusing to credit stock or value against an unknown line",
                 sale_line_id, sale_id
             ),
         })
@@ -574,8 +661,8 @@ impl Store<'_> {
             // each look plausible and together return more stock than was
             // sold. checked_add, not +: a near-i64::MAX quantity must be
             // rejected rather than wrapped negative past the comparison.
-            let sold_qty =
-                self.sold_qty_for_sale_line_in_tx(tx, &refund.sale_id, &refund_line.sale_line_id)?;
+            let (sold_qty, _) =
+                self.sold_line_for_sale_line_in_tx(tx, &refund.sale_id, &refund_line.sale_line_id)?;
             let already_credited = self.refunded_qty_for_sale_line_in_tx(
                 tx,
                 &refund.sale_id,

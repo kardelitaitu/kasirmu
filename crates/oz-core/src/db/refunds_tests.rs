@@ -1381,3 +1381,141 @@ fn legacy_sale_full_value_single_unit_refund_is_accepted() {
         1000
     );
 }
+
+// ── Per-line MONEY ceiling (line_total_minor is a claim, not a fact) ──
+//
+// refund_lines.line_minor used to be written exactly as the caller sent it.
+// The quantity guard now guarantees the named sale line exists, so the booked
+// value of that line is always available and the claim can be bounded by it.
+
+/// Seed a sale whose ONE line was sold at an OVERRIDDEN price: 3 units of
+/// SYRUP with unit_minor 1000 but line_minor 2400 (3 x 1000 = 3000 != 2400).
+/// That mismatch is legitimate - it is what a cashier price override stores -
+/// and it is why the ceiling is a pro-rated range and not an equality against
+/// unit_minor * qty. deduction_locations is NULL so the legacy credit path is
+/// the one under test.
+fn seed_overridden_price_sale(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('ovr-p1', 'SYRUP', 'Syrup', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z'),
+            ('ovr-p2', 'BUTTER', 'Butter', 600, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('ovr-sale-1', 3000, 'USD', 2, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', NULL);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('ovr-sl-1', 'ovr-sale-1', 'SYRUP', 3, 1000, 2400, 'USD', 1),
+            ('ovr-sl-2', 'ovr-sale-1', 'BUTTER', 1, 600, 600, 'USD', 2);"
+    ).unwrap();
+}
+
+/// A refund of [qty] units of the overridden line, CLAIMING [claimed] minor
+/// units of value for it. The header total is set to the same figure, and the
+/// sale carries 600 of unrelated BUTTER value, so the SALE-level money ceiling
+/// (3000) stays out of the way across all three attempts and every rejection
+/// below can only have come from the per-line ceiling.
+fn syrup_refund(qty: i64, claimed: i64) -> Refund {
+    let line = RefundLine::new("ovr-sl-1", "SYRUP", qty, price(1000), price(claimed));
+    Refund::new(
+        "ovr-sale-1",
+        price(claimed),
+        "value claim",
+        "",
+        "user-1",
+        vec![line],
+    )
+}
+
+/// THE REPRODUCE, and it FAILS AGAINST HEAD: one unit of a 3-unit line booked
+/// at 2400 may carry at most 801 minor units of refund (2400 / 3 = 800, plus
+/// the one-unit tolerance). A caller claiming 900 for that single unit is
+/// refunding value the line never held, and HEAD wrote it verbatim and
+/// returned Ok. Nothing may be persisted and no unit may move.
+#[test]
+fn refund_line_total_above_the_derived_ceiling_is_refused() {
+    let conn = fresh();
+    seed_overridden_price_sale(&conn);
+    let s = store(&conn);
+
+    let err = s.create_refund(&syrup_refund(1, 900)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.line_total"),
+        "a claim above the line's pro-rated ceiling must be refused, got: {err:?}"
+    );
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refunds", [], |r| r.get(0))
+        .unwrap();
+    let line_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refund_lines", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        (rows, line_rows),
+        (0, 0),
+        "a refused refund persists nothing"
+    );
+    let credited: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(delta), 0) FROM stock_movements WHERE reason = 'refund'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(credited, 0, "a refused refund restores no stock");
+}
+
+/// The tolerance is the point of the exercise: 800 is the exact ratio and 801
+/// is one minor unit above it, and BOTH are legitimate - the UI rounds
+/// unitPriceMinor and multiplies back, so it can land either side. 802 is two
+/// above and is refused. An equality check would have rejected 801 and broken
+/// real refunds; this pins that it does not.
+#[test]
+fn refund_line_total_within_one_minor_unit_of_the_ratio_is_accepted() {
+    let conn = fresh();
+    seed_overridden_price_sale(&conn);
+    let s = store(&conn);
+
+    // Exact ratio: 2400 * 1 / 3 = 800.
+    s.create_refund(&syrup_refund(1, 800)).unwrap();
+    // One minor unit above the ratio: still accepted.
+    s.create_refund(&syrup_refund(1, 801)).unwrap();
+    assert_eq!(
+        get_stock_at(&conn, "SYRUP", DEFAULT_LOC),
+        2,
+        "both accepted refunds restored their unit"
+    );
+
+    // Two above the ratio for the remaining unit: refused.
+    let err = s.create_refund(&syrup_refund(1, 802)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.line_total"),
+        "one minor unit is the tolerance, not two, got: {err:?}"
+    );
+    assert_eq!(get_stock_at(&conn, "SYRUP", DEFAULT_LOC), 2);
+    assert_eq!(s.list_refunds_for_sale("ovr-sale-1").unwrap().len(), 2);
+}
+
+/// A line the SERVER itself sold at a changed price must still refund
+/// normally: the whole 3-unit line at its booked 2400 (unit_minor * qty would
+/// have said 3000) is accepted, credited, and booked UNCHANGED - the ceiling
+/// refuses an over-claim, it never rewrites a receipt.
+#[test]
+fn overridden_price_line_refunds_at_its_booked_value() {
+    let conn = fresh();
+    seed_overridden_price_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&syrup_refund(3, 2400))
+        .unwrap_or_else(|e| panic!("a full refund at the booked line value must pass, got: {e:?}"));
+
+    let refunds = s.list_refunds_for_sale("ovr-sale-1").unwrap();
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(
+        refunds[0].lines[0].line_total.minor_units, 2400,
+        "the accepted figure is stored as supplied, not clamped"
+    );
+    assert_eq!(get_stock_at(&conn, "SYRUP", DEFAULT_LOC), 3);
+    assert_eq!(
+        s.total_refunded_for_sale("ovr-sale-1").unwrap().minor_units,
+        2400
+    );
+}
