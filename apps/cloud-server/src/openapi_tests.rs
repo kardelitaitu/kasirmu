@@ -830,3 +830,318 @@ fn every_spec_get_operation_has_read_key_entry() {
         missing.join("\n")
     );
 }
+
+// ── Drift-guard assertion 5 — the document vs the type that writes it ──
+//
+// The push-outcome schema used to describe an EXTERNALLY tagged enum (a bare
+// "Accepted" string, a {"Conflict": ...} wrapper) while the Rust type that
+// actually writes the response body, platform_sync::transport::PushOutcome,
+// has always been INTERNALLY tagged (#[serde(tag = "outcome",
+// rename_all = "snake_case")]). Rust-to-Rust agreement meant nothing caught
+// it: the sync client and the server share the type, so only a third-party
+// client written from the published contract was broken. Everything below
+// derives its expectation from the TYPE — variants are constructed in Rust and
+// handed to serde_json::to_value — so flipping the tag attribute, rename_all,
+// or the tagging style fails this test instead of quietly rotting the contract.
+
+// Resolve a "#/..." pointer against the merged document.
+fn resolve_ref<'a>(spec: &'a Value, pointer: &str) -> &'a Value {
+    let mut cur = spec;
+    for seg in pointer.trim_start_matches("#/").split('/') {
+        cur = cur
+            .get(seg)
+            .unwrap_or_else(|| panic!("dangling $ref {pointer}"));
+    }
+    cur
+}
+
+// Field names a schema node documents, following $ref and allOf composition.
+fn documented_fields(spec: &Value, schema: &Value, out: &mut BTreeSet<String>) {
+    if let Some(pointer) = schema.get("$ref").and_then(Value::as_str) {
+        documented_fields(spec, resolve_ref(spec, pointer), out);
+    }
+    if let Some(props) = schema.get("properties").and_then(Value::as_object) {
+        out.extend(props.keys().cloned());
+    }
+    if let Some(members) = schema.get("allOf").and_then(Value::as_array) {
+        for member in members {
+            documented_fields(spec, member, out);
+        }
+    }
+}
+
+// Field names a schema node requires, following $ref and allOf composition.
+fn documented_required(spec: &Value, schema: &Value, out: &mut BTreeSet<String>) {
+    if let Some(pointer) = schema.get("$ref").and_then(Value::as_str) {
+        documented_required(spec, resolve_ref(spec, pointer), out);
+    }
+    if let Some(req) = schema.get("required").and_then(Value::as_array) {
+        out.extend(req.iter().filter_map(Value::as_str).map(str::to_string));
+    }
+    if let Some(members) = schema.get("allOf").and_then(Value::as_array) {
+        for member in members {
+            documented_required(spec, member, out);
+        }
+    }
+}
+
+// Discriminator values a schema node documents on its "outcome" member.
+fn documented_tags(spec: &Value, schema: &Value, out: &mut BTreeSet<String>) {
+    if let Some(pointer) = schema.get("$ref").and_then(Value::as_str) {
+        documented_tags(spec, resolve_ref(spec, pointer), out);
+    }
+    if let Some(members) = schema.get("allOf").and_then(Value::as_array) {
+        for member in members {
+            documented_tags(spec, member, out);
+        }
+    }
+    let outcome = schema.get("properties").and_then(|p| p.get("outcome"));
+    if let Some(allowed) = outcome
+        .and_then(|o| o.get("enum"))
+        .and_then(Value::as_array)
+    {
+        out.extend(allowed.iter().filter_map(Value::as_str).map(str::to_string));
+    }
+    if let Some(fixed) = outcome.and_then(|o| o.get("const")).and_then(Value::as_str) {
+        out.insert(fixed.to_string());
+    }
+}
+
+fn type_matches(kind: &str, value: &Value) -> bool {
+    match kind {
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "string" => value.is_string(),
+        "boolean" => value.is_boolean(),
+        "null" => value.is_null(),
+        "integer" => value.is_i64() || value.is_u64(),
+        "number" => value.is_number(),
+        _ => true,
+    }
+}
+
+// Validate a value against the JSON-Schema subset this document uses: $ref,
+// allOf, oneOf, type, enum, const, required, properties, items and
+// additionalProperties:false. Deliberately test-local — what is pinned here is
+// that a real serde output satisfies the published schema keyword by keyword,
+// not that this repo ships a draft-2020-12 validator.
+fn validates(spec: &Value, schema: &Value, value: &Value) -> bool {
+    if let Some(pointer) = schema.get("$ref").and_then(Value::as_str)
+        && !validates(spec, resolve_ref(spec, pointer), value)
+    {
+        return false;
+    }
+    if let Some(members) = schema.get("allOf").and_then(Value::as_array)
+        && !members.iter().all(|m| validates(spec, m, value))
+    {
+        return false;
+    }
+    if let Some(members) = schema.get("oneOf").and_then(Value::as_array)
+        && members.iter().filter(|m| validates(spec, m, value)).count() != 1
+    {
+        return false;
+    }
+    match schema.get("type") {
+        Some(Value::String(kind)) => {
+            if !type_matches(kind, value) {
+                return false;
+            }
+        }
+        Some(Value::Array(kinds)) => {
+            if !kinds
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|kind| type_matches(kind, value))
+            {
+                return false;
+            }
+        }
+        _ => {}
+    }
+    if let Some(allowed) = schema.get("enum").and_then(Value::as_array)
+        && !allowed.contains(value)
+    {
+        return false;
+    }
+    if let Some(fixed) = schema.get("const")
+        && fixed != value
+    {
+        return false;
+    }
+    if let (Some(obj), Some(req)) = (
+        value.as_object(),
+        schema.get("required").and_then(Value::as_array),
+    ) && !req
+        .iter()
+        .all(|k| k.as_str().is_some_and(|k| obj.contains_key(k)))
+    {
+        return false;
+    }
+    let props = schema.get("properties").and_then(Value::as_object);
+    if let Some(obj) = value.as_object() {
+        for (key, member) in obj {
+            if let Some(s) = props.and_then(|p| p.get(key))
+                && !validates(spec, s, member)
+            {
+                return false;
+            }
+        }
+        if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false)
+            && obj.keys().any(|k| props.is_none_or(|p| !p.contains_key(k)))
+        {
+            return false;
+        }
+    }
+    if let Some(items) = schema.get("items").and_then(Value::as_object)
+        && let Some(arr) = value.as_array()
+    {
+        let items = Value::Object(items.clone());
+        if !arr.iter().all(|e| validates(spec, &items, e)) {
+            return false;
+        }
+    }
+    true
+}
+
+#[test]
+fn push_outcome_documented_schema_matches_serde_wire_shape() {
+    use oz_core::offline::OfflineQueueItem;
+    use platform_sync::transport::{PushOutcome, PushResponse};
+
+    let spec = openapi_spec();
+    let doc = &spec["components"]["schemas"]["PushOutcome"];
+    let branches = doc["oneOf"].as_array().unwrap_or_else(|| {
+        panic!("PushOutcome must be documented as a oneOf of per-variant branches")
+    });
+
+    // Expectations come from the type, never from a typed-out shape: build the
+    // real variants, let serde write them, and read the wire shape back.
+    let outcomes: Vec<(&str, PushOutcome)> = vec![
+        ("Accepted", PushOutcome::Accepted),
+        (
+            "Conflict",
+            PushOutcome::Conflict(OfflineQueueItem::new("void_sale", "{}")),
+        ),
+        (
+            "Rejected",
+            PushOutcome::Rejected {
+                reason: "duplicate id: 0190a4b2".into(),
+            },
+        ),
+    ];
+    let samples: Vec<(&str, Value)> = outcomes
+        .iter()
+        .map(|(name, o)| (*name, serde_json::to_value(o).unwrap()))
+        .collect();
+
+    let mut exercised = vec![false; branches.len()];
+    for (name, value) in &samples {
+        assert!(
+            value.is_object(),
+            "variant {name} must serialise as an object carrying the tag, got {value}"
+        );
+        let hits: Vec<usize> = branches
+            .iter()
+            .enumerate()
+            .filter(|(_, branch)| validates(&spec, branch, value))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "variant {name} serialises to {value}; exactly one documented PushOutcome branch \
+             must accept it, {hits:?} did (0 = the document describes a different representation, \
+             more than 1 = the branches no longer discriminate)"
+        );
+        exercised[hits[0]] = true;
+        let branch = &branches[hits[0]];
+
+        let actual: BTreeSet<String> = value.as_object().unwrap().keys().cloned().collect();
+        let mut fields = BTreeSet::new();
+        documented_fields(&spec, branch, &mut fields);
+        assert_eq!(
+            fields, actual,
+            "the branch that accepts {name} documents fields {fields:?} but serde emits              {actual:?} — the document and the type have drifted apart"
+        );
+
+        let mut required = BTreeSet::new();
+        documented_required(&spec, branch, &mut required);
+        assert!(
+            required.contains("outcome"),
+            "the branch accepting {name} must require the outcome discriminator"
+        );
+        let phantom: Vec<&String> = required.difference(&actual).collect();
+        assert!(
+            phantom.is_empty(),
+            "the branch accepting {name} requires fields serde never emits: {phantom:?}"
+        );
+    }
+
+    for (i, hit) in exercised.iter().enumerate() {
+        assert!(
+            *hit,
+            "documented PushOutcome branch #{i} matches no value the real enum produces — a \
+             stale branch is as much a lie as a missing one"
+        );
+    }
+
+    let wire_tags: BTreeSet<String> = samples
+        .iter()
+        .filter_map(|(_, v)| v.get("outcome").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect();
+    let mut doc_tags = BTreeSet::new();
+    for branch in branches {
+        documented_tags(&spec, branch, &mut doc_tags);
+    }
+    assert_eq!(
+        doc_tags, wire_tags,
+        "documented discriminators {doc_tags:?} disagree with the tags serde puts on the wire \
+         {wire_tags:?} — fix the document, never #[serde(tag, rename_all)], to satisfy this test"
+    );
+    assert_eq!(
+        wire_tags.len(),
+        outcomes.len(),
+        "every variant must carry its own discriminator value on the wire"
+    );
+
+    // The representation this document used to publish must now be REJECTED,
+    // not merely unmentioned: that shape is what a third-party client was
+    // generated from and could never parse against a real response.
+    let stale = vec![
+        json!("Accepted"),
+        json!({ "Conflict": serde_json::to_value(OfflineQueueItem::new("void_sale", "{}")).unwrap() }),
+        json!({ "Rejected": { "reason": "duplicate id" } }),
+    ];
+    for value in &stale {
+        assert!(
+            !validates(&spec, doc, value),
+            "the document still accepts the externally tagged shape {value}"
+        );
+    }
+
+    // The envelope too: a whole PushResponse, taken from the type.
+    let response = serde_json::to_value(PushResponse {
+        results: outcomes.iter().map(|(_, o)| o.clone()).collect(),
+    })
+    .unwrap();
+    let resp_doc = &spec["components"]["schemas"]["PushResponse"];
+    assert!(
+        validates(&spec, resp_doc, &response),
+        "a real PushResponse does not validate against the published schema: {response}"
+    );
+    let mut resp_fields = BTreeSet::new();
+    documented_fields(&spec, resp_doc, &mut resp_fields);
+    let actual_resp: BTreeSet<String> = response.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        resp_fields, actual_resp,
+        "PushResponse documents {resp_fields:?} but serde emits {actual_resp:?}"
+    );
+
+    println!("documented PushOutcome  = {doc}");
+    for (name, value) in &samples {
+        println!("real     PushOutcome  = {name}: {value}");
+    }
+    println!("documented PushResponse = {resp_doc}");
+    println!("real     PushResponse   = {response}");
+}

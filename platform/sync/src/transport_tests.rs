@@ -178,6 +178,78 @@ fn push_outcome_all_variants_serde_roundtrip() {
     }
 }
 
+/// Wire-shape pin for the push-outcome contract (spec 0047 §3, guard 5).
+///
+/// PushOutcome is an INTERNALLY tagged enum —
+/// `#[serde(tag = "outcome", rename_all = "snake_case")]` — so every variant
+/// travels as a JSON object carrying the discriminator, and the Conflict
+/// newtype payload (a whole OfflineQueueItem) is serde-flattened next to that
+/// tag instead of nested under a "Conflict" key.
+///
+/// This is the shape the published OpenAPI document must describe. The
+/// cloud-server side asserts the document against serde_json::to_value of
+/// these same variants
+/// (openapi_tests.rs::push_outcome_documented_schema_matches_serde_wire_shape),
+/// so a tag change here fails a test on both sides of the wire instead of
+/// quietly rotting the contract. The println! lines surface under --nocapture
+/// and print the wire truth for a human auditing the document.
+#[test]
+fn push_outcome_serialises_as_internally_tagged_flat_object() {
+    let accepted = serde_json::to_value(PushOutcome::Accepted).unwrap();
+    assert_eq!(
+        accepted,
+        serde_json::json!({ "outcome": "accepted" }),
+        "Accepted must be a flat object carrying the tag and nothing else"
+    );
+
+    let rejected = serde_json::to_value(PushOutcome::Rejected {
+        reason: "duplicate id: 0190".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        rejected,
+        serde_json::json!({ "outcome": "rejected", "reason": "duplicate id: 0190" }),
+        "Rejected must carry the tag plus a flat 'reason' string"
+    );
+
+    let item = OfflineQueueItem::new("void_sale", "{}");
+    let conflict = serde_json::to_value(PushOutcome::Conflict(item.clone())).unwrap();
+    let conflict_obj = conflict
+        .as_object()
+        .expect("Conflict must serialise as an object, never a bare string or a wrapped value");
+    assert_eq!(conflict_obj["outcome"], "conflict");
+    assert!(
+        !conflict_obj.contains_key("Conflict"),
+        "an externally tagged Conflict would nest the payload under a 'Conflict' key"
+    );
+
+    // Every field of the server item sits beside the tag, unchanged.
+    let item_obj = serde_json::to_value(&item).unwrap();
+    let item_obj = item_obj.as_object().unwrap();
+    for (key, value) in item_obj {
+        assert_eq!(
+            conflict_obj.get(key),
+            Some(value),
+            "Conflict payload field `{key}` must be flattened next to the tag"
+        );
+    }
+    let mut added: Vec<&str> = conflict_obj
+        .keys()
+        .map(String::as_str)
+        .filter(|k| !item_obj.contains_key(*k))
+        .collect();
+    added.sort_unstable();
+    assert_eq!(
+        added,
+        vec!["outcome"],
+        "the tag is the only key a Conflict adds to the item payload"
+    );
+
+    println!("push-outcome wire truth  accepted = {accepted}");
+    println!("push-outcome wire truth  conflict  = {conflict}");
+    println!("push-outcome wire truth  rejected  = {rejected}");
+}
+
 // ── PushResponse tests ───────────────────────────────────────────
 
 #[test]
