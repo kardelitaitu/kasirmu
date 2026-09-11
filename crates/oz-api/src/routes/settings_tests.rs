@@ -292,6 +292,130 @@ async fn null_deletes_scoped_override() {
     );
 }
 
+// ── SMTP keep-on-blank merge (the third door) ─────────────────
+//
+// spec/paths.rs:294 promises "A field that is ABSENT is left untouched".
+// That holds per TOP-LEVEL field and did NOT hold per SMTP SUB-field: the
+// handler serialized the whole SmtpConfig and wrote it through
+// Store::set_setting, and SmtpConfig has no serde defaults while
+// `password` is an Option — so a PUT that supplied host/port/from/use_tls
+// and omitted password validated clean and persisted password null,
+// destroying the secret the live report loop reads back.
+
+/// An SMTP blob in the shape an admin client posts when it only wants to
+/// move the relay: every required field, and a password only when the
+/// caller actually supplied one.
+fn smtp_json_passworded(host: &str, port: u16, password: Option<&str>) -> String {
+    match password {
+        None => format!(
+            r#"{{"host":"{host}","port":{port},"username":"u","from":"r@example.com","use_tls":true}}"#
+        ),
+        Some(pwd) => format!(
+            r#"{{"host":"{host}","port":{port},"username":"u","password":"{pwd}","from":"r@example.com","use_tls":true}}"#
+        ),
+    }
+}
+
+async fn put_raw(state: &AppState, body: &str) -> axum::response::Response {
+    let req: PutSettingsRequest = serde_json::from_str(body).expect("valid request JSON");
+    put_settings_handler(State(state.clone()), HeaderMap::new(), Json(req))
+        .await
+        .into_response()
+}
+
+async fn raw_smtp_row(state: &AppState, key: &str) -> Option<String> {
+    let db = state.db.lock().await;
+    db.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+        r.get::<_, String>(0)
+    })
+    .ok()
+}
+
+fn decrypted_password(raw: &str) -> Option<String> {
+    let stored: SmtpConfig = serde_json::from_str(raw).ok()?;
+    stored
+        .password
+        .as_deref()
+        .map(oz_core::crypto::decrypt_smtp_at_rest)
+        .and_then(Result::ok)
+}
+
+#[tokio::test]
+async fn put_omitting_smtp_password_preserves_the_stored_secret() {
+    let state = state_with(None);
+    // Provision a relay WITH a secret.
+    let body = format!(r#"{{"smtp_config":{}}}"#, smtp_json());
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        decrypted_password(&raw_smtp_row(&state, "smtp_config:default").await.unwrap()),
+        Some("secret".into()),
+        "the first write must store the secret"
+    );
+
+    // Now move the relay, omitting the password entirely.
+    let body = format!(
+        r#"{{"smtp_config":{},"store_name":"Renamed"}}"#,
+        smtp_json_passworded("smtp2.example.com", 465, None)
+    );
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    // The fields that WERE supplied still update...
+    assert_eq!(json["smtp_config"]["host"], "smtp2.example.com");
+    assert_eq!(json["smtp_config"]["port"], 465);
+    assert_eq!(json["store_name"], "Renamed");
+    // ...and the absent sub-field survives, both in the response and in the row.
+    assert_eq!(json["smtp_config"]["password"], "secret");
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    assert_eq!(
+        decrypted_password(&raw),
+        Some("secret".into()),
+        "an absent password must not blank the stored secret; row: {raw}"
+    );
+    assert!(
+        !raw.contains("secret"),
+        "the carried-over secret stays encrypted at rest, got: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_supplying_smtp_password_still_overwrites_it() {
+    // Control: a merge that never wrote would look exactly like a merge that
+    // works. A genuinely supplied password must still replace the old one.
+    let state = state_with(None);
+    put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
+    let rotated = smtp_json_passworded("smtp.example.com", 587, Some("rotated"));
+    let body = format!(r#"{{"smtp_config":{}}}"#, rotated);
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["smtp_config"]["password"], "rotated");
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    assert_eq!(
+        decrypted_password(&raw),
+        Some("rotated".into()),
+        "a supplied password must replace the stored one; row: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_empty_smtp_password_clears_it() {
+    // Keep-on-blank is not keep-forever: an explicit empty string is the
+    // documented "clear it", distinct from an absent field.
+    let state = state_with(None);
+    put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
+    let clearing = smtp_json_passworded("smtp.example.com", 587, Some(""));
+    let resp = put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, clearing)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    assert_eq!(
+        decrypted_password(&raw),
+        None,
+        "an explicit empty password must clear the stored one; row: {raw}"
+    );
+}
+
 // ── Validation ────────────────────────────────────────────────
 
 #[tokio::test]

@@ -15,6 +15,17 @@ next: none here | perf: N/A
 //!   unchanged; an explicit `null` deletes the tenant's scoped override so
 //!   it falls back to the bare key again.
 //!
+//! "Absent is left untouched" is a per-TOP-LEVEL-field rule, and the SMTP
+//! blob is one top-level field whose value is written whole. `SmtpConfig`
+//! declares no serde defaults but does carry two `Option`s, so a blob that
+//! supplies host/port/from/use_tls and omits `password` validates clean and
+//! used to persist `password: null` - destroying the secret the live report
+//! loop reads. The write now goes through the same keep-on-blank merge the
+//! desktop and tablet funnels use ([`merge_smtp_password_json`]), against
+//! the scoped row this handler owns ([`stored_smtp_raw`]): an absent
+//! password keeps the stored one, a supplied password replaces it, and an
+//! explicit empty string clears it.
+//!
 //! Both are gated by the same `OZ_ADMIN_KEY` as token minting and plan
 //! assignment (ADR sync-auth-hardening P2): when the admin key is
 //! configured, the `X-Admin-Key` header must match; in dev mode (no admin
@@ -38,7 +49,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use oz_core::db::Store;
-use oz_core::export::email_report::{SMTP_CONFIG_SETTINGS_KEY, SmtpConfig};
+use oz_core::export::email_report::{
+    SMTP_CONFIG_SETTINGS_KEY, SmtpConfig, merge_smtp_password_json,
+};
 use oz_core::export::email_sender::LAST_SENT_KEY;
 use oz_core::export::{REPORT_SCHEDULE_SETTINGS_KEY, ReportScheduleConfig};
 
@@ -133,6 +146,34 @@ pub struct SettingsView {
 
 fn scoped_key(base: &str, tenant: &str) -> String {
     crate::pg::scoped_setting_key(base, tenant)
+}
+
+/// The stored smtp_config blob this tenant’s report sender would actually use:
+/// the scoped row (smtp_config:{tenant}) first, then the bare smtp_config — the
+/// same resolution order as [`read_settings`] here and as `get_smtp_config_pg`
+/// in `apps/cloud-server/src/email_pg.rs:467`.
+///
+/// The keep-on-blank merge has to be told WHICH row to preserve, and on this
+/// lane it is not the row [`Store::merged_smtp_password_json`] reads: that one
+/// is pinned to the bare key, which is the desktop’s single-tenant row.
+/// Merging against it would carry some other tenant’s secret into this one
+/// and still blank the scoped row. This reads the row the write is about to
+/// overwrite, so the secret that survives is the one that was in play.
+async fn stored_smtp_raw(state: &AppState, tenant: &str) -> Result<Option<String>, String> {
+    if let Some(pool) = &state.pg {
+        return get_setting_scoped_pg(pool, SMTP_CONFIG_SETTINGS_KEY, tenant).await;
+    }
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    let scoped = store
+        .get_setting(&scoped_key(SMTP_CONFIG_SETTINGS_KEY, tenant))
+        .map_err(|e| e.to_string())?;
+    if scoped.is_some() {
+        return Ok(scoped);
+    }
+    store
+        .get_setting(SMTP_CONFIG_SETTINGS_KEY)
+        .map_err(|e| e.to_string())
 }
 
 /// Deserialize a stored SMTP config, decrypting the password (legacy
@@ -246,32 +287,56 @@ pub async fn put_settings_handler(
     }
     let smtp_op = match &body.smtp_config {
         Some(Field::Value(value)) => match serde_json::from_value::<SmtpConfig>(value.clone()) {
-            Ok(mut config) => {
-                // Encrypt the password at rest like the rest of the cloud
-                // path expects (decrypt on read is lossless).
-                // F-029: encryption is fail-closed — an encrypt failure
-                // must never store the plaintext password.
-                if let Some(ref pwd) = config.password
-                    && !pwd.is_empty()
-                {
-                    match oz_core::crypto::encrypt_smtp_at_rest(pwd) {
-                        Ok(encrypted) => config.password = Some(encrypted),
-                        Err(e) => {
-                            tracing::error!(error = %e, "smtp at-rest encryption failed");
-                            return (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(serde_json::json!({"error": "settings_write_failed"})),
-                            )
-                                .into_response();
-                        }
-                    }
-                }
-                match serde_json::to_string(&config) {
-                    Ok(json) => Op::Write(json),
+            Ok(config) => {
+                // Keep-on-blank, through the ONE merge the two single-write
+                // funnels now use as well: `Store::merged_smtp_password_json`
+                // (crates/oz-core/src/export/email_report.rs:218) is a thin
+                // wrapper over this same `merge_smtp_password_json`, pinned
+                // to the BARE key — which is not the row this handler writes.
+                // Asking the merge directly is what lets the cloud lane
+                // preserve the secret in the SCOPED row it actually owns.
+                //
+                // `SmtpConfig` has no serde defaults and `password` is an
+                // Option, so a blob that omits the password deserializes to
+                // `password: null` and the whole-blob write below destroyed
+                // the stored secret. The merge carries it forward instead.
+                //
+                // The merge also owns the at-rest encryption, so the blob
+                // handed to it is PLAINTEXT — pre-encrypting here would
+                // double-wrap the value. F-029's fail-closed rule still
+                // holds: an encrypt failure is an Err from the merge.
+                let incoming = match serde_json::to_string(&config) {
+                    Ok(json) => json,
                     Err(_) => {
                         return (
                             StatusCode::BAD_REQUEST,
                             Json(serde_json::json!({"error": "invalid_smtp_config"})),
+                        )
+                            .into_response();
+                    }
+                };
+                let stored = match stored_smtp_raw(&state, tenant).await {
+                    Ok(raw) => raw,
+                    Err(e) => {
+                        tracing::error!(
+                            error = %e,
+                            tenant,
+                            "reading the stored smtp_config for the keep-on-blank merge failed"
+                        );
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"error": "settings_write_failed"})),
+                        )
+                            .into_response();
+                    }
+                };
+                match merge_smtp_password_json(&incoming, stored.as_deref()) {
+                    Ok(json) => Op::Write(json),
+                    Err(e) => {
+                        tracing::error!(error = %e, "smtp at-rest encryption failed");
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"error": "settings_write_failed"})),
                         )
                             .into_response();
                     }
