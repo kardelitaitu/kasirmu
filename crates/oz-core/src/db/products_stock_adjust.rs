@@ -184,12 +184,20 @@ impl Store<'_> {
         // `inventory` table would reject a negative qty. We catch that error and
         // log a warning instead of propagating it, because the stock_summary table
         // (step 2) is the canonical source of truth for per-location stock.
+        // Aggregate write: the inventory table has PRIMARY KEY (product_id) and
+        // holds the cross-location total, so qty MUST be recomputed as the SUM
+        // over the per-location stock_summary rows (the same value the
+        // product-grid reader derives at query time) — never overwritten with
+        // this one location's qty, which destroys the aggregate. location_id is
+        // left untouched on conflict so it stops tracking whichever location
+        // wrote last; it is only set on the initial INSERT.
         let inventory_res = tx.execute(
             "INSERT INTO inventory (product_id, location_id, qty, updated_at)
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(product_id) DO UPDATE SET
-                qty = excluded.qty,
-                location_id = excluded.location_id,
+                qty = COALESCE((SELECT SUM(ss.qty) FROM stock_summary ss
+                                WHERE ss.item_id = excluded.product_id),
+                               excluded.qty),
                 updated_at = excluded.updated_at",
             rusqlite::params![product_id, location_id.as_str(), new_qty, now],
         );
@@ -241,6 +249,62 @@ impl Store<'_> {
         }
 
         Ok(new_qty)
+    }
+
+    /// Bridge a legacy inventory-only aggregate into the per-location
+    /// `stock_summary` table inside the caller's transaction (the §3.4
+    /// interim step documented on the stock-transfer module).
+    ///
+    /// Legacy writers (and legacy seed data) populate only the single-PK
+    /// `inventory` table, while the canonical adjust fn pre-checks and writes
+    /// `stock_summary` at a composite `(item_id, location_id)` key — a
+    /// product with no `stock_summary` rows would read as phantom zero stock.
+    /// When the product has NO per-location rows but a non-zero legacy
+    /// `inventory.qty`, that aggregate is materialised once at the frozen
+    /// canonical default location (the column DEFAULT shared by
+    /// `inventory.location_id` and `stock_movements.location_id`), matching
+    /// `rebuild_stock_summary` semantics. Products that already have
+    /// per-location rows are left untouched. No `stock_movements` row is
+    /// written: this materialises existing state, it is not a new delta.
+    pub(crate) fn bridge_legacy_inventory_into_stock_summary_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        product_id: &str,
+    ) -> Result<(), CoreError> {
+        let summary_rows: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1",
+            rusqlite::params![product_id],
+            |row| row.get(0),
+        )?;
+        if summary_rows > 0 {
+            return Ok(());
+        }
+        let legacy_qty: Option<i64> = tx
+            .query_row(
+                "SELECT qty FROM inventory WHERE product_id = ?1",
+                rusqlite::params![product_id],
+                |row| row.get(0),
+            )
+            .ok();
+        let legacy_qty = match legacy_qty {
+            Some(q) if q != 0 => q,
+            _ => return Ok(()),
+        };
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        tx.execute(
+            "INSERT INTO stock_summary (item_id, location_id, qty, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(item_id, location_id) DO UPDATE SET
+                qty = excluded.qty,
+                updated_at = excluded.updated_at",
+            rusqlite::params![
+                product_id,
+                crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+                legacy_qty,
+                now
+            ],
+        )?;
+        Ok(())
     }
 
     /// Check stock thresholds for a product at a location after a stock change
@@ -784,3 +848,7 @@ impl Store<'_> {
         Ok(groups_archived)
     }
 }
+
+#[cfg(test)]
+#[path = "products_stock_adjust_tests.rs"]
+mod tests;
