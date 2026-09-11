@@ -298,7 +298,3 @@ pub async fn refresh_picker_ticket(
     let ctx = state.bridge_ctx();
     oz_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "security_scoped_integration_tests.rs"]
-mod security_integration_tests;

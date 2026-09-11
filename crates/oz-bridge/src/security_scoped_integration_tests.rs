@@ -3,22 +3,31 @@
 //! Verifies that the `_scoped` command pattern enforces session
 //! authentication uniformly across categories, settings, sync,
 //! products, and the refresh_picker_ticket flow.
+//!
+//! Relocated from `apps/desktop-client/src/commands/security_scoped_integration_tests.rs`
+//! and mounted inside `oz_bridge::auth`; every assertion is preserved verbatim,
+//! with the mechanical desktop-to-bridge mapping applied:
+//! `app.state()` -> `&ctx()`, `State`-last args -> `ctx`-first,
+//! `String` args -> `&str`, the sync `refresh_picker_ticket` loses its `.await`,
+//! `AppState`/`tauri::test` -> the headless `TestBridge` harness, and
+//! `AppError::*` -> `BridgeError::*` variant-for-variant.
 
-use crate::commands::auth::{self, CreateSessionArgs};
-use crate::commands::categories;
-use crate::commands::picker_ticket;
-use crate::commands::products;
-use crate::commands::settings;
-use crate::commands::shifts;
-use crate::commands::sync;
-use crate::error::AppError;
-use crate::state::AppState;
+use super::*;
+use crate::categories;
+use crate::picker;
+use crate::products;
+use crate::settings;
+use crate::shifts;
+use crate::sync;
+use crate::testing::{TestBridge, temp_conn};
 
 use oz_core::db::Store;
-use oz_core::migrations;
 use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager;
+
+/// The picker-ticket HMAC key the desktop's AppState::for_test_with_conn seeded
+/// (apps/desktop-client/src/state.rs:826), so tickets minted and verified here
+/// round-trip against the very secret the shell carried before the relocation.
+const TEST_PICKER_SECRET: &[u8] = b"test-picker-ticket-secret";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -48,26 +57,25 @@ fn seed_staff_no_products(conn: &rusqlite::Connection) {
 }
 
 /// Mint a picker ticket for a given user.
-fn mint_ticket(state: &AppState, user_id: &str) -> String {
+fn mint_ticket(secret: &[u8], user_id: &str) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    picker_ticket::sign_picker_ticket(&state.picker_ticket_secret, user_id, now + 300)
+    picker::sign_picker_ticket(secret, user_id, now + 300)
 }
 
-/// Build an `AppState` with a fresh global DB and an isolated store directory.
-fn test_state(conn: rusqlite::Connection) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state
+/// Build a headless bridge with a fresh global DB and an isolated store
+/// directory — the `TestBridge` stand-in for the desktop's mocked `AppState`.
+fn test_bridge(conn: rusqlite::Connection) -> TestBridge {
+    TestBridge::new()
+        .with_conn(conn)
+        .with_picker_ticket_secret(TEST_PICKER_SECRET.to_vec())
 }
 
 /// Insert a session into the session store.
-fn insert_session(state: &AppState, token: &str, user_id: &str, role_id: &str, store_id: &str) {
-    state.session_store.write().unwrap().insert(
+fn insert_session(tb: &TestBridge, token: &str, user_id: &str, role_id: &str, store_id: &str) {
+    tb.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -83,8 +91,8 @@ fn insert_session(state: &AppState, token: &str, user_id: &str, role_id: &str, s
 }
 
 /// Insert an already-expired session.
-fn insert_expired_session(state: &AppState, token: &str) {
-    state.session_store.write().unwrap().insert(
+fn insert_expired_session(tb: &TestBridge, token: &str) {
+    tb.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             "user-owner".into(),
@@ -103,126 +111,100 @@ fn insert_expired_session(state: &AppState, token: &str) {
 
 #[tokio::test]
 async fn categories_scoped_rejects_invalid_session() {
-    let conn = migrations::fresh_db();
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
-    let result = categories::list_categories_scoped("bogus-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = categories::list_scoped(&ctx, "bogus-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn settings_scoped_rejects_invalid_session() {
-    let conn = migrations::fresh_db();
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
-    let result =
-        settings::get_setting_scoped("some.key".into(), "bogus-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = settings::get_setting_scoped(&ctx, "some.key", "bogus-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn sync_scoped_rejects_invalid_session() {
-    let conn = migrations::fresh_db();
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
-    let result = sync::get_sync_settings_scoped("bogus-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = sync::get_sync_settings_scoped(&ctx, "bogus-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn products_scoped_rejects_invalid_session() {
-    let conn = migrations::fresh_db();
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
-    let result = products::list_products_scoped(app.state(), "bogus-token".into()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = products::list_scoped(&ctx, "bogus-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn shifts_scoped_rejects_invalid_session() {
-    let conn = migrations::fresh_db();
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
-    let result = shifts::list_shifts_scoped("bogus-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = shifts::list_shifts_scoped(&ctx, "bogus-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Cross-module: expired session rejection ──────────────────────
 
 #[tokio::test]
 async fn categories_scoped_rejects_expired_session() {
-    let conn = migrations::fresh_db();
-    let state = test_state(conn);
-    insert_expired_session(&state, "expired-tok");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = test_bridge(conn);
+    insert_expired_session(&tb, "expired-tok");
+    let ctx = tb.ctx();
 
-    let result = categories::list_categories_scoped("expired-tok".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = categories::list_scoped(&ctx, "expired-tok").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn settings_scoped_rejects_expired_session() {
-    let conn = migrations::fresh_db();
-    let state = test_state(conn);
-    insert_expired_session(&state, "expired-tok");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = test_bridge(conn);
+    insert_expired_session(&tb, "expired-tok");
+    let ctx = tb.ctx();
 
-    let result =
-        settings::get_setting_scoped("some.key".into(), "expired-tok".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = settings::get_setting_scoped(&ctx, "some.key", "expired-tok").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Cross-module: permission denial ──────────────────────────────
 
 #[tokio::test]
 async fn categories_scoped_denies_staff_without_permission() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_staff_no_products(&conn);
-    let state = test_state(conn);
-    insert_session(&state, "lite-tok", "user-lite", "role-lite", "default");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    insert_session(&tb, "lite-tok", "user-lite", "role-lite", "default");
+    let ctx = tb.ctx();
 
-    let result = categories::create_category_scoped(
-        "lite-tok".into(),
-        categories::CreateCategoryArgs {
+    let result = categories::create_scoped(
+        &ctx,
+        "lite-tok",
+        &categories::CreateCategoryArgs {
             id: "test".into(),
             name: "Test".into(),
             colour: String::new(),
             icon: String::new(),
         },
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── refresh_picker_ticket integration ────────────────────────────
@@ -232,43 +214,36 @@ async fn refresh_picker_ticket_end_to_end() {
     // 1. Login → session + picker ticket
     // 2. Refresh picker ticket via session token
     // 3. Create another session with the refreshed ticket
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner_user(&conn);
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
     // Step 1: Create session via picker ticket (simulates login → workspace pick)
-    let login_result = auth::create_session(
-        CreateSessionArgs {
+    let login_result = create_session(
+        &ctx,
+        &CreateSessionArgs {
             user_id: "user-owner".into(),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
-            picker_ticket: {
-                let state = app.state::<AppState>();
-                mint_ticket(&state, "user-owner")
-            },
+            picker_ticket: mint_ticket(TEST_PICKER_SECRET, "user-owner"),
             org_id: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    // Step 2: Refresh the picker ticket
-    let refresh = auth::refresh_picker_ticket(login_result.session_token.clone(), app.state())
-        .await
-        .unwrap();
+    // Step 2: Refresh the picker ticket (bridge-side: sync, no `.await`)
+    let refresh = refresh_picker_ticket(&ctx, &login_result.session_token).unwrap();
     assert!(!refresh.picker_ticket.is_empty());
 
     // Step 3: Create a second session with the refreshed ticket
-    let second = auth::create_session(
-        CreateSessionArgs {
+    let second = create_session(
+        &ctx,
+        &CreateSessionArgs {
             user_id: "user-owner".into(),
             role_id: "role-owner".into(),
             store_id: "default".into(),
@@ -278,7 +253,6 @@ async fn refresh_picker_ticket_end_to_end() {
             picker_ticket: refresh.picker_ticket,
             org_id: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
@@ -305,41 +279,30 @@ fn seed_target_owner(conn: &rusqlite::Connection) {
 
 #[tokio::test]
 async fn impersonate_user_scoped_creates_target_scoped_session() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner_user(&conn);
     seed_target_owner(&conn);
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
     // Operator session (owner holds operator:impersonate via the `*` preset).
-    let login = auth::create_session(
-        CreateSessionArgs {
+    let login = create_session(
+        &ctx,
+        &CreateSessionArgs {
             user_id: "user-owner".into(),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
-            picker_ticket: {
-                let s = app.state::<AppState>();
-                mint_ticket(&s, "user-owner")
-            },
+            picker_ticket: mint_ticket(TEST_PICKER_SECRET, "user-owner"),
             org_id: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let result = auth::impersonate_user_scoped(
-        login.session_token.clone(),
-        "user-target".into(),
-        app.state(),
-    )
-    .await;
+    let result = impersonate_user_scoped(&ctx, &login.session_token, "user-target").await;
     assert!(result.is_ok(), "in-scope impersonation must succeed");
     let imp = result.unwrap();
 
@@ -354,8 +317,7 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
     assert_eq!(imp.context.terminal_id, "terminal-1");
 
     // The produced token resolves to the target's scope.
-    let resolved = app
-        .state::<AppState>()
+    let resolved = ctx
         .resolve_session(&imp.session_token)
         .expect("impersonation token must resolve");
     assert_eq!(resolved.user_id, "user-target");
@@ -365,52 +327,42 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
 
 #[tokio::test]
 async fn impersonate_user_scoped_revoked_by_destroy_session() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner_user(&conn);
     seed_target_owner(&conn);
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
-    let login = auth::create_session(
-        CreateSessionArgs {
+    let login = create_session(
+        &ctx,
+        &CreateSessionArgs {
             user_id: "user-owner".into(),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
-            picker_ticket: {
-                let s = app.state::<AppState>();
-                mint_ticket(&s, "user-owner")
-            },
+            picker_ticket: mint_ticket(TEST_PICKER_SECRET, "user-owner"),
             org_id: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let imp = auth::impersonate_user_scoped(
-        login.session_token.clone(),
-        "user-target".into(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let imp = impersonate_user_scoped(&ctx, &login.session_token, "user-target")
+        .await
+        .unwrap();
 
     // Stopping the impersonation (destroy_session) must revoke the token.
-    let revoked = auth::destroy_session(app.state(), imp.session_token.clone()).await;
+    let revoked = destroy_session(&ctx, &imp.session_token).await;
     assert!(
         revoked.is_ok(),
         "destroy_session must accept the impersonation token"
     );
 
-    let after = app.state::<AppState>().resolve_session(&imp.session_token);
+    let after = ctx.resolve_session(&imp.session_token);
     assert!(
-        matches!(after, Err(AppError::InvalidSession)),
+        matches!(after, Err(BridgeError::InvalidSession)),
         "revoked impersonation token must not resolve: {:?}",
         after.err()
     );
@@ -418,47 +370,36 @@ async fn impersonate_user_scoped_revoked_by_destroy_session() {
 
 #[tokio::test]
 async fn impersonate_user_scoped_enforces_ttl() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner_user(&conn);
     seed_target_owner(&conn);
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
-    let login = auth::create_session(
-        CreateSessionArgs {
+    let login = create_session(
+        &ctx,
+        &CreateSessionArgs {
             user_id: "user-owner".into(),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
-            picker_ticket: {
-                let s = app.state::<AppState>();
-                mint_ticket(&s, "user-owner")
-            },
+            picker_ticket: mint_ticket(TEST_PICKER_SECRET, "user-owner"),
             org_id: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let imp = auth::impersonate_user_scoped(
-        login.session_token.clone(),
-        "user-target".into(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let imp = impersonate_user_scoped(&ctx, &login.session_token, "user-target")
+        .await
+        .unwrap();
 
     // The impersonation session must carry a finite TTL reflecting the named
     // constant — never an open-ended (None) session.
-    let stored = app
-        .state::<AppState>()
-        .session_store
+    let stored = tb
+        .sessions()
         .read()
         .unwrap()
         .get(&imp.session_token)
@@ -473,52 +414,42 @@ async fn impersonate_user_scoped_enforces_ttl() {
         .as_secs() as i64;
     assert!(expiry > now, "impersonation expiry must be in the future");
     assert!(
-        expiry >= now + auth::IMPERSONATION_SESSION_TTL_SECONDS - 2
-            && expiry <= now + auth::IMPERSONATION_SESSION_TTL_SECONDS + 2,
+        expiry >= now + IMPERSONATION_SESSION_TTL_SECONDS - 2
+            && expiry <= now + IMPERSONATION_SESSION_TTL_SECONDS + 2,
         "impersonation expiry must reflect IMPERSONATION_SESSION_TTL_SECONDS (now={now}, expiry={expiry})"
     );
 
     // And the TTL is actually enforced: forcing the stored session into the past
     // makes the token reject on resolution.
     {
-        let app_state = app.state::<AppState>();
-        let mut sessions = app_state.session_store.write().unwrap();
-        if let Some(ctx) = sessions.get_mut(&imp.session_token) {
-            ctx.expires_at = Some(1); // far in the past
+        let store = tb.sessions();
+        let mut sessions = store.write().unwrap();
+        if let Some(session) = sessions.get_mut(&imp.session_token) {
+            session.expires_at = Some(1); // far in the past
         }
     }
-    let expired = app.state::<AppState>().resolve_session(&imp.session_token);
+    let expired = ctx.resolve_session(&imp.session_token);
     assert!(
-        matches!(expired, Err(AppError::InvalidSession)),
+        matches!(expired, Err(BridgeError::InvalidSession)),
         "expired impersonation token must not resolve"
     );
 }
 
 #[tokio::test]
 async fn impersonate_user_scoped_denies_without_operator_permission() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     // A staff user with no operator:impersonate grant.
     seed_staff_no_products(&conn);
     seed_target_owner(&conn);
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
     // Operator is a lite (staff) user — holds sales:view only.
-    insert_session(
-        &app.state::<AppState>(),
-        "lite-token",
-        "user-lite",
-        "role-lite",
-        "default",
-    );
+    insert_session(&tb, "lite-token", "user-lite", "role-lite", "default");
 
-    let result =
-        auth::impersonate_user_scoped("lite-token".into(), "user-target".into(), app.state()).await;
+    let result = impersonate_user_scoped(&ctx, "lite-token", "user-target").await;
     assert!(
-        matches!(result, Err(AppError::PermissionDenied(_))),
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
         "impersonation without operator:impersonate must be denied: {:?}",
         result.err()
     );
@@ -528,7 +459,7 @@ async fn impersonate_user_scoped_denies_without_operator_permission() {
 
 #[tokio::test]
 async fn get_setting_scoped_redacts_sync_api_key() {
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     // F-017: get_setting_scoped now requires settings:read — seed the owner
     // user/role so the gate passes and the redaction itself is exercised.
     seed_owner_user(&conn);
@@ -537,15 +468,11 @@ async fn get_setting_scoped_redacts_sync_api_key() {
         [],
     )
     .unwrap();
-    let state = test_state(conn);
-    insert_session(&state, "owner-tok", "user-owner", "role-owner", "default");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    insert_session(&tb, "owner-tok", "user-owner", "role-owner", "default");
+    let ctx = tb.ctx();
 
-    let result =
-        settings::get_setting_scoped("sync_api_key".into(), "owner-tok".into(), app.state()).await;
+    let result = settings::get_setting_scoped(&ctx, "sync_api_key", "owner-tok").await;
     // C-2: secret key must return None, not the plaintext value
     assert!(matches!(result, Ok(None)), "secret key must be redacted");
 }
@@ -554,20 +481,17 @@ async fn get_setting_scoped_allows_non_secret_key() {
     // Settings live in the global DB; get_setting (unscoped) reads from
     // it via state.db. This test verifies that non-secret keys pass
     // through the deny-list check correctly.
-    let conn = migrations::fresh_db();
+    let conn = temp_conn();
     conn.execute(
         "INSERT INTO settings (key, value, updated_at) VALUES ('store.name', 'My Store', '2026-07-31T00:00:00.000Z')",
         [],
     )
     .unwrap();
 
-    let state = test_state(conn);
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = test_bridge(conn);
+    let ctx = tb.ctx();
 
     // Use the unscoped get_setting (reads from global DB).
-    let result = settings::get_setting("store.name".into(), app.state()).await;
+    let result = settings::get_setting(&ctx, "store.name").await;
     assert_eq!(result.unwrap(), Some("My Store".into()));
 }

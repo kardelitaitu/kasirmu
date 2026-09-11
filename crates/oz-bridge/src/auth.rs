@@ -1342,3 +1342,7 @@ pub async fn impersonate_user_scoped(
 #[cfg(test)]
 #[path = "auth_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "security_scoped_integration_tests.rs"]
+mod security_integration_tests;
