@@ -923,7 +923,24 @@ pub fn stamp_attempt_split_keys(attempt_id: Option<&str>, splits: &mut [PaymentS
     }
 }
 
-/// Return the receipt an already-completed attempt produced, if there is one.
+/// What the COR-7 replay guard decided for this submission.
+enum ReplayVerdict {
+    /// The attempt already completed: hand back this receipt and touch
+    /// nothing.
+    Replayed(CompleteSaleResult),
+    /// No completed attempt sits behind this key: settle normally with the
+    /// request's own attempt id.
+    Fresh,
+    /// A payment key matches, but the request's cart still exists, so the
+    /// matched sale cannot belong to this basket — a completed attempt
+    /// consumes its cart, so key equality alone is not proof of the same
+    /// basket. Settle normally, but stamp a fresh idempotency key: the stale
+    /// id's `{attempt}:0` stays owned by the old sale, and reusing it here
+    /// would trip the UNIQUE index and block a legitimate new sale.
+    StaleKey,
+}
+
+/// Decide whether a submission replays an already-completed attempt.
 ///
 /// The caller cannot supply the sale id — the response that carried it is the
 /// very thing that was lost — so the attempt key is the only handle back to the
@@ -936,22 +953,34 @@ pub fn stamp_attempt_split_keys(attempt_id: Option<&str>, splits: &mut [PaymentS
 ///   a synthetic `resolved-<timestamp>` cart id, so it has no cart dependency
 ///   at all and would otherwise sell the same basket a second time.
 ///
+/// The key is only trusted as identity for the request's OWN basket: a
+/// completed attempt always consumes its cart, so when `request_cart_id`
+/// still resolves to a live cart the matched sale belongs to a different
+/// basket (a reused or stale attempt id) and the replay is refused
+/// ([`ReplayVerdict::StaleKey`]) instead of handing back the old receipt.
+///
 /// Only the first split's key is consulted: every key of one attempt maps to
 /// the same sale.
-fn replayed_receipt(
+fn replay_verdict(
     store: &Store,
     attempt_id: Option<&str>,
-) -> Result<Option<CompleteSaleResult>, BridgeError> {
+    request_cart_id: Option<&CartId>,
+) -> Result<ReplayVerdict, BridgeError> {
     let Some(attempt) = attempt_id else {
-        return Ok(None);
+        return Ok(ReplayVerdict::Fresh);
     };
     let Some(sale_id) = store.find_sale_by_idempotency_key(&format!("{attempt}:0"))? else {
-        return Ok(None);
+        return Ok(ReplayVerdict::Fresh);
     };
     let sale = store
         .get_sale(&sale_id)?
         .ok_or_else(|| BridgeError::Internal("replayed payment points at a missing sale".into()))?;
-    Ok(Some(CompleteSaleResult {
+    if let Some(cart_id) = request_cart_id
+        && store.load_active_cart(cart_id)?.is_some()
+    {
+        return Ok(ReplayVerdict::StaleKey);
+    }
+    Ok(ReplayVerdict::Replayed(CompleteSaleResult {
         sale_id: sale.id.clone(),
         total: Some(sale.total),
         line_count: sale.lines.len(),
@@ -1352,16 +1381,33 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     // cart from the request body and invents a `resolved-<timestamp>` cart id,
     // so unlike complete_sale_scoped it has no cart to run out of and would
     // otherwise re-sell the same basket on every retry.
+    let mut effective_attempt_id = args.attempt_id.clone();
     {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        if let Some(replay) = replayed_receipt(&Store::new(&db), args.attempt_id.as_deref())? {
-            tracing::info!(
-                sale_id = %replay.sale_id,
-                "shortfall retry replayed an existing attempt — returning the original receipt"
-            );
-            return Ok(replay);
+        match replay_verdict(
+            &Store::new(&db),
+            args.attempt_id.as_deref(),
+            Some(&args.cart_id),
+        )? {
+            ReplayVerdict::Replayed(replay) => {
+                tracing::info!(
+                    sale_id = %replay.sale_id,
+                    "shortfall retry replayed an existing attempt — returning the original receipt"
+                );
+                return Ok(replay);
+            }
+            ReplayVerdict::Fresh => {}
+            ReplayVerdict::StaleKey => {
+                // The id already completed a different basket; settle this one
+                // under a fresh key so the stale id keeps pointing at the old
+                // sale and the UNIQUE index never blocks the new one.
+                tracing::warn!(
+                    "checkout attempt id already completed a different basket — stamping a fresh idempotency key"
+                );
+                effective_attempt_id = Some(uuid::Uuid::now_v7().to_string());
+            }
         }
     }
 
@@ -1446,8 +1492,9 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         // COR-7: one key per split, derived from the attempt id so a replay of
         // this attempt reproduces the same keys and the UNIQUE index rejects a
         // second sale. The per-split index is what stops a multi-tender sale
-        // from colliding with itself on its own second row.
-        stamp_attempt_split_keys(args.attempt_id.as_deref(), &mut splits);
+        // from colliding with itself on its own second row. A stale id the
+        // guard refused above was re-keyed, so this stamps the fresh one.
+        stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
 
         // Multi-terminal: terminal_id is passed to complete_sale so that
         // the sale record tracks which terminal processed it. This enables
@@ -1544,17 +1591,36 @@ pub async fn complete_sale_scoped(
     // ── COR-7 replay guard ─────────────────────────────────────────
     // Resolved before the cart is touched: the first attempt already removed
     // it, so a retry that fell through to Lock 1 would fail with "cart not
-    // found" on a sale that actually completed.
+    // found" on a sale that actually completed. Key equality is not basket
+    // identity: while the request's cart still exists, a key match belongs to
+    // a DIFFERENT basket and must not be handed back as this receipt.
+    let mut effective_attempt_id = args.attempt_id.clone();
     {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        if let Some(replay) = replayed_receipt(&Store::new(&db), args.attempt_id.as_deref())? {
-            tracing::info!(
-                sale_id = %replay.sale_id,
-                "checkout attempt replayed — returning the original receipt"
-            );
-            return Ok(replay);
+        match replay_verdict(
+            &Store::new(&db),
+            args.attempt_id.as_deref(),
+            Some(&args.cart_id),
+        )? {
+            ReplayVerdict::Replayed(replay) => {
+                tracing::info!(
+                    sale_id = %replay.sale_id,
+                    "checkout attempt replayed — returning the original receipt"
+                );
+                return Ok(replay);
+            }
+            ReplayVerdict::Fresh => {}
+            ReplayVerdict::StaleKey => {
+                // The id already completed a different basket; settle this one
+                // under a fresh key so the stale id keeps pointing at the old
+                // sale and the UNIQUE index never blocks the new one.
+                tracing::warn!(
+                    "checkout attempt id already completed a different basket — stamping a fresh idempotency key"
+                );
+                effective_attempt_id = Some(uuid::Uuid::now_v7().to_string());
+            }
         }
     }
 
@@ -1719,8 +1785,9 @@ pub async fn complete_sale_scoped(
         // COR-7: one key per split, derived from the attempt id so a replay of
         // this attempt reproduces the same keys and the UNIQUE index rejects a
         // second sale. The per-split index is what stops a multi-tender sale
-        // from colliding with itself on its own second row.
-        stamp_attempt_split_keys(args.attempt_id.as_deref(), &mut splits);
+        // from colliding with itself on its own second row. A stale id the
+        // guard refused above was re-keyed, so this stamps the fresh one.
+        stamp_attempt_split_keys(effective_attempt_id.as_deref(), &mut splits);
 
         if stock_locations.is_empty() {
             // Same primary-location resolution the legacy

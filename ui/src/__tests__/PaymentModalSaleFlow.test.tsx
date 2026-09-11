@@ -407,13 +407,13 @@ describe('PaymentModal — shortfall resolution', () => {
 
   // ── Checkout attempt id (COR-7 replay guard) ───────────────────────────
   //
-  // The id is minted once per mount, and one mount is one checkout attempt:
-  // RetailPosScreen renders PaymentModal conditionally (`if (showPayment &&
-  // total)`), so it unmounts between sales. Every submission of a single
-  // attempt reuses its id (the dialog-level tests cover the retry), while the
-  // next customer's sale must get a fresh one. That second property is what
-  // keeps a till trading — an id that outlived its attempt would make a
-  // legitimate new sale collide with the previous one and be rejected.
+  // The id is minted per checkout ATTEMPT, not per mount: the sales host
+  // keeps PaymentModal mounted and toggles `open` between customers, and
+  // the early `return null` on !open is a render short-circuit — not an
+  // unmount — so a mount-scoped id would leak across sales and the backend
+  // would replay the previous basket's receipt for a different basket.
+  // Every submission of a single attempt reuses its id (the dialog-level
+  // tests cover the retry), while each fresh open mints a new one.
 
   describe('checkout attempt id', () => {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -422,6 +422,11 @@ describe('PaymentModal — shortfall resolution', () => {
       (invokeMock.mock.calls as unknown[][])
         .filter((c) => c[0] === 'complete_sale_scoped')
         .map((c) => (c[1] as { args?: { attemptId?: string } } | undefined)?.args?.attemptId);
+
+    const completeCartIds = () =>
+      (invokeMock.mock.calls as unknown[][])
+        .filter((c) => c[0] === 'complete_sale_scoped')
+        .map((c) => (c[1] as { args?: { cartId?: string } } | undefined)?.args?.cartId);
 
     const mount = () =>
       renderInAct(
@@ -468,6 +473,74 @@ describe('PaymentModal — shortfall resolution', () => {
       expect(firstId).toMatch(UUID_RE);
       expect(secondId).toMatch(UUID_RE);
       expect(secondId).not.toBe(firstId);
+    });
+
+    it('re-mints the attempt id when the same mount reopens onto a different basket', async () => {
+      // The money-bug shape: the sales host keeps this component mounted and
+      // toggles `open` between customers, so Cancel → re-open lands on the
+      // SAME instance. The attempt id must be re-minted by the open reset,
+      // or the second basket's completion replays the first basket's key.
+      const base = defaultInvokeImpl as (cmd: string) => Promise<unknown>;
+      let cartSeq = 0;
+      invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+        if (cmd === 'start_sale_scoped' || cmd === 'start_sale') {
+          cartSeq += 1;
+          return Promise.resolve({ cartId: `cart-${cartSeq}` });
+        }
+        return base(cmd);
+      });
+      try {
+        const view = await mount();
+        await completeOnce();
+        const firstId = attemptIds()[0];
+        const firstCart = completeCartIds()[0];
+
+        view.rerender(
+          withFluent(
+            <ToastProvider>
+              <PaymentModal
+                open={false}
+                lineItems={[lineItem()]}
+                total={usd(700)}
+                userId="test-user-id"
+                onComplete={vi.fn()}
+                onClose={vi.fn()}
+              />
+            </ToastProvider>,
+            salesFtl,
+          ),
+        );
+        view.rerender(
+          withFluent(
+            <ToastProvider>
+              <PaymentModal
+                open
+                lineItems={[lineItem({ id: 'line-2' as LineId, qty: 3 })]}
+                total={usd(900)}
+                userId="test-user-id"
+                onComplete={vi.fn()}
+                onClose={vi.fn()}
+              />
+            </ToastProvider>,
+            salesFtl,
+          ),
+        );
+        await completeOnce();
+        await waitFor(() => expect(attemptIds().length).toBe(2));
+
+        const secondId = attemptIds()[1];
+        const secondCart = completeCartIds()[1];
+
+        expect(firstId).toMatch(UUID_RE);
+        expect(secondId).toMatch(UUID_RE);
+        expect(secondId).not.toBe(firstId);
+        // Two distinct baskets genuinely reached the backend, so the fresh
+        // attempt id is guarding a different sale, not the old one.
+        expect(firstCart).toBe('cart-1');
+        expect(secondCart).toBe('cart-2');
+      } finally {
+        invokeMock.mockImplementation(base);
+      }
     });
   });
 });

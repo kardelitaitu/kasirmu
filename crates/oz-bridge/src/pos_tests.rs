@@ -736,6 +736,185 @@ fn no_attempt_id_leaves_the_sale_unguarded() {
     stamp_attempt_split_keys(None, &mut splits);
     assert_eq!(splits[0].idempotency_key, None);
 }
+
+// ── COR-7: a replayed key must never match a different basket ──────
+
+/// Settle one cart through `complete_sale_scoped` with a cash tender.
+///
+/// Every field except cart and attempt id is the neutral default, so the
+/// test's two settlements differ ONLY in basket and (deliberately) not in
+/// the attempt id.
+async fn settle_replay_cart(
+    bridge: &crate::testing::TestBridge,
+    token: &str,
+    cart_id: CartId,
+    attempt: Option<&str>,
+) -> CompleteSaleResult {
+    complete_sale_scoped(
+        &bridge.ctx(),
+        token,
+        CompleteSaleScopedArgs {
+            cart_id,
+            payment_method: "cash".into(),
+            tendered_minor: Some(5000),
+            customer_id: None,
+            payment_splits: None,
+            customer_name: None,
+            serial_numbers: None,
+            base_currency: None,
+            base_total_minor: None,
+            tender_rate_millionths: None,
+            tip_minor: None,
+            service_charge_minor: None,
+            promotion_ids: None,
+            attempt_id: attempt.map(str::to_owned),
+            tax_estimated: None,
+        },
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
+    // settle with att-x, void it, settle a DIFFERENT cart with att-x.
+    // void_pending_sale never touches payments, so `{att-x}:0` keeps
+    // resolving to the voided sale forever. Key equality alone is not proof
+    // of the same basket: the second cart still exists, so the matched sale
+    // cannot be this basket. The guard must refuse the replay and settle a
+    // NEW sale instead of handing back the old receipt.
+    let store_id = "store-replay-guard";
+    let global = crate::testing::temp_conn();
+    {
+        let identity_store = Store::new(&global);
+        identity_store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+                 VALUES ('replay-user', 'replay-user', 'hash', 'Replay User', 'role-owner', 1, '2026-08-09T00:00:00Z', '2026-08-09T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+    }
+    let bridge = crate::testing::TestBridge::new().with_conn(global);
+    {
+        let store_conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute_batch(
+            "INSERT INTO products (id, sku, name, price_minor, currency, product_type)
+                 VALUES ('replay-product', 'REPLAY-COFFEE', 'Replay Coffee', 350, 'USD', 'retail');
+             INSERT INTO stock_summary (item_id, location_id, qty)
+                 VALUES ('replay-product', '01926b3a-0000-7000-8000-000000000001', 100);",
+        )
+        .unwrap();
+    }
+    bridge.sessions().write().unwrap().insert(
+        "replay-tok".into(),
+        SessionContext::new(
+            "replay-user".into(),
+            "role-owner".into(),
+            "replay-terminal".into(),
+            store_id.into(),
+            "replay-instance".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    // ── Attempt 1: basket 1 settles under att-x ───────────────────
+    let started1 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started1.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 2,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+
+    // Void it: the sale row flips to void, but the payment row keeps
+    // `{att-x}:0` — a replayed key stays valid forever by design.
+    {
+        let store_conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = store_conn.lock().unwrap();
+        Store::new(&db).void_pending_sale(&first.sale_id).unwrap();
+    }
+
+    // ── Attempt 2: a DIFFERENT basket, same stale att-x ───────────
+    let started2 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started2.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 1,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let second = settle_replay_cart(&bridge, "replay-tok", started2.cart_id, Some("att-x")).await;
+
+    assert_ne!(
+        second.sale_id, first.sale_id,
+        "a replayed key must never hand basket 1's receipt to basket 2 — the guard must refuse it and settle a NEW sale"
+    );
+
+    // The re-key happened: the stale prefix still owns exactly one payment
+    // row (the voided sale's). Had the guard stamped att-x again, the UNIQUE
+    // index would have rejected the second settlement outright.
+    {
+        let store_conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = store_conn.lock().unwrap();
+        let stale_keyed: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM payments WHERE idempotency_key LIKE 'att-x%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stale_keyed, 1,
+            "the stale attempt id must keep exactly its original payment row"
+        );
+        let second_keyed: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM payments WHERE sale_id = ?1 AND idempotency_key IS NOT NULL",
+                rusqlite::params![second.sale_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            second_keyed, 1,
+            "the new sale must carry its own fresh idempotency key"
+        );
+    }
+}
 // ── Tax scope at the command layer (tax-separation P1) ─────────────
 
 fn single_line_cart() -> oz_core::Cart {

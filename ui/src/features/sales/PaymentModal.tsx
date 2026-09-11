@@ -171,13 +171,16 @@ export default function PaymentModal({
   // idempotent: a replay returns the receipt that already exists instead of
   // ringing up a second sale.
   //
-  // Mount-scoped is the right lifetime here, and it is load-bearing rather
-  // than convenient — RetailPosScreen renders this component conditionally
-  // (`if (showPayment && total)`), so it unmounts between sales. Every
-  // submission of one attempt carries the same value: the first tap, the
-  // shortfall-resolution retry (the dialog renders inside this tree, so the
-  // component stays mounted across it), and any re-tap after a lost response.
-  // The next customer's sale gets a fresh id because it gets a fresh mount.
+  // The lifetime is the attempt, not the mount. The sales host keeps this
+  // component mounted and merely toggles `open` (`{total && <PaymentModal
+  // open={showPayment} …/>}`), and the early `return null` on !open below is
+  // a render short-circuit — not an unmount — so refs survive Cancel →
+  // re-open. A mount-scoped id would therefore leak into the NEXT customer's
+  // checkout, and the backend would replay the previous basket's receipt for
+  // a different basket. The open-reset effect below re-mints on every open;
+  // within one attempt every submission still carries the same value: the
+  // first tap, the shortfall-resolution retry (the dialog renders inside
+  // this tree), and any re-tap after a lost response.
   //
   // Lazy init, not `useRef(crypto.randomUUID())`: the eager form evaluates on
   // every render and discards the result, which reads as a bug waiting to be
@@ -341,6 +344,9 @@ export default function PaymentModal({
 
   useEffect(() => {
     if (open) {
+      // Fresh open = fresh checkout attempt: re-mint the idempotency id so
+      // a reused mount cannot carry the previous basket's key into this one.
+      attemptIdRef.current = crypto.randomUUID();
       setMethod('cash');
       setOtherLabel('');
       setTendered('');
