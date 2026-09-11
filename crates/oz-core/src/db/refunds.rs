@@ -143,7 +143,9 @@ impl Store<'_> {
         //
         // Requested units are aggregated per sale_line_id first: one refund
         // carrying two lines for the same sale line counts as their sum, not
-        // as two independent refunds.
+        // as two independent refunds. The bound applies to EVERY refund line,
+        // on both credit paths, so it is enforced here before any row is
+        // written rather than separately per path.
         let mut requested_qty: HashMap<&str, i64> = HashMap::new();
         for line in &refund.lines {
             if line.qty > 0 {
@@ -151,19 +153,15 @@ impl Store<'_> {
             }
         }
         for (sale_line_id, qty) in &requested_qty {
-            let sold_qty: Option<i64> = tx
-                .query_row(
-                    "SELECT qty FROM sale_lines WHERE id = ?1 AND sale_id = ?2",
-                    params![sale_line_id, refund.sale_id],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(CoreError::Db)?;
-            // No sale_lines row for this sale → no per-line sold quantity to
-            // bound against. Such a line is still caught downstream: against
-            // deduction_locations when the sale has them, and by the
-            // cumulative deducted-quantity bound inside the credit path.
-            let Some(sold_qty) = sold_qty else { continue };
+            // A row that does not exist is a rejection, not a licence.
+            // refund_lines.sale_line_id carries NO foreign key (the column is
+            // a logical ref only — see 20260813_init.sql), so a bogus id
+            // inserts cleanly, and with no sale_lines row there is no sold
+            // quantity to bound it against: the credit pass would mint units
+            // out of nothing. Legacy and imported sales reach this path
+            // because create_sale never writes deduction_locations, so the
+            // deduction_locations bound below cannot be relied on to catch it.
+            let sold_qty = self.sold_qty_for_sale_line_in_tx(&tx, &refund.sale_id, sale_line_id)?;
             let already_refunded_qty = self.refunded_qty_for_sale_line_in_tx(
                 &tx,
                 &refund.sale_id,
@@ -324,6 +322,37 @@ impl Store<'_> {
         Ok(())
     }
 
+    /// The quantity a sale line sold, looked up inside the caller's
+    /// transaction, or a rejection when it is not one of this sale's lines.
+    ///
+    /// Deliberately offers no "absent" escape hatch:
+    /// refund_lines.sale_line_id carries no foreign key (the column is a
+    /// logical ref only), so an unknown id inserts cleanly and would otherwise
+    /// reach the credit path unbounded. Scope is enforced by "AND sale_id",
+    /// so a line id belonging to a DIFFERENT sale cannot borrow that sale's
+    /// sold quantity either.
+    fn sold_qty_for_sale_line_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        sale_id: &str,
+        sale_line_id: &str,
+    ) -> Result<i64, CoreError> {
+        tx.query_row(
+            "SELECT qty FROM sale_lines WHERE id = ?1 AND sale_id = ?2",
+            params![sale_line_id, sale_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CoreError::Db)?
+        .ok_or_else(|| CoreError::Validation {
+            field: "refund_line.sale_line_id",
+            message: format!(
+                "sale_line_id {} is not a line of sale {}; refusing to credit stock against an unknown line",
+                sale_line_id, sale_id
+            ),
+        })
+    }
+
     /// Cumulative units already refunded for one sale line, across every
     /// prior refund of that sale, read inside the caller's transaction.
     ///
@@ -425,7 +454,18 @@ impl Store<'_> {
                 &refund_line.sale_line_id,
                 &refund.id,
             )?;
-            if already_credited + refund_qty > total_deducted {
+            // checked_add, not +: a quantity near i64::MAX must be rejected,
+            // not wrapped. A wrapping add underflows to a negative number in
+            // release, the comparison passes, and stock is credited for a
+            // quantity that never existed.
+            let credit_after =
+                already_credited
+                    .checked_add(refund_qty)
+                    .ok_or_else(|| CoreError::Validation {
+                        field: "refund_line.qty",
+                        message: "refund quantity overflow".into(),
+                    })?;
+            if credit_after > total_deducted {
                 return Err(CoreError::Validation {
                     field: "refund_line.qty",
                     message: format!(
@@ -504,8 +544,16 @@ impl Store<'_> {
         Ok(())
     }
 
-    /// Fallback for pre-093 legacy sales: credit refund qty to the canonical
-    /// default location and emit a warning audit log entry.
+    /// Fallback for pre-093 legacy sales (NULL / empty / literal `null`
+    /// `deduction_locations`): credit refund qty to the canonical default
+    /// location and emit a warning audit log entry.
+    ///
+    /// Every unit credited here is bounded by the sold quantity of the line it
+    /// names, CUMULATIVELY across prior refunds — this path has no
+    /// deduction_locations to lean on, so without this bound an unknown or
+    /// repeated line would mint stock. Lines naming a `sale_line_id` that is
+    /// not one of the sale's are rejected by `create_refund`'s quantity guard
+    /// and again here.
     fn credit_refund_to_default_location(
         &self,
         tx: &rusqlite::Transaction<'_>,
@@ -515,6 +563,45 @@ impl Store<'_> {
             crate::inventory::LocationId::from("01926b3a-0000-7000-8000-000000000001");
 
         for refund_line in &refund.lines {
+            if refund_line.qty <= 0 {
+                continue;
+            }
+            // BOUND THIS PATH TOO. A legacy / imported sale reaches here with
+            // no deduction_locations, so the deducted-quantity bound on the
+            // other path never runs; the units this loop credits are bounded
+            // only by what sale_lines says the line sold, CUMULATIVELY across
+            // every earlier refund of it, so repeated partial refunds cannot
+            // each look plausible and together return more stock than was
+            // sold. checked_add, not +: a near-i64::MAX quantity must be
+            // rejected rather than wrapped negative past the comparison.
+            let sold_qty =
+                self.sold_qty_for_sale_line_in_tx(tx, &refund.sale_id, &refund_line.sale_line_id)?;
+            let already_credited = self.refunded_qty_for_sale_line_in_tx(
+                tx,
+                &refund.sale_id,
+                &refund_line.sale_line_id,
+                &refund.id,
+            )?;
+            let credit_after = already_credited
+                .checked_add(refund_line.qty)
+                .ok_or_else(|| CoreError::Validation {
+                    field: "refund_line.qty",
+                    message: "refund quantity overflow".into(),
+                })?;
+            if credit_after > sold_qty {
+                return Err(CoreError::Validation {
+                    field: "refund_line.qty",
+                    message: format!(
+                        "refund qty {} exceeds refundable quantity {} for line {} of sale {} ({} of {} units already credited)",
+                        refund_line.qty,
+                        sold_qty - already_credited,
+                        refund_line.sale_line_id,
+                        refund.sale_id,
+                        already_credited,
+                        sold_qty
+                    ),
+                });
+            }
             self.adjust_stock_at_location_with_reason(
                 tx,
                 &refund_line.sku,
