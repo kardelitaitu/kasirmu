@@ -324,3 +324,7 @@ mod topology_field_tests;
 #[cfg(test)]
 #[path = "topology_serde_tests.rs"]
 mod topology_serde_tests;
+
+#[cfg(test)]
+#[path = "topology_stress_tests.rs"]
+mod topology_stress_tests;
