@@ -1720,3 +1720,105 @@ fn create_refund_refuses_a_line_that_records_no_sku() {
         "and mints no stock for an unverifiable identity"
     );
 }
+
+// ── the FIFO credit arm must not fall back to the caller's sku ──────
+
+/// Same shape as `seed_completed_sale`, but the `deduction_locations` line
+/// carries NO `sku` key — what a partially-written or hand-edited row looks
+/// like. `sale_lines` still records the real sku, so the identity guard passes
+/// and the refund reaches the credit arm: that is exactly where the old
+/// `unwrap_or(&refund_line.sku)` took over.
+fn seed_sale_with_sku_less_deduction_locations(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('noslur-p1', 'TEA', 'Tea', 400, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('noslur-sale-1', 800, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"noslur-sl-1\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":2}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('noslur-sl-1', 'noslur-sale-1', 'TEA', 2, 400, 800, 'USD', 1);"
+    ).unwrap();
+}
+
+/// A deduction_locations entry that names no product cannot have a unit of ANY
+/// product returned against it. HEAD fell back to the caller's sku here; the
+/// rule now matches the void path over the same json
+/// (sales_lifecycle.rs:556-564) and the empty-recorded-sku identity rule.
+#[test]
+fn refund_is_refused_when_deduction_locations_names_no_sku() {
+    let conn = fresh();
+    seed_sale_with_sku_less_deduction_locations(&conn);
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "noslur-sale-1",
+        price(800),
+        "returned",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "noslur-sl-1",
+            "TEA",
+            2,
+            price(400),
+            price(800),
+        )],
+    );
+    let err = s.create_refund(&refund).unwrap_err();
+    let shown = format!("{err:?}");
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations.sku"),
+        "expected a deduction_locations.sku rejection, got {shown}"
+    );
+
+    assert_eq!(
+        s.list_refunds_for_sale("noslur-sale-1").unwrap().len(),
+        0,
+        "a rejected refund must persist nothing"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "and it must move no stock");
+}
+
+/// CONTROL: the refusal is about the missing identity, not about the FIFO arm
+/// being broken. When the json DOES name the sku, the refund still succeeds and
+/// still credits the RECORDED location.
+#[test]
+fn refund_still_credits_the_recorded_location_when_the_sku_is_named() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(700),
+        "returned",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "ref-sl-1",
+            "COFFEE",
+            2,
+            price(350),
+            price(700),
+        )],
+    );
+    s.create_refund(&refund).unwrap();
+
+    assert_eq!(s.list_refunds_for_sale("ref-sale-1").unwrap().len(), 1);
+    let (delta, loc): (i64, String) = conn
+        .query_row(
+            "SELECT delta, location_id FROM stock_movements WHERE reason = 'refund'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(delta, 2, "the recorded deduction must be credited back");
+    assert_eq!(
+        loc, "01926b3a-0000-7000-8000-000000000001",
+        "and at the location the json recorded, not a default"
+    );
+}

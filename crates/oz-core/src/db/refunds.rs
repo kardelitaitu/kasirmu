@@ -630,7 +630,27 @@ impl Store<'_> {
             }
 
             // ── Credit stock per ADR-19 §5.3 FIFO ─────────────
-            let sku = dl_line["sku"].as_str().unwrap_or(&refund_line.sku);
+            //
+            // The recorded JSON names the product; a line that names none is a
+            // REJECTION, not a licence to fall back to the caller's sku. Same
+            // rule as the void path over this very json
+            // (sales_lifecycle.rs:556-564, "missing sku in deduction_locations")
+            // and the empty-recorded-sku identity rule in create_refund. The old
+            // `unwrap_or(&refund_line.sku)` re-derived identity from caller
+            // input: inert TODAY only because that guard pins refund_line.sku to
+            // sale_lines.sku before this runs, and a mint the moment the guard is
+            // reordered or a second caller appears. Credit must not depend on
+            // check ordering.
+            let sku = dl_line["sku"]
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .ok_or_else(|| CoreError::Validation {
+                    field: "deduction_locations.sku",
+                    message: format!(
+                        "deduction_locations for sale line {} records no sku, so its units cannot be credited to any product",
+                        refund_line.sale_line_id
+                    ),
+                })?;
             let mut remaining = refund_qty;
 
             if refund_qty >= total_deducted {
