@@ -55,6 +55,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, and 
 | 49 | desktop-client | [ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](../decisions/2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
 | 50 | sync | [ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)](../decisions/2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | settings | [ADR #51: Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](../decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
+| 52 | settings | [ADR #52: Tracked Settings Funnel Refuses Cleartext Credentials](../decisions/2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
 
 ### Research Notes
 
