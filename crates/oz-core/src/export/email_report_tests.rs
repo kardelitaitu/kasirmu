@@ -259,6 +259,69 @@ fn save_smtp_config_supplied_password_still_overwrites() {
     );
 }
 
+/// The generic settings write stores whatever blob it is handed, so a password
+/// saved from the card lands as PLAINTEXT in the settings row — only
+/// `save_smtp_config` encrypts. This pins the two properties that make the
+/// routed path safe to switch on, using the same row the generic path writes.
+///
+/// NOTE: `save_smtp_config_json` has no production caller yet. The shells route
+/// `smtp_config` through `run_set_setting` -> `Settings::set_tracked`, which
+/// writes the blob verbatim. Until that routing lands this test pins the
+/// CONTRACT of the routed path, not the behaviour of the shipped card.
+#[test]
+fn plaintext_blob_from_the_generic_path_is_readable_then_encrypted_on_save() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+
+    // Exactly what set_setting_scoped leaves in the settings row: the card
+    // posts a blob, the generic setter writes it verbatim, no encryption.
+    s.set_setting(
+        SMTP_CONFIG_SETTINGS_KEY,
+        r#"{"host":"smtp.legacy.com","port":587,"username":"ops","password":"plaintext-pass","from":"a@b.com","use_tls":true}"#,
+    )
+    .unwrap();
+    let raw = s.get_setting(SMTP_CONFIG_SETTINGS_KEY).unwrap().unwrap();
+    assert!(
+        raw.contains("plaintext-pass"),
+        "the generic path stores the password in cleartext, got: {raw}"
+    );
+
+    // Still readable: decrypt_smtp_at_rest passes non-ciphertext through, so a
+    // cleartext legacy value is not a parse failure.
+    let loaded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(loaded.password.as_deref(), Some("plaintext-pass"));
+
+    // Keep-on-blank over a cleartext blob carries it forward verbatim rather
+    // than nulling it — the merge never decrypts what it is only preserving.
+    s.save_smtp_config_json(
+        r#"{"host":"smtp.changed.com","port":465,"username":"ops","password":null,"from":"a@b.com","use_tls":true}"#,
+    )
+    .unwrap();
+    let kept = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(
+        kept.password.as_deref(),
+        Some("plaintext-pass"),
+        "a cleartext stored password must survive a password-less save"
+    );
+    assert_eq!(kept.host, "smtp.changed.com");
+
+    // The next save that DOES supply a password closes the cleartext hole.
+    s.save_smtp_config_json(
+        r#"{"host":"smtp.changed.com","port":465,"username":"ops","password":"rotated-pass","from":"a@b.com","use_tls":true}"#,
+    )
+    .unwrap();
+    let raw = s.get_setting(SMTP_CONFIG_SETTINGS_KEY).unwrap().unwrap();
+    assert!(
+        !raw.contains("rotated-pass"),
+        "must not store cleartext: {raw}"
+    );
+    assert!(
+        !raw.contains("plaintext-pass"),
+        "cleartext must be replaced: {raw}"
+    );
+    let upgraded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(upgraded.password.as_deref(), Some("rotated-pass"));
+}
 /// The masked read-back ships a boolean and nothing else — the deny list
 /// stays intact, so no surface returns the password itself.
 #[test]
