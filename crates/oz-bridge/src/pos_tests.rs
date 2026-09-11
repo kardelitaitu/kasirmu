@@ -1104,6 +1104,212 @@ async fn voided_sale_does_not_satisfy_a_replay() {
         "a voided sale must never be handed back as a replayed receipt"
     );
 }
+
+/// Submit one shortfall resolution for a synthetic cart id — the shape the
+/// StockShortfallDialog retry sends, cart id regenerated per submit.
+async fn settle_shortfall_resolution(
+    bridge: &crate::testing::TestBridge,
+    token: &str,
+    synthetic_cart_id: CartId,
+    attempt: Option<&str>,
+) -> CompleteSaleResult {
+    complete_sale_with_resolved_shortfalls_scoped(
+        &bridge.ctx(),
+        token,
+        CompleteSaleWithResolvedShortfallsArgs {
+            cart_id: synthetic_cart_id,
+            payment_method: "cash".into(),
+            tendered_minor: Some(5000),
+            customer_id: None,
+            payment_splits: None,
+            customer_name: None,
+            serial_numbers: None,
+            lines: vec![CartLineData {
+                sku: "REPLAY-COFFEE".into(),
+                qty: 2,
+                unit_price_minor: 350,
+                unit_price_currency: None,
+            }],
+            total_minor: 700,
+            currency: "USD".into(),
+            discount_percent: 0,
+            discount_label: None,
+            promotion_ids: None,
+            resolutions: vec![],
+            base_currency: None,
+            base_total_minor: None,
+            tender_rate_millionths: None,
+            tip_minor: None,
+            service_charge_minor: None,
+            attempt_id: attempt.map(str::to_owned),
+        },
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn shortfall_retries_with_a_stable_attempt_settle_one_sale() {
+    // DOUBLE-COUNT reproduce: basket 1 settles under att-x and is voided
+    // (the base key `{att-x}:0` stays live forever). The shortfall
+    // resolution is then submitted TWICE one tick apart — same attempt id,
+    // same basket contents, but the synthetic resolved-<timestamp> cart id
+    // is regenerated per submit. Both submits must produce ONE sale: the
+    // contents hash, not the per-submit cart id, anchors the re-key.
+    let bridge = replay_guard_bridge();
+    let started1 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started1.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 2,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
+        .await
+        .unwrap();
+    void_replay_sale(&bridge, &first.sale_id);
+
+    let s1 = settle_shortfall_resolution(&bridge, "replay-tok", CartId::new(), Some("att-x")).await;
+    let s2 = settle_shortfall_resolution(&bridge, "replay-tok", CartId::new(), Some("att-x")).await;
+    assert_eq!(
+        s2.sale_id, s1.sale_id,
+        "the second shortfall submit must replay the first resolution's receipt — two sales here is the same basket's money counted twice"
+    );
+}
+
+#[tokio::test]
+async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
+    // PINS the reuse-across-carts answer: a live base-key sale plus a fresh
+    // cart SETTLES the new basket under its own basket-derived key — a hard
+    // refusal here would make a legitimate sale impossible after a lost
+    // response. Each basket's retry then finds its OWN receipt.
+    let bridge = replay_guard_bridge();
+    let started1 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started1.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 2,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
+        .await
+        .unwrap();
+
+    // Same attempt id, DIFFERENT cart: settles, never refuses.
+    let started2 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started2.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 1,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let second = settle_replay_cart(
+        &bridge,
+        "replay-tok",
+        started2.cart_id.clone(),
+        Some("att-x"),
+    )
+    .await
+    .unwrap();
+    assert_ne!(
+        second.sale_id, first.sale_id,
+        "basket 2 must settle as its own sale, not replay basket 1's receipt"
+    );
+
+    // Basket 2's lost-response retry finds basket 2's receipt...
+    let retried = settle_replay_cart(&bridge, "replay-tok", started2.cart_id, Some("att-x"))
+        .await
+        .unwrap();
+    assert_eq!(
+        retried.sale_id, second.sale_id,
+        "the retry must be answered with basket 2's own receipt"
+    );
+    // ...and basket 1's genuine replay still answers with basket 1's sale.
+    let replayed_first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
+        .await
+        .unwrap();
+    assert_eq!(
+        replayed_first.sale_id, first.sale_id,
+        "a genuine replay of basket 1 must keep answering with basket 1's sale"
+    );
+}
+
+#[test]
+fn attempt_ids_with_colons_are_rejected_and_rekey_stems_stay_disjoint() {
+    // The ':' separator is reused inside client-supplied attempt ids, so a
+    // crafted "a:rekey:b" would stamp a base key identical to another
+    // attempt's re-key LOOKUP key and hand one basket the wrong receipt.
+    // The door rejects them outright; the stem keeps the literal ":rekey:"
+    // segment so the re-key namespace never overlaps the base-key namespace.
+    assert_eq!(
+        validated_attempt_id(Some("att-x")).unwrap().as_deref(),
+        Some("att-x")
+    );
+    assert_eq!(
+        validated_attempt_id(Some("  att-x  ")).unwrap().as_deref(),
+        Some("att-x")
+    );
+    assert!(validated_attempt_id(None).unwrap().is_none());
+    assert!(validated_attempt_id(Some("   ")).unwrap().is_none());
+    assert!(
+        validated_attempt_id(Some("a:rekey:b")).is_err(),
+        "a colon lets a crafted attempt forge another attempt's re-key lookup key"
+    );
+    assert_ne!(
+        rekey_stem("att-x", "cart:u1", 0),
+        rekey_stem("att-x", "cart:u2", 0),
+        "distinct baskets under one attempt must hash to distinct stems"
+    );
+    assert!(
+        rekey_stem("att-x", "cart:u1", 3).contains(":rekey:"),
+        "every re-key stem carries the re-key segment base keys can never have"
+    );
+}
 // ── Tax scope at the command layer (tax-separation P1) ─────────────
 
 fn single_line_cart() -> oz_core::Cart {

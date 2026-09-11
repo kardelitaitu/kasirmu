@@ -931,11 +931,12 @@ enum ReplayVerdict {
     /// No completed attempt sits behind this key: settle normally with the
     /// request's own attempt id.
     Fresh,
-    /// A key matched, but its sale is VOIDED: it took no money and returned
-    /// its stock, so it must neither block a new sale nor be presented as a
-    /// receipt. The `String` is the deterministic re-key stem, derived from
-    /// the attempt id and the request's cart, that the caller must stamp
-    /// instead of the request's attempt id.
+    /// A key matched but must not answer this submission — its sale is
+    /// VOIDED, or it belongs to a different basket. The `String` is the
+    /// basket-derived re-key stem the caller must stamp instead: it binds
+    /// the attempt id to THIS submission's basket identity, so a retry of
+    /// the same submission finds its own receipt and the orphaned-receipt
+    /// trap a random re-key once created cannot recur.
     Rekey(String),
 }
 
@@ -948,59 +949,148 @@ fn replay_receipt(sale: &oz_core::Sale) -> CompleteSaleResult {
     }
 }
 
+/// Validate a client-supplied checkout attempt id.
+///
+/// Mirrors the tablet's `normalized_attempt_id` — trim, and absent/empty/
+/// whitespace-only all collapse to `None` (UNGUARDED) — with one hard
+/// rejection the tablet normalizer does not have: an attempt id containing
+/// `:' is refused. The id is OPAQUE and never parsed, but the KEY namespace
+/// around it is colon-separated, so a crafted id like `a:rekey:b` would
+/// stamp a base key identical to another attempt's re-key LOOKUP key and
+/// hand one basket the wrong receipt. Colons never appear in the UUIDs the
+/// UI mints, so honest clients never see this error.
+fn validated_attempt_id(raw: Option<&str>) -> Result<Option<String>, BridgeError> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.contains(':') {
+        return Err(BridgeError::Invalid(
+            "checkout attempt id must not contain ':'".into(),
+        ));
+    }
+    Ok(Some(trimmed.to_owned()))
+}
+
+/// Stable identity of the basket a shortfall submission re-sells.
+///
+/// The resolved-shortfalls command re-builds its cart from the request body
+/// under a SYNTHETIC `resolved-<timestamp>` cart id that is regenerated on
+/// every submit, so the cart id cannot anchor a re-key — the basket CONTENTS
+/// can: one dialog retry re-sends the same lines, total, currency and
+/// discount. Lines are sorted before hashing so mere ordering cannot split
+/// one basket into two identities. Never parses the `resolved` prefix —
+/// the prefix is treated as noise and the contents as the identity.
+fn shortfall_basket_key(args: &CompleteSaleWithResolvedShortfallsArgs) -> String {
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(args.currency.as_bytes());
+    hasher.update(args.total_minor.to_le_bytes());
+    hasher.update(args.discount_percent.to_le_bytes());
+    let mut lines: Vec<&CartLineData> = args.lines.iter().collect();
+    lines.sort_by(|a, b| {
+        (&a.sku, a.qty, a.unit_price_minor, &a.unit_price_currency).cmp(&(
+            &b.sku,
+            b.qty,
+            b.unit_price_minor,
+            &b.unit_price_currency,
+        ))
+    });
+    for line in lines {
+        hasher.update(line.sku.as_bytes());
+        hasher.update(line.qty.to_le_bytes());
+        hasher.update(line.unit_price_minor.to_le_bytes());
+        hasher.update(line.unit_price_currency.as_deref().unwrap_or("").as_bytes());
+    }
+    format!("items:{}", hex::encode(&hasher.finalize()[..12]))
+}
+
+/// Build the re-key stem for one void epoch of an (attempt, basket) pair.
+fn rekey_stem(attempt: &str, basket_key: &str, epoch: i64) -> String {
+    format!("{attempt}:rekey:{basket_key}:v{epoch}")
+}
+
+/// Count settlements already recorded under a re-key stem prefix.
+///
+/// Each settlement contributes exactly one first-split row ending in `:0`,
+/// so the count doubles as the next free void epoch. The prefix is compared
+/// with `substr`, never LIKE — attempt ids are client-supplied and `%` or
+/// `_` inside them would be LIKE wildcards.
+fn count_rekey_settlements(conn: &rusqlite::Connection, prefix: &str) -> Result<i64, BridgeError> {
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM payments              WHERE substr(idempotency_key, 1, ?2) = ?1 AND substr(idempotency_key, -2) = ':0'",
+            rusqlite::params![prefix, prefix.len()],
+            |row| row.get(0),
+        )
+        .map_err(|e| BridgeError::Internal(format!("counting re-keyed settlements: {e}")))?;
+    Ok(n)
+}
+
 /// Decide whether a submission replays an already-completed attempt.
 ///
 /// The caller cannot supply the sale id — the response that carried it is the
-/// very thing that was lost — so the attempt key is the only handle back to the
-/// original sale. Resolving it here, before any write, is what makes a replay
-/// return a receipt instead of an error:
+/// very thing that was lost — so the attempt key is the only handle back to
+/// the original sale. Resolving it here, before any write, is what makes a
+/// replay return a receipt instead of an error:
 ///
 /// - `complete_sale_scoped` removes the cart as its first step, so a retry
 ///   would otherwise fail with "cart not found" while the sale sits completed.
-/// - the shortfall command rebuilds its lines from the request body and carries
-///   a synthetic `resolved-<timestamp>` cart id, so it has no cart dependency
-///   at all and would otherwise sell the same basket a second time.
+/// - the shortfall command rebuilds its lines from the request body under a
+///   synthetic per-submit cart id, so it has no cart dependency at all and
+///   would otherwise sell the same basket a second time.
 ///
 /// A match is trusted as THIS request's receipt only when it can be tied to
 /// the request's own basket:
 ///
-/// - a settlement re-keyed for this exact cart (`{attempt}:rekey:{cart}:0`)
-///   is provably this basket's — the stem is derived from the pair — so it
-///   wins over the base key and answers a lost response with the receipt the
-///   RE-KEYED settlement produced, never an older attempt's;
-/// - the base key `{attempt}:0` answers only while the request's cart is
-///   already consumed; if that cart still exists the matched sale belongs to
-///   a DIFFERENT basket, which is a key collision and is refused loudly — a
-///   silent re-key here is exactly what orphans receipts;
-/// - a VOIDED sale satisfies no replay: it took no money and returned its
-///   stock, so it must neither block a new sale ([`ReplayVerdict::Rekey`])
-///   nor be handed back as a receipt.
+/// - Step 1 consults the re-key namespace `{attempt}:rekey:{basket}:v{n}:0`.
+///   The stem binds the attempt id to THIS submission's basket identity
+///   (real cart id for the scoped command, contents hash for the shortfall
+///   command), and attempt ids are validated colon-free, so a hit here is
+///   this basket's own settlement and answers with ITS receipt — never an
+///   older attempt's. The latest void epoch answers; a VOIDED latest epoch
+///   re-keys to the next epoch instead of dead-ending.
+/// - Step 2 consults the base key `{attempt}:0`. A VOIDED match satisfies
+///   no replay (it took no money and returned its stock) but must not block
+///   a new sale either, so it re-keys into the basket namespace. A LIVE
+///   match answers only while the request's cart is already consumed; if
+///   that cart still exists the matched sale belongs to a DIFFERENT basket
+///   and this submission settles under its own basket-derived key — a
+///   silent re-key with a RANDOM stem once orphaned receipts, but a
+///   basket-derived stem keeps every settlement discoverable, so the
+///   second basket can still be sold (a hard refusal here would make a
+///   legitimate sale impossible after a lost response).
 ///
 /// Only the first split's key is consulted: every key of one attempt maps to
 /// the same sale.
 fn replay_verdict(
-    store: &Store,
+    conn: &rusqlite::Connection,
     attempt_id: Option<&str>,
+    basket_key: Option<&str>,
     request_cart_id: Option<&CartId>,
 ) -> Result<ReplayVerdict, BridgeError> {
     let Some(attempt) = attempt_id else {
         return Ok(ReplayVerdict::Fresh);
     };
-    // Step 1 — a settlement re-keyed for this exact basket is unambiguous:
-    // the stem is derived from (attempt, cart), so a hit is this request's
-    // own sale even though the base key still points at an older one.
-    if let Some(cart_id) = request_cart_id {
-        let rekey_key = format!("{attempt}:rekey:{cart_id}:0");
-        if let Some(sale_id) = store.find_sale_by_idempotency_key(&rekey_key)? {
-            let sale = store.get_sale(&sale_id)?.ok_or_else(|| {
-                BridgeError::Internal("re-keyed payment points at a missing sale".into())
-            })?;
-            if sale.status == foundation::SaleStatus::Voided {
-                return Err(BridgeError::Invalid(format!(
-                    "checkout attempt {attempt} for this basket was already settled and then voided — start a new checkout"
-                )));
+    let store = Store::new(conn);
+    // Step 1 — the re-key namespace: provably bound to (attempt, basket).
+    if let Some(basket) = basket_key {
+        let prefix = format!("{attempt}:rekey:{basket}:v");
+        let settled = count_rekey_settlements(conn, &prefix)?;
+        if settled > 0 {
+            let latest_key = format!("{}:0", rekey_stem(attempt, basket, settled - 1));
+            if let Some(sale_id) = store.find_sale_by_idempotency_key(&latest_key)? {
+                let sale = store.get_sale(&sale_id)?.ok_or_else(|| {
+                    BridgeError::Internal("re-keyed payment points at a missing sale".into())
+                })?;
+                if sale.status == foundation::SaleStatus::Voided {
+                    return Ok(ReplayVerdict::Rekey(rekey_stem(attempt, basket, settled)));
+                }
+                return Ok(ReplayVerdict::Replayed(replay_receipt(&sale)));
             }
-            return Ok(ReplayVerdict::Replayed(replay_receipt(&sale)));
         }
     }
     // Step 2 — the attempt's own first-split key.
@@ -1010,25 +1100,29 @@ fn replay_verdict(
     let sale = store
         .get_sale(&sale_id)?
         .ok_or_else(|| BridgeError::Internal("replayed payment points at a missing sale".into()))?;
-    // A voided sale satisfies no replay: it took no money and returned its
-    // stock. It must not block a new sale either — its key is taken, so the
-    // caller stamps the deterministic re-key instead.
     if sale.status == foundation::SaleStatus::Voided {
-        let Some(cart_id) = request_cart_id else {
+        let Some(basket) = basket_key else {
             return Err(BridgeError::Invalid(format!(
-                "checkout attempt {attempt} was voided and no cart was supplied — start a new checkout"
+                "checkout attempt {attempt} was voided and no basket identity was supplied — start a new checkout"
             )));
         };
-        return Ok(ReplayVerdict::Rekey(format!("{attempt}:rekey:{cart_id}")));
+        let settled = count_rekey_settlements(conn, &format!("{attempt}:rekey:{basket}:v"))?;
+        return Ok(ReplayVerdict::Rekey(rekey_stem(attempt, basket, settled)));
     }
     // Key equality is not basket identity: while the request's cart still
-    // exists, the matched sale belongs to a DIFFERENT basket. Refuse loudly.
+    // exists, the matched sale belongs to a DIFFERENT basket. Settle this
+    // one under its own basket-derived key — discoverable by Step 1, so no
+    // receipt is orphaned and no legitimate sale is refused.
     if let Some(cart_id) = request_cart_id
         && store.load_active_cart(cart_id)?.is_some()
     {
-        return Err(BridgeError::Invalid(format!(
-            "checkout attempt {attempt} already completed a different basket (sale {sale_id}) — cancel and start a new checkout"
-        )));
+        let Some(basket) = basket_key else {
+            return Err(BridgeError::Invalid(format!(
+                "checkout attempt {attempt} already completed a different basket (sale {sale_id})"
+            )));
+        };
+        let settled = count_rekey_settlements(conn, &format!("{attempt}:rekey:{basket}:v"))?;
+        return Ok(ReplayVerdict::Rekey(rekey_stem(attempt, basket, settled)));
     }
     Ok(ReplayVerdict::Replayed(replay_receipt(&sale)))
 }
@@ -1427,14 +1521,21 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     // cart from the request body and invents a `resolved-<timestamp>` cart id,
     // so unlike complete_sale_scoped it has no cart to run out of and would
     // otherwise re-sell the same basket on every retry.
-    let mut effective_attempt_id = args.attempt_id.clone();
+    let attempt = validated_attempt_id(args.attempt_id.as_deref())?;
+    // Basket identity anchoring the re-key stem: the cart id here is the
+    // SYNTHETIC resolved-<timestamp> one, regenerated per submit, so the
+    // request CONTENTS are the only stable identity — two submits one tick
+    // apart must hash to the same stem or the money counts twice.
+    let basket_key = shortfall_basket_key(&args);
+    let mut effective_attempt_id = attempt.clone();
     {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         match replay_verdict(
-            &Store::new(&db),
-            args.attempt_id.as_deref(),
+            &db,
+            attempt.as_deref(),
+            Some(basket_key.as_str()),
             Some(&args.cart_id),
         )? {
             ReplayVerdict::Replayed(replay) => {
@@ -1446,12 +1547,13 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             }
             ReplayVerdict::Fresh => {}
             ReplayVerdict::Rekey(rekey_stem) => {
-                // The key's sale was VOIDED: it took no money and returned its
-                // stock, so it must not block this settlement. Re-key
-                // deterministically from (attempt, cart) so a retry of THIS
-                // submission finds its own receipt instead of an older one.
+                // The matched key's sale was VOIDED, or it belongs to a
+                // different basket: settle under a stem derived from the
+                // attempt id and THIS submission's basket identity, so a
+                // retry finds its own receipt and the stale id never
+                // mis-answers for another basket.
                 tracing::warn!(
-                    "replay attempt id points at a voided sale — stamping a deterministic re-key"
+                    "replay guard re-keying — stamping a basket-derived idempotency key"
                 );
                 effective_attempt_id = Some(rekey_stem);
             }
@@ -1641,14 +1743,20 @@ pub async fn complete_sale_scoped(
     // found" on a sale that actually completed. Key equality is not basket
     // identity: while the request's cart still exists, a key match belongs to
     // a DIFFERENT basket and must not be handed back as this receipt.
-    let mut effective_attempt_id = args.attempt_id.clone();
+    let attempt = validated_attempt_id(args.attempt_id.as_deref())?;
+    // Basket identity anchoring the re-key stem: the REAL cart id is stable
+    // across retries of the same basket (the shortfall command hashes its
+    // request contents instead — its cart id is synthetic per submit).
+    let basket_key = format!("cart:{}", args.cart_id);
+    let mut effective_attempt_id = attempt.clone();
     {
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         match replay_verdict(
-            &Store::new(&db),
-            args.attempt_id.as_deref(),
+            &db,
+            attempt.as_deref(),
+            Some(basket_key.as_str()),
             Some(&args.cart_id),
         )? {
             ReplayVerdict::Replayed(replay) => {
@@ -1660,12 +1768,13 @@ pub async fn complete_sale_scoped(
             }
             ReplayVerdict::Fresh => {}
             ReplayVerdict::Rekey(rekey_stem) => {
-                // The key's sale was VOIDED: it took no money and returned its
-                // stock, so it must not block this settlement. Re-key
-                // deterministically from (attempt, cart) so a retry of THIS
-                // submission finds its own receipt instead of an older one.
+                // The matched key's sale was VOIDED, or it belongs to a
+                // different basket: settle under a stem derived from the
+                // attempt id and THIS submission's basket identity, so a
+                // retry finds its own receipt and the stale id never
+                // mis-answers for another basket.
                 tracing::warn!(
-                    "replay attempt id points at a voided sale — stamping a deterministic re-key"
+                    "replay guard re-keying — stamping a basket-derived idempotency key"
                 );
                 effective_attempt_id = Some(rekey_stem);
             }
