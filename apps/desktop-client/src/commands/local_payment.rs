@@ -14,32 +14,21 @@
 //! managed through the same command with the entity scope resolved by
 //! later management surfaces.
 
+// Wave F: the bodies moved to oz_bridge::local_payment. The gate pair keeps
+// its original order (session gate then the ADR #47 location-resource gate)
+// inside the bridge fn.
+
+#[allow(unused_imports)] // sibling local_payment_tests.rs depends on it
 use oz_core::db::assignments::ScopeType;
-use oz_core::db::payment_methods::{EffectivePaymentRail, NewPaymentRail};
+use oz_core::db::payment_methods::EffectivePaymentRail;
+#[allow(unused_imports)] // sibling local_payment_tests.rs depends on it
 use oz_core::{Store, permissions};
 use tauri::State;
 
-use crate::commands::authz::{
-    require_permission_for_session, require_permission_for_session_resource,
-};
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// One rail in the card's replace-set submission.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalPaymentRailArgs {
-    /// Stable rail code (e.g. `qris`, `va-bca`).
-    pub rail_code: String,
-    /// Display label.
-    pub label: String,
-    /// Whether the scope offers the rail.
-    pub is_enabled: bool,
-    /// Per-rail market metadata (JSON object). Credential-shaped keys are
-    /// rejected by the core write path.
-    #[serde(default)]
-    pub parameters: String,
-}
+pub use oz_bridge::local_payment::LocalPaymentRailArgs;
 
 /// Read the effective payment-rail surface for one location of the
 /// session's store (regional slice 6).
@@ -54,13 +43,10 @@ pub async fn get_local_payment_methods_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    Ok(store.local_payment_methods_for_location(&location_id)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::local_payment::get_local_payment_methods_scoped(&ctx, &location_id, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Replace the location's rail list (the card's whole-list write,
@@ -79,32 +65,15 @@ pub async fn set_local_payment_methods_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
-    require_permission_for_session_resource(
-        &state,
-        &session,
-        permissions::SETTINGS_EDIT,
-        ScopeType::Location,
+    let ctx = state.bridge_ctx();
+    oz_bridge::local_payment::set_local_payment_methods_scoped(
+        &ctx,
         &location_id,
+        rails,
+        &session_token,
     )
-    .await?;
-    let submitted: Vec<NewPaymentRail> = rails
-        .into_iter()
-        .map(|r| NewPaymentRail {
-            rail_code: r.rail_code,
-            label: r.label,
-            is_enabled: r.is_enabled,
-            parameters: r.parameters,
-        })
-        .collect();
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    store.replace_local_payment_methods("location", &location_id, &submitted, &now)?;
-    Ok(store.local_payment_methods_for_location(&location_id)?)
+    .await
+    .map_err(Into::into)
 }
 
 #[cfg(test)]
