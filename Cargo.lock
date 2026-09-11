@@ -4660,13 +4660,11 @@ name = "oz-pos-app"
 version = "0.0.37"
 dependencies = [
  "anyhow",
- "axum 0.8.9",
  "chrono",
  "foundation",
  "hex",
  "hmac 0.12.1",
  "image",
- "lettre",
  "modules-crm",
  "modules-currency",
  "modules-inventory",
@@ -4699,7 +4697,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "snow",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",

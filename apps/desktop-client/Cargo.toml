@@ -32,8 +32,6 @@ tempfile = { workspace = true }
 
 [dependencies]
 foundation = { workspace = true }
-lettre = { workspace = true }
-axum = { workspace = true }
 oz-api = { workspace = true }
 oz-core = { workspace = true }
 oz-bridge = { workspace = true }
@@ -78,7 +76,6 @@ notify = { workspace = true }
 uuid = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
-snow = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 image = { workspace = true }
