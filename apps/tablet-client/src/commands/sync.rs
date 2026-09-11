@@ -415,8 +415,22 @@ pub async fn sync_run_scoped(
     // Phase 2: Async HTTP push (no DB lock held).
     let outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
 
-    // Phase 3: Write outcomes back to DB (brief lock).
-    let db = state.db.lock().await;
+    // Phase 3: Write outcomes back to the SAME store database the pending
+    // items were read from (brief lock, re-resolved after the HTTP await).
+    //
+    // This used to lock `state.db` — the global connection — so the marks
+    // landed on a different file's `offline_queue` than the rows Phase 1
+    // read: store items stayed `pending` forever while untouched global
+    // rows were flipped, and `pending_sync_count_scoped` kept counting the
+    // stranded store rows. Re-resolve the scope here rather than carrying
+    // the Phase 1 guard across the `send_items_to_server` await — the
+    // store manager's std::sync::Mutex guard is not Send, and the global
+    // connection is the wrong file anyway.
+    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
     let store = Store::new(&db);
     match outcomes {
         Ok(outcomes) => Ok(sync_client::apply_sync_outcomes(
