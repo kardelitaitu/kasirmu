@@ -378,3 +378,225 @@ fn update_pg_sync_settings_data_password_preserved_when_none() {
     assert!(dto.has_password);
     assert!(dto.require_tls);
 }
+
+// ---------------------------------------------------------------------------
+// Pre-pull backup lifecycle (the *.sync-pull-<ts>.backup.db pile).
+//
+// The property under test is the DISPOSITION, not the deletion: a pull that
+// succeeded leaves no recovery point behind, a pull that failed leaves exactly
+// one, and neither case leaves a directory of whole-database cleartext clones.
+// ---------------------------------------------------------------------------
+
+/// Unique per-test scratch directory standing in for the app-data dir that
+/// holds the live database (tempfile is not a dev-dependency here).
+fn unique_backup_dir() -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!(
+        "oz-bridge-sync-backup-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// A live database file plus one pre-pull backup of it. Returns (db, backup).
+fn db_with_backup(
+    dir: &std::path::Path,
+    timestamp: &str,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let db = dir.join("oz-pos.db");
+    std::fs::write(&db, b"live database").unwrap();
+    let backup = pre_pull_backup_path(&db, timestamp);
+    std::fs::write(&backup, b"whole-database cleartext clone").unwrap();
+    (db, backup)
+}
+
+/// Every pre-pull backup currently in `dir`, newest first.
+fn surviving_backups(dir: &std::path::Path, db: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| is_pre_pull_backup(db, p))
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names.reverse();
+    names
+}
+
+#[test]
+fn pre_pull_backup_path_is_a_sibling_of_the_live_db() {
+    let db = std::path::Path::new("/var/lib/oz/oz-pos.db");
+    let backup = pre_pull_backup_path(db, "20260908121212");
+    assert_eq!(backup.parent(), db.parent());
+    assert_eq!(
+        backup.file_name().unwrap().to_string_lossy(),
+        "oz-pos.sync-pull-20260908121212.backup.db"
+    );
+    // The live file is never itself a match, and neither is a WAL sibling.
+    assert!(!is_pre_pull_backup(db, db));
+    assert!(!is_pre_pull_backup(db, &db.with_extension("db-wal")));
+}
+
+#[test]
+fn is_pre_pull_backup_scopes_to_one_database() {
+    let db = std::path::Path::new("/var/lib/oz/oz-pos.db");
+    assert!(is_pre_pull_backup(
+        db,
+        &pre_pull_backup_path(db, "20260101000000")
+    ));
+    // A different database's backup in the same directory must not be touched.
+    let other = std::path::Path::new("/var/lib/oz/other.db");
+    assert!(!is_pre_pull_backup(
+        db,
+        &pre_pull_backup_path(other, "20260101000000")
+    ));
+    assert!(is_pre_pull_backup(
+        other,
+        &pre_pull_backup_path(other, "20260101000000")
+    ));
+    // Truncated / wrong-suffix lookalikes are rejected.
+    assert!(!is_pre_pull_backup(
+        db,
+        &db.with_extension("sync-pull-.backup.db")
+    ));
+    assert!(!is_pre_pull_backup(
+        db,
+        &db.with_extension("sync-pull-20260101000000.bak")
+    ));
+}
+
+#[test]
+fn successful_pull_removes_the_pre_pull_backup() {
+    let dir = unique_backup_dir();
+    let (db, backup) = db_with_backup(&dir, "20260908121212");
+    dispose_pre_pull_backup(&db, &backup, true);
+    assert!(
+        !backup.exists(),
+        "a pull that did not corrupt the DB must not leave a cleartext clone behind"
+    );
+    assert!(db.exists(), "the live database is never a cleanup target");
+    assert_eq!(surviving_backups(&dir, &db), Vec::<String>::new());
+}
+
+#[test]
+fn failed_pull_retains_the_pre_pull_backup() {
+    let dir = unique_backup_dir();
+    let (db, backup) = db_with_backup(&dir, "20260908121212");
+    dispose_pre_pull_backup(&db, &backup, false);
+    assert!(
+        backup.exists(),
+        "the retained snapshot is the only way back from a half-applied pull"
+    );
+    assert_eq!(
+        surviving_backups(&dir, &db),
+        vec!["oz-pos.sync-pull-20260908121212.backup.db".to_string()]
+    );
+}
+
+#[test]
+fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
+    let dir = unique_backup_dir();
+    let (db, _) = db_with_backup(&dir, "20260101000000");
+    // Two older orphans from earlier failed pulls, then this pull's copy.
+    for ts in ["20260102000000", "20260103000000"] {
+        std::fs::write(pre_pull_backup_path(&db, ts), b"stale clone").unwrap();
+    }
+    let current = pre_pull_backup_path(&db, "20260104000000");
+    std::fs::write(&current, b"this pull's clone").unwrap();
+    assert_eq!(surviving_backups(&dir, &db).len(), 4);
+
+    // Failure: this pull's copy survives, the three older ones do not.
+    dispose_pre_pull_backup(&db, &current, false);
+    assert!(current.exists());
+    assert_eq!(
+        surviving_backups(&dir, &db),
+        vec!["oz-pos.sync-pull-20260104000000.backup.db".to_string()],
+        "one retained pre-pull backup per database, not one per pull"
+    );
+}
+
+#[test]
+fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
+    let dir = unique_backup_dir();
+    let (db, _) = db_with_backup(&dir, "20260101000000");
+    for ts in ["20260102000000", "20260103000000"] {
+        std::fs::write(pre_pull_backup_path(&db, ts), b"stale clone").unwrap();
+    }
+    let current = pre_pull_backup_path(&db, "20260104000000");
+    std::fs::write(&current, b"this pull's clone").unwrap();
+
+    dispose_pre_pull_backup(&db, &current, true);
+    let survivors = surviving_backups(&dir, &db);
+    assert!(!survivors.contains(&"oz-pos.sync-pull-20260104000000.backup.db".to_string()));
+    assert_eq!(
+        survivors,
+        vec!["oz-pos.sync-pull-20260103000000.backup.db".to_string()],
+        "at most one recovery point survives, and it is the newest orphan"
+    );
+}
+
+#[test]
+fn rotation_never_touches_files_that_are_not_pre_pull_backups() {
+    let dir = unique_backup_dir();
+    let (db, _) = db_with_backup(&dir, "20260101000000");
+    let other_db = dir.join("warehouse.db");
+    std::fs::write(&other_db, b"another till").unwrap();
+    let other_backup = pre_pull_backup_path(&other_db, "20260102000000");
+    std::fs::write(&other_backup, b"someone else's snapshot").unwrap();
+    let operator_backup = dir.join("warehouse.backup.db");
+    std::fs::write(&operator_backup, b"operator backup command").unwrap();
+    let wal = dir.join("oz-pos.db-wal");
+    std::fs::write(&wal, b"wal").unwrap();
+    let lookalike = dir.join("oz-pos.sync-pull-20260102000000.notes.txt");
+    std::fs::write(&lookalike, b"unrelated").unwrap();
+    let stale = pre_pull_backup_path(&db, "20260102000000");
+    std::fs::write(&stale, b"this one goes").unwrap();
+
+    dispose_pre_pull_backup(&db, &stale, true);
+
+    assert!(
+        !stale.exists(),
+        "only this database's pre-pull backups are pruned"
+    );
+    for kept in [
+        &db,
+        &other_db,
+        &other_backup,
+        &operator_backup,
+        &wal,
+        &lookalike,
+    ] {
+        assert!(kept.exists(), "cleanup must not delete {kept:?}");
+    }
+}
+
+#[test]
+fn disposal_survives_a_missing_or_unlistable_directory() {
+    // A backup that was already removed (or never created because the pull
+    // failed before Phase 3) must not turn into a second error, and a db path
+    // with no readable parent must not panic.
+    let dir = unique_backup_dir();
+    let db = dir.join("oz-pos.db");
+    let gone = pre_pull_backup_path(&db, "20260101000000");
+    dispose_pre_pull_backup(&db, &gone, true);
+    dispose_pre_pull_backup(&db, &gone, false);
+    let nowhere = std::path::Path::new("/nonexistent-oz-bridge-dir/oz-pos.db");
+    dispose_pre_pull_backup(
+        nowhere,
+        &pre_pull_backup_path(nowhere, "20260101000000"),
+        false,
+    );
+    assert_eq!(
+        prune_pre_pull_backups(nowhere, 1, None),
+        Vec::<std::path::PathBuf>::new()
+    );
+}
