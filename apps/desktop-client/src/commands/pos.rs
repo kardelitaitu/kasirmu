@@ -61,6 +61,7 @@ fn run_override_line_price_unchecked(
         .map_err(Into::into)
 }
 
+/// Set a cart discount within the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn set_cart_discount_scoped(
     session_token: String,
@@ -73,6 +74,8 @@ pub async fn set_cart_discount_scoped(
         .map_err(Into::into)
 }
 
+/// Start a new sale in the store resolved from a session token (ADR #7).
+/// Resolves and locks the primary deduction location on the cart at start.
 #[tauri::command]
 pub async fn start_sale_scoped(
     session_token: String,
@@ -85,6 +88,8 @@ pub async fn start_sale_scoped(
         .map_err(Into::into)
 }
 
+/// Add a line to an active cart in the store resolved from a session token (ADR #7).
+/// Rejects carts without a deduction-location lock (ADR-19 §5.1).
 #[tauri::command]
 pub async fn add_line_scoped(
     session_token: String,
@@ -97,6 +102,7 @@ pub async fn add_line_scoped(
         .map_err(Into::into)
 }
 
+/// Override a line price within the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn override_line_price_scoped(
     session_token: String,
@@ -109,6 +115,8 @@ pub async fn override_line_price_scoped(
         .map_err(Into::into)
 }
 
+/// Override the deduction location lock on an active cart (ADR-19 §17).
+/// Records the manager override timestamp; the locked location itself is unchanged.
 #[tauri::command]
 pub async fn override_cart_deduction_location_scoped(
     session_token: String,
@@ -121,6 +129,7 @@ pub async fn override_cart_deduction_location_scoped(
         .map_err(Into::into)
 }
 
+/// Compute cart tax for the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn compute_cart_tax_scoped(
     session_token: String,
@@ -134,6 +143,7 @@ pub async fn compute_cart_tax_scoped(
         .map_err(Into::into)
 }
 
+/// Hold a cart in the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn hold_cart_scoped(
     session_token: String,
@@ -146,6 +156,7 @@ pub async fn hold_cart_scoped(
         .map_err(Into::into)
 }
 
+/// List held carts for the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn list_held_carts_scoped(
     session_token: String,
@@ -157,6 +168,7 @@ pub async fn list_held_carts_scoped(
         .map_err(Into::into)
 }
 
+/// List open bills for the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn list_open_bills_scoped(
     session_token: String,
@@ -168,6 +180,7 @@ pub async fn list_open_bills_scoped(
         .map_err(Into::into)
 }
 
+/// Get a held cart from the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn get_held_cart_scoped(
     session_token: String,
@@ -180,6 +193,7 @@ pub async fn get_held_cart_scoped(
         .map_err(Into::into)
 }
 
+/// Delete a held cart in the store resolved from a session token (ADR #7).
 #[tauri::command]
 pub async fn delete_held_cart_scoped(
     session_token: String,
@@ -192,6 +206,7 @@ pub async fn delete_held_cart_scoped(
         .map_err(Into::into)
 }
 
+/// Read the deduction-location info for a cart in the store resolved from a session token.
 #[tauri::command]
 pub async fn get_cart_deduction_location_scoped(
     cart_id: CartId,
