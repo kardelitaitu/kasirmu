@@ -385,10 +385,12 @@ fn update_pg_sync_settings_data_password_preserved_when_none() {
 // The property under test is the DISPOSITION, not the deletion: a pull that
 // succeeded leaves no recovery point behind, a pull that failed leaves exactly
 // one, and neither case leaves a directory of whole-database cleartext clones.
+// The second property, added because the cap made it load-bearing, is SCOPE:
+// one store's rotation must never reach another store's retained snapshot.
 // ---------------------------------------------------------------------------
 
 /// Unique per-test scratch directory standing in for the app-data dir that
-/// holds the live database (tempfile is not a dev-dependency here).
+/// holds the live databases (tempfile is not a dev-dependency here).
 fn unique_backup_dir() -> std::path::PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -406,120 +408,149 @@ fn unique_backup_dir() -> std::path::PathBuf {
     dir
 }
 
-/// A live database file plus one pre-pull backup of it. Returns (db, backup).
-fn db_with_backup(
-    dir: &std::path::Path,
-    timestamp: &str,
-) -> (std::path::PathBuf, std::path::PathBuf) {
-    let db = dir.join("oz-pos.db");
-    std::fs::write(&db, b"live database").unwrap();
-    let backup = pre_pull_backup_path(&db, timestamp);
-    std::fs::write(&backup, b"whole-database cleartext clone").unwrap();
-    (db, backup)
+/// Create a file in dir and return its path.
+fn touch(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let path = dir.join(name);
+    std::fs::write(&path, b"whole-database cleartext clone").unwrap();
+    path
 }
 
-/// Every pre-pull backup currently in `dir`, newest first.
-fn surviving_backups(dir: &std::path::Path, db: &std::path::Path) -> Vec<String> {
+/// A store database file (store-<id>.sqlite, the manager's naming scheme).
+fn store_db_in(dir: &std::path::Path, id: &str) -> std::path::PathBuf {
+    touch(dir, &format!("store-{id}.sqlite"))
+}
+
+/// A pre-pull backup of store_db at timestamp, written to disk.
+fn write_backup(store_db: &std::path::Path, timestamp: &str) -> std::path::PathBuf {
+    let path = pre_pull_backup_path(store_db, timestamp);
+    std::fs::write(&path, b"whole-database cleartext clone").unwrap();
+    path
+}
+
+/// Every pre-pull backup in dir that belongs to scope_db's family.
+fn family(dir: &std::path::Path, scope_db: &std::path::Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .unwrap()
         .flatten()
         .map(|e| e.path())
-        .filter(|p| is_pre_pull_backup(db, p))
+        .filter(|p| is_pre_pull_backup(scope_db, p))
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
     names.sort();
-    names.reverse();
     names
 }
 
 #[test]
-fn pre_pull_backup_path_is_a_sibling_of_the_live_db() {
-    let db = std::path::Path::new("/var/lib/oz/oz-pos.db");
-    let backup = pre_pull_backup_path(db, "20260908121212");
-    assert_eq!(backup.parent(), db.parent());
+fn pre_pull_backup_is_named_after_the_store_it_clones() {
+    let store = std::path::Path::new("/var/lib/oz/store-7.sqlite");
+    let backup = pre_pull_backup_path(store, "20260908121212");
+    assert_eq!(backup.parent(), store.parent());
     assert_eq!(
         backup.file_name().unwrap().to_string_lossy(),
-        "oz-pos.sync-pull-20260908121212.backup.db"
+        "store-7.sync-pull-20260908121212.backup.db"
     );
     // The live file is never itself a match, and neither is a WAL sibling.
-    assert!(!is_pre_pull_backup(db, db));
-    assert!(!is_pre_pull_backup(db, &db.with_extension("db-wal")));
+    assert!(!is_pre_pull_backup(store, store));
+    assert!(!is_pre_pull_backup(
+        store,
+        &store.with_extension("sqlite-wal")
+    ));
 }
 
 #[test]
-fn is_pre_pull_backup_scopes_to_one_database() {
-    let db = std::path::Path::new("/var/lib/oz/oz-pos.db");
+fn backup_name_matching_is_strict_enough_to_scope_by_store() {
+    let store = std::path::Path::new("/var/lib/oz/store-7.sqlite");
     assert!(is_pre_pull_backup(
-        db,
-        &pre_pull_backup_path(db, "20260101000000")
+        store,
+        &pre_pull_backup_path(store, "20260101000000")
     ));
-    // A different database's backup in the same directory must not be touched.
-    let other = std::path::Path::new("/var/lib/oz/other.db");
+    // Another store in the same directory is a different family.
+    let other = std::path::Path::new("/var/lib/oz/store-8.sqlite");
     assert!(!is_pre_pull_backup(
-        db,
+        store,
         &pre_pull_backup_path(other, "20260101000000")
     ));
     assert!(is_pre_pull_backup(
         other,
         &pre_pull_backup_path(other, "20260101000000")
     ));
-    // Truncated / wrong-suffix lookalikes are rejected.
+    // Malformed lookalikes: wrong width, non-digits, wrong suffix.
     assert!(!is_pre_pull_backup(
-        db,
-        &db.with_extension("sync-pull-.backup.db")
+        store,
+        &store.with_extension("sync-pull-20260101.backup.db")
     ));
     assert!(!is_pre_pull_backup(
-        db,
-        &db.with_extension("sync-pull-20260101000000.bak")
+        store,
+        &store.with_extension("sync-pull-2026010100000a.backup.db")
+    ));
+    assert!(!is_pre_pull_backup(
+        store,
+        &store.with_extension("sync-pull-20260101000000.bak")
+    ));
+    // A store id that embeds the infix must not widen the family: the extra
+    // text sits in the STEM, and the timestamp slot is still exactly 14 digits.
+    let tricky = std::path::Path::new("/var/lib/oz/store-sync-pull-9.sqlite");
+    assert!(is_pre_pull_backup(
+        tricky,
+        &pre_pull_backup_path(tricky, "20260101000000")
+    ));
+    assert!(!is_pre_pull_backup(
+        std::path::Path::new("/var/lib/oz/store.sqlite"),
+        &pre_pull_backup_path(tricky, "20260101000000")
     ));
 }
 
 #[test]
 fn successful_pull_removes_the_pre_pull_backup() {
     let dir = unique_backup_dir();
-    let (db, backup) = db_with_backup(&dir, "20260908121212");
-    dispose_pre_pull_backup(&db, &backup, true);
+    let main_db = touch(&dir, "oz-pos.db");
+    let store = store_db_in(&dir, "7");
+    let backup = write_backup(&store, "20260908121212");
+    dispose_pre_pull_backup(&main_db, &store, &backup, true);
     assert!(
         !backup.exists(),
         "a pull that did not corrupt the DB must not leave a cleartext clone behind"
     );
-    assert!(db.exists(), "the live database is never a cleanup target");
-    assert_eq!(surviving_backups(&dir, &db), Vec::<String>::new());
+    assert!(
+        store.exists(),
+        "the live database is never a cleanup target"
+    );
+    assert_eq!(family(&dir, &store), Vec::<String>::new());
 }
 
 #[test]
 fn failed_pull_retains_the_pre_pull_backup() {
     let dir = unique_backup_dir();
-    let (db, backup) = db_with_backup(&dir, "20260908121212");
-    dispose_pre_pull_backup(&db, &backup, false);
+    let main_db = touch(&dir, "oz-pos.db");
+    let store = store_db_in(&dir, "7");
+    let backup = write_backup(&store, "20260908121212");
+    dispose_pre_pull_backup(&main_db, &store, &backup, false);
     assert!(
         backup.exists(),
         "the retained snapshot is the only way back from a half-applied pull"
     );
     assert_eq!(
-        surviving_backups(&dir, &db),
-        vec!["oz-pos.sync-pull-20260908121212.backup.db".to_string()]
+        family(&dir, &store),
+        vec!["store-7.sync-pull-20260908121212.backup.db".to_string()]
     );
 }
 
 #[test]
 fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
     let dir = unique_backup_dir();
-    let (db, _) = db_with_backup(&dir, "20260101000000");
-    // Two older orphans from earlier failed pulls, then this pull's copy.
-    for ts in ["20260102000000", "20260103000000"] {
-        std::fs::write(pre_pull_backup_path(&db, ts), b"stale clone").unwrap();
+    let main_db = touch(&dir, "oz-pos.db");
+    let store = store_db_in(&dir, "7");
+    for ts in ["20260101000000", "20260102000000", "20260103000000"] {
+        write_backup(&store, ts);
     }
-    let current = pre_pull_backup_path(&db, "20260104000000");
-    std::fs::write(&current, b"this pull's clone").unwrap();
-    assert_eq!(surviving_backups(&dir, &db).len(), 4);
+    let current = write_backup(&store, "20260104000000");
+    assert_eq!(family(&dir, &store).len(), 4);
 
-    // Failure: this pull's copy survives, the three older ones do not.
-    dispose_pre_pull_backup(&db, &current, false);
+    dispose_pre_pull_backup(&main_db, &store, &current, false);
     assert!(current.exists());
     assert_eq!(
-        surviving_backups(&dir, &db),
-        vec!["oz-pos.sync-pull-20260104000000.backup.db".to_string()],
+        family(&dir, &store),
+        vec!["store-7.sync-pull-20260104000000.backup.db".to_string()],
         "one retained pre-pull backup per database, not one per pull"
     );
 }
@@ -527,48 +558,157 @@ fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
 #[test]
 fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
     let dir = unique_backup_dir();
-    let (db, _) = db_with_backup(&dir, "20260101000000");
-    for ts in ["20260102000000", "20260103000000"] {
-        std::fs::write(pre_pull_backup_path(&db, ts), b"stale clone").unwrap();
-    }
-    let current = pre_pull_backup_path(&db, "20260104000000");
-    std::fs::write(&current, b"this pull's clone").unwrap();
+    let main_db = touch(&dir, "oz-pos.db");
+    let store = store_db_in(&dir, "7");
+    write_backup(&store, "20260101000000");
+    write_backup(&store, "20260102000000");
+    let current = write_backup(&store, "20260103000000");
 
-    dispose_pre_pull_backup(&db, &current, true);
-    let survivors = surviving_backups(&dir, &db);
-    assert!(!survivors.contains(&"oz-pos.sync-pull-20260104000000.backup.db".to_string()));
+    dispose_pre_pull_backup(&main_db, &store, &current, true);
     assert_eq!(
-        survivors,
-        vec!["oz-pos.sync-pull-20260103000000.backup.db".to_string()],
+        family(&dir, &store),
+        vec!["store-7.sync-pull-20260102000000.backup.db".to_string()],
         "at most one recovery point survives, and it is the newest orphan"
+    );
+}
+
+/// THE CROSS-STORE CASE. Before the backup was named after the store it
+/// clones, every store's snapshots shared the main database's name family, so
+/// the cap that bounds the pile could also delete store A's retained recovery
+/// point while servicing store B. Two stores, each holding a snapshot from a
+/// failed pull: neither one's next pull may touch the other's.
+#[test]
+fn two_stores_do_not_rotate_each_other_out() {
+    let dir = unique_backup_dir();
+    let main_db = touch(&dir, "oz-pos.db");
+    let store_a = store_db_in(&dir, "a");
+    let store_b = store_db_in(&dir, "b");
+
+    // A's pull failed an hour ago; its snapshot is A's only recovery point.
+    let a_retained = write_backup(&store_a, "20260105120000");
+    // B has two older orphans plus a pull that is failing right now.
+    write_backup(&store_b, "20260105100000");
+    write_backup(&store_b, "20260105110000");
+    let b_current = write_backup(&store_b, "20260105120030");
+
+    // B's failed pull: B rotates itself down to one copy...
+    dispose_pre_pull_backup(&main_db, &store_b, &b_current, false);
+    // ...and A's snapshot is untouched, despite being OLDER than everything B
+    // just deleted. That is the regression this test pins.
+    assert!(
+        a_retained.exists(),
+        "a sweep for store B deleted store A's retained recovery point"
+    );
+    assert_eq!(
+        family(&dir, &store_a),
+        vec!["store-a.sync-pull-20260105120000.backup.db".to_string()]
+    );
+    assert_eq!(
+        family(&dir, &store_b),
+        vec!["store-b.sync-pull-20260105120030.backup.db".to_string()]
+    );
+
+    // And the other direction: A's next pull succeeds, deleting that pull's
+    // own copy and leaving B's survivor alone. A's earlier retained snapshot
+    // is what the one-copy budget is for, so it stays.
+    let a_next = write_backup(&store_a, "20260106090000");
+    dispose_pre_pull_backup(&main_db, &store_a, &a_next, true);
+    assert!(!a_next.exists(), "A's own superseded copy should be gone");
+    assert!(
+        b_current.exists(),
+        "a sweep for store A deleted store B's retained recovery point"
+    );
+    assert_eq!(
+        family(&dir, &store_a),
+        vec!["store-a.sync-pull-20260105120000.backup.db".to_string()]
+    );
+    assert_eq!(
+        family(&dir, &store_b),
+        vec!["store-b.sync-pull-20260105120030.backup.db".to_string()]
+    );
+}
+
+/// The old builds named every snapshot after the shell's main database, for
+/// every store. Those files carry no store identity, so they are not a
+/// recovery point for anything and are swept outright rather than capped.
+#[test]
+fn legacy_main_named_backups_are_swept_by_the_next_pull() {
+    let dir = unique_backup_dir();
+    let main_db = touch(&dir, "oz-pos.db");
+    let store = store_db_in(&dir, "7");
+    let legacy: Vec<std::path::PathBuf> = ["20260101000000", "20260102000000", "20260103000000"]
+        .iter()
+        .map(|ts| touch(&dir, &format!("oz-pos.sync-pull-{ts}.backup.db")))
+        .collect();
+    // This store's own retained copy from a failed pull under the NEW scheme.
+    let a_retained = write_backup(&store, "20260104000000");
+
+    let current = write_backup(&store, "20260105000000");
+    dispose_pre_pull_backup(&main_db, &store, &current, true);
+
+    for old in &legacy {
+        assert!(!old.exists(), "the legacy pile must be swept, not kept");
+    }
+    assert!(
+        a_retained.exists(),
+        "sweeping legacy names is not licence to sweep a store family"
+    );
+    assert_eq!(
+        family(&dir, &store),
+        vec!["store-7.sync-pull-20260104000000.backup.db".to_string()]
+    );
+    assert_eq!(family(&dir, &main_db), Vec::<String>::new());
+}
+
+/// If an install's main database were itself named store-<id>.sqlite, the
+/// legacy family and the store family are the same family — and the legacy
+/// sweep runs with a budget of zero and no protected file. Without the
+/// stem guard it would therefore delete the very snapshot this pull failed
+/// into and is retaining. The store cap still applies, so the family ends at
+/// one copy, not zero.
+#[test]
+fn the_legacy_sweep_stands_down_when_the_stems_coincide() {
+    let dir = unique_backup_dir();
+    let store = store_db_in(&dir, "7");
+    let main_db = store.clone(); // pathological: main DB *is* this store DB
+    let retained = write_backup(&store, "20260104000000");
+    let current = write_backup(&store, "20260105000000");
+
+    dispose_pre_pull_backup(&main_db, &store, &current, false);
+    assert!(
+        current.exists(),
+        "the coincident legacy sweep deleted the copy this failed pull is retaining"
+    );
+    assert!(
+        !retained.exists(),
+        "the ordinary per-store cap still applies to the shared family"
+    );
+    assert_eq!(
+        family(&dir, &store),
+        vec!["store-7.sync-pull-20260105000000.backup.db".to_string()]
     );
 }
 
 #[test]
 fn rotation_never_touches_files_that_are_not_pre_pull_backups() {
     let dir = unique_backup_dir();
-    let (db, _) = db_with_backup(&dir, "20260101000000");
-    let other_db = dir.join("warehouse.db");
-    std::fs::write(&other_db, b"another till").unwrap();
-    let other_backup = pre_pull_backup_path(&other_db, "20260102000000");
-    std::fs::write(&other_backup, b"someone else's snapshot").unwrap();
-    let operator_backup = dir.join("warehouse.backup.db");
-    std::fs::write(&operator_backup, b"operator backup command").unwrap();
-    let wal = dir.join("oz-pos.db-wal");
-    std::fs::write(&wal, b"wal").unwrap();
-    let lookalike = dir.join("oz-pos.sync-pull-20260102000000.notes.txt");
-    std::fs::write(&lookalike, b"unrelated").unwrap();
-    let stale = pre_pull_backup_path(&db, "20260102000000");
-    std::fs::write(&stale, b"this one goes").unwrap();
+    let main_db = touch(&dir, "oz-pos.db");
+    let store = store_db_in(&dir, "7");
+    let other_db = touch(&dir, "warehouse.db");
+    let other_backup = touch(&dir, "warehouse.sync-pull-20260102000000.backup.db");
+    let operator_backup = touch(&dir, "warehouse.backup.db");
+    let wal = touch(&dir, "store-7.sqlite-wal");
+    let lookalike = touch(&dir, "store-7.sync-pull-20260102000000.notes.txt");
+    let stale = write_backup(&store, "20260102000000");
 
-    dispose_pre_pull_backup(&db, &stale, true);
+    dispose_pre_pull_backup(&main_db, &store, &stale, true);
 
     assert!(
         !stale.exists(),
         "only this database's pre-pull backups are pruned"
     );
     for kept in [
-        &db,
+        &store,
         &other_db,
         &other_backup,
         &operator_backup,
@@ -585,12 +725,14 @@ fn disposal_survives_a_missing_or_unlistable_directory() {
     // failed before Phase 3) must not turn into a second error, and a db path
     // with no readable parent must not panic.
     let dir = unique_backup_dir();
-    let db = dir.join("oz-pos.db");
-    let gone = pre_pull_backup_path(&db, "20260101000000");
-    dispose_pre_pull_backup(&db, &gone, true);
-    dispose_pre_pull_backup(&db, &gone, false);
-    let nowhere = std::path::Path::new("/nonexistent-oz-bridge-dir/oz-pos.db");
+    let main_db = touch(&dir, "oz-pos.db");
+    let store = store_db_in(&dir, "7");
+    let gone = pre_pull_backup_path(&store, "20260101000000");
+    dispose_pre_pull_backup(&main_db, &store, &gone, true);
+    dispose_pre_pull_backup(&main_db, &store, &gone, false);
+    let nowhere = std::path::Path::new("/nonexistent-oz-bridge-dir/store-7.sqlite");
     dispose_pre_pull_backup(
+        nowhere,
         nowhere,
         &pre_pull_backup_path(nowhere, "20260101000000"),
         false,

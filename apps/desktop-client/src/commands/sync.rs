@@ -318,7 +318,15 @@ pub async fn sync_run_scoped(
         .map_err(Into::into)
 }
 
-/// Sync pull (scoped — 4-phase with auth refresh + backup).
+/// Sync pull (scoped — 4-phase with auth refresh + backup, then disposal).
+///
+/// `state.db_path` is passed only so the bridge can recognise and sweep the
+/// LEGACY backup family (`oz-pos.sync-pull-*.backup.db`), which pre-fix builds
+/// wrote for every store under this shell's main database name. The backup a
+/// pull takes now is named after the store database it clones
+/// (`store-<id>.sync-pull-<ts>.backup.db`, derived by the bridge from
+/// `StoreDatabaseManager::store_db_path`) and is deleted on success or
+/// retained one-per-store on failure — see `oz_bridge::sync::dispose_pre_pull_backup`.
 #[tauri::command]
 pub async fn sync_pull_scoped(
     args: SyncPullArgs,
