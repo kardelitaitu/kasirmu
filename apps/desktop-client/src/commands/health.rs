@@ -103,7 +103,3 @@ pub async fn get_local_ip_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "health_tests.rs"]
-mod tests;

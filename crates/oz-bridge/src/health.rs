@@ -118,3 +118,7 @@ pub async fn get_local_ip_scoped(
     let _session = ctx.resolve_session(session_token)?;
     get_local_ip().await
 }
+
+#[cfg(test)]
+#[path = "health_tests.rs"]
+mod tests;

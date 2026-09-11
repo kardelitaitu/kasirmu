@@ -1,3 +1,9 @@
+//! Unit tests for the product-bundle argument DTOs.
+//!
+//! Relocated verbatim from `apps/desktop-client/src/commands/bundles_tests.rs`
+//! (Wave F); mounted at the foot of the `bundles` bridge module, so
+//! `use super::*;` resolves the moved arg structs.
+
 use super::*;
 
 // ── CreateBundleArgs ────────────────────────────────────────────────

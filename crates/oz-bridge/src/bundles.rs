@@ -175,3 +175,7 @@ pub async fn create_bundle_scoped(
 
     Ok(store.create_bundle(&bundle, &items)?)
 }
+
+#[cfg(test)]
+#[path = "bundles_tests.rs"]
+mod tests;

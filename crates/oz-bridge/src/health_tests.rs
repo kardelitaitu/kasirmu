@@ -1,3 +1,9 @@
+//! Unit tests for the health command surface.
+//!
+//! Relocated from `apps/desktop-client/src/commands/health_tests.rs`
+//! (Wave F); `version`'s per-crate identity strings are supplied at the
+//! call site exactly as the desktop shim threads them (see `super`'s doc).
+
 use super::*;
 
 #[tokio::test]
@@ -7,7 +13,14 @@ async fn ping_returns_pong() {
 
 #[tokio::test]
 async fn version_has_populated_fields() {
-    let v = version().await.unwrap();
+    let v = version(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_RUST_VERSION"),
+        option_env!("TARGET").unwrap_or("unknown"),
+    )
+    .await
+    .unwrap();
     assert!(!v.name.is_empty());
     assert!(!v.version.is_empty());
     assert!(!v.target.is_empty());

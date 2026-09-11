@@ -96,7 +96,3 @@ pub async fn create_bundle_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "bundles_tests.rs"]
-mod tests;
