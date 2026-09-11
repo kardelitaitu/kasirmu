@@ -71,6 +71,7 @@ echo "── 3/4 Log rotation (json-file max-size/max-file in every merge combo)
 # config render (not a real deploy) succeeds. MSYS_NO_PATHCONV is
 # unnecessary here — compose reads env vars directly, never the shell argv.
 export OZ_API_SECRET="${OZ_API_SECRET:-rotation-check-secret}"
+export OZ_ADMIN_KEY="${OZ_ADMIN_KEY:-rotation-check-admin-key}"
 export OZ_LICENSE_PRIVATE_KEY="${OZ_LICENSE_PRIVATE_KEY:-rotation-check-key}"
 export PG_PASSWORD="${PG_PASSWORD:-rotation-check-pg}"
 
