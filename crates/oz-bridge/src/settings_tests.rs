@@ -564,14 +564,67 @@ fn run_set_setting_allows_unmanaged_keys() {
     run_set_setting(&conn, "my_local_api.enabled", "1", "t-1").unwrap();
 }
 
+/// The prefix rule, asserted through the shared predicate the bridge now calls.
+///
+/// This used to be a test of a bridge-local `is_managed_key` with a bridge-local
+/// list of prefixes. It keeps the same cases — including `sync.auth_token`, which
+/// is a credential but NOT manager-owned, so it is the case that would break if
+/// the two rules were ever collapsed into one — and adds the agreement check:
+/// the label lookup may never widen or narrow what the shared predicate claims.
 #[test]
-fn is_managed_key_prefix_semantics() {
-    assert!(is_managed_key("local_api.enabled"));
-    assert!(is_managed_key("local_api.")); // even the bare prefix is owned
-    assert!(!is_managed_key("local_api"));
-    assert!(is_managed_key("lan_server.psk")); // same class, same guard
-    assert!(is_managed_key("lan_server.enabled"));
-    assert!(!is_managed_key("sync.auth_token"));
+fn manager_owned_prefix_semantics() {
+    assert!(is_manager_owned_key("local_api.enabled"));
+    assert!(is_manager_owned_key("local_api.")); // even the bare prefix is owned
+    assert!(!is_manager_owned_key("local_api"));
+    assert!(is_manager_owned_key("lan_server.psk")); // same class, same guard
+    assert!(is_manager_owned_key("lan_server.enabled"));
+    assert!(!is_manager_owned_key("sync.auth_token"));
+    for key in [
+        "local_api.enabled",
+        "lan_server.psk",
+        "sync.auth_token",
+        "local_api",
+    ] {
+        assert_eq!(
+            managed_key_owner(key).is_some(),
+            is_manager_owned_key(key),
+            "{key}: the owner label must never widen or narrow the shared rule",
+        );
+    }
+}
+
+/// The one thing the bridge still owns about this rule: which manager a refused
+/// key belongs to, for the message the UI shows. Built from the shared key
+/// constants, so no second prefix list exists in this crate.
+#[test]
+fn managed_key_owner_labels_the_manager() {
+    assert_eq!(managed_key_owner("local_api.secret"), Some("Local API"));
+    assert_eq!(managed_key_owner("local_api."), Some("Local API"));
+    assert_eq!(managed_key_owner("lan_server.enabled"), Some("LAN server"));
+    assert_eq!(managed_key_owner("lan_server.bind"), Some("LAN server"));
+    // Prefix lookalikes are not families, and neither is an ordinary key.
+    assert_eq!(managed_key_owner("local_api_x.enabled"), None);
+    assert_eq!(managed_key_owner("my_local_api.enabled"), None);
+    assert_eq!(managed_key_owner("sync.auth_token"), None);
+}
+
+/// The refusal text is what the UI shows, so it is pinned byte for byte — the
+/// owner name included. Deleting the bridge-local predicate must not move it.
+#[test]
+fn run_set_setting_refusal_message_is_byte_identical() {
+    let conn = fresh_conn();
+    let err = run_set_setting(&conn, "local_api.enabled", "1", "t-1").unwrap_err();
+    assert!(
+        matches!(&err, BridgeError::Invalid(m)
+            if m.as_str() == "local_api.enabled is managed by the Local API controls \u{2014} use those"),
+        "exact message the UI shows: {err:?}",
+    );
+    let err = run_set_setting(&conn, "lan_server.bind", "0.0.0.0", "t-1").unwrap_err();
+    assert!(
+        matches!(&err, BridgeError::Invalid(m)
+            if m.as_str() == "lan_server.bind is managed by the LAN server controls \u{2014} use those"),
+        "exact message the UI shows: {err:?}",
+    );
 }
 
 #[test]

@@ -29,6 +29,8 @@ use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
 use oz_core::permissions;
 use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use oz_core::{Settings, Store, UserPreferences};
+use platform_core::settings::is_manager_owned_key;
+use platform_core::settings::keys::{LAN_SERVER_PSK, LOCAL_API_SECRET};
 use platform_core::terminal_profile::TerminalProfile;
 use serde::{Deserialize, Serialize};
 
@@ -59,27 +61,48 @@ pub fn is_secret_key(key: &str) -> bool {
     is_secret_setting_key(key)
 }
 
-/// Which dedicated lifecycle manager owns a key, if any.
+/// Which dedicated lifecycle manager owns a key, if any — the LABEL only.
 ///
-/// local_api.* is managed exclusively by the Local API commands: writing
-/// local_api.enabled through the generic path would persist an intent the server never
-/// acts on (fail-open disable), and writing local_api.secret would silently invalidate
-/// every minted token. lan_server.* is the same class (PSK + bind + enabled owned by
-/// the LAN server module); no UI surface writes those through the generic path, so
-/// widening the guard closes the pre-existing hole without breaking any caller.
+/// Whether a key is manager-owned is not decided here. It is answered by the
+/// one shared predicate, [`platform_core::settings::is_manager_owned_key`] — the
+/// same call the tablet write funnel refuses at
+/// (`apps/tablet-client/src/commands/settings.rs`) and the same one the sealed
+/// ingest policy admits against (`IngestPolicy::PortablePackage`,
+/// `IngestPolicy::RemoteSync`). This lane used to carry its own `starts_with`
+/// pair: two definitions of one ownership rule, and the drift hazard is
+/// silent — the day a third prefix joins the shared predicate, the tablet and
+/// the ingest lane refuse it while this funnel keeps accepting it, and nothing
+/// fails.
+///
+/// What stays local is the label, because the shared predicate answers a
+/// boolean while the refusal message names the owner the UI shows. Even that
+/// takes its prefixes FROM the platform-core key constants rather than from a
+/// retyped list, so this crate holds no manager-owned prefix of its own. A key
+/// the predicate claims under a prefix this lane cannot name still refuses,
+/// with a generic label — the fallback errs towards refusing, never towards
+/// accepting.
 pub fn managed_key_owner(key: &str) -> Option<&'static str> {
-    if key.starts_with("local_api.") {
+    if !is_manager_owned_key(key) {
+        return None;
+    }
+    if key.starts_with(family_prefix(LOCAL_API_SECRET)) {
         Some("Local API")
-    } else if key.starts_with("lan_server.") {
+    } else if key.starts_with(family_prefix(LAN_SERVER_PSK)) {
         Some("LAN server")
     } else {
-        None
+        Some("dedicated")
     }
 }
 
-/// Returns true if a key is owned by a dedicated lifecycle manager.
-pub fn is_managed_key(key: &str) -> bool {
-    managed_key_owner(key).is_some()
+/// The dotted-family prefix of a settings key: `local_api.secret` → `local_api.`.
+///
+/// Lets [`managed_key_owner`] build its labels from the shared key constants
+/// instead of from a second list of manager-owned prefixes.
+fn family_prefix(key: &str) -> &str {
+    match key.find('.') {
+        Some(dot) => &key[..=dot],
+        None => key,
+    }
 }
 
 /// All receipt display options in one shot - the UI loads these on
@@ -469,8 +492,8 @@ pub fn run_set_settings_batch(
     entries: &HashMap<String, String>,
     terminal_id: &str,
 ) -> Result<HashMap<String, String>, BridgeError> {
-    if let Some(key) = entries.keys().find(|k| is_managed_key(k)) {
-        let owner = managed_key_owner(key).unwrap_or("a dedicated");
+    if let Some(key) = entries.keys().find(|k| is_manager_owned_key(k)) {
+        let owner = managed_key_owner(key).unwrap_or("dedicated");
         return Err(BridgeError::Invalid(format!(
             "{key} is managed by the {owner} controls — use those"
         )));
