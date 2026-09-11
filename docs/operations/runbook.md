@@ -264,6 +264,11 @@ fallback, no open token mint) and implies `OZ_DB_REQUIRE_TLS=1` (startup
 fails if `DATABASE_URL` lacks `sslmode=require`). Keep all three in the
 Northflank secret store, never in the image.
 
+The `docker-compose.yml` full-stack path enforces this even earlier: both
+`OZ_API_SECRET` and `OZ_ADMIN_KEY` use the `:?` required interpolation, so
+`docker compose up` fails at parse time when either is unset — regardless of
+`OZ_PRODUCTION` (DOCKER-04). Generate both with `openssl rand -hex 32`.
+
 The license server has its own fail-fast boot gates (Paddle webhook secret + price
 tiers are unconditional; Brevo SMTP once `OZ_SMTP_HOST` is set) — the ordered,
 paste-ready checklist for taking the deployed instance from pre-gate to sandbox-live
@@ -421,7 +426,7 @@ longer exists — migrating that data requires a PocketBase backup → restore
 |----------|----------------|-------|
 | `OZ_LICENSE_PRIVATE_KEY` | RSA PEM | required — Go license server exits without it (`OZ_LICENSE_KEY` is the legacy alias) |
 | `OZ_API_SECRET` | `openssl rand -hex 32` | required when `OZ_PRODUCTION=1` |
-| `OZ_ADMIN_KEY` | random string | required when `OZ_PRODUCTION=1`; gates token mint |
+| `OZ_ADMIN_KEY` | `openssl rand -hex 32` | required — `docker-compose.yml` fails at parse time when unset; with `OZ_PRODUCTION=1` the server also refuses to start; gates token mint |
 | `OZ_PRODUCTION` | `1` | fail-closed boot: refuses to start if either secret is unset; implies `OZ_DB_REQUIRE_TLS=1` |
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
 | `OZ_CORS_ORIGINS` | optional | extra origins beyond the default allowlist |
@@ -445,7 +450,9 @@ longer exists — migrating that data requires a PocketBase backup → restore
 > ⚠️ **Do not set `OZ_PRODUCTION=1` unless both `OZ_API_SECRET` and
 > `OZ_ADMIN_KEY` are set** — startup fails fast by design (no dev-secret
 > fallback, no open token mint). Without `OZ_PRODUCTION`, the service runs
-> in dev mode: `/api/v1/tokens` mints freely.
+> in dev mode: `/api/v1/tokens` mints freely. Compose deployments never reach
+> that dev mode — the compose file itself fails at parse time unless both
+> secrets are set (§6.2).
 
 > **Scaling beyond the free tier:** the unified image defaults to SQLite
 > (sync `/data/oz-pos.db` + PocketBase `/data/pb_data/`), which is fine for

@@ -13,6 +13,8 @@
 #   OZ_API_PORT  — HTTP listen port (default: 3099)
 #   RUST_LOG     — log level filter (default: info)
 #   OZ_API_SECRET— JWT signing secret (REQUIRED in production)
+#   OZ_ADMIN_KEY — admin key gating token mint + plan endpoint (REQUIRED;
+#                  docker-compose.yml fails closed at parse time when unset)
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────
 # DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-03).
