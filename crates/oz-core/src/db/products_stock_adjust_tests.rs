@@ -735,3 +735,88 @@ fn empty_product_set_rebuilds_nothing() {
         "and nothing may be healed out of an empty scope"
     );
 }
+/// The chunking is load-bearing, not theoretical. Every scoped statement binds
+/// one parameter per id, so a scope wider than SQLite's
+/// `SQLITE_MAX_VARIABLE_NUMBER` fails with `too many SQL variables` — and
+/// `rebuild_stock_summary()` (the operator entry point, and the only thing the
+/// two sync daemons call) passes EVERY ledger and summary id. The old
+/// parameterless table-wide statement could not fail that way, so an unchunked
+/// scope is a NEW failure mode on the sync path.
+///
+/// The fixture is deliberately LARGER than `REBUILD_SCOPE_CHUNK`, so the
+/// rebuild must cross a chunk boundary, and it asserts that every product on
+/// BOTH sides of it was healed and rebuilt: the loop may neither skip a chunk
+/// nor let one chunk's filter bleed into another chunk's rows.
+#[test]
+fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
+    // The ceiling that binds is the HISTORICAL one: 999 was
+    // SQLITE_MAX_VARIABLE_NUMBER before SQLite 3.32; the bundled 3.4x allows
+    // 32 766. A chunk of 900 ids plus each statement's own tail params stays
+    // under both. If someone raises the chunk past 999 this assertion is the
+    // thing that fails, on any engine, before a customer's catalog does.
+    assert!(
+        REBUILD_SCOPE_CHUNK < 999,
+        "chunk of {REBUILD_SCOPE_CHUNK} ids would hit the pre-3.32 999-variable ceiling"
+    );
+
+    let conn = fresh();
+    let s = store(&conn);
+    seed_location(&conn, "default", "Default");
+    let count = REBUILD_SCOPE_CHUNK + 100;
+    let mut ids: Vec<String> = Vec::with_capacity(count);
+    for i in 0..count {
+        let pid = seed_product(&conn, &format!("SKU-CH-{i:05}"));
+        // The legacy shape on EVERY product: inventory 60 with only a +40
+        // movement behind it, so each one needs its own compensating row.
+        seed_legacy_inventory(&conn, &pid, 60);
+        conn.execute(
+            "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES (?1, ?2, 'default', 40, 'opening', '2025-01-01T00:00:00.000Z')",
+            params![format!("mv-ch-{i}"), pid],
+        )
+        .unwrap();
+        ids.push(pid);
+    }
+    assert!(
+        ids.len() > REBUILD_SCOPE_CHUNK,
+        "the scope must span more than one chunk"
+    );
+
+    let started = std::time::Instant::now();
+    let rebuilt = s.rebuild_stock_summary_for(&ids).unwrap();
+    let elapsed = started.elapsed();
+
+    // Two (item_id, location_id) groups per product: the +40 at 'default' and
+    // the +20 compensating row at the canonical default location.
+    assert_eq!(
+        rebuilt,
+        count * 2,
+        "every product on every chunk must be rebuilt"
+    );
+    let healed: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_movements WHERE reason = 'legacy-backfill'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(healed, count as i64, "no chunk may be skipped by the heal");
+    let stale: i64 = conn
+        .query_row("SELECT COUNT(*) FROM inventory WHERE qty <> 60", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(stale, 0, "every aggregate re-derived to the healed 60");
+    let distinct: i64 = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT item_id) FROM stock_summary",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(distinct, count as i64, "and no product lost its rows");
+    // The suite pays for a thousand-product fixture; keep that bounded.
+    assert!(
+        elapsed.as_secs() < 30,
+        "chunked rebuild over {count} products took {elapsed:?}"
+    );
+}
