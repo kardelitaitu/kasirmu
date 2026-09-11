@@ -37,6 +37,17 @@ const DEFAULT_SMTP: SmtpConfigDto = {
 
 const SMTP_CONFIG_KEY = 'smtp_config';
 
+/**
+ * What the card persists. `password` is OPTIONAL and present only when the
+ * operator actually typed into the field — an absent key is the keep signal the
+ * backend merge in `crates/oz-core/src/export/email_report.rs` reads, exactly
+ * as `UpdateSyncSettingsArgs::api_key` is for the sync credential
+ * (crates/oz-bridge/src/sync.rs:72-74). Sending `password: null` used to mean
+ * "clear it" to the whole-blob write, which is how saving this card destroyed a
+ * stored SMTP password.
+ */
+type SmtpSavePayload = Omit<SmtpConfigDto, 'password'> & { password?: string };
+
 export default function EmailReportSettings() {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -52,6 +63,14 @@ export default function EmailReportSettings() {
   const [sending, setSending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // The password field is write-only by design: smtp_config is on the backend
+  // credential deny list, so getSettingScoped refuses the whole key and no
+  // stored secret can be read back into this form. `passwordTouched` is what
+  // distinguishes "the operator did not modify the masked field" from "they
+  // cleared it"; `hasStoredPassword` is the masked indicator rendered in place
+  // of pretending the field is empty (mirror of SyncSection's hasApiKey).
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [hasStoredPassword, setHasStoredPassword] = useState(false);
 
   // ── Schedule state ────────────────────────────────────────────────
   const [schedule, setSchedule] = useState<ReportScheduleConfig>({
@@ -70,7 +89,12 @@ export default function EmailReportSettings() {
     try {
       const raw = await getSettingScoped(sessionToken ?? null, SMTP_CONFIG_KEY);
       if (raw) {
-        setConfig({ ...DEFAULT_SMTP, ...JSON.parse(raw) });
+        const loaded = JSON.parse(raw) as Partial<SmtpConfigDto>;
+        // Report the secret, never echo it: the field stays empty and the
+        // placeholder shows bullets instead of pretending nothing is stored.
+        setHasStoredPassword(Boolean(loaded.password));
+        const { password: _echoed, ...rest } = loaded;
+        setConfig({ ...DEFAULT_SMTP, ...rest });
       }
     } catch {
       // Settings key doesn't exist yet — use defaults
@@ -123,7 +147,26 @@ export default function EmailReportSettings() {
         return;
       }
 
-      await setSettingScoped(sessionToken, SMTP_CONFIG_KEY, JSON.stringify(config));
+      // Keep-on-blank (mirror of crates/oz-bridge/src/sync.rs:72-74): an
+      // untouched password field is OMITTED from the saved blob rather than
+      // written as null, so the stored secret survives. Typing a value replaces
+      // it; clearing a field the operator had just typed into sends "" and is
+      // the one shape that means "remove the password".
+      const payload: SmtpSavePayload = {
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        from: config.from,
+        use_tls: config.use_tls,
+      };
+      if (passwordTouched) payload.password = config.password ?? '';
+      await setSettingScoped(sessionToken, SMTP_CONFIG_KEY, JSON.stringify(payload));
+      if (passwordTouched) {
+        setHasStoredPassword(Boolean(config.password));
+        setPasswordTouched(false);
+        setConfig((prev) => ({ ...prev, password: null }));
+        setShowPassword(false);
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       addToast({ message: l10n.getString('settings-email-saved'), type: 'success' });
@@ -138,7 +181,7 @@ export default function EmailReportSettings() {
     // toast had already been scheduled on the happy path. `userId` has since been dropped: nothing
     // in this component read it, and its presence in the array was the only thing keeping the
     // binding from being reported as unused.
-  }, [config, l10n, addToast, sessionToken]);
+  }, [config, l10n, addToast, sessionToken, passwordTouched]);
 
   // ── Schedule event handlers ────────────────────────────────────────
 
@@ -294,16 +337,25 @@ export default function EmailReportSettings() {
           </label>
           <span className="settings-field-input-wrap">
             <div className="settings-input-wrap">
-              <input
-                className="settings-input"
-                type={showPassword ? 'text' : 'password'}
-                id="settings-email-password"
-                placeholder={l10n.getString('settings-email-password-placeholder')}
-                value={config.password ?? ''}
-                onChange={(e) => updateField('password', e.target.value || null)}
-                autoComplete="off"
-                data-gramm="false"
-              />
+              {/* Masked, not empty: when a password is on file the field says so
+                  with bullets and stays blank until the operator types, which is
+                  the signal that the save must omit the key. Same shape as
+                  SyncSection's hasApiKey placeholder (:224-229). */}
+              <Localized
+                id={hasStoredPassword && !passwordTouched ? 'settings-api-key-masked' : 'settings-email-password-placeholder'}
+                attrs={{ placeholder: true }}
+              >
+                <input
+                  className="settings-input"
+                  type={showPassword ? 'text' : 'password'}
+                  id="settings-email-password"
+                  placeholder={hasStoredPassword && !passwordTouched ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : l10n.getString('settings-email-password-placeholder')}
+                  value={config.password ?? ''}
+                  onChange={(e) => { setPasswordTouched(true); updateField('password', e.target.value || null); }}
+                  autoComplete="off"
+                  data-gramm="false"
+                />
+              </Localized>
               <button
                 type="button"
                 className="settings-input-toggle"

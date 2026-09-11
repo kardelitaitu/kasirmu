@@ -48,8 +48,12 @@ pub struct SmtpConfig {
     /// Optional SMTP username (for authenticated relays).
     pub username: Option<String>,
     /// Optional SMTP password (for authenticated relays).
-    /// Stored as plaintext in the local settings database — encrypted
-    /// at rest is planned for a future security sprint.
+    ///
+    /// Encrypted at rest by [`Store::save_smtp_config`] and decrypted
+    /// transparently by [`Store::get_smtp_config`]. `None` on a save does
+    /// NOT mean "clear it" — it means the masked front-end field was not
+    /// modified, so the stored secret is carried over. See
+    /// [`merge_smtp_password_with_stored`].
     pub password: Option<String>,
     /// From-address for outgoing emails.
     pub from: String,
@@ -106,6 +110,62 @@ impl SmtpConfig {
 
 /// Settings key used to persist SMTP configuration.
 pub const SMTP_CONFIG_SETTINGS_KEY: &str = "smtp_config";
+/// Server-side keep-on-blank merge for a raw `smtp_config` JSON write.
+///
+/// `smtp_config` sits on the credential deny list
+/// (`platform_core::settings::keys::SECRET_KEY_DENY_LIST`), so the email-report
+/// card can never read the stored password back: `get_setting_scoped` refuses
+/// the whole key, the form renders an empty field, and the save posts a blob
+/// whose `password` is `null`. Without this merge that write blanks the stored
+/// secret and mail silently stops sending.
+///
+/// The rule is the one the sync credentials already use
+/// (`crates/oz-bridge/src/sync.rs:72-74` for the API key, `:157-159` for the PG
+/// password): an ABSENT or `null` password means "the masked field was not
+/// modified", so the stored value is carried over verbatim. A genuinely
+/// supplied password still replaces it, and an explicit empty string clears it
+/// — keep-on-blank is not keep-forever.
+///
+/// The carried-over value is copied AS STORED (ciphertext or legacy plaintext)
+/// and is never decrypted, so preserving a secret cannot fail closed on a
+/// corrupt one. A newly supplied password is encrypted at rest; the F-029
+/// fail-closed rule still applies.
+///
+/// `incoming` is the JSON the caller wants persisted; `stored` is the raw value
+/// currently in the settings table. An unparseable `incoming` is an error; an
+/// unparseable `stored` is treated as nothing to preserve, since a blob that
+/// cannot be read holds no recoverable secret.
+pub fn merge_smtp_password_json(incoming: &str, stored: Option<&str>) -> Result<String, CoreError> {
+    let mut config: SmtpConfig = serde_json::from_str(incoming)
+        .map_err(|e| CoreError::Internal(format!("failed to deserialize SMTP config: {e}")))?;
+    config.password = match config.password.take() {
+        Some(pwd) if !pwd.is_empty() => {
+            Some(crate::crypto::encrypt_smtp_at_rest(&pwd).map_err(|e| {
+                CoreError::Internal(format!("failed to encrypt SMTP password: {e}"))
+            })?)
+        }
+        Some(_) => None,
+        None => stored.and_then(stored_password_field),
+    };
+    serde_json::to_string(&config)
+        .map_err(|e| CoreError::Internal(format!("failed to serialize SMTP config: {e}")))
+}
+
+/// The raw `password` field of a stored `smtp_config` blob, exactly as stored.
+///
+/// Deliberately NOT decrypted: [`merge_smtp_password_json`] carries the value
+/// forward untouched, and [`Store::smtp_password_configured`] reduces it to a
+/// boolean so the secret itself never leaves the backend.
+fn stored_password_field(raw: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| {
+            v.get("password")
+                .and_then(|p| p.as_str())
+                .map(str::to_owned)
+        })
+        .filter(|p| !p.is_empty())
+}
 
 impl Store<'_> {
     /// Save the SMTP config to the settings table.
@@ -116,18 +176,44 @@ impl Store<'_> {
     ///
     /// F-029: encryption fails closed — an encrypt failure returns an
     /// error instead of storing the plaintext password.
+    ///
+    /// Keep-on-blank: a `None` password on a save means "the masked field was
+    /// not modified", so the stored secret is carried over rather than
+    /// overwritten with null. See [`merge_smtp_password_json`].
     pub fn save_smtp_config(&self, config: &SmtpConfig) -> Result<(), CoreError> {
-        let mut config = config.clone();
-        if let Some(ref pwd) = config.password
-            && !pwd.is_empty()
-        {
-            config.password = Some(crate::crypto::encrypt_smtp_at_rest(pwd).map_err(|e| {
-                CoreError::Internal(format!("failed to encrypt SMTP password: {e}"))
-            })?);
-        }
-        let json = serde_json::to_string(&config)
+        let incoming = serde_json::to_string(config)
             .map_err(|e| CoreError::Internal(format!("failed to serialize SMTP config: {e}")))?;
+        self.save_smtp_config_json(&incoming)
+    }
+
+    /// Save an SMTP config given as raw JSON, applying the keep-on-blank
+    /// merge against whatever is stored under [`SMTP_CONFIG_SETTINGS_KEY`].
+    ///
+    /// This is the entry point for callers that hold the serialized blob rather
+    /// than a [`SmtpConfig`] — notably any generic settings-write surface the
+    /// email-report card posts through. Routing those writes here instead of
+    /// straight into `set_setting` is what stops a save that omits the
+    /// password from destroying it.
+    pub fn save_smtp_config_json(&self, incoming: &str) -> Result<(), CoreError> {
+        let stored = self.get_setting(SMTP_CONFIG_SETTINGS_KEY)?;
+        let json = merge_smtp_password_json(incoming, stored.as_deref())?;
         self.set_setting(SMTP_CONFIG_SETTINGS_KEY, &json)
+    }
+
+    /// Whether an SMTP password is stored — a boolean, never the secret.
+    ///
+    /// The email-report card cannot answer this by reading the key back:
+    /// `smtp_config` is deny-listed against the raw `get_setting` IPC surface,
+    /// so the read refuses the whole blob. This is the read-back such a surface
+    /// may expose instead, the same shape `gateway_status` uses for
+    /// `stripe.api_key` (`crates/oz-bridge/src/settings.rs:731-738`) and
+    /// `SyncSettingsDto` uses for `has_api_key` (`crates/oz-bridge/src/sync.rs:36`).
+    pub fn smtp_password_configured(&self) -> Result<bool, CoreError> {
+        Ok(self
+            .get_setting(SMTP_CONFIG_SETTINGS_KEY)?
+            .as_deref()
+            .and_then(stored_password_field)
+            .is_some())
     }
 
     /// Load the SMTP config from the settings table.

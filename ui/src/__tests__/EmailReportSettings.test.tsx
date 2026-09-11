@@ -333,6 +333,82 @@ describe('EmailReportSettings — EN', () => {
         );
       });
     });
+
+    // Regression guard for the smtp_config data-loss bug: the card cannot read
+    // the stored password back (smtp_config is on the backend credential deny
+    // list), so it used to post the whole blob with password:null on every save
+    // and silently destroyed the secret. An untouched field must now be OMITTED
+    // so the server-side keep-on-blank merge can carry it forward.
+    it('omits the password key when the field was never touched', async () => {
+      mockSetSetting.mockResolvedValue(undefined);
+      await renderWithFluent(<EmailReportSettings />);
+
+      fireEvent.change(screen.getByPlaceholderText('smtp.example.com'), {
+        target: { value: 'smtp.example.com' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('reports@mystore.com'), {
+        target: { value: 'reports@example.com' },
+      });
+      fireEvent.click(screen.getByText(/save smtp settings/i));
+
+      await waitFor(() => expect(mockSetSetting).toHaveBeenCalled());
+      const written = mockSetSetting.mock.calls[0]?.[2];
+      const payload = JSON.parse(typeof written === 'string' ? written : '{}') as {
+        host?: string;
+        password?: string;
+      };
+      expect(Object.prototype.hasOwnProperty.call(payload, 'password')).toBe(false);
+      expect(payload.host).toBe('smtp.example.com');
+    });
+
+    it('writes a typed password and then reports it masked, not blank', async () => {
+      mockSetSetting.mockResolvedValue(undefined);
+      await renderWithFluent(<EmailReportSettings />);
+
+      fireEvent.change(screen.getByPlaceholderText('smtp.example.com'), {
+        target: { value: 'smtp.example.com' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('reports@mystore.com'), {
+        target: { value: 'reports@example.com' },
+      });
+      fireEvent.change(screen.getByPlaceholderText(/enter password/i), {
+        target: { value: 's3cret' },
+      });
+      fireEvent.click(screen.getByText(/save smtp settings/i));
+
+      await waitFor(() => expect(mockSetSetting).toHaveBeenCalled());
+      const written = mockSetSetting.mock.calls[0]?.[2];
+      const payload = JSON.parse(typeof written === 'string' ? written : '{}') as {
+        password?: string;
+      };
+      expect(payload.password).toBe('s3cret');
+      // Keep-on-blank must not become keep-forever, and once a secret is on
+      // file the field says so instead of pretending to be empty.
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022')).toBeInTheDocument();
+      });
+      expect(screen.getByPlaceholderText('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022')).toHaveValue('');
+    });
+  });
+
+  describe('Stored password is masked, never echoed', () => {
+    it('does not load a stored password into the editable field', async () => {
+      mockGetSetting.mockResolvedValue(
+        JSON.stringify({
+          host: 'mail.example.com',
+          port: 465,
+          username: 'user',
+          password: 'stored-secret',
+          from: 'test@example.com',
+          use_tls: false,
+        }),
+      );
+      await renderWithFluent(<EmailReportSettings />);
+      expect(screen.queryByDisplayValue('stored-secret')).toBeNull();
+      expect(screen.getByPlaceholderText('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022')).toBeInTheDocument();
+      // The rest of the config still loads.
+      expect(screen.getByDisplayValue('mail.example.com')).toBeInTheDocument();
+    });
   });
 
   describe('Send test report', () => {
