@@ -749,7 +749,7 @@ async fn settle_replay_cart(
     token: &str,
     cart_id: CartId,
     attempt: Option<&str>,
-) -> CompleteSaleResult {
+) -> Result<CompleteSaleResult, BridgeError> {
     complete_sale_scoped(
         &bridge.ctx(),
         token,
@@ -772,7 +772,6 @@ async fn settle_replay_cart(
         },
     )
     .await
-    .unwrap()
 }
 
 #[tokio::test]
@@ -845,7 +844,9 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
+        .await
+        .unwrap();
 
     // Void it: the sale row flips to void, but the payment row keeps
     // `{att-x}:0` — a replayed key stays valid forever by design.
@@ -878,7 +879,9 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
     )
     .await
     .unwrap();
-    let second = settle_replay_cart(&bridge, "replay-tok", started2.cart_id, Some("att-x")).await;
+    let second = settle_replay_cart(&bridge, "replay-tok", started2.cart_id, Some("att-x"))
+        .await
+        .unwrap();
 
     assert_ne!(
         second.sale_id, first.sale_id,
@@ -898,9 +901,13 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
                 |row| row.get(0),
             )
             .unwrap();
+        // Two rows now share the attempt prefix: the voided sale's own
+        // `{att-x}:0`, plus the deterministic re-key the guard stamped for
+        // the new basket (`{att-x}:rekey:{cart}:0`) so a retry of this
+        // submission finds ITS OWN receipt instead of the voided one.
         assert_eq!(
-            stale_keyed, 1,
-            "the stale attempt id must keep exactly its original payment row"
+            stale_keyed, 2,
+            "the voided sale keeps its key and the deterministic re-key adds one under the same prefix"
         );
         let second_keyed: i64 = db
             .query_row(
@@ -914,6 +921,188 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
             "the new sale must carry its own fresh idempotency key"
         );
     }
+}
+
+/// Bridge + store seeded for the replay-guard end-to-end tests: one sellable
+/// product with ample stock and an owner session on token `replay-tok`.
+fn replay_guard_bridge() -> crate::testing::TestBridge {
+    let store_id = "store-replay-guard";
+    let global = crate::testing::temp_conn();
+    {
+        let identity_store = Store::new(&global);
+        identity_store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+                 VALUES ('replay-user', 'replay-user', 'hash', 'Replay User', 'role-owner', 1, '2026-08-09T00:00:00Z', '2026-08-09T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+    }
+    let bridge = crate::testing::TestBridge::new().with_conn(global);
+    {
+        let store_conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute_batch(
+            "INSERT INTO products (id, sku, name, price_minor, currency, product_type)
+                 VALUES ('replay-product', 'REPLAY-COFFEE', 'Replay Coffee', 350, 'USD', 'retail');
+             INSERT INTO stock_summary (item_id, location_id, qty)
+                 VALUES ('replay-product', '01926b3a-0000-7000-8000-000000000001', 100);",
+        )
+        .unwrap();
+    }
+    bridge.sessions().write().unwrap().insert(
+        "replay-tok".into(),
+        SessionContext::new(
+            "replay-user".into(),
+            "role-owner".into(),
+            "replay-terminal".into(),
+            store_id.into(),
+            "replay-instance".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    bridge
+}
+
+/// Void `sale_id` the way the finalize-failure path does, leaving its
+/// payment rows (and their attempt keys) untouched.
+fn void_replay_sale(bridge: &crate::testing::TestBridge, sale_id: &str) {
+    let store_conn = bridge
+        .db_manager()
+        .open_store("store-replay-guard")
+        .unwrap();
+    let db = store_conn.lock().unwrap();
+    Store::new(&db).void_pending_sale(sale_id).unwrap();
+}
+
+#[tokio::test]
+async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
+    // Foreign-receipt regression: attempt att-x is stale on basket 1, the
+    // guard re-keys deterministically and basket 2's sale S2 commits, the
+    // response is lost, the client retries att-x with basket 2's cart. The
+    // retry must be answered with S2 — the receipt for the basket whose
+    // payment is being retried — never with basket 1's older S1, whose base
+    // key `{att-x}:0` still resolves.
+    let bridge = replay_guard_bridge();
+    let started1 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started1.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 2,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
+        .await
+        .unwrap();
+    void_replay_sale(&bridge, &first.sale_id);
+
+    let started2 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started2.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 1,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let second = settle_replay_cart(
+        &bridge,
+        "replay-tok",
+        started2.cart_id.clone(),
+        Some("att-x"),
+    )
+    .await
+    .unwrap();
+    assert_ne!(
+        second.sale_id, first.sale_id,
+        "fixture premise: basket 2 settled its own sale under the re-key"
+    );
+
+    // Response lost — the client retries the SAME attempt id and cart.
+    let retried = settle_replay_cart(&bridge, "replay-tok", started2.cart_id, Some("att-x"))
+        .await
+        .unwrap();
+    assert_eq!(
+        retried.sale_id, second.sale_id,
+        "the retry must be answered with the re-keyed basket's own receipt"
+    );
+    assert_ne!(
+        retried.sale_id, first.sale_id,
+        "basket 1's older sale must never be handed to basket 2's payment"
+    );
+}
+
+#[tokio::test]
+async fn voided_sale_does_not_satisfy_a_replay() {
+    // Voided-receipt regression: settle S1 keyed att-x, void it, then replay
+    // att-x against the same (now consumed) cart. The voided S1 took no
+    // money and returned its stock, so it must never come back as a replayed
+    // receipt — the guard refuses the replay and the submission falls
+    // through to the cart lookup, which rejects the consumed cart.
+    let bridge = replay_guard_bridge();
+    let started1 = start_sale_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        &bridge.ctx(),
+        "replay-tok",
+        AddLineArgs {
+            cart_id: started1.cart_id.clone(),
+            sku: Sku::new("REPLAY-COFFEE"),
+            qty: 2,
+            unit_price_minor: 350,
+            unit_price_currency: None,
+        },
+    )
+    .await
+    .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
+        .await
+        .unwrap();
+    void_replay_sale(&bridge, &first.sale_id);
+
+    let replayed = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    assert!(
+        replayed.is_err(),
+        "a voided sale must never be handed back as a replayed receipt"
+    );
 }
 // ── Tax scope at the command layer (tax-separation P1) ─────────────
 
