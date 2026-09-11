@@ -22,10 +22,14 @@ package main
 // mid-repair:
 //
 //   - admin_tenant_lifecycle.go is getting a fail-closed guard resolver for
-//     admin-tenant identification (dispatch in flight).
-//   - web_otp.go is getting a reserved-address gate in createTenant so the
-//     operator address cannot be registered as an ordinary tenant (dispatch in
-//     flight).
+//     admin-tenant identification (dispatch in flight: isAdminTenantRecord is
+//     still the inline TrimSpace + EqualFold + defaultAdminEmail fallback).
+//   - web_otp.go HAS landed the reserved-address gate in createTenant
+//     (3be794945, reservedAdminEmails / normalizeEmail), so the operator
+//     address can no longer be self-registered as an ordinary tenant. It gates
+//     the signup path only, which is why the tenants seeded below go through
+//     app.Save directly: they stand for rows the guard cannot reach (imported
+//     or migrated), which is exactly the population the gate decision applies to.
 //   - a later parked wave changes what an UNSET OZ_ADMIN_EMAIL does. Today a
 //     blank env silently falls back to defaultAdminEmail
 //     (password_rotation.go:42) - the gate is not closed, it is anchored to a
@@ -289,10 +293,11 @@ func TestAdminWebSessionDrivesAdminRoutesWithoutAdminKey(t *testing.T) {
 // FINDING (the session branch ignores email verification): adminAuth never reads
 // email_verified, so a tenant record seeded - or imported - with the admin
 // address and a FALSE verification flag authenticates as admin today. The login
-// paths DO gate on it (verify-otp flips it at web_otp.go:769) and the
-// reserved-address createTenant gate landing in web_otp.go is the intended
-// direction: the admin address must not be reachable as an unverified ordinary
-// account.
+// paths DO gate on it (verify-otp flips it at web_otp.go:769), and the
+// reserved-address createTenant gate that landed in 3be794945 closed the
+// signup half: the admin address can no longer be self-registered, which leaves
+// exactly the population this case seeds by hand - imported or migrated rows -
+// still able to authenticate while unverified.
 //
 // So this case deliberately does NOT contract today's 200. It pins the one-way
 // property: an unverified admin account may never be served where the same
