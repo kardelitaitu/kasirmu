@@ -5,7 +5,6 @@
 // interactive widget containing qty + remove). Both patterns are
 // valid ARIA — the lint rules only catch the non-interactive defaults.
 import { useCallback, useState, useEffect, useRef } from 'react';
-import type { CSSProperties } from 'react';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,9 +18,7 @@ import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 
 import WorkspaceSettingsModal from '@/features/settings/WorkspaceSettingsModal';
-import { formatMoney, COURSES, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
-import { animDuration } from '@/utils/animation';
-import { triggerInteraction } from '@/utils/interaction';
+import { formatMoney, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
@@ -33,7 +30,9 @@ import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products'
 import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
-import { clampCartWidth, lineThumbnail, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
+import { CartLineItem } from './components/CartLineItem';
+import { CourseSelectorBar } from './components/CourseSelectorBar';
+import { clampCartWidth, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
 import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
@@ -62,25 +61,6 @@ import './CartPanelCourseBar.css';
 function elapsedHoursMinutes(sinceMs: number, nowMs: number): { h: number; m: number } {
   const totalMinutes = Math.max(0, Math.floor((nowMs - sinceMs) / 60_000));
   return { h: Math.floor(totalMinutes / 60), m: totalMinutes % 60 };
-}
-
-/** Minus icon SVG */
-function MinusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
-
-/** Plus icon SVG */
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
 }
 
 /**
@@ -144,173 +124,6 @@ function KitchenDisplayIcon() {
       <line x1="8" y1="21" x2="16" y2="21" />
       <line x1="12" y1="17" x2="12" y2="21" />
     </svg>
-  );
-}
-
-// ── Swipeable cart line item ──────────────────────────────────────────
-
-interface CartLineItemProps {
-  line: CartLine;
-  onRemove: (line: CartLine) => void;
-  onDecreaseQty: (line: CartLine) => void;
-  onIncreaseQty: (line: CartLine) => void;
-  onOverride?: (line: CartLine) => void;
-  /**
-   * Registers the line DOM node so the parent can move focus during
-   * keyboard navigation (↑ / ↓). When omitted the line is rendered
-   * focusless (e.g. in unit-test environments that don't render a DOM).
-   */
-  registerRef?: (lineId: LineId, el: HTMLDivElement | null) => void;
-}
-
-function CartLineItem({
-  line,
-  onRemove,
-  onDecreaseQty,
-  onIncreaseQty,
-  onOverride,
-  registerRef,
-}: CartLineItemProps) {
-  const { l10n } = useLocalization();
-  const [revealed, setRevealed] = useState(false);
-  const [exiting, setExiting] = useState(false);
-  const [qtyFlash, setQtyFlash] = useState(false);
-  const prevQty = useRef(line.qty);
-  const swipe = useSwipe({
-    onSwipeLeft: () => setRevealed(true),
-    onSwipeRight: () => setRevealed(false),
-  });
-  // Compute once per render.
-  const thumbnail = lineThumbnail(String(line.sku));
-
-  const MS_200 = animDuration(200);
-
-  // When exit animation starts, remove the line after it completes.
-  useEffect(() => {
-    if (!exiting) return;
-    const timer = setTimeout(() => onRemove(line), MS_200);
-    return () => clearTimeout(timer);
-  }, [exiting, onRemove, line, MS_200]);
-
-  // Flash + click on qty change.
-  useEffect(() => {
-    if (prevQty.current !== line.qty) {
-      prevQty.current = line.qty;
-      setQtyFlash(true);
-      triggerInteraction('qty-change');
-      const timer = setTimeout(() => setQtyFlash(false), 350);
-      return () => clearTimeout(timer);
-    }
-  }, [line.qty]);
-
-  const handleRemove = useCallback(() => {
-    setExiting(true);
-    setRevealed(false);
-    triggerInteraction('remove-item');
-  }, []);
-
-  return (
-    <div
-      className={`pos-cart-line-wrap ${revealed ? 'pos-cart-line-wrap--revealed' : ''} ${exiting ? 'pos-cart-line-wrap--exiting' : ''} ${qtyFlash ? 'pos-cart-line-wrap--qty-flash' : ''}`}
-      {...swipe}
-    >
-      <div
-        className="pos-cart-line"
-        ref={(el) => registerRef?.(line.id, el)}
-        tabIndex={0}
-        data-line-id={line.id}
-        data-testid="cart-panel-line-item"
-        role="group"
-        aria-label={l10n.getString('pos-cart-line-aria', { sku: String(line.sku), qty: String(line.qty), amount: formatMoney(line.unit_price) })}
-      >
-        {/* 1 — Thumbnail */}
-        <span
-          className="pos-cart-line-thumb"
-          style={{ '--thumb-hue': thumbnail.hue } as CSSProperties}
-          aria-hidden="true"
-        >
-          {thumbnail.initial}
-        </span>
-
-        {/* 2 — Name + price */}
-        <div className="pos-cart-line-info">
-          <div className="pos-cart-line-name">{line.name ?? line.sku}</div>
-          <div className="pos-cart-line-price">
-            <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
-          </div>
-          {onOverride && (
-            <button
-              type="button"
-              className="pos-cart-line-override"
-              onClick={() => onOverride(line)}
-              aria-label={l10n.getString('pos-cart-line-override-aria', { name: line.name ?? line.sku }, 'Override price')}
-            >
-              <Localized id="pos-cart-line-override">Override</Localized>
-            </button>
-          )}
-        </div>
-
-        {/* 3 — Qty controls */}
-        <div className="pos-cart-line-controls">
-          <button
-            type="button"
-            className="pos-cart-qty-btn"
-            onClick={() => onDecreaseQty(line)}
-            disabled={line.qty <= 1}
-            aria-label={l10n.getString('pos-cart-line-decrease-aria', { sku: String(line.sku) })}
-          >
-            <MinusIcon />
-          </button>
-          <span className="pos-cart-qty-value" aria-label={l10n.getString('pos-cart-line-qty-aria', { qty: String(line.qty) })}>
-            {line.qty}
-          </span>
-          <button
-            type="button"
-            className="pos-cart-qty-btn"
-            onClick={() => onIncreaseQty(line)}
-            aria-label={l10n.getString('pos-cart-line-increase-aria', { sku: String(line.sku) })}
-          >
-            <PlusIcon />
-          </button>
-        </div>
-
-        {/* 4 — Remove button */}
-        <button
-          type="button"
-          className="pos-cart-line-remove"
-          onClick={handleRemove}
-          aria-label={l10n.getString('pos-cart-line-remove-aria', { sku: String(line.sku) })}
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-
-        {/* Category ribbon */}
-        {line.category && (
-          <span
-            className="pos-cart-line-ribbon"
-            style={{ '--thumb-hue': thumbnail.hue } as CSSProperties}
-            aria-hidden="true"
-          />
-        )}
-      </div>
-
-      {/* Revealed swipe action */}
-      <div className="pos-cart-line-swipe-action" aria-hidden={!revealed}>
-        <button
-          type="button"
-          className="pos-cart-line-swipe-remove"
-          onClick={handleRemove}
-          aria-label={l10n.getString('pos-cart-line-swipe-remove-aria', { sku: String(line.sku) })}
-        >
-          <Localized id="pos-cart-remove">
-            <span>Remove</span>
-          </Localized>
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -1176,38 +989,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
         {/* ── Course firing bar ──────────────────────── */}
         {lines.length > 0 && activeWorkspace === 'restaurant-pos' && (
-          <div className="pos-cart-course-bar">
-            {COURSES.map((course) => {
-              const holdCount = lines.filter(
-                (l) => l.courseId === course.id && l.coursingStatus === 'hold',
-              ).length;
-              if (holdCount === 0) return null;
-              return (
-                <button
-                  key={course.id}
-                  type="button"
-                  className="pos-cart-course-btn"
-                  onClick={() => fireCourse(course.id)}
-                  data-testid={`fire-course-${course.id}`}
-                  aria-label={l10n.getString('pos-cart-course-fire-aria', { label: course.label, count: String(holdCount) }, `Fire ${course.label} (${holdCount} items)`)}
-                >
-                  <span className="pos-cart-course-emoji" aria-hidden="true">{course.emoji}</span>
-                  <span className="pos-cart-course-label">{course.label}</span>
-                  <span className="pos-cart-course-count">{holdCount}</span>
-                </button>
-              );
-            })}
-            {lines.some((l) => l.coursingStatus === 'hold') && (
-              <button
-                type="button"
-                className="pos-cart-course-btn pos-cart-course-btn--all"
-                onClick={fireAllCourses}
-                data-testid="fire-all-courses"
-              >
-                <Localized id="pos-cart-course-btn--all"><span className="pos-cart-course-label">Fire All</span></Localized>
-              </button>
-            )}
-          </div>
+          <CourseSelectorBar
+            lines={lines}
+            fireCourse={fireCourse}
+            fireAllCourses={fireAllCourses}
+          />
         )}
 
         {/* ── Cart lines ────────────────────────────── */}
