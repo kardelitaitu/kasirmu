@@ -49,6 +49,7 @@ func handleHealth(app core.App) func(e *core.RequestEvent) error {
 			"db_connected":  dbConnected,
 			"db_error":      dbErr,
 			"smtp":          smtpHealthSnapshot(),
+			"admin":         adminEmailHealthSnapshot(app),
 			"paddle":        paddleHealthStatus(),
 			"midtrans":      midtransHealthStatus(),
 			"market_prices": marketPriceHealthStatus(),
@@ -59,6 +60,82 @@ func handleHealth(app core.App) func(e *core.RequestEvent) error {
 			"go_os":         runtime.GOOS,
 			"go_arch":       runtime.GOARCH,
 		})
+	}
+}
+
+// ── Admin-identity health status ──────────────────────────────────────
+
+// adminEmailHealthSnapshot reports the OZ_ADMIN_EMAIL configuration state
+// so a misconfigured deployment is diagnosable from /api/health instead of
+// arriving as a validation-shaped error.
+//
+// WHY THIS EXISTS: since the guard started failing closed, an unset
+// OZ_ADMIN_EMAIL turns the duplicate-email 409 at
+// admin_tenant_lifecycle.go:105 into the guard 400 at :96, and makes every
+// cascade delete answer 403 at :340 even with a correct confirm_email
+// (the confirm check at :337 runs first). A missing environment variable
+// then looks exactly like bad input, which is how a support ticket ends up
+// saying the rename button is broken.
+//
+// THE ASYMMETRY IS THE WHOLE POINT, so the two readings are computed on
+// purpose by different rules:
+//
+//	source        — what AUTHENTICATION would anchor on: the trimmed
+//	                OZ_ADMIN_EMAIL ("env"), else the compiled
+//	                defaultAdminEmail ("fallback").
+//	matching_rows — how many tenants rows carry that address. When source
+//	                is "env" this is also exactly what the guard compares
+//	                against, so it IS the guard view. When source is
+//	                "fallback" it is NOT: the guard does not fall back at
+//	                all, it protects every row. That gap — auth would
+//	                still match one literal address while the guard
+//	                refuses everything — is the finding this field exists
+//	                to make visible.
+//	verified      — true only when source is "env" AND matching_rows is 1:
+//	                a named address resolving to exactly one tenant.
+//
+// health.go reads defaultAdminEmail DIRECTLY rather than calling
+// adminEmailTarget / adminEmailTargetWithDefault. Legal because it is the
+// same package, deliberate because if the resolver ever drops the fallback
+// then source="fallback" would become unreachable through it — and the
+// asymmetric state is exactly the one worth reporting.
+//
+// NO ADDRESS IS EVER ECHOED: not the env value, not the compiled default,
+// not a masked, hashed or truncated form of either. /api/health is public
+// (no auth — see handleHealth) and the admin identity is the one account an
+// attacker needs to be able to name. Only the shape is reported.
+//
+// Read per request, no cache: unlike the SMTP probe this costs one pass
+// over the tenants table, not a network round trip to a relay.
+func adminEmailHealthSnapshot(app core.App) map[string]any {
+	source := "fallback"
+	address := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
+	if address == "" {
+		address = defaultAdminEmail
+	} else {
+		source = "env"
+	}
+
+	// -1 means "could not count" — an unreadable tenants collection must
+	// never be reported as the 0 that means "configured, but no such row".
+	matching := -1
+	if rows, err := app.FindAllRecords("tenants"); err != nil {
+		log.Printf("/health: admin email snapshot could not read tenants: %v", err)
+	} else {
+		matching = 0
+		for _, r := range rows {
+			// EqualFold mirrors the guard comparison, so a differently cased
+			// stored address counts the same way it is protected.
+			if strings.EqualFold(r.GetString("email"), address) {
+				matching++
+			}
+		}
+	}
+
+	return map[string]any{
+		"source":        source,
+		"matching_rows": matching,
+		"verified":      source == "env" && matching == 1,
 	}
 }
 

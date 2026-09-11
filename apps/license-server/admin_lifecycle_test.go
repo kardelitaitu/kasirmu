@@ -837,3 +837,163 @@ func TestTenantHealthEmptyTenant(t *testing.T) {
 		t.Errorf("appVersion = %v, want unknown", health["appVersion"])
 	}
 }
+
+// ── /api/health admin-identity snapshot (fail-closed diagnosability) ──
+
+// TestAdminEmailHealthSnapshot covers the three states of OZ_ADMIN_EMAIL
+// that the fail-closed guard makes matter, and pins the one property a
+// future edit is most likely to break: no address value ever reaches the
+// response body. /api/health is public, so the payload reports the SHAPE of
+// the admin identity — source, matching_rows, verified — and nothing else.
+func TestAdminEmailHealthSnapshot(t *testing.T) {
+	// buildHealthMux binds the same override main.go uses, on a fresh app
+	// that starts with zero tenants, so every count below counts only what
+	// this case seeded.
+	buildHealthMux := func(t *testing.T) (core.App, http.Handler) {
+		t.Helper()
+		app, se := setupDirectApp(t)
+		t.Cleanup(app.Cleanup)
+		bindHealthOverride(app, se)
+		mux, err := se.Router.BuildMux()
+		if err != nil {
+			t.Fatalf("BuildMux: %v", err)
+		}
+		return app, mux
+	}
+
+	// adminBlock GETs the real /api/health and returns the decoded admin
+	// object plus the RAW body, so the leak property is asserted on what
+	// actually went over the wire, not on the map the handler built.
+	adminBlock := func(t *testing.T, mux http.Handler) (map[string]any, string) {
+		t.Helper()
+		rec := doJSON(mux, http.MethodGet, "/api/health", "", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("health: expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var body struct {
+			Admin map[string]any `json:"admin"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("health unmarshal: %v", err)
+		}
+		if body.Admin == nil {
+			t.Fatal("the health payload carries no admin block")
+		}
+		if len(body.Admin) != 3 {
+			t.Errorf("admin block has %d fields, want exactly the 3 contracted ones: %v", len(body.Admin), body.Admin)
+		}
+		for k, v := range body.Admin {
+			if s, ok := v.(string); ok && strings.Contains(s, "@") {
+				t.Errorf("admin field %q carries an address-shaped value %q", k, s)
+			}
+		}
+		return body.Admin, rec.Body.String()
+	}
+
+	// assertNoAddress: neither a full address nor its local part may appear
+	// anywhere in the body, in any case — a masked or truncated form still
+	// fails on the local part.
+	assertNoAddress := func(t *testing.T, raw string, addrs ...string) {
+		t.Helper()
+		lower := strings.ToLower(raw)
+		for _, a := range addrs {
+			if strings.Contains(lower, strings.ToLower(a)) {
+				t.Errorf("the address %q appears in the health body", a)
+			}
+			if at := strings.Index(a, "@"); at > 0 {
+				if local := a[:at]; strings.Contains(lower, strings.ToLower(local)) {
+					t.Errorf("the address local part %q appears in the health body", local)
+				}
+			}
+		}
+	}
+
+	t.Run("UnsetEnvReportsFallbackWhileTheGuardProtectsEveryRow", func(t *testing.T) {
+		app, mux := buildHealthMux(t)
+		t.Setenv("OZ_ADMIN_EMAIL", "")
+		compiled := seedLifecycleTenant(t, app, defaultAdminEmail, "active")
+		ordinary := seedLifecycleTenant(t, app, "ordinary-health@test.com", "active")
+
+		snap, raw := adminBlock(t, mux)
+		assertNoAddress(t, raw, defaultAdminEmail, "ordinary-health@test.com")
+		if snap["source"] != "fallback" {
+			t.Errorf("source = %v, want fallback", snap["source"])
+		}
+		if snap["matching_rows"] != float64(1) {
+			t.Errorf("matching_rows = %v, want 1 (the compiled default has exactly one row)", snap["matching_rows"])
+		}
+		if snap["verified"] != false {
+			t.Errorf("verified = %v, want false: an address nobody named is not a verified admin identity", snap["verified"])
+		}
+		// THE DIVERGENCE, stated in the same breath as the numbers: auth
+		// would anchor on one literal address while the guard protects BOTH
+		// rows — which is why the ordinary tenant above cannot be renamed or
+		// deleted even though the snapshot counts a single match.
+		if !isAdminTenantRecord(compiled) || !isAdminTenantRecord(ordinary) {
+			t.Error("with the env unset the guard must treat every row as the admin tenant")
+		}
+	})
+
+	t.Run("EnvPointedAtNoRowIsTheBrickedDeployShape", func(t *testing.T) {
+		app, mux := buildHealthMux(t)
+		noRow := "nobody-here@health.test"
+		t.Setenv("OZ_ADMIN_EMAIL", noRow)
+		seedLifecycleTenant(t, app, "someone-else@health.test", "active")
+
+		snap, raw := adminBlock(t, mux)
+		assertNoAddress(t, raw, noRow, "someone-else@health.test")
+		if snap["source"] != "env" {
+			t.Errorf("source = %v, want env", snap["source"])
+		}
+		if snap["matching_rows"] != float64(0) {
+			t.Errorf("matching_rows = %v, want 0", snap["matching_rows"])
+		}
+		if snap["verified"] != false {
+			t.Errorf("verified = %v, want false", snap["verified"])
+		}
+		// The guard compares against the named address, so it matches no row
+		// and protects nothing: the inverse failure, and the reason 0 and
+		// fallback must never be collapsed into one "not configured" flag.
+		rows, err := app.FindAllRecords("tenants")
+		if err != nil {
+			t.Fatalf("find tenants: %v", err)
+		}
+		for _, r := range rows {
+			if isAdminTenantRecord(r) {
+				t.Errorf("with the env set to an address with no row, %q must not be treated as the admin tenant", r.GetString("email"))
+			}
+		}
+	})
+
+	t.Run("EnvMatchingExactlyOneRowIsVerified", func(t *testing.T) {
+		app, mux := buildHealthMux(t)
+		only := "single-owner@health.test"
+		t.Setenv("OZ_ADMIN_EMAIL", "  "+only+"  ")
+		admin := seedLifecycleTenant(t, app, only, "active")
+		seedLifecycleTenant(t, app, "customer@health.test", "active")
+
+		snap, raw := adminBlock(t, mux)
+		assertNoAddress(t, raw, only, "customer@health.test")
+		if snap["source"] != "env" {
+			t.Errorf("source = %v, want env", snap["source"])
+		}
+		if snap["matching_rows"] != float64(1) {
+			t.Errorf("matching_rows = %v, want 1", snap["matching_rows"])
+		}
+		if snap["verified"] != true {
+			t.Errorf("verified = %v, want true (named address, exactly one row)", snap["verified"])
+		}
+		// The one state where source, matching_rows and the guard all agree:
+		// exactly this row is the admin tenant, and its neighbour is not.
+		if !isAdminTenantRecord(admin) {
+			t.Error("the matched row must be the admin tenant")
+		}
+		if rows, err := app.FindAllRecords("tenants"); err == nil {
+			for _, r := range rows {
+				if r.Id != admin.Id && isAdminTenantRecord(r) {
+					t.Errorf("only the named row may be the admin tenant, %q also matched", r.GetString("email"))
+				}
+			}
+		}
+	})
+}
