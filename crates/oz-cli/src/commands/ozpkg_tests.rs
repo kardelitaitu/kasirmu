@@ -14,6 +14,7 @@
 
 use super::*;
 use oz_core::ozpkg::{OzpkgPayload, export_ozpkg, import_ozpkg};
+use oz_core::settings::keys;
 
 /// Password for throwaway packages. Non-empty: `export_ozpkg` refuses an
 /// empty password (B50) and the CLI passes `--password` straight through.
@@ -34,6 +35,20 @@ const MUST_NOT_TRAVEL: &[&str] = &[
 /// Ordinary, machine-portable settings a store expects to move between
 /// installs — proof the gate is a filter, not a deleted arm.
 const MUST_TRAVEL: &[&str] = &[keys::STORE_NAME, keys::DEFAULT_CURRENCY];
+
+/// Keys owned by a dedicated lifecycle manager rather than by the generic
+/// settings surface. `IngestPolicy::PortablePackage` refuses them; the bare
+/// platform-core predicate the CLI called directly did NOT, which is the
+/// asymmetry this lane closes. `local_api.enabled` / `local_api.port` /
+/// `local_api.store_id` have no `keys::` constant (they are declared in
+/// `oz_local_api`, which `oz-cli` must not depend on), so they are literals
+/// here and the prefix rule is what is actually under test.
+const MANAGER_OWNED: &[&str] = &[
+    "local_api.enabled",
+    "local_api.port",
+    "local_api.store_id",
+    keys::LAN_SERVER_BIND,
+];
 
 /// Seed a source database with both halves of the settings table: the
 /// ordinary rows that must survive and the secrets that must not.
@@ -245,6 +260,122 @@ fn ozpkg_import_still_restores_ordinary_settings() {
     let _ = std::fs::remove_file(&path);
 }
 
+// ── the manager-prefixed keys the bare predicate missed ───────────────
+//
+// PortablePackage refuses THREE groups: the credential deny list, the
+// device-bound identities, and the keys owned by a dedicated lifecycle
+// manager (local_api.*, lan_server.*). The CLI gate called the platform-core
+// predicate ALONE, so the third group travelled. These cases are the ones that
+// must fail against HEAD.
+
+#[test]
+fn ozpkg_export_omits_manager_owned_settings() {
+    // A CLI export omits a manager-prefixed key it includes today.
+    // local_api.enabled is neither a credential nor a device id, so the old
+    // predicate let it out; restoring it would tell the target install its
+    // Local API server should be running when nothing started one (fail-open
+    // intent), and lan_server.bind would widen a listener with no PSK change.
+    let conn = oz_core::migrations::fresh_db();
+    for key in MANAGER_OWNED {
+        Settings::set(&conn, key, "from-source-install").unwrap();
+    }
+    Settings::set(&conn, keys::STORE_NAME, "Warung Sedap").unwrap();
+
+    let path = temp_path("export-manager");
+    run_export_ozpkg(&conn, path.to_str().unwrap(), "settings", PWD).unwrap();
+
+    let exported: Vec<String> = exported_settings(&path)
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
+    for forbidden in MANAGER_OWNED {
+        assert!(
+            !exported.iter().any(|k| k == forbidden),
+            "portable package must not carry manager-owned {forbidden}; got {exported:?}"
+        );
+    }
+    assert!(
+        exported.iter().any(|k| k == keys::STORE_NAME),
+        "the refusal must stay a filter, not delete the arm: {exported:?}"
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn ozpkg_import_refuses_machine_id_secret_and_manager_rows() {
+    // A hand-edited (or simply older) package carrying machine_id,
+    // local_api.secret and a manager-prefixed row must write NONE of them into
+    // a fresh install, while the ordinary rows in the SAME package still land.
+    // Refusal is warn-and-continue: never an error, never a rollback.
+    let conn = oz_core::migrations::fresh_db();
+    let path = legacy_package(&[
+        (keys::MACHINE_ID, "PLANTED-FINGERPRINT"),
+        (keys::LOCAL_API_SECRET, "PLANTED-SIGNING-SECRET"),
+        ("local_api.enabled", "PLANTED-INTENT"),
+        (keys::LAN_SERVER_BIND, "PLANTED-BIND"),
+        (keys::STORE_NAME, "Packaged Store"),
+        (keys::DEFAULT_CURRENCY, "IDR"),
+        (keys::RECEIPT_FOOTER, "Terima kasih"),
+    ]);
+
+    run_import_ozpkg(&conn, path.to_str().unwrap(), PWD, false).unwrap();
+
+    for refused in [
+        keys::MACHINE_ID,
+        keys::LOCAL_API_SECRET,
+        "local_api.enabled",
+        keys::LAN_SERVER_BIND,
+    ] {
+        assert_eq!(
+            setting_bytes(&conn, refused),
+            None,
+            "{refused} is refused by PortablePackage: nothing may be written for it"
+        );
+    }
+    for (wanted, value) in [
+        (keys::STORE_NAME, "Packaged Store"),
+        (keys::DEFAULT_CURRENCY, "IDR"),
+        (keys::RECEIPT_FOOTER, "Terima kasih"),
+    ] {
+        assert_eq!(
+            setting_bytes(&conn, wanted),
+            Some(value.as_bytes().to_vec()),
+            "an ordinary setting in the same package must still restore — the batch continues past a refusal"
+        );
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn ozpkg_portable_gate_refuses_manager_owned_prefixes() {
+    // The gate is the POLICY, not the bare predicate: same answer for a
+    // credential and a device id, a DIFFERENT one for the manager prefixes.
+    assert!(!is_portable_settings_key(keys::LOCAL_API_SECRET));
+    assert!(!is_portable_settings_key(keys::MACHINE_ID));
+    for key in MANAGER_OWNED {
+        assert!(
+            !is_portable_settings_key(key),
+            "manager-owned {key} must be refused by the portable gate"
+        );
+        assert!(
+            !keys::is_non_exportable_setting_key(key),
+            "{key} is not in the deny list, so the refusal comes from the policy prefix rule alone"
+        );
+    }
+    for key in MUST_TRAVEL {
+        assert!(
+            is_portable_settings_key(key),
+            "ordinary {key} must be admitted"
+        );
+    }
+    assert!(
+        is_portable_settings_key("tax.rounding_mode")
+            && is_portable_settings_key("brand.primary_colour")
+            && is_portable_settings_key(keys::UI_LOCALE),
+        "no ordinary setting may be caught by the rule"
+    );
+}
+
 // ── the gate itself ───────────────────────────────────────────────────
 
 #[test]
@@ -258,11 +389,26 @@ fn ozpkg_portable_gate_agrees_with_shared_predicate() {
     assert!(!is_portable_settings_key(keys::SYNC_TERMINAL_ID));
     assert!(is_portable_settings_key(keys::STORE_NAME));
     assert!(is_portable_settings_key(keys::DEFAULT_CURRENCY));
-    for probe in ["brand.primary_colour", "ui.locale", "tax.rounding_mode"] {
+    // The comparison is against the POLICY, not against the bare
+    // keys::is_non_exportable_setting_key predicate. That predicate is the
+    // narrower rule this lane used to call, and pinning the gate to it is what
+    // let local_api.* and lan_server.* ride in a CLI package while the GUI
+    // dropped them. Manager-owned probes are included so the two rules cannot
+    // quietly diverge again.
+    for probe in [
+        "brand.primary_colour",
+        "ui.locale",
+        "tax.rounding_mode",
+        keys::STORE_NAME,
+        keys::MACHINE_ID,
+        keys::LOCAL_API_SECRET,
+        "local_api.enabled",
+        keys::LAN_SERVER_BIND,
+    ] {
         assert_eq!(
             is_portable_settings_key(probe),
-            !keys::is_non_exportable_setting_key(probe),
-            "CLI gate drifted from the shared predicate on {probe}"
+            IngestPolicy::PortablePackage.admits(probe),
+            "CLI gate drifted from the sealed portable-package policy on {probe}"
         );
     }
 }

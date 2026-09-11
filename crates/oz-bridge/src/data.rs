@@ -20,10 +20,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::Settings;
 use oz_core::db::Store;
 use oz_core::ozpkg::{export_ozpkg, import_ozpkg};
 use oz_core::permissions;
+use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -174,14 +174,22 @@ fn human_size(bytes: u64) -> String {
     format!("{:.1} {}", size, UNITS[unit_idx])
 }
 
-/// Map settings rows to export JSON, dropping keys that must never
-/// leave the backend in a portable package (review MED-2): credential
-/// secrets and manager-owned `local_api.*` keys. An exported-then-
-/// restored backup carrying `local_api.secret` would hand two installs
-/// the same signing secret, breaking the per-install property.
+/// Map settings rows to export JSON, dropping every row the sealed
+/// [`IngestPolicy::PortablePackage`] refuses (review MED-2): credential
+/// secrets, device-bound identities and lifecycle-manager keys.
+///
+/// An exported-then-restored backup carrying `local_api.secret` would hand two
+/// installs the same signing secret, and one carrying `local_api.enabled` or
+/// `lan_server.bind` would flip a manager's persisted intent behind its back.
+/// Both answers now come from the ONE policy owned by platform-core and
+/// re-exported through `oz_core::settings` — this lane holds no key list and
+/// no prefix rule of its own, which is precisely how the GUI and CLI lanes
+/// drifted apart before the funnel. Outcome here is unchanged from the
+/// bridge-local `is_non_exportable_key` this replaced (that predicate ORed the
+/// same two rules); what changes is that there is now one rule to point at.
 pub fn exportable_settings_rows(rows: Vec<(String, String)>) -> Vec<serde_json::Value> {
     rows.into_iter()
-        .filter(|(key, _)| !crate::settings::is_non_exportable_key(key))
+        .filter(|(key, _)| IngestPolicy::PortablePackage.admits(key))
         .map(|(key, value)| serde_json::json!({ "key": key, "value": value }))
         .collect()
 }
@@ -382,7 +390,15 @@ pub async fn export_data(
     };
 
     let settings = if wants("settings") {
-        let rows = Settings::load_all(&conn)?;
+        // Egress reads through the funnelled accessor, NOT through
+        // `Settings::load_all`: `load_all` stays deliberately UNFILTERED
+        // because `load_features` / `prune_stale_features` read through it,
+        // so an egress that assumes it is portable leaks every guarded row.
+        // `load_exportable` is `load_all` filtered by
+        // [`IngestPolicy::PortablePackage`]; the mapping below is then
+        // idempotent, and it still filters on its own because this helper is
+        // public surface driven directly by tests.
+        let rows = platform_core::settings::Settings::load_exportable(&conn)?;
         Some(exportable_settings_rows(rows))
     } else {
         None
@@ -667,25 +683,43 @@ pub async fn import_data(
         }
     }
 
+    // Ingress is the mirror of the egress above and goes through the SAME
+    // sealed policy via the funnelled accessor, never through a raw
+    // `Settings::set`: a package written by an older build, hand-edited, or
+    // built by whoever knows the shared password must not be able to plant
+    // `machine_id` or a credential in this install.
+    //
+    // `set_with_policy` answers with THREE distinct outcomes and they are not
+    // collapsed here: `Ok(false)` is a REFUSAL (nothing was written, the
+    // accessor already warned with key + policy and never the value, the batch
+    // continues), `Err` is a real SQL failure and aborts the import, and only
+    // `Ok(true)` counts as imported.
     let mut settings_imported = 0;
+    let mut settings_refused = 0;
     if let Some(ref settings) = payload.settings {
         for val in settings {
             if let Some(key) = val.get("key").and_then(|v| v.as_str())
                 && let Some(value) = val.get("value").and_then(|v| v.as_str())
             {
-                // Symmetric with the export redaction above: secret and
-                // manager-owned keys never travel in portable packages.
-                // An older export that still carries them must not
-                // silently swap this install's signing secret or flip
-                // its persisted Local API intent behind the manager's
-                // back (review MED-2).
-                if crate::settings::is_non_exportable_key(key) {
-                    continue;
+                match platform_core::settings::Settings::set_with_policy(
+                    &tx,
+                    key,
+                    value,
+                    IngestPolicy::PortablePackage,
+                )? {
+                    true => settings_imported += 1,
+                    false => settings_refused += 1,
                 }
-                let _ = Settings::set(&tx, key, value);
-                settings_imported += 1;
             }
         }
+    }
+    if settings_refused > 0 {
+        // Summary only: counts, never a key and never a value.
+        tracing::warn!(
+            refused = settings_refused,
+            policy = IngestPolicy::PortablePackage.label(),
+            "import_data skipped settings rows refused by the portable-package policy"
+        );
     }
 
     tx.commit()
