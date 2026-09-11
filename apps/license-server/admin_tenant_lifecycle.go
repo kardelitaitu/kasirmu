@@ -24,14 +24,65 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// adminEmailTarget resolves the deployment's admin email for the
+// tenant-lifecycle guards: OZ_ADMIN_EMAIL trimmed, and ok=false when the
+// operator set nothing (absent, empty, or whitespace-only).
+//
+// It DELIBERATELY does NOT apply the compiled defaultAdminEmail. The old
+// inline fallback made "unset" indistinguishable from "set to the literal
+// address in the binary", which is why an unset env silently protected a
+// row nobody named and left every other row editable. A guard that needs to
+// know whether the deployment declared an admin identity must get that
+// false, so it can fail closed on it.
+//
+// TRIM, and that is a behaviour change: the readers of this variable
+// disagree today — admin_dashboard.go:87 already TrimSpaces its env read
+// while web_password.go:176 does not. Trimming here moves the guard toward
+// the refusing side (a padded env value now resolves to the address the
+// operator meant instead of matching nothing), which is the direction that
+// cannot cost an operator the protection.
+func adminEmailTarget() (string, bool) {
+	v := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
+// adminEmailTargetWithDefault is the SECOND, separate resolution the
+// reserved-address set needs: OZ_ADMIN_EMAIL trimmed, falling back to the
+// compiled defaultAdminEmail. It is NOT the guards' resolver — the squat
+// guard must keep reserving the default even when the env is unset, while
+// isAdminTenantRecord must refuse when it is. They are kept apart on
+// purpose so neither side can be routed through the other by accident.
+func adminEmailTargetWithDefault() string {
+	if v, ok := adminEmailTarget(); ok {
+		return v
+	}
+	return defaultAdminEmail
+}
+
 // isAdminTenantRecord reports whether the record is the admin tenant
 // (OZ_ADMIN_EMAIL) — the account adminAuth maps sessions to. Its email
 // must never change (it would break the auth mapping) and it must never
 // be deleted (it would lock every admin session out).
+//
+// FAILS CLOSED: with no admin email configured there is no address to
+// compare against, so EVERY row is treated as the admin tenant and neither
+// a rename (400 at the PATCH guard) nor a cascade delete (403 at the DELETE
+// guard) can proceed. That is refusal, not permission — an unconfigured
+// deployment keeps its tenant rows rather than editing whichever row the
+// caller happened to pick.
+//
+// PARKED, do not reuse for authentication: the auth-semantics wave wants the
+// opposite reading of !ok (deny the request at the gate, not protect every
+// row). Routing adminAuth through this function, or adding a parameter that
+// would let it, would silently pick one of the two semantics. Authentication
+// sites keep their own inline resolution until that wave lands.
 func isAdminTenantRecord(tenant *core.Record) bool {
-	adminEmail := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
-	if adminEmail == "" {
-		adminEmail = defaultAdminEmail
+	adminEmail, ok := adminEmailTarget()
+	if !ok {
+		return true
 	}
 	return strings.EqualFold(tenant.GetString("email"), adminEmail)
 }

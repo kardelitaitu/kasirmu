@@ -659,24 +659,16 @@ func createTenantForEmail(app core.App, email string) (*core.Record, error) {
 // new leaks.
 var errReservedAdminEmail = errors.New("tenants: email is reserved for the deployment admin identity")
 
-// adminEmailTargetFromEnv resolves the deployment's admin email the way
-// the gate sites do: OZ_ADMIN_EMAIL trimmed, falling back to the compiled
-// defaultAdminEmail. DELIBERATE DUPLICATE: the same resolution is inlined
-// at addon_admin.go, admin_dashboard.go, admin_tenant_lifecycle.go and
-// password_rotation.go, and admin_tenant_lifecycle.go is owned by another
-// in-flight slice, so this local copy stands until a later rename-only
-// slice converges every site onto a shared adminEmailTarget helper.
-func adminEmailTargetFromEnv() string {
-	if v := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL")); v != "" {
-		return v
-	}
-	return defaultAdminEmail
-}
-
 // reservedAdminEmails returns the lowercase set of emails createTenant
 // must never self-sign: the resolved admin target UNION the compiled
-// defaultAdminEmail. The default stays reserved even when OZ_ADMIN_EMAIL
-// is set so the guard is order-independent with the deploy wave: while
+// defaultAdminEmail. The env side comes from adminEmailTargetWithDefault,
+// the reservation-side wrapper over the shared resolver in
+// admin_tenant_lifecycle.go (the local duplicate this replaced was only
+// ever waiting for that rename). It is NOT isAdminTenantRecord's resolver:
+// the reserved set must keep the compiled default when the env is unset,
+// while the lifecycle guard refuses on an unset env. The default stays
+// reserved even when OZ_ADMIN_EMAIL is set so the guard is
+// order-independent with the deploy wave: while
 // the env is unset the admin identity IS the default, so reserving only
 // the resolved value would leave the hole open on exactly the deploys
 // that are exposed. Keys are lowercase and candidates are compared
@@ -684,8 +676,8 @@ func adminEmailTargetFromEnv() string {
 // still matching the EqualFold admin gate.
 func reservedAdminEmails() map[string]bool {
 	return map[string]bool{
-		strings.ToLower(defaultAdminEmail):         true,
-		strings.ToLower(adminEmailTargetFromEnv()): true,
+		strings.ToLower(defaultAdminEmail):             true,
+		strings.ToLower(adminEmailTargetWithDefault()): true,
 	}
 }
 

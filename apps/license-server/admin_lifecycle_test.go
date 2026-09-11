@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,19 @@ import (
 )
 
 const lifecycleAdminKey = "Bearer secret-admin-key"
+
+// lifecycleNonAdminEmail is the OZ_ADMIN_EMAIL every case that needs a
+// NON-admin row points the env at. The tenant-lifecycle guard fails closed
+// when OZ_ADMIN_EMAIL is unset — with no address to compare against it
+// treats EVERY row as the admin tenant — so a case expecting a rename or a
+// delete to succeed must name an admin identity that is not the row under
+// test. Deliberately not defaultAdminEmail and not any seeded tenant email.
+const lifecycleNonAdminEmail = "lifecycle-operator@test.com"
+
+// lifecycleAdminEmail is the address the two guard cases seed a row at AND
+// point the env at, so their refusal is proven to come from the MATCH and
+// not from the blanket.
+const lifecycleAdminEmail = "lifecycle-admin@test.com"
 
 // seedLifecycleTenant creates ONLY a tenant (no sub/machine), with the
 // given status, so grant/delete tests control their own fixtures.
@@ -53,6 +67,7 @@ func TestAdminUpdateTenant_EmailAndPhone(t *testing.T) {
 	defer app.Cleanup()
 	tenant := seedLifecycleTenant(t, app, "old@test.com", "active")
 	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", lifecycleNonAdminEmail)
 
 	rec := doJSON(mux, http.MethodPatch, "/api/v1/admin/tenants/"+tenant.Id, lifecycleAdminKey,
 		`{"email":"New@Test.com","phone":"+62 811-2222"}`)
@@ -74,6 +89,7 @@ func TestAdminUpdateTenant_EmailConflict409(t *testing.T) {
 	seedLifecycleTenant(t, app, "taken@test.com", "active")
 	tenant := seedLifecycleTenant(t, app, "other@test.com", "active")
 	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", lifecycleNonAdminEmail)
 
 	rec := doJSON(mux, http.MethodPatch, "/api/v1/admin/tenants/"+tenant.Id, lifecycleAdminKey,
 		`{"email":"taken@test.com"}`)
@@ -82,16 +98,39 @@ func TestAdminUpdateTenant_EmailConflict409(t *testing.T) {
 	}
 }
 
+// TestAdminUpdateTenant_AdminEmailProtected pins the MATCH, not the
+// blanket. The guard answers 400 for EVERY row when OZ_ADMIN_EMAIL is
+// unset, so a case that merely seeds a row and expects 400 stays green for
+// the wrong reason: it cannot tell "this row is the admin tenant" apart
+// from "no admin identity is configured". Hence the env names the seeded
+// address, the refusal must carry the message from the guard itself, and a
+// second non-admin row in the same app under the same env still renames.
 func TestAdminUpdateTenant_AdminEmailProtected(t *testing.T) {
 	app, mux := dashboardMux(t)
 	defer app.Cleanup()
-	tenant := seedLifecycleTenant(t, app, defaultAdminEmail, "active")
+	admin := seedLifecycleTenant(t, app, lifecycleAdminEmail, "active")
+	ordinary := seedLifecycleTenant(t, app, "movable@test.com", "active")
 	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", lifecycleAdminEmail)
 
-	rec := doJSON(mux, http.MethodPatch, "/api/v1/admin/tenants/"+tenant.Id, lifecycleAdminKey,
+	rec := doJSON(mux, http.MethodPatch, "/api/v1/admin/tenants/"+admin.Id, lifecycleAdminKey,
 		`{"email":"moved@test.com"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "admin tenant email cannot be changed") {
+		t.Errorf("the 400 must come from the admin guard, got %s", rec.Body.String())
+	}
+	if reloaded, _ := app.FindRecordById("tenants", admin.Id); reloaded.GetString("email") != lifecycleAdminEmail {
+		t.Errorf("admin tenant email changed to %q", reloaded.GetString("email"))
+	}
+
+	// Control leg: the guard is match-scoped. Without it the blanket
+	// fail-closed refusal above would look like a passing test.
+	rec = doJSON(mux, http.MethodPatch, "/api/v1/admin/tenants/"+ordinary.Id, lifecycleAdminKey,
+		`{"email":"moved2@test.com"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("control: expected 200 renaming a non-admin row, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -100,18 +139,29 @@ func TestAdminUpdateTenant_BadInput(t *testing.T) {
 	defer app.Cleanup()
 	tenant := seedLifecycleTenant(t, app, "badin@test.com", "active")
 	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", lifecycleNonAdminEmail)
 
+	// wantErr is asserted as well as the status: every leg is a 400 under
+	// BOTH the admin guard and the validator, and the guard at the rename
+	// check runs BEFORE the duplicate-email check and the validator. Without
+	// the message the case would stay green while answering from the wrong
+	// branch — here OZ_ADMIN_EMAIL names a non-admin address, so the
+	// validator must be the one answering.
 	for _, tc := range []struct {
-		body string
-		want int
+		body    string
+		want    int
+		wantErr string
 	}{
-		{`{}`, http.StatusBadRequest},                       // nothing to update
-		{`{"email":"not-an-email"}`, http.StatusBadRequest}, // invalid email
-		{`{"email":"", "phone":""}`, http.StatusBadRequest},
+		{`{}`, http.StatusBadRequest, "nothing to update"},
+		{`{"email":"not-an-email"}`, http.StatusBadRequest, "invalid email"},
+		{`{"email":"", "phone":""}`, http.StatusBadRequest, "nothing to update"},
 	} {
 		rec := doJSON(mux, http.MethodPatch, "/api/v1/admin/tenants/"+tenant.Id, lifecycleAdminKey, tc.body)
 		if rec.Code != tc.want {
 			t.Errorf("body %s: expected %d, got %d: %s", tc.body, tc.want, rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), tc.wantErr) {
+			t.Errorf("body %s: expected error %q, got %s", tc.body, tc.wantErr, rec.Body.String())
 		}
 	}
 }
@@ -380,6 +430,7 @@ func TestAdminDeleteTenant_Cascade(t *testing.T) {
 	defer app.Cleanup()
 	tenantID, token := seedDashboardTenant(t, app, "del@test.com")
 	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", lifecycleNonAdminEmail)
 
 	// A minted license key bound to the tenant — must be unlinked, kept.
 	keyCol, _ := app.FindCollectionByNameOrId("license_keys")
@@ -431,18 +482,33 @@ func TestAdminDeleteTenant_Cascade(t *testing.T) {
 	}
 }
 
+// TestAdminDeleteTenant_Guards pins the 403 to the MATCH, not to the
+// blanket: the guard refuses every delete when OZ_ADMIN_EMAIL is unset, so
+// the admin row is seeded at an address the env also names, the refusal has
+// to carry the message from the guard itself, and a third non-admin row in
+// the same app under the same env must still delete. The two confirm-email
+// legs stay as they were — they answer BEFORE the guard (the confirm check
+// is the earlier of the two in handleAdminDeleteTenant).
 func TestAdminDeleteTenant_Guards(t *testing.T) {
 	app, mux := dashboardMux(t)
 	defer app.Cleanup()
-	admin := seedLifecycleTenant(t, app, defaultAdminEmail, "active")
+	admin := seedLifecycleTenant(t, app, lifecycleAdminEmail, "active")
 	victim := seedLifecycleTenant(t, app, "victim@test.com", "active")
+	deletable := seedLifecycleTenant(t, app, "deletable@test.com", "active")
 	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", lifecycleAdminEmail)
 
 	// Admin tenant undeletable — even with the right confirm email.
 	rec := doJSON(mux, http.MethodDelete, "/api/v1/admin/tenants/"+admin.Id, lifecycleAdminKey,
-		`{"confirm_email":"`+defaultAdminEmail+`"}`)
+		`{"confirm_email":"`+lifecycleAdminEmail+`"}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for admin tenant, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "the admin tenant cannot be deleted") {
+		t.Errorf("the 403 must come from the admin guard, got %s", rec.Body.String())
+	}
+	if _, err := app.FindRecordById("tenants", admin.Id); err != nil {
+		t.Error("the admin tenant must survive a refused delete")
 	}
 	// Wrong confirm email.
 	rec = doJSON(mux, http.MethodDelete, "/api/v1/admin/tenants/"+victim.Id, lifecycleAdminKey,
@@ -458,6 +524,119 @@ func TestAdminDeleteTenant_Guards(t *testing.T) {
 	if _, err := app.FindRecordById("tenants", victim.Id); err != nil {
 		t.Error("tenant must survive failed deletes")
 	}
+
+	// Control leg: a non-admin row still deletes under the same env.
+	rec = doJSON(mux, http.MethodDelete, "/api/v1/admin/tenants/"+deletable.Id, lifecycleAdminKey,
+		`{"confirm_email":"deletable@test.com"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("control: expected 200 deleting a non-admin row, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := app.FindRecordById("tenants", deletable.Id); err == nil {
+		t.Error("control: the non-admin row should be gone")
+	}
+}
+
+// TestAdminTenantGuard_UnsetEmailRefusesDelete is the fail-closed case:
+// with no admin email configured there is nothing to compare the row
+// against, so the guard must protect it rather than let the delete through.
+// t.Setenv(key, "") is the unset case exactly as the guard reads it —
+// absent, empty and whitespace-only all take the same branch — and it also
+// shields the case from an ambient OZ_ADMIN_EMAIL on a dev machine.
+func TestAdminTenantGuard_UnsetEmailRefusesDelete(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	victim := seedLifecycleTenant(t, app, "unset-delete@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", "")
+
+	rec := doJSON(mux, http.MethodDelete, "/api/v1/admin/tenants/"+victim.Id, lifecycleAdminKey,
+		`{"confirm_email":"unset-delete@test.com","reason":"fail-closed probe"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 with OZ_ADMIN_EMAIL unset, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := app.FindRecordById("tenants", victim.Id); err != nil {
+		t.Error("a delete refused by the fail-closed guard must leave the tenant in place")
+	}
+}
+
+// TestAdminTenantGuard_UnsetEmailRefusesRename is the same refusal on the
+// contact-edit side: 400, and the stored email unchanged.
+func TestAdminTenantGuard_UnsetEmailRefusesRename(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	victim := seedLifecycleTenant(t, app, "unset-rename@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	t.Setenv("OZ_ADMIN_EMAIL", "")
+
+	rec := doJSON(mux, http.MethodPatch, "/api/v1/admin/tenants/"+victim.Id, lifecycleAdminKey,
+		`{"email":"renamed-away@test.com"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 with OZ_ADMIN_EMAIL unset, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if reloaded, _ := app.FindRecordById("tenants", victim.Id); reloaded.GetString("email") != "unset-rename@test.com" {
+		t.Errorf("email changed to %q under a fail-closed guard", reloaded.GetString("email"))
+	}
+}
+
+// TestAdminEmailTarget pins the resolver itself: an unset, empty or
+// whitespace-only OZ_ADMIN_EMAIL is ("" , false) — NEVER the compiled
+// defaultAdminEmail, which is precisely the fallback the guard stopped
+// applying — and a set value comes back trimmed with ok=true.
+func TestAdminEmailTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  string
+	}{
+		{"unset", ""},
+		{"spaces only", "   \t "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("OZ_ADMIN_EMAIL", tc.env)
+			got, ok := adminEmailTarget()
+			if ok {
+				t.Errorf("ok = true for %q, want false", tc.env)
+			}
+			if got != "" {
+				t.Errorf("got %q, want the empty string", got)
+			}
+			if got == defaultAdminEmail {
+				t.Error("the resolver must not fall back to the compiled defaultAdminEmail")
+			}
+		})
+	}
+
+	t.Run("trimmed when set", func(t *testing.T) {
+		t.Setenv("OZ_ADMIN_EMAIL", "  ops@example.com  ")
+		got, ok := adminEmailTarget()
+		if !ok || got != "ops@example.com" {
+			t.Errorf("got (%q, %v), want (ops@example.com, true)", got, ok)
+		}
+	})
+
+	// The compiled default is just another value here: naming it in the env
+	// resolves to ok=true, so the guard compares instead of refusing.
+	t.Run("compiled default is an ordinary value", func(t *testing.T) {
+		t.Setenv("OZ_ADMIN_EMAIL", defaultAdminEmail)
+		got, ok := adminEmailTarget()
+		if !ok || got != defaultAdminEmail {
+			t.Errorf("got (%q, %v), want (%q, true)", got, ok, defaultAdminEmail)
+		}
+		if reserved := adminEmailTargetWithDefault(); reserved != defaultAdminEmail {
+			t.Errorf("reserved-set resolution = %q, want %q", reserved, defaultAdminEmail)
+		}
+	})
+
+	// The two resolutions differ ONLY on the unset branch — that is the
+	// reservation side keeping the compiled default while the guard refuses.
+	t.Run("reserved resolution still defaults when unset", func(t *testing.T) {
+		t.Setenv("OZ_ADMIN_EMAIL", "")
+		if got, ok := adminEmailTarget(); ok || got != "" {
+			t.Errorf("guard resolver = (%q, %v), want (\"\" , false)", got, ok)
+		}
+		if got := adminEmailTargetWithDefault(); got != defaultAdminEmail {
+			t.Errorf("reserved resolution = %q, want the compiled default %q", got, defaultAdminEmail)
+		}
+	})
 }
 
 // parseAllowedTypesJSON round-trips and tolerates garbage.
