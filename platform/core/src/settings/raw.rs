@@ -456,6 +456,30 @@ impl IngestPolicyKind for IngestPolicy {
 /// per-lane difference a policy type exists to express. The bridge's copy is
 /// the duplicate to delete when the lanes are converted — it is NOT deleted
 /// here, and no lane calls this yet, so no behaviour moves in this commit.
+///
+/// **Which lanes change outcome when they are converted** (this is the only
+/// place that decision survives, so it is recorded here and nowhere else):
+///
+/// * Desktop bridge — NO change. `is_non_exportable_key` already ORs this same
+///   prefix rule in, so pointing `data.rs` at the policy is outcome-neutral and
+///   its copy of the rule becomes dead code to delete.
+/// * CLI `.ozpkg` (`crates/oz-cli/src/commands/ozpkg.rs`) — CHANGES. It applies
+///   the platform-core predicate only, so `local_api.enabled` and
+///   `lan_server.bind` still travel in its packages today; converting to
+///   `PortablePackage` starts refusing them. Non-credential rows, but
+///   manager-owned, so the refusal is correct — and it is the one conversion
+///   that is not purely mechanical.
+/// * Sync ingest (`platform/sync/src/queue.rs`) — CHANGES, strictly new
+///   refusals: that lane applies ANY key the server sends with no check at all
+///   today, so `RemoteSync` refuses both the deny list and these prefixes for
+///   the first time.
+///
+/// Nothing is refused under [`IngestPolicy::TrustedLocal`]: the managers that
+/// own these keys write them locally, and filtering that would break them.
 pub fn is_manager_owned_key(key: &str) -> bool {
     key.starts_with("local_api.") || key.starts_with("lan_server.")
 }
+
+#[cfg(test)]
+#[path = "raw_tests.rs"]
+mod tests;

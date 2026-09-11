@@ -21,6 +21,17 @@ pub mod keys {
     pub use platform_core::settings::keys::*;
 }
 
+/// The sealed ingest policy, re-exported so every lane can name it.
+///
+/// `platform-core` owns both the type and the accessors that enforce it
+/// (`Settings::load_exportable`, `Settings::set_with_policy`,
+/// `Settings::set_batch_with_policy`). This crate already delegates its raw
+/// key-value helpers there, so the re-export costs NO new dependency edge:
+/// `platform-core` is already in this crate's graph and every lane already
+/// reaches `oz_core::settings::keys::*`. Pointing a lane at the funnel is
+/// therefore a call-site change, never a `Cargo.toml` change.
+pub use platform_core::settings::{IngestPolicy, IngestPolicyKind};
+
 /// Typed access to the `settings` table.
 ///
 /// Raw get/set/remove/batch operations are delegated to
