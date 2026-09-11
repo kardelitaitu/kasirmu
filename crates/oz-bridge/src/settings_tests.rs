@@ -708,7 +708,7 @@ fn every_credential_family_key_declared_in_keys_rs_is_blocked() {
 /// parsing the registry: name -> constant -> both verdicts.
 #[test]
 fn credential_table_is_blocked_by_both_surfaces() {
-    let table: [(&str, &str); 18] = [
+    let table: [(&str, &str); 19] = [
         ("SYNC_API_KEY", keys::SYNC_API_KEY),
         ("SYNC_TERMINAL_SECRET", keys::SYNC_TERMINAL_SECRET),
         ("PG_SYNC_PASSWORD", keys::PG_SYNC_PASSWORD),
@@ -721,6 +721,7 @@ fn credential_table_is_blocked_by_both_surfaces() {
         ("LICENSE_PAYLOAD", keys::LICENSE_PAYLOAD),
         ("LICENSE_SIGNATURE", keys::LICENSE_SIGNATURE),
         ("LICENSE_TENANT_ID", keys::LICENSE_TENANT_ID),
+        ("LICENSE_PHONE", keys::LICENSE_PHONE),
         ("STRIPE_API_KEY", keys::STRIPE_API_KEY),
         ("SQUARE_API_KEY", keys::SQUARE_API_KEY),
         ("MIDTRANS_SERVER_KEY", keys::MIDTRANS_SERVER_KEY),
@@ -728,6 +729,25 @@ fn credential_table_is_blocked_by_both_surfaces() {
         ("MACHINE_ID", keys::MACHINE_ID),
         ("HARDWARE_FINGERPRINT", keys::HARDWARE_FINGERPRINT),
     ];
+    // The table is the readable statement of the swept set, so it must BE the
+    // swept set. The computed balance in
+    // `every_credential_family_key_declared_in_keys_rs_is_blocked` passes on
+    // its own while this table lags a constant behind (LICENSE_PHONE did,
+    // between bfd03822f and here) — a subset table that passes and a balance
+    // that passes are two different guarantees, so the one-to-one is an
+    // assertion, not a review act.
+    let mut swept_names: Vec<String> = declared_keys()
+        .into_iter()
+        .filter(|(name, _)| is_credential_family(name))
+        .map(|(name, _)| name)
+        .collect();
+    swept_names.sort();
+    let mut table_names: Vec<String> = table.iter().map(|(name, _)| name.to_string()).collect();
+    table_names.sort();
+    assert_eq!(
+        table_names, swept_names,
+        "the credential table and the swept family must be the same set"
+    );
     for (name, key) in table {
         assert!(
             refused_by_portable_package(key),
@@ -984,6 +1004,92 @@ fn batch_smtp_config_write_preserves_the_stored_password() {
     assert_eq!(loaded.from, "b@c.com");
 }
 
+/// The batch funnel must hand back what it wrote, because that is exactly what
+/// the command enqueues: the sync payload carries the MERGED blob (with the
+/// stored secret carried forward), never the passwordless re-post the client
+/// sent. Against the pre-fix shape — where `set_settings_scoped` enqueued the
+/// ORIGINAL `entries` — the offered row was not what we had written, and it
+/// shipped only because `remote_sync_admits` refuses `smtp_config`.
+#[test]
+fn batch_funnel_returns_what_it_wrote_so_the_enqueue_carries_the_merged_blob() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    store
+        .save_smtp_config(&oz_core::export::email_report::SmtpConfig {
+            host: "smtp.old.com".into(),
+            from: "a@b.com".into(),
+            password: Some("stored-secret".into()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let written = run_set_settings_batch(
+        &conn,
+        &HashMap::from([
+            (
+                SMTP_CONFIG_SETTINGS_KEY.to_string(),
+                r#"{"host":"smtp.new.com","port":465,"username":null,"password":null,"from":"b@c.com","use_tls":true}"#
+                    .to_string(),
+            ),
+            ("store_name".to_string(), "My Store".to_string()),
+        ]),
+        "term-1",
+    )
+    .unwrap();
+
+    // What would be offered to the network is exactly what the table holds.
+    let stored = Settings::get(&conn, SMTP_CONFIG_SETTINGS_KEY)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        written.get(SMTP_CONFIG_SETTINGS_KEY),
+        Some(&stored),
+        "the enqueue map must carry smtp_config as written, not as posted"
+    );
+    let blob: serde_json::Value = serde_json::from_str(&stored).unwrap();
+    assert!(
+        !blob["password"].as_str().unwrap_or("").is_empty(),
+        "the written blob must carry the stored password forward: {blob}"
+    );
+    assert_eq!(
+        blob["host"], "smtp.new.com",
+        "the other fields must still update"
+    );
+    assert_eq!(written.get("store_name"), Some(&"My Store".to_string()));
+}
+
+/// Same discipline for the single-write funnel: the two single-write commands
+/// enqueue what `run_set_setting` returns, so it must be the value AS WRITTEN.
+#[test]
+fn single_write_funnel_returns_what_it_wrote() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    store
+        .save_smtp_config(&oz_core::export::email_report::SmtpConfig {
+            host: "smtp.old.com".into(),
+            from: "a@b.com".into(),
+            password: Some("stored-secret".into()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let effective = run_set_setting(
+        &conn,
+        SMTP_CONFIG_SETTINGS_KEY,
+        r#"{"host":"smtp.new.com","port":465,"username":null,"password":null,"from":"b@c.com","use_tls":true}"#,
+        "term-1",
+    )
+    .unwrap();
+
+    let stored = Settings::get(&conn, SMTP_CONFIG_SETTINGS_KEY)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        effective, stored,
+        "the single-write funnel must return the merged blob, not the posted one"
+    );
+}
+
 /// A batch containing a manager-owned key is refused and writes NOTHING — not
 /// even the innocent sibling key. Refusal is batch-wide and pre-flight, which
 /// is what the command's documented all-or-nothing semantics require.
@@ -1022,7 +1128,7 @@ fn batch_write_refuses_local_api_secret_and_writes_nothing() {
 #[test]
 fn batch_write_of_two_ordinary_keys_lands_both() {
     let conn = fresh_conn();
-    run_set_settings_batch(
+    let written = run_set_settings_batch(
         &conn,
         &HashMap::from([
             ("store_name".to_string(), "My Store".to_string()),
@@ -1038,5 +1144,18 @@ fn batch_write_of_two_ordinary_keys_lands_both() {
     assert_eq!(
         Settings::get(&conn, "currency").unwrap().as_deref(),
         Some("IDR")
+    );
+    // The same two rows are what the funnel hands back, verbatim: an ordinary
+    // key is not rewritten, so the enqueue map has one entry per posted key and
+    // the merge seam touched neither of them. Without this the control test
+    // would prove only that the write happened, not that the payload the
+    // command now replicates is the one the caller posted.
+    assert_eq!(
+        written,
+        HashMap::from([
+            ("store_name".to_string(), "My Store".to_string()),
+            ("currency".to_string(), "IDR".to_string()),
+        ]),
+        "for unmerged keys the returned map must equal the request"
     );
 }

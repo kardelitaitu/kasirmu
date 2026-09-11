@@ -413,12 +413,19 @@ pub fn run_get_setting(
 /// on every save. The key's owner, `oz_core::export::email_report`, answers
 /// "what should actually land" and the answer is written through the SAME
 /// tracked path, so the ADR #22 delta still records the change.
+///
+/// Returns the value AS WRITTEN — the merged blob for `smtp_config`, the
+/// input verbatim for every other key. The command enqueues exactly this for
+/// replication (SYNC-10): a row that is not what we would have written is
+/// never offered to the network, so the enqueue does not depend on
+/// [`remote_sync_admits`] refusing `smtp_config` to keep a passwordless
+/// re-post of the stored secret from shipping.
 pub fn run_set_setting(
     conn: &rusqlite::Connection,
     key: &str,
     value: &str,
     terminal_id: &str,
-) -> Result<(), BridgeError> {
+) -> Result<String, BridgeError> {
     if let Some(owner) = managed_key_owner(key) {
         return Err(BridgeError::Invalid(format!(
             "{key} is managed by the {owner} controls — use those"
@@ -431,7 +438,8 @@ pub fn run_set_setting(
     } else {
         value
     };
-    Ok(Settings::set_tracked(conn, key, value, terminal_id)?)
+    Settings::set_tracked(conn, key, value, terminal_id)?;
+    Ok(value.to_string())
 }
 
 /// Business logic for the `set_settings_scoped` batch write (extracted for
@@ -451,11 +459,16 @@ pub fn run_set_setting(
 /// single-write funnel does — it returns `Invalid` rather than skipping the
 /// row — so the command's documented all-or-nothing semantics hold: one
 /// managed key aborts the batch, it does not quietly drop that one entry.
+///
+/// Returns the values AS WRITTEN, keyed by key — the map the command hands to
+/// [`enqueue_settings_updates`], so the replication payload carries the merged
+/// `smtp_config` blob rather than the passwordless one the client posted. A
+/// row that is not what we would have written is not offered.
 pub fn run_set_settings_batch(
     conn: &rusqlite::Connection,
     entries: &HashMap<String, String>,
     terminal_id: &str,
-) -> Result<(), BridgeError> {
+) -> Result<HashMap<String, String>, BridgeError> {
     if let Some(key) = entries.keys().find(|k| is_managed_key(k)) {
         let owner = managed_key_owner(key).unwrap_or("a dedicated");
         return Err(BridgeError::Invalid(format!(
@@ -463,6 +476,7 @@ pub fn run_set_settings_batch(
         )));
     }
     let store = Store::new(conn);
+    let mut written = HashMap::with_capacity(entries.len());
     for (key, value) in entries {
         let merged;
         let value = if key == SMTP_CONFIG_SETTINGS_KEY {
@@ -472,8 +486,9 @@ pub fn run_set_settings_batch(
             value
         };
         Settings::set_tracked(conn, key, value, terminal_id)?;
+        written.insert(key.clone(), value.to_string());
     }
-    Ok(())
+    Ok(written)
 }
 
 /// Enqueue one settings.update sync item per changed key (SYNC-10).
@@ -492,6 +507,10 @@ pub fn run_set_settings_batch(
 /// A refused key is warned about and skipped — never an error, because the
 /// caller treats a failed enqueue as non-fatal already, and the warn names the
 /// key and the policy, never the value.
+///
+/// Callers must pass the values AS WRITTEN (what [`run_set_setting`] and
+/// [`run_set_settings_batch`] return), not the request as posted: a row that
+/// is not what we would have written is not offered to the network.
 ///
 /// This is the one settings leg that had no guard at all: reads refused the deny
 /// list, writes refused the manager prefixes, and the enqueue carried anything.
@@ -1092,10 +1111,10 @@ pub async fn set_setting(
         let conn = ctx.db.lock().await;
         let store = oz_core::db::Store::new(&conn);
         ctx.require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-        run_set_setting(&conn, key, value, &terminal_id)?;
+        let effective = run_set_setting(&conn, key, value, &terminal_id)?;
         if let Err(e) = enqueue_settings_updates(
             &store,
-            &HashMap::from([(key.to_string(), value.to_string())]),
+            &HashMap::from([(key.to_string(), effective)]),
             &terminal_id,
             "default",
         ) {
@@ -1139,8 +1158,9 @@ pub async fn set_setting_scoped(
         .unwrap_or_else(|| "unknown".to_string());
 
     // Scope block: all sync guards (MutexGuard, Store) must be
-    // dropped before any .await below.
-    {
+    // dropped before any .await below. The block YIELDS the value as written,
+    // so the enqueue below can never be handed the request as posted.
+    let effective = {
         let conn = ctx
             .db_manager
             .open_store(&session.store_id)
@@ -1150,8 +1170,8 @@ pub async fn set_setting_scoped(
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let store = oz_core::db::Store::new(&db);
         ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-        run_set_setting(&db, key, value, &terminal_id)?;
-    } // db, store, conn dropped here — safe to .await below
+        run_set_setting(&db, key, value, &terminal_id)?
+    }; // db, store, conn dropped here — safe to .await below
 
     // Enqueue `settings.update` sync items on the GLOBAL db — the sync
     // daemon only watches the global queue, so a store-scoped write must
@@ -1161,7 +1181,7 @@ pub async fn set_setting_scoped(
         let store = oz_core::db::Store::new(&conn);
         if let Err(e) = enqueue_settings_updates(
             &store,
-            &HashMap::from([(key.to_string(), value.to_string())]),
+            &HashMap::from([(key.to_string(), effective)]),
             &terminal_id,
             &session.store_id,
         ) {
@@ -1204,7 +1224,11 @@ pub async fn set_settings_scoped(
 
     let keys: Vec<String> = entries.keys().cloned().collect();
 
-    {
+    // Scope block: the store guards must be dropped before the .await below.
+    // It YIELDS the map of values as written — the batch funnel merges
+    // `smtp_config` internally, so this (not `entries`) is what replication
+    // is offered. SYNC-10.
+    let written = {
         let conn = ctx
             .db_manager
             .open_store(&session.store_id)
@@ -1215,9 +1239,10 @@ pub async fn set_settings_scoped(
         let store = oz_core::db::Store::new(&db);
         ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
         let tx = db.unchecked_transaction()?;
-        run_set_settings_batch(&tx, &entries, &terminal_id)?;
+        let written = run_set_settings_batch(&tx, &entries, &terminal_id)?;
         tx.commit()?;
-    }
+        written
+    };
 
     // Enqueue `settings.update` sync items on the GLOBAL db — the sync
     // daemon only watches the global queue, so a store-scoped write must
@@ -1225,9 +1250,9 @@ pub async fn set_settings_scoped(
     {
         let conn = ctx.db.lock().await;
         let store = oz_core::db::Store::new(&conn);
-        if let Err(e) = enqueue_settings_updates(&store, &entries, &terminal_id, &session.store_id)
+        if let Err(e) = enqueue_settings_updates(&store, &written, &terminal_id, &session.store_id)
         {
-            tracing::warn!(key_count = entries.len(), error = %e, "failed to enqueue settings.update sync items");
+            tracing::warn!(key_count = written.len(), error = %e, "failed to enqueue settings.update sync items");
         }
     } // conn dropped — safe to .await below
 
