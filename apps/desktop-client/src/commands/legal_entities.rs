@@ -72,7 +72,3 @@ pub async fn update_legal_entity_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "legal_entities_tests.rs"]
-mod tests;

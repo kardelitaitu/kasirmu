@@ -45,7 +45,3 @@ async fn open_in_browser(url: &str) -> Result<(), AppError> {
     tauri_plugin_opener::open_url(url, None::<&str>)
         .map_err(|e| AppError::Internal(format!("opening browser: {e}")))
 }
-
-#[cfg(test)]
-#[path = "browser_tests.rs"]
-mod tests;

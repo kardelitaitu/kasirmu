@@ -1,3 +1,11 @@
+//! Relocated legal-entity command tests (Wave-F test relocation: moved out
+//! of `apps/desktop-client/src/commands/legal_entities_tests.rs`).
+//!
+//! Mounted at the foot of `legal_entities.rs` with `#[cfg(test)] #[path]`,
+//! so `use super::*` resolves `LegalEntityDto` and `CreateLegalEntityArgs`
+//! (defined in this module) exactly as the desktop re-export did. Pure
+//! serde wire-shape cases: no context, no harness, assertions unchanged.
+
 use super::*;
 
 #[test]

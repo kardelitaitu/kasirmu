@@ -83,3 +83,7 @@ pub async fn product_image_search_url(
 
     Ok(url)
 }
+
+#[cfg(test)]
+#[path = "browser_tests.rs"]
+mod browser_tests;

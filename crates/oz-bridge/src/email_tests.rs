@@ -1,31 +1,29 @@
+//! Relocated email-command tests (Wave-F test relocation: moved out of
+//! `apps/desktop-client/src/commands/email_tests.rs`).
+//!
+//! Mounted at the foot of `email.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the bridge email fns exactly as the desktop
+//! sibling module did. The desktop `tauri::test` mock app maps onto the
+//! headless `TestBridge`; every assertion is unchanged.
+
 use super::*;
-use tauri::Manager as _;
-
-// ── Helper ────────────────────────────────────────────────────────
-
-fn test_app() -> tauri::App<tauri::test::MockRuntime> {
-    let state = AppState::for_test();
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
-}
+use crate::testing::TestBridge;
 
 // ── get_report_schedule ────────────────────────────────────────────
 
 #[tokio::test]
 async fn get_report_schedule_does_not_panic() {
-    let app = test_app();
+    let tb = TestBridge::new();
     // The function should either return a default or an error — never panic.
-    let _ = get_report_schedule(app.state()).await;
+    let _ = get_report_schedule(&tb.ctx()).await;
 }
 
 // ── send_test_report ──────────────────────────────────────────────
 
 #[tokio::test]
 async fn send_test_report_rejects_invalid_token() {
-    let app = test_app();
-    let result = send_test_report("bogus-token".into(), app.state()).await;
+    let tb = TestBridge::new();
+    let result = send_test_report(&tb.ctx(), "bogus-token").await;
     // Should fail because the session token is invalid.
     assert!(result.is_err(), "should fail with invalid session token");
 }

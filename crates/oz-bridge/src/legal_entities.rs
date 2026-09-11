@@ -179,3 +179,7 @@ pub async fn update_legal_entity_scoped(
         &update,
     )?))
 }
+
+#[cfg(test)]
+#[path = "legal_entities_tests.rs"]
+mod legal_entities_tests;

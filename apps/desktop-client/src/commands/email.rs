@@ -70,7 +70,3 @@ pub async fn get_report_schedule_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "email_tests.rs"]
-mod tests;

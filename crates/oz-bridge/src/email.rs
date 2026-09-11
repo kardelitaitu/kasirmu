@@ -167,3 +167,7 @@ pub async fn get_report_schedule_scoped(
         .await?;
     get_report_schedule(ctx).await
 }
+
+#[cfg(test)]
+#[path = "email_tests.rs"]
+mod email_tests;

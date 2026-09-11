@@ -1,3 +1,11 @@
+//! Relocated browser-command tests (Wave-F test relocation: moved out of
+//! `apps/desktop-client/src/commands/browser_tests.rs`).
+//!
+//! Mounted at the foot of `browser.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the percent-encoder `urlencoding` (defined in
+//! this module) exactly as the desktop re-export did. Pure-encoder cases:
+//! no context, no harness, assertions unchanged.
+
 use super::*;
 
 #[test]
