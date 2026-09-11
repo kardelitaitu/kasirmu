@@ -84,7 +84,3 @@ pub async fn dismiss_setup_wizard(state: State<'_, AppState>) -> Result<(), AppE
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "setup_tests.rs"]
-mod tests;

@@ -184,3 +184,7 @@ pub async fn dismiss_setup_wizard(ctx: &BridgeCtx<'_>) -> Result<(), BridgeError
     tracing::info!("setup wizard dismissed (skip)");
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "setup_tests.rs"]
+mod setup_tests;
