@@ -467,19 +467,19 @@ fn set_setting_enqueues_settings_update_item() {
 ///
 /// The key is now registered as `keys::AUTH_TOKEN` and sits on the shared
 /// credential deny list, so the honest assertion is the refusal — the same
-/// shape `get_setting_redacts_secret_keys` already takes. The write still
-/// lands (the funnel refuses manager-owned keys, not deny-listed ones), which
-/// is exactly why the read is the boundary that has to be pinned.
+/// shape `get_setting_redacts_secret_keys` already takes. The row is seeded
+/// through `Settings::set`, NOT through the funnel: since 0f26a4b29 the tracked
+/// funnel refuses a deny-listed credential stored in cleartext as well, so the
+/// old premise — that the funnel guards only manager-owned keys and the write
+/// therefore still lands — is false, and a funnel seed would fail on the write
+/// before the read boundary was ever exercised. The read is still the thing
+/// under test, which is why the row has to exist for it to mean anything.
 #[test]
 fn set_setting_denied_key_persists_but_get_refuses_it() {
     let conn = fresh_conn();
-    run_set_setting(
-        &conn,
-        oz_core::settings::keys::AUTH_TOKEN,
-        "sk_test_abc123",
-        "term-1",
-    )
-    .unwrap();
+    // Seed door: the untracked `Settings::set`. The funnel refuses this write
+    // now, so it cannot be the scaffolding for a read-side test.
+    Settings::set(&conn, oz_core::settings::keys::AUTH_TOKEN, "sk_test_abc123").unwrap();
     assert_eq!(
         run_get_setting(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
         None,
@@ -491,7 +491,7 @@ fn set_setting_denied_key_persists_but_get_refuses_it() {
     assert_eq!(
         Settings::get(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
         Some("sk_test_abc123".into()),
-        "the write is not refused; only the read is"
+        "the row must exist, or the read refusal above proves nothing"
     );
 }
 
@@ -526,16 +526,27 @@ fn get_setting_after_multiple_keys_only_returns_requested() {
 #[test]
 fn get_setting_redacts_secret_keys() {
     let conn = fresh_conn();
-    run_set_setting(&conn, "sync_api_key", "secret-key", "t").unwrap();
-    run_set_setting(&conn, "pg_sync.password", "db-pass", "t").unwrap();
+    // WHY THESE SEEDS DO NOT GO THROUGH run_set_setting: this test asserts a
+    // READ-side property, so the write is scaffolding only. Since 0f26a4b29 the
+    // tracked funnel refuses a deny-listed credential stored in cleartext
+    // (Settings::refuse_cleartext_credential), so funnel-seeding it fails on the
+    // write and never reaches the redaction assertion. Settings::set is the
+    // untracked door the lifecycle managers themselves use, and it stores what it
+    // is handed - the same seed the desktop bridge redaction test uses. Do NOT
+    // tidy these lines back onto run_set_setting.
+    Settings::set(&conn, "sync_api_key", "secret-key").unwrap();
+    Settings::set(&conn, "pg_sync.password", "db-pass").unwrap();
     // lan_server.* is manager-owned: the guarded writer rejects it (see
     // run_set_setting_rejects_lan_server_bind), so seed it raw — same as the
     // desktop bridge's redaction test.
     Settings::set(&conn, "lan_server.psk", "psk-val").unwrap();
+    // smtp_config is the one named exception to that cleartext refusal
+    // (Settings::CLEARTEXT_CREDENTIAL_EXCEPTION), so it still goes through the
+    // writer a real tablet save takes - the merge seam, not a refusal.
     run_set_setting(&conn, "smtp_config", "smtp-secret", "t").unwrap();
-    run_set_setting(&conn, "stripe.api_key", "sk_test_stripe", "t").unwrap();
-    run_set_setting(&conn, "square.api_key", "sq_test_square", "t").unwrap();
-    run_set_setting(&conn, "midtrans.server_key", "mid_test", "t").unwrap();
+    Settings::set(&conn, "stripe.api_key", "sk_test_stripe").unwrap();
+    Settings::set(&conn, "square.api_key", "sq_test_square").unwrap();
+    Settings::set(&conn, "midtrans.server_key", "mid_test").unwrap();
     assert_eq!(run_get_setting(&conn, "pg_sync.password").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "lan_server.psk").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "smtp_config").unwrap(), None);
@@ -627,17 +638,20 @@ fn run_set_setting_store_name_control_still_writes() {
 /// the sync API key, posted through the generic funnel, on no deny list, so
 /// both untrusted lanes carried it. Now that it is registered as
 /// `keys::AUTH_TOKEN` and denied, the honest assertion is the refusal on the
-/// read surface AND on the sync egress surface.
+/// read surface AND on the sync egress surface. Since 0f26a4b29 the generic
+/// funnel refuses the WRITE too, so the row below is seeded through
+/// `Settings::set`: a funnel seed would leave the row absent and turn every
+/// refusal asserted on it into a pass over a missing key.
 #[test]
 fn sync_auth_token_is_refused_on_read_and_never_replicated() {
     use oz_core::settings::IngestPolicyKind as _;
     let conn = fresh_conn();
     let key = oz_core::settings::keys::AUTH_TOKEN;
 
-    // The write still lands — the funnel guards manager-owned keys, not the
-    // credential list — so every refusal below is a refusal of an existing
-    // row, not a vacuous pass over a missing one.
-    run_set_setting(&conn, key, "jwt-token-xyz", "term-1").unwrap();
+    // Seeded through the untracked door so every refusal below is a refusal of
+    // an EXISTING row, not a vacuous pass over a missing one; the row-exists
+    // assertion right below is what keeps that honest.
+    Settings::set(&conn, key, "jwt-token-xyz").unwrap();
     assert_eq!(
         Settings::get(&conn, key).unwrap(),
         Some("jwt-token-xyz".into()),
@@ -816,7 +830,11 @@ fn redis_url_with_embedded_password_is_refused_for_read_and_egress() {
     let conn = fresh_conn();
     let url = "redis://:s3cr3t@10.0.0.5:6379";
     let key = oz_core::settings::keys::REDIS_URL;
-    run_set_setting(&conn, key, url, "term-1").unwrap();
+    // Seed door: the untracked `Settings::set`. Since 0f26a4b29 the funnel
+    // refuses a cleartext `redis.url`, so seeding through it would fail the
+    // write and leave the read and egress refusals below untested. Do NOT tidy
+    // this back onto run_set_setting.
+    Settings::set(&conn, key, url).unwrap();
     assert_eq!(
         run_get_setting(&conn, key).unwrap(),
         None,

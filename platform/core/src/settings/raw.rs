@@ -504,28 +504,38 @@ impl IngestPolicyKind for IngestPolicy {
 /// Writing one through a bulk lane desyncs the manager behind its back:
 /// `local_api.enabled` persisted without the Local API server running is a
 /// fail-open intent, and `lan_server.bind` widens a listener with no PSK
-/// change. This is the rule the desktop bridge has carried as
-/// `managed_key_owner`/`is_managed_key` while the tablet and CLI lanes had
-/// none; the sealed policy is where it belongs, because it is exactly the
-/// per-lane difference a policy type exists to express. The bridge's copy is
-/// the duplicate to delete when the lanes are converted — it is NOT deleted
-/// here, and no lane calls this yet, so no behaviour moves in this commit.
+/// change. The sealed policy is where the rule belongs, because it is exactly
+/// the per-lane difference a policy type exists to express — and this is now
+/// the ONLY definition of it. The desktop bridge used to carry the same
+/// decision as a second `starts_with` pair (`managed_key_owner` over
+/// `"local_api."` / `"lan_server."`, with a boolean `is_managed_key` beside
+/// it); that copy is deleted, so the two definitions that could drift are down
+/// to one.
 ///
-/// **Which lanes change outcome when they are converted** (this is the only
-/// place that decision survives, so it is recorded here and nowhere else):
+/// **Who asks it** (this is the only place the decision survives, so the
+/// callers are recorded here and nowhere else):
 ///
-/// * Desktop bridge — NO change. `is_non_exportable_key` already ORs this same
-///   prefix rule in, so pointing `data.rs` at the policy is outcome-neutral and
-///   its copy of the rule becomes dead code to delete.
-/// * CLI `.ozpkg` (`crates/oz-cli/src/commands/ozpkg.rs`) — CHANGES. It applies
-///   the platform-core predicate only, so `local_api.enabled` and
-///   `lan_server.bind` still travel in its packages today; converting to
-///   `PortablePackage` starts refusing them. Non-credential rows, but
-///   manager-owned, so the refusal is correct — and it is the one conversion
-///   that is not purely mechanical.
-/// * Sync ingest (`platform/sync/src/queue.rs`) — ALREADY CONVERTED, so this
-///   lane refuses the deny list and these prefixes on ingest, symmetrically
-///   with egress. Both dispatchers write through the ONE funnel accessor
+/// * The sealed policy above — [`IngestPolicyKind::admits`] ORs it in for BOTH
+///   untrusted directions, so `.ozpkg` and remote-sync ingest refuse these
+///   prefixes alongside the deny list. [`Settings::load_exportable`] and
+///   `crates/oz-bridge/src/data.rs` reach it that way, and so does
+///   `crates/oz-cli/src/commands/ozpkg.rs`, which asks `PortablePackage` rather
+///   than the bare predicate — non-credential but manager-owned rows like
+///   `local_api.enabled` and `lan_server.bind` therefore travel in neither a
+///   CLI package nor a GUI one.
+/// * Tablet write funnel — `apps/tablet-client/src/commands/settings.rs` calls
+///   this predicate directly and refuses a manager-owned key with it.
+/// * Desktop write funnel — `crates/oz-bridge/src/settings.rs` refuses with
+///   this predicate too, through its `managed_key_owner`, which adds ONLY the
+///   owner label the refusal message shows. The label stays in the bridge
+///   because the message text is a UI surface rather than a second policy, and
+///   even it takes its prefixes from `keys::LOCAL_API_SECRET` /
+///   `keys::LAN_SERVER_PSK` instead of a retyped list. A third prefix joining
+///   this predicate therefore refuses on every lane at once, and the desktop
+///   message falls back to a generic label rather than to accepting.
+/// * Sync ingest (`platform/sync/src/queue.rs`) — refuses the deny list and
+///   these prefixes on ingest, symmetrically with egress. Both dispatchers
+///   write through the ONE funnel accessor
 ///   `Settings::set_with_policy(..., IngestPolicy::RemoteSync)` — the atomic
 ///   arm at `queue.rs:531-536` and the legacy arm at `queue.rs:698-703` — and
 ///   `queue.rs:41-56` is the read-only face of that same predicate, kept so a

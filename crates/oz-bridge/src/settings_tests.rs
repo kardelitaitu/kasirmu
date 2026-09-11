@@ -401,16 +401,29 @@ fn get_setting_after_multiple_keys_only_returns_requested() {
 fn get_setting_redacts_secret_keys() {
     let conn = fresh_conn();
     // Write secret values via Settings directly (bypassing get_setting).
-    run_set_setting(&conn, "sync_api_key", "secret-key", "t").unwrap();
-    run_set_setting(&conn, "pg_sync.password", "db-pass", "t").unwrap();
+    //
+    // WHY THE SEED DOES NOT GO THROUGH run_set_setting: this test asserts a
+    // READ-side property, so the write is scaffolding only. Since 0f26a4b29 the
+    // tracked funnel refuses a deny-listed credential stored in cleartext
+    // (Settings::refuse_cleartext_credential), so funnel-seeding it fails on the
+    // write and never reaches the redaction assertion - the test would then prove
+    // nothing about the read. Settings::set is the untracked door the lifecycle
+    // managers themselves use, and it stores what it is handed, which is the only
+    // way to plant a cleartext secret and show the reader refuses to hand it back.
+    // Do NOT tidy these lines back onto run_set_setting.
+    Settings::set(&conn, "sync_api_key", "secret-key").unwrap();
+    Settings::set(&conn, "pg_sync.password", "db-pass").unwrap();
     // lan_server.* is manager-owned: the guarded writer rejects it (see
     // run_set_setting_rejects_lan_server_keys), so seed it raw.
     Settings::set(&conn, "lan_server.psk", "psk-val").unwrap();
+    // smtp_config is the one named exception to that cleartext refusal
+    // (Settings::CLEARTEXT_CREDENTIAL_EXCEPTION), so it still goes through the
+    // writer a real save takes - the merge seam, not a refusal.
     run_set_setting(&conn, "smtp_config", "smtp-secret", "t").unwrap();
-    run_set_setting(&conn, "license.api_key", "lic-key", "t").unwrap();
-    run_set_setting(&conn, "stripe.api_key", "sk_test_stripe", "t").unwrap();
-    run_set_setting(&conn, "square.api_key", "sq_test_square", "t").unwrap();
-    run_set_setting(&conn, "midtrans.server_key", "mid_test", "t").unwrap();
+    Settings::set(&conn, "license.api_key", "lic-key").unwrap();
+    Settings::set(&conn, "stripe.api_key", "sk_test_stripe").unwrap();
+    Settings::set(&conn, "square.api_key", "sq_test_square").unwrap();
+    Settings::set(&conn, "midtrans.server_key", "mid_test").unwrap();
     // All secret keys must return None via get_setting.
     assert_eq!(run_get_setting(&conn, "sync_api_key").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "pg_sync.password").unwrap(), None);
