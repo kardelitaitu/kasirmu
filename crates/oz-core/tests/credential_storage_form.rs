@@ -1,0 +1,595 @@
+//! Storage-form census for the settings credential deny list.
+//!
+//! Every existing test asks whether a deny-listed key is *refused on read*
+//! (`crates/oz-bridge/src/settings_tests.rs:404-413`) or whether it is *a
+//! member of the list*. None asks what actually landed in the column. A key
+//! can therefore sit in the database in cleartext and every suite in the repo
+//! stays green, because redaction on the read path is not encryption on the
+//! write path. This file measures the FORM of the stored bytes.
+//!
+//! For each key it writes a known sentinel through the ordinary public
+//! settings setter available to this crate, then reads the RAW column with a
+//! hand-written `SELECT` that touches no `Settings::get_*` accessor and so
+//! decrypts nothing, and classifies what it finds.
+//!
+//! Two tables are read, not one: `Settings::set_tracked` copies the value a
+//! second time into the `setting_updated` delta ledger
+//! (`platform/core/src/settings/raw.rs:313-327`, the copy at `:323`), so a
+//! credential written in cleartext through the funnel exists in cleartext in
+//! TWO tables. The two
+//! verdicts are reported separately because they can disagree — the live row
+//! is overwritten, the ledger row is append-only. See
+//! `a_cleartext_delta_survives_a_later_encrypted_save`.
+//!
+//! # Why classification has to call a decrypt function
+//!
+//! It does, and that is a finding rather than a shortcut. `settings.value` is
+//! a bare `TEXT` column (`crates/oz-core/migrations/20260813_init.sql:633-637`)
+//! with no prefix, no version byte, no marker column, no discriminator of any
+//! kind. The only shape predicate in the codebase, `looks_like_ciphertext`
+//! (`crates/oz-crypto/src/lib.rs:311`), is PRIVATE, so it cannot be reused
+//! here and is reimplemented below. Because that predicate is a base64 length
+//! test and not a tag, a plaintext value that merely happens to be
+//! base64-shaped is indistinguishable from real ciphertext by inspection —
+//! proved by `nothing_in_the_stored_form_marks_a_row_as_ciphertext`. The only
+//! operation that separates the two forms for certain is an attempt to decrypt
+//! with the family key. That is why no detection gate exists: there is nothing
+//! to gate ON.
+//!
+//! # Verdicts
+//!
+//! `Ciphertext` — not the sentinel, and the matching family decrypt returns
+//! the sentinel. `Plaintext` — the sentinel byte for byte (decided WITHOUT
+//! decrypting). `StructuredBlob` — a JSON document carrying the credential
+//! inside it.
+
+use oz_core::{Settings, Store, migrations};
+use rusqlite::Connection;
+
+/// Written through every setter, read back from every column. Chosen so it is
+/// never valid base64 in any alphabet (`.` and `#` are absent from all four),
+/// which keeps the sentinel itself from being shape-ambiguous.
+const SENTINEL: &str = "sentinel.plaintext.value#1";
+
+/// Terminal id for the delta-ledger writes; `setting_updated` is keyed by
+/// (key, terminal_id, version).
+const TERM: &str = "term-census";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Form {
+    Ciphertext,
+    Plaintext,
+    StructuredBlob,
+    Absent,
+    /// Neither of the above — a value this file cannot classify. Always an
+    /// assertion failure at the call site.
+    Unknown,
+}
+
+impl Form {
+    fn label(self) -> &'static str {
+        match self {
+            Form::Ciphertext => "ciphertext",
+            Form::Plaintext => "plaintext",
+            Form::StructuredBlob => "structured-blob",
+            Form::Absent => "absent",
+            Form::Unknown => "UNKNOWN",
+        }
+    }
+}
+
+// -- Raw readers: no Settings::get_*, therefore no decryption ---------------
+
+/// The live row, read straight out of `settings.value`.
+fn raw_settings_value(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        rusqlite::params![key],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+}
+
+/// Every delta row ever written for the key, oldest first, read straight out
+/// of `setting_updated.value`.
+fn raw_delta_values(conn: &Connection, key: &str) -> Vec<String> {
+    let mut stmt = conn
+        .prepare("SELECT value FROM setting_updated WHERE key = ?1 ORDER BY id ASC")
+        .expect("setting_updated is created by the migration");
+    stmt.query_map(rusqlite::params![key], |r| r.get::<_, String>(0))
+        .expect("delta read")
+        .map(|r| r.expect("delta value"))
+        .collect()
+}
+
+// -- Classification ---------------------------------------------------------
+
+/// Reimplementation of the PRIVATE `oz_crypto::looks_like_ciphertext`
+/// (`crates/oz-crypto/src/lib.rs:311`), which this test cannot call. Kept here
+/// as a deliberate duplicate: a census having to copy a private heuristic in
+/// order to classify its own database is itself the evidence that no public
+/// discriminator exists.
+fn looks_like_ciphertext_shape(value: &str) -> bool {
+    use base64::Engine as _;
+    fn dec(s: &str) -> Option<Vec<u8>> {
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(s)
+            .ok()
+            .or_else(|| base64::engine::general_purpose::URL_SAFE.decode(s).ok())
+            .or_else(|| {
+                base64::engine::general_purpose::STANDARD_NO_PAD
+                    .decode(s)
+                    .ok()
+            })
+            .or_else(|| base64::engine::general_purpose::STANDARD.decode(s).ok())
+    }
+    dec(value).is_some_and(|b| b.len() >= 12 + 16)
+}
+
+/// Ask the crypto family that owns `key`. `None` when the key has no family at
+/// all — which is the census's point: for most of these keys there is not even
+/// a decrypt function to call.
+fn family_decrypt(key: &str, raw: &str) -> Option<String> {
+    use oz_core::crypto as c;
+    match key {
+        "sync_api_key" => c::decrypt_sync_api_key(raw).ok(),
+        "sync_terminal_secret" => c::decrypt_sync_terminal_secret(raw).ok(),
+        "pg_sync.password" => c::decrypt_pg_sync_password(raw).ok(),
+        "rate_sync.api_key" => c::decrypt_rate_api_key(raw).ok(),
+        _ => None,
+    }
+}
+
+/// Classify one raw column value. `Plaintext` is decided WITHOUT decrypting
+/// (byte equality with what we wrote); `Ciphertext` can only be decided by
+/// asking the family key, which is the gap this file records.
+fn classify(key: &str, raw: Option<&str>) -> Form {
+    let Some(raw) = raw else { return Form::Absent };
+    if raw == SENTINEL {
+        return Form::Plaintext;
+    }
+    if raw.trim_start().starts_with('{') {
+        return Form::StructuredBlob;
+    }
+    if family_decrypt(key, raw).as_deref() == Some(SENTINEL) {
+        return Form::Ciphertext;
+    }
+    Form::Unknown
+}
+
+fn live_form(conn: &Connection, key: &str) -> Form {
+    classify(key, raw_settings_value(conn, key).as_deref())
+}
+
+fn delta_forms(conn: &Connection, key: &str) -> Vec<Form> {
+    raw_delta_values(conn, key)
+        .iter()
+        .map(|v| classify(key, Some(v.as_str())))
+        .collect()
+}
+
+// -- The census table -------------------------------------------------------
+
+/// One row per key under census. `typed` is the ordinary public setter for
+/// that key in this crate where one exists; `None` means the key has no typed
+/// setter at all and the only ordinary setter is the generic `Settings::set`.
+struct Spec {
+    key: &'static str,
+    /// One-line truth about the typed setter, echoed into the failure message.
+    setter: &'static str,
+    typed: Option<fn(&Connection, &str) -> Result<(), oz_core::CoreError>>,
+    expected: Form,
+}
+
+fn w_sync_api_key(conn: &Connection, v: &str) -> Result<(), oz_core::CoreError> {
+    Settings::set_sync_api_key(conn, v)
+}
+fn w_sync_terminal_secret(conn: &Connection, v: &str) -> Result<(), oz_core::CoreError> {
+    Settings::set_sync_terminal_secret(conn, v)
+}
+fn w_pg_sync_password(conn: &Connection, v: &str) -> Result<(), oz_core::CoreError> {
+    Settings::set_pg_sync_password(conn, v)
+}
+fn w_rate_sync_api_key(conn: &Connection, v: &str) -> Result<(), oz_core::CoreError> {
+    Settings::set_rate_sync_api_key(conn, v)
+}
+fn w_redis_url(conn: &Connection, v: &str) -> Result<(), oz_core::CoreError> {
+    Settings::set_redis_url(conn, v)
+}
+fn w_smtp_config(conn: &Connection, v: &str) -> Result<(), oz_core::CoreError> {
+    let cfg = oz_core::export::email_report::SmtpConfig {
+        host: "smtp.example.com".into(),
+        port: 587,
+        username: Some("reports".into()),
+        password: Some(v.into()),
+        from: "reports@example.com".into(),
+        use_tls: true,
+    };
+    Store::new(conn).save_smtp_config(&cfg)
+}
+
+/// The 14 keys named by the census, in the order the task listed them.
+const SPEC: &[Spec] = &[
+    // typed encrypting setter EXISTS (Settings::set_sync_api_key)
+    Spec {
+        key: "sync_api_key",
+        setter: "typed encrypting setter EXISTS",
+        typed: Some(w_sync_api_key),
+        expected: Form::Ciphertext,
+    },
+    // typed encrypting setter EXISTS (Settings::set_sync_terminal_secret)
+    Spec {
+        key: "sync_terminal_secret",
+        setter: "typed encrypting setter EXISTS",
+        typed: Some(w_sync_terminal_secret),
+        expected: Form::Ciphertext,
+    },
+    // typed encrypting setter EXISTS (Settings::set_pg_sync_password)
+    Spec {
+        key: "pg_sync.password",
+        setter: "typed encrypting setter EXISTS",
+        typed: Some(w_pg_sync_password),
+        expected: Form::Ciphertext,
+    },
+    // typed encrypting setter EXISTS (Settings::set_rate_sync_api_key)
+    Spec {
+        key: "rate_sync.api_key",
+        setter: "typed encrypting setter EXISTS",
+        typed: Some(w_rate_sync_api_key),
+        expected: Form::Ciphertext,
+    },
+    // typed setter EXISTS but does NOT encrypt — it is a bare Settings::set
+    Spec {
+        key: "redis.url",
+        setter: "typed setter EXISTS but does NOT encrypt",
+        typed: Some(w_redis_url),
+        expected: Form::Plaintext,
+    },
+    // NO crypto family at all
+    Spec {
+        key: "local_api.secret",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // NO crypto family at all (the bridge encrypts it machine-bound; this crate does not)
+    Spec {
+        key: "license.api_key",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // NO crypto family at all
+    Spec {
+        key: "stripe.api_key",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // NO crypto family at all
+    Spec {
+        key: "square.api_key",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // NO crypto family at all
+    Spec {
+        key: "midtrans.server_key",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // NO crypto family at all (it IS the KDF factor, so it cannot be sealed by it)
+    Spec {
+        key: "machine_id",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // NO crypto family at all
+    Spec {
+        key: "hardware_fingerprint",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // NO crypto family, and no keys:: constant either — a bare string literal
+    Spec {
+        key: "sync.auth_token",
+        setter: "NO crypto family",
+        typed: None,
+        expected: Form::Plaintext,
+    },
+    // typed setter EXISTS; it encrypts the password FIELD inside a JSON blob
+    Spec {
+        key: "smtp_config",
+        setter: "typed setter EXISTS, encrypts one field",
+        typed: Some(w_smtp_config),
+        expected: Form::StructuredBlob,
+    },
+];
+
+fn setup() -> Connection {
+    migrations::fresh_db()
+}
+
+/// Write the sentinel through the key's ordinary setter.
+fn written(spec: &Spec) -> Connection {
+    let conn = setup();
+    match spec.typed {
+        Some(f) => f(&conn, SENTINEL).expect("typed setter must accept the write"),
+        None => {
+            Settings::set(&conn, spec.key, SENTINEL).expect("Settings::set must accept the write")
+        }
+    }
+    conn
+}
+
+// -- Per-key cases ----------------------------------------------------------
+
+macro_rules! key_case {
+    ($name:ident, $idx:expr) => {
+        #[test]
+        fn $name() {
+            let spec = &SPEC[$idx];
+            let conn = written(spec);
+
+            // settings.value — the live row.
+            let live = live_form(&conn, spec.key);
+            assert_eq!(
+                live,
+                spec.expected,
+                "{}: settings.value landed as {} ({}), expected {} ({})",
+                spec.key,
+                live.label(),
+                if live == Form::Unknown {
+                    "unclassifiable without a key"
+                } else {
+                    "classified"
+                },
+                spec.expected.label(),
+                spec.setter,
+            );
+
+            // The ordinary setter above is Settings::set or a typed setter
+            // layered on it; neither writes the delta ledger. Recorded, not
+            // assumed — the funnel is a different test.
+            assert_eq!(
+                raw_delta_values(&conn, spec.key).len(),
+                0,
+                "{}: the ordinary setter is expected to write no setting_updated row",
+                spec.key
+            );
+        }
+    };
+}
+
+key_case!(sync_api_key_form, 0);
+key_case!(sync_terminal_secret_form, 1);
+key_case!(pg_sync_password_form, 2);
+key_case!(rate_sync_api_key_form, 3);
+key_case!(redis_url_form, 4);
+key_case!(local_api_secret_form, 5);
+key_case!(license_api_key_form, 6);
+key_case!(stripe_api_key_form, 7);
+key_case!(square_api_key_form, 8);
+key_case!(midtrans_server_key_form, 9);
+key_case!(machine_id_form, 10);
+key_case!(hardware_fingerprint_form, 11);
+key_case!(sync_auth_token_form, 12);
+key_case!(smtp_config_form, 13);
+
+/// The smtp_config verdict is only meaningful if the credential really is
+/// sealed inside the blob: a JSON document whose password field is still
+/// cleartext would read the same to the '{' test above. So check the field,
+/// not the envelope.
+#[test]
+fn smtp_config_blob_seals_only_its_password_field() {
+    let conn = written(&SPEC[13]);
+    let raw = raw_settings_value(&conn, "smtp_config").expect("row written");
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("smtp_config is JSON");
+
+    // The non-secret fields travel in the clear — it is a blob, not a seal.
+    assert_eq!(v["host"].as_str(), Some("smtp.example.com"));
+    assert_eq!(v["from"].as_str(), Some("reports@example.com"));
+
+    let pwd = v["password"].as_str().expect("password field present");
+    assert_ne!(pwd, SENTINEL, "the password field is not the sentinel");
+    assert!(
+        oz_core::crypto::decrypt_smtp_at_rest(pwd).is_ok_and(|s| s == SENTINEL),
+        "the password field is not smtp-at-rest ciphertext of the sentinel: {pwd}"
+    );
+}
+
+// -- The funnel: what the shells actually call ------------------------------
+
+/// Both shells write settings through `Settings::set_tracked`, which calls the
+/// UNENCRYPTING `Settings::set` and then copies the same bytes into
+/// `setting_updated`. So the form a key holds in production is set by the
+/// funnel, not by the typed setter — and through the funnel not one of these
+/// keys is ciphertext in either table.
+#[test]
+fn every_key_lands_plaintext_in_both_tables_through_the_funnel() {
+    let mut offenders = Vec::new();
+    for spec in SPEC {
+        let conn = setup();
+        Settings::set_tracked(&conn, spec.key, SENTINEL, TERM).expect("funnel write");
+
+        let live = live_form(&conn, spec.key);
+        let deltas = delta_forms(&conn, spec.key);
+        if live != Form::Plaintext || deltas != vec![Form::Plaintext] {
+            offenders.push(format!(
+                "{} live={} deltas={:?}",
+                spec.key,
+                live.label(),
+                deltas.iter().map(|f| f.label()).collect::<Vec<_>>()
+            ));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "the funnel is expected to store every key as plaintext in BOTH tables; these differ: {offenders:?}"
+    );
+}
+
+/// The live row can be re-encrypted by a later save while the cleartext copy
+/// written by the earlier funnel save stays in the ledger forever:
+/// `settings.value` is overwritten, `setting_updated.value` is append-only.
+#[test]
+fn a_cleartext_delta_survives_a_later_encrypted_save() {
+    let conn = setup();
+
+    // 1. A funnel write (the bridge/tablet settings command): cleartext, twice.
+    Settings::set_tracked(&conn, "sync_api_key", SENTINEL, TERM).unwrap();
+    assert_eq!(live_form(&conn, "sync_api_key"), Form::Plaintext);
+    assert_eq!(delta_forms(&conn, "sync_api_key"), vec![Form::Plaintext]);
+
+    // 2. The user re-saves through the typed setter: the live row becomes
+    //    ciphertext, and NO new delta row replaces the old one.
+    Settings::set_sync_api_key(&conn, SENTINEL).unwrap();
+    assert_eq!(live_form(&conn, "sync_api_key"), Form::Ciphertext);
+
+    // 3. The cleartext copy is still there, and it is now the only copy that
+    //    states the secret in the clear.
+    let deltas = delta_forms(&conn, "sync_api_key");
+    assert_eq!(
+        deltas,
+        vec![Form::Plaintext],
+        "the ledger still holds the pre-encryption cleartext row"
+    );
+    assert_eq!(raw_delta_values(&conn, "sync_api_key")[0], SENTINEL);
+}
+
+// -- The count, so a new key moves a number ---------------------------------
+
+/// Keys landing as ciphertext in `settings.value` when written by their own
+/// ordinary setter. Adding a credential key to `SPEC` without giving it a
+/// crypto family moves `plaintext`, and the sum check pins the total, so the
+/// number cannot stay quietly correct by accident.
+#[test]
+fn exactly_four_keys_land_in_ciphertext_form() {
+    let (mut ciphertext, mut plaintext, mut blob) = (0, 0, 0);
+    let mut other = Vec::new();
+    for spec in SPEC {
+        match live_form(&written(spec), spec.key) {
+            Form::Ciphertext => ciphertext += 1,
+            Form::Plaintext => plaintext += 1,
+            Form::StructuredBlob => blob += 1,
+            f => other.push(format!("{} = {}", spec.key, f.label())),
+        }
+    }
+    assert!(other.is_empty(), "unclassifiable storage forms: {other:?}");
+    assert_eq!(ciphertext, 4, "keys whose settings.value is ciphertext");
+    assert_eq!(blob, 1, "keys whose settings.value is a JSON blob");
+    assert_eq!(plaintext, 9, "keys whose settings.value is cleartext");
+    assert_eq!(
+        SPEC.len(),
+        ciphertext + plaintext + blob,
+        "every key in the census must classify"
+    );
+}
+
+/// The same census through the funnel the shells use: zero.
+#[test]
+fn zero_keys_land_in_ciphertext_form_through_the_funnel() {
+    let mut n = 0;
+    for spec in SPEC {
+        let conn = setup();
+        Settings::set_tracked(&conn, spec.key, SENTINEL, TERM).unwrap();
+        if live_form(&conn, spec.key) == Form::Ciphertext {
+            n += 1;
+        }
+    }
+    assert_eq!(n, 0, "set_tracked never encrypts");
+}
+
+// -- Why there is no gate to hang on the stored form ------------------------
+
+#[test]
+fn nothing_in_the_stored_form_marks_a_row_as_ciphertext() {
+    let conn = setup();
+
+    // 1. The schema carries no discriminator: three TEXT columns, no flag,
+    //    no version-prefix column, no BLOB affinity.
+    let cols: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(settings)").unwrap();
+        stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?.to_uppercase(),
+            ))
+        })
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+    };
+    assert_eq!(
+        cols.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        vec!["key", "value", "updated_at"],
+        "settings has no marker column"
+    );
+    assert!(
+        cols.iter().all(|(_, t)| t == "TEXT"),
+        "every settings column is TEXT: {cols:?}"
+    );
+
+    // 2. Real ciphertext and a plaintext that merely LOOKS like ciphertext are
+    //    indistinguishable without the key.
+    Settings::set_sync_api_key(&conn, SENTINEL).unwrap();
+    let real = raw_settings_value(&conn, "sync_api_key").unwrap();
+
+    // 44 URL-safe base64 chars = 33 bytes >= 12 nonce + 16 tag: the exact bar
+    // `looks_like_ciphertext` measures. It is not ciphertext.
+    let fake = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    Settings::set(&conn, "stripe.api_key", fake).unwrap();
+
+    assert!(
+        looks_like_ciphertext_shape(&real) && looks_like_ciphertext_shape(fake),
+        "both rows pass the only shape test the repo has"
+    );
+    assert_eq!(
+        classify("sync_api_key", Some(&real)),
+        Form::Ciphertext,
+        "the real row is only identifiable as ciphertext by decrypting it"
+    );
+    // The decoy is plaintext, yet no inspection of the row can say so: it is
+    // not the sentinel (so the byte-equality rule misses) and no family
+    // decrypts it (so the decrypt rule gives up). That is the hole.
+    assert_eq!(
+        classify("stripe.api_key", Some(fake)),
+        Form::Unknown,
+        "a base64-shaped plaintext value cannot be classified without a key"
+    );
+}
+
+/// The deny list is the population this census must cover. If a key is added
+/// to the list and is neither censused nor already on the documented
+/// exclusion, this fails and names it.
+#[test]
+fn census_covers_the_deny_list_except_the_documented_five() {
+    use oz_core::settings::keys::SECRET_KEY_DENY_LIST;
+    let mut missing: Vec<&str> = SECRET_KEY_DENY_LIST
+        .iter()
+        .filter(|k| !SPEC.iter().any(|s| s.key == **k))
+        .copied()
+        .collect();
+    missing.sort_unstable();
+    // Excluded on purpose, each for a stated reason:
+    //   lan_server.psk  manager-owned, the funnel refuses it; covered by the
+    //                   bridge's own test, and it DOES have an encrypting
+    //                   typed setter (Settings::set_lan_server_psk).
+    //   license.*       per-install identity/PII rows, not credentials a
+    //                   operator types; none has a crypto family.
+    let expected = vec![
+        "lan_server.psk",
+        "license.payload",
+        "license.phone",
+        "license.signature",
+        "license.tenant_id",
+    ];
+    assert_eq!(
+        missing, expected,
+        "the storage-form census no longer matches the deny list; a new credential key          was added (or removed) without updating SPEC"
+    );
+}
