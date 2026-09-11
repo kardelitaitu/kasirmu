@@ -515,29 +515,33 @@ fn receive_po_on_legacy_inventory_keeps_the_aggregate() {
     assert_eq!(reader_stock_qty(&conn, &pid), 75);
 }
 
-/// CHARACTERISATION, not a passing guard — hence #[ignore].
+/// THE POINT OF THE CHANGE, asserted in the direction that matters.
 ///
-/// rebuild_stock_summary DELETEs every row of stock_summary with NO WHERE
-/// clause (products_stock_adjust.rs:722), so it is TABLE-WIDE: a sync cycle
-/// that touches product A rebuilds product B from the ledger too. It is only
-/// reached from apply_pulled_page (daemon_tick.rs:479-480, pg_daemon.rs:719),
-/// both gated on has_stock_movements, which a LOCAL write never sets — and
-/// create_product (:374-386) and the legacy adjuster (:548) both write a
-/// movement, so for any product created through the app the ledger SUM equals
-/// inventory and a rebuild is harmless.
+/// This test was `#[ignore]`d as a CHARACTERISATION of the loss: rebuild
+/// DELETEd every row of `stock_summary` with no WHERE and re-derived from
+/// `stock_movements`, so the 20 units of pre-ADR-6 opening stock that had no
+/// movement behind them were destroyed — and the legacy-aware fallback could
+/// not save them, because it fires only while a product has NO summary rows,
+/// which is exactly what a rebuild removes. It asserted 45.
 ///
-/// The exposure is therefore the UPGRADE and EVAL path, not the default one:
-/// stock that predates ADR #6 (or the demo seed at seed_demo.rs:337-342) sits
-/// in inventory with no movement behind it. After a rebuild the product HAS
-/// summary rows — ledger-derived, short by the opening stock — so the
-/// legacy-aware fallback correctly stops firing, and the next write recomputes
-/// the aggregate from that short SUM. This pins the loss as measured.
+/// Un-ignored and INVERTED by Option E: the scoped rebuild closes the ledger
+/// shortfall with ONE compensating movement first, so the re-derive lands on
+/// 60 and the following +5 write lands on 65. The exposure was the UPGRADE and
+/// EVAL path (stock predating ADR #6, or the demo seed at seed_demo.rs), not
+/// the default one — for any product created through the app the ledger SUM
+/// already equals inventory and there is nothing to heal.
 #[test]
-#[ignore = "characterises the table-wide rebuild against pre-ADR-6 opening stock; upgrade/eval path only, its fix is a separate slice"]
-fn rebuild_after_ledger_short_opening_stock_loses_the_unbacked_units() {
+fn rebuild_after_ledger_short_opening_stock_keeps_the_unbacked_units() {
+    // Was #[ignore]d as a characterisation of the loss. Un-ignored and
+    // INVERTED by the scoped self-healing rebuild: the 20 units with no
+    // movement behind them are now closed by ONE compensating movement
+    // (reason `legacy-backfill`) before the ledger is re-derived, so the
+    // rebuild is a pure function of a COMPLETE ledger. Asserts 65 where it
+    // asserted 45 — 60 opening + 5 sold-on, not 40 + 5.
     let conn = fresh();
     let s = store(&conn);
     let pid = seed_product(&conn, "SKU-RBS");
+    seed_location(&conn, "default", "Default");
     seed_legacy_inventory(&conn, &pid, 60);
     conn.execute(
         "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES ('mv-1', ?1, 'default', 40, 'opening', '2025-01-01T00:00:00.000Z')",
@@ -550,7 +554,184 @@ fn rebuild_after_ledger_short_opening_stock_loses_the_unbacked_units() {
 
     assert_eq!(
         inventory_qty(&conn, &pid).0,
-        45,
-        "the 20 units with no movement behind them are destroyed by rebuild + recompute"
+        65,
+        "the 20 unbacked units must survive rebuild + recompute"
+    );
+    assert_eq!(reader_stock_qty(&conn, &pid), 65);
+    let healed: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_movements WHERE reason = 'legacy-backfill'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(healed, 1, "exactly one compensating movement");
+}
+
+/// Snapshot of a product's summary rows INCLUDING updated_at, so "untouched"
+/// means byte-identical rather than same-qty.
+fn summary_snapshot(conn: &Connection, product_id: &str) -> Vec<(String, i64, String)> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT location_id, qty, updated_at FROM stock_summary WHERE item_id = ?1 ORDER BY location_id",
+        )
+        .unwrap();
+    stmt.query_map(params![product_id], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    })
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap()
+}
+
+fn backfill_rows(conn: &Connection) -> Vec<(String, i64)> {
+    let mut stmt = conn
+        .prepare("SELECT item_id, delta FROM stock_movements WHERE reason = 'legacy-backfill' ORDER BY item_id")
+        .unwrap();
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+}
+
+/// The scoping is the point: a rebuild asked for product A must not rewrite
+/// product B. The old table-wide DELETE did exactly that on every sync page.
+#[test]
+fn scoped_rebuild_leaves_an_untouched_product_byte_identical() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid_a = seed_product(&conn, "SKU-SCA");
+    let pid_b = seed_product(&conn, "SKU-SCB");
+    seed_location(&conn, "loc-a", "Store A");
+    adjust_at(&s, "SKU-SCA", 10, "loc-a");
+    adjust_at(&s, "SKU-SCB", 7, "loc-a");
+    let before_b = summary_snapshot(&conn, &pid_b);
+    assert!(!before_b.is_empty(), "B must have summary rows to preserve");
+
+    s.rebuild_stock_summary_for(&[pid_a.clone()]).unwrap();
+
+    assert_eq!(
+        summary_snapshot(&conn, &pid_b),
+        before_b,
+        "B's rows must be byte-identical, updated_at included"
+    );
+    assert_eq!(
+        summary_rows(&conn, &pid_a),
+        vec![("loc-a".to_string(), 10)],
+        "A must still be rebuilt"
+    );
+}
+
+/// Self-healing means ONE compensating row, not one per rebuild: the second
+/// run finds a complete ledger and writes nothing new.
+#[test]
+fn compensating_movement_is_idempotent_on_rerun() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-IDM");
+    seed_location(&conn, "default", "Default");
+    seed_legacy_inventory(&conn, &pid, 60);
+    conn.execute(
+        "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES ('mv-idm', ?1, 'default', 40, 'opening', '2025-01-01T00:00:00.000Z')",
+        params![pid],
+    )
+    .unwrap();
+
+    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+    let first = backfill_rows(&conn);
+    let qty_first = summary_rows(&conn, &pid);
+    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+    s.rebuild_stock_summary().unwrap();
+
+    assert_eq!(
+        first,
+        vec![(pid.clone(), 20)],
+        "the shortfall healed is exactly the 20 unbacked units"
+    );
+    assert_eq!(
+        backfill_rows(&conn),
+        first,
+        "re-running must not append or amend a second compensating row"
+    );
+    assert_eq!(
+        summary_rows(&conn, &pid),
+        qty_first,
+        "and must not move the rebuilt qty"
+    );
+}
+
+/// The trap in the predicate: a STALE inventory aggregate (the allow_negative
+/// path skips the inventory write, so inventory is ahead of both the ledger
+/// and the summary) looks like a shortfall and is NOT one. Backfilling here
+/// would invent units that never existed.
+#[test]
+fn stale_inventory_aggregate_is_not_backfilled() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-STL");
+    seed_location(&conn, "default", "Default");
+    seed_legacy_inventory(&conn, &pid, 10);
+    conn.execute(
+        "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES ('mv-stl-1', ?1, 'default', 10, 'opening', '2025-01-01T00:00:00.000Z')",
+        params![pid],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES ('mv-stl-2', ?1, 'default', -3, 'sale', '2025-01-02T00:00:00.000Z')",
+        params![pid],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty, updated_at) VALUES (?1, 'default', 7, '2025-01-02T00:00:00.000Z')",
+        params![pid],
+    )
+    .unwrap();
+    // inventory 10 > ledger 7, but the summary (7) disagrees with inventory,
+    // so the 3-unit gap is a stale aggregate, not unbacked stock.
+    assert_eq!(inventory_qty(&conn, &pid).0, 10);
+
+    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+
+    assert!(
+        backfill_rows(&conn).is_empty(),
+        "a stale aggregate must never be healed into the ledger"
+    );
+    assert_eq!(
+        summary_rows(&conn, &pid),
+        vec![("default".to_string(), 7)],
+        "the ledger total stands: 10 - 3 = 7, not 10"
+    );
+}
+
+/// The scoping undoes itself if an empty id list degrades to a table-wide
+/// sweep — `WHERE item_id IN ()` is a syntax error, and "skip the filter when
+/// empty" is the tempting wrong fix. It must rebuild NOTHING.
+#[test]
+fn empty_product_set_rebuilds_nothing() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-EMP");
+    seed_location(&conn, "default", "Default");
+    seed_legacy_inventory(&conn, &pid, 60);
+    conn.execute(
+        "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES ('mv-emp', ?1, 'default', 40, 'opening', '2025-01-01T00:00:00.000Z')",
+        params![pid],
+    )
+    .unwrap();
+    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+    let before = summary_snapshot(&conn, &pid);
+
+    let rebuilt = s.rebuild_stock_summary_for(&[]).unwrap();
+
+    assert_eq!(rebuilt, 0, "an empty scope rebuilds nothing");
+    assert_eq!(
+        summary_snapshot(&conn, &pid),
+        before,
+        "nothing may be deleted or rewritten"
+    );
+    assert_eq!(
+        backfill_rows(&conn).len(),
+        1,
+        "and nothing may be healed out of an empty scope"
     );
 }

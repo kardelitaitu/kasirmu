@@ -5,12 +5,23 @@
 //! `adjust_stock_batch` (precheck-then-execute with checked arithmetic),
 //! `adjust_stock_with_reason`, `check_stock_threshold_and_alert_in_tx`,
 //! `get_stock_from_ledger`, `rebuild_stock_summary`,
-//! `list_stock_movements`, `archive_stock_movements`.
+//! `rebuild_stock_summary_for` (scoped, self-healing), `list_stock_movements`,
+//! `archive_stock_movements`.
 //!
 //! Invariants: batch precheck avoids partial deductions; stock math
 //! uses checked_add/sub; adjustments upsert `stock_summary` per
 //! location.
 use super::*;
+
+/// The `reason` tag and id prefix on the compensating movement written by
+/// [`Store::rebuild_stock_summary_for`] when it heals a legacy ledger shortfall.
+///
+/// Named, not inlined, because it is user-visible: it appears in
+/// [`Store::list_stock_movements`] and in any audit export, and it is what an
+/// operator greps for to find every unit the rebuild had to invent a movement
+/// for. The row is a derived placeholder standing in for stock that predates
+/// the ADR #6 ledger — not a claim that someone moved something on this date.
+const LEGACY_BACKFILL_REASON: &str = "legacy-backfill";
 
 impl Store<'_> {
     /// Adjust stock with an explicit reason at a specific location (ADR-19 §3.1 canonical API).
@@ -706,69 +717,207 @@ impl Store<'_> {
     /// **Returns** the number of `(item_id, location_id)` tuples rebuilt —
     /// NOT the number of distinct products. Post-refactor the count is
     /// higher for products stored across multiple locations.
+    /// Rebuild the materialised caches for EVERY product the rebuild can
+    /// touch — the operator/tooling surface. Thin wrapper over
+    /// [`Store::rebuild_stock_summary_for`]; see that function for the healing
+    /// step and for why the scope is what it is.
+    ///
+    /// The scope is `DISTINCT item_id FROM stock_movements` UNION `DISTINCT
+    /// item_id FROM stock_summary` — exactly the set the old table-wide
+    /// `DELETE FROM stock_summary` (no WHERE) could reach: every product the
+    /// ledger can rebuild, plus every product whose stale summary rows must be
+    /// cleared. The two `platform_sync` daemon callers are therefore unchanged
+    /// in semantics; they gain the healing, they do not lose the sweep.
     pub fn rebuild_stock_summary(&self) -> Result<usize, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT item_id FROM stock_movements \
+             UNION SELECT DISTINCT item_id FROM stock_summary",
+        )?;
+        let product_ids = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        drop(stmt);
+        self.rebuild_stock_summary_for(&product_ids)
+    }
+
+    /// Rebuild the materialised `stock_summary` and `inventory` caches for
+    /// exactly the named products, FIRST closing any legacy ledger shortfall.
+    ///
+    /// THE HOLE THIS HEALS. `stock_summary` is derived from `stock_movements`,
+    /// and stock that predates ADR #6 (or the demo seed) sits in `inventory`
+    /// with NO movement behind it. A rebuild re-derives from the ledger, so
+    /// those units are destroyed — and the legacy-aware fallback
+    /// ([`Store::product_has_location_rows`]) cannot save them, because it
+    /// fires only while a product has NO summary rows, which is precisely what
+    /// a rebuild removes. The guard stops firing on exactly the products it was
+    /// protecting.
+    ///
+    /// THE FIX, scoped and self-healing, with no migration anywhere: inside the
+    /// supplied scope, close each POSITIVE ledger shortfall by writing ONE
+    /// compensating movement, then rebuild from the ledger as before. The
+    /// ledger becomes complete, so every FUTURE rebuild — scoped or not — stays
+    /// a pure function of the CRDT state.
+    ///
+    /// THE PREDICATE. Backfill ONLY where `inventory.qty` exceeds
+    /// `COALESCE(SUM(stock_movements.delta), 0)` AND either the product has no
+    /// summary rows OR its summary total equals its `inventory` row. The second
+    /// clause is what excludes the stale-inventory false positive: when
+    /// `allow_negative` skips the inventory write, the summary sits BELOW the
+    /// ledger and a backfill would invent units that never existed. "Product
+    /// has no summary rows" alone is NOT the predicate — the legacy bridge in
+    /// this same module already materialises summary rows out of `inventory`
+    /// with no movement behind them, so on any install that ran db4106e52 that
+    /// test reads false while the ledger is still short.
+    ///
+    /// SYNC SAFETY: no exclusion mechanism is needed, and one would be wrong.
+    /// Push reads ONLY `offline_queue`; nothing scans `stock_movements`, and
+    /// `sync_pull` has zero references to `stock_movements`, `stock_summary` or
+    /// `inventory` — a locally-written movement never leaves the device. The
+    /// deterministic id is belt-and-braces, not load-bearing.
+    ///
+    /// The compensating row is user-visible in [`Store::list_stock_movements`]
+    /// and in any audit export, so it is logged once at `info!` with the sku
+    /// when — and only when — something was healed. This is not the hot path:
+    /// it runs at the end of a sync cycle, never per write.
+    ///
+    /// An EMPTY `product_ids` rebuilds NOTHING and returns 0. That is a hard
+    /// guarantee, not a convenience: `WHERE item_id IN ()` is a syntax error,
+    /// and the tempting "skip the filter when the list is empty" degradation is
+    /// exactly how the scoping would quietly undo itself back into the
+    /// table-wide sweep this replaces.
+    ///
+    /// **Returns** the number of `(item_id, location_id)` tuples rebuilt.
+    pub fn rebuild_stock_summary_for(&self, product_ids: &[String]) -> Result<usize, CoreError> {
+        if product_ids.is_empty() {
+            return Ok(0);
+        }
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         // ADR-18 §13-36 frozen canonical default-location UUID (see
-        // `crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID`). This is also
-        // the column DEFAULT on `stock_movements.location_id` (migration 080)
-        // and `inventory.location_id` (migration 079), so legacy pre-790
-        // stock_movements rows uniformly land at this location_id and the
-        // rebuild stays backward-compatible.
+        // `crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID`). This is also the
+        // column DEFAULT on `stock_movements.location_id` (migration 080) and
+        // `inventory.location_id` (migration 079), so legacy pre-790 rows
+        // uniformly land here and the rebuild stays backward-compatible. The
+        // compensating movement is written here too: an unbacked opening balance
+        // has no location to attribute to, and every other legacy row got this
+        // attribution already.
         let canonical_default_loc = crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID;
-
+        let n = product_ids.len();
+        let placeholders = (1..=n)
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let id_args: Vec<Box<dyn rusqlite::ToSql>> = product_ids
+            .iter()
+            .map(|id| Box::new(id.clone()) as Box<dyn rusqlite::ToSql>)
+            .collect();
+        let ids_only = || rusqlite::params_from_iter(id_args.iter().map(|a| a.as_ref()));
+        // Params for a scoped statement: the id list first (?1..?n), then
+        // whatever tail the statement needs (?n+1 ...). Built per call rather
+        // than through a closure, which cannot name the tail's lifetime.
+        fn scoped_args<'a>(
+            ids: &'a [Box<dyn rusqlite::ToSql>],
+            tail: &[&'a dyn rusqlite::ToSql],
+        ) -> Vec<&'a dyn rusqlite::ToSql> {
+            let mut args: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|a| a.as_ref()).collect();
+            args.extend(tail.iter().copied());
+            args
+        }
         let tx = self.conn.unchecked_transaction()?;
 
-        // Clear the materialised caches.
-        tx.execute("DELETE FROM stock_summary", [])?;
+        // 1. HEAL — find every product in scope whose aggregate is ahead of its
+        //    ledger WHILE the per-location cache still agrees with that
+        //    aggregate. Both clauses are required; see THE PREDICATE above.
+        let heal_sql = format!(
+            "SELECT i.product_id, i.qty - COALESCE((SELECT SUM(m.delta) FROM stock_movements m WHERE m.item_id = i.product_id), 0), COALESCE(p.sku, i.product_id) FROM inventory i LEFT JOIN products p ON p.id = i.product_id WHERE i.product_id IN ({placeholders}) AND i.qty > COALESCE((SELECT SUM(m.delta) FROM stock_movements m WHERE m.item_id = i.product_id), 0) AND (NOT EXISTS (SELECT 1 FROM stock_summary s WHERE s.item_id = i.product_id) OR COALESCE((SELECT SUM(ss.qty) FROM stock_summary ss WHERE ss.item_id = i.product_id), 0) = i.qty)"
+        );
+        let mut stmt = tx.prepare(&heal_sql)?;
+        let shortfalls = stmt
+            .query_map(ids_only(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<(String, i64, String)>, _>>()?;
+        drop(stmt);
 
-        // Rebuild stock_summary from the delta ledger. MUST group by both
-        // (item_id, location_id) per ADR-18 migration 089's composite PK.
-        // Without this, multi-location data silently collapses to one row
-        // per item_id at the canonical default UUID — the dormant bug
-        // originally flagged in the ADR-18 final-review.
+        // 2. ONE compensating movement per shortfall. The id is DETERMINISTIC
+        //    (`legacy-backfill:` + product id) so a re-run cannot append a second
+        //    copy of the same healing; the row is a derived placeholder, not an
+        //    event, so its delta is updated in place if the shortfall moves again.
+        for (product_id, shortfall, sku) in shortfalls {
+            let insert_sql = format!(
+                "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO UPDATE SET delta = excluded.delta, created_at = excluded.created_at"
+            );
+            tx.execute(
+                &insert_sql,
+                params![
+                    format!("{LEGACY_BACKFILL_REASON}:{product_id}"),
+                    product_id,
+                    canonical_default_loc,
+                    shortfall,
+                    LEGACY_BACKFILL_REASON,
+                    now,
+                ],
+            )?;
+            tracing::info!(
+                sku = %sku,
+                product_id = %product_id,
+                delta = shortfall,
+                reason = LEGACY_BACKFILL_REASON,
+                "rebuild_stock_summary: closed a legacy ledger shortfall with one compensating movement — this stock predates the ADR #6 ledger and has no movement behind it, so it is visible in the movement history by design"
+            );
+        }
+
+        // 3. Clear the materialised cache FOR THE SCOPE ONLY — the scoped form
+        //    of the old table-wide `DELETE FROM stock_summary`.
+        tx.execute(
+            &format!("DELETE FROM stock_summary WHERE item_id IN ({placeholders})"),
+            ids_only(),
+        )?;
+
+        // 4. Rebuild stock_summary from the delta ledger. MUST group by BOTH
+        //    (item_id, location_id) per ADR-18 migration 089's composite PK —
+        //    without this, multi-location data silently collapses to one row at
+        //    the canonical default UUID (ADR-19 §15 criterion 19-1).
+        let rebuild_sql = format!(
+            "INSERT INTO stock_summary (item_id, location_id, qty, updated_at) SELECT item_id, location_id, SUM(delta), ?{} FROM stock_movements WHERE item_id IN ({placeholders}) GROUP BY item_id, location_id",
+            n + 1
+        );
         let rebuilt = tx.execute(
-            "INSERT INTO stock_summary (item_id, location_id, qty, updated_at)
-             SELECT item_id, location_id, SUM(delta), ?1
-             FROM stock_movements
-             GROUP BY item_id, location_id",
-            params![now],
+            &rebuild_sql,
+            rusqlite::params_from_iter(scoped_args(&id_args, &[&now])),
         )?;
 
-        // Rebuild the inventory table (backward compat, single-PK preserved).
-        // Aggregates per product (sums ALL location deltas into one row),
-        // and pins the row's location_id to the canonical default UUID to
-        // match how `adjust_stock_with_reason` writes (it doesn't specify
-        // location_id, relying on the column DEFAULT). This keeps `inventory`
-        // a representative aggregate for pre-refactor callers while
-        // `stock_summary` becomes the per-location authoritative surface.
+        // 5. Rebuild the legacy `inventory` aggregate (single-PK preserved):
+        //    sums ALL location deltas per product and pins location_id to the
+        //    canonical default, matching how `adjust_stock_with_reason` writes.
+        let agg_sql = format!(
+            "INSERT INTO inventory (product_id, location_id, qty, updated_at) SELECT item_id, ?{}, SUM(delta), ?{} FROM stock_movements WHERE item_id IN ({placeholders}) GROUP BY item_id ON CONFLICT(product_id) DO UPDATE SET qty = excluded.qty, location_id = excluded.location_id, updated_at = excluded.updated_at",
+            n + 1,
+            n + 2
+        );
         tx.execute(
-            "INSERT INTO inventory (product_id, location_id, qty, updated_at)
-             SELECT item_id, ?2 AS location_id, SUM(delta), ?1
-             FROM stock_movements
-             GROUP BY item_id
-             ON CONFLICT(product_id) DO UPDATE SET
-                qty = excluded.qty,
-                location_id = excluded.location_id,
-                updated_at = excluded.updated_at",
-            params![now, canonical_default_loc],
+            &agg_sql,
+            rusqlite::params_from_iter(scoped_args(&id_args, &[&canonical_default_loc, &now])),
         )?;
 
-        // Zero out inventory for products whose ledger SUM is 0 or negative
-        // (e.g., all stock was sold). The INSERT … ON CONFLICT above only
-        // handles items present in stock_movements; items with net-zero deltas
-        // need explicit zeroing.
+        // 6. Zero out inventory for products IN SCOPE whose ledger SUM is 0 or
+        //    negative (e.g. all stock was sold) — the INSERT … ON CONFLICT above
+        //    only handles items present in stock_movements. Scoped to match every
+        //    statement above: an unscoped UPDATE here would zero aggregates for
+        //    products this call was never asked to touch.
+        let zero_sql = format!(
+            "UPDATE inventory SET qty = 0, updated_at = ?{} WHERE product_id IN (SELECT item_id FROM stock_movements WHERE item_id IN ({placeholders}) GROUP BY item_id HAVING SUM(delta) <= 0)",
+            n + 1
+        );
         tx.execute(
-            "UPDATE inventory SET qty = 0, updated_at = ?1
-             WHERE product_id IN (
-                SELECT item_id FROM stock_movements
-                GROUP BY item_id
-                HAVING SUM(delta) <= 0
-             )",
-            params![now],
+            &zero_sql,
+            rusqlite::params_from_iter(scoped_args(&id_args, &[&now])),
         )?;
 
         tx.commit()?;
-
         Ok(rebuilt)
     }
 
