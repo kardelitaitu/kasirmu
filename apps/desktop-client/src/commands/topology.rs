@@ -67,7 +67,6 @@ pub(crate) use oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION;
 #[cfg(test)]
 pub(crate) use persistence::*;
 #[cfg(test)]
-pub(crate) use revisions::*;
 #[cfg(test)]
 pub(crate) use semantics::*;
 
