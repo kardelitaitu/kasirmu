@@ -1,9 +1,18 @@
-# ADR: Sync Authentication Hardening (token refresh, gating, terminal credentials)
+---
+num: 50
+area: sync
+title: ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)
+status: Accepted (2026-09-11) - partially implemented
+---
 
-Date: 2026-08-09
+# ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)
 
-Status: Accepted (incremental — each phase ships independently)
+**Status:** Accepted (2026-09-11) - partially implemented (incremental; each phase ships independently)
 
+> Dated 2026-09-11. An earlier copy of this file carried a 2026-08-09 date that predated
+> the findings it records; corrected when it was given a registry number, because
+> scripts/generate-records-index.mjs indexes by front-matter num: and an unnumbered ADR is
+> invisible to the registry that is its only entry point.
 ## Context
 
 The cloud sync server authenticates every `/api/sync/*` call with a JWT
