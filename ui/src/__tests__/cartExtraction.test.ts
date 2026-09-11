@@ -35,6 +35,8 @@ const TSX_FILE = 'PosScreen.tsx';
 const ADDITIONAL_TSX_FILES = [
   'components/CartLineItem.tsx',
   'components/CourseSelectorBar.tsx',
+  'components/CartFooterTotals.tsx',
+  'components/CartActionBar.tsx',
 ];
 
 /**

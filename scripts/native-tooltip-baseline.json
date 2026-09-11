@@ -7,7 +7,7 @@
     "features/analytics/AnalyticsScreen.tsx": 15,
     "features/locations/topologyNodeCard.tsx": 9,
     "features/retail/RetailProductGrid.tsx": 8,
-    "features/sales/PosScreen.tsx": 9,
+    "features/sales/PosScreen.tsx": 8,
     "features/audit/AuditLogScreen.tsx": 5,
     "features/kds/KdsHamburgerPanel.tsx": 3,
     "features/locations/topologyValidationWidget.tsx": 3,
@@ -31,6 +31,7 @@
     "features/locations/topologyWireLabelPills.tsx": 1,
     "features/retail/RetailCartPanel.tsx": 1,
     "features/retail/RetailHeader.tsx": 1,
-    "features/sales/ReceiptPreview.tsx": 1
+    "features/sales/ReceiptPreview.tsx": 1,
+    "features/sales/components/CartActionBar.tsx": 1
   }
 }
