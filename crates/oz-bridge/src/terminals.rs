@@ -820,3 +820,7 @@ pub async fn clear_device_binding_scoped(
     tracing::info!(terminal_id, "device binding cleared (scoped)");
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "terminals_tests.rs"]
+mod terminals_tests;

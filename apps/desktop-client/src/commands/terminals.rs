@@ -270,7 +270,3 @@ pub async fn clear_device_binding_scoped(
 fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, AppError> {
     oz_bridge::terminals::run_list_terminals(conn).map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "terminals_tests.rs"]
-mod tests;

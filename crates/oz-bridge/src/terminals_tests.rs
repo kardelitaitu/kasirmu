@@ -1,16 +1,38 @@
+//! Unit tests for the terminal command bodies (Wave-F test relocation:
+//! moved out of `apps/desktop-client/src/commands/terminals_tests.rs`).
+//!
+//! Mounted at the foot of `terminals.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the bridge command bodies, the DTOs and the
+//! module's `Store`/`Terminal` imports exactly as the desktop sibling
+//! module did. The desktop `AppState::for_test` / `scoped_state` harness
+//! (which built `AppState::for_test_with_conn`, swapped in a
+//! `tempfile::tempdir()`-backed `StoreDatabaseManager` and seeded a
+//! session) maps 1:1 onto the crate's headless `TestBridge`; the harness's
+//! own unique store directory replaces `tempfile`, which is not a
+//! dev-dependency of this crate. Global-DB seeding happens on the
+//! connection BEFORE `with_conn` (no global-db accessor exists), and every
+//! `AppError` arm maps 1:1 onto its `BridgeError` twin with the message
+//! texts unchanged. Nothing observed was fixed or improved: the terminals
+//! global-vs-store DB asymmetry (roles/users gated against the GLOBAL
+//! identity db while terminal rows are read and written in the per-store
+//! db) is preserved exactly as extracted.
+
 use super::*;
-use oz_core::migrations;
+use crate::testing::{TestBridge, temp_conn};
+
+use oz_core::session::SessionContext;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    temp_conn()
 }
 
 #[test]
 fn terminals_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let tb = TestBridge::new();
+    let ctx = tb.ctx();
+    let result = ctx.resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[test]
@@ -150,10 +172,6 @@ fn update_terminal_result_serialize() {
 
 // ── Scoped command integration tests ─────────────────────────────
 
-use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
-
 fn seed_owner(conn: &rusqlite::Connection) {
     let store = Store::new(conn);
     store.seed_default_roles().unwrap();
@@ -176,18 +194,19 @@ fn seed_staff(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn scoped_state(
+/// Headless twin of the desktop `scoped_state` helper: the caller's
+/// connection becomes the GLOBAL identity db, the harness supplies the
+/// isolated store-db manager (its own unique directory) and the session is
+/// seeded into `sessions()`. Same five parameters, same order.
+fn scoped_bridge(
     conn: rusqlite::Connection,
     token: &str,
     user_id: &str,
     role_id: &str,
     store_id: &str,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> TestBridge {
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -200,97 +219,80 @@ fn scoped_state(
             0,
         ),
     );
-    state
+    tb
 }
 
 // ── Session validation ────────────────────────────────────────────
 
 #[tokio::test]
 async fn scoped_list_terminals_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
-    let result = list_terminals_scoped("bad-token".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_terminals_scoped(&ctx, "bad-token").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_get_terminal_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
-    let result = get_terminal_scoped("bad-token".into(), "any-id".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = get_terminal_scoped(&ctx, "bad-token", "any-id".into()).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_register_terminal_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let conn = temp_conn();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
     let result = register_terminal_scoped(
-        "bad-token".into(),
+        &ctx,
+        "bad-token",
         RegisterTerminalArgs {
             name: "POS-1".into(),
             device_id: "dev-1".into(),
             terminal_secret: None,
             metadata: None,
         },
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Owner CRUD ────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn owner_can_list_terminals_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
-    let terminals = list_terminals_scoped("tok".into(), app.state())
-        .await
-        .unwrap();
+    let terminals = list_terminals_scoped(&ctx, "tok").await.unwrap();
     assert!(terminals.is_empty());
 }
 
 #[tokio::test]
 async fn owner_can_register_terminal() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
     let result = register_terminal_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         RegisterTerminalArgs {
             name: "POS-1".into(),
             device_id: "dev-001".into(),
             terminal_secret: None,
             metadata: None,
         },
-        app.state(),
     )
     .await;
     assert!(result.is_ok(), "owner should register a terminal");
@@ -300,43 +302,37 @@ async fn owner_can_register_terminal() {
 
 #[tokio::test]
 async fn owner_can_get_terminal_by_id() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
     let registered = register_terminal_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         RegisterTerminalArgs {
             name: "POS-1".into(),
             device_id: "dev-001".into(),
             terminal_secret: None,
             metadata: None,
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let fetched = get_terminal_scoped("tok".into(), registered.id.clone(), app.state()).await;
+    let fetched = get_terminal_scoped(&ctx, "tok", registered.id.clone()).await;
     assert!(fetched.is_ok());
     assert!(fetched.unwrap().is_some());
 }
 
 #[tokio::test]
 async fn get_terminal_returns_none_for_unknown() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
-    let result = get_terminal_scoped("tok".into(), "nonexistent".into(), app.state())
+    let result = get_terminal_scoped(&ctx, "tok", "nonexistent".into())
         .await
         .unwrap();
     assert!(result.is_none());
@@ -344,32 +340,25 @@ async fn get_terminal_returns_none_for_unknown() {
 
 #[tokio::test]
 async fn owner_can_list_terminal_overrides() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
     // Need a terminal_id — use an empty string to test the endpoint exists.
-    let result =
-        list_terminal_overrides_scoped("tok".into(), "any-terminal".into(), app.state()).await;
+    let result = list_terminal_overrides_scoped(&ctx, "tok", "any-terminal".into()).await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn owner_can_list_terminal_profiles() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let ctx = tb.ctx();
 
-    let result = list_terminal_profiles_scoped("tok".into(), app.state()).await;
+    let result = list_terminal_profiles_scoped(&ctx, "tok").await;
     assert!(result.is_ok());
 }
 
@@ -377,43 +366,37 @@ async fn owner_can_list_terminal_profiles() {
 
 #[tokio::test]
 async fn staff_denied_list_terminals() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
     seed_staff(&conn);
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
+    let ctx = tb.ctx();
 
-    let result = list_terminals_scoped("tok".into(), app.state()).await;
+    let result = list_terminals_scoped(&ctx, "tok").await;
     // F-017: terminal state requires terminals:read — staff is denied
     // (Manager/Admin presets grant the key; checkout-only staff does not).
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
 async fn staff_denied_register_terminal() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = temp_conn();
     seed_owner(&conn);
     seed_staff(&conn);
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
+    let ctx = tb.ctx();
 
     let result = register_terminal_scoped(
-        "tok".into(),
+        &ctx,
+        "tok",
         RegisterTerminalArgs {
             name: "POS-1".into(),
             device_id: "dev-001".into(),
             terminal_secret: None,
             metadata: None,
         },
-        app.state(),
     )
     .await;
     // Staff does NOT have TERMINALS_REGISTER — only Manager/Admin do.
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
