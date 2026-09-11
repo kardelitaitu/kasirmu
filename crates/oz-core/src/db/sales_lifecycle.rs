@@ -469,6 +469,38 @@ impl Store<'_> {
         // on the handler. See the note there.
         Store::enqueue_sale_outbox_in_tx(&tx, sale, cur_str)?;
 
+        // ── AUDIT LOG IN-TX (PCI 10.2.1) ──────────────────────────────
+        // Same seat and same contract as the main checkout door
+        // (sales_checkout.rs): the audit row enters the settlement
+        // transaction after the sale rows and before the payment inserts,
+        // so a payments.idempotency_key UNIQUE collision rolls it back with
+        // the sale, and AuditLogHandler's has_audit_row_for probe keeps the
+        // handler from doubling it after commit.
+        //
+        // ACTOR DIVERGENCE (deliberate, documented on both ends): this door
+        // stamps the real actor from the sale (sale.user_id); the legacy
+        // complete_sale lane keeps the handler's empty-string actor because
+        // SaleCompleted carries no actor field. Same action, two actor
+        // shapes in audit_log depending on the settling door.
+        let audit_actor = sale.user_id.clone().unwrap_or_default();
+        let audit_entry = crate::AuditEntry::new(
+            audit_actor,
+            "sale.completed",
+            Some("sale"),
+            Some(sale.id.clone()),
+            Some(
+                serde_json::json!({
+                    "sale_id": sale.id.clone(),
+                    "total_minor": sale.total.minor_units,
+                    "currency": cur_str,
+                    "line_count": sale.lines.len(),
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Store::log_audit_in_tx(&tx, &audit_entry)?;
+
         if !payment_splits.is_empty() {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();
@@ -762,3 +794,7 @@ impl Store<'_> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "sales_lifecycle_tests.rs"]
+mod tests;

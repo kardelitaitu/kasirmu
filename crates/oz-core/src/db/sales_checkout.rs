@@ -526,6 +526,45 @@ impl Store<'_> {
         // on the handler. See the note there.
         Store::enqueue_sale_outbox_in_tx(&tx, sale, cur_str)?;
 
+        // ── AUDIT LOG IN-TX (PCI 10.2.1) ──────────────────────────────
+        // The audit row for this sale is written HERE, inside the
+        // settlement transaction, at the same seat as the outbox row: after
+        // the sale rows, before the payment inserts, so a later UNIQUE
+        // collision on payments.idempotency_key takes the audit row down
+        // with the sale exactly as it takes the queue row down. The audit
+        // lane's analogue of SaleSyncEnqueuer's outbox guard is
+        // AuditLogHandler, which probes has_audit_row_for and skips when
+        // this row already exists, so this lane produces exactly one row.
+        // The legacy complete_sale door (lane one, sales_crud.rs create_sale
+        // + two update_sale_status calls) has no transaction spanning
+        // completion and is NOT wired - it keeps relying on the handler.
+        //
+        // ACTOR DIVERGENCE (deliberate, documented on both ends): the wired
+        // doors stamp the real actor from the sale (sale.user_id - PCI
+        // 10.2.1 requires the user ID), while the legacy lane keeps the
+        // empty-string actor the handler has always written, because
+        // SaleCompleted carries no actor field. The same action therefore
+        // has two actor shapes in audit_log depending on which door settled
+        // the sale; do not "fix" one end without the other.
+        let audit_actor = sale.user_id.clone().unwrap_or_default();
+        let audit_entry = crate::AuditEntry::new(
+            audit_actor,
+            "sale.completed",
+            Some("sale"),
+            Some(sale.id.clone()),
+            Some(
+                serde_json::json!({
+                    "sale_id": sale.id.clone(),
+                    "total_minor": sale.total.minor_units,
+                    "currency": cur_str,
+                    "line_count": sale.lines.len(),
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Store::log_audit_in_tx(&tx, &audit_entry)?;
+
         // Create payment records.
         if !payment_splits.is_empty() {
             for split in payment_splits {
@@ -582,3 +621,7 @@ impl Store<'_> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "sales_checkout_tests.rs"]
+mod tests;

@@ -748,3 +748,76 @@ async fn settings_updated_handler_replaced_callback_mid_flight() {
     );
     clear_settings_emit_fn();
 }
+
+// ── AuditLogHandler guard (in-transaction audit lane) ───────────
+
+/// HEAD-failure: FAILS AGAINST HEAD. Before the guard existed the handler
+/// wrote unconditionally, so the pre-seeded door row doubled to two on
+/// handle(); the guard makes the handler skip and the count stay at one.
+#[test]
+fn audit_handler_skips_when_door_row_exists() {
+    let db = fresh_db();
+    {
+        // Door-shaped row, as the wired settlement doors commit it inside
+        // the sale transaction - with the REAL actor (sale.user_id).
+        let conn = db.lock().unwrap();
+        let store = Store::new(&conn);
+        store
+            .log_audit(&AuditEntry::new(
+                "cashier-9",
+                "sale.completed",
+                Some("sale"),
+                Some("sale-guard"),
+                Some("{\"sale_id\":\"sale-guard\"}"),
+                "success",
+            ))
+            .unwrap();
+    }
+
+    let handler = AuditLogHandler::new(db.clone());
+    let event = SaleCompleted {
+        sale_id: "sale-guard".into(),
+        store_id: None,
+        line_items: vec![],
+        total_minor: 0,
+        currency: "USD".into(),
+        customer_id: None,
+    };
+    handler.handle(&event).unwrap();
+
+    let conn = db.lock().unwrap();
+    let store = Store::new(&conn);
+    let entries = store.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    // The door row survives untouched - same action, no duplicate, and the
+    // empty-string actor the legacy lane writes never lands on top of it.
+    assert_eq!(entries[0].user_id, "cashier-9");
+}
+
+/// HEAD-failure: explicitly NOT a HEAD-failure - passes at HEAD too, where
+/// the handler wrote unconditionally. It pins the write half of the guard:
+/// on a table with no door row the probe answers false and the legacy lane
+/// still gets its row (the legacy complete_sale door depends on this).
+#[test]
+fn audit_handler_writes_when_no_door_row_exists() {
+    let db = fresh_db();
+    let handler = AuditLogHandler::new(db.clone());
+    let event = SaleCompleted {
+        sale_id: "sale-legacy".into(),
+        store_id: None,
+        line_items: vec![],
+        total_minor: 0,
+        currency: "USD".into(),
+        customer_id: None,
+    };
+    handler.handle(&event).unwrap();
+
+    let conn = db.lock().unwrap();
+    let store = Store::new(&conn);
+    let entries = store.list_audit_entries(10, 0).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].action, "sale.completed");
+    // Legacy lane keeps the empty-string actor - deliberate divergence,
+    // documented on both ends (see the wired doors).
+    assert_eq!(entries[0].user_id, "");
+}
