@@ -322,6 +322,79 @@ fn plaintext_blob_from_the_generic_path_is_readable_then_encrypted_on_save() {
     let upgraded = s.get_smtp_config().unwrap().unwrap();
     assert_eq!(upgraded.password.as_deref(), Some("rotated-pass"));
 }
+
+/// The seam BOTH shells route `smtp_config` through. This is the call that
+/// actually closes the data-loss bug: the card writes through the generic
+/// settings setter, which asks here for the value to persist and then does its
+/// own tracked write.
+#[test]
+fn merged_smtp_password_json_keeps_the_secret_for_a_passwordless_blob() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.old.com".into(),
+        from: "a@b.com".into(),
+        password: Some("stored-secret".into()),
+        ..SmtpConfig::default()
+    })
+    .unwrap();
+
+    let merged = s
+        .merged_smtp_password_json(
+            r#"{"host":"smtp.new.com","port":25,"username":null,"password":null,"from":"b@c.com","use_tls":false}"#,
+        )
+        .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&merged).unwrap();
+    assert_eq!(parsed.host, "smtp.new.com");
+    assert_eq!(parsed.port, 25);
+    assert_eq!(parsed.from, "b@c.com");
+    assert!(!parsed.use_tls);
+
+    // Carried AS STORED — the seam never decrypts what it is only preserving,
+    // so the field is byte-identical to the stored ciphertext, not cleartext.
+    let stored_raw = s.get_setting(SMTP_CONFIG_SETTINGS_KEY).unwrap().unwrap();
+    let stored: SmtpConfig = serde_json::from_str(&stored_raw).unwrap();
+    assert_eq!(
+        parsed.password, stored.password,
+        "the password field must be carried over verbatim, not re-derived"
+    );
+    assert!(
+        stored.password.is_some(),
+        "the stored blob must hold a secret"
+    );
+    assert!(
+        !merged.contains("stored-secret"),
+        "the merged blob must not contain a cleartext secret: {merged}"
+    );
+
+    // The point of the whole exercise: what the generic writer persists with
+    // this value still reads back as the operator's password.
+    s.set_setting(SMTP_CONFIG_SETTINGS_KEY, &merged).unwrap();
+    let loaded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(
+        loaded.password.as_deref(),
+        Some("stored-secret"),
+        "a passwordless save routed through the seam must keep the secret"
+    );
+    assert_eq!(loaded.host, "smtp.new.com");
+}
+
+/// Lenient by contract: the generic setter has never required this key to hold
+/// parseable JSON, so a non-blob value must pass through unchanged rather than
+/// turning a data-loss fix into a write-path contract change. This is what
+/// keeps `get_setting_redacts_secret_keys` — which stores the bare string
+/// "smtp-secret" under this key — green.
+#[test]
+fn merged_smtp_password_json_passes_a_non_blob_value_through_unchanged() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    assert_eq!(
+        s.merged_smtp_password_json("smtp-secret").unwrap(),
+        "smtp-secret"
+    );
+    assert_eq!(s.merged_smtp_password_json("").unwrap(), "");
+}
+
 /// The masked read-back ships a boolean and nothing else — the deny list
 /// stays intact, so no surface returns the password itself.
 #[test]

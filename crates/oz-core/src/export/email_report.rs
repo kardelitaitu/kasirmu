@@ -200,6 +200,32 @@ impl Store<'_> {
         self.set_setting(SMTP_CONFIG_SETTINGS_KEY, &json)
     }
 
+    /// Merge an incoming `smtp_config` blob with the stored one and return the
+    /// JSON that should actually be persisted, WITHOUT writing it.
+    ///
+    /// This is the seam the generic settings-write surface needs. Both shells
+    /// own that write through `Settings::set_tracked`, which also records the
+    /// ADR #22 delta, so neither can call [`Store::save_smtp_config_json`]
+    /// without losing the delta. Asking here and writing themselves keeps both
+    /// halves: the keep-on-blank merge AND the tracked write.
+    ///
+    /// Lenient by design, unlike [`Self::save_smtp_config_json`]: a value that
+    /// is not a [`SmtpConfig`] blob at all is passed through unchanged rather
+    /// than rejected. The generic setter has never required this key to hold
+    /// parseable JSON, and making it do so would turn a data-loss fix into a
+    /// write-path contract change for every other caller of the key. The warn
+    /// names the shape, never the value.
+    pub fn merged_smtp_password_json(&self, incoming: &str) -> Result<String, CoreError> {
+        if serde_json::from_str::<SmtpConfig>(incoming).is_err() {
+            tracing::warn!(
+                "smtp_config write is not a SmtpConfig blob — stored verbatim, no keep-on-blank merge"
+            );
+            return Ok(incoming.to_string());
+        }
+        let stored = self.get_setting(SMTP_CONFIG_SETTINGS_KEY)?;
+        merge_smtp_password_json(incoming, stored.as_deref())
+    }
+
     /// Whether an SMTP password is stored — a boolean, never the secret.
     ///
     /// The email-report card cannot answer this by reading the key back:

@@ -25,6 +25,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
 use oz_core::permissions;
 use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use oz_core::{Settings, Store, UserPreferences};
@@ -404,6 +405,14 @@ pub fn run_get_setting(
 
 /// Business logic for set_setting (extracted for testing).
 /// Uses set_tracked so every settings change writes a delta record (ADR #22).
+///
+/// `smtp_config` is the one key that cannot be written verbatim. It is on the
+/// credential deny list, so [`run_get_setting`] refuses it and the email-report
+/// card can never load the stored password back; its save posts a whole blob
+/// whose `password` is null, and a raw write of that blob destroyed the secret
+/// on every save. The key's owner, `oz_core::export::email_report`, answers
+/// "what should actually land" and the answer is written through the SAME
+/// tracked path, so the ADR #22 delta still records the change.
 pub fn run_set_setting(
     conn: &rusqlite::Connection,
     key: &str,
@@ -415,6 +424,13 @@ pub fn run_set_setting(
             "{key} is managed by the {owner} controls — use those"
         )));
     }
+    let merged;
+    let value = if key == SMTP_CONFIG_SETTINGS_KEY {
+        merged = Store::new(conn).merged_smtp_password_json(value)?;
+        &merged
+    } else {
+        value
+    };
     Ok(Settings::set_tracked(conn, key, value, terminal_id)?)
 }
 
