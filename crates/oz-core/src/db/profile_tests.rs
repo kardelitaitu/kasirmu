@@ -549,6 +549,260 @@ fn deactivation_preserves_profile() {
     assert_eq!(profile.monthly_take_home_minor, Some(5_000_000));
 }
 
+// ── An unreadable seal is never erased (view-then-save) ─────────────
+//
+// Trigger in production: the at-rest key material moves (the restore-to-
+// different-hardware path in oz-bridge mints a RANDOM machine_id when the
+// hardware anchor query fails), so every stored profile ciphertext that was
+// sealed under the old value becomes undecryptable at exactly the same time.
+// The read path then reports those fields as absent; a form that displays the
+// profile and saves it back must not turn that read failure into a write of
+// NULL over the ciphertext, because the value is recoverable if the key ever
+// comes back.
+
+/// Raw stored state of the two encrypted columns plus the uniqueness hash.
+fn stored_seals(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
+    conn.query_row(
+        "SELECT national_id, national_id_hash, monthly_take_home_minor FROM users WHERE id = ?1",
+        params![user_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )
+    .unwrap()
+}
+
+/// A complete user whose sensitive columns can no longer be opened, as they
+/// are after the derived key moves.
+fn user_with_unreadable_seals(conn: &rusqlite::Connection, store: &Store) -> crate::User {
+    let user = store
+        .create_user_with_profile("alice", "h", "A", "role-viewer", &complete_profile(), None)
+        .unwrap();
+    conn.execute(
+        "UPDATE users SET national_id = 'garbage', monthly_take_home_minor = 'garbage' WHERE id = ?1",
+        params![user.id],
+    )
+    .unwrap();
+    user
+}
+
+#[test]
+fn view_then_save_cannot_erase_an_undecryptable_national_id() {
+    let conn = migrations::fresh_db();
+    insert_role(
+        &conn,
+        "role-viewer",
+        &["staff:read", "staff:read_identity", "staff:read_payroll"],
+    );
+    let store = Store::new(&conn);
+    let target = user_with_unreadable_seals(&conn, &store);
+    let viewer = store
+        .create_user("viewer", "h", "V", "role-viewer")
+        .unwrap();
+    let before = stored_seals(&conn, &target.id);
+    assert_eq!(
+        before.0.as_deref(),
+        Some("garbage"),
+        "the unreadable seal is what is stored before the round trip"
+    );
+
+    // View: the read path still fails closed — no plaintext, no crash.
+    let view = store
+        .get_user_profile_viewed_by(&viewer.id, &target.id)
+        .unwrap()
+        .expect("target exists");
+    assert!(
+        view.national_id.is_none(),
+        "an undecryptable national id must not yield plaintext"
+    );
+    assert!(view.monthly_take_home_minor.is_none());
+
+    // Save what that view showed, with one unrelated edit.
+    let mut profile = store.get_user_profile(&target.id).unwrap().unwrap();
+    assert!(profile.national_id.is_none() && profile.monthly_take_home_minor.is_none());
+    profile.job_title = "Shift lead".into();
+    store
+        .update_user_profile(&target.id, &profile)
+        .expect("saving a profile whose seals are unreadable must not fail");
+
+    // The seals are byte-identical: state three is never collapsed into a clear.
+    assert_eq!(
+        stored_seals(&conn, &target.id),
+        before,
+        "an undecryptable national_id / pay ciphertext must survive a view-then-save"
+    );
+    // And the write itself happened — the guard is per column, not a veto.
+    let saved = store.get_user_profile(&target.id).unwrap().unwrap();
+    assert_eq!(saved.job_title, "Shift lead");
+}
+
+#[test]
+fn unreadable_seal_is_preserved_while_cleared_fields_still_clear() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-viewer", &["sales:view"]);
+    let store = Store::new(&conn);
+    let mut seed = complete_profile();
+    seed.address = Some("12 Main St".into());
+    seed.tax_id = Some("TAX-1".into());
+    let user = store
+        .create_user_with_profile("alice", "h", "A", "role-viewer", &seed, None)
+        .unwrap();
+    conn.execute(
+        "UPDATE users SET national_id = 'garbage' WHERE id = ?1",
+        params![user.id],
+    )
+    .unwrap();
+    let (id_seal, _, _) = stored_seals(&conn, &user.id);
+
+    // Readable pay and every plaintext column still round-trip normally, and a
+    // genuinely cleared optional field is cleared — the guard must not make the
+    // rest of the row sticky.
+    let mut profile = store.get_user_profile(&user.id).unwrap().unwrap();
+    profile.monthly_take_home_minor = Some(6_000_000);
+    profile.address = None;
+    profile.tax_id = None;
+    store.update_user_profile(&user.id, &profile).unwrap();
+
+    let (still_id, _, pay) = stored_seals(&conn, &user.id);
+    assert_eq!(
+        still_id.as_deref(),
+        id_seal.as_deref(),
+        "the unreadable national_id is untouched by the same write"
+    );
+    assert_ne!(
+        pay.as_deref(),
+        Some("6000000"),
+        "the re-sealed pay must still be encrypted at rest"
+    );
+    assert!(pay.is_some(), "the readable pay column was rewritten");
+    let cleared = store.get_user_profile(&user.id).unwrap().unwrap();
+    assert_eq!(cleared.monthly_take_home_minor, Some(6_000_000));
+    assert_eq!(cleared.address, None, "a cleared field must still clear");
+    assert_eq!(cleared.tax_id, None, "a cleared field must still clear");
+}
+
+#[test]
+fn undecryptable_seal_is_still_replaceable_when_a_value_is_supplied() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-viewer", &["sales:view"]);
+    let store = Store::new(&conn);
+    let user = user_with_unreadable_seals(&conn, &store);
+
+    // The operator is not locked out: re-entering the value deliberately
+    // replaces the unreadable bytes and restores the uniqueness hash.
+    let mut profile = complete_profile();
+    profile.national_id = Some("987654321".into());
+    profile.email = Some("alice2@example.com".into());
+    store.update_user_profile(&user.id, &profile).unwrap();
+
+    let loaded = store.get_user_profile(&user.id).unwrap().unwrap();
+    assert_eq!(loaded.national_id.as_deref(), Some("987654321"));
+    assert_eq!(loaded.monthly_take_home_minor, Some(5_000_000));
+    let (raw_id, raw_hash, raw_pay) = stored_seals(&conn, &user.id);
+    assert_ne!(raw_id.as_deref(), Some("garbage"));
+    assert_ne!(raw_pay.as_deref(), Some("garbage"));
+    assert_eq!(raw_hash.as_deref(), Some(sha256_hex("987654321").as_str()));
+}
+
+#[test]
+fn genuinely_empty_field_is_never_preserved_and_stays_writable() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-viewer", &["sales:view"]);
+    let store = Store::new(&conn);
+    let user = store
+        .create_user_with_profile("alice", "h", "A", "role-viewer", &complete_profile(), None)
+        .unwrap();
+    // An EMPTY column (not an unreadable one) — the other half of the state
+    // that decrypt_sensitive used to collapse into None.
+    conn.execute(
+        "UPDATE users SET national_id = '' WHERE id = ?1",
+        params![user.id],
+    )
+    .unwrap();
+
+    // Nothing is protected here, so the mandatory-field contract still fires:
+    // an empty field stays a field the caller must supply.
+    let mut profile = store.get_user_profile(&user.id).unwrap().unwrap();
+    assert!(profile.national_id.is_none());
+    let err = store.update_user_profile(&user.id, &profile).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "national_id",
+                ..
+            }
+        ),
+        "an empty (not unreadable) national_id must still be reported as required, got {err:?}"
+    );
+
+    // And the moment one is supplied, the write lands over the empty column.
+    profile.national_id = Some("123456789".into());
+    store.update_user_profile(&user.id, &profile).unwrap();
+    let (raw_id, raw_hash, _) = stored_seals(&conn, &user.id);
+    assert!(raw_id.as_deref().is_some_and(|v| v != ""));
+    assert_eq!(raw_hash.as_deref(), Some(sha256_hex("123456789").as_str()));
+    assert_eq!(
+        store
+            .get_user_profile(&user.id)
+            .unwrap()
+            .unwrap()
+            .national_id
+            .as_deref(),
+        Some("123456789")
+    );
+}
+
+#[test]
+fn stored_cipher_classification_separates_undecryptable_from_empty() {
+    // Absent / empty: never protected.
+    assert_eq!(StoredCipher::classify(None), StoredCipher::Absent);
+    assert_eq!(
+        StoredCipher::classify(Some(String::new())),
+        StoredCipher::Absent
+    );
+    assert_eq!(StoredCipher::Absent.preserve(), None);
+    // Decryptable: the caller saw the value, so it is not protected either.
+    let sealed = encrypt_profile_field("123456789").unwrap();
+    assert_eq!(
+        StoredCipher::classify(Some(sealed.clone())),
+        StoredCipher::Readable
+    );
+    assert_eq!(StoredCipher::Readable.preserve(), None);
+    // Undecryptable: protected, and preserved VERBATIM.
+    assert_eq!(
+        StoredCipher::classify(Some("garbage".into())),
+        StoredCipher::Unreadable("garbage".into())
+    );
+    assert_eq!(
+        StoredCipher::Unreadable("garbage".into()).preserve(),
+        Some("garbage")
+    );
+    // Pay: a ciphertext of the empty string is empty, not unreadable; a
+    // ciphertext of a non-number is unreadable (it never reached the caller).
+    let empty_seal = encrypt_profile_field("").unwrap();
+    assert_eq!(
+        StoredCipher::classify_pay(Some(empty_seal)),
+        StoredCipher::Readable
+    );
+    assert_eq!(
+        StoredCipher::classify_pay(Some(encrypt_profile_field("5000000").unwrap())),
+        StoredCipher::Readable
+    );
+    // (Bound once: the seal is nonce-randomised, so two encryptions of the
+    // same text are different ciphertexts.)
+    let junk_seal = encrypt_profile_field("not-a-number").unwrap();
+    assert_eq!(
+        StoredCipher::classify_pay(Some(junk_seal.clone())),
+        StoredCipher::Unreadable(junk_seal)
+    );
+    assert_eq!(
+        StoredCipher::classify_pay(Some("garbage".into())).preserve(),
+        Some("garbage")
+    );
+}
+
 // ── mask_last4 ──────────────────────────────────────────────────────
 
 #[test]

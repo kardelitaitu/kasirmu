@@ -17,6 +17,11 @@ next: none here; CRY-1 remediation covers the encryption gap | perf: single-row 
 //! `users`, enforced by `create_user`) plus the 8 profile fields below. The
 //! D6 not-collected fields (gender, religion, marital status, ethnicity,
 //! blood type, bank account, shift/availability) never appear here.
+//!
+//! INVARIANT (COR-24): a stored value that no longer decrypts is UNREADABLE,
+//! not empty. Reads may fail closed to `None`, but `write_user_profile` re-
+//! separates the states from the stored bytes (`StoredCipher`) so a view-then-
+//! save round trip can never NULL out a ciphertext a key restore would revive.
 
 use rusqlite::{OptionalExtension, params};
 
@@ -89,6 +94,20 @@ impl UserProfile {
     /// nik 16), email well-formed, phone E.164, DOB not in the future,
     /// monthly pay strictly positive.
     pub fn validate(&self) -> Result<(), CoreError> {
+        self.validate_with_preserved(false, false)
+    }
+
+    /// `Self::validate` plus the write-path exemption for a field whose stored
+    /// ciphertext exists but cannot be decrypted (`national_id_kept` /
+    /// `pay_kept`). Such a field is *collected but unreadable* — it is not
+    /// missing, so a caller that round-tripped a failed read into `None` must
+    /// not be told the field is required, and its shape cannot be checked
+    /// because no plaintext exists to check. See `Store::write_user_profile`.
+    fn validate_with_preserved(
+        &self,
+        national_id_kept: bool,
+        pay_kept: bool,
+    ) -> Result<(), CoreError> {
         // 1. All 8 required fields present, reported in a fixed order.
         if self.date_of_birth.is_none() {
             return Err(validation("date_of_birth", "date of birth is required"));
@@ -102,13 +121,13 @@ impl UserProfile {
                 "national id type is required",
             ));
         }
-        if self.national_id.is_none() {
+        if self.national_id.is_none() && !national_id_kept {
             return Err(validation("national_id", "national id is required"));
         }
         if self.email.is_none() {
             return Err(validation("email", "email address is required"));
         }
-        if self.monthly_take_home_minor.is_none() {
+        if self.monthly_take_home_minor.is_none() && !pay_kept {
             return Err(validation(
                 "monthly_take_home_minor",
                 "monthly take-home pay is required",
@@ -139,15 +158,20 @@ impl UserProfile {
         }
 
         // 3. National id shape: exactly 9 digits (ssn) or 16 (nik).
-        // INVARIANT (COR-6): the `national_id.is_none()` guard above returns
-        // early, so this unwrap cannot fail.
-        let id = self.national_id.as_deref().unwrap();
+        // Only checkable when a plaintext value is on hand: a preserved
+        // (undecryptable) ciphertext has no readable value to shape-check,
+        // which is why the block is gated rather than unconditional.
+        // INVARIANT (COR-6): inside the `Some(id)` arm the shape is validated
+        // against the unwrapped `national_id_type`, whose `is_none()` guard
+        // above already returned early.
         let expected = if id_type == "ssn" { 9 } else { 16 };
-        if id.len() != expected || !id.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(validation(
-                "national_id",
-                format!("national id must be {expected} digits for {id_type}"),
-            ));
+        if let Some(id) = self.national_id.as_deref() {
+            if id.len() != expected || !id.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(validation(
+                    "national_id",
+                    format!("national id must be {expected} digits for {id_type}"),
+                ));
+            }
         }
 
         // 4. Email: local@domain.tld, no whitespace.
@@ -301,9 +325,116 @@ pub fn mask_last4(value: &str) -> String {
     format!("{}{last4}", "*".repeat(len - 4))
 }
 
-/// Decrypt a stored ciphertext, failing closed (never plaintext) on error.
+/// Decrypt a stored ciphertext for **display**, failing closed (never
+/// plaintext) on error.
+///
+/// `None` here means "nothing safe to render" and deliberately collapses three
+/// different column states — absent, decrypts to an empty value, and present
+/// but UNDECRYPTABLE. That is fine for a view but must never be read as "the
+/// field is empty" by a writer: a round trip that feeds this `None` back into
+/// [`Store::write_user_profile`] would otherwise NULL out ciphertext that a
+/// later key restore could still read. The write path therefore re-derives the
+/// distinction from the stored bytes themselves — see [`StoredCipher`].
 fn decrypt_sensitive(cipher: Option<String>) -> Option<String> {
     cipher.and_then(|c| decrypt_profile_field(&c).ok())
+}
+
+/// What one sensitive profile column actually holds, as the **write** path must
+/// see it: the three states [`decrypt_sensitive`] collapses for display are
+/// kept apart here, because only one of them may be overwritten with a null.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StoredCipher {
+    /// Column is NULL or the empty string — genuinely empty, nothing to keep.
+    Absent,
+    /// Ciphertext that decrypts to a usable value. The read path had its chance
+    /// to show it, so a caller sending no value is clearing it on purpose.
+    Readable,
+    /// Ciphertext present but unreadable (decrypt failed, or it decrypts to
+    /// something that is not a value at all). Carries the stored bytes so the
+    /// write can put them back verbatim.
+    Unreadable(String),
+}
+
+impl StoredCipher {
+    /// Classify a text column: readable iff it decrypts to any string.
+    fn classify(raw: Option<String>) -> Self {
+        Self::classify_with(raw, |_| true)
+    }
+
+    /// Classify the encrypted pay column, where "decrypts" is not enough: a
+    /// clear text that is not an `i64` never reached the caller as a value
+    /// either, so it counts as unreadable rather than as something the caller
+    /// could have decided to clear.
+    fn classify_pay(raw: Option<String>) -> Self {
+        Self::classify_with(raw, |clear| {
+            clear.is_empty() || clear.parse::<i64>().is_ok()
+        })
+    }
+
+    fn classify_with(raw: Option<String>, usable: impl Fn(&str) -> bool) -> Self {
+        let Some(stored) = raw.filter(|s| !s.is_empty()) else {
+            return Self::Absent;
+        };
+        match decrypt_profile_field(&stored) {
+            Ok(clear) if usable(&clear) => Self::Readable,
+            // A read failure is never evidence that a field is empty; the only
+            // safe verdict for a present-but-unopenable seal.
+            _ => Self::Unreadable(stored),
+        }
+    }
+
+    /// The stored bytes this write must leave byte-identical, if any.
+    fn preserve(&self) -> Option<&str> {
+        match self {
+            Self::Unreadable(raw) => Some(raw),
+            Self::Absent | Self::Readable => None,
+        }
+    }
+}
+
+/// The stored sensitive columns of one user row, read by
+/// [`Store::write_user_profile`] before it binds anything.
+struct StoredColumns {
+    /// `national_id` (ciphertext).
+    national_id: StoredCipher,
+    /// `national_id_hash` — the uniqueness proof of the value still stored, so
+    /// it is preserved together with a preserved ciphertext.
+    national_id_hash: Option<String>,
+    /// `monthly_take_home_minor` (ciphertext).
+    pay: StoredCipher,
+}
+
+impl Store<'_> {
+    /// Read the raw (still-encrypted) sensitive profile columns of `user_id`.
+    ///
+    /// Read-only, so it is safe inside a caller-owned transaction (no nested
+    /// BEGIN). A row that does not (yet) exist classifies as all-empty, which
+    /// leaves the `NotFound` verdict to the UPDATE itself rather than here.
+    /// The narrow race between this read and the write fails safe: the worst
+    /// case is re-binding a value that was just replaced, never erasing a seal.
+    fn stored_sensitive_columns(&self, user_id: &str) -> Result<StoredColumns, CoreError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT national_id, national_id_hash, monthly_take_home_minor \
+                 FROM users WHERE id = ?1",
+                params![user_id],
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let (national_id, national_id_hash, pay) = row.unwrap_or_default();
+        Ok(StoredColumns {
+            national_id: StoredCipher::classify(national_id),
+            national_id_hash,
+            pay: StoredCipher::classify_pay(pay),
+        })
+    }
 }
 
 impl Store<'_> {
@@ -424,22 +555,57 @@ impl Store<'_> {
     /// fields (national id, monthly pay), records the national-id
     /// uniqueness hash, and issues one UPDATE. Duplicate email / national
     /// id surface as field-level conflicts via the unique indexes.
+    ///
+    /// ## An unreadable column is never erased
+    ///
+    /// [`Store::get_user_profile`] fails closed, so a ciphertext that no longer
+    /// decrypts (the hardware-derived key moved: a `machine_id` flip after a
+    /// restore onto different hardware) reaches the caller as `None` — the same
+    /// shape as "the field is empty". A caller that round-trips such a view
+    /// straight back into a save must not turn that ambiguity into a write of
+    /// NULL over the stored bytes, because the ciphertext is still recoverable
+    /// if the key ever comes back. So the three states are re-separated here,
+    /// from the stored bytes rather than from anything the read path inferred:
+    ///
+    /// * caller sent a value → encrypt it (a value that failed to decrypt is
+    ///   never re-wrapped — only what the caller supplied is ever encrypted);
+    /// * caller sent nothing and the stored bytes are unreadable → re-bind the
+    ///   stored ciphertext (and its hash) so the column stays byte-identical,
+    ///   and accept the missing value in validation — the field is collected,
+    ///   merely not readable right now;
+    /// * caller sent nothing and the stored column is genuinely empty or
+    ///   decryptable → the write proceeds, so an empty field stays clearable
+    ///   and a readable field can still be replaced.
     pub fn write_user_profile(
         &self,
         user_id: &str,
         profile: &UserProfile,
     ) -> Result<(), CoreError> {
-        profile.validate()?;
-        let national_id_cipher = profile
-            .national_id
-            .as_deref()
-            .map(encrypt_profile_field)
-            .transpose()?;
-        let pay_cipher = profile
-            .monthly_take_home_minor
-            .map(|v| encrypt_profile_field(&v.to_string()))
-            .transpose()?;
-        let national_id_hash = profile.national_id.as_deref().map(sha256_hex);
+        let stored = self.stored_sensitive_columns(user_id)?;
+        // A read failure is never evidence of an empty field: only an
+        // undecryptable stored value is kept, and it is kept byte-for-byte.
+        let keep_national_id =
+            profile.national_id.is_none() && stored.national_id.preserve().is_some();
+        let keep_pay = profile.monthly_take_home_minor.is_none() && stored.pay.preserve().is_some();
+        profile.validate_with_preserved(keep_national_id, keep_pay)?;
+        let national_id_cipher = match profile.national_id.as_deref() {
+            Some(plain) => Some(encrypt_profile_field(plain)?),
+            None if keep_national_id => stored.national_id.preserve().map(str::to_owned),
+            None => None,
+        };
+        let pay_cipher = match profile.monthly_take_home_minor {
+            Some(pay) => Some(encrypt_profile_field(&pay.to_string())?),
+            None if keep_pay => stored.pay.preserve().map(str::to_owned),
+            None => None,
+        };
+        let national_id_hash = match profile.national_id.as_deref() {
+            Some(plain) => Some(sha256_hex(plain)),
+            // The hash is the uniqueness proof of the value still in the
+            // column, so it is preserved with it — dropping it would leave an
+            // unreadable national id able to collide silently.
+            None if keep_national_id => stored.national_id_hash,
+            None => None,
+        };
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let sql =
             format!("UPDATE users SET {PROFILE_ASSIGNMENTS}, updated_at = ?19 WHERE id = ?20");
