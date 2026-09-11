@@ -1,3 +1,9 @@
+//! Unit tests for the settings bridge module.
+//!
+//! Relocated from `apps/desktop-client/src/commands/settings_tests.rs` (Wave E /
+//! EW1). The shell's `AppState::for_test` is replaced by the headless
+//! `TestBridge` harness ([`crate::testing`]); the conn-taking `run_*`
+//! helpers resolve against `oz_bridge::settings` directly via `use super::*`.
 use super::*;
 use oz_core::migrations;
 use rusqlite::Connection;
@@ -10,9 +16,9 @@ fn fresh_conn() -> Connection {
 
 #[test]
 fn settings_scoped_rejects_invalid_token() {
-    let state = AppState::for_test();
-    let result = state.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let tb = crate::testing::TestBridge::new();
+    let result = tb.ctx().resolve_session("nonexistent-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Receipt settings tests ─────────────────────────────
@@ -527,7 +533,7 @@ fn run_set_setting_rejects_local_api_keys() {
     for key in ["local_api.enabled", "local_api.port", "local_api.secret"] {
         let err = run_set_setting(&conn, key, "1", "t-1").unwrap_err();
         assert!(
-            matches!(&err, AppError::Invalid(m) if m.contains("Local API controls")),
+            matches!(&err, BridgeError::Invalid(m) if m.contains("Local API controls")),
             "{key} must be rejected from the raw settings writer: {err:?}"
         );
         // And nothing was persisted.
@@ -562,7 +568,7 @@ fn run_set_setting_rejects_lan_server_keys() {
     let conn = fresh_conn();
     let err = run_set_setting(&conn, "lan_server.enabled", "1", "t-1").unwrap_err();
     assert!(
-        matches!(&err, AppError::Invalid(m) if m.contains("LAN server controls")),
+        matches!(&err, BridgeError::Invalid(m) if m.contains("LAN server controls")),
         "lan_server.* must name its owning controls: {err:?}"
     );
 }

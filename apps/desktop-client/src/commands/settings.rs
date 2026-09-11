@@ -74,41 +74,10 @@ pub async fn set_receipt_settings_scoped(
     args: ReceiptSettingsDto,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-    run_set_receipt_settings(&db, &args)
-}
-
-/// Business logic for `set_receipt_settings` (extracted for testing).
-fn run_set_receipt_settings(
-    conn: &rusqlite::Connection,
-    args: &ReceiptSettingsDto,
-) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-
-    Settings::set_receipt_show_currency(&tx, args.show_currency)?;
-    Settings::set_receipt_decimal_separator(&tx, &args.decimal_separator)?;
-    Settings::set_receipt_show_tax(&tx, args.show_tax)?;
-    Settings::set_receipt_footer(&tx, &args.footer)?;
-    Settings::set_receipt_paper_width(&tx, &args.paper_width)?;
-    Settings::set_receipt_show_table_number(&tx, args.show_table_number)?;
-    Settings::set_receipt_margin_top(&tx, args.margin_top)?;
-    Settings::set_receipt_margin_bottom(&tx, args.margin_bottom)?;
-    Settings::set_receipt_margin_left(&tx, args.margin_left)?;
-    Settings::set_receipt_margin_right(&tx, args.margin_right)?;
-    Settings::set_tax_rounding_mode_str(&tx, &args.tax_rounding_mode)?;
-
-    tx.commit()?;
-
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::set_receipt_settings_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Store info DTO ────────────────────────────────────────────
@@ -145,36 +114,10 @@ pub async fn set_store_settings_scoped(
     args: StoreSettingsDto,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-    run_set_store_settings(&db, &args)
-}
-
-/// Business logic for `set_store_settings` (extracted for testing).
-fn run_set_store_settings(
-    conn: &rusqlite::Connection,
-    args: &StoreSettingsDto,
-) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-
-    Settings::set_store_name(&tx, &args.name)?;
-    Settings::set_store_address(&tx, &args.address)?;
-    Settings::set_store_tax_id(&tx, &args.tax_id)?;
-    Settings::set_default_currency(&tx, &args.currency)?;
-    Settings::set_store_branch(&tx, &args.branch)?;
-    Settings::set_store_logo(&tx, &args.logo)?;
-
-    tx.commit()?;
-
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::set_store_settings_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Credit Settings DTO ─────────────────────────────────────────
@@ -197,22 +140,10 @@ pub async fn set_credit_settings_scoped(
     args: CreditSettingsDto,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-    let tx = db.unchecked_transaction()?;
-    Settings::set_credit_enabled(&tx, args.enabled)?;
-    Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
-    Settings::set_credit_max_limit(&tx, args.max_limit_minor)?;
-    tx.commit()?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::set_credit_settings_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Credit sale DTO ──────────────────────────────────────────────
@@ -236,24 +167,10 @@ pub async fn settle_credit_scoped(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-    let tx = db.unchecked_transaction()?;
-    let now = chrono::Utc::now().to_rfc3339();
-    tx.execute(
-        "UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'",
-        rusqlite::params![now, sale_id],
-    )?;
-    tx.commit()?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::settle_credit_scoped(&ctx, &session_token, &sale_id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Hardware settings (printer + scanner + scale + localPrefs) ───
@@ -298,56 +215,11 @@ pub async fn set_hardware_settings_scoped(
     args: HardwareSettingsDto,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-
-    // Extract terminal_id before locking DB (avoids Send guard across .await).
-    let terminal_id = state
-        .terminal_id
-        .lock()
-        .await
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Permission check requires the store-scoped DB.
-    {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
-        require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-    }
-
-    let profile = TerminalProfile::from(args);
-    let json = serde_json::to_string(&profile)
-        .map_err(|e| AppError::Internal(format!("serializing profile: {e}")))?;
-
-    // Write to DB (canonical store).
-    // We use the global DB since hardware_profiles is a global table.
-    {
-        let conn = state.db.lock().await;
-        conn.execute(
-            "INSERT OR REPLACE INTO hardware_profiles (terminal_id, profile_json, schema_version, updated_at)
-             VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
-            rusqlite::params![&terminal_id, &json, profile.schema_version],
-        )?;
-    }
-
-    // Write to JSON file (backward compat fallback).
+    let ctx = state.bridge_ctx();
     let base_dir = app_data_dir(&state)?;
-    let path = TerminalProfile::profile_path(&base_dir, &terminal_id);
-    if let Err(e) = profile.save(&path) {
-        tracing::warn!(
-            terminal_id = %terminal_id,
-            error = %e,
-            "failed to save hardware settings to JSON — DB write succeeded"
-        );
-    }
-
-    Ok(())
+    oz_bridge::settings::set_hardware_settings_scoped(&ctx, &session_token, args, &base_dir)
+        .await
+        .map_err(Into::into)
 }
 
 // ── User preferences ───────────────────────────────────────────
@@ -373,16 +245,10 @@ pub async fn set_user_preferences_scoped(
     prefs: Vec<UserPrefEntry>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let pairs: Vec<(String, String)> = prefs.into_iter().map(|e| (e.key, e.value)).collect();
-    Ok(UserPreferences::set_batch(&db, &session.user_id, &pairs)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::set_user_preferences_scoped(&ctx, &session_token, prefs)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Generic key-value settings ────────────────────────────────
@@ -428,42 +294,10 @@ pub async fn set_setting(
     user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    // Extract terminal_id first.
-    let terminal_id = state
-        .terminal_id
-        .lock()
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::set_setting(&ctx, &key, &value, &user_id)
         .await
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Scope block: drop sync guards before .await below.
-    {
-        let conn = state.db.lock().await;
-        let store = oz_core::db::Store::new(&conn);
-        require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-        run_set_setting(&conn, &key, &value, &terminal_id)?;
-        if let Err(e) = enqueue_settings_updates(
-            &store,
-            &HashMap::from([(key.clone(), value.clone())]),
-            &terminal_id,
-            "default",
-        ) {
-            tracing::warn!(key = %key, error = %e, "failed to enqueue settings.update sync item");
-        }
-    } // conn, store dropped here
-
-    // Publish SettingsUpdated event for cross-terminal reactivity (ADR #22).
-    let kernel = state.kernel.lock().await;
-    let bus = kernel.event_bus();
-    let event = oz_core::events::SettingsUpdated {
-        changed_keys: vec![key.clone()],
-        terminal_id,
-    };
-    if let Err(e) = bus.publish(&event) {
-        tracing::warn!(key = %key, error = %e, "failed to publish SettingsUpdated event");
-    }
-
-    Ok(())
+        .map_err(Into::into)
 }
 
 /// Write (or overwrite) a single setting value resolved from a session token. ADR #7.
@@ -477,60 +311,10 @@ pub async fn set_setting_scoped(
     value: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-
-    // Extract terminal_id before locking the store DB to avoid
-    // holding a non-Send MutexGuard across an .await point.
-    let terminal_id = state
-        .terminal_id
-        .lock()
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::set_setting_scoped(&ctx, &session_token, &key, &value)
         .await
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Scope block: all sync guards (MutexGuard, Store) must be
-    // dropped before any .await below.
-    {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
-        require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-        run_set_setting(&db, &key, &value, &terminal_id)?;
-    } // db, store, conn dropped here — safe to .await below
-
-    // Enqueue `settings.update` sync items on the GLOBAL db — the sync
-    // daemon only watches the global queue, so a store-scoped write must
-    // fan out from here (SYNC-10 enqueue side).
-    {
-        let conn = state.db.lock().await;
-        let store = oz_core::db::Store::new(&conn);
-        if let Err(e) = enqueue_settings_updates(
-            &store,
-            &HashMap::from([(key.clone(), value.clone())]),
-            &terminal_id,
-            &session.store_id,
-        ) {
-            tracing::warn!(key = %key, error = %e, "failed to enqueue settings.update sync item");
-        }
-    } // conn dropped — safe to .await below
-
-    // Publish SettingsUpdated event for cross-terminal reactivity (ADR #22).
-    let kernel = state.kernel.lock().await;
-    let bus = kernel.event_bus();
-    let event = oz_core::events::SettingsUpdated {
-        changed_keys: vec![key.clone()],
-        terminal_id,
-    };
-    if let Err(e) = bus.publish(&event) {
-        tracing::warn!(key = %key, error = %e, "failed to publish SettingsUpdated event");
-    }
-
-    Ok(())
+        .map_err(Into::into)
 }
 
 // ── Batch key-value settings (single transaction) ───────────────
@@ -546,72 +330,10 @@ pub async fn set_settings_scoped(
     entries: HashMap<String, String>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-
-    // Managed keys are rejected batch-wide before any write so the
-    // all-or-nothing transaction semantics hold (same guard as
-    // `run_set_setting`; the batch loop below bypasses it by design).
-    if let Some(key) = entries.keys().find(|k| is_managed_key(k)) {
-        let owner = managed_key_owner(key).unwrap_or("a dedicated");
-        return Err(AppError::Invalid(format!(
-            "{key} is managed by the {owner} controls — use those"
-        )));
-    }
-
-    let terminal_id = state
-        .terminal_id
-        .lock()
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::set_settings_scoped(&ctx, &session_token, entries)
         .await
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let keys: Vec<String> = entries.keys().cloned().collect();
-
-    {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
-        require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-        let tx = db.unchecked_transaction()?;
-        for (key, value) in &entries {
-            Settings::set_tracked(&tx, key, value, &terminal_id)?;
-        }
-        tx.commit()?;
-    }
-
-    // Enqueue `settings.update` sync items on the GLOBAL db — the sync
-    // daemon only watches the global queue, so a store-scoped write must
-    // fan out from here (SYNC-10 enqueue side).
-    {
-        let conn = state.db.lock().await;
-        let store = oz_core::db::Store::new(&conn);
-        if let Err(e) = enqueue_settings_updates(&store, &entries, &terminal_id, &session.store_id)
-        {
-            tracing::warn!(key_count = entries.len(), error = %e, "failed to enqueue settings.update sync items");
-        }
-    } // conn dropped — safe to .await below
-
-    // Publish a single SettingsUpdated event for all changed keys.
-    let kernel = state.kernel.lock().await;
-    let bus = kernel.event_bus();
-    let event = oz_core::events::SettingsUpdated {
-        changed_keys: keys,
-        terminal_id,
-    };
-    if let Err(e) = bus.publish(&event) {
-        tracing::warn!(
-            key_count = entries.len(),
-            error = %e,
-            "failed to publish SettingsUpdated event"
-        );
-    }
-
-    Ok(())
+        .map_err(Into::into)
 }
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
@@ -721,6 +443,18 @@ fn build_deployment_info() -> DeploymentInfo {
     oz_bridge::settings::build_deployment_info()
 }
 
-#[cfg(test)]
-#[path = "settings_tests.rs"]
-mod tests;
+#[allow(dead_code)]
+fn run_set_receipt_settings(
+    conn: &rusqlite::Connection,
+    args: &ReceiptSettingsDto,
+) -> Result<(), AppError> {
+    oz_bridge::settings::run_set_receipt_settings(conn, args).map_err(Into::into)
+}
+
+#[allow(dead_code)]
+fn run_set_store_settings(
+    conn: &rusqlite::Connection,
+    args: &StoreSettingsDto,
+) -> Result<(), AppError> {
+    oz_bridge::settings::run_set_store_settings(conn, args).map_err(Into::into)
+}
