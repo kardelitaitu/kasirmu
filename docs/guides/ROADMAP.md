@@ -167,7 +167,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `cargo clippy -- -D warnings` passes with zero warnings
 - [x] 5,800+ unit tests across the `oz-*` crate ecosystem, plus ~6,700 UI tests across 405 test files
 - [x] Data Management UI wired to real IPC (backup, export/import .ozpkg)
-- [x] `oz-cli import-ozpkg` writes data to DB (products, categories, sales, customers, users, settings)
+- [x] `oz-cli import-ozpkg` writes data to DB (products, categories, sales, customers, users, settings) — except settings rows the shared platform-core predicate `is_non_exportable_setting_key` marks non-exportable, which are skipped rather than written
 - [x] StaffLoginScreen supports hardware keyboard PIN entry (digits, Backspace, Enter, Escape)
 - [ ] App launches on Windows and Linux
 

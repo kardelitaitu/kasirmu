@@ -1,7 +1,15 @@
 # SQLCipher At-Rest Encryption Migration Plan
 
+> **⚠️ CORRECTION 2026-09-11 — this plan was never adopted; read its mitigations as historical.**
+> SQLCipher at-rest encryption did not ship. Settings secrets are handled differently today:
+> encrypted at rest, and filtered on every `.ozpkg` lane by the shared platform-core predicate
+> `is_non_exportable_setting_key`. That makes the "export `.ozpkg` before a hardware change"
+> mitigation in §Risks false in both directions — an `.ozpkg` carries neither `machine_id` nor
+> the credential keys, while an unfiltered `.db` / `.backup.db` snapshot carries everything and
+> is therefore never a file to hand to anyone.
+
 **Security Audit Reference:** M-6 (tauri-security-audit.md)
-**Status:** PLANNED — implementation pending
+**Status:** NEVER ADOPTED — superseded (see banner above)
 **Date:** 2026-08
 
 ## Problem
@@ -69,7 +77,7 @@ Physical/backup/adb/file-read access yields the whole store in cleartext (CWE-31
 ## Risks
 
 1. **First-run migration**: A corrupted migration could lose data. Mitigation: backup plaintext DB before encrypting.
-2. **Key loss**: If `machine_id` changes (hardware swap), the DB is unrecoverable. Mitigation: export `.ozpkg` before hardware change; document recovery.
+2. **Key loss**: If `machine_id` changes (hardware swap), the DB is unrecoverable. ~~Mitigation: export `.ozpkg` before hardware change~~ — false as written (corrected 2026-09-11): an `.ozpkg` carries master data and ordinary settings only, never `machine_id`/`sync_terminal_id` and never the credential keys filtered by `is_non_exportable_setting_key`, so it cannot restore a machine identity or its secrets. Only a whole-file DB backup survives the swap, and because nothing filters it, it is the sensitive artifact in the pair — never something to send anywhere.
 3. **Performance**: SQLCipher adds ~5-10% overhead for encrypt/decrypt per page. Acceptable for POS workload.
 4. **Cross-platform**: SQLCipher compiles on Windows, Linux, macOS, Android. CI already builds for all targets.
 

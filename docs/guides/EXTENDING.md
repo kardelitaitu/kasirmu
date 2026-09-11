@@ -314,13 +314,19 @@ over HTTP as in the recipes below (open in the dev playground; with
 `X-Admin-Key: $OZ_ADMIN_KEY` in production). Desktop Local API: click
 **Generate Token** in Settings → Local API — HTTP minting there requires
 the per-install secret as `X-Admin-Key`, and the panel deliberately
-never displays it. When scripts need the secret itself (HTTP minting,
-master-data writes), read it from the global database:
+never displays it. Scripts that need a *setting value* read it from the global
+database (the desktop `oz-pos.db`, the same file `--db` targets):
 
 ```bash
 sqlite3 "$APPDATA/com.ozpos.app/oz-pos.db" \
-  "SELECT value FROM settings WHERE key='local_api.secret'"
+  "SELECT key, value FROM settings WHERE key='currency.default'"
 ```
+
+> ⚠️ Do not substitute `local_api.secret` (or any credential or device-bound key) for
+> that key just to collect a value for a ticket or a chat window: the `settings` table
+> also holds encrypted and non-exportable values, and printing one puts a live secret
+> into shell history and scrollback. Mint a token from the panel instead — if a secret
+> has to move, rotate it rather than extract it.
 
 The desktop server binds `127.0.0.1` only — use that literal IP in
 scripts; `localhost` may resolve to `::1` first on IPv6-preferring
