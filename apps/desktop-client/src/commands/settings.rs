@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (desktop-client UI-1 investigation + fix)
 crate: desktop-client | status: SAFE | lint: CLEAN
-findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); new gateway_status command computes configured/online booleans server-side; deny-list test extended with the three keys. Verified during UI-1: deny-list check on run_get_setting, scoped variants delegate to it
+findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); gateway_status computes configured/online booleans server-side; deny-list test extended with the three keys. MOVED since (Wave E): the deny list, the key guards, run_get_setting and the extended test now live in crates/oz-bridge/src/settings.rs (tests in crates/oz-bridge/src/settings_tests.rs); every command in this file is a shim over that module
 next: none | perf: N/A
 */
 //!
@@ -24,8 +24,6 @@ pub use oz_bridge::settings::{
     CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, HardwareSettingsDto,
     ReceiptSettingsDto, StoreSettingsDto, UserPrefEntry,
 };
-
-// ── Receipt settings DTO ─────────────────────────────────
 
 // ── Get receipt settings ──────────────────────────────────
 
@@ -67,8 +65,6 @@ pub async fn set_receipt_settings_scoped(
         .map_err(Into::into)
 }
 
-// ── Store info DTO ────────────────────────────────────────────
-
 // ── Get store settings ────────────────────────────────────────
 
 #[tauri::command]
@@ -107,7 +103,7 @@ pub async fn set_store_settings_scoped(
         .map_err(Into::into)
 }
 
-// ── Credit Settings DTO ─────────────────────────────────────────
+// ── Credit settings ─────────────────────────────────────────────
 
 #[tauri::command]
 /// Get credit settings.
@@ -133,7 +129,7 @@ pub async fn set_credit_settings_scoped(
         .map_err(Into::into)
 }
 
-// ── Credit sale DTO ──────────────────────────────────────────────
+// ── Credit sales ────────────────────────────────────────────────
 
 /// List credit sales for the store resolved from a session token. ADR #7.
 #[tauri::command]
