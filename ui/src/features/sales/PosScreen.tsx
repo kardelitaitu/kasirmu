@@ -38,11 +38,13 @@ import {
   type HeldCartRow,
 } from '@/api/sales';
 import { getReceiptSettingsScoped } from '@/api/settings';
-import { useCartTax, type CartTaxCacheState } from '@/hooks/useCartTax';
+import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
+import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
+import { clampCartWidth, lineThumbnail, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
 import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
@@ -67,79 +69,6 @@ import './CartPanelFooterTotals.css';
 import './CartPanelActions.css';
 import './CartPanel.brand.css';
 import './CartPanelCourseBar.css';
-
-// ── Cart panel width, viewport-aware ──────────────────────────────────
-/**
- * Bounds for the cart's right panel.
- *
- * The panel may grow to half the viewport but never wider than
- * `1200 px` so the menu stays usable. The `320 px` floor keeps qty
- * controls and line text legible on small terminals. Default is
- * `440 px`, comfortable for the line-item cards. A `resize`
- * listener re-clamps the saved width when the window is resized —
- * important when the cashier drags a window between monitors or a
- * laptop docks into a 4K display.
- */
-const CART_WIDTH_MIN = 320;
-const CART_WIDTH_DEFAULT = 440;
-const CART_WIDTH_MAX_CAP = 1200;
-
-// ── F2-3: cart-tax watcher (R36-19 / D64) ──────────────────────────
-// The hook owns the compute and the failure-window cache; the screen
-// consumes its state through this keyed child. Bumping the key remounts
-// the watcher and forces a fresh compute — the retry affordance for a
-// failed estimate, without changing the cart or the hook contract.
-const IDLE_TAX_STATE: CartTaxCacheState = {
-  severity: 'unknown',
-  taxMinor: 0,
-  hasExclusive: null,
-  estimated: false,
-  cacheFresh: false,
-};
-
-function CartTaxWatcher({
-  sessionToken,
-  lines,
-  currency,
-  onState,
-}: {
-  sessionToken: string | null;
-  lines: CartLineTaxInput[];
-  currency: string;
-  onState: (state: CartTaxCacheState) => void;
-}) {
-  const state = useCartTax(sessionToken, lines, currency);
-  useEffect(() => {
-    onState(state);
-  }, [state, onState]);
-  return null;
-}
-
-function clampCartWidth(px: number, viewportWidth: number): number {
-  const max = Math.max(
-    CART_WIDTH_MIN,
-    Math.min(viewportWidth * 0.5, CART_WIDTH_MAX_CAP),
-  );
-  return Math.max(CART_WIDTH_MIN, Math.min(Math.round(px), max));
-}
-
-/**
- * Deterministic per-SKU thumbnail: stable monogram letter + hashed
- * hue. The hue is exposed to CSS via a custom property so light and
- * dark modes can theme the tile colour from the stylesheet.
- */
-function lineThumbnail(sku: string): { initial: string; hue: number } {
-  let hash = 0;
-  for (let i = 0; i < sku.length; i++) {
-    hash = (hash * 31 + sku.charCodeAt(i)) | 0;
-  }
-  const hue = Math.abs(hash) % 360;
-  const initialMatch = sku.match(/[A-Za-z0-9]/);
-  // `sku.charAt(0)` always returns string (unlike `sku[0]` which is
-  // `string | undefined` under noUncheckedIndexedAccess).
-  const chosen: string = initialMatch?.[0] ?? sku.charAt(0) ?? '?';
-  return { initial: chosen.toUpperCase(), hue };
-}
 
 /**
  * Split an elapsed duration (ms) into whole hours + minutes, floored.
