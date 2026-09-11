@@ -8,6 +8,7 @@
 //! <- persistence <- commands. This step carries `model` only; the rest of the
 //! chain arrives in its own commit.
 
+pub mod commands;
 pub mod model;
 pub mod persistence;
 pub mod revisions;

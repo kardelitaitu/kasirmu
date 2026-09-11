@@ -22,6 +22,7 @@
 // measured before deleting them, and the two names still needed -
 // semantic_branch_profile_id by commands.rs, is_warehouse_operational_input_port
 // by the test build - are kept, the second under cfg(test).
+#[allow(unused_imports)]
 pub(crate) use oz_core::topology::semantic_branch_profile_id;
 // Test-only consumers (the test modules glob semantics::* directly); kept
 // out of the library re-export so the lib build has no unused imports.
@@ -31,4 +32,5 @@ pub(crate) use oz_core::topology::{
     shared_semantic_pairing_contains, shared_topology_semantics,
 };
 
+#[allow(unused_imports)]
 pub use oz_bridge::topology::semantics::*;

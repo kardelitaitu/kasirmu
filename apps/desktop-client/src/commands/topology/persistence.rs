@@ -49,6 +49,7 @@ pub async fn recover_pending_topology_apply_at_startup(state: &AppState) -> Resu
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::recover_pending_topology_apply`].
+#[allow(dead_code)]
 pub(crate) async fn recover_pending_topology_apply(
     state: &AppState,
     expected_store_id: &str,
@@ -63,6 +64,7 @@ pub(crate) async fn recover_pending_topology_apply(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::snapshot_workspace_rows`].
+#[allow(dead_code)]
 pub(crate) async fn snapshot_workspace_rows(
     state: &AppState,
     store_id: &str,
@@ -80,6 +82,7 @@ pub(crate) async fn snapshot_workspace_rows(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::compensate_workspace_diff`].
+#[allow(dead_code)]
 pub(crate) async fn compensate_workspace_diff(
     state: &AppState,
     store_id: &str,
@@ -97,11 +100,13 @@ pub(crate) async fn compensate_workspace_diff(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::topology_setting_key`].
+#[allow(dead_code)]
 pub(crate) fn topology_setting_key(branch_id: Option<&str>) -> Result<String, AppError> {
     oz_bridge::topology::persistence::topology_setting_key(branch_id).map_err(Into::into)
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::template_save`].
+#[allow(dead_code)]
 pub(crate) fn template_save(
     conn: &Connection,
     topology_key: &str,
@@ -113,6 +118,7 @@ pub(crate) fn template_save(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::template_load`].
+#[allow(dead_code)]
 pub(crate) fn template_load(
     conn: &Connection,
     topology_key: &str,
@@ -123,6 +129,7 @@ pub(crate) fn template_load(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::template_list`].
+#[allow(dead_code)]
 pub(crate) fn template_list(
     conn: &Connection,
     topology_key: &str,
@@ -131,6 +138,7 @@ pub(crate) fn template_list(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::template_delete`].
+#[allow(dead_code)]
 pub(crate) fn template_delete(
     conn: &Connection,
     topology_key: &str,
@@ -141,6 +149,7 @@ pub(crate) fn template_delete(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::save_topology_json_at_key_with_revision`].
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn save_topology_json_at_key_with_revision(
     conn: &Connection,
@@ -181,6 +190,7 @@ pub(crate) fn validate_semantic_ownership(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::validate_warehouse_quota`].
+#[allow(dead_code)]
 pub(crate) fn validate_warehouse_quota(
     nodes: &[Value],
     tier: &oz_core::subscription::SubscriptionTier,
@@ -189,6 +199,7 @@ pub(crate) fn validate_warehouse_quota(
 }
 
 /// Adapter over [`oz_bridge::topology::persistence::validate_warehouse_capacity`].
+#[allow(dead_code)]
 pub(crate) fn validate_warehouse_capacity(
     nodes: &[Value],
     wires: &[Value],

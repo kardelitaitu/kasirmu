@@ -55,11 +55,13 @@ pub use oz_bridge::topology::revisions::*;
 // ambiguous. Visibility is unchanged from before the move.
 
 /// Adapter over ['oz_bridge::topology::revisions::normalize_topology_change_note'].
+#[allow(dead_code)]
 pub(crate) fn normalize_topology_change_note(raw: Option<&str>) -> Result<String, AppError> {
     oz_bridge::topology::revisions::normalize_topology_change_note(raw).map_err(Into::into)
 }
 
 /// Adapter over ['oz_bridge::topology::revisions::list_topology_revision_summaries'].
+#[allow(dead_code)]
 pub(crate) fn list_topology_revision_summaries(
     conn: &Connection,
     branch_id: &str,
@@ -70,6 +72,7 @@ pub(crate) fn list_topology_revision_summaries(
 }
 
 /// Adapter over ['oz_bridge::topology::revisions::set_topology_revision_pinned'].
+#[allow(dead_code)]
 pub(crate) fn set_topology_revision_pinned(
     conn: &Connection,
     branch_id: &str,
@@ -81,6 +84,7 @@ pub(crate) fn set_topology_revision_pinned(
 }
 
 /// Adapter over ['oz_bridge::topology::revisions::audit_topology_apply'].
+#[allow(dead_code)]
 pub(crate) fn audit_topology_apply(
     store_conn: &Connection,
     branch_id: &str,
