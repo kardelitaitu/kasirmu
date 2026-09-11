@@ -75,7 +75,9 @@ function frontMatter(file) {
 }
 
 function extractTitle(file, text) {
-  const fm = frontMatter(file);
+  // frontMatter() parses document TEXT, not a path — passing `file` here made
+  // the front-matter title unreachable for every record (fallback to body heading).
+  const fm = frontMatter(text);
   if (fm?.title) return fm.title;
   const m = text.match(/^#\s+(.+)$/m);
   return m ? m[1].replace(/\\r/g, '').trim() : basename(file).replace(/\.md$/, '');

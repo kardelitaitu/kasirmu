@@ -48,13 +48,13 @@ Unified registry for architectural decisions (ADRs), audits, verifications, and 
 | 43 | ui | [ADR #43 – React‑only UI decision](../decisions/2026-07-24-react-only-decision.md) | Accepted (2026-07-24) |
 | 43 | cloud | [ADR #43: Cloud Sync Performance & Scale-Out Roadmap](../decisions/2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02) |
 | 44 | topology | [ADR #44: Typed Connection Gating & Live Validation (Implementation)](../decisions/2026-08-08-adr34-typed-connection-gating.md) | Implemented (2026-08-08) |
-| 45 | topology | [ADR #45: Topology Semantic Contract v2](../decisions/2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
+| 45 | topology | [ADR #45: Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](../decisions/2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
 | 46 | topology | [ADR #46: Topology Revision History, Change Notes, and Draft Restore](../decisions/2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), Phase 2 in progress (graph differ 51ad987f) |
 | 47 | authorization | [ADR #47: Scoped Authorization — Role Assignments with Explicit Scopes](../decisions/2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted — ruled 2026-09-07 (all five recommendations adopted) |
 | 48 | regional | [ADR #48: Location Timezone Representation & as_of Semantics](../decisions/2026-09-09-timezone-representation.md) | Accepted (2026-09-09) |
 | 49 | desktop-client | [ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](../decisions/2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
 | 50 | sync | [ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)](../decisions/2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
-| 51 | settings | [ADR #51: Sealed Settings Ingest Policy](../decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
+| 51 | settings | [ADR #51: Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](../decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 
 ### Research Notes
 
