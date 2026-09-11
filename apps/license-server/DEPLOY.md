@@ -343,6 +343,7 @@ Read from the admin surface:
   auth mapping resolves sessions to that tenant, so changing it orphans every existing admin
   session, and deleting the tenant locks all of them out — `isAdminTenantRecord` exists
   precisely to refuse both. Nothing in the deploy flow says so, which is why it is here.
+
 - **`OZ_ENTERPRISE_MRR_USD`** — read once in `init()` (`admin_stats.go:702`) and, when it
   parses and is greater than zero, replaces `TierPriceUSD["enterprise"]`, so enterprise
   MRR thresholds can be re-priced without a rebuild.
@@ -376,6 +377,28 @@ Read from the admin surface:
 > Both misreads are encoded in the script: the scan covers `apps/unified/healthcheck.sh`,
 > and a line may carry `env-doc: ok: <reason>` to be exempted deliberately rather than by
 > silence.
+
+#### 7.7.1 Precondition: set `OZ_ADMIN_EMAIL` before the admin-gate repair ships
+
+Web admin identity is an email comparison on this value (`admin_dashboard.go:87-91`, duplicated at
+`addon_admin.go:278-282`, `admin_tenant_lifecycle.go:31-37`, `password_rotation.go:176`); unset, the
+target is the built-in `defaultAdminEmail` (`password_rotation.go:42`) and no compose file or workflow
+sets it. The repair makes the gate **refuse to match when unset** — ship that code first and web admin
+access stops working until someone sets the variable and restarts. Steps, in order, before deploying:
+
+```bash
+B=https://license.ozpos.my.id; E='<admin-email>'   # must equal OZ_ADMIN_EMAIL in Northflank
+# 1. the secret is set AND its email has a tenants row with status=active — admin self-signup is refused, so the row must already exist (warnAdminTenantState warns on a boot that finds none):
+sqlite3 /data/pb_data/data.db "SELECT id,email,status,email_verified FROM tenants WHERE email='$E'"
+# 2. prove the owner reads that mailbox — email_verified is false by migration default (main.go:467-484) and false for webhook-created rows (paddle_webhook.go:1188), and admin login never reads it:
+curl -s -X POST "$B/api/v1/web/request-otp" -H 'Content-Type: application/json' -d "{\"email\":\"$E\"}"
+curl -s -X POST "$B/api/v1/web/verify-otp"  -H 'Content-Type: application/json' -d "{\"email\":\"$E\",\"code\":\"<code>\"}"
+# 3. that session must be admin (200, not 401/403) — also the proof the env value matches the row.
+# 4. OZ_ADMIN_KEY must be present (with OZ_PRODUCTION=1 the fail-fast boot proves it), and OZ_ADMIN_EMAIL is write-once: it must never change after first boot.
+curl -s -o /dev/null -w '%{http_code}\n' "$B/api/v1/admin/enterprise-codes" -H "Authorization: Bearer <token>"
+```
+
+**Break-glass, and its limit.** `OZ_ADMIN_KEY` authenticates the API with no session (`admin_dashboard.go:65`, `addon_admin.go:263`) but the admin SPA cannot use it — `website/public/admin/login.js` is session-only, so key-only recovery brings back the API, not the dashboard. Sessions are in-memory (`web_otp.go:13-19`), so a restart drops them: a session-path lockout self-heals on restart, and equally a revoked admin session cannot be killed without one. A restart is not a way to remove an attacker who has the mailbox — they just request another OTP.
 
 ## 8. Import the Collections Schema
 

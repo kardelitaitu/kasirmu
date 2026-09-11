@@ -427,6 +427,7 @@ longer exists — migrating that data requires a PocketBase backup → restore
 | `OZ_LICENSE_PRIVATE_KEY` | RSA PEM | required — Go license server exits without it (`OZ_LICENSE_KEY` is the legacy alias) |
 | `OZ_API_SECRET` | `openssl rand -hex 32` | required when `OZ_PRODUCTION=1` |
 | `OZ_ADMIN_KEY` | `openssl rand -hex 32` | required — `docker-compose.yml` fails at parse time when unset; with `OZ_PRODUCTION=1` the server also refuses to start; gates token mint |
+| `OZ_ADMIN_EMAIL` | the admin tenant's email | web-dashboard admin identity — the gate compares this to the signed-in tenant's email, and falls back to a compiled-in inbox when unset. **Set it before the admin-identity repair ships — see directly below the table** |
 | `OZ_PRODUCTION` | `1` | fail-closed boot: refuses to start if either secret is unset; implies `OZ_DB_REQUIRE_TLS=1` |
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
 | `OZ_CORS_ORIGINS` | optional | extra origins beyond the default allowlist |
@@ -453,6 +454,17 @@ longer exists — migrating that data requires a PocketBase backup → restore
 > in dev mode: `/api/v1/tokens` mints freely. Compose deployments never reach
 > that dev mode — the compose file itself fails at parse time unless both
 > secrets are set (§6.2).
+
+### Precondition: `OZ_ADMIN_EMAIL` before the admin-identity repair ships
+
+Web admin access is an email match against this variable (`admin_dashboard.go:87-91`, same test at `addon_admin.go:278-282`, `admin_tenant_lifecycle.go:31-37`, `password_rotation.go:176`); while it is unset the match target is a compiled-in inbox (`defaultAdminEmail`, `password_rotation.go:42`). It is in no compose file and no workflow, so assume unset. The repair makes the gate **refuse to match when it is unset** — ship that code first and web admin access stops working until someone sets the variable and restarts. Operator steps, in order (exact commands: `apps/license-server/DEPLOY.md` §7.7.1):
+
+1. Northflank carries `OZ_ADMIN_EMAIL`, and that email already has a `tenants` row with `status=active` — admin self-signup is refused, so the row must have been provisioned out of band.
+2. Prove the owner reads that mailbox with one `request-otp` → `verify-otp` round trip: `email_verified` is false by migration default (`main.go:467-484`) and false for webhook-created rows (`paddle_webhook.go:1188`), and admin login never reads it, so a row is not proof of an inbox.
+3. Confirm `OZ_ADMIN_KEY` is present — it is break-glass for the **API only** (`admin_dashboard.go:65`, `addon_admin.go:263` authenticate by key), and `website/public/admin/login.js` is session-only, so key-only recovery does not restore the dashboard.
+4. Treat `OZ_ADMIN_EMAIL` as write-once: it must never change after first boot, because a mid-session env change silently re-scopes who is admin.
+
+Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: a session-path lockout self-heals on restart, and equally a revoked admin session cannot be killed without one. A restart is not a way to remove an attacker who has the mailbox — they just request another OTP.
 
 > **Scaling beyond the free tier:** the unified image defaults to SQLite
 > (sync `/data/oz-pos.db` + PocketBase `/data/pb_data/`), which is fine for
