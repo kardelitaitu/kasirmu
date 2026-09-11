@@ -862,10 +862,24 @@ impl Store<'_> {
 
     /// Get total refunded amount for a sale.
     ///
-    /// Returns `Money::zero` in the sale's currency when no refunds exist
-    /// (callers use this as a balance check). Only refunds in the SALE's
-    /// currency are summed — a cross-currency refund line would not be
-    /// comparable and is excluded from the balance.
+    /// Returns `Money::zero` in the sale's currency when the sale genuinely has
+    /// no refunds — and an `Err` when the read itself failed. That distinction
+    /// is the whole point of this method: a locked row, a disk fault or an
+    /// interrupted write used to be swallowed into `Ok(0)` by an
+    /// `.unwrap_or(0)`, which reads exactly like "nothing refunded yet". The
+    /// in-tx over-refund guard in [`Store::create_refund`] had the same shape
+    /// and was converted (COR-25, see the note at the head of this file); this
+    /// public read was the last one left. Zero is zero, an error is an error.
+    ///
+    /// Only refunds in the SALE's currency are summed — a cross-currency refund
+    /// line would not be comparable and is excluded from the balance.
+    ///
+    /// How load-bearing this is today: it has NO production caller (verified
+    /// repo-wide — the only hits are this definition and tests), so nothing
+    /// bounds a refund on it and the conversion is hygiene, not a live money
+    /// bug. Fixed anyway because it is the exact shape a future balance check
+    /// would be handed, and the doc used to assert that callers already used it
+    /// as one.
     pub fn total_refunded_for_sale(&self, sale_id: &str) -> Result<Money, CoreError> {
         let row = self.conn.query_row(
             "SELECT total_minor, currency FROM sales WHERE id = ?1",
@@ -897,7 +911,11 @@ impl Store<'_> {
                 params![sale_id, sale_currency_str],
                 |row| row.get(0),
             )
-            .unwrap_or(0);
+            // Propagate, do not default: the `COALESCE(SUM(...), 0)` above
+            // already gives the honest zero for "no refund rows". Anything this
+            // query ERRORS on is a real failure, and turning that into 0 makes a
+            // fault indistinguishable from an un-refunded sale.
+            .map_err(CoreError::Db)?;
         Ok(Money {
             minor_units: total,
             currency: sale_currency,

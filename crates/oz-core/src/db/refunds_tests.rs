@@ -1822,3 +1822,85 @@ fn refund_still_credits_the_recorded_location_when_the_sku_is_named() {
         "and at the location the json recorded, not a default"
     );
 }
+
+// ── the fail-open money read, and the direction of the :589 bound ──────
+
+/// A database error must read as an error, not as "nothing refunded yet".
+/// HEAD swallowed the failed SUM with `.unwrap_or(0)`, so a locked row or a
+/// disk fault was indistinguishable from an un-refunded sale — the exact shape
+/// the in-tx over-refund guard was converted away from. Fails against HEAD.
+#[test]
+fn total_refunded_for_sale_reports_an_error_instead_of_a_bogus_zero() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    let s = store(&conn);
+
+    // The honest zero: the sale exists, no refunds exist, so 0 is the truth.
+    assert_eq!(
+        s.total_refunded_for_sale("ref-sale-1").unwrap().minor_units,
+        0,
+        "a genuinely un-refunded sale must still read zero, not error"
+    );
+
+    // Now make the read itself fail. The SUM query cannot run.
+    conn.execute_batch("DROP TABLE refunds").unwrap();
+    let shown = format!("{:?}", s.total_refunded_for_sale("ref-sale-1"));
+    assert!(
+        s.total_refunded_for_sale("ref-sale-1").is_err(),
+        "a broken read must not report 0 refunded, got {shown}"
+    );
+}
+
+/// Seed like `seed_completed_sale` but with a deduction entry that carries NO
+/// `qty` key, and a sale line that sold MORE than the counted deductions sum:
+/// sold 5, deductions contribute 2. Probes the DIRECTION of the `filter_map`
+/// at refunds.rs:589 — whether dropping a qty-less entry understates the bound
+/// (refuses more, fail CLOSED) or overstates what may be credited (fail open).
+fn seed_sale_with_a_qty_less_deduction(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('noqty-p1', 'MILK', 'Milk', 400, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('noqty-sale-1', 2000, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"noqty-sl-1\",\"sku\":\"MILK\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":2},{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\"}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('noqty-sl-1', 'noqty-sale-1', 'MILK', 5, 400, 2000, 'USD', 1);"
+    ).unwrap();
+}
+
+/// The bound is understated, so the refund is REFUSED: dropping the qty-less
+/// entry makes the check fire sooner, never later. A refund of 3 units against a
+/// counted deduction total of 2 is rejected even though the sale line sold 5 —
+/// if the sign were the other way this assert would be an `is_ok()`.
+#[test]
+fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() {
+    let conn = fresh();
+    seed_sale_with_a_qty_less_deduction(&conn);
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "noqty-sale-1",
+        price(1200),
+        "returned",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "noqty-sl-1",
+            "MILK",
+            3,
+            price(400),
+            price(1200),
+        )],
+    );
+    let err = s.create_refund(&refund).unwrap_err();
+    let shown = format!("{err:?}");
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "expected the cumulative-qty bound to refuse, got {shown}"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "and a refusal moves no stock");
+}
