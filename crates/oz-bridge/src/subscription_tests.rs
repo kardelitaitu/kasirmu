@@ -517,11 +517,11 @@ fn verdict_rejects_unknown_keys_fail_closed() {
     let conn = fresh_db();
     assert!(matches!(
         load_feature_verdict(&conn, "nobody", "analytics", "default", "retail-pos"),
-        Err(AppError::Invalid(_))
+        Err(BridgeError::Invalid(_))
     ));
     assert!(matches!(
         load_feature_verdict(&conn, "nobody", "max_stores", "default", "retail-pos"),
-        Err(AppError::Invalid(_))
+        Err(BridgeError::Invalid(_))
     ));
 }
 

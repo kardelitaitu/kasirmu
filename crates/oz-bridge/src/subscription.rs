@@ -749,3 +749,7 @@ pub fn push_dim_row(
         marked_at: now.to_string(),
     });
 }
+
+#[cfg(test)]
+#[path = "subscription_tests.rs"]
+mod subscription_tests;

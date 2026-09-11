@@ -178,9 +178,3 @@ fn push_dim_row(
         suspended,
     );
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "subscription_tests.rs"]
-mod tests;
