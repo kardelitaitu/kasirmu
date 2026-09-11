@@ -166,7 +166,9 @@ fn close_shift_includes_cash_refunds_in_expected_cash() {
          INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
                             created_at, updated_at, user_id, version)
          VALUES ('refund-sale-1', 1000, 'USD', 1, 'completed', 'cash',
-                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'user-1', 1);"
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'user-1', 1);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('sl-1', 'refund-sale-1', 'SKU', 1, 1000, 1000, 'USD', 1);"
     )
     .unwrap();
     s.create_refund(&crate::Refund::new(
