@@ -30,9 +30,11 @@ use crate::offline::OfflineQueueItem;
 
 /// Per-item outcome returned by the server's `POST /api/sync/push`.
 ///
-/// Mirrors `platform_sync::transport::PushOutcome` without depending on that
-/// crate (oz-core is a foundational crate).
-#[derive(Debug, Clone, Deserialize)]
+/// The single definition of this type: `platform_sync::transport` re-exports
+/// it (`pub use oz_core::sync_client::PushOutcome`), so both the
+/// `oz_core::sync_client::PushOutcome` and the
+/// `platform_sync::transport::PushOutcome` import paths resolve to this enum.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum PushOutcome {
     /// Item was accepted and applied by the server.

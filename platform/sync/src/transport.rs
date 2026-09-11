@@ -25,20 +25,11 @@ use serde::{Deserialize, Serialize};
 use crate::SyncError;
 
 /// Outcome of pushing a single item to the server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum PushOutcome {
-    /// Item was accepted and applied by the server.
-    Accepted,
-    /// Item conflicted with the server version. The server's version is
-    /// returned for local conflict resolution.
-    Conflict(OfflineQueueItem),
-    /// Item was rejected with a reason.
-    Rejected {
-        /// Human-readable reason for the rejection (e.g. "duplicate id").
-        reason: String,
-    },
-}
+///
+/// Single definition lives in [`oz_core::sync_client::PushOutcome`]; this
+/// re-export keeps the `platform_sync::transport::PushOutcome` import path
+/// compiling for cloud-server and in-crate callers.
+pub use oz_core::sync_client::PushOutcome;
 
 /// Response from the push endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
