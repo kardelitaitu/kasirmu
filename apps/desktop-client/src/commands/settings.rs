@@ -16,13 +16,20 @@ use tauri::State;
 
 use std::collections::HashMap;
 
+#[allow(unused_imports)]
+// the write commands moved to oz_bridge::settings; the relocated test surface may still depend on it
 use oz_core::permissions;
+#[allow(unused_imports)]
+// the write commands moved to oz_bridge::settings; the relocated test surface may still depend on it
 use oz_core::{Settings, Store, UserPreferences};
 
+#[allow(unused_imports)]
+// the write commands moved to oz_bridge::settings; the relocated test surface may still depend on it
 use platform_core::terminal_profile::TerminalProfile;
 
 #[allow(unused_imports)] // the writer commands and sibling settings_tests.rs depend on it
 use crate::commands::authz::require_permission_for_session;
+#[allow(unused_imports)] // set_setting gate sites moved to ctx.require_permission_for_user
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
