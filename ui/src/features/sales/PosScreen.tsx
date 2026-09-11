@@ -13,7 +13,6 @@ import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import { plainErrorMessage } from '@/utils/app-error';
-import { l10nErrorMessage } from '@/utils/app-error';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
@@ -49,18 +48,13 @@ import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { useCustomerDisplay } from './useCustomerDisplay';
+import { usePosShifts } from './hooks/usePosShifts';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
 import type { Promotion } from '@/api/promotions';
 import FastPINOverlay from '@/components/FastPINOverlay';
 import { overrideLinePriceScoped, overrideCartDeductionLocation } from '@/api/sales';
-import {
-  getActiveShiftScoped,
-  openShiftScoped,
-  closeShiftScoped,
-  type ShiftDto,
-} from '@/api/shifts';
 
 import './PosScreen.css';
 import './CartPanel.css';
@@ -527,23 +521,32 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
-  const activeShiftRef = useRef(activeShift);
-  activeShiftRef.current = activeShift;
-  const [shiftLoading, setShiftLoading] = useState(true);
-  // Live elapsed-shift clock: while a shift is open, tick every minute so
-  // the header can show a running "2h 15m" instead of the bare opening
-  // time (which read like a wall clock). The interval stops when the
-  // shift closes — activeShift → null runs the effect's cleanup.
-  const [shiftNow, setShiftNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!activeShift) return;
-    // Rebase the elapsed anchor the instant a shift becomes active so the
-    // first render is accurate even if the screen was mounted long before.
-    setShiftNow(Date.now());
-    const id = window.setInterval(() => setShiftNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-  }, [activeShift]);
+  const {
+    activeShift,
+    activeShiftRef,
+    shiftLoading,
+    shiftNow,
+    setShowCloseShift,
+    openShiftExit,
+    closingBalance,
+    setClosingBalance,
+    openingBalance,
+    setOpeningBalance,
+    shiftNotes,
+    setShiftNotes,
+    closingShift,
+    openingShift,
+    closeShiftError,
+    setCloseShiftError,
+    closedShiftSummary,
+    shiftErrorExit,
+    closeShiftExit,
+    shiftSummaryExit,
+    handleCloseShiftClick,
+    handleConfirmCloseShift,
+    handleOpenShiftClick,
+    handleConfirmOpenShift,
+  } = usePosShifts({ sessionToken, userId, lines, l10nRef });
   const [overrideTarget, setOverrideTarget] = useState<CartLine | null>(null);
   const [showFastPINOverlay, setShowFastPINOverlay] = useState(false);
   const [cartId, setCartId] = useState<CartId | null>(null);
@@ -584,53 +587,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       return null;
     }
   }, [cartId, addToast, sessionToken]);
-  const [showCloseShift, setShowCloseShift] = useState(false);
-  const [showOpenShift, setShowOpenShift] = useState(false);
-  // Fade the open-shift modal out before the parent setter flips
-  // showOpenShift to false. Used by Cancel + Escape + Open-success.
-  const openShiftExit = useExitAnimation(
-    showOpenShift,
-    () => setShowOpenShift(false),
-  );
-  const [closingBalance, setClosingBalance] = useState('');
-  const [openingBalance, setOpeningBalance] = useState('');
-  const [shiftNotes, setShiftNotes] = useState('');
-  const [closingShift, setClosingShift] = useState(false);
-  const [openingShift, setOpeningShift] = useState(false);
-  const [closeShiftError, setCloseShiftError] = useState<string | null>(null);
-  const [closedShiftSummary, setClosedShiftSummary] = useState<ShiftDto | null>(null);
-  // Fade the inline shift-error banner out. The error is set when
-  // the cashier tries to close the shift while the cart is not empty.
-  // Dismiss via × fades with a 200ms height-opacity mirror before
-  // clearing the error string.
-  const shiftErrorExit = useExitAnimation(
-    !!closeShiftError && !showCloseShift,
-    () => setCloseShiftError(null),
-  );
-
-  // Fade the close-shift confirmation modal out before the parent
-  // state flips. Used by Cancel + Escape. The confirm-success path
-  // that swaps to the summary view intentionally SNAPS (no fade on
-  // the confirmation) because the new summary has its own entry
-  // animation — adding an exit fade on the old one would visually
-  // double up with the new entry.
-  const closeShiftExit = useExitAnimation(
-    showCloseShift && !closedShiftSummary,
-    () => {
-      setShowCloseShift(false);
-      setCloseShiftError(null);
-    },
-  );
-  // Fade the close-shift success summary out before clearing all
-  // three related states. Used by the Done button.
-  const shiftSummaryExit = useExitAnimation(
-    !!closedShiftSummary,
-    () => {
-      setClosedShiftSummary(null);
-      setShowCloseShift(false);
-      setCloseShiftError(null);
-    },
-  );
 
   const handleAddProduct = useCallback(
     (product: Product, qty?: number) => {
@@ -666,20 +622,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       addToast({ message: 'Failed to record override', type: 'error' });
     }
   }, [cartId, sessionToken, addToast]);
-
-  // Load active shift on mount and when session changes.
-  useEffect(() => {
-    if (!userId) {
-      setActiveShift(null);
-      setShiftLoading(false);
-      return;
-    }
-    setShiftLoading(true);
-    getActiveShiftScoped(sessionToken)
-      .then((shift) => { setActiveShift(shift); })
-      .catch(() => { setActiveShift(null); })
-      .finally(() => setShiftLoading(false));
-  }, [userId, sessionToken]);
 
   // ── Barcode scanner integration ─────────────────────────────
   useBarcodeScanner({
@@ -1043,63 +985,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .then((s) => setShowTableNumberSetting(s.showTableNumber))
       .catch(() => addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' }));
   }, [addToast, sessionToken]); // l10n via ref — stable dep chain
-
-  const handleCloseShiftClick = useCallback(() => {
-    setCloseShiftError(null);
-    setClosedShiftSummary(null);
-    // Enforce: cart must be empty before closing shift.
-    if (lines.length > 0) {
-      setCloseShiftError(l10nRef.current.getString('pos-close-shift-cart-error'));
-      return;
-    }
-    setClosingBalance('');
-    setShiftNotes('');
-    setShowCloseShift(true);
-  }, [lines]); // l10n via ref
-
-  const handleConfirmCloseShift = useCallback(async () => {
-    if (!activeShift) return;
-    // Whole-number minor units — reject fractional input instead of
-    // silently truncating it via parseInt.
-    const balance = Number(closingBalance);
-    if (!Number.isInteger(balance) || balance < 0) return;
-
-    setClosingShift(true);
-    setCloseShiftError(null);
-    try {
-      const closed = await closeShiftScoped(sessionToken, activeShift.id, balance, shiftNotes.trim() || null);
-      setClosedShiftSummary(closed);
-      setActiveShift(null); // no longer active
-    } catch (err) {
-      const msg = l10nErrorMessage(err, l10nRef.current, 'pos-close-shift-failed');
-      setCloseShiftError(msg);
-    } finally {
-      setClosingShift(false);
-    }
-  }, [activeShift, closingBalance, shiftNotes, sessionToken]); // l10n via ref
-
-  const handleOpenShiftClick = useCallback(() => {
-    setOpeningBalance('');
-    setShowOpenShift(true);
-  }, []);
-
-  const handleConfirmOpenShift = useCallback(async () => {
-    const balance = Number(openingBalance);
-    const safeBalance = !Number.isNaN(balance) && Number.isInteger(balance) && balance >= 0 ? balance : 0;
-
-    setOpeningShift(true);
-    try {
-      const shift = await openShiftScoped(sessionToken, safeBalance);
-      setActiveShift(shift);
-      openShiftExit.requestClose();
-    } catch {
-      // Handled silently — shift open failure is rare.
-    } finally {
-      setOpeningShift(false);
-    }
-  }, [openingBalance, openShiftExit, sessionToken]);
-
-
 
   // ── Open Bill inline state ────────────────────────────────────
   const [showOpenBillInput, setShowOpenBillInput] = useState(false);
