@@ -178,6 +178,7 @@ impl TestBridge {
 
     /// Point `media_cache_dir` at a real directory (products-images tests).
     #[must_use]
+    #[allow(dead_code)] // retained TestBridge builder - harness API, not dead
     pub fn with_media_cache_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.media_cache_dir = Some(dir.into());
         self
@@ -192,6 +193,7 @@ impl TestBridge {
 
     /// Override the session TTL (expiry tests pass `0` or a negative value).
     #[must_use]
+    #[allow(dead_code)] // retained TestBridge builder - harness API, not dead
     pub fn with_session_ttl(mut self, seconds: i64) -> Self {
         self.session_ttl_seconds = seconds;
         self
@@ -212,6 +214,7 @@ impl TestBridge {
 
     /// Install a UI event sink (Wave D kds/hardware emit-path tests).
     #[must_use]
+    #[allow(dead_code)] // retained TestBridge builder - harness API, not dead
     pub fn with_emitter(mut self, sink: Arc<dyn EventSink>) -> Self {
         self.emitter = Some(sink);
         self

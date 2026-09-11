@@ -17,7 +17,6 @@ use crate::topology::persistence::save_topology_json_at_key_with_revision;
 use crate::topology::revisions::TopologyRevisionContext;
 use oz_core::migrations;
 use rusqlite::Connection;
-use serde_json::Value;
 use tempfile::tempdir;
 
 fn fresh_conn() -> rusqlite::Connection {

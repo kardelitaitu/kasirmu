@@ -55,7 +55,7 @@ mod desktop_shaped {
         crate::staff::get_staff_profile_scoped(ctx, &token, &user_id).await
     }
 }
-use desktop_shaped::{create_staff_scoped, get_staff_profile_scoped, update_staff_scoped};
+use desktop_shaped::{create_staff_scoped, update_staff_scoped};
 
 /// A complete ADR #35 D6 profile — creation requires the mandatory fields.
 fn profile() -> ProfileArgs {

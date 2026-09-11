@@ -114,9 +114,7 @@ mod desktop_shaped {
     }
 }
 use desktop_shaped::{
-    bootstrap_owner, create_role_scoped, create_staff_scoped, delete_role_scoped,
-    get_staff_profile_scoped, list_permission_keys_scoped, list_role_holders_scoped,
-    list_roles_scoped, list_staff_scoped, update_role_scoped, update_staff_scoped,
+    create_staff_scoped, list_roles_scoped, list_staff_scoped, update_staff_scoped,
 };
 
 /// A complete ADR #35 D6 profile for create/update fixtures.

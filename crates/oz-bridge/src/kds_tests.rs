@@ -1421,9 +1421,6 @@ async fn scoped_create_tickets_rejects_invalid_token() {
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
-use crate::kds_device::list_kds_devices;
-use crate::kds_routing::resolve_kds_targets;
-
 // ── Gap pins: resolve_kds_targets_scoped command-level routing ──────
 //
 // The integration tests above cover broadcast-mode and inactive-device
