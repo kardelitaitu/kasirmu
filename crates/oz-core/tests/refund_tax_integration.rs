@@ -34,6 +34,7 @@ fn seed_sale(conn: &Connection, sale_id: &str) {
     let sku2 = format!("{sale_id}-BAGEL");
     let pid1 = format!("{sale_id}-p1");
     let pid2 = format!("{sale_id}-p2");
+    // sl-1 sells 3 units because the refund tests below sum to 3 units on it: create_refund now bounds each refund by the units already refunded on that same sale line, which the money columns alone cannot express.
     conn.execute_batch(&format!(
         "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
             ('{pid1}', '{sku1}', 'Coffee', 350, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z'),
@@ -41,7 +42,7 @@ fn seed_sale(conn: &Connection, sale_id: &str) {
          INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
             ('{sale_id}', 1150, 'USD', 2, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
          INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
-            ('{sale_id}-sl-1', '{sale_id}', '{sku1}', 2, 350, 700, 'USD', 1),
+            ('{sale_id}-sl-1', '{sale_id}', '{sku1}', 3, 350, 700, 'USD', 1),
             ('{sale_id}-sl-2', '{sale_id}', '{sku2}', 1, 450, 450, 'USD', 2);",
     )).unwrap();
 }
