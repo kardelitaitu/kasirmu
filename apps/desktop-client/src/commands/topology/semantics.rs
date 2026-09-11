@@ -16,15 +16,19 @@
 // domain contract); this module re-exports the value-level helpers the
 // desktop layers consume and adapts validate_semantic_json's CoreError
 // onto the AppError::TopologyValidation wire shape.
-pub(crate) use oz_core::topology::{
-    has_semantic_fields, is_warehouse_operational_input_port, semantic_branch_profile_id,
-    semantic_node_type, value_string,
-};
+// Wave E step d retired has_semantic_fields, semantic_node_type and value_string
+// from this relay: their only desktop consumer was persistence, whose bodies now
+// live in the bridge and import them from oz_core directly. Both builds were
+// measured before deleting them, and the two names still needed -
+// semantic_branch_profile_id by commands.rs, is_warehouse_operational_input_port
+// by the test build - are kept, the second under cfg(test).
+pub(crate) use oz_core::topology::semantic_branch_profile_id;
 // Test-only consumers (the test modules glob semantics::* directly); kept
 // out of the library re-export so the lib build has no unused imports.
 #[cfg(test)]
 pub(crate) use oz_core::topology::{
-    is_warehouse_primary_input_port, shared_semantic_pairing_contains, shared_topology_semantics,
+    is_warehouse_operational_input_port, is_warehouse_primary_input_port,
+    shared_semantic_pairing_contains, shared_topology_semantics,
 };
 
 pub use oz_bridge::topology::semantics::*;
