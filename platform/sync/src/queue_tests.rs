@@ -1365,3 +1365,31 @@ fn remote_settings_batch_continues_past_a_refused_key() {
         let _ = key;
     }
 }
+
+/// The refused key must be ABSENT, not merely unchanged: with no local value
+/// seeded, a remote `settings.update` carrying a deny-listed key must leave no
+/// row behind after the legacy (non-atomic) dispatcher runs — asserted by
+/// reading the row back, because a warn line followed by a write is exactly
+/// what a log-based assertion would pass on. Companion to
+/// `remote_settings_batch_continues_past_a_refused_key`, which seeds a local
+/// value and asserts it is retained; both must hold for the early-return
+/// guard in the legacy settings arm to mean anything.
+#[test]
+fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+
+    for (id, key) in [
+        ("ingest-absent-sak", "sync_api_key"),
+        ("ingest-absent-mid", "machine_id"),
+    ] {
+        queue
+            .apply_remote(&store, &remote_settings_kv(id, key, "PLANTED"))
+            .unwrap();
+        assert_eq!(
+            Settings::get(store.conn(), key).unwrap(),
+            None,
+            "{key} was written by the legacy dispatcher despite the ingest policy refusal"
+        );
+    }
+}

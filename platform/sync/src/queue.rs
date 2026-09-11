@@ -692,9 +692,13 @@ impl SyncQueue {
             "settings.update" | "settings.change" => {
                 let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid settings payload: {e}")))?;
-                // Same accessor as the atomic arm. A refusal returns false,
-                // writes nothing, and consumes the item rather than retrying it
-                // forever; the accessor already emitted the warn line.
+                // Same accessor as the atomic arm, and the ONLY value write
+                // on this arm: a refusal returns false (the accessor warned,
+                // nothing was written) and the early return consumes the item
+                // rather than retrying it forever; an admit has already
+                // written the row through the funnel, so only the delta
+                // remains. No raw second write may follow — a refused key must
+                // never reach the database through any writer on this lane.
                 if !Settings::set_with_policy(
                     store.conn(),
                     &payload.key,
@@ -703,7 +707,6 @@ impl SyncQueue {
                 )? {
                     return Ok(());
                 }
-                Settings::set(store.conn(), &payload.key, &payload.value)?;
                 if let Err(e) = Settings::write_delta(
                     store.conn(),
                     &payload.key,
