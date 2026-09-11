@@ -39,6 +39,21 @@ pub enum BridgeError {
     /// Unknown/expired session token (mirrors `AppError::InvalidSession`).
     #[error("invalid or expired session")]
     InvalidSession,
+    /// Structured validation failure raised by the topology compiler
+    /// (mirrors `AppError::TopologyValidation`).
+    #[error("topology validation error: {message}")]
+    TopologyValidation {
+        /// Stable machine-readable validation code.
+        code: String,
+        /// Node associated with the failure, when applicable.
+        node_id: Option<String>,
+        /// Wire associated with the failure, when applicable.
+        wire_id: Option<String>,
+        /// Port associated with the failure, when applicable.
+        port_id: Option<String>,
+        /// Human-readable fallback message.
+        message: String,
+    },
     /// Catch-all (mirrors `AppError::Internal`).
     #[error("internal error: {0}")]
     Internal(String),

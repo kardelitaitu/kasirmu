@@ -239,6 +239,19 @@ impl From<BridgeError> for AppError {
             BridgeError::InvalidSession => Self::InvalidSession,
             BridgeError::Internal(message) => Self::Internal(message),
             BridgeError::Hardware { sub_kind, message } => Self::Hardware { sub_kind, message },
+            BridgeError::TopologyValidation {
+                code,
+                node_id,
+                wire_id,
+                port_id,
+                message,
+            } => Self::TopologyValidation {
+                code,
+                node_id,
+                wire_id,
+                port_id,
+                message,
+            },
             other => Self::Internal(other.to_string()),
         }
     }
