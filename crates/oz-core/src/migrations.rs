@@ -268,6 +268,20 @@ pub const ALL: &[Migration] = &[
         id: "20260930_sales_tax_estimate_note.sql",
         sql: include_str!("../migrations/20260930_sales_tax_estimate_note.sql"),
     },
+    // Tenant-scoped idempotency guard for POST /api/v1/sales: an opaque
+    // client-supplied Idempotency-Key header bound to the sale it created,
+    // keyed on (tenant_id, key) so one tenant can never resolve or block
+    // another tenant's key. Absent or blank keys store NULL and therefore
+    // never match, so the unguarded path stays byte-for-byte the current
+    // behaviour (new sale, 201). Uniqueness lives in an explicit UNIQUE index
+    // rather than a composite PRIMARY KEY so the NULL-key rows stay
+    // insertable, and there is no FK on sale_id because the claim row is
+    // written before the sale it guards. Date 20261001 sorts after the last
+    // sales DDL writer and touches no sales column.
+    Migration {
+        id: "20261001_sale_idempotency.sql",
+        sql: include_str!("../migrations/20261001_sale_idempotency.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

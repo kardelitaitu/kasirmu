@@ -412,6 +412,7 @@ RLS_TABLES = [
     "product_variants",
     "products",
     "refunds",
+    "sale_idempotency",
     "sale_lines",
     "sales",
     "sent_reports",

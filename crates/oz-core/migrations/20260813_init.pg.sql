@@ -544,6 +544,16 @@ CREATE TABLE IF NOT EXISTS receipt_formats (
     UNIQUE (scope_type, scope_id)
 );
 
+CREATE TABLE IF NOT EXISTS sale_idempotency (
+    tenant_id  TEXT NOT NULL DEFAULT 'default',
+    key        TEXT,
+    sale_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_idempotency_tenant_key
+    ON sale_idempotency(tenant_id, key);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -1865,6 +1875,9 @@ CREATE INDEX IF NOT EXISTS idx_refunds_sale_id ON refunds(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
 
+CREATE INDEX IF NOT EXISTS idx_sale_idempotency_sale
+    ON sale_idempotency(sale_id);
+
 CREATE INDEX IF NOT EXISTS idx_sale_lines_sale_id ON sale_lines(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_sale_lines_sku ON sale_lines(sku);
@@ -2150,9 +2163,9 @@ DECLARE
 BEGIN
     FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'locations', 'media_assets', 'media_thumbnails', 'memo_locations',
                             'memo_recipients', 'memos', 'offline_queue', 'payment_gateways', 'payment_settlements', 'product_activity',
-                            'product_bundles', 'product_taxes', 'product_variants', 'products', 'refunds', 'sale_lines',
-                            'sales', 'sent_reports', 'stripe_customers', 'sync_terminals', 'tax_rates', 'tenant_plans',
-                            'tenant_subscription', 'user_location_access', 'users']
+                            'product_bundles', 'product_taxes', 'product_variants', 'products', 'refunds', 'sale_idempotency',
+                            'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_terminals', 'tax_rates',
+                            'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (
