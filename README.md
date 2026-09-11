@@ -30,7 +30,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 
 - **Offline-first** — Operates without internet connectivity; sync when available
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
-- **Secure by default** — Encrypted backups, PAN masking, platform keychains
+- **Secure by default** — Encrypted `.ozpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
 - **Enterprise-grade code quality** — 8,709 Rust tests, 8,056 frontend test cases across 516 files, strict Clippy, typed Money, transactional DB
 
@@ -44,7 +44,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 | **Inventory** | Product management, categories, stock adjustments, purchase tracking, movement history |
 | **Customer Management** | Profiles, purchase history, loyalty support, CRM (dedicated module) |
 | **Reporting** | Daily sales, product performance, cash reconciliation, inventory reports, export |
-| **Security** | Encrypted backups (Argon2id + AES-256-GCM), PAN masking, TLS, platform keychain, audit logging |
+| **Security** | Encrypted `.ozpkg` snapshots (Argon2id + AES-256-GCM; whole-file `.db`/`.backup.db` backups are unencrypted), PAN masking, TLS, platform keychain, audit logging |
 | **Hardware** | Receipt printers, barcode scanners, cash drawers, customer displays, EDC payment terminals, weight scales — USB, Bluetooth, TCP, serial, plus mock drivers for testing |
 
 ---

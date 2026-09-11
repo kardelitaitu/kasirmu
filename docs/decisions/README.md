@@ -6,7 +6,7 @@ an ADR in this directory (`docs/decisions/`). Each ADR follows the
 its header. Some ADRs have a companion `*.status.md` file with a fuller
 implementation-status walkthrough.
 
-- Numbered ADRs (#1–#51) are the primary record. **Seven numbers are unused** —
+- Numbered ADRs (#1–#52) are the primary record. **Seven numbers are unused** —
   #16 and #24–#29 are claimed by no file and cited by nothing anywhere in the repo
   (verified: zero references to `ADR #16` or `ADR #24`–`#29` in any `*.md`). They are
   skipped numbers, not lost documents; do not go looking for them.
