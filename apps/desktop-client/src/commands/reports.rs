@@ -552,7 +552,3 @@ pub async fn build_custom_report_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "reports_tests.rs"]
-mod tests;

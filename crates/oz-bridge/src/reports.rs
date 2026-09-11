@@ -614,3 +614,7 @@ pub async fn build_custom_report_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     Ok(Store::new(&db).build_custom_report(request)?)
 }
+
+#[cfg(test)]
+#[path = "reports_tests.rs"]
+mod reports_tests;

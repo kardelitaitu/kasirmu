@@ -1,21 +1,38 @@
-use super::*;
-use oz_core::session::SessionContext;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
+//! Unit tests for the report command bodies (Wave-A test relocation: moved
+//! out of `apps/desktop-client/src/commands/reports_tests.rs`).
+//!
+//! Mounted at the foot of `reports.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the scoped report operations, the pure validators
+//! and the `MAX_*` bounds exactly as the desktop sibling module did.
+//!
+//! Harness mapping: the desktop file built a Tauri mock app over
+//! `AppState::for_test` / `AppState::for_test_with_conn` and swapped in a
+//! temp-dir `StoreDatabaseManager`; here `TestBridge::new().with_conn(conn)`
+//! supplies the same shape headlessly (the harness's own unique store
+//! directory stands in for the temp dir, so `tempfile` is not needed), and
+//! sessions are seeded into `tb.sessions()` before the context is used. The
+//! scoped operations stay async - they are `pub async fn` in the bridge too -
+//! so `#[tokio::test]` and `.await` are preserved; only the desktop wrapper's
+//! `String` tokens became `&str` and the trailing state argument became
+//! `&state.ctx()`.
 
-/// Build a test AppState with a session and a fresh temp-dir db_manager.
+use super::*;
+use crate::testing::TestBridge;
+use oz_core::session::SessionContext;
+
+/// Build a headless test bridge over a seeded global identity DB, with the
+/// session pre-inserted - the bridge stand-in for the desktop helper that
+/// assembled `AppState::for_test_with_conn` plus a temp-dir db_manager (the
+/// harness ships its own unique-temp-dir per-store manager).
 fn scoped_state(
     conn: rusqlite::Connection,
     token: &str,
     user_id: &str,
     role_id: &str,
     store_id: &str,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> TestBridge {
+    let state = TestBridge::new().with_conn(conn);
+    state.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new(
             user_id.into(),
@@ -33,9 +50,10 @@ fn scoped_state(
 
 #[tokio::test]
 async fn scoped_report_rejects_invalid_session() {
-    let state = AppState::for_test();
-    let result = resolve_report_scope(&state, "missing-token", permissions::REPORTS_VIEW).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let state = TestBridge::new();
+    let result =
+        resolve_report_scope(&state.ctx(), "missing-token", permissions::REPORTS_VIEW).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
@@ -51,8 +69,9 @@ async fn scoped_report_denies_user_without_reports_permission() {
     .unwrap();
 
     let state = scoped_state(conn, "custom-token", "user-custom", "role-owner", "store-1");
-    let result = resolve_report_scope(&state, "custom-token", permissions::REPORTS_VIEW).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result =
+        resolve_report_scope(&state.ctx(), "custom-token", permissions::REPORTS_VIEW).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[test]
@@ -123,9 +142,9 @@ fn trend_args_rejects_unbounded_top_categories() {
 
 #[tokio::test]
 async fn scoped_report_rejects_empty_token() {
-    let state = AppState::for_test();
-    let result = resolve_report_scope(&state, "", permissions::REPORTS_VIEW).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let state = TestBridge::new();
+    let result = resolve_report_scope(&state.ctx(), "", permissions::REPORTS_VIEW).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
@@ -141,7 +160,7 @@ async fn scoped_report_returns_conn_for_valid_session() {
     .unwrap();
 
     let state = scoped_state(conn, "rpt-token", "user-rpt", "role-owner", "store-1");
-    let result = resolve_report_scope(&state, "rpt-token", permissions::REPORTS_VIEW).await;
+    let result = resolve_report_scope(&state.ctx(), "rpt-token", permissions::REPORTS_VIEW).await;
     assert!(result.is_ok(), "valid session should resolve scope");
 }
 
@@ -176,19 +195,9 @@ async fn daily_revenue_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_daily_revenue_scoped(
-        "bad-token".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result =
+        get_daily_revenue_scoped(&state.ctx(), "bad-token", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
@@ -196,19 +205,9 @@ async fn weekly_revenue_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_weekly_revenue_scoped(
-        "bad-token".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result =
+        get_weekly_revenue_scoped(&state.ctx(), "bad-token", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
@@ -216,19 +215,9 @@ async fn monthly_revenue_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_monthly_revenue_scoped(
-        "bad-token".into(),
-        "2026-01-01".into(),
-        "2026-12-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result =
+        get_monthly_revenue_scoped(&state.ctx(), "bad-token", "2026-01-01", "2026-12-31").await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── Staff permission denial tests (staff has no REPORTS_VIEW) ─────
@@ -239,19 +228,8 @@ async fn staff_denied_daily_revenue() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_daily_revenue_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_daily_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -260,19 +238,8 @@ async fn staff_denied_weekly_revenue() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_weekly_revenue_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_weekly_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -281,19 +248,8 @@ async fn staff_denied_monthly_revenue() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_monthly_revenue_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-12-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_monthly_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-12-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -302,21 +258,16 @@ async fn staff_denied_top_products() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     let result = get_top_products_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
+        &state.ctx(),
+        "tok",
+        "2026-01-01",
+        "2026-01-31",
         10,
-        "revenue".into(),
-        app.state(),
+        "revenue",
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -325,13 +276,8 @@ async fn staff_denied_low_stock_alerts() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_low_stock_alerts_scoped("tok".into(), 5, app.state()).await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_low_stock_alerts_scoped(&state.ctx(), "tok", 5).await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -340,19 +286,9 @@ async fn staff_denied_category_breakdown() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_category_breakdown_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result =
+        get_category_breakdown_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -361,19 +297,9 @@ async fn staff_denied_payment_method_breakdown() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_payment_method_breakdown_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result =
+        get_payment_method_breakdown_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -382,19 +308,9 @@ async fn staff_denied_voided_sales_summary() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_voided_sales_summary_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result =
+        get_voided_sales_summary_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -403,19 +319,8 @@ async fn staff_denied_basket_size() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_basket_size_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_basket_size_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -424,19 +329,9 @@ async fn staff_denied_discounts_summary() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_discounts_summary_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result =
+        get_discounts_summary_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -445,20 +340,15 @@ async fn staff_denied_inventory_turnover() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     let result = get_inventory_turnover_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        "loc-default".into(),
-        app.state(),
+        &state.ctx(),
+        "tok",
+        "2026-01-01",
+        "2026-01-31",
+        "loc-default",
     )
     .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -467,19 +357,8 @@ async fn staff_denied_table_turnover() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_table_turnover_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_table_turnover_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 #[tokio::test]
@@ -488,19 +367,8 @@ async fn staff_denied_customer_split() {
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_customer_split_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
-    assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    let result = get_customer_split_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
+    assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
 
 // ── Owner empty-data reports (no sales → empty results) ──────────
@@ -510,18 +378,7 @@ async fn owner_daily_revenue_empty_when_no_sales() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_daily_revenue_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result = get_daily_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access daily revenue");
 }
 
@@ -530,18 +387,13 @@ async fn owner_top_products_empty_when_no_sales() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     let result = get_top_products_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
+        &state.ctx(),
+        "tok",
+        "2026-01-01",
+        "2026-01-31",
         10,
-        "revenue".into(),
-        app.state(),
+        "revenue",
     )
     .await;
     assert!(result.is_ok(), "owner should access top products");
@@ -552,12 +404,7 @@ async fn owner_low_stock_alerts_empty_when_no_products() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_low_stock_alerts_scoped("tok".into(), 5, app.state()).await;
+    let result = get_low_stock_alerts_scoped(&state.ctx(), "tok", 5).await;
     assert!(result.is_ok(), "owner should access low stock alerts");
     assert!(result.unwrap().is_empty());
 }
@@ -567,18 +414,8 @@ async fn owner_category_breakdown_empty_when_no_sales() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_category_breakdown_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result =
+        get_category_breakdown_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access category breakdown");
 }
 
@@ -587,18 +424,7 @@ async fn owner_weekly_revenue_empty_when_no_sales() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_weekly_revenue_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result = get_weekly_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access weekly revenue");
 }
 
@@ -607,18 +433,7 @@ async fn owner_monthly_revenue_empty_when_no_sales() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_monthly_revenue_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-12-31".into(),
-        app.state(),
-    )
-    .await;
+    let result = get_monthly_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-12-31").await;
     assert!(result.is_ok(), "owner should access monthly revenue");
 }
 
@@ -627,18 +442,8 @@ async fn owner_payment_method_breakdown_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_payment_method_breakdown_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result =
+        get_payment_method_breakdown_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(
         result.is_ok(),
         "owner should access payment method breakdown"
@@ -650,18 +455,8 @@ async fn owner_voided_sales_summary_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_voided_sales_summary_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result =
+        get_voided_sales_summary_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access voided sales summary");
 }
 
@@ -670,18 +465,7 @@ async fn owner_basket_size_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_basket_size_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result = get_basket_size_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access basket size");
 }
 
@@ -690,18 +474,8 @@ async fn owner_discounts_summary_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_discounts_summary_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result =
+        get_discounts_summary_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access discounts summary");
 }
 
@@ -710,17 +484,12 @@ async fn owner_inventory_turnover_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
     let result = get_inventory_turnover_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        "loc-default".into(),
-        app.state(),
+        &state.ctx(),
+        "tok",
+        "2026-01-01",
+        "2026-01-31",
+        "loc-default",
     )
     .await;
     assert!(result.is_ok(), "owner should access inventory turnover");
@@ -731,18 +500,7 @@ async fn owner_table_turnover_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_table_turnover_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result = get_table_turnover_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access table turnover");
 }
 
@@ -751,17 +509,6 @@ async fn owner_customer_split_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = get_customer_split_scoped(
-        "tok".into(),
-        "2026-01-01".into(),
-        "2026-01-31".into(),
-        app.state(),
-    )
-    .await;
+    let result = get_customer_split_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
     assert!(result.is_ok(), "owner should access customer split");
 }
