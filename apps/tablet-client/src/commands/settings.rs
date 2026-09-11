@@ -16,6 +16,7 @@ use tauri::command;
 
 use std::collections::HashMap;
 
+use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
 use oz_core::permissions;
 use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use oz_core::{Settings, Store, UserPreferences};
@@ -575,12 +576,37 @@ pub async fn set_setting(
 /// Business logic for `set_setting` (extracted for testing).
 /// Uses `set_tracked` so every settings change writes a delta record
 /// (ADR #22) — the basis for version-LWW when the change syncs.
+///
+/// Twin of `oz_bridge::settings::run_set_setting`: this shell has its own
+/// write funnel, not the bridge's, so the `smtp_config` exception has to be
+/// made here too or the same save destroys the stored password on tablet.
+/// `smtp_config` is deny-listed against [`run_get_setting`], so the
+/// email-report card cannot read the stored password back and posts a blob
+/// whose `password` is null; the key's owner answers what should land and
+/// the write still goes through the tracked path so the delta is recorded.
 fn run_set_setting(
     conn: &rusqlite::Connection,
     key: &str,
     value: &str,
     terminal_id: &str,
 ) -> Result<(), AppError> {
+    // Manager-owned keys (`local_api.*`, `lan_server.*`) are refused with the
+    // SAME shared predicate the desktop bridge refuses them with and the sync
+    // egress policy admits against (`IngestPolicy::RemoteSync`) — no
+    // tablet-side prefix list, so the shells cannot drift on what the
+    // prefixes mean. Mirrors `oz_bridge::settings::run_set_setting`.
+    if platform_core::settings::is_manager_owned_key(key) {
+        return Err(AppError::Invalid(format!(
+            "{key} is managed by its dedicated manager controls — use those"
+        )));
+    }
+    let merged;
+    let value = if key == SMTP_CONFIG_SETTINGS_KEY {
+        merged = Store::new(conn).merged_smtp_password_json(value)?;
+        &merged
+    } else {
+        value
+    };
     Ok(Settings::set_tracked(conn, key, value, terminal_id)?)
 }
 

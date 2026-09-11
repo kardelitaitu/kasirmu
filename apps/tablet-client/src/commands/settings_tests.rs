@@ -496,7 +496,10 @@ fn get_setting_redacts_secret_keys() {
     let conn = fresh_conn();
     run_set_setting(&conn, "sync_api_key", "secret-key", "t").unwrap();
     run_set_setting(&conn, "pg_sync.password", "db-pass", "t").unwrap();
-    run_set_setting(&conn, "lan_server.psk", "psk-val", "t").unwrap();
+    // lan_server.* is manager-owned: the guarded writer rejects it (see
+    // run_set_setting_rejects_lan_server_bind), so seed it raw — same as the
+    // desktop bridge's redaction test.
+    Settings::set(&conn, "lan_server.psk", "psk-val").unwrap();
     run_set_setting(&conn, "smtp_config", "smtp-secret", "t").unwrap();
     run_set_setting(&conn, "stripe.api_key", "sk_test_stripe", "t").unwrap();
     run_set_setting(&conn, "square.api_key", "sq_test_square", "t").unwrap();
@@ -513,6 +516,65 @@ fn get_setting_redacts_secret_keys() {
     assert_eq!(
         run_get_setting(&conn, "store.name").unwrap(),
         Some("My Store".into())
+    );
+}
+
+/// Manager-owned keys (`local_api.*`, `lan_server.*`) must be refused by the
+/// tablet write funnel exactly as the desktop bridge refuses them — the shared
+/// `platform_core::settings::is_manager_owned_key` predicate is the rule, so
+/// the two shells cannot drift on what the prefixes mean. A tablet save of
+/// `local_api.secret` would silently replace the Local API signing secret.
+#[test]
+fn run_set_setting_rejects_local_api_secret_and_writes_nothing() {
+    let conn = fresh_conn();
+    let err = run_set_setting(&conn, "local_api.secret", "attacker-secret", "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m) if m.contains("local_api.secret")),
+        "refusal must be the bridge-shaped Invalid error naming the key: {err:?}"
+    );
+    // And nothing was persisted — no value, no delta row.
+    assert!(
+        Settings::get(&conn, "local_api.secret").unwrap().is_none(),
+        "a refused write must not reach the settings table"
+    );
+    assert!(
+        Settings::get_version(&conn, "local_api.secret", "term-1")
+            .unwrap()
+            .is_none(),
+        "a refused write must not create a delta row either"
+    );
+}
+
+/// lan_server.* is the same manager-owned class (PSK + bind + enabled owned by
+/// the LAN server module): the tablet funnel must refuse it too.
+#[test]
+fn run_set_setting_rejects_lan_server_bind() {
+    let conn = fresh_conn();
+    let err = run_set_setting(&conn, "lan_server.bind", "0.0.0.0:48080", "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m) if m.contains("lan_server.bind")),
+        "refusal must name the key: {err:?}"
+    );
+    assert!(
+        Settings::get(&conn, "lan_server.bind").unwrap().is_none(),
+        "a refused write must not reach the settings table"
+    );
+}
+
+/// Control: a guard that refused EVERYTHING would pass the two tests above
+/// and fail the shop — an ordinary store-owned key must still land through
+/// the tracked path, exactly as before the guard existed.
+#[test]
+fn run_set_setting_store_name_control_still_writes() {
+    let conn = fresh_conn();
+    run_set_setting(&conn, "store.name", "My Store", "term-1").unwrap();
+    assert_eq!(
+        Settings::get(&conn, "store.name").unwrap(),
+        Some("My Store".into())
+    );
+    assert_eq!(
+        Settings::get_version(&conn, "store.name", "term-1").unwrap(),
+        Some(1)
     );
 }
 
