@@ -19,9 +19,7 @@ use crate::state::AppState;
 
 // The settings DTOs are defined in oz_bridge::settings (Wave E) and re-exported
 // here because they name the types in the command signatures below, which are
-// the IPC wire surface the renderer invokes. is_non_exportable_key is
-// re-exported for commands/data.rs, which reaches it through this module.
-pub(crate) use oz_bridge::settings::is_non_exportable_key;
+// the IPC wire surface the renderer invokes.
 pub use oz_bridge::settings::{
     CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, HardwareSettingsDto,
     ReceiptSettingsDto, StoreSettingsDto, UserPrefEntry,
