@@ -420,10 +420,9 @@ async fn daemon_starts_stopped() {
 async fn daemon_start_and_stop() {
     let db = setup_db();
     let daemon = PgSyncDaemon::new();
-    daemon.start(db).await;
+    assert!(daemon.start(db).await);
     assert!(daemon.is_running().await);
-    daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(daemon.stop().await, "stop must confirm the run loop exited");
     assert!(!daemon.is_running().await);
 }
 
@@ -441,20 +440,29 @@ async fn daemon_status_defaults() {
 #[tokio::test]
 async fn daemon_stop_when_not_running_is_noop() {
     let daemon = PgSyncDaemon::new();
-    daemon.stop().await;
+    assert!(
+        daemon.stop().await,
+        "stop with nothing running reports stopped"
+    );
     assert!(!daemon.is_running().await);
 }
 
+/// Regression (silent-success start): a start on a live daemon used to log
+/// a warning and return `()`, which the IPC command surfaced as `Ok(())` —
+/// the caller could not tell that no new daemon was spawned. The second
+/// start now reports `false` explicitly.
 #[tokio::test]
-async fn daemon_double_start_is_noop() {
+async fn daemon_double_start_reports_already_running() {
     let db = setup_db();
     let daemon = PgSyncDaemon::new();
-    daemon.start(db.clone()).await;
+    assert!(daemon.start(db.clone()).await);
     assert!(daemon.is_running().await);
-    daemon.start(db).await;
+    assert!(
+        !daemon.start(db).await,
+        "a start on a live daemon must report that it did NOT spawn"
+    );
     assert!(daemon.is_running().await);
-    daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(daemon.stop().await);
     assert!(!daemon.is_running().await);
 }
 
@@ -611,11 +619,10 @@ fn pending_count_zero_when_empty() {
 async fn daemon_stop_twice_is_idempotent() {
     let db = setup_db();
     let daemon = PgSyncDaemon::new();
-    daemon.start(db).await;
+    assert!(daemon.start(db).await);
     assert!(daemon.is_running().await);
-    daemon.stop().await;
-    daemon.stop().await; // second stop should be safe
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(daemon.stop().await);
+    assert!(daemon.stop().await, "second stop should be safe");
     assert!(!daemon.is_running().await);
 }
 
@@ -632,6 +639,50 @@ async fn daemon_stops_cleanly_with_short_interval() {
     assert!(!daemon.is_running().await);
 }
 
+/// Regression (stop/start race): `stop()` used to sleep a fixed 100ms and
+/// return while the run loop could still be mid-cycle — the `running` flag
+/// survived, the next `start()` was silently swallowed by the
+/// already-running guard, and the daemon stayed dead until app restart.
+/// Hold the DB lock to pin a tick mid-flight (the same window a slow
+/// remote round trip produces), prove `stop()` waits for the loop to
+/// exit, and prove an immediate `start()` brings the daemon back up.
+#[tokio::test]
+async fn daemon_stop_then_immediate_start_yields_running_daemon() {
+    let db = setup_db();
+    let daemon = PgSyncDaemon::with_interval(Duration::from_millis(10));
+    assert!(daemon.start(db.clone()).await);
+    assert!(daemon.is_running().await);
+
+    // Hold the DB lock so a tick's spawn_blocking phase blocks
+    // mid-cycle; released ~300ms in so the tick can finish after
+    // stop() has committed to waiting for it.
+    let blocker_db = db.clone();
+    let blocker = tokio::spawn(async move {
+        let _guard = blocker_db.lock().await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    assert!(
+        daemon.stop().await,
+        "stop must wait for the in-flight cycle and confirm the loop exited"
+    );
+    assert!(
+        !daemon.is_running().await,
+        "running must be cleared by the time stop() returns"
+    );
+
+    // The race this pins: start immediately after stop.
+    assert!(
+        daemon.start(db).await,
+        "start immediately after stop must spawn a new daemon"
+    );
+    assert!(daemon.is_running().await);
+    assert!(daemon.stop().await);
+
+    blocker.await.unwrap();
+}
+
 // ── Status tracking ────────────────────────────────────────────
 
 #[tokio::test]
@@ -639,10 +690,9 @@ async fn daemon_status_updates_running_flag() {
     let db = setup_db();
     let daemon = PgSyncDaemon::new();
     assert!(!daemon.status().await.running);
-    daemon.start(db).await;
+    assert!(daemon.start(db).await);
     assert!(daemon.status().await.running);
-    daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(daemon.stop().await);
     assert!(!daemon.status().await.running);
 }
 

@@ -32,6 +32,13 @@ use crate::{SyncError, SyncResult, import_snapshot};
 /// typically less time-sensitive than HTTP sync).
 const DEFAULT_PG_SYNC_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Grace period [`PgSyncDaemon::stop`] allows the run loop to finish an
+/// in-flight sync cycle before giving up and reporting a timeout. A tick
+/// performs real remote round trips (each bounded by the transport's 30s
+/// request ceiling), so a grace shorter than one request cycle — the old
+/// fixed 100ms sleep — could never cover an in-flight cycle.
+const PG_STOP_GRACE: Duration = Duration::from_secs(30);
+
 /// Snapshot of the PG daemon's current state, observable via
 /// [`PgSyncDaemon::status`]. Serialized camelCase for the Tauri command
 /// boundary (the desktop client's `pg_sync_status` IPC returns this
@@ -67,6 +74,11 @@ pub struct PgSyncDaemon {
     interval: Duration,
     status: Arc<RwLock<PgDaemonStatus>>,
     shutdown_tx: Arc<Mutex<Option<watch::Sender<bool>>>>,
+    /// Join handle of the spawned run-loop task. [`PgSyncDaemon::stop`]
+    /// awaits it (bounded by [`PG_STOP_GRACE`]) so a stop observes the
+    /// actual loop exit — and the `running` flag being cleared — instead
+    /// of guessing with a sleep.
+    worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     settings_sink: SettingsChangedSink,
 }
 
@@ -77,6 +89,7 @@ impl PgSyncDaemon {
             interval: DEFAULT_PG_SYNC_INTERVAL,
             status: Arc::new(RwLock::new(PgDaemonStatus::default())),
             shutdown_tx: Arc::new(Mutex::new(None)),
+            worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
         }
     }
@@ -87,6 +100,7 @@ impl PgSyncDaemon {
             interval,
             status: Arc::new(RwLock::new(PgDaemonStatus::default())),
             shutdown_tx: Arc::new(Mutex::new(None)),
+            worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
         }
     }
@@ -98,9 +112,12 @@ impl PgSyncDaemon {
     /// 2. Pushes pending items to the remote PostgreSQL database
     /// 3. Updates item statuses in the local DB
     ///
-    /// If the daemon is already running, this is a no-op.
-    pub async fn start(&self, db: DbConnection) {
-        self.start_inner(db, self.settings_sink.clone()).await;
+    /// Returns `true` when a new daemon task was spawned, `false` when the
+    /// daemon was already running. The boolean is an explicit report — the
+    /// historical silent no-op made an already-running start
+    /// indistinguishable from a fresh one at the IPC boundary.
+    pub async fn start(&self, db: DbConnection) -> bool {
+        self.start_inner(db, self.settings_sink.clone()).await
     }
 
     /// Start the background PG sync daemon with a custom settings-change
@@ -111,20 +128,28 @@ impl PgSyncDaemon {
     /// terminal — the desktop client uses this to emit the `settings_updated`
     /// Tauri event so the UI refetches a setting changed on a remote
     /// PostgreSQL terminal.
-    pub async fn start_with_sink(&self, db: DbConnection, settings_sink: SettingsChangedSink) {
-        self.start_inner(db, settings_sink).await;
+    /// Returns `true` when a new daemon task was spawned, `false` when one
+    /// was already running (same contract as [`PgSyncDaemon::start`]).
+    pub async fn start_with_sink(
+        &self,
+        db: DbConnection,
+        settings_sink: SettingsChangedSink,
+    ) -> bool {
+        self.start_inner(db, settings_sink).await
     }
 
     /// Shared start path used by [`PgSyncDaemon::start`] and
-    /// [`PgSyncDaemon::start_with_sink`].
-    async fn start_inner(&self, db: DbConnection, settings_sink: SettingsChangedSink) {
+    /// [`PgSyncDaemon::start_with_sink`]. Returns `true` when a new daemon
+    /// task was spawned, `false` when one was already running.
+    async fn start_inner(&self, db: DbConnection, settings_sink: SettingsChangedSink) -> bool {
         if self.is_running().await {
             tracing::warn!("pg sync daemon is already running");
-            return;
+            return false;
         }
 
         let (tx, rx) = watch::channel(false);
-        *self.shutdown_tx.lock().await = Some(tx);
+        let shutdown_slot = Arc::clone(&self.shutdown_tx);
+        *shutdown_slot.lock().await = Some(tx);
 
         let interval = self.interval;
         let daemon_status = Arc::clone(&self.status);
@@ -135,7 +160,7 @@ impl PgSyncDaemon {
             s.last_error = None;
         }
 
-        tokio::spawn(async move {
+        let worker = tokio::spawn(async move {
             let mut rx = rx;
 
             tracing::info!(interval_ms = interval.as_millis(), "pg sync daemon started");
@@ -154,9 +179,18 @@ impl PgSyncDaemon {
                 }
             }
 
-            let mut s = daemon_status.write().await;
-            s.running = false;
+            // Clear `running` only when this run still owns the shutdown
+            // slot: `stop()` consumes the sender before awaiting exit, so a
+            // slot that is `Some` again means a newer run took over and a
+            // stale task must not clobber the new run's status.
+            if shutdown_slot.lock().await.is_none() {
+                let mut s = daemon_status.write().await;
+                s.running = false;
+            }
         });
+
+        *self.worker.lock().await = Some(worker);
+        true
     }
 
     /// Run a single PG sync tick: read -> send -> apply.
@@ -512,11 +546,30 @@ impl PgSyncDaemon {
     }
 
     /// Gracefully stop the background PG sync daemon.
-    pub async fn stop(&self) {
-        let tx = self.shutdown_tx.lock().await.take();
-        if let Some(tx) = tx {
+    ///
+    /// Signals the run loop and then WAITS for it to exit — including an
+    /// in-flight sync cycle — for up to [`PG_STOP_GRACE`]. Returns `true`
+    /// when the loop exit was observed (so `running` is cleared and an
+    /// immediate [`PgSyncDaemon::start`] can take over); `false` means the
+    /// grace expired with the loop still running — the timeout is reported
+    /// to the caller and logged, never pretended away. The loop keeps
+    /// exiting in the background and clears `running` when it finishes.
+    pub async fn stop(&self) -> bool {
+        if let Some(tx) = self.shutdown_tx.lock().await.take() {
             let _ = tx.send(true);
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let Some(worker) = self.worker.lock().await.take() else {
+            return true;
+        };
+        match tokio::time::timeout(PG_STOP_GRACE, worker).await {
+            Ok(_) => true,
+            Err(_) => {
+                tracing::error!(
+                    grace_ms = PG_STOP_GRACE.as_millis() as u64,
+                    "pg sync daemon stop timed out — the run loop is still finishing its cycle in the background"
+                );
+                false
+            }
         }
     }
 

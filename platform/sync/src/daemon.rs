@@ -37,6 +37,13 @@ const DEFAULT_SYNC_INTERVAL: Duration = Duration::from_secs(30);
 /// Maximum backoff cap in milliseconds (60 s).
 const MAX_BACKOFF_MS: u64 = 60_000;
 
+/// Grace period [`SyncDaemon::stop`] allows the run loop to finish an
+/// in-flight sync cycle before giving up and reporting a timeout. A tick
+/// performs real HTTP round trips (each bounded by the transport's 30s
+/// request ceiling), so a grace shorter than one request cycle — the old
+/// fixed 100ms sleep — could never cover an in-flight cycle.
+const DAEMON_STOP_GRACE: Duration = Duration::from_secs(30);
+
 /// Compute exponential backoff with full jitter (P-1 spec §Backoff).
 ///
 /// Formula: `rand(0, min(MAX_BACKOFF_MS, 2_000 * 2^failures))` ms.
@@ -95,6 +102,11 @@ pub struct SyncDaemon {
     interval: Duration,
     status: Arc<RwLock<DaemonStatus>>,
     shutdown_tx: Arc<Mutex<Option<watch::Sender<bool>>>>,
+    /// Join handle of the spawned run-loop task. [`SyncDaemon::stop`]
+    /// awaits it (bounded by [`DAEMON_STOP_GRACE`]) so a stop observes
+    /// the actual loop exit — and the `running` flag being cleared —
+    /// instead of guessing with a sleep.
+    worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     settings_sink: SettingsChangedSink,
 }
 
@@ -250,6 +262,7 @@ impl SyncDaemon {
             interval: DEFAULT_SYNC_INTERVAL,
             status: Arc::new(RwLock::new(DaemonStatus::default())),
             shutdown_tx: Arc::new(Mutex::new(None)),
+            worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
         }
     }
@@ -260,6 +273,7 @@ impl SyncDaemon {
             interval,
             status: Arc::new(RwLock::new(DaemonStatus::default())),
             shutdown_tx: Arc::new(Mutex::new(None)),
+            worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
         }
     }
@@ -274,9 +288,12 @@ impl SyncDaemon {
     /// Config is read from the DB every tick, so setting changes take
     /// effect on the next cycle without restarting.
     ///
-    /// If the daemon is already running, this is a no-op.
-    pub async fn start(&self, db: DbConnection) {
-        self.start_inner(db, self.settings_sink.clone()).await;
+    /// Returns `true` when a new daemon task was spawned, `false` when the
+    /// daemon was already running. The boolean is an explicit report — the
+    /// historical silent no-op made an already-running start
+    /// indistinguishable from a fresh one at the IPC boundary.
+    pub async fn start(&self, db: DbConnection) -> bool {
+        self.start_inner(db, self.settings_sink.clone()).await
     }
 
     /// Start the background sync daemon with a custom settings-change sink
@@ -286,20 +303,28 @@ impl SyncDaemon {
     /// phase applies, carrying the changed key and its originating terminal
     /// — the desktop client uses this to emit the `settings_updated` Tauri
     /// event so the UI refetches a setting changed on another terminal.
-    pub async fn start_with_sink(&self, db: DbConnection, settings_sink: SettingsChangedSink) {
-        self.start_inner(db, settings_sink).await;
+    /// Returns `true` when a new daemon task was spawned, `false` when one
+    /// was already running (same contract as [`SyncDaemon::start`]).
+    pub async fn start_with_sink(
+        &self,
+        db: DbConnection,
+        settings_sink: SettingsChangedSink,
+    ) -> bool {
+        self.start_inner(db, settings_sink).await
     }
 
     /// Shared start path used by [`SyncDaemon::start`] and
-    /// [`SyncDaemon::start_with_sink`].
-    async fn start_inner(&self, db: DbConnection, settings_sink: SettingsChangedSink) {
+    /// [`SyncDaemon::start_with_sink`]. Returns `true` when a new daemon
+    /// task was spawned, `false` when one was already running.
+    async fn start_inner(&self, db: DbConnection, settings_sink: SettingsChangedSink) -> bool {
         if self.is_running().await {
             tracing::warn!("sync daemon is already running");
-            return;
+            return false;
         }
 
         let (tx, rx) = watch::channel(false);
-        *self.shutdown_tx.lock().await = Some(tx);
+        let shutdown_slot = Arc::clone(&self.shutdown_tx);
+        *shutdown_slot.lock().await = Some(tx);
 
         let interval = self.interval;
         let daemon_status = Arc::clone(&self.status);
@@ -310,7 +335,7 @@ impl SyncDaemon {
             s.last_error = None;
         }
 
-        tokio::spawn(async move {
+        let worker = tokio::spawn(async move {
             // Re-shadow `rx` as `mut` so the `async move` block can borrow
             // it mutably through the `select!` macro below.
             let mut rx = rx;
@@ -379,9 +404,18 @@ impl SyncDaemon {
                 }
             }
 
-            let mut s = daemon_status.write().await;
-            s.running = false;
+            // Clear `running` only when this run still owns the shutdown
+            // slot: `stop()` consumes the sender before awaiting exit, so a
+            // slot that is `Some` again means a newer run took over and a
+            // stale task must not clobber the new run's status.
+            if shutdown_slot.lock().await.is_none() {
+                let mut s = daemon_status.write().await;
+                s.running = false;
+            }
         });
+
+        *self.worker.lock().await = Some(worker);
+        true
     }
 
     /// Start a background pruning task that calls [`Store::archive_stock_movements`]
@@ -425,11 +459,30 @@ impl SyncDaemon {
     }
 
     /// Gracefully stop the background sync daemon.
-    pub async fn stop(&self) {
-        let tx = self.shutdown_tx.lock().await.take();
-        if let Some(tx) = tx {
+    ///
+    /// Signals the run loop and then WAITS for it to exit — including an
+    /// in-flight sync cycle — for up to [`DAEMON_STOP_GRACE`]. Returns
+    /// `true` when the loop exit was observed (so `running` is cleared and
+    /// an immediate [`SyncDaemon::start`] can take over); `false` means
+    /// the grace expired with the loop still running — the timeout is
+    /// reported to the caller and logged, never pretended away. The loop
+    /// keeps exiting in the background and clears `running` when done.
+    pub async fn stop(&self) -> bool {
+        if let Some(tx) = self.shutdown_tx.lock().await.take() {
             let _ = tx.send(true);
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let Some(worker) = self.worker.lock().await.take() else {
+            return true;
+        };
+        match tokio::time::timeout(DAEMON_STOP_GRACE, worker).await {
+            Ok(_) => true,
+            Err(_) => {
+                tracing::error!(
+                    grace_ms = DAEMON_STOP_GRACE.as_millis() as u64,
+                    "sync daemon stop timed out — the run loop is still finishing its cycle in the background"
+                );
+                false
+            }
         }
     }
 

@@ -212,7 +212,14 @@ pub async fn pg_sync_start_scoped(
     state.resolve_scope(&session_token)?;
     let db = state.db.clone();
     let sink = settings_changed_sink(&app_handle);
-    state.pg_sync_daemon.start_with_sink(db, sink).await;
+    if !state.pg_sync_daemon.start_with_sink(db, sink).await {
+        // The daemon reports an explicit `false` when a start landed on a
+        // live daemon; surfacing it as an error — never a silent `Ok(())` —
+        // lets the UI tell "spawned" from "already running".
+        return Err(AppError::Invalid(
+            "pg sync daemon is already running".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -226,7 +233,14 @@ pub async fn pg_sync_stop_scoped(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
     state.resolve_scope(&session_token)?;
-    state.pg_sync_daemon.stop().await;
+    if !state.pg_sync_daemon.stop().await {
+        // stop() only reports `false` when the run loop failed to exit
+        // within its stop grace period; pretending it stopped would leave
+        // the UI showing a daemon that is still finishing its cycle.
+        return Err(AppError::Internal(
+            "pg sync daemon did not confirm shutdown within its stop grace period; it is still exiting in the background".into(),
+        ));
+    }
     Ok(())
 }
 
