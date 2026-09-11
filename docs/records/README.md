@@ -54,6 +54,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, and 
 | 48 | regional | [ADR #48: Location Timezone Representation & as_of Semantics](../decisions/2026-09-09-timezone-representation.md) | Accepted (2026-09-09) |
 | 49 | desktop-client | [ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](../decisions/2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
 | 50 | sync | [ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)](../decisions/2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
+| 51 | settings | [ADR #51: Sealed Settings Ingest Policy](../decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 
 ### Research Notes
 
