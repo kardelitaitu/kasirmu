@@ -1,5 +1,110 @@
 #!/bin/sh
 
+# tripwire-start ---------------------------------------------------------------
+# UI typecheck tripwire. Records, never enforces.
+#
+# WHY THIS IS NOT JUST pre-commit STEP 9
+#   Step 9 exists, works, and is bypassable twice over: `git commit --no-verify`
+#   skips pre-commit and commit-msg outright, and a one-off `OZPOS_SKIP_TYPECHECK=1`
+#   prefix skips that step alone. Both leave no trace anywhere. --no-verify does
+#   NOT skip post-commit, and post-commit cannot abort a commit, which is exactly
+#   what makes it the right place for a tripwire: it observes, it records, it gets
+#   out of the way.
+#
+# WHY THIS BLOCK SITS ABOVE THE INDEXER AND NOT AT THE TAIL
+#   This hook has four ways to leave before its last line: CBM_SKIP_POST_COMMIT=1,
+#   an empty `git rev-parse --show-toplevel`, an unresolved indexer binary, and the
+#   backgrounded subshell that does the real indexing work. Anything appended at
+#   the tail is therefore conditional on the indexer being installed and enabled -
+#   silently disabled under three of those four, which is the exact bug this hook
+#   was rewritten to fix (see the header below: 535 commits indexed nothing and
+#   nothing revealed it). DO NOT MOVE THIS BLOCK DOWNWARD. If you are adding a
+#   step to this hook, it goes above the indexer too.
+#   It also runs BEFORE the indexer path, so it cannot inherit indexer latency;
+#   the reverse is true and harmless - on a rare ui/src commit the backgrounded
+#   index starts ~21s late, and it is backgrounded, so nobody waits for it.
+#
+# WHY ITS OWN LOG FILE AND NOT cbm-post-commit.log
+#   The existing log is the indexer's run log, not a gate log: 982 lines, 162
+#   `index start`, zero hits for `typecheck`, `error TS` or `gate`. There is no
+#   record of gate runs anywhere, because pre-commit writes nothing. That file is
+#   also rotated by an unrelated process with a `mv` at 512 KB, so a tripwire line
+#   written there is thrown away on schedule.
+#
+# THE CONTRACT, and what keeps this hook cheap on a branch where ten commits an
+#   hour land: when the commit touched no ui/src TypeScript this block runs one
+#   `git show` (~80 ms measured) and returns. It never runs npm install, never
+#   formats, never writes outside its own log file, never logs file contents or a
+#   diff, and it always returns success. A tripwire that can break someone's
+#   commit becomes the thing that gets deleted, and a deleted gate is worse than
+#   a bypassable one.
+#
+#   TC_TRIPWIRE_HEAD points the block at a commit other than HEAD. It exists only
+#   so the FAIL path can be exercised against real history without checking
+#   anything out; it changes which commit is inspected, never whether it is.
+#
+# Log format, one line per firing, nothing else:
+#   <ISO-8601> <sha> PASS|FAIL|ERROR|SKIP errors=<n>
+(
+    _TC_REF="${TC_TRIPWIRE_HEAD:-HEAD}"
+    _TC_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    [ -n "$_TC_ROOT" ] || exit 0
+
+    # The same pathspec pre-commit step 9 uses, so the tripwire fires on exactly
+    # the commits the gate was built for and on nothing else.
+    _TC_TOUCHED="$(git -C "$_TC_ROOT" show --diff-filter=ACM --name-only --format= \
+        "$_TC_REF" -- 'ui/src/*.ts' 'ui/src/*.tsx' 2>/dev/null | tr -d '\r' | grep -v '^[[:space:]]*$' || true)"
+    [ -n "$_TC_TOUCHED" ] || exit 0
+
+    _TC_SHA="$(git -C "$_TC_ROOT" rev-parse --short "$_TC_REF" 2>/dev/null || echo unknown)"
+    _TC_TS="$(date -Iseconds 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _TC_LOG="$(git -C "$_TC_ROOT" rev-parse --git-path typecheck-tripwire.log 2>/dev/null || true)"
+    case "$_TC_LOG" in
+        /*|[A-Za-z]:/*) : ;;
+        "") _TC_LOG="$_TC_ROOT/.git/typecheck-tripwire.log" ;;
+        *) _TC_LOG="$_TC_ROOT/$_TC_LOG" ;;
+    esac
+
+    if [ ! -d "$_TC_ROOT/ui/node_modules" ] || ! command -v npm >/dev/null 2>&1; then
+        # An unrecorded skip is the failure mode this file exists to kill. Say it
+        # in the log AND out loud, the way step 9 warns instead of failing here.
+        printf '%s %s SKIP errors=0\n' "$_TC_TS" "$_TC_SHA" >>"$_TC_LOG"
+        echo "post-commit tripwire: ui typecheck NOT RUN (npm or ui/node_modules missing)." >&2
+        echo "                      commit $_TC_SHA touches ui/src and is UNVERIFIED." >&2
+        exit 0
+    fi
+
+    # Foreground on purpose. A backgrounded warning that lands after the prompt is
+    # a line in a log nobody reads. The person who bypassed step 9 is the one
+    # person who should still be looking at the terminal when this says so.
+    _TC_OUT="$( cd "$_TC_ROOT/ui" && npm run --silent typecheck 2>&1 )"
+    _TC_RC=$?
+    _TC_ERRS="$(printf '%s\n' "$_TC_OUT" | grep -c 'error TS' 2>/dev/null | tr -d ' ' || true)"
+    [ -n "$_TC_ERRS" ] || _TC_ERRS=0
+
+    if [ "$_TC_RC" -eq 0 ]; then
+        printf '%s %s PASS errors=%s\n' "$_TC_TS" "$_TC_SHA" "$_TC_ERRS" >>"$_TC_LOG"
+        exit 0
+    fi
+
+    # rc != 0 with no parseable diagnostics means the check itself broke, not that
+    # the tree is red. Recording that as FAIL would invent a verdict.
+    if [ "$_TC_ERRS" -gt 0 ]; then _TC_VERDICT=FAIL; else _TC_VERDICT=ERROR; fi
+    printf '%s %s %s errors=%s\n' "$_TC_TS" "$_TC_SHA" "$_TC_VERDICT" "$_TC_ERRS" >>"$_TC_LOG"
+
+    echo "" >&2
+    echo "==============================================================================" >&2
+    echo " post-commit tripwire: $_TC_VERDICT - $_TC_ERRS TypeScript error(s) at $_TC_SHA" >&2
+    echo " pre-commit step 9 was bypassed for this commit (--no-verify or" >&2
+    echo " OZPOS_SKIP_TYPECHECK=1). Nothing enforced this; the commit stands." >&2
+    printf '%s\n' "$_TC_OUT" | grep 'error TS' | head -30 >&2
+    echo "------------------------------------------------------------------------------" >&2
+    echo " Recorded in $_TC_LOG" >&2
+    echo "==============================================================================" >&2
+    exit 0
+)
+# tripwire-end -----------------------------------------------------------------
+
 # codebase-memory-mcp auto-index start
 # Refresh the code knowledge graph in the background after every commit.
 #
