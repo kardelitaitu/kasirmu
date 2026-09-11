@@ -40,9 +40,9 @@ fn seed_sale(conn: &Connection, sale_id: &str) {
             ('{pid1}', '{sku1}', 'Coffee', 350, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z'),
             ('{pid2}', '{sku2}', 'Bagel', 450, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
          INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
-            ('{sale_id}', 1150, 'USD', 2, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+            ('{sale_id}', 1500, 'USD', 2, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
          INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
-            ('{sale_id}-sl-1', '{sale_id}', '{sku1}', 3, 350, 700, 'USD', 1),
+            ('{sale_id}-sl-1', '{sale_id}', '{sku1}', 3, 350, 1050, 'USD', 1),
             ('{sale_id}-sl-2', '{sale_id}', '{sku2}', 1, 450, 450, 'USD', 2);",
     )).unwrap();
 }
