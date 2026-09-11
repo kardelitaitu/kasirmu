@@ -859,17 +859,22 @@ fn apply_remote_stock_movement_rebuilds_summary() {
     queue.apply_remote(&store, &remote).unwrap(); // Rebuild to verify the ledger-based computation.
     store.rebuild_stock_summary().unwrap();
 
-    // Ledger SUM = just the cross-store delta (30) since the migration
-    // backfill ran against empty inventory (pre-seed).
+    // 30 -> 50. seed_product_and_inventory writes inventory (prod-coffee = 50)
+    // with no movement behind it — exactly the legacy shape the scoped rebuild
+    // now closes with one `legacy-backfill` compensating movement. The pulled
+    // cross-store delta is still the only REMOTE row, but the ledger is no
+    // longer short by the 20 unbacked units, so the re-derive lands on 50
+    // instead of destroying them. Same reader, same call; only the expected
+    // quantity moved.
     let from_ledger = store.get_stock_from_ledger("prod-coffee").unwrap();
     assert_eq!(
-        from_ledger, 30,
-        "SUM of deltas for prod-coffee should be 30"
+        from_ledger, 50,
+        "SUM of deltas for prod-coffee: 30 pulled + 20 healed unbacked units"
     );
 
-    // The materialized inventory should now also reflect 30.
+    // The materialized inventory now reflects the healed ledger too.
     let inv_qty = store.get_stock("prod-coffee").unwrap();
-    assert_eq!(inv_qty, 30, "inventory should be rebuilt to 30");
+    assert_eq!(inv_qty, 50, "inventory should be rebuilt to 50, not 30");
 }
 
 // ── SYNC-02: shared conflict-application service ────────────────

@@ -1022,7 +1022,15 @@ fn rebuild_stock_summary_from_ledger() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(qty1, 40, "prod-1: 50 + (-10) = 40");
+    // 40 -> 50. seed_everything writes inventory (prod-1 = 50) with NO movement
+    // behind it — exactly the legacy shape rebuild_stock_summary_for now closes
+    // with one `legacy-backfill` compensating movement. The ledger is no longer
+    // short by 10, so the re-derive lands on the seeded 50 instead of destroying
+    // the unbacked units. Same reader, same call; only the expected qty moved.
+    assert_eq!(
+        qty1, 50,
+        "prod-1: 50 + (-10) + 10 healed unbacked units = 50"
+    );
 
     let qty2: i64 = conn
         .query_row(
@@ -1035,7 +1043,10 @@ fn rebuild_stock_summary_from_ledger() {
 
     // Verify inventory was synced.
     let inv1 = store(&conn).get_stock("prod-1").unwrap();
-    assert_eq!(inv1, 40);
+    // 40 -> 50 for the same reason: the aggregate is re-derived from a ledger
+    // that the compensating row made complete. prod-2 is untouched by the heal
+    // (its inventory 12 is BELOW its ledger 75, so the predicate reads false).
+    assert_eq!(inv1, 50);
     let inv2 = store(&conn).get_stock("prod-2").unwrap();
     assert_eq!(inv2, 75);
 }

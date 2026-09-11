@@ -283,8 +283,13 @@ fn apply_pulled_page_rebuilds_stock_summary_after_stock_movements() {
             |row| row.get(0),
         )
         .unwrap();
+    // 40 -> 50. seed_product_and_inventory writes inventory (prod-coffee = 50)
+    // with no movement behind it — exactly the legacy shape the compensating
+    // row closes — so the rebuild inside apply_pulled_page heals the 10 unbacked
+    // units first and the ledger-derived cache lands on 50 rather than
+    // destroying them. Same reader, same call; only the expected quantity moved.
     assert_eq!(
-        summary_qty, 40,
+        summary_qty, 50,
         "stock_summary must be rebuilt from the ledger after a stock.movement page"
     );
 }
