@@ -9,5 +9,6 @@
 //! chain arrives in its own commit.
 
 pub mod model;
+pub mod persistence;
 pub mod revisions;
 pub mod semantics;
