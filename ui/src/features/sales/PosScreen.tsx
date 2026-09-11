@@ -1,9 +1,10 @@
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
-// The two rules above flag the cart-panel `<aside role="region">`
-// (which has a window-scoped keyboard handler for ↑/↓/+/-/Del/Enter)
-// and the per-line `<div role="group" tabIndex={0}>` (composite
-// interactive widget containing qty + remove). Both patterns are
-// valid ARIA — the lint rules only catch the non-interactive defaults.
+// The rule above flags the two overlays that keep a keydown handler
+// while being non-interactive by ARIA defaults: the close-shift and
+// open-shift confirmation dialogs (`<div role="dialog" onKeyDown>`).
+// Both are valid ARIA — the rule only catches the non-interactive
+// defaults. The cart panel that used to need this moved to its own
+// component, components/CartPanel.tsx, under its own directive.
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
@@ -13,12 +14,12 @@ import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useFeatures, FEATURES } from '@/hooks/useFeatures';
+import { useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 
 import WorkspaceSettingsModal from '@/features/settings/WorkspaceSettingsModal';
-import { formatMoney, type CartLine, type LineId, type Product, type Sku } from '@/types/domain';
+import { formatMoney, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
@@ -30,10 +31,7 @@ import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products'
 import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
-import { CartLineItem } from './components/CartLineItem';
-import { CourseSelectorBar } from './components/CourseSelectorBar';
-import { CartFooterTotals } from './components/CartFooterTotals';
-import { CartActionBar } from './components/CartActionBar';
+import { CartPanel } from './components/CartPanel';
 import { clampCartWidth, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
 import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
@@ -56,78 +54,6 @@ import './CartPanelActions.css';
 import './CartPanel.brand.css';
 import './CartPanelCourseBar.css';
 
-/**
- * Split an elapsed duration (ms) into whole hours + minutes, floored.
- * Used for the live shift timer in the cart header.
- */
-function elapsedHoursMinutes(sinceMs: number, nowMs: number): { h: number; m: number } {
-  const totalMinutes = Math.max(0, Math.floor((nowMs - sinceMs) / 60_000));
-  return { h: Math.floor(totalMinutes / 60), m: totalMinutes % 60 };
-}
-
-/**
- * Shopping bag icon for the empty-cart illustration.
- * Stroked only — colour comes from `currentColor` so it responds to themes.
- */
-function ShoppingBagIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M6 2 4 6v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6l-2-4H6z" />
-      <path d="M4 6h16" />
-      <path d="M9 10V8a3 3 0 0 1 6 0v2" />
-    </svg>
-  );
-}
-
-/** History / recent-orders icon — same stroke style as the header lock button. */
-function HistoryIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      width="18"
-      height="18"
-      aria-hidden="true"
-    >
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-      <path d="M3 3v5h5" />
-      <path d="M12 7v5l4 2" />
-    </svg>
-  );
-}
-
-/** Kitchen Display (KDS) icon — a kitchen monitor, same stroke style. */
-function KitchenDisplayIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      width="18"
-      height="18"
-      aria-hidden="true"
-    >
-      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-      <line x1="8" y1="21" x2="16" y2="21" />
-      <line x1="12" y1="17" x2="12" y2="21" />
-    </svg>
-  );
-}
 
 /**
  * Settings sub-screen — 4-tab routing for Appearance / Features /
@@ -780,357 +706,85 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       </div>
 
       {/* ── Resize handle ───────────────────────── */}
-      <div
-        className="pos-resize-handle"
-        onMouseDown={startResize}
-        aria-hidden="true"
+      <CartPanel
+        startResize={startResize}
+        cartPanelRef={cartPanelRef}
+        cartWidth={cartWidth}
+        handleCartPanelKeyDown={handleCartPanelKeyDown}
+        cartSwipe={cartSwipe}
+        activeWorkspace={activeWorkspace}
+        lines={lines}
+        deductionLocationName={deductionLocationName}
+        handleDeductionBadgeClick={handleDeductionBadgeClick}
+        deductionOverridden={deductionOverridden}
+        shiftLoading={shiftLoading}
+        activeShift={activeShift}
+        shiftNow={shiftNow}
+        handleCloseShiftClick={handleCloseShiftClick}
+        handleOpenShiftClick={handleOpenShiftClick}
+        isEnabled={isEnabled}
+        setShowTables={setShowTables}
+        setShowSalesHistory={setShowSalesHistory}
+        setShowStockInquiry={setShowStockInquiry}
+        onNavigate={onNavigate}
+        handleOpenSettings={handleOpenSettings}
+        handleLock={handleLock}
+        showTableNumberSetting={showTableNumberSetting}
+        tableNumber={tableNumber}
+        setTableNumber={setTableNumber}
+        shiftErrorExit={shiftErrorExit}
+        closeShiftError={closeShiftError}
+        fireCourse={fireCourse}
+        fireAllCourses={fireAllCourses}
+        handleRemoveLine={handleRemoveLine}
+        handleDecreaseQty={handleDecreaseQty}
+        handleIncreaseQty={handleIncreaseQty}
+        setCartLineRef={setCartLineRef}
+        isManager={isManager}
+        setOverrideTarget={setOverrideTarget}
+        ensureCart={ensureCart}
+        animatedUndoStack={animatedUndoStack}
+        handleUndoRemove={handleUndoRemove}
+        handleDismissUndo={handleDismissUndo}
+        subtotal={subtotal}
+        discountPercent={discountPercent}
+        discountLabel={discountLabel}
+        discountAmount={discountAmount}
+        showOptions={showOptions}
+        setShowOptions={setShowOptions}
+        showDiscountInput={showDiscountInput}
+        setShowDiscountInput={setShowDiscountInput}
+        setShowPromotions={setShowPromotions}
+        appliedPromotions={appliedPromotions}
+        setAppliedPromotions={setAppliedPromotions}
+        discountInput={discountInput}
+        setDiscountInput={setDiscountInput}
+        discountName={discountName}
+        setDiscountName={setDiscountName}
+        handleApplyDiscount={handleApplyDiscount}
+        handleClearDiscount={handleClearDiscount}
+        tipPercent={tipPercent}
+        setTipPercent={setTipPercent}
+        tipAmount={tipAmount}
+        serviceChargeEnabled={serviceChargeEnabled}
+        serviceChargePercent={serviceChargePercent}
+        serviceChargeAmount={serviceChargeAmount}
+        setServiceCharge={setServiceCharge}
+        cartTax={cartTax}
+        taxEstimated={taxEstimated}
+        taxState={taxState}
+        retryTaxEstimate={retryTaxEstimate}
+        handlePay={handlePay}
+        addToast={addToast}
+        setShowOpenBillInput={setShowOpenBillInput}
+        setCartId={setCartId}
+        deductionLocationIdRef={deductionLocationIdRef}
+        setDeductionLocationName={setDeductionLocationName}
+        setDeductionOverridden={setDeductionOverridden}
+        resetCart={resetCart}
+        setShowOpenBills={setShowOpenBills}
+        openBills={openBills}
       />
-
-      {/* ── Right: Cart panel (resizable, keyboard-nav) */}
-      <aside
-        className="pos-cart-panel"
-        ref={cartPanelRef}
-        aria-label={l10n.getString('pos-cart-panel-aria')}
-        role="region"
-        style={{ width: cartWidth }}
-        tabIndex={-1}
-        onKeyDown={handleCartPanelKeyDown}
-        {...cartSwipe}
-      >
-        <div className="pos-cart-header">
-          {/* ── Left: order/sale title + count + deduction badge ── */}
-          <div className="pos-cart-header-title-area">
-            <h2 className="pos-cart-title">
-              {/* Restaurants take orders, not sales — use the order wording in
-                  the resto workspace; retail keeps "Current Sale". */}
-              <Localized id={activeWorkspace === 'restaurant-pos' ? 'pos-cart-panel-title-order' : 'pos-cart-panel-title'}>
-                <span>{activeWorkspace === 'restaurant-pos' ? 'Current Order' : 'Current Sale'}</span>
-              </Localized>
-              {lines.length > 0 && (
-                <span className="pos-cart-count">{lines.length}</span>
-              )}
-            </h2>
-
-            {/* ADR-19 §17: locked deduction location badge (clickable → FastPINOverlay override) */}
-            {deductionLocationName && (
-              <button
-                type="button"
-                className="pos-cart-deduction-badge"
-                data-testid="deduction-location-badge"
-                onClick={handleDeductionBadgeClick}
-                aria-label={l10n.getString('pos-cart-deduction-badge-aria', { name: deductionLocationName })}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                <Localized id="pos-cart-deducting-label" vars={{ name: deductionLocationName }}>
-                  <span>Deducting: {deductionLocationName}</span>
-                </Localized>
-                {deductionOverridden && (
-                  <span className="pos-cart-deduction-override" data-testid="deduction-override-indicator">
-                    {' '}(Override)
-                  </span>
-                )}
-              </button>
-            )}
-          </div>
-
-          {/* ── Center: shift status ── */}
-          <div className="pos-cart-header-shift">
-            {shiftLoading ? (
-              <span className="pos-shift-bar-label">{l10n.getString('pos-shift-loading')}</span>
-            ) : activeShift ? (
-              <>
-                <span className="pos-shift-bar-indicator pos-shift-bar-indicator--open" />
-                <span className="pos-shift-bar-label">
-                  {l10n.getString(
-                    'pos-shift-elapsed',
-                    elapsedHoursMinutes(new Date(activeShift.openedAt).getTime(), shiftNow),
-                  )}
-                </span>
-                <button
-                  type="button"
-                  className="pos-shift-close-btn"
-                  onClick={handleCloseShiftClick}
-                  aria-label={l10n.getString('pos-shift-close-aria')}
-                >
-                  {l10n.getString('pos-shift-close-btn')}
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="pos-shift-bar-indicator pos-shift-bar-indicator--closed" />
-                <span className="pos-shift-bar-label">{l10n.getString('pos-shift-no-active')}</span>
-                <button
-                  type="button"
-                  className="pos-shift-open-btn"
-                  onClick={handleOpenShiftClick}
-                  aria-label={l10n.getString('pos-shift-open-aria')}
-                >
-                  {l10n.getString('pos-shift-open-btn')}
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* ── Right: terminal action buttons ── */}
-          <div className="pos-cart-header-actions">
-            {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
-              <button
-                type="button"
-                className="pos-cart-lock-btn"
-                onClick={() => setShowTables(true)}
-                aria-label={requiredLocalized(l10n, 'tables-title')}
-                title={requiredLocalized(l10n, 'tables-title')}
-              >
-                🪑
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="pos-cart-lock-btn"
-              onClick={() => setShowSalesHistory(true)}
-              aria-label={requiredLocalized(l10n, 'retail-fn-history')}
-              title={requiredLocalized(l10n, 'retail-fn-history')}
-            >
-              <HistoryIcon />
-            </button>
-
-            {/* Stock inquiry is a retail-POS concern — the restaurant POS
-                doesn't need it (kitchen flow goes through the KDS). */}
-            {activeWorkspace !== 'restaurant-pos' && (
-              <button
-                type="button"
-                className="pos-cart-lock-btn"
-                onClick={() => setShowStockInquiry(true)}
-                aria-label={requiredLocalized(l10n, 'retail-fn-stok')}
-                title={requiredLocalized(l10n, 'retail-fn-stok')}
-              >
-                📦
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="pos-cart-lock-btn"
-              onClick={() => onNavigate?.('kds')}
-              aria-label={requiredLocalized(l10n, 'kds-title')}
-              title={requiredLocalized(l10n, 'kds-title')}
-            >
-              <KitchenDisplayIcon />
-            </button>
-
-            {/* Settings is a manager/owner surface — not needed at the
-                restaurant cashier terminal (reachable from the workspace
-                picker); retail keeps it. */}
-            {activeWorkspace !== 'restaurant-pos' && (
-              <button
-                type="button"
-                className="pos-cart-lock-btn"
-                onClick={handleOpenSettings}
-                aria-label={requiredLocalized(l10n, 'settings-page-title')}
-                title={requiredLocalized(l10n, 'settings-page-title')}
-              >
-                ⚙️
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="pos-cart-lock-btn"
-              onClick={handleLock}
-              aria-label={l10n.getString('pos-cart-lock')}
-              title={l10n.getString('pos-cart-lock')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* ── Table number input (only when setting enabled) ── */}
-        {showTableNumberSetting && (
-          <div className="pos-cart-table-row">
-            <label htmlFor="pos-table-number" className="pos-cart-table-label">
-              {l10n.getString('pos-cart-table-label')}
-            </label>
-            <input
-              id="pos-table-number"
-              type="number"
-              className="pos-cart-table-input"
-              min="1"
-              value={tableNumber}
-              onChange={(e) => setTableNumber(e.target.value)}
-              aria-label={l10n.getString('pos-cart-table-aria')}
-              placeholder={l10n.getString('pos-cart-table-placeholder')}
-            />
-          </div>
-        )}
-
-        {/* ── Inline shift error (cart not empty) ──── */}
-        {shiftErrorExit.shouldRender && (
-          <div
-            className={`pos-shift-error${shiftErrorExit.exiting ? ' pos-shift-error--exiting' : ''}`}
-            role="alert"
-          >
-            {closeShiftError}
-            <button
-              type="button"
-              className="pos-shift-error-dismiss"
-              onClick={() => shiftErrorExit.requestClose()}
-              aria-label={l10n.getString('pos-dismiss-error-aria')}
-            >
-              &times;
-            </button>
-          </div>
-        )}
-
-        {/* ── Course firing bar ──────────────────────── */}
-        {lines.length > 0 && activeWorkspace === 'restaurant-pos' && (
-          <CourseSelectorBar
-            lines={lines}
-            fireCourse={fireCourse}
-            fireAllCourses={fireAllCourses}
-          />
-        )}
-
-        {/* ── Cart lines ────────────────────────────── */}
-        <div className="pos-cart-lines">
-          {lines.length === 0 ? (
-            <div className="pos-cart-empty-msg">
-              <ShoppingBagIcon />
-              <Localized id="pos-cart-empty">
-                <span className="pos-cart-empty-title">Cart is empty</span>
-              </Localized>
-              <Localized id="pos-cart-empty-subtitle">
-                <span className="pos-cart-empty-subtitle">
-                  Tap a menu item to start the order
-                </span>
-              </Localized>
-            </div>
-          ) : (
-            lines.map((line) => (
-              <CartLineItem
-                key={line.id}
-                line={line}
-                onRemove={handleRemoveLine}
-                onDecreaseQty={handleDecreaseQty}
-                onIncreaseQty={handleIncreaseQty}
-                registerRef={setCartLineRef}
-                {...(isManager ? {
-                  onOverride: (l: CartLine) => {
-                    setOverrideTarget(l);
-                    ensureCart(l.unit_price.currency);
-                  },
-                } : {})}
-              />
-            ))
-          )}
-
-          {/* ── Undo floating pill (bottom-right of cart lines) ── */}
-          {animatedUndoStack.shouldRender && (
-            <div
-              className={`pos-cart-undo-bar${animatedUndoStack.isExiting ? ' pos-cart-undo-bar--exiting' : ''}`}
-              role="status"
-              aria-live="polite"
-            >
-              <button
-                type="button"
-                className="pos-cart-undo-btn"
-                onClick={handleUndoRemove}
-                aria-label={l10n.getString('pos-cart-undo-btn')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                </svg>
-                {l10n.getString('pos-cart-undo-btn')}
-              </button>
-              <button
-                type="button"
-                className="pos-cart-undo-dismiss"
-                onClick={handleDismissUndo}
-                aria-label={l10n.getString('pos-cart-undo-dismiss-aria')}
-                title={l10n.getString('pos-cart-undo-dismiss')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ── Footer: subtotal + discount + tip + service + pay ──── */}
-        {lines.length > 0 && subtotal && (
-          <CartFooterTotals
-            lines={lines}
-            subtotal={subtotal}
-            discountPercent={discountPercent}
-            discountLabel={discountLabel}
-            discountAmount={discountAmount}
-            showOptions={showOptions}
-            setShowOptions={setShowOptions}
-            showDiscountInput={showDiscountInput}
-            setShowDiscountInput={setShowDiscountInput}
-            setShowPromotions={setShowPromotions}
-            appliedPromotions={appliedPromotions}
-            setAppliedPromotions={setAppliedPromotions}
-            discountInput={discountInput}
-            setDiscountInput={setDiscountInput}
-            discountName={discountName}
-            setDiscountName={setDiscountName}
-            handleApplyDiscount={handleApplyDiscount}
-            handleClearDiscount={handleClearDiscount}
-            tipPercent={tipPercent}
-            setTipPercent={setTipPercent}
-            tipAmount={tipAmount}
-            serviceChargeEnabled={serviceChargeEnabled}
-            serviceChargePercent={serviceChargePercent}
-            serviceChargeAmount={serviceChargeAmount}
-            setServiceCharge={setServiceCharge}
-            cartTax={cartTax}
-            taxEstimated={taxEstimated}
-            taxState={taxState}
-            retryTaxEstimate={retryTaxEstimate}
-          >
-            <CartActionBar
-              activeShift={activeShift}
-              handlePay={handlePay}
-              addToast={addToast}
-              setShowOpenBillInput={setShowOpenBillInput}
-              setCartId={setCartId}
-              deductionLocationIdRef={deductionLocationIdRef}
-              setDeductionLocationName={setDeductionLocationName}
-              setDeductionOverridden={setDeductionOverridden}
-              resetCart={resetCart}
-            />
-          </CartFooterTotals>
-        )}
-
-        {/* ── Open Bills badge (always visible) ── */}
-        <button
-          type="button"
-          className="pos-cart-held-badge"
-          onClick={() => { setShowOpenBills(true); }}
-          aria-label={l10n.getString('pos-cart-open-bills-aria')}
-          title={l10n.getString('pos-cart-open-bills-aria')}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-            <rect x="3" y="6" width="18" height="12" rx="2" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          <span>{l10n.getString('pos-cart-open-bills')}</span>
-          {openBills.length > 0 && (
-            <span className="pos-cart-held-count">{openBills.length}</span>
-          )}
-        </button>
-      </aside>
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
       <CartTaxWatcher
@@ -1590,3 +1244,4 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   </>
   );
 }
+

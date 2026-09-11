@@ -37,6 +37,7 @@ const ADDITIONAL_TSX_FILES = [
   'components/CourseSelectorBar.tsx',
   'components/CartFooterTotals.tsx',
   'components/CartActionBar.tsx',
+  'components/CartPanel.tsx',
 ];
 
 /**
