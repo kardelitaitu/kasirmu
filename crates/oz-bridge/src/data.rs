@@ -143,7 +143,7 @@ pub struct ImportDataResult {
 /// The shell supplies `db_path` (the one AppState value this module cannot
 /// reach); the derivation itself — swap the extension for `backup.db` and render
 /// it — is the original `default_backup_path` body, unchanged.
-pub fn default_backup_path(db_path: &Path) -> String {
+fn default_backup_path(db_path: &Path) -> String {
     let mut path = db_path.to_path_buf();
     path.set_extension("backup.db");
     path.display().to_string()
