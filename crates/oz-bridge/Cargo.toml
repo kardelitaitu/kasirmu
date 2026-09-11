@@ -44,4 +44,5 @@ webp = { workspace = true }
 
 # serde_json is a Wave D runtime dependency: EventSink payloads and the kds/pos
 # command bodies serialize JSON at runtime. It used to live in [dev-dependencies]
+tempfile = { workspace = true }
 # for the relocated Wave-A tests, which still resolve it from [dependencies].
