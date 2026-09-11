@@ -378,6 +378,81 @@ impl Store<'_> {
         Ok(())
     }
 
+    /// Insert a new audit log entry inside a CALLER-OWNED transaction.
+    ///
+    /// The in-transaction twin of log_audit: a settlement door (or the
+    /// event handler that follows it) writes the audit row in the SAME
+    /// transaction as the rows it describes, so the entry commits or dies
+    /// with them — closing the commit-then-publish window where the
+    /// standalone writer on a separate connection loses the row to a
+    /// crash between commit and publish. The refunds path already does
+    /// exactly this by hand ("write audit log inside the same
+    /// transaction"); this is the shared primitive that convention
+    /// implies, not a new pattern.
+    ///
+    /// The audit_log immutability triggers do not interfere: they are
+    /// DELETE- and UPDATE-scoped only (20260813_init.sql:1046-1058, as
+    /// replaced for the retention carve-out by 20260920) and no INSERT
+    /// trigger exists on the table, so an in-transaction INSERT passes.
+    ///
+    /// AUD-06 holds for this second writer too: details runs through
+    /// sanitize_details before persistence. A writer that skipped the
+    /// redaction would leak secret keys the standalone writer would have
+    /// caught — a non-redacting second writer is worse than none.
+    ///
+    /// Associated function, not a method, on purpose: the caller's
+    /// transaction may live on a different connection than any Store
+    /// handle in scope (handler connection vs settlement connection), so
+    /// touching self.conn here would be a lie. Same shape as
+    /// enqueue_offline_in_tx.
+    pub fn log_audit_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        entry: &AuditEntry,
+    ) -> Result<(), CoreError> {
+        let details = sanitize_details(&entry.details);
+        tx.execute(
+            "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                entry.id, entry.user_id, entry.action,
+                entry.target_type, entry.target_id,
+                details, entry.outcome, entry.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// True when an audit_log row already exists for action + target_id,
+    /// regardless of outcome — status is deliberately irrelevant: to a
+    /// "has this sale's audit row been written?" guard, a failure-outcome
+    /// row and a success one are the same fact.
+    ///
+    /// The existence probe behind the settlement doors' idempotent audit
+    /// write: probe INSIDE the caller's transaction, then call
+    /// log_audit_in_tx when it answers false, so the check and the insert
+    /// see the same snapshot and two writers racing one sale cannot both
+    /// pass (SQLite serialises write transactions).
+    ///
+    /// Takes a Connection reference so both states are reachable with one
+    /// function: rusqlite::Transaction derefs to Connection, so handing
+    /// it a tx reads the uncommitted transaction state (the guard's use)
+    /// and handing it a bare connection reads committed state. Plain
+    /// equality on real columns — action carries idx_audit_log_action and
+    /// target_id sits on idx_audit_log_target — no LIKE fuzzing, no
+    /// substring scan.
+    pub fn has_audit_row_for(
+        conn: &rusqlite::Connection,
+        action: &str,
+        target_id: &str,
+    ) -> Result<bool, CoreError> {
+        let found: i64 = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM audit_log WHERE action = ?1 AND target_id = ?2)",
+            rusqlite::params![action, target_id],
+            |row| row.get(0),
+        )?;
+        Ok(found != 0)
+    }
+
     /// List audit log entries in reverse chronological order.
     pub fn list_audit_entries(
         &self,

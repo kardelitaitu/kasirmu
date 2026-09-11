@@ -1054,3 +1054,185 @@ fn filtered_export_combined_filters() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, "aud-3");
 }
+
+// ── In-transaction audit writer (log_audit_in_tx / has_audit_row_for) ──
+//
+// Shared primitive for the settlement doors: write the audit row inside
+// the SAME transaction as the rows it describes (the pattern refunds.rs
+// already uses by hand), and probe it idempotently, so the sale.completed
+// audit row can no longer be lost to a crash between commit and publish
+// on the handler's separate connection.
+//
+// HEAD-failure status, for the whole block: explicitly NOT measured.
+// log_audit_in_tx and has_audit_row_for are introduced by this change, so
+// this file does not compile against HEAD — a missing-symbol compile
+// failure by construction, not a behavioural one. No HEAD run of these
+// tests exists or can exist.
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The success path of the door contract: the audit row enters the
+/// caller's transaction and becomes visible exactly when that transaction
+/// commits, together with whatever else it carried.
+#[test]
+fn log_audit_in_tx_row_persists_after_commit() {
+    let mut conn = fresh();
+    let entry = AuditEntry::new(
+        "", // system-initiated, handler-shaped
+        "sale.completed",
+        Some("sale"),
+        Some("sale-c1"),
+        Some("{\"total_minor\":1500}"),
+        "success",
+    );
+    let tx = conn.transaction().unwrap();
+    Store::log_audit_in_tx(&tx, &entry).unwrap();
+    tx.commit().unwrap();
+
+    assert_eq!(audit_count(&conn), 1);
+    let stored = store(&conn).list_audit_entries(10, 0).unwrap();
+    assert_eq!(stored[0].action, "sale.completed");
+    assert_eq!(stored[0].user_id, "");
+    assert_eq!(stored[0].target_id.as_deref(), Some("sale-c1"));
+    assert_eq!(stored[0].outcome, "success");
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The atomicity half of the door contract: log_audit_in_tx never writes
+/// outside the caller's transaction. rusqlite rolls a Transaction BACK
+/// when it is dropped without commit, so a settlement that dies mid-way
+/// (panic, error return, crash) leaves no half-written audit row behind.
+/// This is the dropped-transaction case stated honestly: a dropped tx
+/// MUST NOT leave the row visible — a row that survived a dropped
+/// transaction would mean the writer had bypassed the transaction.
+#[test]
+fn log_audit_in_tx_row_vanishes_on_drop_without_commit() {
+    let mut conn = fresh();
+    let entry = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-d1"),
+        Some("{}"),
+        "success",
+    );
+    {
+        let tx = conn.transaction().unwrap();
+        Store::log_audit_in_tx(&tx, &entry).unwrap();
+        // Scope ends with no commit and no rollback: plain drop.
+    }
+    assert_eq!(audit_count(&conn), 0);
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The explicit-rollback twin of the drop test: a settlement that rolls
+/// back deliberately (validation failure after the audit write seat)
+/// takes the audit row down with it.
+#[test]
+fn log_audit_in_tx_row_vanishes_on_explicit_rollback() {
+    let mut conn = fresh();
+    let entry = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-r0"),
+        Some("{}"),
+        "success",
+    );
+    let tx = conn.transaction().unwrap();
+    Store::log_audit_in_tx(&tx, &entry).unwrap();
+    tx.rollback().unwrap();
+    assert_eq!(audit_count(&conn), 0);
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// AUD-06 through the second writer: details that would leak secrets are
+/// redacted before persistence, exactly as the standalone log_audit
+/// redacts. A door-written row must not become a redaction bypass.
+#[test]
+fn log_audit_in_tx_redacts_sensitive_details() {
+    let mut conn = fresh();
+    let leaky =
+        "{\"sale_id\":\"sale-r1\",\"api_key\":\"sk-live-secret\",\"session_token\":\"tok-123\"}";
+    let entry = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-r1"),
+        Some(leaky),
+        "success",
+    );
+    let tx = conn.transaction().unwrap();
+    Store::log_audit_in_tx(&tx, &entry).unwrap();
+    tx.commit().unwrap();
+
+    let stored = store(&conn).list_audit_entries(10, 0).unwrap();
+    let details = &stored[0].details;
+    assert!(
+        !details.contains("sk-live-secret"),
+        "api_key leaked: {details}"
+    );
+    assert!(
+        !details.contains("tok-123"),
+        "session_token leaked: {details}"
+    );
+    assert!(details.contains("[REDACTED]"), "marker missing: {details}");
+    assert!(
+        details.contains("sale-r1"),
+        "non-secret field lost: {details}"
+    );
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The guard contract the doors will rely on: inside ONE transaction the
+/// probe answers false before the write and true after, so the check and
+/// the insert see the same snapshot. Outcome is irrelevant to the probe
+/// (a failure row counts), and a different action or target does not
+/// collide. After commit the same probe, handed the bare connection,
+/// still answers true.
+#[test]
+fn has_audit_row_for_false_before_true_after_in_same_tx() {
+    let mut conn = fresh();
+    let tx = conn.transaction().unwrap();
+
+    assert!(!Store::has_audit_row_for(&tx, "sale.completed", "sale-p1").unwrap());
+
+    let ok = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-p1"),
+        Some("{}"),
+        "success",
+    );
+    Store::log_audit_in_tx(&tx, &ok).unwrap();
+    assert!(Store::has_audit_row_for(&tx, "sale.completed", "sale-p1").unwrap());
+
+    // Outcome is irrelevant: a failure-outcome row satisfies the probe.
+    let failed = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-p2"),
+        Some("{}"),
+        "failure",
+    );
+    Store::log_audit_in_tx(&tx, &failed).unwrap();
+    assert!(Store::has_audit_row_for(&tx, "sale.completed", "sale-p2").unwrap());
+
+    // Other action, other target: no collision.
+    assert!(!Store::has_audit_row_for(&tx, "sale.refund", "sale-p1").unwrap());
+    assert!(!Store::has_audit_row_for(&tx, "sale.completed", "sale-p3").unwrap());
+
+    tx.commit().unwrap();
+    assert!(Store::has_audit_row_for(&conn, "sale.completed", "sale-p1").unwrap());
+}
