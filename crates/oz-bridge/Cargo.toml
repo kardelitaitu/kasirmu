@@ -19,6 +19,10 @@ foundation = { workspace = true }
 hex = { workspace = true }
 hmac = { workspace = true }
 image = { workspace = true }
+# lettre backs the Wave-F email bridge domain: `send_test_report` builds a
+# multipart report (Message::builder / MultiPart / SinglePart) and drives it
+# through AsyncTransport. Spec + features live in the root workspace table.
+lettre = { workspace = true }
 modules-currency = { workspace = true }
 oz-core = { workspace = true }
 oz-hal = { workspace = true }

@@ -114,5 +114,36 @@ pub mod topology;
 /// Workspace and instance command bodies (Wave E). Not yet extracted.
 pub mod workspaces;
 
+/// Brand / white-label command bodies (Wave F). Stub: the bodies land with its lane.
+pub mod branding;
+/// External-browser command bodies (ADR #38 opener surface) (Wave F). Stub: the bodies land with its lane.
+pub mod browser;
+/// Product-bundle command bodies (Wave F).
+pub mod bundles;
+/// Data-management command bodies (backup, restore, .ozpkg export / import) (Wave F). Stub: the bodies land with its lane.
+pub mod data;
+/// Email command bodies (SMTP settings and test-report sending) (Wave F). Stub: the bodies land with its lane.
+pub mod email;
+/// Feature-flag command bodies (Wave F). Stub: the bodies land with its lane.
+pub mod features;
+/// Health-check command bodies (Wave F). Stub: the bodies land with its lane.
+pub mod health;
+/// Sales-history command bodies (list, get, export summaries) (Wave F). Stub: the bodies land with its lane.
+pub mod history;
+/// Legal-entity command bodies (Wave F).
+pub mod legal_entities;
+/// Local payment-method command bodies (the market rail surface) (Wave F). Stub: the bodies land with its lane.
+pub mod local_payment;
+/// Memo command bodies (Wave F).
+pub mod memo;
+/// Offline-queue command bodies (enqueue, list, sync parked transactions) (Wave F). Stub: the bodies land with its lane.
+pub mod offline;
+/// Cloud-sync command bodies (configure, push, pull) (Wave F). Stub: the bodies land with its lane.
+pub mod sync;
+/// Restaurant table and section command bodies (Wave F). Stub: the bodies land with its lane.
+pub mod tables;
+/// Terminal-management command bodies (Wave F).
+pub mod terminals;
+
 #[cfg(test)]
 mod testing;

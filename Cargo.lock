@@ -4371,6 +4371,7 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "image",
+ "lettre",
  "modules-currency",
  "oz-core",
  "oz-hal",
