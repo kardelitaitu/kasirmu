@@ -69,36 +69,41 @@ func handleHealth(app core.App) func(e *core.RequestEvent) error {
 // so a misconfigured deployment is diagnosable from /api/health instead of
 // arriving as a validation-shaped error.
 //
-// WHY THIS EXISTS: since the guard started failing closed, an unset
-// OZ_ADMIN_EMAIL turns the duplicate-email 409 at
-// admin_tenant_lifecycle.go:105 into the guard 400 at :96, and makes every
-// cascade delete answer 403 at :340 even with a correct confirm_email
-// (the confirm check at :337 runs first). A missing environment variable
-// then looks exactly like bad input, which is how a support ticket ends up
-// saying the rename button is broken.
+// WHY THIS EXISTS: the admin identity is an email comparison on
+// OZ_ADMIN_EMAIL, and the address itself is deliberately visible nowhere an
+// operator can read it, so /api/health is the only place the SHAPE of that
+// configuration is diagnosable. Two states matter and both are reported
+// here: an env value that names NO tenants row (source "env" with
+// matching_rows 0 — authentication anchors on an address nothing maps, so
+// there is no web admin), and an unset env, where authentication anchors on
+// the compiled defaultAdminEmail and the deployment is running on an address
+// that lives in the binary (source "fallback").
 //
-// THE ASYMMETRY IS THE WHOLE POINT, so the two readings are computed on
-// purpose by different rules:
+// THE TWO READINGS ARE STILL DIFFERENT THINGS, and that is the point of
+// splitting them rather than emitting one configured flag:
 //
 //	source        — what AUTHENTICATION would anchor on: the trimmed
 //	                OZ_ADMIN_EMAIL ("env"), else the compiled
 //	                defaultAdminEmail ("fallback").
-//	matching_rows — how many tenants rows carry that address. When source
-//	                is "env" this is also exactly what the guard compares
-//	                against, so it IS the guard view. When source is
-//	                "fallback" it is NOT: the guard does not fall back at
-//	                all, it protects every row. That gap — auth would
-//	                still match one literal address while the guard
-//	                refuses everything — is the finding this field exists
-//	                to make visible.
-//	verified      — true only when source is "env" AND matching_rows is 1:
-//	                a named address resolving to exactly one tenant.
+//	matching_rows — how many tenants rows carry THAT address. The guard is
+//	                wider than the anchor by design: it tests membership in
+//	                the reserved set (env UNION compiled default), so a row
+//	                at the compiled default is protected even when source is
+//	                "env". matching_rows is therefore the auth view, NOT a
+//	                count of protected rows — do not read it as one.
+//	verified      — DEPLOY HYGIENE, not behaviour. True only when the
+//	                operator NAMED the address (source "env") and exactly
+//	                one row carries it. It does not claim an admin can log
+//	                in: that also needs a verified mailbox, a credential and
+//	                a session, none of which this reads. Saying "hygiene"
+//	                out loud matters because the other reading is the one a
+//	                reader will otherwise assume.
 //
 // health.go reads defaultAdminEmail DIRECTLY rather than calling
 // adminEmailTarget / adminEmailTargetWithDefault. Legal because it is the
 // same package, deliberate because if the resolver ever drops the fallback
-// then source="fallback" would become unreachable through it — and the
-// asymmetric state is exactly the one worth reporting.
+// then source="fallback" would become unreachable through it — and that is
+// exactly the state worth reporting.
 //
 // NO ADDRESS IS EVER ECHOED: not the env value, not the compiled default,
 // not a masked, hashed or truncated form of either. /api/health is public
@@ -124,8 +129,10 @@ func adminEmailHealthSnapshot(app core.App) map[string]any {
 	} else {
 		matching = 0
 		for _, r := range rows {
-			// EqualFold mirrors the guard comparison, so a differently cased
-			// stored address counts the same way it is protected.
+			// EqualFold on the ANCHOR address — what authentication maps a
+			// session to. The guard is a set membership test
+			// (reservedAdminEmails, normalized lowercase), so it can protect
+			// rows this count does not include.
 			if strings.EqualFold(r.GetString("email"), address) {
 				matching++
 			}

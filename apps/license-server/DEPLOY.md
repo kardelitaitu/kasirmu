@@ -337,12 +337,23 @@ Read from `apps/license-server/login_lockout.go`:
 Read from the admin surface:
 
 - **`OZ_ADMIN_EMAIL`** — the email of the admin tenant, falling back to
-  `defaultAdminEmail` when unset. Read in four places (`addon_admin.go:278`,
-  `admin_dashboard.go:87`, `admin_tenant_lifecycle.go:32`, `password_rotation.go:176`).
+  `defaultAdminEmail` when unset. Authentication reads it in four places
+  (`addon_admin.go:278`, `admin_dashboard.go:87`, `admin_tenant_lifecycle.go`,
+  `password_rotation.go:176`) and each anchors on **one** address: the env value, else the
+  compiled default. The tenant-lifecycle guard is deliberately **wider**: `isAdminTenantRecord`
+  tests membership in `reservedAdminEmails` — env UNION compiled default — so the guard is a
+  superset of the auth anchor and is never unknown. Consequences worth knowing before you
+  touch a deployment: an unset variable does **not** disable rename or delete of ordinary
+  tenants (it did for exactly one commit, and that was an outage, not a protection — auth
+  still anchors on the default, so the identity was never unknown); what unset means is that
+  the admin identity is an address living in the binary.
   **This is the one environment value that must never change after first boot**: the admin
   auth mapping resolves sessions to that tenant, so changing it orphans every existing admin
   session, and deleting the tenant locks all of them out — `isAdminTenantRecord` exists
-  precisely to refuse both. Nothing in the deploy flow says so, which is why it is here.
+  precisely to refuse both. Renaming another tenant **into** a reserved address is refused
+  too (`email is reserved for the deployment admin identity`): holding that address *is*
+  holding the admin identity, and the contact-edit path is not gated by the signup
+  reservation. Nothing in the deploy flow says any of this, which is why it is here.
 
 - **`OZ_ENTERPRISE_MRR_USD`** — read once in `init()` (`admin_stats.go:702`) and, when it
   parses and is greater than zero, replaces `TierPriceUSD["enterprise"]`, so enterprise
@@ -381,10 +392,26 @@ Read from the admin surface:
 #### 7.7.1 Precondition: set `OZ_ADMIN_EMAIL` before the admin-gate repair ships
 
 Web admin identity is an email comparison on this value (`admin_dashboard.go:87-91`, duplicated at
-`addon_admin.go:278-282`, `admin_tenant_lifecycle.go:31-37`, `password_rotation.go:176`); unset, the
+`addon_admin.go:278-282`, `admin_tenant_lifecycle.go`, `password_rotation.go:176`); unset, the
 target is the built-in `defaultAdminEmail` (`password_rotation.go:42`) and no compose file or workflow
-sets it. The repair makes the gate **refuse to match when unset** — ship that code first and web admin
-access stops working until someone sets the variable and restarts. Steps, in order, before deploying:
+sets it. So set it — and be clear about what setting it does and does not do, because the
+guard semantics changed twice in one day:
+
+- **An unset variable does not brick the admin surface.** It used to: while the lifecycle guard
+  failed closed on an unset `OZ_ADMIN_EMAIL`, every email rename answered 400 and every offboarding
+  delete answered 403 on rows that are provably not the admin tenant, and the SPA renders a 403 as a
+  global Access denied screen. The guard now tests membership in the reserved set (env UNION compiled
+  default), so ordinary tenants stay editable and exactly one row — the reserved one — is not.
+- **What unset actually costs you is hygiene, and `/api/health` says so.** The `admin` block reports
+  `source` (`env` / `fallback`), `matching_rows` and `verified`, never the address itself.
+  `verified: true` means deploy hygiene only — you named the address and exactly one row carries it.
+  `source: "env"` with `matching_rows: 0` is the bricked shape: auth anchors on an address no row
+  holds, so there is no web admin. `source: "fallback"` means you are running on an address that
+  lives in the binary.
+- **The address is write-once in both directions.** Changing it orphans existing admin sessions;
+  renaming another tenant *into* it is refused, because holding that address is holding the identity.
+
+Steps, in order, before deploying (unchanged — this is still how you prove the deployment is healthy):
 
 ```bash
 B=https://license.ozpos.my.id; E='<admin-email>'   # must equal OZ_ADMIN_EMAIL in Northflank

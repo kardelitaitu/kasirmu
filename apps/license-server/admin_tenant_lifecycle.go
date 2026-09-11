@@ -49,12 +49,20 @@ func adminEmailTarget() (string, bool) {
 	return v, true
 }
 
-// adminEmailTargetWithDefault is the SECOND, separate resolution the
-// reserved-address set needs: OZ_ADMIN_EMAIL trimmed, falling back to the
-// compiled defaultAdminEmail. It is NOT the guards' resolver — the squat
-// guard must keep reserving the default even when the env is unset, while
-// isAdminTenantRecord must refuse when it is. They are kept apart on
-// purpose so neither side can be routed through the other by accident.
+// adminEmailTargetWithDefault is the reservation-side resolution:
+// OZ_ADMIN_EMAIL trimmed, falling back to the compiled defaultAdminEmail. It
+// exists so reservedAdminEmails (web_otp.go) can build the set, and it is now
+// LOAD-BEARING FOR THREE CONSUMERS — the signup reservation, the
+// isAdminTenantRecord guard and the rename-target check in
+// handleAdminUpdateTenant all reach the address through it. A later cleanup
+// that deletes this wrapper and points those callers at adminEmailTarget
+// instead would silently narrow the guard to the env side and reopen BOTH
+// faults this file has now had: the phantom-403 outage on every ordinary row
+// and the rename-into-admin mint path.
+//
+// It is kept separate from adminEmailTarget on purpose: the set needs a value
+// that is never unknown, while the resolver that reports whether the operator
+// NAMED an address has to be able to say no.
 func adminEmailTargetWithDefault() string {
 	if v, ok := adminEmailTarget(); ok {
 		return v
@@ -62,29 +70,43 @@ func adminEmailTargetWithDefault() string {
 	return defaultAdminEmail
 }
 
-// isAdminTenantRecord reports whether the record is the admin tenant
-// (OZ_ADMIN_EMAIL) — the account adminAuth maps sessions to. Its email
-// must never change (it would break the auth mapping) and it must never
-// be deleted (it would lock every admin session out).
+// isAdminTenantRecord reports whether the record carries one of the
+// deployment RESERVED admin addresses — the account adminAuth maps sessions
+// to. Its email must never change (it would break the auth mapping) and it
+// must never be deleted (it would lock every admin session out).
 //
-// FAILS CLOSED: with no admin email configured there is no address to
-// compare against, so EVERY row is treated as the admin tenant and neither
-// a rename (400 at the PATCH guard) nor a cascade delete (403 at the DELETE
-// guard) can proceed. That is refusal, not permission — an unconfigured
-// deployment keeps its tenant rows rather than editing whichever row the
-// caller happened to pick.
+// ONE SET, ONE READER: membership is tested against reservedAdminEmails
+// (web_otp.go) — OZ_ADMIN_EMAIL trimmed UNION the compiled defaultAdminEmail,
+// lowercase, reached through adminEmailTargetWithDefault. The signup
+// reservation, this guard and the rename-target check in
+// handleAdminUpdateTenant all read that one function, so the two-resolver
+// split cannot come back: there is no reservation address and no guard
+// address, only the set.
 //
-// PARKED, do not reuse for authentication: the auth-semantics wave wants the
-// opposite reading of !ok (deny the request at the gate, not protect every
-// row). Routing adminAuth through this function, or adding a parameter that
-// would let it, would silently pick one of the two semantics. Authentication
-// sites keep their own inline resolution until that wave lands.
+// The guard is deliberately a SUPERSET of what authentication anchors on.
+// Auth picks ONE address (env, else the compiled default); the guard protects
+// that address AND the compiled default when the env names elsewhere. That is
+// the safe direction — a row auth would never map a session to can still
+// refuse to be renamed or deleted, while a row auth WOULD map to is always
+// protected.
+//
+// WHY NOT "protect every row when the env is unset", which is what this
+// function did for exactly one commit: on a default deploy the admin identity
+// is NOT unknown, because auth anchors on the compiled default. Blanket
+// refusal was therefore not caution, it was an outage — every offboarding
+// delete answered 403 and every email rename 400 on rows that are provably
+// not the admin tenant, and the admin SPA renders a 403 as a global Access
+// denied screen (admin-utils.js treats 401 and 403 alike), so the operator
+// lost the whole content pane rather than one button. Refusing on an unset
+// variable protected nothing that the set does not already protect.
+//
+// PARKED, do not reuse for authentication: the auth-semantics wave may change
+// what an unset OZ_ADMIN_EMAIL does at the GATE. Routing adminAuth through
+// this function, or adding a parameter that would let it, would silently pick
+// one of the two semantics. Authentication sites keep their own inline
+// resolution until that wave lands.
 func isAdminTenantRecord(tenant *core.Record) bool {
-	adminEmail, ok := adminEmailTarget()
-	if !ok {
-		return true
-	}
-	return strings.EqualFold(tenant.GetString("email"), adminEmail)
+	return reservedAdminEmails()[normalizeEmail(tenant.GetString("email"))]
 }
 
 // parseAllowedTypesJSON decodes the subscriptions.allowed_types JSON
@@ -157,6 +179,23 @@ func handleAdminUpdateTenant(app core.App) func(e *core.RequestEvent) error {
 				map[string]any{"email": email})
 			if len(dupes) > 0 {
 				return e.JSON(http.StatusConflict, map[string]any{"error": "email already in use"})
+			}
+			// ── The mint path, closed ─────────────────────────────────
+			// Renaming an ordinary row ONTO a reserved admin address is
+			// how a tenant becomes the admin tenant without anyone
+			// touching a server: adminAuth maps a session by an EqualFold
+			// comparison on the resolved address, so whichever row holds
+			// that address holds the admin identity. Nothing on this path
+			// checked the TARGET — the guard above looks only at the
+			// source row, and the createTenant reservation gates SIGNUP,
+			// so it never sees a rename. Only the unoccupied case reaches
+			// here: if some row already held the address, the 409 above
+			// answered. Fail-closed masked this, because while every
+			// rename 400ed nobody attempted the one that mattered.
+			if reservedAdminEmails()[email] {
+				return e.JSON(http.StatusBadRequest, map[string]any{
+					"error": "email is reserved for the deployment admin identity",
+				})
 			}
 			tenant.Set("email", email)
 		}
