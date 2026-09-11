@@ -209,6 +209,12 @@ pub const LICENSE_PAYLOAD: &str = "license.payload";
 pub const LICENSE_SIGNATURE: &str = "license.signature";
 /// Tenant id issued by the license server; identifies the paying tenant.
 pub const LICENSE_TENANT_ID: &str = "license.tenant_id";
+/// Customer phone number captured at license activation (written by
+/// `license.rs` from the server response). Personal data tied to the
+/// per-install activation — like [`LICENSE_TENANT_ID`] it identifies the
+/// paying tenant, not configuration a second till needs, so it is denied
+/// from the raw get_setting IPC surface and both untrusted lanes.
+pub const LICENSE_PHONE: &str = "license.phone";
 /// Stripe secret API key.
 pub const STRIPE_API_KEY: &str = "stripe.api_key";
 /// Square API key.
@@ -251,6 +257,7 @@ pub const SECRET_KEY_DENY_LIST: &[&str] = &[
     LICENSE_PAYLOAD,
     LICENSE_SIGNATURE,
     LICENSE_TENANT_ID,
+    LICENSE_PHONE,
     STRIPE_API_KEY,
     SQUARE_API_KEY,
     MIDTRANS_SERVER_KEY,

@@ -766,3 +766,43 @@ fn enqueue_settings_update_still_queues_ordinary_key() {
     assert_eq!(pending.len(), 1, "store.name must still queue for egress");
     assert_eq!(pending[0].action, "settings.update");
 }
+/// license.phone is PII captured at activation and per-install identity, not
+/// device identity: the credential act (deny list — also hidden from the raw
+/// get_setting surface) is the correct set, argued by family consistency with
+/// license.tenant_id, which was already denied while identifying LESS. Both
+/// untrusted lanes must refuse it; the local activation write keeps working,
+/// and a restore to a second till is unaffected because the whole license
+/// family (api_key KDF-bound to machine_id, payload, signature, tenant_id)
+/// already refused the portable package before this key was registered.
+#[test]
+fn license_phone_is_denied_as_a_credential_and_refused_on_egress() {
+    use oz_core::settings::IngestPolicyKind as _;
+    let phone = oz_core::settings::keys::LICENSE_PHONE;
+    assert!(
+        platform_core::settings::keys::is_secret_setting_key(phone),
+        "license.phone must be IPC-hidden like the rest of the license family"
+    );
+    assert!(
+        !oz_core::settings::keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&phone),
+        "it is per-install identity, not device identity — the acts differ"
+    );
+    for policy in [IngestPolicy::RemoteSync, IngestPolicy::PortablePackage] {
+        assert!(
+            !policy.admits(phone),
+            "{policy:?} must refuse license.phone"
+        );
+    }
+    assert!(
+        IngestPolicy::TrustedLocal.admits(phone),
+        "the activation write in license.rs is local and must keep working"
+    );
+
+    // And the tablet egress boundary queues nothing for it.
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    enqueue_settings_update(&store, phone, "+62-811-000-0000", "term-1").unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "license.phone must not be queued for sync egress"
+    );
+}
