@@ -5,11 +5,21 @@
 //! set). This is the app's first browser-opening mechanism, exposed
 //! through `tauri-plugin-opener` with an https-only, percent-encoded
 //! URL built server-side.
+//!
+//! Wave F: the URL construction moved to `oz_bridge::browser` so the query
+//! builder and the percent-encoder are callable headlessly. `open_in_browser`
+//! deliberately STAYS here, body byte-identical, because it hands the finished URL
+//! to `tauri-plugin-opener::open_url` — a Tauri plugin the bridge must never
+//! depend on. The gate order (resolve_store, then the scoped lock, then the read)
+//! and every error string are unchanged; `urlencoding` is re-exported so the
+//! sibling `browser_tests.rs` keeps exercising it by name.
 
 use tauri::State;
 
 use crate::error::AppError;
 use crate::state::AppState;
+
+pub use oz_bridge::browser::urlencoding;
 
 /// Open a Google Images search for a product in the default browser.
 ///
@@ -24,60 +34,10 @@ pub async fn open_product_images_scoped(
     sku: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    // Resolve the session so only signed-in store sessions can trigger
-    // browser opening, and read the product's name/brand from the DB
-    // (never trust the frontend with the query text).
-    let conn = state.resolve_store(&session_token)?;
-    // Scope the DB borrow so `Store` (!Send) is dropped before the await
-    // below; only the owned query string crosses the await point.
-    let query = {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
-        let product = store.get_product(&sku)?.ok_or_else(|| AppError::Core {
-            sub_kind: oz_core::CoreErrorKind::NotFound,
-            message: format!("product {sku} not found"),
-        })?;
-        build_image_query(&product.product)
-    };
-
-    let url = format!(
-        "https://www.google.com/search?tbm=isch&q={}",
-        urlencoding(&query)
-    );
+    let ctx = state.bridge_ctx();
+    let url = oz_bridge::browser::product_image_search_url(&ctx, &session_token, &sku).await?;
 
     open_in_browser(&url).await
-}
-
-/// Build the Google Images search query: product name plus brand (when set).
-fn build_image_query(product: &oz_core::Product) -> String {
-    let mut query = product.name.trim().to_owned();
-    if let Some(brand) = product
-        .brand
-        .as_deref()
-        .map(str::trim)
-        .filter(|b| !b.is_empty())
-    {
-        query.push(' ');
-        query.push_str(brand);
-    }
-    query
-}
-
-/// Percent-encode a UTF-8 query for use in a URL query component.
-fn urlencoding(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for byte in input.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
 }
 
 /// Open a URL in the OS default browser via `tauri-plugin-opener`.
