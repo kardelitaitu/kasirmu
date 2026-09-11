@@ -1,9 +1,8 @@
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::RegisterKdsDeviceInput;
 use oz_core::session::SessionContext;
 use oz_core::{CreateKdsOrderInput, Currency, Money, Sale, SaleStatus};
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
 // ── Existing tests (preserved) ────────────────────────────────────
 
@@ -165,7 +164,7 @@ fn scoped_state(
     role_id: &str,
     store_id: &str,
     instance_id: &str,
-) -> AppState {
+) -> TestBridge {
     scoped_state_with_restaurant(conn, token, user_id, role_id, store_id, instance_id, None)
 }
 
@@ -177,12 +176,12 @@ fn scoped_state_with_restaurant(
     store_id: &str,
     instance_id: &str,
     restaurant_pos_id: Option<String>,
-) -> AppState {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
-    state.session_store.write().unwrap().insert(
+) -> TestBridge {
+    // The desktop swapped in a temp-dir-backed StoreDatabaseManager; TestBridge
+    // already owns a per-store manager over a unique temp directory, so the
+    // swap is unnecessary here.
+    let app = TestBridge::new().with_conn(conn);
+    app.sessions().write().unwrap().insert(
         token.into(),
         SessionContext::new_with_restaurant_pos(
             user_id.into(),
@@ -196,13 +195,13 @@ fn scoped_state_with_restaurant(
             restaurant_pos_id,
         ),
     );
-    state
+    app
 }
 
 /// Seed a terminal into the store DB (via db_manager) so FK constraints
 /// on kds_devices.restaurant_pos_id are satisfied.
-fn seed_terminal_in_store(state: &AppState, store_id: &str, id: &str, name: &str, device_id: &str) {
-    let store_db = state.db_manager.open_store(store_id).unwrap();
+fn seed_terminal_in_store(app: &TestBridge, store_id: &str, id: &str, name: &str, device_id: &str) {
+    let store_db = app.db_manager().open_store(store_id).unwrap();
     let db = store_db.lock().unwrap();
     db.execute(
         "INSERT OR IGNORE INTO terminals (id, name, device_id, is_active, created_at, updated_at)
@@ -212,8 +211,8 @@ fn seed_terminal_in_store(state: &AppState, store_id: &str, id: &str, name: &str
     .unwrap();
 }
 
-fn create_sale_in_store(state: &AppState, sale_id: &str) {
-    let store_db = state.db_manager.open_store("s1").unwrap();
+fn create_sale_in_store(app: &TestBridge, sale_id: &str) {
+    let store_db = app.db_manager().open_store("s1").unwrap();
     let db = store_db.lock().unwrap();
     let s = Store::new(&db);
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -249,10 +248,10 @@ fn create_sale_in_store(state: &AppState, sale_id: &str) {
     s.create_sale(&sale).unwrap();
 }
 
-fn create_kds_order_in_store(state: &AppState, order: &KdsOrder) -> KdsOrder {
+fn create_kds_order_in_store(app: &TestBridge, order: &KdsOrder) -> KdsOrder {
     // First create the FK sale in the same store-DB.
-    create_sale_in_store(state, &order.sale_id);
-    let store_db = state.db_manager.open_store("s1").unwrap();
+    create_sale_in_store(app, &order.sale_id);
+    let store_db = app.db_manager().open_store("s1").unwrap();
     let db = store_db.lock().unwrap();
     let s = Store::new(&db);
     let input = CreateKdsOrderInput {
@@ -274,40 +273,28 @@ fn create_kds_order_in_store(state: &AppState, order: &KdsOrder) -> KdsOrder {
 #[tokio::test]
 async fn scoped_list_kds_orders_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = list_kds_orders_scoped("bad-token".into(), None, app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = list_kds_orders_scoped(&app.ctx(), "bad-token".into(), None).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_get_kds_queue_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = get_kds_queue_scoped("bad-token".into(), None, app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = get_kds_queue_scoped(&app.ctx(), "bad-token".into(), None).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_get_kds_order_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = get_kds_order_scoped("bad-token".into(), "order-1".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = get_kds_order_scoped(&app.ctx(), "bad-token".into(), "order-1".into()).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 // ── CRUD operations ───────────────────────────────────────────────
@@ -316,13 +303,9 @@ async fn scoped_get_kds_order_rejects_invalid_token() {
 async fn owner_can_list_kds_orders_empty() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let orders = list_kds_orders_scoped("tok".into(), None, app.state())
+    let orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), None)
         .await
         .unwrap();
     assert!(orders.is_empty());
@@ -332,17 +315,12 @@ async fn owner_can_list_kds_orders_empty() {
 async fn owner_can_list_kds_orders_with_data() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let order = test_kds_order("o1");
-    let created = create_kds_order_in_store(&state, &order);
+    let created = create_kds_order_in_store(&app, &order);
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let orders = list_kds_orders_scoped("tok".into(), None, app.state())
+    let orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), None)
         .await
         .unwrap();
     assert_eq!(orders.len(), 1);
@@ -353,38 +331,28 @@ async fn owner_can_list_kds_orders_with_data() {
 async fn list_kds_orders_filters_by_status() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     // Create two orders (both start as "pending" per DB default).
-    let order1 = create_kds_order_in_store(&state, &test_kds_order("o1"));
-    let order2 = create_kds_order_in_store(&state, &test_kds_order("o2"));
-
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let order1 = create_kds_order_in_store(&app, &test_kds_order("o1"));
+    let order2 = create_kds_order_in_store(&app, &test_kds_order("o2"));
 
     // Move order2 through the valid forward-only chain: pending -> preparing -> ready.
-    update_kds_status_scoped(
-        "tok".into(),
-        order2.id.clone(),
-        "preparing".into(),
-        app.state(),
-    )
-    .await
-    .unwrap();
-    update_kds_status_scoped("tok".into(), order2.id.clone(), "ready".into(), app.state())
+    update_kds_status_scoped(&app.ctx(), "tok".into(), &order2.id, "preparing".into())
+        .await
+        .unwrap();
+    update_kds_status_scoped(&app.ctx(), "tok", &order2.id, "ready".into())
         .await
         .unwrap();
 
     // Now filter by status.
-    let pending_orders = list_kds_orders_scoped("tok".into(), Some("pending".into()), app.state())
+    let pending_orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), Some("pending".into()))
         .await
         .unwrap();
     assert_eq!(pending_orders.len(), 1);
     assert_eq!(pending_orders[0].id, order1.id);
 
-    let ready_orders = list_kds_orders_scoped("tok".into(), Some("ready".into()), app.state())
+    let ready_orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), Some("ready".into()))
         .await
         .unwrap();
     assert_eq!(ready_orders.len(), 1);
@@ -395,17 +363,12 @@ async fn list_kds_orders_filters_by_status() {
 async fn owner_can_get_kds_order_by_id() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let order = test_kds_order("o1");
-    let created = create_kds_order_in_store(&state, &order);
+    let created = create_kds_order_in_store(&app, &order);
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let fetched = get_kds_order_scoped("tok".into(), created.id.clone(), app.state()).await;
+    let fetched = get_kds_order_scoped(&app.ctx(), "tok", &created.id).await;
     assert!(fetched.is_ok());
     assert!(fetched.unwrap().is_some());
 }
@@ -414,13 +377,9 @@ async fn owner_can_get_kds_order_by_id() {
 async fn get_kds_order_returns_none_for_unknown() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = get_kds_order_scoped("tok".into(), "nonexistent".into(), app.state())
+    let result = get_kds_order_scoped(&app.ctx(), "tok".into(), "nonexistent".into())
         .await
         .unwrap();
     assert!(result.is_none());
@@ -430,17 +389,12 @@ async fn get_kds_order_returns_none_for_unknown() {
 async fn owner_can_get_kds_queue() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let order = test_kds_order("o1");
-    let created = create_kds_order_in_store(&state, &order);
+    let created = create_kds_order_in_store(&app, &order);
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let queue = get_kds_queue_scoped("tok".into(), None, app.state())
+    let queue = get_kds_queue_scoped(&app.ctx(), "tok".into(), None)
         .await
         .unwrap();
     assert_eq!(queue.len(), 1);
@@ -451,17 +405,13 @@ async fn owner_can_get_kds_queue() {
 async fn update_kds_status_returns_error_for_unknown_order() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = update_kds_status_scoped(
+        &app.ctx(),
         "tok".into(),
         "nonexistent".into(),
         "ready".into(),
-        app.state(),
     )
     .await;
     assert!(result.is_err());
@@ -473,24 +423,19 @@ async fn update_kds_status_returns_error_for_unknown_order() {
 async fn kds_orders_scoped_to_instance() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     // Order for kds-main — should be visible.
     let mut order_main = test_kds_order("o1");
     order_main.target_instance_id = Some("kds-main".into());
-    let created_main = create_kds_order_in_store(&state, &order_main);
+    let created_main = create_kds_order_in_store(&app, &order_main);
 
     // Order for kds-expediter — should NOT be visible.
     let mut order_exp = test_kds_order("o2");
     order_exp.target_instance_id = Some("kds-expediter".into());
-    create_kds_order_in_store(&state, &order_exp);
+    create_kds_order_in_store(&app, &order_exp);
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let orders = list_kds_orders_scoped("tok".into(), None, app.state())
+    let orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), None)
         .await
         .unwrap();
     assert_eq!(orders.len(), 1, "only kds-main orders should be visible");
@@ -509,13 +454,9 @@ async fn staff_can_list_kds_orders() {
         [],
     )
     .unwrap();
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "user-staff", "role-staff", "s1", "kds-main");
 
-    let result = list_kds_orders_scoped("tok".into(), None, app.state()).await;
+    let result = list_kds_orders_scoped(&app.ctx(), "tok".into(), None).await;
     assert!(result.is_ok(), "staff has KDS_VIEW permission");
     assert!(result.unwrap().is_empty());
 }
@@ -530,23 +471,13 @@ async fn staff_can_update_kds_status() {
         [],
     )
     .unwrap();
-    let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1", "kds-main");
+    let app = scoped_state(conn, "tok", "user-staff", "role-staff", "s1", "kds-main");
 
     let order = test_kds_order("o1");
-    let created = create_kds_order_in_store(&state, &order);
+    let created = create_kds_order_in_store(&app, &order);
 
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
-
-    let result = update_kds_status_scoped(
-        "tok".into(),
-        created.id.clone(),
-        "preparing".into(),
-        app.state(),
-    )
-    .await;
+    let result =
+        update_kds_status_scoped(&app.ctx(), "tok".into(), &created.id, "preparing".into()).await;
     assert!(result.is_ok(), "staff has KDS_UPDATE permission");
 }
 
@@ -555,13 +486,10 @@ async fn staff_can_update_kds_status() {
 #[tokio::test]
 async fn register_kds_device_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
-    let result = crate::commands::kds_device::register_kds_device_scoped(
+    let result = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "bad-token".into(),
         RegisterKdsDeviceInput {
             name: "Test KDS".into(),
@@ -570,7 +498,6 @@ async fn register_kds_device_scoped_rejects_invalid_token() {
             pairing_token_hash: "hash-test".into(),
             pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
         },
-        app.state(),
     )
     .await;
     assert!(result.is_err(), "invalid token should be rejected");
@@ -581,7 +508,7 @@ async fn register_and_list_kds_devices_scoped() {
     let conn = oz_core::migrations::fresh_db();
     // Seed owner.
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -591,14 +518,11 @@ async fn register_and_list_kds_devices_scoped() {
         Some("resto-1".into()),
     );
     // Seed terminal in the store DB (where kds_devices lives).
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
 
     // Register a device.
-    let reg_result = crate::commands::kds_device::register_kds_device_scoped(
+    let reg_result = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Kitchen Screen".into(),
@@ -607,7 +531,6 @@ async fn register_and_list_kds_devices_scoped() {
             pairing_token_hash: "hash-test".into(),
             pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
         },
-        app.state(),
     )
     .await;
     assert!(
@@ -617,8 +540,7 @@ async fn register_and_list_kds_devices_scoped() {
     );
 
     // List devices.
-    let list_result =
-        crate::commands::kds_device::list_kds_devices_scoped("tok".into(), app.state()).await;
+    let list_result = crate::kds_device::list_kds_devices(&app.ctx(), "tok".into()).await;
     assert!(list_result.is_ok(), "list should succeed");
     let devices = list_result.unwrap();
     assert_eq!(devices.len(), 1, "should have 1 device");
@@ -628,17 +550,13 @@ async fn register_and_list_kds_devices_scoped() {
 #[tokio::test]
 async fn ack_kds_order_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
-    let result = crate::commands::kds_device::ack_kds_order_scoped(
+    let result = crate::kds_device::ack_kds_order(
+        &app.ctx(),
         "bad-token".into(),
         "some-order-id".into(),
         "kds-device-1".into(),
-        app.state(),
     )
     .await;
     assert!(result.is_err(), "invalid token should be rejected");
@@ -649,18 +567,11 @@ async fn ack_kds_order_scoped_rejects_invalid_token() {
 #[tokio::test]
 async fn resolve_kds_targets_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
-    let result = crate::commands::kds_routing::resolve_kds_targets_scoped(
-        "bad-token".into(),
-        "sale-123".into(),
-        app.state(),
-    )
-    .await;
+    let result =
+        crate::kds_routing::resolve_kds_targets(&app.ctx(), "bad-token".into(), "sale-123".into())
+            .await;
     assert!(result.is_err(), "invalid token should be rejected");
 }
 
@@ -674,7 +585,7 @@ async fn resolve_kds_targets_scoped_rejects_invalid_token() {
 async fn integration_enrollment_full_lifecycle() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -683,14 +594,11 @@ async fn integration_enrollment_full_lifecycle() {
         "resto-1",
         Some("resto-1".into()),
     );
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
 
     // Step 1: Register a KDS device.
-    let device = crate::commands::kds_device::register_kds_device_scoped(
+    let device = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Grill Display".into(),
@@ -699,7 +607,6 @@ async fn integration_enrollment_full_lifecycle() {
             pairing_token_hash: "hash-grill".into(),
             pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
@@ -713,40 +620,32 @@ async fn integration_enrollment_full_lifecycle() {
     );
 
     // Step 2: List devices — should show the registered device.
-    let devices = crate::commands::kds_device::list_kds_devices_scoped("tok".into(), app.state())
+    let devices = crate::kds_device::list_kds_devices(&app.ctx(), "tok".into())
         .await
         .unwrap();
     assert_eq!(devices.len(), 1);
     assert_eq!(devices[0].id, device.id);
 
     // Step 3: Get single device.
-    let fetched = crate::commands::kds_device::get_kds_device_scoped(
-        "tok".into(),
-        device.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let fetched = crate::kds_device::get_kds_device(&app.ctx(), "tok", &device.id)
+        .await
+        .unwrap();
     assert!(fetched.is_some());
     assert_eq!(fetched.unwrap().id, device.id);
 
     // Step 4: Device connects — update status to connected.
-    crate::commands::kds_device::update_kds_device_status_scoped(
+    crate::kds_device::update_kds_device_status(
+        &app.ctx(),
         "tok".into(),
-        device.id.clone(),
+        &device.id,
         oz_core::kds::KdsConnectionStatus::Connected,
-        app.state(),
     )
     .await
     .unwrap();
-    let fetched = crate::commands::kds_device::get_kds_device_scoped(
-        "tok".into(),
-        device.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let fetched = crate::kds_device::get_kds_device(&app.ctx(), "tok", &device.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         fetched.connection_status,
         oz_core::kds::KdsConnectionStatus::Connected
@@ -755,7 +654,7 @@ async fn integration_enrollment_full_lifecycle() {
 
     // Step 5: Create a sale + KDS order, then ack it.
     let order = create_kds_order_in_store(
-        &app.state::<AppState>(),
+        &app,
         &KdsOrder {
             id: "order-1".into(),
             sale_id: "sale-1".into(),
@@ -779,31 +678,21 @@ async fn integration_enrollment_full_lifecycle() {
     );
     assert_eq!(order.status, "pending");
 
-    let acked = crate::commands::kds_device::ack_kds_order_scoped(
-        "tok".into(),
-        order.id.clone(),
-        device.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let acked = crate::kds_device::ack_kds_order(&app.ctx(), "tok", &order.id, &device.id)
+        .await
+        .unwrap();
     assert!(acked, "first ack should succeed");
 
     // Step 6: Double-ack should fail.
-    let acked2 = crate::commands::kds_device::ack_kds_order_scoped(
-        "tok".into(),
-        order.id.clone(),
-        "other-device".into(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let acked2 = crate::kds_device::ack_kds_order(&app.ctx(), "tok", &order.id, "other-device")
+        .await
+        .unwrap();
     assert!(!acked2, "second ack should return false");
 
     // Step 7: Device goes stale — backdate last_seen_at.
     {
-        let state_ref = app.state::<AppState>();
-        let db_ref = state_ref.db_manager.open_store("s1").unwrap();
+        let state_ref = &app;
+        let db_ref = state_ref.db_manager().open_store("s1").unwrap();
         let db = db_ref.lock().unwrap();
         db.execute(
             "UPDATE kds_devices SET last_seen_at = '2020-01-01T00:00:00.000Z', connection_status = 'connected' WHERE id = ?1",
@@ -813,42 +702,30 @@ async fn integration_enrollment_full_lifecycle() {
     }
     // Run stale detection via the Store directly (simulates health daemon).
     {
-        let state_ref = app.state::<AppState>();
-        let db_ref = state_ref.db_manager.open_store("s1").unwrap();
+        let state_ref = &app;
+        let db_ref = state_ref.db_manager().open_store("s1").unwrap();
         let db = db_ref.lock().unwrap();
         let store = Store::new(&db);
         let marked = store.mark_stale_kds_devices(30).unwrap();
         assert_eq!(marked, 1, "should mark 1 device stale");
     }
-    let fetched = crate::commands::kds_device::get_kds_device_scoped(
-        "tok".into(),
-        device.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let fetched = crate::kds_device::get_kds_device(&app.ctx(), "tok", &device.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         fetched.connection_status,
         oz_core::kds::KdsConnectionStatus::Stale
     );
 
     // Step 8: Deactivate the device.
-    crate::commands::kds_device::deactivate_kds_device_scoped(
-        "tok".into(),
-        device.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
-    let fetched = crate::commands::kds_device::get_kds_device_scoped(
-        "tok".into(),
-        device.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    crate::kds_device::deactivate_kds_device(&app.ctx(), "tok", &device.id)
+        .await
+        .unwrap();
+    let fetched = crate::kds_device::get_kds_device(&app.ctx(), "tok", &device.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(!fetched.is_active, "device should be deactivated");
 }
 
@@ -862,7 +739,7 @@ async fn integration_enrollment_full_lifecycle() {
 async fn integration_broadcast_device_receives_all_orders() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -871,14 +748,11 @@ async fn integration_broadcast_device_receives_all_orders() {
         "resto-1",
         Some("resto-1".into()),
     );
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
 
     // Register a broadcast device (empty station_ids).
-    let broadcast_device = crate::commands::kds_device::register_kds_device_scoped(
+    let broadcast_device = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Expo Screen".into(),
@@ -887,14 +761,13 @@ async fn integration_broadcast_device_receives_all_orders() {
             pairing_token_hash: "h-expo".into(),
             pairing_expires_at: "2099-01-01".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
 
     // Create a KDS order.
     let order = create_kds_order_in_store(
-        &app.state::<AppState>(),
+        &app,
         &KdsOrder {
             id: "order-any".into(),
             sale_id: "sale-any".into(),
@@ -918,13 +791,9 @@ async fn integration_broadcast_device_receives_all_orders() {
     );
 
     // Broadcast device should receive it.
-    let targets = crate::commands::kds_routing::resolve_kds_targets_scoped(
-        "tok".into(),
-        order.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let targets = crate::kds_routing::resolve_kds_targets(&app.ctx(), "tok", &order.id)
+        .await
+        .unwrap();
     assert_eq!(
         targets.len(),
         1,
@@ -942,7 +811,7 @@ async fn integration_broadcast_device_receives_all_orders() {
 async fn integration_inactive_device_excluded_from_routing() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -951,14 +820,11 @@ async fn integration_inactive_device_excluded_from_routing() {
         "resto-1",
         Some("resto-1".into()),
     );
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
 
     // Register a device then deactivate it.
-    let device = crate::commands::kds_device::register_kds_device_scoped(
+    let device = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Old Display".into(),
@@ -967,22 +833,17 @@ async fn integration_inactive_device_excluded_from_routing() {
             pairing_token_hash: "h-old".into(),
             pairing_expires_at: "2099-01-01".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    crate::commands::kds_device::deactivate_kds_device_scoped(
-        "tok".into(),
-        device.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    crate::kds_device::deactivate_kds_device(&app.ctx(), "tok", &device.id)
+        .await
+        .unwrap();
 
     // Create a KDS order.
     let order = create_kds_order_in_store(
-        &app.state::<AppState>(),
+        &app,
         &KdsOrder {
             id: "order-inactive".into(),
             sale_id: "sale-inactive".into(),
@@ -1006,13 +867,9 @@ async fn integration_inactive_device_excluded_from_routing() {
     );
 
     // Deactivated device should NOT receive the order.
-    let targets = crate::commands::kds_routing::resolve_kds_targets_scoped(
-        "tok".into(),
-        order.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let targets = crate::kds_routing::resolve_kds_targets(&app.ctx(), "tok", &order.id)
+        .await
+        .unwrap();
     assert!(
         targets.is_empty(),
         "deactivated device should not receive orders"
@@ -1027,7 +884,7 @@ async fn integration_inactive_device_excluded_from_routing() {
 async fn integration_duplicate_device_name_rejected() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -1036,11 +893,7 @@ async fn integration_duplicate_device_name_rejected() {
         "resto-1",
         Some("resto-1".into()),
     );
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
 
     let input = RegisterKdsDeviceInput {
         name: "Grill Display".into(),
@@ -1051,18 +904,12 @@ async fn integration_duplicate_device_name_rejected() {
     };
 
     // First registration succeeds.
-    let result1 = crate::commands::kds_device::register_kds_device_scoped(
-        "tok".into(),
-        input.clone(),
-        app.state(),
-    )
-    .await;
+    let result1 =
+        crate::kds_device::register_kds_device(&app.ctx(), "tok".into(), input.clone()).await;
     assert!(result1.is_ok(), "first registration should succeed");
 
     // Second registration with same name fails.
-    let result2 =
-        crate::commands::kds_device::register_kds_device_scoped("tok".into(), input, app.state())
-            .await;
+    let result2 = crate::kds_device::register_kds_device(&app.ctx(), "tok".into(), input).await;
     assert!(result2.is_err(), "duplicate name should be rejected");
 }
 
@@ -1075,7 +922,7 @@ async fn integration_duplicate_device_name_rejected() {
 async fn integration_concurrent_ack_only_first_wins() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -1084,14 +931,11 @@ async fn integration_concurrent_ack_only_first_wins() {
         "resto-1",
         Some("resto-1".into()),
     );
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
 
     // Register two devices.
-    let device_a = crate::commands::kds_device::register_kds_device_scoped(
+    let device_a = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Device A".into(),
@@ -1100,12 +944,12 @@ async fn integration_concurrent_ack_only_first_wins() {
             pairing_token_hash: "ha".into(),
             pairing_expires_at: "2099-01-01".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let device_b = crate::commands::kds_device::register_kds_device_scoped(
+    let device_b = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Device B".into(),
@@ -1114,14 +958,13 @@ async fn integration_concurrent_ack_only_first_wins() {
             pairing_token_hash: "hb".into(),
             pairing_expires_at: "2099-01-01".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
 
     // Create a KDS order.
     let order = create_kds_order_in_store(
-        &app.state::<AppState>(),
+        &app,
         &KdsOrder {
             id: "order-race".into(),
             sale_id: "sale-race".into(),
@@ -1145,25 +988,15 @@ async fn integration_concurrent_ack_only_first_wins() {
     );
 
     // Device A acks first — should succeed.
-    let ack_a = crate::commands::kds_device::ack_kds_order_scoped(
-        "tok".into(),
-        order.id.clone(),
-        device_a.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let ack_a = crate::kds_device::ack_kds_order(&app.ctx(), "tok", &order.id, &device_a.id)
+        .await
+        .unwrap();
     assert!(ack_a, "device A should win the ack race");
 
     // Device B acks second — should fail.
-    let ack_b = crate::commands::kds_device::ack_kds_order_scoped(
-        "tok".into(),
-        order.id.clone(),
-        device_b.id.clone(),
-        app.state(),
-    )
-    .await
-    .unwrap();
+    let ack_b = crate::kds_device::ack_kds_order(&app.ctx(), "tok", &order.id, &device_b.id)
+        .await
+        .unwrap();
     assert!(!ack_b, "device B should lose the ack race");
 }
 
@@ -1177,7 +1010,7 @@ async fn integration_concurrent_ack_only_first_wins() {
 async fn integration_health_monitoring_cycle() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -1186,14 +1019,11 @@ async fn integration_health_monitoring_cycle() {
         "resto-1",
         Some("resto-1".into()),
     );
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
 
     // Register two devices.
-    let device_good = crate::commands::kds_device::register_kds_device_scoped(
+    let device_good = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Good Display".into(),
@@ -1202,12 +1032,12 @@ async fn integration_health_monitoring_cycle() {
             pairing_token_hash: "hg".into(),
             pairing_expires_at: "2099-01-01".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
 
-    let device_stale = crate::commands::kds_device::register_kds_device_scoped(
+    let device_stale = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Stale Display".into(),
@@ -1216,33 +1046,32 @@ async fn integration_health_monitoring_cycle() {
             pairing_token_hash: "hs".into(),
             pairing_expires_at: "2099-01-01".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
 
     // Connect both, then backdate stale device's last_seen_at.
-    crate::commands::kds_device::update_kds_device_status_scoped(
+    crate::kds_device::update_kds_device_status(
+        &app.ctx(),
         "tok".into(),
-        device_good.id.clone(),
+        &device_good.id,
         oz_core::kds::KdsConnectionStatus::Connected,
-        app.state(),
     )
     .await
     .unwrap();
-    crate::commands::kds_device::update_kds_device_status_scoped(
+    crate::kds_device::update_kds_device_status(
+        &app.ctx(),
         "tok".into(),
-        device_stale.id.clone(),
+        &device_stale.id,
         oz_core::kds::KdsConnectionStatus::Connected,
-        app.state(),
     )
     .await
     .unwrap();
 
     // Backdate stale device's last_seen_at to simulate disconnection.
     {
-        let state_ref = app.state::<AppState>();
-        let db_ref = state_ref.db_manager.open_store("s1").unwrap();
+        let state_ref = &app;
+        let db_ref = state_ref.db_manager().open_store("s1").unwrap();
         let db = db_ref.lock().unwrap();
         db.execute(
             "UPDATE kds_devices SET last_seen_at = '2020-01-01T00:00:00.000Z' WHERE id = ?1",
@@ -1253,8 +1082,8 @@ async fn integration_health_monitoring_cycle() {
 
     // Run health daemon cycle via Store directly.
     {
-        let state_ref = app.state::<AppState>();
-        let db_ref = state_ref.db_manager.open_store("s1").unwrap();
+        let state_ref = &app;
+        let db_ref = state_ref.db_manager().open_store("s1").unwrap();
         let db = db_ref.lock().unwrap();
         let store = Store::new(&db);
 
@@ -1305,7 +1134,7 @@ async fn integration_health_monitoring_cycle() {
 async fn integration_device_isolation_between_restaurants() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -1314,15 +1143,12 @@ async fn integration_device_isolation_between_restaurants() {
         "resto-1",
         Some("resto-1".into()),
     );
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant A", "dev-a");
-    seed_terminal_in_store(&state, "s1", "resto-2", "Restaurant B", "dev-b");
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant A", "dev-a");
+    seed_terminal_in_store(&app, "s1", "resto-2", "Restaurant B", "dev-b");
 
     // Register device under resto-1.
-    let device_a = crate::commands::kds_device::register_kds_device_scoped(
+    let device_a = crate::kds_device::register_kds_device(
+        &app.ctx(),
         "tok".into(),
         RegisterKdsDeviceInput {
             name: "Display A".into(),
@@ -1331,15 +1157,14 @@ async fn integration_device_isolation_between_restaurants() {
             pairing_token_hash: "ha".into(),
             pairing_expires_at: "2099-01-01".into(),
         },
-        app.state(),
     )
     .await
     .unwrap();
 
     // Register device under resto-2 (via Store directly since session is for resto-1).
     {
-        let state_ref = app.state::<AppState>();
-        let db_ref = state_ref.db_manager.open_store("s1").unwrap();
+        let state_ref = &app;
+        let db_ref = state_ref.db_manager().open_store("s1").unwrap();
         let db = db_ref.lock().unwrap();
         let store = Store::new(&db);
         store
@@ -1354,7 +1179,7 @@ async fn integration_device_isolation_between_restaurants() {
     }
 
     // list_kds_devices_scoped only returns devices for the session's restaurant.
-    let devices = crate::commands::kds_device::list_kds_devices_scoped("tok".into(), app.state())
+    let devices = crate::kds_device::list_kds_devices(&app.ctx(), "tok".into())
         .await
         .unwrap();
     assert_eq!(devices.len(), 1, "should only see resto-1 devices");
@@ -1371,8 +1196,8 @@ async fn integration_device_isolation_between_restaurants() {
 
 /// Seeds a restaurant product (BURGER) into the store DB so the fanout
 /// creates a ticket.
-fn seed_restaurant_product(state: &AppState) {
-    let store_db = state.db_manager.open_store("s1").unwrap();
+fn seed_restaurant_product(app: &TestBridge) {
+    let store_db = app.db_manager().open_store("s1").unwrap();
     let db = store_db.lock().unwrap();
     let s = Store::new(&db);
     s.create_product(
@@ -1393,8 +1218,8 @@ fn seed_restaurant_product(state: &AppState) {
 /// Seeds a pending sale with one BURGER line into the store DB. The
 /// existing `create_sale_in_store` helper creates a zero-line sale, which
 /// the fanout correctly ignores (nothing to cook).
-fn create_restaurant_sale_in_store(state: &AppState, sale_id: &str) {
-    let store_db = state.db_manager.open_store("s1").unwrap();
+fn create_restaurant_sale_in_store(app: &TestBridge, sale_id: &str) {
+    let store_db = app.db_manager().open_store("s1").unwrap();
     let db = store_db.lock().unwrap();
     let s = Store::new(&db);
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -1451,26 +1276,17 @@ fn create_restaurant_sale_in_store(state: &AppState, sale_id: &str) {
     s.create_sale(&sale).unwrap();
 }
 
-fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
-    tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap()
-}
-
 #[tokio::test]
 async fn scoped_line_item_status_update_and_read_end_to_end() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    seed_restaurant_product(&state);
-    create_restaurant_sale_in_store(&state, "sale-lines-1");
-    let app = mock_app(state);
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    seed_restaurant_product(&app);
+    create_restaurant_sale_in_store(&app, "sale-lines-1");
 
-    let orders =
-        create_kds_order_from_sale_scoped("tok".into(), "sale-lines-1".into(), app.state())
-            .await
-            .unwrap();
+    let orders = create_kds_order_from_sale_scoped(&app.ctx(), "tok".into(), "sale-lines-1".into())
+        .await
+        .unwrap();
     assert_eq!(
         orders.len(),
         1,
@@ -1478,17 +1294,17 @@ async fn scoped_line_item_status_update_and_read_end_to_end() {
     );
     assert_eq!(orders[0].store_id.as_deref(), Some("s1"));
 
-    let lines = get_kds_order_lines_scoped("tok".into(), orders[0].id.clone(), app.state())
+    let lines = get_kds_order_lines_scoped(&app.ctx(), "tok", &orders[0].id)
         .await
         .unwrap();
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].item_status, "pending");
 
     let updated = update_kds_line_item_status_scoped(
+        &app.ctx(),
         "tok".into(),
-        lines[0].id.clone(),
+        &lines[0].id,
         "preparing".into(),
-        app.state(),
     )
     .await
     .unwrap();
@@ -1500,17 +1316,16 @@ async fn scoped_line_item_status_update_and_read_end_to_end() {
 async fn scoped_update_kds_order_items_edits_ticket() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    seed_restaurant_product(&state);
-    create_restaurant_sale_in_store(&state, "sale-items-1");
-    let app = mock_app(state);
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
+    seed_restaurant_product(&app);
+    create_restaurant_sale_in_store(&app, "sale-items-1");
 
-    let orders =
-        create_kds_order_from_sale_scoped("tok".into(), "sale-items-1".into(), app.state())
-            .await
-            .unwrap();
+    let orders = create_kds_order_from_sale_scoped(&app.ctx(), "tok".into(), "sale-items-1".into())
+        .await
+        .unwrap();
 
     let edited = update_kds_order_items_scoped(
+        &app.ctx(),
         "tok".into(),
         oz_core::UpdateKdsOrderItemsInput {
             id: orders[0].id.clone(),
@@ -1533,14 +1348,13 @@ async fn scoped_update_kds_order_items_edits_ticket() {
                 },
             ]),
         },
-        app.state(),
     )
     .await
     .unwrap();
     assert_eq!(edited.items_summary, "Burger, Fries");
     assert_eq!(edited.item_count, 2);
 
-    let lines = get_kds_order_lines_scoped("tok".into(), orders[0].id.clone(), app.state())
+    let lines = get_kds_order_lines_scoped(&app.ctx(), "tok", &orders[0].id)
         .await
         .unwrap();
     assert_eq!(
@@ -1557,37 +1371,34 @@ async fn scoped_update_kds_order_items_edits_ticket() {
 #[tokio::test]
 async fn scoped_line_item_update_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = mock_app(state);
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = update_kds_line_item_status_scoped(
+        &app.ctx(),
         "bad-token".into(),
         "item-1".into(),
         "preparing".into(),
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_get_order_lines_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = mock_app(state);
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result =
-        get_kds_order_lines_scoped("bad-token".into(), "order-1".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    let result = get_kds_order_lines_scoped(&app.ctx(), "bad-token".into(), "order-1".into()).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_update_order_items_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = mock_app(state);
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = update_kds_order_items_scoped(
+        &app.ctx(),
         "bad-token".into(),
         oz_core::UpdateKdsOrderItemsInput {
             id: "order-1".into(),
@@ -1595,25 +1406,23 @@ async fn scoped_update_order_items_rejects_invalid_token() {
             item_count: 0,
             line_items: None,
         },
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
 async fn scoped_create_tickets_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = mock_app(state);
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result =
-        create_kds_order_from_sale_scoped("bad-token".into(), "sale-1".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+        create_kds_order_from_sale_scoped(&app.ctx(), "bad-token".into(), "sale-1".into()).await;
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
-use crate::commands::kds_device::list_kds_devices_scoped;
-use crate::commands::kds_routing::resolve_kds_targets_scoped;
+use crate::kds_device::list_kds_devices;
+use crate::kds_routing::resolve_kds_targets;
 
 // ── Gap pins: resolve_kds_targets_scoped command-level routing ──────
 //
@@ -1626,9 +1435,9 @@ use crate::commands::kds_routing::resolve_kds_targets_scoped;
 /// Seed BURGER + FRIES products, set their kitchen zones via SQL (not
 /// exposed on create_product), and return the order with two structured
 /// line items (round-W helper shape).
-fn seed_zoned_ticket(state: &AppState) -> KdsOrder {
-    seed_restaurant_product(state);
-    let store_db = state.db_manager.open_store("s1").unwrap();
+fn seed_zoned_ticket(app: &TestBridge) -> KdsOrder {
+    seed_restaurant_product(app);
+    let store_db = app.db_manager().open_store("s1").unwrap();
     let db = store_db.lock().unwrap();
     // The core helper seeds only BURGER; FRIES must exist before its
     // kitchen_zone can be set (create_product, then SQL for the zone —
@@ -1725,7 +1534,7 @@ fn usd_price(minor: i64) -> Money {
 async fn routing_station_claim_sends_each_line_to_its_zone_device() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -1734,10 +1543,10 @@ async fn routing_station_claim_sends_each_line_to_its_zone_device() {
         "resto-1",
         Some("resto-1".into()),
     );
-    let order = seed_zoned_ticket(&state);
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
+    let order = seed_zoned_ticket(&app);
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
     {
-        let store_db = state.db_manager.open_store("s1").unwrap();
+        let store_db = app.db_manager().open_store("s1").unwrap();
         let db = store_db.lock().unwrap();
         let s = Store::new(&db);
         s.register_kds_device(RegisterKdsDeviceInput {
@@ -1757,9 +1566,8 @@ async fn routing_station_claim_sends_each_line_to_its_zone_device() {
         })
         .unwrap();
     }
-    let app = mock_app(state);
 
-    let targets = resolve_kds_targets_scoped("tok".into(), order.id.clone(), app.state())
+    let targets = crate::kds_routing::resolve_kds_targets(&app.ctx(), "tok", &order.id)
         .await
         .unwrap();
     assert_eq!(
@@ -1773,7 +1581,7 @@ async fn routing_station_claim_sends_each_line_to_its_zone_device() {
 async fn routing_catch_all_when_no_device_claims_a_station() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state_with_restaurant(
+    let app = scoped_state_with_restaurant(
         conn,
         "tok",
         "user-owner",
@@ -1782,10 +1590,10 @@ async fn routing_catch_all_when_no_device_claims_a_station() {
         "resto-1",
         Some("resto-1".into()),
     );
-    let order = seed_zoned_ticket(&state);
-    seed_terminal_in_store(&state, "s1", "resto-1", "Restaurant POS", "dev-resto");
+    let order = seed_zoned_ticket(&app);
+    seed_terminal_in_store(&app, "s1", "resto-1", "Restaurant POS", "dev-resto");
     {
-        let store_db = state.db_manager.open_store("s1").unwrap();
+        let store_db = app.db_manager().open_store("s1").unwrap();
         let db = store_db.lock().unwrap();
         let s = Store::new(&db);
         // Only the fry station is claimed; 'grill' has no device →
@@ -1799,9 +1607,8 @@ async fn routing_catch_all_when_no_device_claims_a_station() {
         })
         .unwrap();
     }
-    let app = mock_app(state);
 
-    let targets = resolve_kds_targets_scoped("tok".into(), order.id.clone(), app.state())
+    let targets = crate::kds_routing::resolve_kds_targets(&app.ctx(), "tok", &order.id)
         .await
         .unwrap();
     assert_eq!(
@@ -1817,10 +1624,10 @@ async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
     seed_owner(&conn);
     // NO restaurant_pos_id: the command must fall back to terminal_id and
     // find devices registered to "terminal-1" (scoped_state's terminal).
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "terminal-1");
-    seed_terminal_in_store(&state, "s1", "terminal-1", "Restaurant POS", "dev-term");
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "terminal-1");
+    seed_terminal_in_store(&app, "s1", "terminal-1", "Restaurant POS", "dev-term");
     {
-        let store_db = state.db_manager.open_store("s1").unwrap();
+        let store_db = app.db_manager().open_store("s1").unwrap();
         let db = store_db.lock().unwrap();
         let s = Store::new(&db);
         s.register_kds_device(RegisterKdsDeviceInput {
@@ -1835,9 +1642,9 @@ async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
     // Sale seeded BEFORE the guard: create_sale_in_store opens the same
     // store and locks the same non-reentrant std Mutex — calling it inside
     // the guard below deadlocks (the 7-hour zombie run).
-    create_sale_in_store(&state, "sale-fb");
+    create_sale_in_store(&app, "sale-fb");
     let order = {
-        let store_db = state.db_manager.open_store("s1").unwrap();
+        let store_db = app.db_manager().open_store("s1").unwrap();
         let db = store_db.lock().unwrap();
         let s = Store::new(&db);
         s.create_kds_order(CreateKdsOrderInput {
@@ -1852,13 +1659,12 @@ async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
         })
         .unwrap()
     };
-    let app = mock_app(state);
 
-    let devices = list_kds_devices_scoped("tok".into(), app.state())
+    let devices = crate::kds_device::list_kds_devices(&app.ctx(), "tok")
         .await
         .unwrap();
     assert_eq!(devices.len(), 1, "fallback finds the device");
-    let targets = resolve_kds_targets_scoped("tok".into(), order.id.clone(), app.state())
+    let targets = crate::kds_routing::resolve_kds_targets(&app.ctx(), "tok", &order.id)
         .await
         .unwrap();
     assert_eq!(targets.len(), 1, "broadcast device receives the order");
@@ -1868,10 +1674,8 @@ async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
 async fn routing_unknown_order_fails_with_invalid() {
     let conn = oz_core::migrations::fresh_db();
     seed_owner(&conn);
-    let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
-    let app = mock_app(state);
+    let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result =
-        resolve_kds_targets_scoped("tok".into(), "no-such-order".into(), app.state()).await;
-    assert!(matches!(result, Err(AppError::Invalid(_))));
+    let result = crate::kds_routing::resolve_kds_targets(&app.ctx(), "tok", "no-such-order").await;
+    assert!(matches!(result, Err(BridgeError::Invalid(_))));
 }

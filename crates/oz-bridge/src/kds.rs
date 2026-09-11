@@ -639,3 +639,6 @@ pub async fn update_kds_line_item_status_scoped(
 
     Ok(item)
 }
+#[cfg(test)]
+#[path = "kds_tests.rs"]
+mod kds_tests;
