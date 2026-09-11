@@ -34,6 +34,74 @@ struct SaleLinePayload {
 struct StockAdjustmentPayload {
     sku: String,
     delta: i64,
+    /// Optional per-location scope (ADR-19). ADR-19-aware senders and CRDT
+    /// envelope sides name the location the delta belongs to; OLDER senders
+    /// omit it (serde default), and the delta then keeps today's behaviour
+    /// of landing at the canonical default location.
+    #[serde(default)]
+    location_id: Option<String>,
+}
+/// Apply one stock.adjusted delta inside the caller's transaction.
+///
+/// A delta that names a location_id routes through the canonical
+/// per-location writer adjust_stock_at_location_with_reason, which upserts
+/// stock_summary at the composite (item_id, location_id) key and recomputes
+/// the legacy inventory aggregate as the SUM over per-location rows - never
+/// an aggregate stamp (ADR-19 s3.1, the writer the store-level contract
+/// test proves correct).
+///
+/// A delta WITHOUT a location keeps the pre-ADR-19 target (the canonical
+/// default location) and picks the writer by install shape:
+///
+/// - no stock_summary rows for the product (legacy single-location
+///   install): adjust_stock_in_tx - its aggregate stamp is consistent
+///   there because the default row is the only row;
+/// - rows exist (multi-location install): the canonical writer AT the
+///   canonical default location - the legacy stamp would overwrite the
+///   default row with the cross-location aggregate and re-create the
+///   reader-vs-SUM disagreement this dispatch exists to prevent.
+#[allow(deprecated)]
+fn apply_stock_adjustment_delta_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    sub: &StockAdjustmentPayload,
+) -> Result<(), CoreError> {
+    let has_location_rows = product_has_location_rows(tx, &sub.sku)?;
+    let canonical_at = |location: &str| -> Result<(), CoreError> {
+        Store::new(tx).adjust_stock_at_location_with_reason(
+            tx,
+            &sub.sku,
+            sub.delta,
+            &oz_core::inventory::LocationId::from(location),
+            None,
+            None,
+            None,
+            None,
+        )?;
+        Ok(())
+    };
+    match sub.location_id.as_deref() {
+        Some(location) => canonical_at(location)?,
+        None if has_location_rows => {
+            canonical_at(oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID)?
+        }
+        None => {
+            Store::new(tx).adjust_stock_in_tx(tx, &sub.sku, sub.delta)?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether the product behind sku already has any per-location
+/// stock_summary row (i.e. the install tracks per-location stock for it).
+fn product_has_location_rows(tx: &rusqlite::Transaction<'_>, sku: &str) -> Result<bool, CoreError> {
+    let exists: i64 = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM stock_summary WHERE item_id = (SELECT id FROM products WHERE sku = ?1))",
+            [sku],
+            |row| row.get(0),
+        )
+        .map_err(CoreError::Db)?;
+    Ok(exists != 0)
 }
 
 /// Payload for the `stock.movement` sync action (ADR #6 cross-store routing).
@@ -336,7 +404,7 @@ impl SyncQueue {
                 let apply_one = |value: Value| -> Result<(), CoreError> {
                     let sub: StockAdjustmentPayload = serde_json::from_value(value)
                         .map_err(|e| CoreError::Internal(format!("invalid stock payload: {e}")))?;
-                    Store::new(tx).adjust_stock_in_tx(tx, &sub.sku, sub.delta)?;
+                    apply_stock_adjustment_delta_in_tx(tx, &sub)?;
                     Ok(())
                 };
                 if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
@@ -476,20 +544,22 @@ impl SyncQueue {
             "stock.adjusted" => {
                 let payload: Value = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid stock payload: {e}")))?;
-                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
-                    for side in ["local", "remote"] {
-                        let sub: StockAdjustmentPayload = serde_json::from_value(
-                            payload.get(side).cloned().unwrap_or(Value::Null),
-                        )
-                        .map_err(|e| {
-                            CoreError::Internal(format!("invalid crdt stock delta: {e}"))
-                        })?;
-                        store.adjust_stock(&sub.sku, sub.delta)?;
-                    }
-                } else {
-                    let sub: StockAdjustmentPayload = serde_json::from_value(payload)
+                let apply_one = |value: Value| -> Result<(), CoreError> {
+                    let sub: StockAdjustmentPayload = serde_json::from_value(value)
                         .map_err(|e| CoreError::Internal(format!("invalid stock payload: {e}")))?;
-                    store.adjust_stock(&sub.sku, sub.delta)?;
+                    // Same dispatch as the atomic arm: both pull paths must
+                    // land a delta identically, located or not. Each delta
+                    // commits in its own rusqlite transaction.
+                    let tx = store.conn().unchecked_transaction()?;
+                    apply_stock_adjustment_delta_in_tx(&tx, &sub)?;
+                    tx.commit()?;
+                    Ok(())
+                };
+                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
+                    apply_one(payload.get("local").cloned().unwrap_or(Value::Null))?;
+                    apply_one(payload.get("remote").cloned().unwrap_or(Value::Null))?;
+                } else {
+                    apply_one(payload)?;
                 }
                 Ok(())
             }
