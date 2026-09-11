@@ -229,6 +229,13 @@ func main() {
 		if err := ensureFeatureGrantsField(app); err != nil {
 			return err
 		}
+		// Admin identity precondition (admin registration squat guard):
+		// createTenant now refuses self-signup for the admin email on
+		// every registration path, so the admin tenants row is a hard
+		// precondition that must be provisioned out of band. Warn — but
+		// never fail boot — when it is missing or not email_verified:
+		// without this the fail-closed outcome would be invisible.
+		warnAdminTenantState(app)
 		// Wire rate-limiter persistence to SQLite (H2 audit). Idempotent
 		// and logs-and-returns on schema/hydrate failure so the server can
 		// still boot in degraded in-memory-only mode if SQLite is unavailable.
@@ -507,6 +514,37 @@ func ensurePasswordHashField(app core.App) error {
 	}
 	log.Println("migrated tenants collection: added password_hash field")
 	return nil
+}
+
+// warnAdminTenantState reports (once per boot, read-only) whether the
+// deployment's admin identity has the tenants row the admin reservation
+// guard now hard-requires. createTenant refuses self-signup for the admin
+// email on every registration path, so the row can only exist if it was
+// provisioned out of band (Paddle webhook, seed, or manual creation):
+//   - missing row: the owner cannot provision the account themselves and
+//     adminAuth has nothing to map a session to — fix out of band.
+//   - row with email_verified=false: login never reads the flag, so an
+//     unverified admin row is exactly what a pre-guard self-signup squat
+//     looks like; verify inbox ownership or rotate its password before
+//     trusting admin access.
+//
+// This logs and returns; it NEVER creates or edits a row and never fails
+// boot — unlike the ensure* migrations above, there is nothing to repair
+// automatically and a missing admin row is an operator decision.
+func warnAdminTenantState(app core.App) {
+	adminEmail := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
+	if adminEmail == "" {
+		adminEmail = defaultAdminEmail
+	}
+	// Stored emails are lowercase (normalizeEmail at every write path).
+	tenant, _ := app.FindFirstRecordByData("tenants", "email", strings.ToLower(adminEmail))
+	if tenant == nil {
+		log.Printf("WARNING: no tenants row for the admin identity %q — self-signup for it is refused, so provision it out of band (Paddle webhook or manual creation) before the owner can sign in", adminEmail)
+		return
+	}
+	if !tenant.GetBool("email_verified") {
+		log.Printf("WARNING: the admin tenants row for %q exists but is not email_verified — if this row was not provisioned deliberately, treat it as a possible pre-guard self-signup squat (verify inbox ownership via verify-otp or rotate its password)", adminEmail)
+	}
 }
 
 // ensurePasswordResetAtField adds the tenants.password_reset_at date field

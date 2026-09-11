@@ -1029,3 +1029,87 @@ func TestEnsurePasswordHashField_MigratesExistingCollection(t *testing.T) {
 		t.Fatalf("second ensurePasswordHashField should be a no-op: %v", err)
 	}
 }
+
+// ── admin identity reservation (self-signup squat guard) ────────────
+
+// TestRegister_ReservedAdminEmailRefused409 drives the createTenant guard
+// through /web/register: the reserved admin address is refused with the
+// EXISTING duplicate-email 409 (which already reveals existence for every
+// address — nothing new leaks), no confirmation code is sent, and no row
+// is created. Case and whitespace variants are refused the same way: the
+// guard normalizes before comparing, so they cannot walk past it while
+// still matching the EqualFold admin gate.
+func TestRegister_ReservedAdminEmailRefused409(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_EMAIL", "")
+
+	var sentCode string
+	restore := stubOTPEmail(t, &sentCode)
+	defer restore()
+
+	// Exactly the per-email register budget: every attempt normalizes
+	// onto the same reserved address, so a 4th would rate-limit instead
+	// of exercising the guard.
+	attempts := []string{
+		defaultAdminEmail,                  // exact
+		strings.ToUpper(defaultAdminEmail), // upper-case
+		"  " + defaultAdminEmail + "  ",    // surrounding whitespace
+	}
+	for _, a := range attempts {
+		rec := webRequest(t, se, http.MethodPost, "/api/v1/web/register",
+			`{"email":"`+a+`","password":"RegisterPw!1"}`,
+			"http://localhost:4321", "")
+		if rec.Code != http.StatusConflict {
+			t.Errorf("attempt %q: expected the existing 409, got %d: %s", a, rec.Code, rec.Body.String())
+			continue
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("bad response JSON: %v", err)
+		}
+		if resp["error"] != "an account with this email already exists" {
+			t.Errorf("attempt %q: expected the standard duplicate-email error, got %q", a, resp["error"])
+		}
+		if sentCode != "" {
+			t.Errorf("attempt %q: no confirmation code may be sent for the reserved address, got %q", a, sentCode)
+			sentCode = ""
+		}
+		if tenant, _ := app.FindFirstRecordByData("tenants", "email", defaultAdminEmail); tenant != nil {
+			t.Errorf("attempt %q: no tenants row may be created for the reserved admin address", a)
+		}
+	}
+}
+
+// TestRegister_NonReservedAddressStillCreates pins the reserved-set scope
+// of the guard at the register door: a plain address keeps creating an
+// ACTIVE, unverified tenant with a confirmation code — the signup path
+// the site depends on is untouched for every non-reserved address.
+func TestRegister_NonReservedAddressStillCreates(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+
+	var sentCode string
+	restore := stubOTPEmail(t, &sentCode)
+	defer restore()
+
+	rec := webRequest(t, se, http.MethodPost, "/api/v1/web/register",
+		`{"email":"guardscoped@example.com","password":"RegisterPw!1"}`,
+		"http://localhost:4321", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if sentCode == "" || len(sentCode) != 6 {
+		t.Fatalf("expected a 6-digit confirmation code, got %q", sentCode)
+	}
+	tenant, err := app.FindFirstRecordByData("tenants", "email", "guardscoped@example.com")
+	if err != nil || tenant == nil {
+		t.Fatalf("tenant should exist after register: %v", err)
+	}
+	if tenant.GetString("status") != "active" || tenant.GetBool("email_verified") {
+		t.Errorf("expected an active unverified tenant, got status=%q verified=%v",
+			tenant.GetString("status"), tenant.GetBool("email_verified"))
+	}
+}
