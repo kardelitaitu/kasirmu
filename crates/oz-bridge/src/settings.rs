@@ -81,22 +81,6 @@ pub fn is_managed_key(key: &str) -> bool {
     managed_key_owner(key).is_some()
 }
 
-/// Returns true if a key must never leave the backend through a bulk surface:
-/// the deny-listed credential secrets, keys owned by a dedicated lifecycle
-/// manager (local_api.* - writing/restoring those through the generic path
-/// desyncs the manager, see is_managed_key), and the device-bound identity keys
-/// (sync_terminal_id, machine_id - see NON_EXPORTABLE_DEVICE_KEYS). Used by the
-/// data export and, symmetrically, by the import arm (review MED-2: the export
-/// carried local_api.secret, so an exported-then-restored backup would give two
-/// installs the same signing secret, breaking the per-install property).
-///
-/// Note this is WIDER than the IPC guard: the device-bound identity keys stay
-/// readable through get_setting (they are identifiers the shipped UI reads),
-/// they are only barred from portable packages.
-pub fn is_non_exportable_key(key: &str) -> bool {
-    is_non_exportable_setting_key(key) || is_managed_key(key)
-}
-
 /// All receipt display options in one shot - the UI loads these on
 /// mount and sends the whole struct back on save.
 #[derive(Debug, Serialize, Deserialize)]

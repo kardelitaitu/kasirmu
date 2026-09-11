@@ -12,6 +12,17 @@ fn fresh_conn() -> Connection {
     migrations::fresh_db()
 }
 
+/// The portable-package refusal, asked of the sealed policy directly.
+///
+/// Replaces the deleted bridge-local `is_non_exportable_key`, which was
+/// `is_non_exportable_setting_key(key) || is_managed_key(key)` — exactly the
+/// negation of what [`IngestPolicy::PortablePackage`] admits. The bridge kept
+/// a hand-copied OR of two rules it did not own; asking the policy keeps ONE
+/// rule in the tree, which is the whole point of the funnel.
+fn refused_by_portable_package(key: &str) -> bool {
+    !IngestPolicy::PortablePackage.admits(key)
+}
+
 // ── Token rejection tests ──────────────────────────────
 
 #[test]
@@ -644,7 +655,7 @@ fn every_credential_family_key_declared_in_keys_rs_is_blocked() {
         }
         swept += 1;
         assert!(
-            is_non_exportable_key(key),
+            refused_by_portable_package(key),
             "credential {name} = {key:?} leaks through the GUI export/restore redaction"
         );
         if !NON_EXPORTABLE_DEVICE_KEYS.contains(&key.as_str()) {
@@ -710,7 +721,7 @@ fn credential_table_is_blocked_by_both_surfaces() {
     ];
     for (name, key) in table {
         assert!(
-            is_non_exportable_key(key),
+            refused_by_portable_package(key),
             "{name} = {key:?} must never be exported"
         );
         let credential = !keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&key);
@@ -784,8 +795,8 @@ fn device_identity_keys_stay_readable_but_never_exportable() {
         Some("MACHINE-FP".into()),
         "machine_id stays IPC-readable by decision - get_machine_id has no gate"
     );
-    assert!(is_non_exportable_key(keys::SYNC_TERMINAL_ID));
-    assert!(is_non_exportable_key(keys::MACHINE_ID));
+    assert!(refused_by_portable_package(keys::SYNC_TERMINAL_ID));
+    assert!(refused_by_portable_package(keys::MACHINE_ID));
 }
 // ── SYNC egress: a locally written secret must not be offered to peers ──
 
