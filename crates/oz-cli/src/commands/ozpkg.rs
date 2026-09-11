@@ -5,6 +5,15 @@
 //! and upserts everything inside a single transaction (CLI-1: sale rows
 //! go through the tx-aware `Store::create_sale_in_tx`). `currency_to_utf8`
 //! decodes a product's currency bytes recoverably (RUST-07).
+//!
+//! Settings rows are the one data type that is NOT whole-table portable:
+//! [`is_portable_settings_key`] gates BOTH arms — the `load_all` egress in
+//! `run_export_ozpkg` and the `Settings::set` ingress in `run_import_ozpkg` —
+//! against the single shared credential/device deny list, the same predicate
+//! the desktop bridge (`oz_bridge::settings::is_non_exportable_key`) and the
+//! tablet shell (`platform_core::settings::keys::is_secret_setting_key`) call.
+//! A `.ozpkg` is carried to another install, so per-install secrets (C-2) and
+//! machine-bound identities must never travel in either direction.
 
 use std::collections::HashMap;
 
@@ -13,6 +22,48 @@ use rusqlite::Connection;
 
 use oz_core::Settings;
 use oz_core::db::Store;
+use oz_core::settings::keys;
+
+/// The ONE portable-package settings gate for the CLI `.ozpkg` lane.
+///
+/// Returns `true` when a settings row may travel in — or be restored from —
+/// a portable `.ozpkg`. Delegates to
+/// `platform_core::settings::keys::is_non_exportable_setting_key`, reached
+/// through `oz_core`'s existing re-export of that module: this crate owns NO
+/// key list, because a fourth hand copy is exactly how the GUI and CLI lanes
+/// drifted apart. Covers `SECRET_KEY_DENY_LIST` (credentials —
+/// `local_api.secret`, `sync_terminal_secret`, `license.api_key`, the
+/// payment-gateway keys, …) plus `NON_EXPORTABLE_DEVICE_KEYS` (`machine_id`,
+/// `sync_terminal_id`).
+///
+/// Both `.ozpkg` arms funnel through this single boundary rather than calling
+/// the predicate inline, so the planned slice that turns filtering into a
+/// required policy argument edits one function per lane instead of every loop.
+///
+/// Deliberately NOT applied inside [`Settings::load_all`]: that accessor is
+/// also internal (`Settings::load_features` and `prune_stale_features` read
+/// through it), so filtering there would break feature pruning. The gate
+/// belongs at this lane's call site.
+fn is_portable_settings_key(key: &str) -> bool {
+    !keys::is_non_exportable_setting_key(key)
+}
+
+/// Egress arm: map `load_all` rows to export JSON, dropping every row the
+/// portable gate refuses.
+fn portable_settings_rows(rows: Vec<(String, String)>) -> Vec<serde_json::Value> {
+    rows.into_iter()
+        .filter(|(key, _)| is_portable_settings_key(key))
+        .map(|(key, value)| serde_json::json!({ "key": key, "value": value }))
+        .collect()
+}
+
+/// Ingress arm, the mirror of [`portable_settings_rows`]: the row's key and
+/// value, or `None` when the row is unreadable or must not be restored.
+fn importable_settings_row(row: &serde_json::Value) -> Option<(&str, &str)> {
+    let key = row.get("key").and_then(|v| v.as_str())?;
+    let value = row.get("value").and_then(|v| v.as_str())?;
+    is_portable_settings_key(key).then_some((key, value))
+}
 
 /// Export store data to an encrypted .ozpkg file.
 pub(crate) fn run_export_ozpkg(
@@ -98,12 +149,17 @@ pub(crate) fn run_export_ozpkg(
     };
 
     let settings = if wants("settings") {
+        // MED-2 invariant, CLI arm: the whole settings table is read, but only
+        // portable rows are kept — credentials and device-bound identities are
+        // dropped by the shared gate (`is_portable_settings_key`).
         let rows = oz_core::Settings::load_all(conn)?;
-        Some(
-            rows.into_iter()
-                .map(|(key, value)| serde_json::json!({ "key": key, "value": value }))
-                .collect(),
-        )
+        let total = rows.len();
+        let kept = portable_settings_rows(rows);
+        let dropped = total - kept.len();
+        if dropped > 0 {
+            eprintln!("  {dropped} secret/device-bound settings row(s) withheld from the package");
+        }
+        Some(kept)
     } else {
         None
     };
@@ -372,19 +428,34 @@ pub(crate) fn run_import_ozpkg(
     }
 
     // ── Settings ────────────────────────────────────────────────
+    // Symmetric with the export arm above: a package written by an OLDER
+    // build still carries credentials and device ids, and restoring one must
+    // not silently swap this install's signing secret, license key or
+    // machine fingerprint. Those rows are skipped, not written.
+    let mut settings_skipped = 0usize;
     if let Some(ref settings) = payload.settings {
         for val in settings {
-            if let Some(key) = val.get("key").and_then(|v| v.as_str())
-                && let Some(value) = val.get("value").and_then(|v| v.as_str())
-            {
-                let _ = Settings::set(&tx, key, value);
-                total += 1;
+            match importable_settings_row(val) {
+                Some((key, value)) => {
+                    let _ = Settings::set(&tx, key, value);
+                    total += 1;
+                }
+                None => settings_skipped += 1,
             }
         }
     }
 
     tx.commit().context("committing import transaction")?;
 
+    if settings_skipped > 0 {
+        eprintln!(
+            "  {settings_skipped} settings row(s) skipped: secrets and device-bound ids \n             (machine_id, sync_terminal_id, local_api.secret, license.*, \n             gateway keys) never travel in a portable package (MED-2)."
+        );
+    }
     eprintln!("import complete — {total} records written.");
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "ozpkg_tests.rs"]
+mod tests;
