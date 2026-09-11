@@ -196,14 +196,14 @@ pub async fn activate_license(
 pub async fn get_machine_id(ctx: &BridgeCtx<'_>) -> Result<String, BridgeError> {
     let conn = ctx.lock_global().await;
     // Return the persisted machine ID if one already exists.
-    if let Some(existing) = Settings::get(&conn, "machine_id")?
+    if let Some(existing) = Settings::get(&conn, keys::MACHINE_ID)?
         && !existing.is_empty()
     {
         return Ok(existing);
     }
     // Generate a new one and persist it.
     let id = generate_machine_id();
-    Settings::set_batch(&conn, &[("machine_id".to_string(), id.clone())])?;
+    Settings::set_batch(&conn, &[(keys::MACHINE_ID.to_string(), id.clone())])?;
     Ok(id)
 }
 
@@ -253,7 +253,7 @@ pub async fn renew_license(ctx: &BridgeCtx<'_>, new_key: String) -> Result<bool,
             .filter(|s| !s.is_empty())
             .ok_or_else(|| BridgeError::Invalid("No license activated. Activate first.".into()))?;
         let api_key_enc = Settings::get(&conn, "license.api_key")?.filter(|s| !s.is_empty());
-        let mid = Settings::get(&conn, "machine_id")?.unwrap_or_default();
+        let mid = Settings::get(&conn, keys::MACHINE_ID)?.unwrap_or_default();
         (tid, api_key_enc, mid)
     };
 
@@ -472,7 +472,7 @@ pub async fn check_license_status(
     let (api_key_encrypted, machine_id) = {
         let conn = ctx.lock_global().await;
         let api_key_enc = Settings::get(&conn, "license.api_key")?.filter(|s| !s.is_empty());
-        let mid = Settings::get(&conn, "machine_id")?.unwrap_or_default();
+        let mid = Settings::get(&conn, keys::MACHINE_ID)?.unwrap_or_default();
         (api_key_enc, mid)
     };
 
@@ -725,7 +725,7 @@ pub async fn pause_subscription(
     let api_key = {
         let conn = ctx.lock_global().await;
         let api_key_enc = Settings::get(&conn, "license.api_key")?.filter(|s| !s.is_empty());
-        let mid = Settings::get(&conn, "machine_id")?.unwrap_or_default();
+        let mid = Settings::get(&conn, keys::MACHINE_ID)?.unwrap_or_default();
         match api_key_enc {
             Some(ref v) => decrypt_api_key(v, &mid).unwrap_or_else(|e| {
                 tracing::warn!(
@@ -760,7 +760,7 @@ pub async fn resume_subscription(ctx: &BridgeCtx<'_>) -> Result<PauseResumeDto, 
     let api_key = {
         let conn = ctx.lock_global().await;
         let api_key_enc = Settings::get(&conn, "license.api_key")?.filter(|s| !s.is_empty());
-        let mid = Settings::get(&conn, "machine_id")?.unwrap_or_default();
+        let mid = Settings::get(&conn, keys::MACHINE_ID)?.unwrap_or_default();
         match api_key_enc {
             Some(ref v) => decrypt_api_key(v, &mid).unwrap_or_else(|e| {
                 tracing::warn!(
