@@ -1,3 +1,11 @@
+//! Unit tests for the feature-flag command bodies (Wave-F test relocation:
+//! moved out of `apps/desktop-client/src/commands/features_tests.rs`).
+//!
+//! Mounted at the foot of `features.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs and the pure helpers exactly as the
+//! desktop sibling module did; every case here is harness-free (DTO
+//! serde/debug conformance plus the static metadata mappings).
+
 use super::*;
 
 // ── FeatureDto ───────────────────────────────────────────────

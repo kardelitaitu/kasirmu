@@ -635,3 +635,7 @@ pub async fn list_all_features_scoped(
     let features = build_feature_list(&reg);
     Ok(ListAllFeaturesResult { features })
 }
+
+#[cfg(test)]
+#[path = "features_tests.rs"]
+mod features_tests;

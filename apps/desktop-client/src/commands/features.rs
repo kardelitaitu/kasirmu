@@ -39,10 +39,6 @@ fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'static 
     oz_bridge::features::all_feature_metadata()
 }
 
-#[cfg(test)]
-#[path = "features_tests.rs"]
-mod tests;
-
 /// Fetch every known feature with its current enabled status, metadata,
 /// and dependency information.
 ///
