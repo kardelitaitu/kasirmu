@@ -1,3 +1,14 @@
+//! Unit tests for the license command bodies (relocated from
+//! `apps/desktop-client/src/commands/license_tests.rs`).
+//!
+//! Mounted at the foot of `license.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the DTOs, the machine-id / hardware-fingerprint
+//! generators, `grace_deadline_for` and the imported `store_subscription`
+//! / `RenewLicenseRequest` exactly as the desktop sibling module did.
+//! Every test body is a byte-for-byte carry of the desktop original; the
+//! generator tests exercise the same real `get_system_uuid` fallback
+//! chain the ported bridge body runs.
+
 use super::*;
 use oz_core::error::CoreError;
 use oz_core::subscription::TenantSubscription;

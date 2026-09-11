@@ -1,12 +1,26 @@
+//! Unit tests for the analytics command bodies (relocated from
+//! `apps/desktop-client/src/commands/analytics_tests.rs`).
+//!
+//! Mounted at the foot of `analytics.rs` with `#[cfg(test)] #[path]`, so
+//! `use super::*` resolves the analytics fns and DTOs exactly as the
+//! desktop sibling module did. Harness mapping: the desktop file booted a
+//! Tauri mock app over `AppState::for_test_with_conn` plus a
+//! `tempfile::tempdir()` store manager; here `TestBridge::new().with_conn(conn)`
+//! supplies the same shape headlessly and the harness's own unique store
+//! directory stands in for the temp dir. Global-DB mutations are hoisted
+//! onto the connection BEFORE `.with_conn()` (the bridge has no global-db
+//! accessor); `AppError::` maps 1:1 onto `BridgeError::`.
+
 use super::*;
+use crate::testing::TestBridge;
 use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::migrations;
-use platform_core::StoreDatabaseManager;
-use tauri::Manager as _;
 
-/// Global identity DB (owner / manager / staff presets) + a temp-dir
-/// store manager with store-a seeded with one staff's shifts + sales.
-fn analytics_state() -> (AppState, tempfile::TempDir) {
+/// Global identity DB (owner / manager / staff presets) + a store manager
+/// with store-a seeded with one staff's shifts + sales. `pre_seed` runs on
+/// the global connection before it is handed to the bridge (the hoisted
+/// stand-in for the desktop's post-construction `state.db` mutations).
+fn analytics_state(pre_seed: impl FnOnce(&rusqlite::Connection)) -> TestBridge {
     let conn = migrations::fresh_db();
     {
         let store = Store::new(&conn);
@@ -19,14 +33,13 @@ fn analytics_state() -> (AppState, tempfile::TempDir) {
         )
         .unwrap();
     }
-    let temp_dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    pre_seed(&conn);
+    let bridge = TestBridge::new().with_conn(conn);
 
     // Store-a: the store DB has no identity rows, but shifts.user_id FKs
     // to users(id) — seed the store-side user rows (as the shift open
     // path does) plus one shift + completed sales for the analytics.
-    let conn = state.db_manager.open_store("store-a").unwrap();
+    let conn = bridge.db_manager().open_store("store-a").unwrap();
     let db = conn.lock().unwrap();
     db.execute_batch(
         "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
@@ -42,11 +55,11 @@ fn analytics_state() -> (AppState, tempfile::TempDir) {
     .unwrap();
     drop(db);
 
-    (state, temp_dir)
+    bridge
 }
 
-fn mint_session(state: &mut AppState, token: &str, user: &str, role: &str, store: &str) {
-    state.session_store.write().unwrap().insert(
+fn mint_session(bridge: &TestBridge, token: &str, user: &str, role: &str, store: &str) {
+    bridge.sessions().write().unwrap().insert(
         token.into(),
         oz_core::session::SessionContext::new(
             user.into(),
@@ -63,52 +76,46 @@ fn mint_session(state: &mut AppState, token: &str, user: &str, role: &str, store
 
 #[tokio::test]
 async fn staff_role_cannot_view_analytics() {
-    let (mut state, _dir) = analytics_state();
+    let bridge = analytics_state(|_| ());
     mint_session(
-        &mut state,
+        &bridge,
         "staff-token",
         "user-staff",
         "role-staff",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let ctx = bridge.ctx();
 
     let result = get_staff_analytics_scoped(
-        "staff-token".into(),
+        &ctx,
+        "staff-token",
         "2026-07-01".into(),
         "2026-07-31".into(),
-        app.state(),
     )
     .await;
     assert!(
-        matches!(result, Err(AppError::PermissionDenied(_))),
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
         "role-staff lacks analytics:view, got {result:?}"
     );
 }
 
 #[tokio::test]
 async fn owner_views_staff_analytics_with_display_names() {
-    let (mut state, _dir) = analytics_state();
+    let bridge = analytics_state(|_| ());
     mint_session(
-        &mut state,
+        &bridge,
         "owner-token",
         "user-owner",
         "role-owner",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let ctx = bridge.ctx();
 
     let rows = get_staff_analytics_scoped(
-        "owner-token".into(),
+        &ctx,
+        "owner-token",
         "2026-07-01".into(),
         "2026-07-31".into(),
-        app.state(),
     )
     .await
     .unwrap();
@@ -125,25 +132,22 @@ async fn owner_views_staff_analytics_with_display_names() {
 
 #[tokio::test]
 async fn manager_views_daily_series_for_a_staff_member() {
-    let (mut state, _dir) = analytics_state();
+    let bridge = analytics_state(|_| ());
     mint_session(
-        &mut state,
+        &bridge,
         "manager-token",
         "user-manager",
         "role-manager",
         "store-a",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let ctx = bridge.ctx();
 
     let rows = get_staff_analytics_daily_scoped(
-        "manager-token".into(),
+        &ctx,
+        "manager-token",
         "user-staff".into(),
         "2026-07-01".into(),
         "2026-07-31".into(),
-        app.state(),
     )
     .await
     .unwrap();
@@ -157,13 +161,13 @@ async fn manager_views_daily_series_for_a_staff_member() {
 
 #[tokio::test]
 async fn scoped_manager_session_out_of_scope_store_is_denied() {
-    let (mut state, _dir) = analytics_state();
     // Manager scoped to branch store-a only — a session minted for
     // store-b is out of scope and must be denied fail-closed before any
-    // store DB is touched (ADR #35 D5 / spec 0048).
-    {
-        let db = state.db.lock().await;
-        Store::new(&db)
+    // store DB is touched (ADR #35 D5 / spec 0048). The assignment lands
+    // on the global connection BEFORE .with_conn() (no global-db
+    // accessor on the bridge — BW1b/CW1 hoist rule).
+    let bridge = analytics_state(|conn| {
+        Store::new(conn)
             .set_assignment(
                 "user-manager",
                 "role-manager",
@@ -178,46 +182,40 @@ async fn scoped_manager_session_out_of_scope_store_is_denied() {
                 },
             )
             .unwrap();
-    }
+    });
     mint_session(
-        &mut state,
+        &bridge,
         "manager-token",
         "user-manager",
         "role-manager",
         "store-b",
     );
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let ctx = bridge.ctx();
 
     let result = get_staff_analytics_scoped(
-        "manager-token".into(),
+        &ctx,
+        "manager-token",
         "2026-07-01".into(),
         "2026-07-31".into(),
-        app.state(),
     )
     .await;
     assert!(
-        matches!(result, Err(AppError::PermissionDenied(_))),
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
         "out-of-scope session must be denied, got {result:?}"
     );
 }
 
 #[tokio::test]
 async fn analytics_rejects_invalid_session() {
-    let state = AppState::for_test();
-    let app = tauri::test::mock_builder()
-        .manage(state)
-        .build(tauri::generate_context!())
-        .unwrap();
+    let bridge = TestBridge::new();
+    let ctx = bridge.ctx();
 
     let result = get_staff_analytics_scoped(
-        "missing-token".into(),
+        &ctx,
+        "missing-token",
         "2026-07-01".into(),
         "2026-07-31".into(),
-        app.state(),
     )
     .await;
-    assert!(matches!(result, Err(AppError::InvalidSession)));
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }

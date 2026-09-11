@@ -880,3 +880,7 @@ pub async fn resume_subscription_scoped(
         .await?;
     resume_subscription(ctx).await
 }
+
+#[cfg(test)]
+#[path = "license_tests.rs"]
+mod license_tests;

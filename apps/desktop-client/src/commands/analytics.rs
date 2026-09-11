@@ -49,7 +49,3 @@ pub async fn get_staff_analytics_daily_scoped(
         .await
         .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "analytics_tests.rs"]
-mod tests;

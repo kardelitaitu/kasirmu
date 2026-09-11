@@ -302,7 +302,3 @@ fn generate_hardware_fingerprint() -> String {
 fn grace_deadline_for(tier_key: &str, expires_at: DateTime<Utc>) -> DateTime<Utc> {
     oz_bridge::license::grace_deadline_for(tier_key, expires_at)
 }
-
-#[cfg(test)]
-#[path = "license_tests.rs"]
-mod tests;
