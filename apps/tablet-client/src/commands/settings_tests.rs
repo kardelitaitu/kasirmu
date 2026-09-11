@@ -554,6 +554,9 @@ fn get_setting_redacts_secret_keys() {
     assert_eq!(run_get_setting(&conn, "stripe.api_key").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "square.api_key").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "midtrans.server_key").unwrap(), None);
+    // license.api_key was asserted here without ever being seeded, so the
+    // refusal passed over an absent row; seed it like the desktop twin does.
+    Settings::set(&conn, "license.api_key", "lic-key").unwrap();
     assert_eq!(run_get_setting(&conn, "license.api_key").unwrap(), None);
     run_set_setting(&conn, "store.name", "My Store", "t").unwrap();
     assert_eq!(
