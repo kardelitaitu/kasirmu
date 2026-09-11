@@ -451,6 +451,24 @@ impl Store<'_> {
             insert_sale_line(&tx, line)?;
         }
 
+        // ── TRANSACTIONAL OUTBOX (ADR-19 §6b shortfall-resolved path) ───────────────────
+        // The sync row for this sale is written HERE, inside the settlement
+        // transaction, not by an event handler afterwards. Sync for sales is
+        // outbox-only and there is no reconciliation sweep in the tree, so the
+        // old commit-then-publish order lost the row permanently on a crash or
+        // a handler error in that window - silently, because the bus swallows
+        // handler Err and panics (event_bus.rs:259-281), and invisibly to the
+        // operator, because a sale that was never enqueued shows up as none of
+        // pending / synced / failed / oldest-pending.
+        //
+        // SaleSyncEnqueuer still runs on the event and now skips the insert
+        // when a pending row for this sale id already exists, so this lane
+        // produces exactly one row. The legacy complete_sale door (lane one,
+        // sales_crud.rs create_sale + two update_sale_status calls) has no
+        // transaction spanning completion and is NOT wired - it keeps relying
+        // on the handler. See the note there.
+        Store::enqueue_sale_outbox_in_tx(&tx, sale, cur_str)?;
+
         if !payment_splits.is_empty() {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();

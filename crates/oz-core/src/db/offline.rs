@@ -297,6 +297,93 @@ impl Store<'_> {
         Ok(item)
     }
 
+    /// OUTBOX: write this sale's `complete_sale` row inside the settlement
+    /// transaction, so the sync row and the sale are one atomic unit.
+    ///
+    /// Position is deliberate: the doors call this AFTER the sale row and its
+    /// lines are written but BEFORE the payment inserts, so a failure later in
+    /// the same transaction (a UNIQUE collision on payments.idempotency_key,
+    /// say) takes the outbox row down with the sale. Placed just before
+    /// `tx.commit()` it would be equally atomic but untestable - nothing can
+    /// fail after it - so the earlier seat buys a real rollback proof.
+    ///
+    /// Tenant comes from the sale row, not from a literal: the queue is read
+    /// per tenant and `enqueue_offline_priority` hardcodes "default".
+    ///
+    /// The payload is SHAPED like the one SaleSyncEnqueuer builds today
+    /// (sale_id / total_minor / currency / customer_id / line_items with the
+    /// same five line keys) so the apply side cannot tell the two writers
+    /// apart. It is NOT relied on to be byte-identical to it - which is why
+    /// the guard below keys on the sale id and not on the string.
+    pub fn enqueue_sale_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        sale: &crate::Sale,
+        currency: &str,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![sale.id],
+            |row| row.get(0),
+        )?;
+        let line_items: Vec<serde_json::Value> = sale
+            .lines
+            .iter()
+            .map(|l| {
+                serde_json::json!({
+                    "sku": l.sku,
+                    "qty": l.qty,
+                    "unit_price_minor": l.unit_price.minor_units,
+                    "tax_minor": l.tax_amount.minor_units,
+                    "tax_rate_id": l.tax_rate_id,
+                })
+            })
+            .collect();
+        let payload = serde_json::json!({
+            "sale_id": sale.id,
+            "total_minor": sale.total.minor_units,
+            "currency": currency,
+            "customer_id": sale.customer_id,
+            "line_items": line_items,
+        })
+        .to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "complete_sale",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
+    /// OUTBOX: does a still-pending row for this action already exist for
+    /// THIS SALE?
+    ///
+    /// Keyed on the sale id inside the payload rather than on the whole
+    /// payload string, on purpose: `enqueue_offline_dedup` compares
+    /// `action + payload` byte-for-byte, and the two writers of this row build
+    /// the JSON from different places (a settlement from the `Sale` struct,
+    /// the handler from the event), so any shape or key-order drift between
+    /// them would silently turn "skip" into "second row" and push the sale
+    /// twice. A substring probe on the quoted sale id needs no JSON1
+    /// extension, cannot match a prefix of a longer id because the closing
+    /// quote is part of the needle, and makes the invariant a property of the
+    /// queue rather than a property of the caller.
+    pub fn has_pending_outbox_row_for_sale(
+        &self,
+        action: &str,
+        sale_id: &str,
+    ) -> Result<bool, CoreError> {
+        let needle = format!("\"sale_id\":\"{sale_id}\"");
+        let exists: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM offline_queue
+              WHERE status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0)",
+            params![action, needle],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
+    }
+
     /// List all pending (unsynced) offline queue items, oldest first.
     pub fn list_pending_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(

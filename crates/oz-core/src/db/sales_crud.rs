@@ -151,6 +151,23 @@ impl Store<'_> {
     }
 
     /// Persist a [`Sale`] (header + all line items) inside a single transaction.
+    ///
+    /// SYNC OUTBOX - lane one, deliberately unwired. Three doors produce a
+    /// `SaleCompleted`; two of them (sales_checkout.rs:527,
+    /// sales_lifecycle.rs:470) now write the `complete_sale` outbox row inside
+    /// the settlement transaction. This one cannot: the legacy `complete_sale`
+    /// command completes a sale across THREE separate transactions - create_sale
+    /// here, then `update_sale_status(Active)`, then
+    /// `update_sale_status(Completed)` (apps/tablet-client/src/commands/pos.rs
+    /// :978-982) - so no transaction spans completion and there is no commit
+    /// point to hang the row on. Restructuring it is a different change with a
+    /// different risk, on the deprecated path. It keeps relying on
+    /// SaleSyncEnqueuer, which still enqueues whenever no pending row exists for
+    /// the sale id - the two mechanisms are per-lane, not one stale and one
+    /// live. What this lane keeps is exactly the window the wired lanes closed:
+    /// a crash, or a handler error the bus swallows (event_bus.rs:259-281),
+    /// between the status commit and the handler INSERT loses the sync row
+    /// permanently and invisibly.
     pub fn create_sale(&self, sale: &Sale) -> Result<(), CoreError> {
         // MONEY-07: this legacy global-db door deserializes a Sale straight from
         // import/CLI JSON (oz-cli) — CartLine::new's qty > 0 assert never runs.

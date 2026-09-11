@@ -58,6 +58,29 @@ impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
         })
         .to_string();
 
+        // OUTBOX GUARD: the two wired settlement doors (sales_checkout.rs
+        // :527 and sales_lifecycle.rs :470) now write this row INSIDE the
+        // sale transaction, so by the time this handler runs the row already
+        // exists and is committed, and enqueueing again would push the sale
+        // twice. The probe keys on the sale id inside the payload, not on the
+        // payload bytes: the two writers build the JSON from different sources
+        // (the Sale struct vs the event), and a shape drift must not turn
+        // "skip" into "duplicate". Lane one - the legacy complete_sale
+        // command (create_sale + two update_sale_status calls, no transaction
+        // spanning completion) - is deliberately NOT wired and has no
+        // in-transaction row, so it still lands here. This handler is that
+        // lane's only writer, not a stale second writer.
+        if store
+            .has_pending_outbox_row_for_sale("complete_sale", &event.sale_id)
+            .map_err(|e| anyhow::anyhow!("sync enqueuer: outbox probe failed: {e}"))?
+        {
+            info!(
+                sale_id = %event.sale_id,
+                "sync enqueuer: outbox row already committed with the sale; not enqueuing"
+            );
+            return Ok(());
+        }
+
         // P-2: Sale completions are Critical priority — they must
         // propagate before inventory or settings changes.
         store

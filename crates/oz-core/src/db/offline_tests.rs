@@ -1065,3 +1065,177 @@ fn enqueue_offline_in_tx_commits_with_its_transaction_and_keeps_the_tenant() {
     assert_eq!(priority, SyncPriority::Critical as i32);
     assert_eq!(status, "pending");
 }
+
+// ── Wired settlement doors write the outbox row in-transaction ──
+
+fn money(minor: i64) -> crate::Money {
+    crate::Money {
+        minor_units: minor,
+        currency: "USD".parse().unwrap(),
+    }
+}
+
+fn seed_item(conn: &Connection, sku: &str, stock: i64) {
+    let s = store(conn);
+    s.create_product(sku, sku, money(500), None, None, 0, Some("retail"))
+        .unwrap();
+    if stock > 0 {
+        s.adjust_stock(sku, stock).unwrap();
+    }
+}
+
+fn sale_with_one_line(sku: &str, qty: i64, unit_minor: i64) -> crate::Sale {
+    let id = uuid::Uuid::now_v7().to_string();
+    let line_id = uuid::Uuid::now_v7().to_string();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let total = unit_minor * qty;
+    crate::Sale {
+        id: id.clone(),
+        status: crate::SaleStatus::Pending,
+        total: money(total),
+        currency: "USD".parse().unwrap(),
+        line_count: 1,
+        payment_method: Some("cash".into()),
+        tendered_minor: Some(total),
+        discount_percent: 0,
+        discount_label: None,
+        user_id: None,
+        created_at: now.clone(),
+        updated_at: now,
+        subtotal: money(total),
+        tax_total: money(0),
+        customer_id: None,
+        base_currency: None,
+        base_total_minor: None,
+        tender_rate_millionths: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
+        version: 1,
+        lines: vec![crate::SaleLine {
+            id: line_id,
+            sale_id: id,
+            sku: sku.into(),
+            qty,
+            unit_price: money(unit_minor),
+            line_total: money(total),
+            line_position: 1,
+            tax_amount: money(0),
+            tax_rate_id: None,
+            tax_breakdown_json: None,
+            serial_number: None,
+            course: None,
+            modifiers_json: None,
+        }],
+    }
+}
+
+fn split(amount: i64, key: Option<&str>) -> crate::PaymentSplitArg {
+    crate::PaymentSplitArg {
+        method: "cash".into(),
+        amount_minor: amount,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: key.map(str::to_string),
+    }
+}
+
+fn outbox_rows(conn: &Connection, sale_id: &str) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM offline_queue WHERE action = 'complete_sale' AND instr(payload, ?1) > 0",
+        rusqlite::params![format!("\"sale_id\":\"{sale_id}\"")],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+/// A committed settlement through the main checkout door must leave EXACTLY
+/// ONE queue row - the in-transaction one - and the handler's probe must see
+/// it, which is what stops the second row. Two rows would push the sale twice.
+#[test]
+fn wired_settlement_leaves_exactly_one_outbox_row() {
+    let conn = fresh();
+    seed_item(&conn, "OUTBOX-A", 5);
+    let s = store(&conn);
+    let sale = sale_with_one_line("OUTBOX-A", 2, 500);
+    let id = sale.id.clone();
+
+    s.complete_sale_deduction(&sale, None, &[split(1000, None)], "user-a", None)
+        .unwrap();
+
+    assert_eq!(outbox_rows(&conn, &id), 1, "the settlement wrote one row");
+    assert!(
+        s.has_pending_outbox_row_for_sale("complete_sale", &id)
+            .unwrap()
+    );
+    let (tenant, priority): (String, i32) = conn
+        .query_row(
+            "SELECT tenant_id, priority FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(tenant, "default", "tenant read from the sale row");
+    assert_eq!(priority, SyncPriority::Critical as i32);
+
+    // The handler's guarded path, run after the commit as the bus does:
+    // it must add nothing.
+    if !s
+        .has_pending_outbox_row_for_sale("complete_sale", &id)
+        .unwrap()
+    {
+        s.enqueue_offline_priority(
+            "complete_sale",
+            &format!("{{\"sale_id\":\"{id}\"}}"),
+            SyncPriority::Critical,
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        outbox_rows(&conn, &id),
+        1,
+        "the handler must not add a second row for a wired lane"
+    );
+}
+
+/// The rollback proof, and it is only possible because the enqueue sits
+/// BEFORE the payment inserts: two splits sharing one idempotency key collide
+/// on the UNIQUE index, the whole transaction rolls back, and the outbox row
+/// that had already been written inside it must be gone with the sale.
+#[test]
+fn rolled_back_settlement_enqueues_nothing() {
+    let conn = fresh();
+    seed_item(&conn, "OUTBOX-B", 5);
+    let s = store(&conn);
+    let sale = sale_with_one_line("OUTBOX-B", 2, 500);
+    let id = sale.id.clone();
+
+    let err = s
+        .complete_sale_deduction(
+            &sale,
+            None,
+            &[split(500, Some("dup-key")), split(500, Some("dup-key"))],
+            "user-a",
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Db(_)), "{err:?}");
+
+    assert_eq!(
+        outbox_rows(&conn, &id),
+        0,
+        "a rolled-back settlement must leave no outbox row"
+    );
+    let sales: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sales WHERE id = ?1",
+            rusqlite::params![&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(sales, 0, "and no sale - the row and the sale die together");
+    assert!(
+        !s.has_pending_outbox_row_for_sale("complete_sale", &id)
+            .unwrap()
+    );
+}
