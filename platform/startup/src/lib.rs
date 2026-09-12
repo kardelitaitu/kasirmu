@@ -1,13 +1,15 @@
-// The `cfg(feature = "metrics")` this attribute was written for is gone with
-// `src/metrics.rs` (deleted 2026-09-12; `metrics` was never declared here, so
-// the gated code never compiled). The allow stays for the one undeclared cfg
-// this crate still uses: `console.rs` gates on bare `tokio_unstable`, which
-// only `apps/cloud-server/build.rs` declares via `cargo::rustc-check-cfg` —
-// this crate has no build.rs, so with CI's `RUSTFLAGS: -D warnings` dropping
-// the allow turns `cargo check -p platform-startup` into an error. Retire it
-// properly by adding `unexpected_cfgs = { check-cfg = ['cfg(tokio_unstable)'] }`
-// under `[lints.rust]` in this crate's Cargo.toml, then deleting this line.
-#![allow(unexpected_cfgs)]
+// No crate-level lint allow lives here any more. There used to be one: a
+// `#![allow(unexpected_cfgs)]` justified as making `cfg(feature = "metrics")`
+// legal because `oz-reporting` enabled it. That premise was false — a
+// dependency's features do not enter this crate's cfg space — and the gate it
+// excused was real but dead: `metrics` was never declared in this crate's
+// Cargo.toml, so the `pub mod server` in `src/metrics.rs` compiled in no build
+// (not even CI's `--all-features`) and `start_metrics_server` had no call site
+// anywhere. Both were retired on 2026-09-12: the file is deleted, the
+// declaration with it, and the feature was not declared to make the code live.
+// The attribute went out the same way, because the one cfg this crate still
+// uses without Cargo knowing about it — the bare `tokio_unstable` that `console.rs`
+// gates on — is now declared in `build.rs` instead of silenced wholesale.
 /*
 last audited 25-07-26 by RSA-Agent (platform-startup slice A: lib deep read)
 crate: platform-startup | status: SAFE | lint: CLEAN
