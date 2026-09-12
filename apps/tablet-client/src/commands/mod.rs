@@ -71,6 +71,9 @@ pub mod receipt_format;
 pub mod refunds;
 /// Regional-configuration read commands (settings:read).
 pub mod regional;
+#[cfg(test)]
+#[path = "registration_gate_tests.rs"]
+mod registration_gate_tests;
 /// Reporting commands.
 pub mod reports;
 /// Weight-scale commands.
