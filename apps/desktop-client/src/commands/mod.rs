@@ -112,6 +112,9 @@ pub mod staff;
 /// Stock-transfer commands.
 pub mod stock_transfers;
 
+#[cfg(test)]
+#[path = "registration_gate_tests.rs"]
+mod registration_gate_tests;
 /// Subscription capability commands (C2.2 tier gates).
 pub mod subscription;
 /// Sync commands.
