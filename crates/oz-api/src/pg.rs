@@ -1080,7 +1080,27 @@ fn pg_row_to_product_with_details(
             .try_get("price_updated_at")
             .map_err(|e| PgError::Db(e.to_string()))?,
         track_serial: pg_bool(row, "track_serial")?,
-        product_type: oz_core::ProductType::parse_str(&product_type_str).unwrap_or_default(),
+        // products.product_type has no CHECK constraint (TEXT NOT NULL DEFAULT
+        // 'retail', 20260813_init.pg.sql:881 / 20260813_init.sql:451): only this
+        // crate's INSERT hardcodes 'retail', while the bridge writes raw IPC
+        // strings into SQLite with nothing upstream validating the value. Keep
+        // serving the row on a failed parse — but say so: the default (Retail) is
+        // a plausible value and silently relabelling e.g. a Service row flips
+        // tracks_inventory() for every consumer of this mapping.
+        product_type: match oz_core::ProductType::parse_str(&product_type_str) {
+            Some(pt) => pt,
+            None => {
+                // sku_str was moved into Sku::new above; re-read the row
+                // identifier for the log line (NOT NULL column, cannot fail).
+                let row_sku: String = row.try_get("sku").unwrap_or_default();
+                tracing::warn!(
+                    sku = %row_sku,
+                    raw = %product_type_str,
+                    "unmapped product_type on products row; falling back to default (retail)"
+                );
+                oz_core::ProductType::default()
+            }
+        },
         version: row
             .try_get("version")
             .map_err(|e| PgError::Db(e.to_string()))?,
