@@ -553,3 +553,94 @@ fn the_report_keeps_ledger_and_settings_totals_apart_and_says_why() {
         "the rotted count pair must not come back"
     );
 }
+
+// -- The first line of defence: refuse a path it would have to create -------
+
+/// THE case that separates the fix from the decoration: the refusal must name
+/// the path AND the file must not exist afterwards. Asserting only the message
+/// would pass with the ghost database still being written, which is the whole
+/// bug. Measured before this guard existed: a mistyped --db left a real file
+/// behind and the run reported confident zeroes about it.
+#[test]
+fn a_missing_db_path_is_refused_and_NOT_created() {
+    let dir = std::env::temp_dir().join(format!("oz-cd-missing-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("mistyped.db");
+    let _ = std::fs::remove_file(&path);
+    assert!(!path.exists(), "precondition: the path must not exist");
+
+    let err = crate::commands::open_store_for_credential_deltas(&path.to_string_lossy())
+        .expect_err("a path that does not exist must be refused, not opened");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("mistyped.db"),
+        "the refusal must name the path: {msg}"
+    );
+    assert!(
+        msg.contains("would have to create"),
+        "the refusal must say the create is the reason: {msg}"
+    );
+    assert!(
+        msg.contains("oz backup"),
+        "the refusal must name the way to inspect a live store safely: {msg}"
+    );
+    assert!(
+        msg.contains("Nothing was created"),
+        "and what it did not do: {msg}"
+    );
+
+    // The load-bearing half: absence, not wording.
+    assert!(
+        !path.exists(),
+        "the refused call must NOT have created {path:?}"
+    );
+    for sidecar in ["mistyped.db-wal", "mistyped.db-shm"] {
+        assert!(
+            !dir.join(sidecar).exists(),
+            "no sidecar may be created beside a refused path: {sidecar}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The two guards are different failures and must read differently: a file that
+/// EXISTS but holds no settings table is refused by the second line of defence,
+/// which must not claim the file was missing, and the first must not claim a
+/// missing table.
+#[test]
+fn an_existing_file_with_no_tables_is_refused_by_the_second_guard_not_the_first() {
+    let dir = std::env::temp_dir().join(format!("oz-cd-empty-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("hollow.db");
+    let _ = std::fs::remove_file(&path);
+    // Make the file EXIST, as a valid empty database: this is exactly the ghost
+    // Connection::open leaves behind for a mistyped --db, so the PATH guard cannot
+    // be what refuses it here.
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch("PRAGMA user_version = 1;")
+        .unwrap();
+
+    let opened = crate::commands::open_store_for_credential_deltas(&path.to_string_lossy());
+    assert!(
+        opened.is_ok(),
+        "an existing path must pass the create-guard and be opened: {opened:?}"
+    );
+    let conn = opened.unwrap();
+    let err = require_store_database(&conn).expect_err("a hollow file is not a store");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("hollow.db"),
+        "the second refusal names the path: {msg}"
+    );
+    assert!(
+        msg.contains(SETTINGS_TABLE),
+        "and says WHICH failure this is: a missing table, not a missing file: {msg}"
+    );
+    assert!(
+        !msg.contains("would have to create"),
+        "the table-guard must not impersonate the path-guard: {msg}"
+    );
+    drop(conn);
+    let _ = std::fs::remove_dir_all(&dir);
+}

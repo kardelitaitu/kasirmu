@@ -61,11 +61,46 @@ pub(crate) fn open_db(path: &str) -> Result<Connection> {
     Ok(conn)
 }
 
+/// Open the store for `credential-deltas` ONLY, refusing a `--db` path that this
+/// command would have to CREATE before `open_db` gets the chance to do it.
+///
+/// The footgun, measured rather than assumed: `--db` defaults to ./oz-pos.db in
+/// the CURRENT directory and `Connection::open` CREATES a missing path, so a
+/// mistyped database opened an empty file, every count came back zero, and the
+/// command reported nothing-to-delete about a file it had just made — and left
+/// the ghost and its sidecars behind even though it deleted nothing.
+///
+/// Scoped to this one subcommand on purpose. `migrate`, `init-db` and `restore`
+/// legitimately PROVISION a database on first run, so pushing this check into the
+/// shared `open_db` would convert a one-command footgun into a first-run outage
+/// for the rest of the tool, which is a worse bug than the one being fixed.
+///
+/// This is the FIRST line of defence and it is about the PATH.
+/// `credential_deltas::require_store_database` stays the SECOND and is about the
+/// CONTENTS: a file that exists but holds no settings table is a distinct failure
+/// from a file that does not exist, and the two messages say which of the two they
+/// are.
+pub(crate) fn open_store_for_credential_deltas(path: &str) -> Result<Connection> {
+    if !std::path::Path::new(path).is_file() {
+        anyhow::bail!(
+            "oz credential-deltas never opens a store it would have to create: no database exists at {path}. --db defaults to ./oz-pos.db in the CURRENT directory, so a mistyped or relative path lands here as a file that is not there, and this command inspects an existing store rather than provisioning one (unlike migrate / init-db / restore, which do create). If you meant to inspect a live store, take a copy first and run against the copy: oz backup --output <copy.db>, then oz credential-deltas --db <copy.db>. Nothing was created, read, or deleted."
+        );
+    }
+    open_db(path)
+}
 /// Parse CLI arguments and dispatch to the matching subcommand.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    let conn = open_db(&cli.db)?;
+    // Every lane but one opens through the shared helper, WAL pragma and all.
+    // credential-deltas is refused a path it would have to create BEFORE the
+    // open: a report computed against a freshly created empty file is not a clean
+    // database, it is a lie about one. See open_store_for_credential_deltas.
+    let conn = if matches!(cli.command, Some(Command::CredentialDeltas(_))) {
+        open_store_for_credential_deltas(&cli.db)?
+    } else {
+        open_db(&cli.db)?
+    };
 
     match cli.command {
         Some(Command::Migrate) => run_migrate(conn),
