@@ -294,4 +294,20 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 
 ---
 
-> last audited 08-08-26 by docs-auditor
+## Activation and Ownership
+
+*Appended 09-09-26 by docs-auditor, from the slice-4 sync dossier. Nothing above this line is changed by this section; it records who would execute the strategy, not what the strategy is.*
+
+- **Two live consumers, two policies.** The manual/tablet push path (`crates/oz-core/src/sync_client.rs:329`) lets the **server copy win unconditionally** on `PushOutcome::Conflict`. The daemon path routes the same outcome through `SyncQueue::apply_push_conflict` (`platform/sync/src/daemon.rs:238`, `platform/sync/src/lib.rs:534`) into `resolve_stock_crdt` (`platform/sync/src/conflict.rs:153`), which **preserves both deltas**. Same tag, two owners, opposite semantics.
+- **No server in this repository emits that tag.** Every non-test producer in `apps/cloud-server/src/sync_store.rs` and `platform/sync/src/pg_transport.rs` constructs only `Accepted` or `Rejected`. A real clash today arrives as `Rejected { reason: "duplicate id: …" }`, which both consumers route identically. **The divergence is latent; it activates the moment a foreign or older server emits the tag.**
+- **The CRDT arm has no re-enqueue bound.** `resolve_stock_crdt` computes a merged `retry_count` (`conflict.rs:167`) and `apply_resolution` then discards it, because the re-enqueue persists `action` and `payload` only (`queue.rs:331`). A conflict that keeps conflicting resets to zero every cycle — forever.
+- **The semantics choice is open.** Last-write-wins for the manual path versus merge for the daemon path is a **product decision this ADR did not make, and this append does not make either.**
+
+**The honest headline is: two policy owners for a wire contract with no producer — not a live data-loss bug.** The record says so plainly because this finding arrived here framed as a tablet losing stock adjustments, which is a loss that cannot occur against any server this repo ships; an ADR that overstates a hazard is as much a defect as one that omits it.
+
+- **Cross-reference:** `crates/oz-core/src/sync_client_divergence_tests.rs` is being written alongside this append. It is the artifact that will **fail loudly when someone picks a winner**, rather than letting the two policies drift apart silently in review.
+- **Third consumer, and the one live trigger:** the PostgreSQL daemon at `platform/sync/src/pg_daemon.rs:323` **lacks the duplicate-id arm the other two share**, so an idempotent replay there is marked failed instead of synced. That is the only divergence in this section with a plausible non-foreign trigger — recorded so a future reader does not have to rediscover it.
+
+---
+
+> last audited 08-08-26 by docs-auditor · Activation and Ownership appended 09-09-26
