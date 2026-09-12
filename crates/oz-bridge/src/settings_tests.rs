@@ -1676,3 +1676,250 @@ fn license_writer_literals_are_swept_from_license_rs_not_from_a_transcription() 
         "expected the license writer to name at least five key literals, swept {swept:?}"
     );
 }
+
+// ── Cross-lane agreement on the credential refusal (desktop lane / tablet lane) ──
+
+/// The three sources that carry a credential refusal, read as text. The shells
+/// error types live in different crates and a shell may never be imported by the
+/// bridge (shells depend on the bridge, not the reverse), so the EXECUTABLE half of
+/// the cross-shell question stops at the desktop lane and that limit is stated in
+/// leg D rather than pretended away. What is reachable from here is the seam that
+/// actually broke tonight: a lane paraphrasing platform-core, or wrapping its
+/// refusal in another variant.
+const RAW_RS: &str = include_str!("../../../platform/core/src/settings/raw.rs");
+const BRIDGE_SETTINGS_RS: &str = include_str!("settings.rs");
+const TABLET_SETTINGS_RS: &str =
+    include_str!("../../../apps/tablet-client/src/commands/settings.rs");
+
+/// The source with comments removed, line for line, so a name mentioned in prose
+/// cannot be counted as a call.
+fn code_lines(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_block = false;
+    for line in source.lines() {
+        let chars: Vec<char> = line.chars().collect();
+        let mut code = String::new();
+        let mut i = 0usize;
+        let mut in_str = false;
+        while i < chars.len() {
+            let c = chars[i];
+            if in_block {
+                if c == '*' && chars.get(i + 1) == Some(&'/') {
+                    in_block = false;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+                continue;
+            }
+            if in_str {
+                code.push(c);
+                if c == '\\' {
+                    if let Some(n) = chars.get(i + 1) {
+                        code.push(*n);
+                    }
+                    i += 2;
+                } else {
+                    if c == '"' {
+                        in_str = false;
+                    }
+                    i += 1;
+                }
+                continue;
+            }
+            if c == '"' {
+                in_str = true;
+                code.push(c);
+                i += 1;
+                continue;
+            }
+            if c == '/' && chars.get(i + 1) == Some(&'/') {
+                break;
+            }
+            if c == '/' && chars.get(i + 1) == Some(&'*') {
+                in_block = true;
+                i += 2;
+                continue;
+            }
+            code.push(c);
+            i += 1;
+        }
+        out.push(code);
+    }
+    out
+}
+
+/// The longest contiguous run of words two sentences share, case-insensitively.
+/// The paraphrase meter: a copy shares the whole sentence, a paraphrase shares a
+/// phrase, and an unrelated line about the same subject shares one or two ordinary
+/// words. Calibrated at 5 below, measured: platform-core own warn line
+/// ("...refused by the tracked settings funnel") shares a 4-word run with the
+/// refusal sentence and is a log line, not a refusal a caller sees, while a lane
+/// that restates the rule shares five or more.
+fn longest_shared_word_run(text: &str, sentence: &str) -> usize {
+    let a: Vec<&str> = sentence.split_whitespace().collect();
+    let b: Vec<&str> = text.split_whitespace().collect();
+    let mut best = 0usize;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let mut k = 0usize;
+            while i + k < a.len() && j + k < b.len() && a[i + k].eq_ignore_ascii_case(b[j + k]) {
+                k += 1;
+            }
+            if k > best {
+                best = k;
+            }
+        }
+    }
+    best
+}
+
+/// The seam the two existing door tests cannot reach: they compare the bridge
+/// single-write door with the bridge batch door, and the tablet lane is a different
+/// crate. A lane that refuses the same act with a different variant, or that writes
+/// its own sentence for it, is what `fb63dc535` fixed and what nothing asserted.
+///
+/// Nothing here types the wording or the key: the sentence is read out of
+/// `TrackedSettings::cleartext_credential_refusal` at run time, the keys walked are
+/// `SECRET_KEY_DENY_LIST` itself, and the lanes are read out of their own files.
+#[test]
+fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
+    // (A) One producer answers for the whole family, in one sentence shape.
+    let refused: Vec<&str> = SECRET_KEY_DENY_LIST
+        .iter()
+        .copied()
+        .filter(|key| TrackedSettings::cleartext_credential_refusal(key).is_some())
+        .collect();
+    let refused_n = refused.len();
+    let list_n = SECRET_KEY_DENY_LIST.len();
+    assert!(
+        refused_n >= 10,
+        "only {refused_n} of the {list_n} deny-listed keys are refused by the shared producer: \
+         a dropped entry or a broken predicate, not a passing test"
+    );
+    let probe = refused[0];
+    let canonical =
+        TrackedSettings::cleartext_credential_refusal(probe).expect("leg A refused this key");
+    let canonical_words: Vec<&str> = canonical.split_whitespace().collect();
+    // Everything the sentence says after the key. Derived, never retyped, so a fix
+    // to platform-core wording moves this with it instead of failing here first.
+    let tail = canonical_words[1..].join(" ");
+    let tail_len = canonical_words[1..].len();
+    for key in &refused {
+        let message = TrackedSettings::cleartext_credential_refusal(key).unwrap();
+        assert!(
+            message.starts_with(key),
+            "{key} is refused by a sentence that does not name it: {message:?}"
+        );
+        assert_eq!(
+            longest_shared_word_run(&message, &tail),
+            tail_len,
+            "{key} is refused in different words from {probe}: {message:?} vs {canonical:?}"
+        );
+    }
+
+    // (B) Exactly one of the three sources carries the sentence.
+    let mut carriers: Vec<String> = Vec::new();
+    for (label, source) in [
+        ("platform/core/src/settings/raw.rs", RAW_RS),
+        ("crates/oz-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
+        (
+            "apps/tablet-client/src/commands/settings.rs",
+            TABLET_SETTINGS_RS,
+        ),
+    ] {
+        let literals = string_literals(source);
+        let read_n = literals.len();
+        assert!(
+            read_n >= 5,
+            "the sweep read only {read_n} string literal(s) out of {label}: the include_str \
+             path moved, so this leg finds nothing rather than finding agreement"
+        );
+        let borrowed: Vec<String> = literals
+            .iter()
+            .filter(|lit| longest_shared_word_run(lit, &tail) >= 5)
+            .cloned()
+            .collect();
+        assert!(
+            borrowed.len() <= 1,
+            "{label} carries the refusal wording in {} separate literals, so the sentence \
+             is being restated inside one lane: {borrowed:?}",
+            borrowed.len()
+        );
+        if !borrowed.is_empty() {
+            carriers.push(label.to_string());
+        }
+    }
+    let carrier_n = carriers.len();
+    assert_eq!(
+        carriers,
+        vec!["platform/core/src/settings/raw.rs".to_string()],
+        "the credential-refusal sentence has {carrier_n} carrier(s) among the swept lanes: \
+         {carriers:?} - it must live in raw.rs alone and be CALLED from the lanes. Swept \
+         scope is those three files, not the whole tree."
+    );
+
+    // (C) Each lane asks the producer and wraps the answer in its own Invalid.
+    // The expected counts are what the two files contain: the bridge asks at both
+    // of its doors, the tablet at its one door.
+    for (label, source, wrap, asks) in [
+        (
+            "crates/oz-bridge/src/settings.rs",
+            BRIDGE_SETTINGS_RS,
+            "BridgeError::Invalid(refusal)",
+            2usize,
+        ),
+        (
+            "apps/tablet-client/src/commands/settings.rs",
+            TABLET_SETTINGS_RS,
+            "AppError::Invalid(refusal)",
+            1usize,
+        ),
+    ] {
+        let lines = code_lines(source);
+        let asked: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.contains("cleartext_credential_refusal("))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            asked.len(),
+            asks,
+            "{label} asks the shared producer at code lines {asked:?}, expected {asks} \
+             refusal door(s)"
+        );
+        let wrapped = asked
+            .iter()
+            .filter(|i| {
+                lines
+                    .iter()
+                    .skip(**i)
+                    .take(4)
+                    .any(|later| later.contains(wrap))
+            })
+            .count();
+        assert_eq!(
+            wrapped, asks,
+            "{label} asks the producer {asks} time(s) but wraps the answer in {wrap} only \
+             {wrapped} time(s): a lane refusing the same act with a different variant, or \
+             building its own wording, is what the tablet door did until fb63dc535"
+        );
+    }
+
+    // (D) The executable half, desktop only: the lane emits the producer sentence
+    // unchanged and leaks no value into it.
+    let secret_value = "a-value-that-is-not-a-real-secret";
+    let desktop = run_set_setting(&fresh_conn(), probe, secret_value, "term-1").unwrap_err();
+    let BridgeError::Invalid(desktop_message) = &desktop else {
+        panic!("the desktop lane must refuse {probe} as Invalid, got {desktop:?}");
+    };
+    assert_eq!(
+        desktop_message, &canonical,
+        "the desktop lane did not pass platform-core sentence through unchanged"
+    );
+    assert!(
+        !desktop_message.contains(secret_value),
+        "the refusal leaked the value it was handed: {desktop_message}"
+    );
+}
