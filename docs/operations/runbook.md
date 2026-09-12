@@ -622,6 +622,43 @@ filter box can match `"level":"error"` or `"component":"sync"` — far easier
 than scanning plain-text lines. When diagnosing a specific endpoint, add
 the request path to the filter (e.g. `/api/v1/tokens`).
 
+**Unmapped `product_type` — from one log line to the affected rows:**
+filter the Logs viewer for the prefix `unmapped product_type`, not for a
+whole message, because **two** different warnings carry that prefix —
+`unmapped product_type; falling back to default (retail)`
+(`modules/inventory/src/models.rs`, the `ProductType::parse_stored_or_default`
+helper, whose doc comment in that file is the only place this fallback is
+specified) and `unmapped product_type on sale line; stock was deducted
+anyway because the type could not be mapped`
+(`modules/inventory/src/handlers.rs`, `operation` =
+`InventoryStockHandler::handle_line`). Search the prefix, so that finding
+nothing for one never reads as health for the other. Each line carries
+`sku`, `stored` in `Debug` form — so a NULL (`None`), an empty string
+(`Some("")`) and an uppercase miss (`Some("RETAIL")`) stay three
+distinguishable causes — and `operation`, which names the reader that hit
+it. A non-empty result below means every row it returns is being served to
+the listing, to stock deduction and to reports as `retail`, which is
+exactly the ambiguity the warning exists to break. The statement is safe to
+run read-only against a live merchant database while terminals are serving
+customers: it is a `SELECT`, so it touches no write path, and the write
+path stays deliberately unvalidated because a `CHECK` constraint or a
+reject-on-read would break CSV import, `.ozpkg` restore and sync ingest —
+this diagnostic is the shipped half. Keep the `IS NULL` clause even though
+it looks redundant: `NOT IN` is three-valued, so a NULL matches nothing and
+drops out of the result silently instead of being reported, and although
+the column is `TEXT NOT NULL DEFAULT 'retail'` in both engines
+(`20260813_init.sql:451`, `20260813_init.pg.sql:881`), `None` is the shape a
+missing or unwritten value takes on the read path, which is what the
+operator is actually asking about. If the column is absent entirely the
+statement errors — its own answer, and a better one than a clean count.
+
+```sql
+SELECT id, sku, name, product_type
+  FROM products
+ WHERE product_type IS NULL
+    OR product_type NOT IN ('retail','restaurant','both','service');
+```
+
 > ⚠️ Crash logs are retained only as long as Northflank's log retention
 > policy — for long-term diagnostics export the log stream before a
 > container is replaced.
