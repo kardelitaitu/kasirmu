@@ -94,6 +94,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 | Area | Title | Status |
 | --- | --- | --- |
+| sync | [Sync settings ingest admits and the redirect that carries them](2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
