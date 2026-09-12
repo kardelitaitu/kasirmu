@@ -11,15 +11,11 @@
 
 use tauri::State;
 
-// Retained for the sibling test module, which reaches these through
-// `use super::*`; the command bodies themselves no longer name them.
-// The first two are also what the retained helper adapters below still take.
-#[allow(unused_imports)]
+// Kept for `grace_deadline_for`'s signature below; the sibling test module this block
+// was once retained for does not exist in this crate (the license tests live in
+// `crates/oz-bridge/src/license_tests.rs`), so `Settings`, `RenewLicenseRequest` and
+// the three `#[allow(unused_imports)]` they hid behind are gone with the claim.
 use chrono::{DateTime, Utc};
-#[allow(unused_imports)]
-use oz_core::Settings;
-#[allow(unused_imports)]
-use oz_core::license_verification::RenewLicenseRequest;
 
 use crate::error::AppError;
 use crate::state::AppState;
