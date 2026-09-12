@@ -417,6 +417,7 @@ RLS_TABLES = [
     "sales",
     "sent_reports",
     "stripe_customers",
+    "sync_conflicts",
     "sync_terminals",
     "tax_rates",
     "tenant_plans",

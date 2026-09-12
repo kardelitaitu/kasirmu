@@ -282,6 +282,14 @@ pub const ALL: &[Migration] = &[
         id: "20261001_sale_idempotency.sql",
         sql: include_str!("../migrations/20261001_sale_idempotency.sql"),
     },
+    // Durable record of concurrently diverged sync mutations. Stores the full
+    // version vectors rather than a scalar clock, because "concurrent" is
+    // exactly what a scalar cannot express. Date 20261002 sorts last and only
+    // creates a new table, so it is order-independent.
+    Migration {
+        id: "20261002_sync_conflicts.sql",
+        sql: include_str!("../migrations/20261002_sync_conflicts.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
