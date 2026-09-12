@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Encryption, secrets, and PCI-DSS helpers for OZ-POS — at-rest encryption, key rotation, secure memory."
+description = "TLS configuration, PAN masking, and OS credential-store helpers for OZ-POS — key rotation, secure memory. At-rest encryption lives in oz-crypto."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
