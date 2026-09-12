@@ -276,10 +276,34 @@ pub fn gate_import_user_batch(
 
 // ── Commands ──────────────────────────────────────────────────────
 
-/// Get backup status.
+/// Get backup status — UNGATED entry point.
 ///
 /// The shell passes the live database path; the backup target is derived here.
+///
+/// This command takes no session token, so there is no identity to check and
+/// permissions::DATA_EXPORT is not enforced here at all. That is a live path, not
+/// a theoretical one: see the reachability note in
+/// ui/src/features/settings/DataManagementScreen.tsx. One structured event is
+/// emitted per ungated call, so a bypass that cannot be closed quietly is at least
+/// visible to whoever reads a log. The event carries the operation name and nothing
+/// else: no value, no backup path, no token.
 pub async fn get_backup_status(db_path: &Path) -> Result<BackupStatus, BridgeError> {
+    tracing::warn!(
+        event = "backup_ungated_no_session",
+        operation = "get_backup_status",
+        skipped_permission = permissions::DATA_EXPORT,
+        "served backup status with no session identity presented: this command takes no token, so the permission was not checked"
+    );
+    backup_status_direct(db_path).await
+}
+
+/// The body of get_backup_status, without the warning.
+///
+/// Private on purpose, and this is what makes the event count trustworthy:
+/// get_backup_status_scoped calls THIS helper, so a call that did present a
+/// session and did enforce the permission never emits backup_ungated_no_session.
+/// Nothing outside this file can reach the un-warned path.
+async fn backup_status_direct(db_path: &Path) -> Result<BackupStatus, BridgeError> {
     let backup_path = default_backup_path(db_path);
     let (last_backup, last_backup_size) = match std::fs::metadata(&backup_path) {
         Ok(meta) => {
@@ -298,8 +322,31 @@ pub async fn get_backup_status(db_path: &Path) -> Result<BackupStatus, BridgeErr
     })
 }
 
-/// Create backup.
+/// Create backup — UNGATED entry point.
+///
+/// Writes a full copy of the database to disk and, unlike
+/// create_backup_scoped, checks no permission whatsoever: no token is presented,
+/// so there is no identity to authorize. Reachable today from the Data screen
+/// with no workspace session; see the note in
+/// ui/src/features/settings/DataManagementScreen.tsx. One event per ungated call,
+/// carrying the operation name only and never the backup path.
 pub async fn create_backup(
+    ctx: &BridgeCtx<'_>,
+    db_path: &Path,
+) -> Result<BackupResult, BridgeError> {
+    tracing::warn!(
+        event = "backup_ungated_no_session",
+        operation = "create_backup",
+        skipped_permission = permissions::DATA_EXPORT,
+        "ran a full database backup with no session identity presented: this command takes no token, so the permission was not checked"
+    );
+    create_backup_direct(ctx, db_path).await
+}
+
+/// The body of create_backup, without the warning. Private for the same reason as
+/// backup_status_direct: only the gated twin can reach it without emitting the
+/// event.
+async fn create_backup_direct(
     ctx: &BridgeCtx<'_>,
     db_path: &Path,
 ) -> Result<BackupResult, BridgeError> {
@@ -745,7 +792,9 @@ pub async fn get_backup_status_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::DATA_EXPORT)
         .await?;
-    get_backup_status(db_path).await
+    // The direct helper, not the public entry: a call that DID present a session
+    // must not emit backup_ungated_no_session.
+    backup_status_direct(db_path).await
 }
 
 /// Session-scoped variant of [`create_backup`].
@@ -758,7 +807,7 @@ pub async fn create_backup_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::DATA_EXPORT)
         .await?;
-    create_backup(ctx, db_path).await
+    create_backup_direct(ctx, db_path).await
 }
 
 #[cfg(test)]
