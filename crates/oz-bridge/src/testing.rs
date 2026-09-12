@@ -212,6 +212,75 @@ impl TestBridge {
         Arc::clone(&self.sessions)
     }
 
+    /// Seed a user whose role grants EXACTLY the named permission, register a
+    /// session for them, and return the token that resolves to it.
+    ///
+    /// This does not bypass the permission check, it SATISFIES it, and the
+    /// difference is the whole point: the grant is a real `roles.permissions` row
+    /// read by `Store::require_permission_scoped` through
+    /// `BridgeCtx::require_session_permission`, and the role carries only
+    /// `permission`, so a command asking for any other permission still denies.
+    /// A bypass would make every pin built on this helper test nothing.
+    ///
+    /// It exists because the scoped-zero leg of the backup event pin
+    /// (`backup_ungated_no_session`, data_tests.rs) was a silent pass without it:
+    /// a scoped call that fails authorization returns before reaching its
+    /// delegate, so it emits nothing whether or not the delegate is correct.
+    ///
+    /// Idempotent per permission (`INSERT OR REPLACE`), so a test may call it
+    /// twice; distinct permissions get distinct role/user/token rows and never
+    /// collide. Users are seeded WITHOUT an `assignments` row, i.e. the legacy
+    /// shape `require_permission_scoped` treats as not scope-restricted
+    /// (ADR #35 D5) — the permission itself is still enforced on this path.
+    #[must_use]
+    pub async fn token_granting(&self, permission: &str) -> String {
+        let slug = permission.replace('.', "-");
+        let role_id = format!("role-pin-{slug}");
+        let user_id = format!("user-pin-{slug}");
+        let token = format!("token-pin-{slug}");
+        let stamp = "2026-07-31T00:00:00.000Z";
+        {
+            let conn = self.db.lock().await;
+            conn.execute(
+                "INSERT OR REPLACE INTO roles (id, name, description, permissions, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    &role_id,
+                    format!("Pin {permission}"),
+                    format!("Seeded by TestBridge::token_granting for the single permission {permission}"),
+                    format!("[\"{permission}\"]"),
+                    stamp,
+                    stamp,
+                ],
+            )
+            .expect("seed the pin role row (columns mirror categories_tests.rs)");
+            conn.execute(
+                "INSERT OR REPLACE INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES (?1, ?2, 'hash', ?3, ?4, 1, ?5, ?5)",
+                rusqlite::params![
+                    &user_id,
+                    format!("pin-{slug}"),
+                    format!("Pin user for {permission}"),
+                    &role_id,
+                    stamp,
+                ],
+            )
+            .expect("seed the pin user row");
+        }
+        self.sessions.write().unwrap().insert(
+            token.clone(),
+            SessionContext::new(
+                user_id,
+                role_id,
+                "terminal-pin".into(),
+                "store-pin".into(),
+                "instance-pin".into(),
+                "pos".into(),
+                None,
+                0,
+            ),
+        );
+        token
+    }
+
     /// Install a UI event sink (Wave D kds/hardware emit-path tests).
     #[must_use]
     #[allow(dead_code)] // retained TestBridge builder - harness API, not dead
