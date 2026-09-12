@@ -770,3 +770,7 @@ impl Default for SyncQueue {
 #[cfg(test)]
 #[path = "queue_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "sync_client_divergence_tests.rs"]
+mod divergence_tests;
