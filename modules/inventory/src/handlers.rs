@@ -101,6 +101,26 @@ impl InventoryStockHandler {
                 "inventory handler: skipping non-inventory product — no stock to deduct"
             );
             return Ok(());
+        } else if ptype_str
+            .as_deref()
+            .and_then(ProductType::parse_str)
+            .is_none()
+        {
+            // Fail-open diagnostic, not a control-flow change: when the stored
+            // product_type cannot be mapped, the chained condition above goes
+            // false, the line falls through, and stock is deducted. `stored`
+            // is logged in Debug form so NULL, "" and "RETAIL" stay
+            // distinguishable — parse_str is case-sensitive and maps all three
+            // to None. Whether a mislabelled row should block the deduction
+            // instead is a product decision, deliberately not made here; a
+            // shared helper cannot cover this site because handling it there
+            // would change this control flow.
+            tracing::warn!(
+                sku = %sku,
+                stored = ?ptype_str,
+                operation = "InventoryStockHandler::handle_line",
+                "unmapped product_type on sale line; stock was deducted anyway because the type could not be mapped"
+            );
         }
 
         // Query recipe ingredients
