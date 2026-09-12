@@ -418,6 +418,27 @@ pub(crate) fn row_to_product(row: &rusqlite::Row) -> rusqlite::Result<crate::Pro
     // Use Option<String> for nullable column — reads NULL as None
     // rather than swallowing errors via .ok().
     let product_type_str: Option<String> = row.get("product_type")?;
+    // products.product_type has no CHECK constraint (TEXT NOT NULL DEFAULT
+    // 'retail', 20260813_init.sql:451) and the bridge writes raw IPC strings
+    // into it with nothing upstream validating the value, so an unmapped string
+    // is a real possibility rather than a theoretical one. Keep mapping the row
+    // — one bad row must not take a listing down — but say so: the fallback
+    // (Retail) is AMBIGUOUS between a legitimate 'retail' and a failed read,
+    // and it is the value that decides ProductType::tracks_inventory() for
+    // every consumer of this mapping. The warning is how you tell them apart.
+    // `stored` is logged in Debug form so NULL, "" and "RETAIL" stay
+    // distinguishable from each other — parse_str is case-sensitive and maps
+    // all three to None.
+    let product_type = crate::ProductType::parse_str(product_type_str.as_deref().unwrap_or(""))
+        .unwrap_or_else(|| {
+            tracing::warn!(
+                sku = %sku_str,
+                stored = ?product_type_str,
+                operation = "db::row_to_product",
+                "unmapped product_type on products row; falling back to default (retail)"
+            );
+            crate::ProductType::default()
+        });
     Ok(crate::Product {
         id: row.get("id")?,
         sku: crate::Sku::new(sku_str),
@@ -436,10 +457,7 @@ pub(crate) fn row_to_product(row: &rusqlite::Row) -> rusqlite::Result<crate::Pro
         updated_at: row.get("updated_at")?,
         price_updated_at: row.get("price_updated_at")?,
         track_serial: row.get("track_serial").unwrap_or(false),
-        product_type: product_type_str
-            .as_deref()
-            .and_then(crate::ProductType::parse_str)
-            .unwrap_or_default(),
+        product_type,
         version: row.get("version").unwrap_or(1),
         cost_minor: row.get("cost_minor").unwrap_or(0),
         brand: row.get("brand").unwrap_or(None),

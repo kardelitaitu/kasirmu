@@ -207,12 +207,25 @@ impl Store<'_> {
                 Err(e) => return Err(CoreError::Db(e)),
             };
 
+            // Same contract as the checkout path: this verdict decides whether
+            // the line is deducted at all, and the fallback (Retail) tracks
+            // inventory — so an unmapped string deducts stock a Service product
+            // does not keep, and "retail" in the result is AMBIGUOUS between a
+            // real answer and a failed parse. The warning is how you tell them
+            // apart; the fallback stays so one bad row never fails the sale.
             let tracks_inventory = product_info
                 .as_ref()
-                .map(|(_, pt)| {
-                    crate::product::ProductType::parse_str(pt)
-                        .unwrap_or_default()
-                        .tracks_inventory()
+                .map(|(_, pt)| match crate::product::ProductType::parse_str(pt) {
+                    Some(ptype) => ptype.tracks_inventory(),
+                    None => {
+                        tracing::warn!(
+                            sku = %line.sku,
+                            raw = %pt,
+                            operation = "Store::complete_sale_with_resolved_shortfalls",
+                            "unmapped product_type on sale line; falling back to default (retail) for the tracks_inventory decision"
+                        );
+                        crate::product::ProductType::default().tracks_inventory()
+                    }
                 })
                 .unwrap_or(false);
 
@@ -327,8 +340,22 @@ impl Store<'_> {
                         };
 
                         if let Some((ing_sku, ing_ptype_str)) = ing_info {
-                            let ing_ptype = crate::product::ProductType::parse_str(&ing_ptype_str)
-                                .unwrap_or_default();
+                            // Same ambiguity as the sale-line parse above:
+                            // Retail tracks inventory, so an unmapped ingredient
+                            // type deducts stock a Service ingredient does not
+                            // keep, and the fallback is indistinguishable from a
+                            // real 'retail' without this line.
+                            let ing_ptype =
+                                crate::product::ProductType::parse_str(&ing_ptype_str)
+                                    .unwrap_or_else(|| {
+                                        tracing::warn!(
+                                            sku = %ing_sku,
+                                            raw = %ing_ptype_str,
+                                            operation = "Store::complete_sale_with_resolved_shortfalls",
+                                            "unmapped product_type on recipe ingredient; falling back to default (retail) for the tracks_inventory decision"
+                                        );
+                                        crate::product::ProductType::default()
+                                    });
                             if ing_ptype.tracks_inventory() {
                                 // MONEY-03: same overflow contract as the primary
                                 // deduction path — the non-resolution BOM branch

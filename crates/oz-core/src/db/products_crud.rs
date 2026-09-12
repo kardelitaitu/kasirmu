@@ -399,7 +399,27 @@ impl Store<'_> {
             cache.invalidate_product(sku.trim());
         }
 
-        let parsed_pt = crate::ProductType::parse_str(product_type).unwrap_or_default();
+        // The string written above is the caller's verbatim — `product_type`
+        // comes straight from IPC (crates/oz-bridge/src/products.rs accepts a
+        // free-form `String` with a serde default) and the column has no CHECK
+        // constraint, so an unmapped value can already be committed by the time
+        // we get here. The insert succeeded, so keep returning the row rather
+        // than failing the create — but warn, because the fallback (Retail)
+        // is AMBIGUOUS between a legitimate 'retail' and an unmapped value, and
+        // Retail is the variant that flips ProductType::tracks_inventory() for
+        // every consumer of this return value. The warning is how you tell them
+        // apart. Note `None` from the caller became "retail" at the unwrap_or
+        // above and is deliberately not warned: that is the documented default.
+        let parsed_pt = crate::ProductType::parse_str(product_type).unwrap_or_else(|| {
+            tracing::warn!(
+                sku = %sku.trim(),
+                product_id = %id,
+                raw = %product_type,
+                operation = "Store::create_product_with_attributes",
+                "unmapped product_type written to products row; falling back to default (retail)"
+            );
+            crate::ProductType::default()
+        });
         Ok(Product {
             id,
             sku: Sku::new(sku.trim()),
