@@ -1,5 +1,12 @@
-// Allow `cfg(feature = "metrics")` from the transitive dependency on
-// `oz-reporting` without requiring platform-startup to declare the feature.
+// The `cfg(feature = "metrics")` this attribute was written for is gone with
+// `src/metrics.rs` (deleted 2026-09-12; `metrics` was never declared here, so
+// the gated code never compiled). The allow stays for the one undeclared cfg
+// this crate still uses: `console.rs` gates on bare `tokio_unstable`, which
+// only `apps/cloud-server/build.rs` declares via `cargo::rustc-check-cfg` —
+// this crate has no build.rs, so with CI's `RUSTFLAGS: -D warnings` dropping
+// the allow turns `cargo check -p platform-startup` into an error. Retire it
+// properly by adding `unexpected_cfgs = { check-cfg = ['cfg(tokio_unstable)'] }`
+// under `[lints.rust]` in this crate's Cargo.toml, then deleting this line.
 #![allow(unexpected_cfgs)]
 /*
 last audited 25-07-26 by RSA-Agent (platform-startup slice A: lib deep read)
@@ -34,7 +41,6 @@ pub mod console;
 pub mod event_handlers;
 /// Startup hardware registration from the saved terminal profile.
 pub mod hardware;
-pub mod metrics;
 pub mod rate_sync;
 
 use std::sync::{Arc, Mutex};
