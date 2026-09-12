@@ -373,3 +373,7 @@ pub async fn get_deployment_info(
         .await
         .map_err(Into::into)
 }
+
+#[cfg(test)]
+#[path = "settings_tests.rs"]
+mod tests;

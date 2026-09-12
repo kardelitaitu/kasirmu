@@ -1354,3 +1354,130 @@ fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
         "the refusal leaked the value it was handed: {message}"
     );
 }
+
+// ── The read door and the key the status bar asks for ─────────────────────
+//
+// Appended for the `useGatewayStatus` claim: a reviewer measured that
+// `ui/src/hooks/useGatewayStatus.ts:23` calls the UNGATED `get_setting`
+// command with a deny-listed credential name and concluded the credential
+// reaches the renderer, because the refusal built all night sits on the write
+// path (`set_tracked`) and on the egress/ingest policies. These two tests
+// settle whether the READ half answers it. It refuses.
+
+/// A sentinel value, not a credential — shaped like a Stripe test key so a
+/// reader recognises the field, and carrying a word no real key contains so it
+/// cannot be mistaken for live material.
+const GATEWAY_PROBE_SENTINEL: &str = "sk_test_SENTINEL_NOT_A_REAL_KEY_deadbeef";
+
+/// Extract one function body, through its closing brace, from a source string.
+fn read_door_body(src: &str, signature: &str) -> String {
+    let start = src
+        .find(signature)
+        .unwrap_or_else(|| panic!("signature `{signature}` no longer exists: the door moved"));
+    let rest = &src[start..];
+    let open = rest.find('{').expect("a function body opens with a brace");
+    let mut depth = 0usize;
+    let mut body = String::new();
+    for ch in rest[open..].chars() {
+        body.push(ch);
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    body
+}
+
+/// DECISION PIN — `run_get_setting` refuses `stripe.api_key`; the caller is
+/// dead code, not a leak.
+///
+/// The refusal is on the READ path, not only the write path: `run_get_setting`
+/// asks `is_secret_key` (-> `platform_core::settings::keys::is_secret_setting_key`
+/// -> `credential_base` -> whole-key equality against `SECRET_KEY_DENY_LIST`)
+/// and returns `Ok(None)` before it touches the table. The bare spelling
+/// `stripe.api_key` is inside that domain by construction; the suffix-blind
+/// miss (`smtp_config:tenant-a`) is a different shape and is pinned in
+/// `keys_tests.rs`, not here.
+///
+/// The second assertion is the one that keeps the first honest, and it is also
+/// the measurement the claim turned on: BELOW the door, `Settings::get` hands
+/// the sentinel back byte for byte. There is no decrypt step on this path, so
+/// whatever is stored is what a caller would receive — the name test is the
+/// only thing between a stored credential and an IPC surface that checks no
+/// permission. If a read gate is ever removed, this pin does not "become
+/// wrong": the hazard it names becomes real, and the value it asserts is the
+/// evidence.
+#[test]
+fn decision_pin_run_get_setting_refuses_the_key_the_status_bar_hook_asks_for() {
+    let conn = fresh_conn();
+    // Premise, measured: the caller's spelling resolves to a credential base.
+    assert_eq!(
+        platform_core::settings::keys::credential_base("stripe.api_key"),
+        Some("stripe.api_key"),
+        "the bare spelling must be inside the credential domain, or this pin          refuses a key nothing owns"
+    );
+    assert!(
+        platform_core::settings::keys::is_secret_setting_key("stripe.api_key"),
+        "SECRET_KEY_DENY_LIST lost stripe.api_key"
+    );
+
+    // Seed through the untracked door: the tracked funnel refuses a cleartext
+    // deny-listed write, so a funnel seed would leave the row absent and make
+    // the refusal below a pass over nothing.
+    Settings::set(&conn, "stripe.api_key", GATEWAY_PROBE_SENTINEL).unwrap();
+    assert_eq!(
+        Settings::get(&conn, "stripe.api_key").unwrap().as_deref(),
+        Some(GATEWAY_PROBE_SENTINEL),
+        "one level below the door the read path returns the stored value          verbatim — it does not decrypt, it does not withhold"
+    );
+    assert_eq!(
+        run_get_setting(&conn, "stripe.api_key").unwrap(),
+        None,
+        "the ungated get_setting door must answer a deny-listed name with None"
+    );
+    // Control: the door is a name test, not a broken read.
+    Settings::set(&conn, "store.name", "Counter Store").unwrap();
+    assert_eq!(
+        run_get_setting(&conn, "store.name").unwrap().as_deref(),
+        Some("Counter Store"),
+        "an ordinary key must still read back through the same door"
+    );
+}
+
+/// DECISION PIN — both doors, on both shells, reach that one refused function.
+///
+/// The unscoped command is what `useGatewayStatus` calls; the scoped twin is
+/// what a future "fix" would reach for. Both must delegate. A door that reads
+/// the table itself puts the credential back on the wire, and on the scoped
+/// side a `settings:read` permission is NOT a credential rule — a manager can
+/// hold the permission and still have no business reading a secret. Sweep, not
+/// a call, because the standing-up of a session adds nothing to what is being
+/// pinned here: which function the body names.
+#[test]
+fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
+    for (label, src) in [
+        ("tablet settings.rs", TABLET_SETTINGS_RS),
+        ("oz-bridge settings.rs", BRIDGE_SETTINGS_RS),
+    ] {
+        for signature in [
+            "pub async fn get_setting(",
+            "pub async fn get_setting_scoped(",
+        ] {
+            let body = read_door_body(src, signature);
+            assert!(
+                body.contains("run_get_setting"),
+                "{label}: `{signature}` no longer reaches the refused door —                  it either reads the table itself or the door was renamed. Body: {body}"
+            );
+            assert!(
+                !body.contains("Settings::get"),
+                "{label}: `{signature}` grew its own read of the settings                  table, which bypasses the credential refusal in run_get_setting"
+            );
+        }
+    }
+}
