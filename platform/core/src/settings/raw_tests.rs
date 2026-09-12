@@ -311,6 +311,152 @@ fn set_batch_tracked_refuses_a_deny_listed_row_before_any_write() {
     );
 }
 
+// ── The in-transaction form: the canonical body the batch door calls ──────
+
+/// A `settings` + `setting_updated` pair, the shape `set_tracked_in_tx` needs.
+/// `test_helpers::fresh` gives the value table only, which is exactly right
+/// for the delta-loss test below and wrong for the delta-written ones.
+fn fresh_with_delta() -> rusqlite::Connection {
+    let conn = fresh();
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS setting_updated (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            key         TEXT    NOT NULL,
+            value       TEXT    NOT NULL,
+            terminal_id TEXT    NOT NULL DEFAULT 'unknown',
+            version     INTEGER NOT NULL,
+            created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );",
+    )
+    .unwrap();
+    conn
+}
+
+/// The whole point of the in-tx form: it runs inside a transaction the caller
+/// already owns. `set_tracked` cannot do this — it opens its own
+/// `unchecked_transaction`, and the second BEGIN fails. If the extracted body
+/// ever grows a transaction of its own, this test is the one that says so.
+#[test]
+fn set_tracked_in_tx_writes_value_and_delta_inside_the_callers_transaction() {
+    let conn = fresh_with_delta();
+    let tx = conn.unchecked_transaction().unwrap();
+    Settings::set_tracked_in_tx(&tx, keys::STORE_NAME, "Warung Sedap", "term-a").unwrap();
+    tx.commit().unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::STORE_NAME).unwrap().as_deref(),
+        Some("Warung Sedap"),
+        "the value write joined the caller's transaction"
+    );
+    assert_eq!(
+        Settings::get_version(&conn, keys::STORE_NAME, "term-a").unwrap(),
+        Some(1),
+        "the delta write joined it too — ADR #22 owes one row per tracked write"
+    );
+}
+
+/// The refusal is OWNED by the body, not by the wrapper: the in-tx form
+/// refuses a deny-listed credential with the same error, naming the key and
+/// never the value, and it does so without nesting a BEGIN.
+#[test]
+fn set_tracked_in_tx_refuses_a_deny_listed_credential_in_the_callers_transaction() {
+    let conn = fresh_with_delta();
+    let tx = conn.unchecked_transaction().unwrap();
+    let err = Settings::set_tracked_in_tx(&tx, keys::STRIPE_API_KEY, "sk_live_leaked", "term-a")
+        .expect_err("the in-tx form must carry the refusal, not just the wrapper");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::STRIPE_API_KEY),
+        "names the key, got: {msg}"
+    );
+    assert!(
+        !msg.contains("sk_live_leaked"),
+        "never echoes the value, got: {msg}"
+    );
+    // Commit ANYWAY: a rollback would hide a write that had already landed.
+    tx.commit().unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::STRIPE_API_KEY).unwrap(),
+        None,
+        "a refusal must not write the row"
+    );
+    assert_eq!(
+        Settings::get_version(&conn, keys::STRIPE_API_KEY, "term-a").unwrap(),
+        None,
+        "a refusal must not write a delta either"
+    );
+}
+
+/// The named exception survives the extraction: the in-tx form must still
+/// write `smtp_config`, or the email-report card's Save button breaks again
+/// in the batch lane that now calls this door.
+#[test]
+fn set_tracked_in_tx_admits_the_smtp_exception() {
+    let conn = fresh_with_delta();
+    let tx = conn.unchecked_transaction().unwrap();
+    Settings::set_tracked_in_tx(&tx, keys::SMTP_CONFIG, "{\"password\":\"pw\"}", "term-a").unwrap();
+    tx.commit().unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::SMTP_CONFIG).unwrap().as_deref(),
+        Some("{\"password\":\"pw\"}")
+    );
+    assert_eq!(
+        Settings::get_version(&conn, keys::SMTP_CONFIG, "term-a").unwrap(),
+        Some(1)
+    );
+}
+
+/// Delta loss stays NON-FATAL in the in-tx form: no `setting_updated` table,
+/// so the delta write fails, and the value write must still land and the
+/// caller's transaction must still commit. This is the same contract
+/// `set_tracked` has always had; the extraction must not move it.
+#[test]
+fn set_tracked_in_tx_delta_loss_is_non_fatal_and_the_value_stands() {
+    let conn = fresh(); // settings only — every delta write here fails
+    let tx = conn.unchecked_transaction().unwrap();
+    Settings::set_tracked_in_tx(&tx, keys::STORE_NAME, "No Ledger", "term-a")
+        .expect("a lost delta must not fail the tracked write");
+    tx.commit().unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::STORE_NAME).unwrap().as_deref(),
+        Some("No Ledger")
+    );
+}
+
+/// The batch pre-flight and the per-row door must not be able to disagree:
+/// this pins the public QUESTION against the live deny list, the named
+/// exception and an ordinary key, which is the exact triple a lane would
+/// otherwise restate. It is the drift the bridge's copied predicate was.
+#[test]
+fn cleartext_credential_refusal_agrees_with_the_tracked_door() {
+    assert!(
+        !keys::SECRET_KEY_DENY_LIST.is_empty(),
+        "the shared deny list must be populated"
+    );
+    for key in keys::SECRET_KEY_DENY_LIST {
+        let refused = Settings::cleartext_credential_refusal(key);
+        if *key == keys::SMTP_CONFIG {
+            assert!(refused.is_none(), "{key} is the named exception");
+            continue;
+        }
+        let msg = refused.unwrap_or_else(|| format!("{key} must be refused"));
+        assert!(msg.contains(key), "the refusal names the key: {msg}");
+        // The question takes no value argument at all, so a value CANNOT
+        // appear; what is checkable is that the message is the fixed clause
+        // and nothing else — no interpolated payload riding along.
+        assert_eq!(
+            msg,
+            format!(
+                "{key} holds a credential — the tracked settings funnel refuses to store it in cleartext"
+            ),
+            "the refusal is the fixed clause, named by key and nothing more"
+        );
+    }
+    assert!(
+        Settings::cleartext_credential_refusal(keys::STORE_NAME).is_none(),
+        "an ordinary key is admissible"
+    );
+}
+
 /// The batch door still admits the `smtp_config` exception and ordinary
 /// keys — a mixed batch without a credential writes every row.
 #[test]

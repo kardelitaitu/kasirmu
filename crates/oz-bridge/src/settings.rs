@@ -29,6 +29,13 @@ use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
 use oz_core::permissions;
 use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use oz_core::{Settings, Store, UserPreferences};
+/// platform-core's OWN `Settings` — the type that holds the tracked write.
+/// `Settings` in this crate is `oz_core::Settings`, the delegating facade, and
+/// the facade cannot carry the in-transaction form: it delegates to
+/// `&Connection` and returns `CoreError`, while the batch door needs the
+/// caller's `&rusqlite::Transaction`. So the batch loop names the owner
+/// directly, exactly as it already names `is_manager_owned_key` here.
+use platform_core::settings::Settings as TrackedSettings;
 use platform_core::settings::is_manager_owned_key;
 use platform_core::settings::keys::{LAN_SERVER_PSK, LOCAL_API_SECRET};
 use platform_core::terminal_profile::TerminalProfile;
@@ -481,28 +488,37 @@ pub fn run_set_setting(
 /// the funnel therefore live here: the same manager-key refusal, and the
 /// same `merged_smtp_password_json` seam the single write asks.
 ///
-/// It does NOT call `Settings::set_tracked` any more, and must not: that door
-/// opens its own `unchecked_transaction` (BEGIN DEFERRED), and a second BEGIN
-/// inside the caller's transaction fails with "cannot start a transaction
-/// within a transaction" — the class documented at
+/// It does NOT call `Settings::set_tracked` — the bare-connection door — and
+/// must not: that wrapper opens its own `unchecked_transaction` (BEGIN
+/// DEFERRED), and a second BEGIN inside the caller's transaction fails with
+/// "cannot start a transaction within a transaction" — the class documented at
 /// `crates/oz-bridge/src/setup.rs:100-106`. Confirmed at runtime by
-/// `batch_funnel_runs_inside_the_commands_own_outer_transaction`, which is why
-/// the two halves of the tracked write are done in place here: `Settings::set`
-/// (a plain statement, so it joins the caller's transaction) plus
-/// `Settings::write_delta`, which detects an open transaction and takes its
-/// savepoint path instead of BEGIN IMMEDIATE. Delta loss stays non-fatal, as it
-/// is in `set_tracked`.
+/// `batch_funnel_runs_inside_the_commands_own_outer_transaction`. What it calls
+/// instead is the in-transaction form of the very same body,
+/// `platform_core::settings::Settings::set_tracked_in_tx`, which takes the
+/// caller's `&rusqlite::Transaction` rather than opening one — the
+/// `log_audit_in_tx` / `Settings::set_batch_with_policy` shape. So the refusal,
+/// the value write and the delta write (non-fatal, exactly as in
+/// `set_tracked`) are performed by platform-core, inside this transaction.
+///
+/// That is the whole reason the in-tx form exists. c80b7f7dd got the batch
+/// working by doing the two write halves by hand AND restating the credential
+/// rule — `is_secret_setting_key(k) && *k != SMTP_CONFIG_SETTINGS_KEY` —
+/// because the refusal it was duplicating is private in platform-core. One
+/// policy, two definitions, and the drift is silent: the day the exception
+/// changes, one lane keeps refusing and the other starts accepting. Both
+/// copies are gone now: this lane asks platform-core the question
+/// (`TrackedSettings::cleartext_credential_refusal`, which returns the refusal
+/// message or `None`) and hands every row to `set_tracked_in_tx`. The
+/// exception constant is no longer named in this crate at all.
 ///
 /// Both refusals are batch-wide and happen BEFORE any write — the manager-key
-/// check always was, and the cleartext-credential check moves here from
-/// `set_tracked`'s per-row position so the loop can stay in the transaction.
-/// Batch-wide pre-flight is what the command's documented all-or-nothing
-/// semantics require: one bad key aborts the batch, it does not quietly drop
-/// that one entry, and it cannot leave rows already written behind. The
-/// credential predicate is restated here (`is_secret_setting_key` plus the
-/// `smtp_config` exception) because platform-core's
-/// `refuse_cleartext_credential` is private; it is the SAME rule, and
-/// `batch_write_refuses_a_deny_listed_credential_key` pins it.
+/// check always was, and the cleartext-credential check stays batch-wide even
+/// though `set_tracked_in_tx` also refuses per row, because a per-row refusal
+/// writes the earlier rows first. Batch-wide pre-flight is what the command's
+/// documented all-or-nothing semantics require: one bad key aborts the batch,
+/// it does not quietly drop that one entry, and it cannot leave rows already
+/// written behind. `batch_write_refuses_a_deny_listed_credential_key` pins it.
 ///
 /// Returns the values AS WRITTEN, keyed by key — the map the command hands to
 /// [`enqueue_settings_updates`], so the replication payload carries the merged
@@ -519,13 +535,16 @@ pub fn run_set_settings_batch(
             "{key} is managed by the {owner} controls — use those"
         )));
     }
-    if let Some(key) = entries
-        .keys()
-        .find(|k| is_secret_setting_key(k) && *k != SMTP_CONFIG_SETTINGS_KEY)
-    {
-        return Err(BridgeError::Invalid(format!(
-            "{key} holds a credential — the tracked settings funnel refuses to store it in cleartext"
-        )));
+    // The credential door, ASKED of platform-core rather than restated here.
+    // Batch-wide and BEFORE any write, as the command's all-or-nothing promise
+    // requires; the wording is platform-core's own, so a refusal says the same
+    // thing whichever door raised it, and it names the key and never the
+    // value. `set_tracked_in_tx` below refuses per row too — that is the floor
+    // under this pre-flight, not a substitute for it.
+    for key in entries.keys() {
+        if let Some(refusal) = TrackedSettings::cleartext_credential_refusal(key) {
+            return Err(BridgeError::Invalid(refusal));
+        }
     }
     let store = Store::new(tx);
     let mut written = HashMap::with_capacity(entries.len());
@@ -537,11 +556,12 @@ pub fn run_set_settings_batch(
         } else {
             value
         };
-        // The tracked write, done IN the caller's transaction: no BEGIN here.
-        Settings::set(tx, key, value)?;
-        if let Err(e) = Settings::write_delta(tx, key, value, terminal_id) {
-            tracing::warn!(key, terminal_id, error = %e, "delta write failed (non-fatal)");
-        }
+        // The tracked write, done IN the caller's transaction by the door that
+        // owns it: no BEGIN here, and no restated predicate here. Mapped
+        // through `CoreError` so a write failure keeps the exact error shape
+        // this loop had when it called `Settings::set` itself.
+        TrackedSettings::set_tracked_in_tx(tx, key, value, terminal_id)
+            .map_err(oz_core::CoreError::from)?;
         written.insert(key.clone(), value.to_string());
     }
     Ok(written)

@@ -309,8 +309,47 @@ impl Settings {
     /// the fourth funnel forgets.
     const CLEARTEXT_CREDENTIAL_EXCEPTION: &str = crate::settings::keys::SMTP_CONFIG;
 
+    /// The cleartext-credential rule as a QUESTION: `Some(message)` when the
+    /// tracked funnel must refuse `key`, `None` when the key may be written.
+    ///
+    /// Byte-identical to the message `Settings::refuse_cleartext_credential`
+    /// raises, so a lane that pre-flights a batch and a lane that refuses per
+    /// row hand back the same words.
+    ///
+    /// This is the ONE definition of the rule — the predicate, the named
+    /// exception above, and the wording of the refusal all live here.
+    /// `refuse_cleartext_credential` (private) is it turned into an error;
+    /// [`Settings::set_tracked`] and [`Settings::set_tracked_in_tx`] are it
+    /// applied per row.
+    ///
+    /// It is public because a BATCH door must ask the rule of every row
+    /// BEFORE writing any of them: a loop that only refuses per row writes
+    /// three rows before it answers no, which is not the all-or-nothing the
+    /// batch commands promise their UI. A lane asks this and wraps the
+    /// returned string in its own error type; it must NOT rebuild the
+    /// predicate, because the day the exception changes, one lane keeps
+    /// refusing and the other starts accepting and nothing fails.
+    ///
+    /// The message names the key and never the value — a value in an error
+    /// string is a leak through the log lane.
+    pub fn cleartext_credential_refusal(key: &str) -> Option<String> {
+        if crate::settings::keys::is_secret_setting_key(key)
+            && key != Self::CLEARTEXT_CREDENTIAL_EXCEPTION
+        {
+            return Some(format!(
+                "{key} holds a credential — the tracked settings funnel refuses to store it in cleartext"
+            ));
+        }
+        None
+    }
+
     /// Refuse to store a deny-listed credential in cleartext through the
-    /// tracked funnel.
+    /// tracked funnel: the question above, turned into an error.
+    ///
+    /// Private on purpose — a lane that must refuse BEFORE it writes its
+    /// first row asks [`Settings::cleartext_credential_refusal`] and wraps the
+    /// message in its own error type, so no lane has to name a
+    /// `PlatformError` it does not otherwise use.
     ///
     /// `crate::settings::keys::is_secret_setting_key` is the same predicate
     /// the raw `get_setting` IPC surface refuses reads with (C-2); this is
@@ -318,19 +357,18 @@ impl Settings {
     /// tracked refusal is an ERROR — the renderer-reachable doors must fail
     /// loudly, not quietly drop a credential write the operator believes
     /// happened — and like the manager-key guard and the ingest refusal
-    /// alike, the message names the key and never the value, because a value
-    /// in an error string is a leak through the log lane.
+    /// alike, the message names the key and never the value.
+    ///
+    /// The rule is [`Settings::cleartext_credential_refusal`]; this adds the
+    /// warn line and the error, so the per-row door and a batch pre-flight
+    /// can never answer the same key differently.
     fn refuse_cleartext_credential(key: &str) -> Result<(), PlatformError> {
-        if crate::settings::keys::is_secret_setting_key(key)
-            && key != Self::CLEARTEXT_CREDENTIAL_EXCEPTION
-        {
+        if let Some(message) = Self::cleartext_credential_refusal(key) {
             tracing::warn!(
                 key,
                 "cleartext credential write refused by the tracked settings funnel"
             );
-            return Err(PlatformError::Internal(format!(
-                "{key} holds a credential — the tracked settings funnel refuses to store it in cleartext"
-            )));
+            return Err(PlatformError::Internal(message));
         }
         Ok(())
     }
@@ -338,35 +376,67 @@ impl Settings {
     /// Set a value AND write a delta record — both in a single transaction.
     ///
     /// This is the recommended method for Tauri command handlers that have
-    /// access to a terminal ID. Calls `Settings::set()` for the value and
-    /// `Settings::write_delta()` for the versioned audit trail, both
-    /// within a single transaction. Since `write_delta()` uses a nested
-    /// savepoint, the delta write failure does not roll back the `set()`.
+    /// access to a terminal ID and NO transaction of their own; a caller that
+    /// already holds one calls [`Settings::set_tracked_in_tx`] instead.
     ///
-    /// Delta write failures are logged but do not roll back the `set()` —
-    /// delta loss is non-fatal; the sync layer can reconstruct from the
-    /// settings table.
+    /// A thin wrapper: it opens the transaction and hands it to
+    /// [`Settings::set_tracked_in_tx`], which is the CANONICAL body — the
+    /// cleartext-credential refusal, the value write and the delta write live
+    /// there and only there. Splitting them into two bodies is how the batch
+    /// door ended up restating the credential rule in the bridge, and a
+    /// restated rule is the drift this file's own doc block exists to warn
+    /// about; a lane that already holds a transaction now calls the in-tx
+    /// form directly and cannot drift.
     ///
-    /// A deny-listed credential key (`keys::is_secret_setting_key`) is
-    /// REFUSED here with an error — the write face of the same predicate the
-    /// raw `get_setting` IPC surface refuses reads with — excepting only
-    /// `smtp_config`, which both shells legitimately funnel-write after
-    /// merging. See `refuse_cleartext_credential`.
+    /// Everything the body does is unchanged by the extraction: a deny-listed
+    /// credential key is REFUSED with an error naming the key and never the
+    /// value, excepting only `smtp_config`, and delta loss stays non-fatal —
+    /// warned about, the value write stands, the sync layer reconstructs.
     pub fn set_tracked(
         conn: &Connection,
         key: &str,
         value: &str,
         terminal_id: &str,
     ) -> Result<(), PlatformError> {
-        Self::refuse_cleartext_credential(key)?;
         let tx = conn.unchecked_transaction()?;
-        Self::set(conn, key, value)?;
-        // Inline delta write within the existing transaction to avoid
-        // nested BEGIN (SQLite does not support nested transactions).
-        if let Err(e) = Self::write_delta_on_tx(&tx, key, value, terminal_id) {
+        Self::set_tracked_in_tx(&tx, key, value, terminal_id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Set a value AND write a delta record INSIDE the caller's transaction.
+    ///
+    /// The in-transaction form of [`Settings::set_tracked`], and the
+    /// canonical body of the tracked write: it owns the cleartext-credential
+    /// refusal (and so the one named exception), the value write, and the
+    /// delta write. It takes `&rusqlite::Transaction` rather than opening a
+    /// transaction of its own — the `log_audit_in_tx` /
+    /// [`Settings::set_batch_with_policy`] shape — so a command that already
+    /// owns the transaction (the desktop batch door) can run the whole
+    /// tracked write without nesting a second BEGIN, which SQLite rejects.
+    ///
+    /// Refusal semantics are unchanged from `set_tracked`: an ERROR naming
+    /// the key and never the value, raised before anything is written. Delta
+    /// loss stays non-fatal — it is warned about, the value write stands, and
+    /// the sync layer can reconstruct.
+    ///
+    /// A batch caller that must refuse BEFORE writing its first row asks
+    /// [`Settings::cleartext_credential_refusal`] over the whole key set
+    /// first; the per-row refusal here is the floor under that pre-flight,
+    /// not a substitute for it.
+    pub fn set_tracked_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        key: &str,
+        value: &str,
+        terminal_id: &str,
+    ) -> Result<(), PlatformError> {
+        Self::refuse_cleartext_credential(key)?;
+        Self::set(tx, key, value)?;
+        // Inline delta write within the caller's transaction: no nested BEGIN
+        // (SQLite does not support nested transactions).
+        if let Err(e) = Self::write_delta_on_tx(tx, key, value, terminal_id) {
             tracing::warn!(key, terminal_id, error = %e, "delta write failed (non-fatal)");
         }
-        tx.commit()?;
         Ok(())
     }
 
@@ -410,10 +480,10 @@ impl Settings {
         }
         let tx = conn.unchecked_transaction()?;
         for (key, value) in rows {
-            Self::set(conn, key, value)?;
-            if let Err(e) = Self::write_delta_on_tx(&tx, key, value, terminal_id) {
-                tracing::warn!(key, terminal_id, error = %e, "delta batch write failed (non-fatal)");
-            }
+            // The SAME canonical body `set_tracked` delegates to — refusal,
+            // value write, non-fatal delta write — run inside this
+            // transaction instead of a copy of it written here.
+            Self::set_tracked_in_tx(&tx, key, value, terminal_id)?;
         }
         tx.commit()?;
         Ok(())
