@@ -5,8 +5,7 @@ import { exportSalesByHourScoped, type SalesByHourRow } from '@/api/sales';
 import { formatMoney, type Money } from '@/types/domain';
 import { Skeleton } from '@/components/Skeleton';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { hasGrantedPermission } from '@/platform/ui/page-registry';
+import { isWidgetAccessible, useWidgetUser } from '@/platform/ui/widget-registry';
 /**
  * Sales by Hour Widget — shows a bar chart of sales broken down
  * by hour of the day. Registered with the WidgetRegistry.
@@ -14,40 +13,25 @@ import { hasGrantedPermission } from '@/platform/ui/page-registry';
  * This widget is designed to be rendered inside a container Card
  * provided by the host dashboard page.
  */
-/**
- * Read the logged-in session without hard-requiring an <AuthProvider>.
- *
- * `useAuth()` THROWS outside its provider, and the widget registry renders this
- * component inside the host page's <Suspense>/<LazyBoundary> with no error
- * boundary of its own — a throw here would take the whole dashboard down. So an
- * absent provider reads as `undefined` (not enough information to deny), the same
- * distinction page-registry `passesGate()` makes when a caller has no granted keys.
- * The app always mounts one (contexts/AppProviders.tsx:60), so in production this
- * never takes that branch: a session is present and its permissions decide.
- */
-function useSessionOrUnknown() {
-  try {
-    return useAuth().session;
-  } catch {
-    return undefined;
-  }
-}
-
 export default function SalesByHourWidget() {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
-  const session = useSessionOrUnknown();
+  const user = useWidgetUser();
   /**
-   * F-017 lockout fix: `export_sales_by_hour_scoped` now enforces
-   * `permissions::REPORTS_EXPORT` (tablet-client history.rs, mirroring the
-   * desktop bridge in crates/oz-bridge). The Staff preset grants `sales:view`
-   * but NOT `reports:export` (platform/core rbac_presets.rs), so this tile must
-   * ask the same question the command asks before it calls it.
+   * F-017 lockout fix: `export_sales_by_hour_scoped` enforces
+   * `permissions::REPORTS_EXPORT` (tablet-client src/commands/history.rs:389,
+   * mirroring the desktop bridge). The Staff preset grants `sales:view` but NOT
+   * `reports:export` (platform/core/src/rbac_presets.rs:136-159), so this tile
+   * must know the answer before it calls. The RULE is not spelled here: it asks
+   * the widget registry, which delegates to `passesGate` in
+   * platform/ui/page-registry/index.ts:139 - the same gate pages and nav items
+   * pass through. Interim half of the gate: it exists only until
+   * `registerSalesWidgets` declares `requiredPermission` on this tile, which lets
+   * the host - which now gates through the registry - refuse to mount this
+   * component at all.
    */
-  const canExport = session === undefined
-    ? true
-    : hasGrantedPermission(session?.permissions, 'reports:export');
+  const canExport = isWidgetAccessible({ requiredPermission: 'reports:export' }, user);
   const [hourly, setHourly] = useState<SalesByHourRow[]>([]);
   const [loading, setLoading] = useState(true);
 

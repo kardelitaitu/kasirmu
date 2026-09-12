@@ -7,12 +7,36 @@
  * contracts to pin.
  */
 
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { createElement } from 'react';
+import { screen } from '@testing-library/react';
 import {
   clearWidgets,
   getWidgets,
+  getDeniedWidgets,
+  isWidgetAccessible,
   registerWidget,
 } from '@/platform/ui/widget-registry';
+import { renderWithFluentSync } from '@/__tests__/test-utils/render';
+import SalesDashboardScreen from '@/features/sales/SalesDashboardScreen';
+import salesFtl from '@/locales/sales.ftl?raw';
+
+const mockSession = vi.fn();
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ session: mockSession() }),
+}));
+
+vi.mock('@/hooks/useFeatures', () => ({
+  useFeatures: () => ({
+    enabled: new Set(['simple-retail']),
+    loading: false,
+    isEnabled: (key: string) => key === 'simple-retail',
+    filterRoutes: (routes: string[]) => routes,
+    error: null,
+    loaded: true,
+  }),
+}));
 
 const widget = (id: string, extra: Partial<Parameters<typeof registerWidget>[0]> = {}) => ({
   id,
@@ -62,5 +86,135 @@ describe('widget-registry', () => {
     // default), NOT "nothing enabled".
     registerWidget(widget('a', { feature: 'pro' }));
     expect(getWidgets()).toHaveLength(1);
+  });
+});
+
+/* ── permission gate ──────────────────────────────────────────────── */
+
+describe('widget-registry access gate', () => {
+  beforeEach(() => clearWidgets());
+
+  /** The two tiles the sales dashboard registers: one export-gated, one not. */
+  function registerPair(): void {
+    registerWidget(
+      widget('daily-total', {
+        feature: 'simple-retail',
+        requiredPermission: 'reports:export',
+      }),
+    );
+    registerWidget(widget('pos-status'));
+  }
+  const STAFF = { userRole: 'Staff', permissions: ['sales:view'] };
+  const MANAGER = { userRole: 'Manager', permissions: ['sales:view', 'reports:export'] };
+  const ids = (list: { id: string }[]) => list.map((w) => w.id);
+
+  it('registers the permission field the page and menu registries already carry', () => {
+    expect(isWidgetAccessible({ requiredPermission: 'reports:export' }, STAFF)).toBe(false);
+    expect(isWidgetAccessible({ requiredPermission: 'reports:export' }, MANAGER)).toBe(true);
+    // No gate at all -> always accessible.
+    expect(isWidgetAccessible(widget('a'), STAFF)).toBe(true);
+    expect(isWidgetAccessible(undefined, STAFF)).toBe(true);
+  });
+
+  it('refuses the gated tile to a Staff session and reports it as denied', () => {
+    registerPair();
+    expect(ids(getWidgets(new Set(['simple-retail']), STAFF))).toEqual(['pos-status']);
+    expect(ids(getDeniedWidgets(new Set(['simple-retail']), STAFF))).toEqual(['daily-total']);
+  });
+
+  it('shows the tile to a session that holds the key, denying nothing', () => {
+    registerPair();
+    expect(ids(getWidgets(new Set(['simple-retail']), MANAGER))).toEqual([
+      'daily-total',
+      'pos-status',
+    ]);
+    expect(getDeniedWidgets(new Set(['simple-retail']), MANAGER)).toEqual([]);
+  });
+
+  it('accepts the "*" and "reports:*" wildcards, like the backend does', () => {
+    registerPair();
+    for (const permissions of [['*'], ['reports:*'], ['reports:export']]) {
+      expect(
+        ids(getWidgets(new Set(['simple-retail']), { userRole: 'Owner', permissions })),
+      ).toContain('daily-total');
+    }
+  });
+
+  it('treats "no session data" as not enough information to deny', () => {
+    registerPair();
+    // No user supplied at all (a caller with no AuthProvider): the tile stays.
+    expect(ids(getWidgets(new Set(['simple-retail'])))).toEqual(['daily-total', 'pos-status']);
+    // Logged out is NOT the same thing: an empty grant set denies.
+    expect(ids(getWidgets(new Set(['simple-retail']), { userRole: undefined, permissions: [] }))).toEqual(['pos-status']);
+  });
+
+  it('fails closed on a role gate when the user role is unknown', () => {
+    registerWidget(widget('a', { requiredRole: 'manager' }));
+    expect(getWidgets(undefined, { userRole: undefined, permissions: undefined })).toEqual([]);
+    expect(ids(getDeniedWidgets(undefined, { userRole: 'Staff', permissions: undefined }))).toEqual(['a']);
+    expect(ids(getWidgets(undefined, { userRole: 'Owner', permissions: undefined }))).toEqual(['a']);
+  });
+
+  it('visible + denied is exactly the feature-visible set', () => {
+    registerPair();
+    registerWidget(widget('hidden', { feature: 'pro' }));
+    const enabled = new Set(['simple-retail']);
+    for (const user of [STAFF, MANAGER, undefined]) {
+      const seen = getWidgets(enabled, user).map((w) => w.id).sort();
+      const refused = getDeniedWidgets(enabled, user).map((w) => w.id).sort();
+      const every = ids(getWidgets()).filter((id) => id !== 'hidden').sort();
+      expect([...seen, ...refused].sort()).toEqual(every);
+    }
+  });
+});
+
+/* ── what the user sees when the gate refuses ─────────────────────── */
+
+describe('SalesDashboardScreen denied tile slot', () => {
+  let mountedGated = false;
+
+  beforeEach(() => {
+    clearWidgets();
+    mountedGated = false;
+    registerWidget({
+      id: 'daily-total',
+      title: 'Daily Summary',
+      feature: 'simple-retail',
+      width: 2,
+      requiredPermission: 'reports:export',
+      component: () => {
+        mountedGated = true;
+        return createElement('div', null, '1,250.00');
+      },
+    });
+    registerWidget({
+      id: 'pos-status',
+      title: 'POS Status',
+      component: () => createElement('div', null, 'POS-OK'),
+    });
+  });
+
+  it('keeps the slot, says so, and never mounts the widget for a Staff session', () => {
+    mockSession.mockReturnValue({ role_name: 'Staff', permissions: ['sales:view'] });
+    const { container } = renderWithFluentSync(createElement(SalesDashboardScreen), salesFtl);
+
+    expect(screen.getByRole('heading', { name: /access denied/i })).toBeInTheDocument();
+    expect(screen.getByText(/have permission to access Daily Summary/)).toBeInTheDocument();
+    expect(screen.getByText(/required permission: reports:export/i)).toBeInTheDocument();
+    // Refused, not removed: the slot is still a rendered tile in the grid.
+    expect(container.querySelectorAll('.reporting-dashboard-empty')).toHaveLength(1);
+    expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(2);
+    expect(mountedGated).toBe(false);
+    // And the tile the user may see still shows its data.
+    expect(screen.getByText('POS-OK')).toBeInTheDocument();
+  });
+
+  it('mounts the widget and shows the number for a manager session', () => {
+    mockSession.mockReturnValue({ role_name: 'Manager', permissions: ['reports:export'] });
+    renderWithFluentSync(createElement(SalesDashboardScreen), salesFtl);
+
+    expect(mountedGated).toBe(true);
+    expect(screen.getByText('1,250.00')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /access denied/i })).not.toBeInTheDocument();
   });
 });
