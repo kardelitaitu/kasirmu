@@ -7,7 +7,6 @@ import { Skeleton } from '@/components/Skeleton';
 import TierLockedFeature from '@/components/TierLockedFeature';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { isWidgetAccessible, useWidgetUser } from '@/platform/ui/widget-registry';
 /**
  * Daily Total Widget — shows revenue, sales count, and item count
  * for the current day. Registered with the WidgetRegistry so it
@@ -15,34 +14,22 @@ import { isWidgetAccessible, useWidgetUser } from '@/platform/ui/widget-registry
  *
  * This widget is designed to be rendered inside a container Card
  * provided by the host dashboard page.
+ *
+ * ACCESS: this component renders, it does not decide. `requiredPermission:
+ * 'reports:export'` on the `daily-total` registration (features/sales/widgets/
+ * index.ts) is enforced by the widget registry via `passesGate`, so SalesDashboardScreen
+ * never mounts this tile for a session that lacks the key - and therefore never
+ * calls `export_daily_summary_scoped`, which would refuse it.
  */
 export default function DailyTotalWidget() {
   const { l10n } = useLocalization();
   const { caps } = useSubscription();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
-  const user = useWidgetUser();
-  /**
-   * F-017 lockout fix: export_daily_summary_scoped enforces `permissions::REPORTS_EXPORT`
-   * (tablet-client src/commands/history.rs:365, mirroring the desktop bridge). The
-   * Staff preset grants `sales:view` but NOT `reports:export`
-   * (platform/core/src/rbac_presets.rs:136-159), so this tile must know the
-   * answer before it calls. The RULE is not spelled here: it asks the widget
-   * registry, which delegates to `passesGate` in
-   * platform/ui/page-registry/index.ts:139 - the same gate pages and nav items
-   * pass through. Interim half of the gate: it exists only until
-   * `registerSalesWidgets` declares `requiredPermission` on this tile, which lets
-   * the host - which now gates through the registry - refuse to mount this
-   * component at all.
-   */
-  const canExport = isWidgetAccessible({ requiredPermission: 'reports:export' }, user);
   const [summary, setSummary] = useState<DailySummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    // A refusal we provoke is a spinner and a log line for nobody: when the
-    // permission is absent the command is never called at all.
-    if (!canExport) return;
     setLoading(true);
     try {
       const s = await exportDailySummaryScoped(sessionToken);
@@ -52,7 +39,7 @@ export default function DailyTotalWidget() {
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, canExport]);
+  }, [sessionToken]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -60,29 +47,6 @@ export default function DailyTotalWidget() {
   const totalSales = summary.length;
   const totalItems = summary.reduce((acc, r) => acc + r.line_count, 0);
   const currency = summary[0]?.currency ?? 'USD';
-
-  // No reports:export -> say so in the tile slot. The registry cannot filter
-  // this widget (WidgetRegistration has no permission field and getWidgets()
-  // never sees a user), and a silently missing tile is indistinguishable from
-  // a broken one, so this renders the same three lines the full-page
-  // PermissionDenied screen renders, in the tile's own chrome.
-  if (!canExport) {
-    return (
-      <div className="reporting-widget reporting-widget--daily-total" aria-label={requiredLocalized(l10n, 'sales-dashboard-daily-aria')}>
-        <div className="reporting-widget-header">
-          <Localized id="permission-denied-title">
-            <h3 className="reporting-widget-title">Access Denied</h3>
-          </Localized>
-        </div>
-        <Localized id="permission-denied-perm-desc" vars={{ action: requiredLocalized(l10n, 'sales-dashboard-daily-total') }}>
-          <p className="reporting-widget-no-data">You don&apos;t have permission to access this report.</p>
-        </Localized>
-        <Localized id="permission-denied-perm-key" vars={{ permission: 'reports:export' }}>
-          <p className="reporting-widget-no-data">(required permission: reports:export)</p>
-        </Localized>
-      </div>
-    );
-  }
 
   // C2.2: Free tier sees a blurred teaser with upgrade CTA (§3, §6).
   if (caps && !caps.supportsDailyDashboard) {

@@ -33,6 +33,10 @@ export function registerSalesWidgets(): void {
     title: 'Daily Summary',
     feature: 'simple-retail',
     width: 2,
+    // export_daily_summary_scoped enforces permissions::REPORTS_EXPORT
+    // (tablet-client src/commands/history.rs:365). Declaring it here is what lets
+    // the host filter the tile instead of the tile defending itself.
+    requiredPermission: 'reports:export',
   });
 
   registerWidget({
@@ -42,8 +46,18 @@ export function registerSalesWidgets(): void {
     feature: 'simple-retail',
     width: 2,
     height: 2,
+    // export_sales_by_hour_scoped enforces permissions::REPORTS_EXPORT
+    // (tablet-client src/commands/history.rs:389).
+    requiredPermission: 'reports:export',
   });
 
+  // The three tiles below deliberately carry no `requiredPermission`: their
+  // commands resolve a session but check no permission at all
+  // (get_daily_revenue_scoped, get_hourly_heatmap_scoped and
+  // get_category_breakdown_scoped — tablet-client src/commands/reports.rs:103,
+  // :261, :293; zero require_permission_for_user between them), so there is
+  // nothing for the host to mirror. If one of those ever gains a check, this
+  // field is already the way to say so.
   registerWidget({
     id: 'revenue-line-chart',
     component: RevenueLineChartWidget,
