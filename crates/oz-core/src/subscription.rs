@@ -384,11 +384,16 @@ pub struct TenantSubscription {
 /// Hand-written `std::fmt::Debug` that redacts the three secret fields:
 /// `api_key`, `signature` and `signed_payload`.
 ///
-/// The derived impl printed all three. `api_key` is the worst of them:
-/// `crates/oz-bridge/src/license.rs` stores the RAW server response value
-/// on this struct while the settings row holds the machine-bound
-/// ciphertext, so this row carries the weaker of the two copies of one
-/// credential. `signature` and `signed_payload` are redacted for the
+/// The derived impl printed all three. `api_key` used to be the worst of
+/// them: `crates/oz-bridge/src/license.rs` once stored the RAW server
+/// response value on this struct while the settings row held the
+/// machine-bound ciphertext, so the row carried the weaker of two copies of
+/// one credential. It no longer does — since `5e054714e` both call sites
+/// (`license.rs:174` on activate, `license.rs:285` on renew) hand
+/// `store_subscription` four arguments and no key, so this struct never
+/// receives one. That makes `signature` and `signed_payload` the live
+/// secrets on this row and `api_key` the least of the three; all three stay
+/// redacted. Those two are redacted for the
 /// reason the tree already records at
 /// `platform/core/src/settings/keys.rs` (`LICENSE_PAYLOAD`): replaying the
 /// signed grant into another install re-binds a license, so it never
@@ -398,9 +403,15 @@ pub struct TenantSubscription {
 /// repairs: the idiomatic future log line for this value is
 /// `tracing::debug!(?sub)`, and once the credential is in a log file no
 /// front-end redaction can scrub it. Every other field stays printed so
-/// the row remains debuggable for quota and sync work, and the impl (not
-/// a removal) is required because roughly forty test literals `assert_eq!`
-/// this type, which needs `Debug`.
+/// the row remains debuggable for quota and sync work. The impl — rather
+/// than no impl at all — is what `Debug` is needed for, but NOT because
+/// tests compare this type: `TenantSubscription` derives `Clone` only and
+/// implements no `PartialEq`, so no `assert_eq!` in the tree can name it
+/// (the roughly forty `TenantSubscription { .. }` literals in the tests
+/// CONSTRUCT rows, they do not assert against one). What actually depends
+/// on `Debug` is the tests and callers that `unwrap()` / `expect` a loaded
+/// row, which need it to panic WITH. A derived `Debug` would still satisfy
+/// them, which is exactly why this hand-written one exists.
 ///
 /// House precedent: `modules/loyalty/src/models.rs` (`impl Debug for
 /// GiftCard`, redacting `pin` the same way).

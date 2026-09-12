@@ -583,10 +583,28 @@ pub async fn check_license_status(api_key: &str) -> Result<LicenseStatusResponse
 /// sealed once into the machine-bound `license.api_key` settings row by the
 /// bridge lane, which is the only reader of it; a second, unencrypted copy in
 /// this table duplicated the secret for no consumer. The
-/// `tenant_subscription.api_key` column keeps its empty default and is left
-/// out of the INSERT — dropping the column would mutate hosted merchant
-/// databases, and `TenantSubscription::load` still selects it, so the field
-/// stays on the struct.
+/// `tenant_subscription.api_key` column is left out of the INSERT below, so
+/// a row written here gets the column's empty default — but "the column
+/// keeps its empty default" is true only of a FRESH install, and only of a
+/// row this function has just written. Read the writers together:
+///
+/// - the `INSERT OR REPLACE` below DOES clear a legacy value, on activate
+///   and on renew, because the omitted column falls back to its default;
+/// - the only production `UPDATE` of this table,
+///   `refresh_subscription_status_from_server` below, is partial and leaves
+///   the column exactly as it found it;
+/// - pause and resume never touch this table at all —
+///   `crates/oz-bridge/src/license.rs` (`pause_subscription` and
+///   `resume_subscription`) read the sealed settings key and write nothing
+///   locally.
+///
+/// So the window is real: an install that activated BEFORE `5e054714e` and
+/// has not re-activated or renewed since still carries a cleartext API key
+/// in this column, and nothing scrubs it — no code path and no migration.
+/// Closing it is a data mutation, not a doc fix, and is parked together with
+/// dropping the column (dropping would mutate hosted merchant databases, and
+/// `TenantSubscription::load` still selects it, so the field stays on the
+/// struct either way).
 pub fn store_subscription(
     conn: &rusqlite::Connection,
     tenant_id: &str,

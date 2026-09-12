@@ -613,6 +613,60 @@ fn run_set_setting_rejects_lan_server_bind() {
     );
 }
 
+/// The refusal sentence itself, spelled out. Out-of-band ON PURPOSE.
+///
+/// The parity sweep at the bottom of this file proves the lanes do not RESTATE
+/// the manager-owned-key sentence. This proves the sentence does not MOVE — a
+/// different question, and one the sweep is structurally unable to ask: by
+/// design it reads the expected words out of the producer at run time, so it
+/// transcribes no single word of the sentence and therefore cannot notice a word
+/// leaving. `9f1eca86c` is the demonstration: it centralised the sentence,
+/// reworded what this lane shows the operator, and the sweep stayed green
+/// because the sweep was right to.
+///
+/// Nor can the two door tests above fail on a rewording — they assert only that
+/// the message contains the KEY NAME, and every paraphrase keeps the key.
+///
+/// So the expectation here is deliberately NOT asked of the producer: an
+/// expectation derived from the thing under test cannot notice a paraphrase of
+/// it. It also deliberately lives in THIS file and not in `settings.rs`: the
+/// sweep reads that file's literals and fails on a restated sentence, and does
+/// not read this one.
+#[test]
+fn tablet_manager_refusal_sentence_drift_pin() {
+    let conn = fresh_conn();
+    // Both keys are genuinely manager-owned — `is_manager_owned_key` matches the
+    // `local_api.` / `lan_server.` prefixes in
+    // `platform/core/src/settings/raw.rs` — and the manager door in
+    // `run_set_setting` runs BEFORE the credential door, so this probe value is
+    // refused by the door under test whichever way the predicates are ordered.
+    // This lane has no manager-name lookup, so it passes `None` and the producer
+    // substitutes its generic label. `\u{2014}` is the em dash inside that
+    // sentence, spelled as an escape exactly as the bridge's byte-identical
+    // literals at `crates/oz-bridge/src/settings_tests.rs` spell theirs.
+    for (key, expected) in [
+        (
+            "local_api.enabled",
+            "local_api.enabled is managed by the dedicated controls \u{2014} use those",
+        ),
+        (
+            "lan_server.bind",
+            "lan_server.bind is managed by the dedicated controls \u{2014} use those",
+        ),
+    ] {
+        let err = run_set_setting(&conn, key, "not-a-value-just-a-probe", "term-1").unwrap_err();
+        let AppError::Invalid(message) = &err else {
+            panic!("{key}: the manager door must refuse as AppError::Invalid, got {err:?}");
+        };
+        assert_eq!(
+            message.as_str(),
+            expected,
+            "{key}: this lane's refusal sentence has moved off the producer's — a \
+             reworded refusal is a second definition of the policy"
+        );
+    }
+}
+
 /// The THIRD refusal this door must raise, and the one that was misclassified.
 ///
 /// `pg_sync.password` is on the credential deny list but is NOT manager-owned,

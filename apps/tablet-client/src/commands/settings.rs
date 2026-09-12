@@ -609,12 +609,17 @@ fn run_set_setting(
     // mean; and no tablet-side sentence, so they cannot drift on the refusal
     // either. This lane has no manager-name lookup (no manager surface on the
     // tablet), so it passes `None` and takes the generic label. Both lanes
-    // calling one producer is what
+    // calling one producer is what the parity sweep under this function holds
+    // the lanes to: restating the sentence in this file is the failure IT
+    // reports, and the failure it cannot see — a word leaving the producer — is
+    // what `tablet_manager_refusal_sentence_drift_pin` exists to report.
     if let Some(refusal) = platform_core::settings::Settings::manager_owned_key_refusal(key, None) {
         return Err(AppError::Invalid(refusal));
     }
-    // lane only chooses the variant. The message names the key and never the
-    // value — a value in an error string is a leak through the log lane.
+    // The credential door under it works the same way: the producer answers with
+    // the rule and this lane only chooses the variant. The message names the key
+    // and never the value — a value in an error string is a leak through the log
+    // lane.
     if let Some(refusal) = platform_core::settings::Settings::cleartext_credential_refusal(key) {
         return Err(AppError::Invalid(refusal));
     }
