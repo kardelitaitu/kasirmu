@@ -1095,7 +1095,6 @@ pub fn run() {
             commands::analytics::get_staff_analytics_daily_scoped,
             commands::security::get_key_rotation_info,
             commands::security::get_key_rotation_info_scoped,
-            commands::security::rotate_encryption_key,
             commands::security::rotate_encryption_key_scoped,
             commands::shifts::open_shift_scoped,
             commands::shifts::close_shift_scoped,

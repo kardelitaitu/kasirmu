@@ -93,7 +93,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("setup::get_setup_status", "no_session_resolution"),
     ("security::get_key_rotation_info", "no_session_resolution"),
-    ("security::rotate_encryption_key", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
     (
         "workspaces::list_workspace_screens",
@@ -170,13 +169,18 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Registered commands the sweep found today. The floor in
 /// registration_gate_tests.rs is asserted equal to this, so a regenerated ledger
 /// that disagrees with a hand-kept floor fails the build.
-pub const REGISTERED_TOTAL: usize = 448;
+pub const REGISTERED_TOTAL: usize = 447;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
-pub const DEBT_CEILING: usize = 70;
+/// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
+/// left in the same commit that moved this number. That coupling is the only way a
+/// ceiling is allowed to go down.
+pub const DEBT_CEILING: usize = 69;
 
 /// Names that never resolve a session at all.
-pub const NO_SESSION_RESOLUTION: usize = 44;
+/// 43: the deleted `rotate_encryption_key` sat in THIS bucket, so it is the one
+/// that moves. `43 + 26 = 69` still partitions `DEBT_CEILING`.
+pub const NO_SESSION_RESOLUTION: usize = 43;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 26;

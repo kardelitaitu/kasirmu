@@ -79,18 +79,6 @@ pub async fn get_key_rotation_info() -> Result<KeyRotationStatus, AppError> {
         .map_err(Into::into)
 }
 
-/// Rotate (re-generate) the encryption key.
-///
-/// Generates a new random 256-bit AES key, archives the previous key,
-/// and stores the creation timestamp. Returns the [`RotationInfo`] with
-/// the new key's metadata.
-#[tauri::command]
-pub async fn rotate_encryption_key() -> Result<RotationInfo, AppError> {
-    oz_bridge::security::rotate_encryption_key()
-        .await
-        .map_err(Into::into)
-}
-
 /// Session-scoped variant of [`get_key_rotation_info`].
 #[tauri::command]
 pub async fn get_key_rotation_info_scoped(
@@ -103,7 +91,16 @@ pub async fn get_key_rotation_info_scoped(
         .map_err(Into::into)
 }
 
-/// Session-scoped variant of [`rotate_encryption_key`].
+/// Rotate (re-generate) the encryption key — the ONLY rotation path this shell
+/// registers.
+///
+/// The ungated twin `rotate_encryption_key` was deleted from this file rather
+/// than scoped: it took no session and checked no permission, so any renderer
+/// code could regenerate the 256-bit at-rest key and archive the previous one at
+/// will — a key-loss denial of service against the local database, with no
+/// caller to protect. [`oz_bridge::security::rotate_encryption_key_scoped`]
+/// resolves the session and enforces `security:manage` scope-aware before it
+/// delegates.
 #[tauri::command]
 pub async fn rotate_encryption_key_scoped(
     session_token: String,

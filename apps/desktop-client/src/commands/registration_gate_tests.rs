@@ -3,8 +3,9 @@
 //! # What this is
 //!
 //! A ratchet over the CLASS, not the instances. The tauri::generate_handler! macro in
-//! ../lib.rs is the whole renderer-reachable surface of this shell: 448 registered
-//! names as measured 12-09-26. Every registered name is parsed out of this crate's own
+//! ../lib.rs is the whole renderer-reachable surface of this shell: 447 registered
+//! names as measured 13-09-26, one fewer than yesterday because
+//! `security::rotate_encryption_key` was deregistered rather than scoped. Every registered name is parsed out of this crate's own
 //! source at test time and placed in exactly one of three states:
 //!
 //! 1. gated — the wrapper resolves a session AND a permission is named on the path the
@@ -20,8 +21,8 @@
 //!
 //! A desktop command wrapper is a SHIM. Wave A-E lifted the command bodies into
 //! crates/oz-bridge/src; the shell file builds a BridgeCtx, forwards, and maps the error
-//! back. Measured: ZERO of the 448 wrapper bodies in this crate name a permission. So
-//! judging "is this gated" from the shims alone reports 448 ungated commands and proves
+//! back. Measured: ZERO of the 447 wrapper bodies in this crate name a permission. So
+//! judging "is this gated" from the shims alone reports 447 ungated commands and proves
 //! nothing about authorization. The predicate therefore follows the call one crate over
 //! and merges by module stem, which is the same move
 //! apps/desktop-client/tests/gate_audit.rs:22-30 already makes for the same reason. A
@@ -42,7 +43,7 @@
 //!
 //! # The ledger is generated, not typed
 //!
-//! 70 entries on desktop and 126 on tablet as measured, emitted by the same predicate
+//! 69 entries on desktop and 126 on tablet as measured, emitted by the same predicate
 //! this file runs. It is generated because a hand-typed hundred-name list is where the
 //! drift lives: someone gates one command, edits one line by hand, mistypes one name,
 //! and the ratchet silently stops covering it.
@@ -56,7 +57,7 @@ mod debt;
 
 /// The registered surface of this shell, measured 12-09-26. A moved include_str path
 /// must not be able to pass by finding nothing.
-const REGISTERED_FLOOR: usize = 448;
+const REGISTERED_FLOOR: usize = 447;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

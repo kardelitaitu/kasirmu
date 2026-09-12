@@ -14,7 +14,7 @@ vi.mock('@/utils/logged-invoke', () => ({
   loggedInvoke: (cmd: string, args?: Record<string, unknown>) => mockInvoke(cmd, args),
 }));
 
-import { getKeyRotationInfo, rotateEncryptionKey } from '@/api/security';
+import { getKeyRotationInfo } from '@/api/security';
 
 describe('security.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
@@ -35,27 +35,11 @@ describe('security.ts IPC contract', () => {
     expect(result.ageDays).toBeNull();
   });
 
-  it('rotateEncryptionKey → rotate_encryption_key (no args, no payload)', async () => {
-    const rotation = {
-      keyName: 'oz-pos/encryption-key',
-      createdAt: '2026-09-06T00:00:00Z',
-      keyBytes: 32,
-    };
-    mockInvoke.mockResolvedValue(rotation);
-    const result = await rotateEncryptionKey();
-    expect(mockInvoke).toHaveBeenCalledWith('rotate_encryption_key', undefined);
-    expect(result).toEqual(rotation);
-  });
-
-  it('never sends key material over the wire', async () => {
-    mockInvoke.mockResolvedValue({ keyName: 'k', createdAt: 'now', keyBytes: 32 });
-    await rotateEncryptionKey();
-    const call = mockInvoke.mock.calls[0];
-    expect(call?.[1]).toBeUndefined();
-  });
-
-  it('propagates backend errors', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('keyring unavailable'));
-    await expect(rotateEncryptionKey()).rejects.toThrow('keyring unavailable');
-  });
+  // Three rotateEncryptionKey cases closed this file before: they pinned a
+  // wrapper for the UNGATED rotate_encryption_key command, and the wrapper and
+  // the command are both gone. A test asserting that a wrapper exists for it
+  // would be a test that resurrects the bypass, so nothing replaces them here;
+  // what is left pins get_key_rotation_info only. Note that the surviving gated
+  // command rotate_encryption_key_scoped has no ui/ wrapper at all — key
+  // rotation currently has no front door, which is the point, not an oversight.
 });
