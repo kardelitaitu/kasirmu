@@ -298,11 +298,23 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// The comparison form of a candidate settings key: surrounding whitespace
 /// trimmed and ASCII case-folded.
 ///
-/// `pub(crate)` so the lifecycle-manager prefix rule
-/// ([`crate::settings::is_manager_owned_key`]) folds a candidate through THIS
-/// function instead of writing a second normalisation: the credential half and
-/// the prefix half of one ingest boolean have to answer a near-miss spelling
-/// the same way, or the boolean has two matching semantics inside it.
+/// `pub` so the lifecycle-manager prefix rule
+/// ([`crate::settings::is_manager_owned_key`]) AND the one comparison of this
+/// family that lives in another crate — the manager-owner label of the bridge
+/// lane (`crates/oz-bridge/src/settings.rs`, `managed_key_owner`) — fold a
+/// candidate through THIS function instead of writing a second normalisation:
+/// the credential half and the prefix half of one ingest boolean have to answer
+/// a near-miss spelling the same way, or the boolean has two matching semantics
+/// inside it; a label that disagrees with the gate it labels is the same defect
+/// one crate further out.
+///
+/// What this IS: the comparison form of a settings-key CANDIDATE, for matching
+/// a key handed to a guard against the markers of this key family. What it is
+/// NOT: not a storage normalisation — folding never merges, rewrites or
+/// deduplicates a row, and the stored key stays byte for byte what the caller
+/// wrote — and not a general string utility. Other subsystems must not fold
+/// values, names, paths or free text with it: a caller that is not comparing a
+/// settings key against a marker of this family has no business calling it.
 ///
 /// The candidate is normalised — never the lists and never the prefix literals
 /// — so [`SECRET_KEY_DENY_LIST`], [`NON_EXPORTABLE_DEVICE_KEYS`] and the
@@ -323,7 +335,7 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// admission — because every marker it is compared against is a lowercase
 /// ASCII literal. An ordinary key that loses Unicode padding is still not a
 /// marker, so no spelling of `store.name` becomes a refusal by way of this.
-pub(crate) fn normalised_candidate(key: &str) -> String {
+pub fn normalised_candidate(key: &str) -> String {
     key.trim().to_ascii_lowercase()
 }
 

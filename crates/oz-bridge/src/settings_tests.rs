@@ -621,6 +621,49 @@ fn managed_key_owner_labels_the_manager() {
     assert_eq!(managed_key_owner("sync.auth_token"), None);
 }
 
+/// The guard folds and the label lookup has to fold the same way, or a refusal
+/// names the wrong manager. The case above cannot see this: every spelling it
+/// tries is already exact lowercase, so the two agree by construction. This was
+/// the third site of that half-folded pattern in one subsystem (`d690f8f66`
+/// closed the ingest boolean; the deny and device lists folded before it), and
+/// it is why `keys::normalised_candidate` is public instead of a second
+/// normalisation being written here. The lookalikes are tried folded too, to
+/// show the fold only re-labels a claim the shared rule already makes — it
+/// never widens the rule.
+#[test]
+fn managed_key_owner_labels_a_variant_spelling_like_the_lowercase_form() {
+    for (variant, exact, owner) in [
+        ("LOCAL_API.SECRET", "local_api.secret", Some("Local API")),
+        ("  Lan_Server.Bind  ", "lan_server.bind", Some("LAN server")),
+        ("\tLAN_SERVER.PSK\n", "lan_server.psk", Some("LAN server")),
+    ] {
+        assert!(
+            is_manager_owned_key(variant),
+            "{variant:?}: the shared gate does not claim this variant, so the case proves nothing"
+        );
+        assert_eq!(
+            managed_key_owner(variant),
+            owner,
+            "{variant:?}: a refused key must carry the name of its manager, not the generic label"
+        );
+        assert_eq!(
+            managed_key_owner(variant),
+            managed_key_owner(exact),
+            "{variant:?} must label exactly like the lowercase form {exact:?}"
+        );
+    }
+    for variant in ["LOCAL_API_X.ENABLED", "  My_Lan_Server.Bind  "] {
+        assert!(
+            !is_manager_owned_key(variant),
+            "{variant:?}: the shared gate must not claim a prefix lookalike"
+        );
+        assert!(
+            managed_key_owner(variant).is_none(),
+            "{variant:?}: folding a lookalike must not turn it into a managed key"
+        );
+    }
+}
+
 /// The refusal text is what the UI shows, so it is pinned byte for byte — the
 /// owner name included. Deleting the bridge-local predicate must not move it.
 #[test]

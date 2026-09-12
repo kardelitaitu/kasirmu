@@ -37,7 +37,7 @@ use oz_core::{Settings, Store, UserPreferences};
 /// directly, exactly as it already names `is_manager_owned_key` here.
 use platform_core::settings::Settings as TrackedSettings;
 use platform_core::settings::is_manager_owned_key;
-use platform_core::settings::keys::{LAN_SERVER_PSK, LOCAL_API_SECRET};
+use platform_core::settings::keys::{LAN_SERVER_PSK, LOCAL_API_SECRET, normalised_candidate};
 use platform_core::terminal_profile::TerminalProfile;
 use serde::{Deserialize, Serialize};
 
@@ -88,13 +88,25 @@ pub fn is_secret_key(key: &str) -> bool {
 /// the predicate claims under a prefix this lane cannot name still refuses,
 /// with a generic label — the fallback errs towards refusing, never towards
 /// accepting.
+///
+/// The lookup folds its candidate through the same shared fold the gate uses
+/// (`keys::normalised_candidate`, `pub` for exactly this), so a refused key
+/// carries the name of the manager that owns it however the caller spelled it:
+/// `LAN_SERVER.BIND` and `" lan_server.bind "` both label as LAN server, which
+/// is how the guard already refuses them. Until that fold was routed here this
+/// was the third half-folded comparison in the settings family — the guard said
+/// manager-owned, the label said `dedicated`.
 pub fn managed_key_owner(key: &str) -> Option<&'static str> {
     if !is_manager_owned_key(key) {
         return None;
     }
-    if key.starts_with(family_prefix(LOCAL_API_SECRET)) {
+    // The guard above folds; a raw comparison here would answer the same key
+    // two ways. Fold the SAME candidate, AFTER the guard, so this can only ever
+    // re-label a key the shared rule already claims — never claim a new one.
+    let candidate = normalised_candidate(key);
+    if candidate.starts_with(family_prefix(LOCAL_API_SECRET)) {
         Some("Local API")
-    } else if key.starts_with(family_prefix(LAN_SERVER_PSK)) {
+    } else if candidate.starts_with(family_prefix(LAN_SERVER_PSK)) {
         Some("LAN server")
     } else {
         Some("dedicated")
