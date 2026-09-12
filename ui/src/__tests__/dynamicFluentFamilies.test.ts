@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { getBundle } from '@/i18n';
-import { GRANULARITIES } from '@/features/analytics/AnalyticsScreen';
+import { GRANULARITIES } from '@/features/analytics/utils/dateRangePresets';
 import { MONTH_LABEL_KEYS } from '@/features/analytics/analytics-data';
 import { DAY_KEYS } from '@/features/reports/SalesReportScreen';
 import { SORT_MODES } from '@/features/restaurant/RestaurantMenu';

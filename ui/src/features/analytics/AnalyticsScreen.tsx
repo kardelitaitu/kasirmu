@@ -42,7 +42,6 @@ import {
   ZOOM_STEP,
   cardGranularity,
   cardRange,
-  daysInCurrentMonth,
   nextExpandedKey,
   smartScale,
   type Granularity,
@@ -50,12 +49,13 @@ import {
 } from './utils/dateRangePresets';
 import './AnalyticsScreen.css';
 
-// Re-exported for the three modules that still import these from the screen:
-// `AnalyticsScreen.test.tsx`, `dynamicFluentFamilies.test.ts` and
-// `AnalyticsCardContent.tsx` (which takes `Granularity` and `WorkspaceView`).
-// R37 analytics-query moved the implementations to `utils/dateRangePresets.ts`;
-// drop this block once all three import from the new module directly.
-export { GRANULARITIES, cardGranularity, cardRange, daysInCurrentMonth, nextExpandedKey, smartScale };
+// `Granularity` and `WorkspaceView` are re-exported for the four modules that
+// still take them from the screen: `analytics-data.ts`, `AnalyticsCardContent.tsx`,
+// `AnalyticsHeatmap.tsx` and `useCardLayout.ts`. R37 analytics-query moved the
+// declarations to `utils/dateRangePresets.ts`; these are type-only re-exports,
+// so they erase at compile time and cannot introduce a runtime cycle with
+// `analytics-data` (which `dateRangePresets` imports values from). Drop this
+// line once those four import from `utils/dateRangePresets` directly.
 export type { Granularity, WorkspaceView };
 
 // Re-export the calendar helper so the analytics test suite can import it

@@ -260,7 +260,8 @@ vi.mock('@/api/tables', () => ({
   listTablesScoped: () => mockListTablesScoped(),
 }));
 
-import AnalyticsScreen, { nextExpandedKey, daysInCurrentMonth, monthCalendarGrid, smartScale, cardGranularity, cardRange } from '@/features/analytics/AnalyticsScreen';
+import AnalyticsScreen from '@/features/analytics/AnalyticsScreen';
+import { nextExpandedKey, daysInCurrentMonth, monthCalendarGrid, smartScale, cardGranularity, cardRange } from '@/features/analytics/utils/dateRangePresets';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 import { yearlyHeatmapColumns, rangeForGranularity, isoToday } from '@/features/analytics/analytics-data';
