@@ -1,4 +1,21 @@
 
+## 2026-09-10 — TDD: Enforce read-only subscription lock on offline queue enqueue (core/offline)
+
+**Context & Identified Weakness:**
+When an offline terminal's subscription expired past its offline grace period (`pos_read_only == true`), `enqueue_offline`, `enqueue_offline_scoped`, and `enqueue_offline_inner` in `crates/oz-core/src/db/offline.rs` allowed enqueueing new offline transactions. The POS read-only contract specifies that order changes, sales, and offline queueing are locked once the offline grace window lapses.
+
+**Changes & Design:**
+1. Added `Store::enforce_pos_writable_for_tenant(&self, tenant_id: &str) -> Result<(), CoreError>` in `crates/oz-core/src/db/quota_gate.rs` and updated `Store::enforce_pos_writable(&self)` to delegate to it with `TENANT_ID` ("default").
+2. Called `self.enforce_pos_writable_for_tenant(tenant_id)?;` at the start of `enqueue_offline_inner` in `crates/oz-core/src/db/offline.rs`.
+3. Added unit test `test_enqueue_offline_fails_when_subscription_read_only` in `crates/oz-core/src/db/offline_tests.rs`.
+4. Verified that attempts to enqueue transactions during expired grace fail closed with `CoreError::SubscriptionReadOnly` and leave the queue untouched.
+
+**Verification:**
+- Verified RED phase: `test_enqueue_offline_fails_when_subscription_read_only` failed with `called Result::unwrap_err() on an Ok value`.
+- Verified GREEN phase: test passed and all 55 offline unit tests passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
 ## 2026-09-10 — TDD: Enforce read-only subscription lock on checkout deduction (core/sales)
 
 **Context & Identified Weakness:**

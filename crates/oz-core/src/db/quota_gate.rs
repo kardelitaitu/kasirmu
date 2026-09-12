@@ -62,12 +62,17 @@ impl Store<'_> {
         })
     }
 
-    /// Enforce that POS runtime is not locked in a read-only state.
+    /// Enforce that POS runtime is not locked in a read-only state (default tenant).
     ///
     /// Evaluates subscription validity against monotonic ledger time. Returns
     /// [`CoreError::SubscriptionReadOnly`] if the offline grace window has lapsed.
     pub fn enforce_pos_writable(&self) -> Result<(), CoreError> {
-        if let Some(sub) = TenantSubscription::load(self.conn, TENANT_ID)? {
+        self.enforce_pos_writable_for_tenant(TENANT_ID)
+    }
+
+    /// Enforce that POS runtime is not locked in a read-only state for the given tenant.
+    pub fn enforce_pos_writable_for_tenant(&self, tenant_id: &str) -> Result<(), CoreError> {
+        if let Some(sub) = TenantSubscription::load(self.conn, tenant_id)? {
             sub.enforce_pos_writable_for_connection(self.conn)?;
         }
         Ok(())
