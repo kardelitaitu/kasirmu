@@ -5,12 +5,24 @@ findings: 0 unsafe blocks, 0 production unwrap/expect. Keyring trait + InMemoryK
 next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/A
 */
 
-//! Encryption, secrets, and PCI-DSS helpers for OZ-POS.
+//! TLS configuration, PAN masking, and OS credential-store helpers.
 //!
-//! `oz-security` is responsible for at-rest encryption, secret
-//! management, key rotation, and the small set of PCI-DSS-related
-//! utilities the cashier flow needs (masked PAN display, audit
-//! logging, etc.).
+//! `oz-security` owns TLS configuration ([`tls`]), sensitive-data masking
+//! including the masked-PAN display the cashier flow renders ([`mask`]), and
+//! platform keychain storage behind the [`Keyring`] trait (with
+//! [`Keyring::rotate_key`] staging the SEC-4 rotation). It is **not** the crate
+//! that encrypts stored values: at-rest encryption of settings and profile
+//! credentials is the `encrypt_*` / `decrypt_*` surface in the `oz-crypto`
+//! crate, applied by the typed accessors in
+//! `platform/core/src/settings/typed.rs`.
+//!
+//! Those are two different mechanisms and must not be read as one story about
+//! "secrets": a keychain entry is an OS credential store addressed by name,
+//! while the settings columns are encoded by `oz-crypto` under a derived key.
+//! They are not wired to each other — the entry this crate rotates is read
+//! back only to report rotation status (three functions in
+//! `crates/oz-bridge/src/security.rs`), and it is NOT the key that any
+//! settings or PII ciphertext is derived from.
 //!
 //! # Keyring
 //!
