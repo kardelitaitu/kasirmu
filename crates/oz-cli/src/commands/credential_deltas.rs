@@ -24,7 +24,7 @@ use std::sync::LazyLock;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 
-use oz_core::settings::keys::SECRET_KEY_DENY_LIST;
+use oz_core::settings::keys::{SECRET_KEY_DENY_LIST, is_secret_setting_key};
 
 use crate::cli::CredentialDeltasArgs;
 
@@ -87,10 +87,31 @@ pub(crate) static LONG_HELP: LazyLock<String> = LazyLock::new(|| {
 /// One `(key, row count)` pair, only for deny-listed keys that have rows.
 pub(crate) type DeltaCounts = Vec<(&'static str, usize)>;
 
+/// The one sentence an operator needs before acting on a non-zero count:
+/// the delete path is still the old exact matcher, so the count and the
+/// delete can disagree, and the count is the honest one.
+pub(crate) const DELETE_MATCHES_EXACTLY_WARNING: &str = concat!(
+    "WARNING: the delete path still matches each deny-listed key exactly, so a counted row stored ",
+    "under a variant spelling (e.g. `STRIPE.API_KEY`) may survive --confirm — this count, not the ",
+    "delete total, is the number of credential rows actually in the table."
+);
+
 /// Count ledger rows per deny-listed key, in deny-list order.
 ///
 /// Reads only the `key` column and a count — never `value` — so the scan
 /// itself cannot echo a credential.
+///
+/// Membership is decided by the shared [`is_secret_setting_key`] predicate, not
+/// by an exact compare against a deny-list constant: the ledger's `key` column
+/// is bare TEXT under SQLite BINARY collation, so a row stored as
+/// `STRIPE.API_KEY` or `"stripe.api_key "` is a distinct row that an exact
+/// compare silently skips — and a skipped row is a cleartext credential the
+/// operator is told is not there. The predicate trims and case-folds, so every
+/// spelling of a deny-listed key is counted, and its rows are reported together
+/// under the canonical key. The canonical label is resolved by applying the
+/// same normalisation the predicate documents; because the predicate matches
+/// the list by equality on that normalised form, a key the predicate accepts
+/// always resolves to exactly one entry here.
 pub(crate) fn scan_credential_deltas(conn: &Connection) -> Result<DeltaCounts> {
     let mut totals: DeltaCounts = SECRET_KEY_DENY_LIST
         .iter()
@@ -105,14 +126,31 @@ pub(crate) fn scan_credential_deltas(conn: &Connection) -> Result<DeltaCounts> {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })
         .with_context(|| format!("reading the {LEDGER_TABLE} ledger"))?;
+    let mut unresolved: usize = 0;
     for row in rows {
         let (key, count) = row.context("counting ledger rows")?;
-        if let Some(entry) = totals
-            .iter_mut()
-            .find(|(deny_key, _)| *deny_key == key.as_str())
-        {
-            entry.1 = count.max(0) as usize;
+        // Membership is the predicate's call, never a local comparison.
+        if !is_secret_setting_key(&key) {
+            continue;
         }
+        // Mirrors platform-core's `trim().to_ascii_lowercase()` fold — used ONLY
+        // to pick which canonical row to report under, never to decide whether
+        // the key is a credential. If the two folds ever drift, this resolves to
+        // nothing and the counter below makes that loud instead of quiet.
+        let canonical = key.trim().to_ascii_lowercase();
+        match totals
+            .iter_mut()
+            .find(|(deny_key, _)| *deny_key == canonical.as_str())
+        {
+            Some(entry) => entry.1 += count.max(0) as usize,
+            None => unresolved += count.max(0) as usize,
+        }
+    }
+    if unresolved > 0 {
+        anyhow::bail!(
+            "{unresolved} {LEDGER_TABLE} row(s) satisfied the shared credential predicate but matched \
+             no deny-list entry to report under; refusing to print a low count"
+        );
     }
     totals.retain(|(_, count)| *count > 0);
     Ok(totals)
@@ -138,6 +176,20 @@ pub(crate) fn purge_credential_deltas(conn: &Connection) -> Result<DeltaCounts> 
     }
     tx.commit().context("committing the ledger purge")?;
     Ok(deleted)
+}
+
+/// The delete-lag warning, decided from the counted rows so the rule "only
+/// when the count is non-zero" is testable rather than a visual convention.
+///
+/// Returns `None` for an empty count: a table with no credential rows has
+/// nothing that could survive a delete, and a warning there would teach an
+/// operator to ignore it.
+pub(crate) fn delete_path_warning(counts: &DeltaCounts) -> Option<&'static str> {
+    if total_rows(counts) > 0 {
+        Some(DELETE_MATCHES_EXACTLY_WARNING)
+    } else {
+        None
+    }
 }
 
 /// Render `(key, count)` pairs as text. Values are never part of this.
@@ -173,6 +225,9 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
         );
         for line in format_delta_counts(&found) {
             println!("  {line}");
+        }
+        if let Some(warning) = delete_path_warning(&found) {
+            println!("  {warning}");
         }
     }
     println!();
