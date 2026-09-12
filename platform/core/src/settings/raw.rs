@@ -1,4 +1,15 @@
 //! Raw key-value settings helpers.
+//!
+//! OPEN ASYMMETRY, recorded 12-09-26, deliberately not decided here: two
+//! in-transaction delta writers coexist. The standalone ledger door
+//! ([`Settings::write_delta`]) wraps a nested caller's attempt in a SAVEPOINT
+//! ([`Settings::write_delta_nested`]) and rolls the attempt back on
+//! collision; the tracked funnel's canonical body
+//! ([`Settings::set_tracked_in_tx`] → `write_delta_on_tx`) writes its delta
+//! bare, single-attempt, inside the caller's transaction with no savepoint.
+//! Which variant a nested caller gets therefore depends on which door it
+//! entered. Reconciling savepoint-versus-bare is a finding to record, not a
+//! path to pick at this hour.
 /*
 last audited 25-07-26 by RSA-Agent (platform-core slice C: settings/raw deep read)
 crate: platform-core | status: SAFE | lint: CLEAN
@@ -381,23 +392,53 @@ impl Settings {
     ///
     /// A thin wrapper: it opens the transaction and hands it to
     /// [`Settings::set_tracked_in_tx`], which is the CANONICAL body — the
-    /// cleartext-credential refusal, the value write and the delta write live
-    /// there and only there. Splitting them into two bodies is how the batch
-    /// door ended up restating the credential rule in the bridge, and a
-    /// restated rule is the drift this file's own doc block exists to warn
-    /// about; a lane that already holds a transaction now calls the in-tx
-    /// form directly and cannot drift.
+    /// value write and the delta write live there and only there, and the
+    /// credential rule it applies is still the one definition. Splitting
+    /// them into two bodies is how the batch door ended up restating the
+    /// credential rule in the bridge, and a restated rule is the drift this
+    /// file's own doc block exists to warn about; a lane that already
+    /// holds a transaction now calls the in-tx form directly and cannot
+    /// drift.
     ///
-    /// Everything the body does is unchanged by the extraction: a deny-listed
-    /// credential key is REFUSED with an error naming the key and never the
-    /// value, excepting only `smtp_config`, and delta loss stays non-fatal —
-    /// warned about, the value write stands, the sync layer reconstructs.
+    /// The wrapper asks the refusal once BEFORE opening the transaction.
+    /// The predicate is a pure function of the key, so a caller already
+    /// inside a transaction of its own gets the refusal and never the
+    /// unspecified rusqlite nested-BEGIN error: which answer a caller sees
+    /// must not depend on whether a transaction happens to be open.
+    /// (Pinned by
+    /// `set_tracked_refuses_before_it_begins_when_a_transaction_is_already_open`
+    /// in `raw_tests.rs`.)
+    ///
+    /// Everything else the body does is unchanged by the extraction: a
+    /// deny-listed credential key is REFUSED with an error naming the key
+    /// and never the value, excepting only `smtp_config`. A failed delta
+    /// write stays non-fatal — warned about, the value write stands. Why
+    /// that is safe is a dated claim, not an invariant, and it lives where
+    /// the claim was first written down: `SAFETY_BASIS` in
+    /// `crates/oz-cli/src/commands/credential_deltas.rs` — nothing reads
+    /// the ledger back and `get_version` has zero production callers, AS
+    /// OF 2026-09-12. (An earlier draft of this line said "the sync layer
+    /// reconstructs" from the settings table; no such code exists — the
+    /// only `INSERT INTO setting_updated` in the tree is the writer in
+    /// this file.) A missing delta row is also not a rare swallowed error:
+    /// the ledger covers ONLY the tracked doors, and every typed setter —
+    /// the receipt, store and credit saves in
+    /// `crates/oz-bridge/src/settings.rs` among them — writes its value
+    /// with no delta row at all, so an incomplete ledger is the design,
+    /// not the exception.
     pub fn set_tracked(
         conn: &Connection,
         key: &str,
         value: &str,
         terminal_id: &str,
     ) -> Result<(), PlatformError> {
+        // Refuse BEFORE the begin: a caller already inside a transaction
+        // that hit the old order got the rusqlite nested-BEGIN error (whose
+        // exact wording rusqlite 0.31 does not guarantee) instead of the
+        // refusal. The predicate is a pure function of the key, so asking
+        // it here costs nothing and the canonical body asks it again
+        // harmlessly.
+        Self::refuse_cleartext_credential(key)?;
         let tx = conn.unchecked_transaction()?;
         Self::set_tracked_in_tx(&tx, key, value, terminal_id)?;
         tx.commit()?;
@@ -416,9 +457,18 @@ impl Settings {
     /// tracked write without nesting a second BEGIN, which SQLite rejects.
     ///
     /// Refusal semantics are unchanged from `set_tracked`: an ERROR naming
-    /// the key and never the value, raised before anything is written. Delta
-    /// loss stays non-fatal — it is warned about, the value write stands, and
-    /// the sync layer can reconstruct.
+    /// the key and never the value, raised before anything is written. A
+    /// failed delta write stays non-fatal — it is warned about and the
+    /// value write stands. Why that is safe is a dated claim, not an
+    /// invariant: nothing reads the ledger back and `get_version` has zero
+    /// production callers, AS OF 2026-09-12, as first written down in
+    /// `SAFETY_BASIS` (`crates/oz-cli/src/commands/credential_deltas.rs`)
+    /// — the "sync layer can reconstruct" mechanism this line used to cite
+    /// does not exist. Nor is a missing delta row an exception to a
+    /// complete ledger: it covers only the tracked doors, while every
+    /// typed setter (the receipt, store and credit saves in
+    /// `crates/oz-bridge/src/settings.rs`) writes its value with no delta
+    /// row at all.
     ///
     /// A batch caller that must refuse BEFORE writing its first row asks
     /// [`Settings::cleartext_credential_refusal`] over the whole key set

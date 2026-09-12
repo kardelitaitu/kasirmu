@@ -274,6 +274,50 @@ fn set_tracked_exception_still_writes_smtp_config() {
     );
 }
 
+/// The bare face refuses BEFORE it opens its transaction: a caller that is
+/// already inside one and asks `set_tracked` with a deny-listed key gets the
+/// refusal — the same words the in-tx form raises — and never the rusqlite
+/// "cannot start a transaction within a transaction" error, whose exact
+/// wording rusqlite 0.31 does not guarantee. Until 12-09-26 the begin came
+/// first, so an in-transaction caller got the nested-BEGIN failure instead
+/// of the refusal; this test pins the order. Only the refusal face is
+/// pinned — the nested-BEGIN error itself is unspecified in rusqlite 0.31,
+/// so its presence is asserted by absence of the refusal, never by wording.
+#[test]
+fn set_tracked_refuses_before_it_begins_when_a_transaction_is_already_open() {
+    let conn = fresh_with_delta();
+    // The caller's own transaction, held open across the bare call.
+    let held = conn.unchecked_transaction().unwrap();
+    let err = Settings::set_tracked(&conn, keys::STRIPE_API_KEY, "sk_live_leaked", "term-a")
+        .expect_err("a deny-listed credential must be refused even inside a transaction");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::STRIPE_API_KEY),
+        "the caller must see the refusal, which names the key, got: {msg}"
+    );
+    assert!(
+        !msg.contains("sk_live_leaked"),
+        "the refusal must never echo the value, got: {msg}"
+    );
+    assert!(
+        !msg.contains("within a transaction"),
+        "the nested-BEGIN error must not be the answer a caller gets, got: {msg}"
+    );
+    // The refusal must have changed nothing: commit the caller's
+    // transaction ANYWAY, so a write that had already landed would show.
+    held.commit().unwrap();
+    assert_eq!(
+        Settings::get(&conn, keys::STRIPE_API_KEY).unwrap(),
+        None,
+        "a refusal must not write the row"
+    );
+    assert_eq!(
+        Settings::get_version(&conn, keys::STRIPE_API_KEY, "term-a").unwrap(),
+        None,
+        "a refusal must not write a delta either"
+    );
+}
+
 /// The batch door gets the same check: one deny-listed row aborts the whole
 /// batch BEFORE any write (all-or-nothing, matching the bridge's
 /// `run_set_settings_batch` guard), so `set_batch_tracked` cannot become
