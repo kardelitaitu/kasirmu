@@ -285,13 +285,42 @@ fn resolves_session(text: &str) -> bool {
 }
 
 /// Does this text name a permission?
+/// The guard spellings this file recognises as a permission check. Substring-matched, so
+/// `require_permission` also covers `require_permission_for_user`, `..._for_session` and
+/// `..._scoped`. The four original tokens saw 8 of the 18 guard-shaped call spellings in
+/// the repo and 280 of 657 of their call sites; the additions below are the ten the
+/// 05:45 census found missing, led by `require_session_permission` (220 sites, 47 files).
+/// `drift_pin_guard_marker_vocabulary_is_closed` is what stops this list rotting again.
+const GUARD_MARKERS: &[&str] = &[
+    "require_permission",
+    "permissions::",
+    "has_permission",
+    "authorize_with",
+    // Bespoke guards, per-domain helpers named after the permission they check. Each of
+    // these contains "permission" but NOT the substring "require_permission", which is why
+    // the original list missed every one of them.
+    "require_session_permission",
+    "require_session_resource_permission",
+    "require_user_permission_scoped",
+    "require_inventory_permission",
+    "require_inventory_count_permission",
+    "require_loyalty_permission",
+    "require_tax_permission",
+    "require_customer_permission",
+    "require_audit_permission",
+    "require_category_permission",
+    "authorize_topology_write",
+];
+
+/// Guard-shaped call sites deliberately NOT treated as a permission check, with the reason.
+/// Empty today: all 18 spellings the sweep finds are markers. It exists so an exemption is
+/// a decision recorded in source rather than a silent miss, and
+/// `drift_pin_guard_marker_vocabulary_is_closed` fails on an entry the sweep can no longer
+/// find, so a stale exemption goes red too.
+const GUARD_VOCAB_EXCEPTIONS: &[(&str, &str)] = &[];
+
 fn names_permission(text: &str) -> bool {
-    for marker in [
-        "require_permission",
-        "permissions::",
-        "has_permission",
-        "authorize_with",
-    ] {
+    for marker in GUARD_MARKERS {
         if text.contains(marker) {
             return true;
         }
@@ -829,6 +858,16 @@ fn drift_pin_no_computed_command_names_in_ui() {
     // Neither is a screen calling a command.
     let allowed = [
         "dev-mock/tauri-api.ts",
+        // FOUND TONIGHT, NOT PRE-AUTHORISED - FLAGGED FOR A RULING. The dispatcher that
+        // ce8666604 extracted declares `async invoke(cmd, ...)` at :98 and forwards the
+        // parameter it was handed to the Tauri internals at :108, so it composes no
+        // command name. This entry tolerates a FORWARDER and does not bless the handlers
+        // registry at :116, which resolves a caller-supplied name at runtime: a name
+        // built there is still a computed name and still belongs in the offender list.
+        // One exact path, deliberately no `dev-mock/` prefix - a glob would swallow the
+        // parked unscoped mock rows for free, which is the cover-up this list exists to
+        // refuse.
+        "dev-mock/core/mockDispatcher.ts",
         "__tests__/dev-mock-scoped-aliases.test.ts",
         // FOUND TONIGHT, NOT PRE-AUTHORISED - FLAGGED FOR A RULING. A production
         // wrapper that takes the command name as a parameter and forwards it, so the
@@ -920,4 +959,171 @@ fn collect_ts(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(p);
         }
     }
+}
+
+/// Guard-shaped identifiers used as a call site — an identifier followed by `(` — in one
+/// file, each with the 1-based line it appeared on. Text scan, not an AST: the question is
+/// vocabulary, not reachability, and this file spends no dependency on parsing.
+fn guard_call_sites(text: &str) -> Vec<(String, usize)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if !(chars[i].is_ascii_lowercase() || chars[i] == '_') {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len()
+            && (chars[i].is_ascii_lowercase() || chars[i] == '_' || chars[i].is_ascii_digit())
+        {
+            i += 1;
+        }
+        let id: String = chars[start..i].iter().collect();
+        let mut k = i;
+        while k < chars.len() && chars[k].is_whitespace() {
+            k += 1;
+        }
+        if k >= chars.len() || chars[k] != '(' || !is_guard_shape(&id) {
+            continue;
+        }
+        out.push((
+            id,
+            chars[..start].iter().filter(|c| **c == '\n').count() + 1,
+        ));
+    }
+    out
+}
+
+/// The census shape: `require` then `permission`, a trailing `_with_permission`, `authorize`
+/// then `permission`, or `has` then `permission`. Deliberately WIDER than GUARD_MARKERS, so a
+/// new spelling of a shape this repo clearly likes surfaces as drift instead of passing.
+fn is_guard_shape(id: &str) -> bool {
+    let names_perm = id.contains("permission");
+    (id.starts_with("require_") && names_perm)
+        || id.contains("_with_permission")
+        || (id.starts_with("authorize_") && names_perm)
+        || (id.starts_with("has_") && names_perm)
+}
+
+/// Leg 8 — the marker vocabulary pinned against the repository, not against itself.
+///
+/// Query: every identifier of the shapes above followed by `(`, over
+/// `apps/desktop-client/src`, `apps/tablet-client/src`, `platform` and
+/// `crates/oz-bridge/src`, excluding `*_tests.rs` (helper and assertion names in a test file
+/// are not gates). Measured 05:45 on e046e2f26: 242 production files, 18 distinct spellings,
+/// 657 call sites — and the original four tokens recognised 8 spellings and 280 sites, blind
+/// to require_session_permission (220 sites in 47 files) and every per-domain
+/// require-domain-permission helper. Widening the list fixes today; this leg is what keeps it
+/// true the day someone writes a bespoke guard, which the census shows is the norm here.
+#[test]
+fn drift_pin_guard_marker_vocabulary_is_closed() {
+    // The two floors are anti-vacuity, not the finding. A sweep that read nothing would
+    // satisfy both assertions below exactly as happily as three event-string matches satisfied
+    // the debt ceiling on tablet, so: 14 under the 18 spellings measured, 200 under 242 files.
+    const SPELLING_FLOOR: usize = 14;
+    const FILE_FLOOR: usize = 200;
+
+    // Self-check, before anything is read from disk: the sweep must be able to see a guard
+    // spelling it has never seen. Run over a scratch source STRING rather than the tree, so
+    // it cannot be satisfied by the repository and costs nothing. This is the leg that makes
+    // the rest of the pin meaningful — the floors below bound how much the sweep finds, and
+    // this one bounds whether it can find anything at all. (That the sweep once PANICKED on a
+    // U+2500 in a box-drawing comment is evidence it reads real files; the byte-offset slice
+    // that caused it is gone, and traversal is by char from here.)
+    let probe_src = "fn probe(ctx: &BridgeCtx) -> Result<(), AppError> {\n    require_zzz_unseen_permission(ctx)?;\n    Ok(())\n}\n";
+    let probe = guard_call_sites(probe_src);
+    assert!(
+        probe
+            .iter()
+            .any(|(id, line)| id == "require_zzz_unseen_permission" && *line == 2),
+        "the guard-shape sweep cannot see a guard spelled require_zzz_unseen_permission in a \
+         four-line string it was handed: {probe:?}. Nothing it reports about the \
+         repository is trustworthy if it cannot report this."
+    );
+    assert!(
+        !names_permission("require_zzz_unseen_permission")
+            && GUARD_VOCAB_EXCEPTIONS
+                .iter()
+                .all(|(n, _)| *n != "require_zzz_unseen_permission"),
+        "the probe spelling is now a marker or an exception, which means the leg above is \
+         checking something that no longer surprises: pick a spelling no one would write."
+    );
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dirs = [
+        root.join("src"),
+        root.join("../tablet-client/src"),
+        root.join("../../platform"),
+        root.join("../../crates/oz-bridge/src"),
+    ];
+    for dir in &dirs {
+        assert!(
+            dir.exists(),
+            "the guard-vocabulary sweep cannot read {}: a moved directory turns this pin into a check that inspects nothing, which is the one outcome worse than red.",
+            dir.display()
+        );
+    }
+    let mut files = 0usize;
+    let mut sites = 0usize;
+    let mut seen: BTreeMap<String, (usize, String)> = BTreeMap::new();
+    for dir in &dirs {
+        for f in rust_files(dir) {
+            if f.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .ends_with("_tests")
+            {
+                continue;
+            }
+            files += 1;
+            let text = read(&f);
+            let name = f
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("?")
+                .to_string();
+            for (id, line) in guard_call_sites(&text) {
+                sites += 1;
+                seen.entry(id)
+                    .and_modify(|(n, _)| *n += 1)
+                    .or_insert((1, format!("{name}:{line}")));
+            }
+        }
+    }
+    assert!(
+        files >= FILE_FLOOR,
+        "the guard-vocabulary sweep read only {files} production files across {} roots: the paths moved, so it is about to certify a vocabulary it cannot see.",
+        dirs.len()
+    );
+    assert!(
+        seen.len() >= SPELLING_FLOOR,
+        "the guard-vocabulary sweep found only {} distinct spellings in {files} files (floor {SPELLING_FLOOR}) across {} roots: 18 spellings over 657 call sites is the measured shape, and a scan that finds little is a scan matching nothing.",
+        seen.len(),
+        dirs.len()
+    );
+    let unknown: Vec<String> = seen
+        .iter()
+        .filter(|(id, _)| {
+            !names_permission(id) && !GUARD_VOCAB_EXCEPTIONS.iter().any(|(n, _)| n == id)
+        })
+        .map(|(id, (n, at))| format!("{id} ({n} call sites, first at {at})"))
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "GUARD-VOCABULARY DRIFT: {} guard-shaped spelling(s) are called in production source but sit in neither GUARD_MARKERS nor GUARD_VOCAB_EXCEPTIONS: {}. A bespoke guard is not a permission check until someone decides it is — add the spelling to GUARD_MARKERS, or to GUARD_VOCAB_EXCEPTIONS with the reason it is not a gate. Until then a command that resolves a session and checks something can still be swept as ungated. (Sweep: {files} files, {sites} call sites, {} distinct spellings, {} markers, {} exceptions.)",
+        unknown.len(),
+        unknown.join("; "),
+        seen.len(),
+        GUARD_MARKERS.len(),
+        GUARD_VOCAB_EXCEPTIONS.len()
+    );
+    let stale: Vec<&str> = GUARD_VOCAB_EXCEPTIONS
+        .iter()
+        .filter(|(n, _)| !seen.contains_key(*n))
+        .map(|(n, _)| *n)
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "GUARD-VOCABULARY DRIFT: {stale:?} are excepted but the sweep found no such call site in {files} files — the guard was renamed or deleted, so the exemption now covers nothing. Delete the entry rather than keep a list that no longer matches the tree."
+    );
 }
