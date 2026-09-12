@@ -1056,8 +1056,9 @@ fn batch_smtp_config_write_preserves_the_stored_password() {
         })
         .unwrap();
 
+    let tx = conn.unchecked_transaction().unwrap();
     run_set_settings_batch(
-        &conn,
+        &tx,
         &HashMap::from([(
             SMTP_CONFIG_SETTINGS_KEY.to_string(),
             r#"{"host":"smtp.new.com","port":465,"username":null,"password":null,"from":"b@c.com","use_tls":true}"#
@@ -1066,6 +1067,7 @@ fn batch_smtp_config_write_preserves_the_stored_password() {
         "term-1",
     )
     .unwrap();
+    tx.commit().unwrap();
 
     let loaded = store.get_smtp_config().unwrap().unwrap();
     assert_eq!(
@@ -1099,8 +1101,9 @@ fn batch_funnel_returns_what_it_wrote_so_the_enqueue_carries_the_merged_blob() {
         })
         .unwrap();
 
+    let tx = conn.unchecked_transaction().unwrap();
     let written = run_set_settings_batch(
-        &conn,
+        &tx,
         &HashMap::from([
             (
                 SMTP_CONFIG_SETTINGS_KEY.to_string(),
@@ -1112,6 +1115,7 @@ fn batch_funnel_returns_what_it_wrote_so_the_enqueue_carries_the_merged_blob() {
         "term-1",
     )
     .unwrap();
+    tx.commit().unwrap();
 
     // What would be offered to the network is exactly what the table holds.
     let stored = Settings::get(&conn, SMTP_CONFIG_SETTINGS_KEY)
@@ -1172,8 +1176,9 @@ fn single_write_funnel_returns_what_it_wrote() {
 #[test]
 fn batch_write_refuses_local_api_secret_and_writes_nothing() {
     let conn = fresh_conn();
+    let tx = conn.unchecked_transaction().unwrap();
     let err = run_set_settings_batch(
-        &conn,
+        &tx,
         &HashMap::from([
             (
                 "local_api.secret".to_string(),
@@ -1184,6 +1189,11 @@ fn batch_write_refuses_local_api_secret_and_writes_nothing() {
         "term-1",
     )
     .unwrap_err();
+    // Commit ANYWAY. The command would have dropped the transaction here, and
+    // a rollback would hide a per-row guard that had already written its
+    // sibling; committing proves the refusal was pre-flight, not a side effect
+    // of the abort.
+    tx.commit().unwrap();
     assert!(
         matches!(&err, BridgeError::Invalid(m) if m.contains("local_api.secret")),
         "refusal must be the Invalid error naming the key: {err:?}"
@@ -1198,14 +1208,58 @@ fn batch_write_refuses_local_api_secret_and_writes_nothing() {
     );
 }
 
+/// The OTHER half of the guard `Settings::set_tracked` used to apply per row:
+/// a deny-listed credential (that is NOT manager-owned, so the first guard
+/// cannot see it) must be refused batch-wide before any write. This is the
+/// test that pins the bridge's restatement of platform-core's
+/// `refuse_cleartext_credential` — if the two ever diverge, this fails.
+#[test]
+fn batch_write_refuses_a_deny_listed_credential_key() {
+    let conn = fresh_conn();
+    let tx = conn.unchecked_transaction().unwrap();
+    // A credential that is NOT manager-owned, so the first guard cannot be what
+    // refuses it: "machine_id" is a device key, not a secret, and "local_api.*"
+    // is caught by the manager prefix rule.
+    assert!(is_secret_setting_key("pg_sync.password"));
+    assert!(!is_manager_owned_key("pg_sync.password"));
+    let err = run_set_settings_batch(
+        &tx,
+        &HashMap::from([
+            (
+                "pg_sync.password".to_string(),
+                "spoofed-password".to_string(),
+            ),
+            ("store_name".to_string(), "My Store".to_string()),
+        ]),
+        "term-1",
+    )
+    .unwrap_err();
+    tx.commit().unwrap();
+    assert!(
+        matches!(&err, BridgeError::Invalid(m) if m.contains("pg_sync.password") && !m.contains("spoofed-password")),
+        "refusal must name the key and never the value: {err:?}"
+    );
+    assert!(
+        Settings::get(&conn, "store_name").unwrap().is_none(),
+        "the sibling of a refused credential row must not land either"
+    );
+    // smtp_config is the one named exception and must still be writable, or the
+    // email-report card's Save button stays broken.
+    assert!(
+        is_secret_setting_key(SMTP_CONFIG_SETTINGS_KEY),
+        "smtp_config is on the deny list, which is what makes the exception matter"
+    );
+}
+
 /// Control, and the guard against over-correction: refusing a bad row by
 /// aborting the WHOLE batch is only safe because it is what the single-write
 /// funnel does too. Two ordinary keys must both land.
 #[test]
 fn batch_write_of_two_ordinary_keys_lands_both() {
     let conn = fresh_conn();
+    let tx = conn.unchecked_transaction().unwrap();
     let written = run_set_settings_batch(
-        &conn,
+        &tx,
         &HashMap::from([
             ("store_name".to_string(), "My Store".to_string()),
             ("currency".to_string(), "IDR".to_string()),
@@ -1213,6 +1267,7 @@ fn batch_write_of_two_ordinary_keys_lands_both() {
         "term-1",
     )
     .unwrap();
+    tx.commit().unwrap();
     assert_eq!(
         Settings::get(&conn, "store_name").unwrap().as_deref(),
         Some("My Store")
@@ -1233,5 +1288,90 @@ fn batch_write_of_two_ordinary_keys_lands_both() {
             ("currency".to_string(), "IDR".to_string()),
         ]),
         "for unmerged keys the returned map must equal the request"
+    );
+}
+
+// ── The REAL call shape: the command owns an outer transaction ─────────
+//
+// Every test above calls `run_set_settings_batch` with a BARE connection, a
+// shape the product never uses. `set_settings_scoped` opens its own
+// `unchecked_transaction` and runs the loop INSIDE it
+// (crates/oz-bridge/src/settings.rs:1264-1266). A loop that opens a transaction
+// of its own therefore nests, and SQLite rejects the second BEGIN — the same
+// class `crates/oz-bridge/src/setup.rs:100-106` documents for
+// `Settings::set_batch`. These two tests reproduce the command's shape.
+
+/// The batch door must work inside the transaction the command already owns.
+#[test]
+fn batch_funnel_runs_inside_the_commands_own_outer_transaction() {
+    let conn = fresh_conn();
+    let entries = HashMap::from([
+        ("store_name".to_string(), "My Store".to_string()),
+        ("currency".to_string(), "IDR".to_string()),
+    ]);
+
+    let outcome = {
+        let tx = conn.unchecked_transaction().unwrap();
+        match run_set_settings_batch(&tx, &entries, "term-1") {
+            Ok(written) => tx
+                .commit()
+                .map(|()| written)
+                .map_err(|e| format!("commit failed: {e}")),
+            Err(e) => {
+                drop(tx);
+                Err(format!("{e:?}"))
+            }
+        }
+    };
+
+    let written = outcome.expect("the batch door must run inside the command's own transaction");
+    assert_eq!(written.len(), 2, "one row per posted key");
+    assert_eq!(
+        Settings::get(&conn, "store_name").unwrap().as_deref(),
+        Some("My Store")
+    );
+    assert_eq!(
+        Settings::get(&conn, "currency").unwrap().as_deref(),
+        Some("IDR")
+    );
+    // ADR #22: the tracked funnel owes a delta row per key, not just a value.
+    for key in ["store_name", "currency"] {
+        assert_eq!(
+            Settings::get_version(&conn, key, "term-1").unwrap(),
+            Some(1),
+            "{key} must have exactly one delta row after the batch"
+        );
+    }
+}
+
+/// All-or-nothing as the command promises the UI: a refused row must leave
+/// NOTHING behind, and the failure must be the guard's refusal, not a
+/// transaction error.
+#[test]
+fn batch_refusal_inside_the_commands_own_transaction_writes_nothing() {
+    let conn = fresh_conn();
+    let outcome = {
+        let tx = conn.unchecked_transaction().unwrap();
+        let r = run_set_settings_batch(
+            &tx,
+            &HashMap::from([
+                ("store_name".to_string(), "My Store".to_string()),
+                ("local_api.secret".to_string(), "attacker".to_string()),
+            ]),
+            "term-1",
+        );
+        // The command propagates the error, so the outer tx is dropped
+        // uncommitted — that drop IS the rollback the UI relies on.
+        drop(tx);
+        r
+    };
+    let err = outcome.expect_err("a manager-owned key must abort the batch");
+    assert!(
+        matches!(&err, BridgeError::Invalid(m) if m.contains("local_api.secret")),
+        "the failure must be the guard's refusal, not a transaction error: {err:?}"
+    );
+    assert!(
+        Settings::get(&conn, "store_name").unwrap().is_none(),
+        "the innocent sibling must not survive the aborted batch"
     );
 }

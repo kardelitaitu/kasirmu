@@ -385,8 +385,26 @@ impl Settings {
         terminal_id: &str,
     ) -> Result<(), PlatformError> {
         // Batch-wide refusal BEFORE any write — one deny-listed row aborts
-        // the whole batch, matching the bridge's `run_set_settings_batch`
-        // guard, so the batch door cannot become the new front door.
+        // the whole batch rather than dropping only its own row, so this door
+        // cannot become the new front door.
+        //
+        // What this line used to claim — that the batch-wide shape "matches
+        // the bridge's `run_set_settings_batch` guard" — was a misdescription
+        // until 08-09-26. The bridge loop got its credential refusal from
+        // `Settings::set_tracked`, which applies it PER ROW, so a batch of
+        // three good rows and one credential row wrote the three and refused
+        // the fourth. The bridge now refuses both guards batch-wide before any
+        // write, so the two doors really do agree; see
+        // `crates/oz-bridge/src/settings.rs::run_set_settings_batch`.
+        //
+        // DEAD CODE, RECORDED NOT DELETED (08-09-26 review): this function has
+        // no production caller — only `oz_core::settings` re-exports it and
+        // the platform-core tests exercise it. It also cannot be called from
+        // inside a caller's transaction: like `set_tracked` it opens its own
+        // `unchecked_transaction`, and a second BEGIN fails with "cannot start
+        // a transaction within a transaction". A tablet that adopts a batch
+        // door must pass a BARE connection, or grow an in-transaction variant
+        // the way the bridge did. Kept because it is the guard for that door.
         for (key, _) in rows {
             Self::refuse_cleartext_credential(key)?;
         }

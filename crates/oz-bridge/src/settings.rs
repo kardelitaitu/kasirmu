@@ -467,7 +467,10 @@ pub fn run_set_setting(
 
 /// Business logic for the `set_settings_scoped` batch write (extracted for
 /// testing). The command owns the transaction; this is the loop that runs
-/// inside it.
+/// inside it — which is WHY it takes `&rusqlite::Transaction` and not
+/// `&Connection`: the same shape as `Store::log_audit_in_tx` and
+/// `Settings::set_batch_with_policy`, so a lane that already holds a
+/// transaction cannot open a nested one by calling this.
 ///
 /// It is the SECOND door into the settings table. `run_set_setting` guards
 /// manager-owned keys and merges `smtp_config`, but this loop used to call
@@ -478,17 +481,35 @@ pub fn run_set_setting(
 /// the funnel therefore live here: the same manager-key refusal, and the
 /// same `merged_smtp_password_json` seam the single write asks.
 ///
-/// Refusal is batch-wide and happens BEFORE any write, matching what the
-/// single-write funnel does — it returns `Invalid` rather than skipping the
-/// row — so the command's documented all-or-nothing semantics hold: one
-/// managed key aborts the batch, it does not quietly drop that one entry.
+/// It does NOT call `Settings::set_tracked` any more, and must not: that door
+/// opens its own `unchecked_transaction` (BEGIN DEFERRED), and a second BEGIN
+/// inside the caller's transaction fails with "cannot start a transaction
+/// within a transaction" — the class documented at
+/// `crates/oz-bridge/src/setup.rs:100-106`. Confirmed at runtime by
+/// `batch_funnel_runs_inside_the_commands_own_outer_transaction`, which is why
+/// the two halves of the tracked write are done in place here: `Settings::set`
+/// (a plain statement, so it joins the caller's transaction) plus
+/// `Settings::write_delta`, which detects an open transaction and takes its
+/// savepoint path instead of BEGIN IMMEDIATE. Delta loss stays non-fatal, as it
+/// is in `set_tracked`.
+///
+/// Both refusals are batch-wide and happen BEFORE any write — the manager-key
+/// check always was, and the cleartext-credential check moves here from
+/// `set_tracked`'s per-row position so the loop can stay in the transaction.
+/// Batch-wide pre-flight is what the command's documented all-or-nothing
+/// semantics require: one bad key aborts the batch, it does not quietly drop
+/// that one entry, and it cannot leave rows already written behind. The
+/// credential predicate is restated here (`is_secret_setting_key` plus the
+/// `smtp_config` exception) because platform-core's
+/// `refuse_cleartext_credential` is private; it is the SAME rule, and
+/// `batch_write_refuses_a_deny_listed_credential_key` pins it.
 ///
 /// Returns the values AS WRITTEN, keyed by key — the map the command hands to
 /// [`enqueue_settings_updates`], so the replication payload carries the merged
 /// `smtp_config` blob rather than the passwordless one the client posted. A
 /// row that is not what we would have written is not offered.
 pub fn run_set_settings_batch(
-    conn: &rusqlite::Connection,
+    tx: &rusqlite::Transaction<'_>,
     entries: &HashMap<String, String>,
     terminal_id: &str,
 ) -> Result<HashMap<String, String>, BridgeError> {
@@ -498,7 +519,15 @@ pub fn run_set_settings_batch(
             "{key} is managed by the {owner} controls — use those"
         )));
     }
-    let store = Store::new(conn);
+    if let Some(key) = entries
+        .keys()
+        .find(|k| is_secret_setting_key(k) && *k != SMTP_CONFIG_SETTINGS_KEY)
+    {
+        return Err(BridgeError::Invalid(format!(
+            "{key} holds a credential — the tracked settings funnel refuses to store it in cleartext"
+        )));
+    }
+    let store = Store::new(tx);
     let mut written = HashMap::with_capacity(entries.len());
     for (key, value) in entries {
         let merged;
@@ -508,7 +537,11 @@ pub fn run_set_settings_batch(
         } else {
             value
         };
-        Settings::set_tracked(conn, key, value, terminal_id)?;
+        // The tracked write, done IN the caller's transaction: no BEGIN here.
+        Settings::set(tx, key, value)?;
+        if let Err(e) = Settings::write_delta(tx, key, value, terminal_id) {
+            tracing::warn!(key, terminal_id, error = %e, "delta write failed (non-fatal)");
+        }
         written.insert(key.clone(), value.to_string());
     }
     Ok(written)
