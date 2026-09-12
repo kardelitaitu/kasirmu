@@ -295,14 +295,55 @@ pub const SECRET_KEY_DENY_LIST: &[&str] = &[
 pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
     &[SYNC_TERMINAL_ID, MACHINE_ID, HARDWARE_FINGERPRINT];
 
+/// The comparison form of a candidate settings key: surrounding whitespace
+/// trimmed and ASCII case-folded.
+///
+/// The candidate is normalised — never the lists — so [`SECRET_KEY_DENY_LIST`]
+/// and [`NON_EXPORTABLE_DEVICE_KEYS`] stay exactly as declared (lowercase,
+/// untrimmed) and every comparison against them goes through this one fold.
+/// ASCII-only on purpose: settings keys are ASCII identifiers, and a Unicode
+/// fold would promise a normalisation the TEXT/BINARY storage layer does not
+/// make.
+fn normalised_candidate(key: &str) -> String {
+    key.trim().to_ascii_lowercase()
+}
+
 /// Returns true when the given settings key holds a credential that the raw
 /// get_setting IPC surface must never return (C-2).
 ///
 /// Both shells route through this one predicate so the match cannot drift the
 /// way the two hand-copied lists did; the bridge layer adds only the
 /// lifecycle-manager prefix rule on top of it.
+///
+/// The candidate key is normalised before the match — trimmed and ASCII
+/// case-folded — because the settings table is a TEXT primary key under the
+/// default BINARY collation: `Stripe.API_KEY` and `"stripe.api_key "` are
+/// distinct rows a case- and whitespace-exact match admits on both the write
+/// funnel and the read-back, so a cleartext credential stored under a
+/// near-miss key reads straight back over IPC. Normalising here fixes every
+/// caller at once; the lists themselves stay lowercase and untouched.
+///
+/// What this does NOT do, so nobody mistakes the fold for more than it is:
+///
+/// * It does not normalise STORAGE. A near-miss key still creates a second
+///   row with its own value; nothing is deduplicated, merged or rewritten.
+///   The repair closes the write-refusal and read-back gap for a sloppy key —
+///   the second row is now refused, not reconciled.
+/// * It does not make the deny list prefix-safe. The match is equality on the
+///   normalised whole key, so `stripe.api_key.extra` — or any key whose
+///   normalised form contains none of the markers — is still admitted.
+///   Whether this list should be an allow-list is a separate and larger
+///   question, deliberately left open here.
+/// * The `smtp_config` cleartext exception is NOT here and must not move
+///   here. It lives beside the tracked-funnel refusal
+///   (`Settings::cleartext_credential_refusal`) and is write-lane only;
+///   folding it into this predicate would un-refuse `smtp_config` on the
+///   raw get_setting read surface — the exception becoming a bypass. This
+///   predicate keeps flagging `smtp_config` in every casing, so casing can
+///   never widen that exception from this side.
 pub fn is_secret_setting_key(key: &str) -> bool {
-    SECRET_KEY_DENY_LIST.contains(&key)
+    let candidate = normalised_candidate(key);
+    SECRET_KEY_DENY_LIST.contains(&candidate.as_str())
 }
 
 /// Returns true when the given key must never leave the backend inside a
@@ -310,9 +351,19 @@ pub fn is_secret_setting_key(key: &str) -> bool {
 /// [SECRET_KEY_DENY_LIST] plus the device-bound identity keys from
 /// [NON_EXPORTABLE_DEVICE_KEYS].
 ///
+/// The candidate is normalised exactly as [`is_secret_setting_key`] does —
+/// trimmed, ASCII case-folded, against a list that stays as declared — so the
+/// credential half and the device half of the egress rule answer near-miss
+/// spellings the same way instead of disagreeing by collation.
+///
 /// Lifecycle-manager-owned prefixes (local_api.*, lan_server.*) are refused
 /// on top of this by the bridge lane, which owns the manager names; the
 /// tablet shell has no such manager surface, so this is the whole rule there.
 pub fn is_non_exportable_setting_key(key: &str) -> bool {
-    is_secret_setting_key(key) || NON_EXPORTABLE_DEVICE_KEYS.contains(&key)
+    let candidate = normalised_candidate(key);
+    is_secret_setting_key(key) || NON_EXPORTABLE_DEVICE_KEYS.contains(&candidate.as_str())
 }
+
+#[cfg(test)]
+#[path = "keys_tests.rs"]
+mod tests;
