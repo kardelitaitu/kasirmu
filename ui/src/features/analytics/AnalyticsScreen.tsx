@@ -18,7 +18,6 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import AdminLockedFeature from '@/components/AdminLockedFeature';
 import TierLockedFeature from '@/components/TierLockedFeature';
 import { minorUnitExponent } from '@/types/domain';
-import { downloadCsv } from '@/utils/export-csv';
 import { AnalyticsCardContent, ExportCsvButton } from './AnalyticsCardContent';
 import { analyticsDataCache, clearAnalyticsCache, cardQueryKey } from './analytics-cache';
 import { useToastManager } from './useToastManager';
@@ -27,49 +26,41 @@ import { useCommandPalette } from './useCommandPalette';
 import { AnalyticsHeatmap } from './AnalyticsHeatmap';
 import {
   CARD_PAYLOAD_VALIDATORS,
-  DAY_LABEL_KEYS,
   buildHeatmapCells,
   heatPeak,
   heatmapGranularityForRange,
   isoDaysAgo,
   isoToday,
   loadHeatmapRows,
-  rangeForGranularity,
   yearlyHeatmapColumns,
-  type DailyRevenueRow,
   type HeatCell,
-  type HourlyHeatmapRow,
-  type WeeklyRevenueRow,
 } from './analytics-data';
 import { clearAnalyticsErrors, useAnalyticsQuery } from './useAnalyticsQuery';
+import { exportHeatmapCsv, shortCacheLabel } from './utils/analyticsExport';
+import {
+  GRANULARITIES,
+  cardGranularity,
+  cardRange,
+  daysInCurrentMonth,
+  nextExpandedKey,
+  smartScale,
+  type Granularity,
+  type WorkspaceView,
+} from './utils/dateRangePresets';
 import './AnalyticsScreen.css';
 
-export type WorkspaceView = 'retail' | 'restaurant';
-export type Granularity = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+// Re-exported for the three modules that still import these from the screen:
+// `AnalyticsScreen.test.tsx`, `dynamicFluentFamilies.test.ts` and
+// `AnalyticsCardContent.tsx` (which takes `Granularity` and `WorkspaceView`).
+// R37 analytics-query moved the implementations to `utils/dateRangePresets.ts`;
+// drop this block once all three import from the new module directly.
+export { GRANULARITIES, cardGranularity, cardRange, daysInCurrentMonth, nextExpandedKey, smartScale };
+export type { Granularity, WorkspaceView };
 
 // Re-export the calendar helper so the analytics test suite can import it
 // from the screen module (the heatmap card owns its own copy of the helper
 // via analytics-data; this keeps the existing test import working).
 export { monthCalendarGrid } from './analytics-data';
-
-// `daily` was removed from the selector: every card mapped it to `weekly`,
-// so the two buttons rendered identical data. A short custom range still
-// auto-buckets as daily (see bucketGranularity), but the selector no longer
-// offers daily as a global view.
-/**
- * The granularities the selector actually renders — the domain for the
- * `analytics-granularity-${g}` template-built message ids.
- *
- * Exported so `dynamicFluentFamilies.test.ts` can assert every one resolves
- * in BOTH bundles. Note this is deliberately narrower than the `Granularity`
- * union, which also admits `'daily'`: that value reaches
- * `rangeForGranularity()` and the query cache but no selector button, so
- * `analytics-granularity-daily` does not exist. Adding `'daily'` to this
- * array without adding the key would render a blank button label — a
- * template-built id is invisible to scripts/verify-bundle-parity.py, so this
- * array plus that test is the only guard.
- */
-export const GRANULARITIES: Granularity[] = ['weekly', 'monthly', 'yearly', 'custom'];
 
 const ZOOM_MIN = 0.6;
 const ZOOM_MAX = 1.6;
@@ -87,154 +78,6 @@ const SHORTCUTS: { keys: string; labelKey: string }[] = [
   { keys: 'C',      labelKey: 'analytics-shortcuts-collapse' },
   { keys: 'Esc',    labelKey: 'analytics-shortcuts-close' },
 ];
-
-/**
- * Only one card may be expanded at a time.
- * - clicking the expanded card restores it (`current` → `null`)
- * - expanding when nothing is open sets the new card (`null` → `cid`)
- * - expanding another card while one is open is ignored
- */
-export const nextExpandedKey = (current: string | null, cid: string): string | null => {
-  if (current === cid) return null;
-  if (current === null) return cid;
-  return current;
-}
-
-/**
- * Scale factor that enlarges `content` to fill `available` without
- * overflowing either axis, capped at `max`. Returns 1 when the sizes
- * are unknown (e.g. layout not yet measured).
- */
-export const smartScale = (
-  available: { w: number; h: number },
-  content: { w: number; h: number },
-  max = 4,
-): number => {
-  if (available.w <= 0 || available.h <= 0 || content.w <= 0 || content.h <= 0) return 1;
-  return Math.max(1, Math.min(max, Math.min(available.w / content.w, available.h / content.h)));
-}
-
-/**
- * Effective granularity for a card after applying its per-card remap.
- * Cards default to respecting the global selector; a card with a
- * `granularityMap` entry for the current granularity overrides it (e.g.
- * mapping `daily` to `weekly` when a card has no daily layout).
- */
-export const cardGranularity = (
-  card: { granularityMap?: Partial<Record<Granularity, Granularity>> },
-  g: Granularity,
-): Granularity => {
-  return card.granularityMap?.[g] ?? g;
-}
-
-/**
- * Date range for a card, derived from its *effective* granularity (after
- * the per-card remap) so a card that remaps e.g. weekly → monthly also
- * gets the matching window instead of the global selector's window.
- */
-export const cardRange = (
-  card: { granularityMap?: Partial<Record<Granularity, Granularity>> },
-  g: Granularity,
-  customFrom: string,
-  customTo: string,
-  storeTz?: string | null,
-): { from: string; to: string } => {
-  // A custom range is user-selected — never let a granularity remap
-  // replace it with a derived window (a card that derives its grid from the
-  // custom span still queries the chosen dates).
-  if (g === 'custom') return { from: customFrom, to: customTo };
-  return rangeForGranularity(cardGranularity(card, g), customFrom, customTo, storeTz);
-}
-
-/** Number of days in the current month (28–31). */
-export const daysInCurrentMonth = (): number => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-}
-
-/**
- * Download the heatmap's underlying revenue rows as CSV, shaped by the
- * card's effective granularity: the 7×24 hourly grid for weekly, one row
- * per calendar day for monthly, and one row per Monday-week for yearly.
- */
-function exportHeatmapCsv(
-  g: Granularity,
-  data: { daily: DailyRevenueRow[]; hourly: HourlyHeatmapRow[]; weekly: WeeklyRevenueRow[] },
-  from: string,
-  to: string,
-  fmt: (minor: number) => string,
-  getString: (id: string) => string,
-) {
-  const dayLabels = DAY_LABEL_KEYS.map((k) => getString(k));
-  const filename = `heatmap-${from}-to-${to}.csv`;
-  // The backend emits one daily/weekly revenue row per currency — sum per
-  // bucket so a multi-currency day/week exports as one combined row, the
-  // same normalization the intensity builders already apply.
-  if (g === 'monthly') {
-    const byDate = new Map<string, { minor: number; orders: number }>();
-    for (const r of data.daily) {
-      const e = byDate.get(r.date) ?? { minor: 0, orders: 0 };
-      e.minor += r.total_minor;
-      e.orders += r.sale_count;
-      byDate.set(r.date, e);
-    }
-    downloadCsv(
-      filename,
-      [
-        { key: 'date', label: getString('analytics-export-col-date') },
-        { key: 'sales', label: getString('analytics-export-col-sales') },
-        { key: 'orders', label: getString('analytics-export-col-orders') },
-      ],
-      [...byDate.entries()].map(([date, e]) => ({ date, sales: fmt(e.minor), orders: String(e.orders) })),
-    );
-    return;
-  }
-  if (g === 'yearly') {
-    const byWeek = new Map<string, { minor: number; orders: number }>();
-    for (const r of data.weekly) {
-      const e = byWeek.get(r.week_start) ?? { minor: 0, orders: 0 };
-      e.minor += r.total_minor;
-      e.orders += r.sale_count;
-      byWeek.set(r.week_start, e);
-    }
-    downloadCsv(
-      filename,
-      [
-        { key: 'week', label: getString('analytics-export-col-week') },
-        { key: 'sales', label: getString('analytics-export-col-sales') },
-        { key: 'orders', label: getString('analytics-export-col-orders') },
-      ],
-      [...byWeek.entries()].map(([week, e]) => ({ week, sales: fmt(e.minor), orders: String(e.orders) })),
-    );
-    return;
-  }
-  // weekly (and daily/custom, which remap to weekly): the 7×24 hourly grid.
-  downloadCsv(
-    filename,
-    [
-      { key: 'day', label: getString('analytics-export-col-day') },
-      { key: 'hour', label: getString('analytics-export-col-hour') },
-      { key: 'sales', label: getString('analytics-export-col-sales') },
-      { key: 'orders', label: getString('analytics-export-col-orders') },
-    ],
-    data.hourly.map((r) => ({
-      day: dayLabels[(r.day_of_week + 6) % 7] ?? String(r.day_of_week),
-      hour: String(r.hour).padStart(2, '0'),
-      sales: fmt(r.total_minor),
-      orders: String(r.sale_count),
-    })),
-  );
-}
-
-/**
- * Short, stable label for a cache key in the debug readout:
- * `card:revenue:retail:daily:...` → `revenue`, `query:retail:daily:...` → `query`.
- */
-function shortCacheLabel(key: string): string {
-  const parts = key.split(':');
-  if (parts[0] === 'card' && parts[1]) return parts[1]!;
-  return parts[0] ?? key;
-}
 
 // ── Card definitions ─────────────────────────────────────────────────
 
