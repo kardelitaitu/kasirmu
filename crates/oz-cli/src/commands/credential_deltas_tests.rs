@@ -748,3 +748,120 @@ fn the_report_states_what_an_excluded_row_means() {
         "the help text carries the same report-only promise the run prints"
     );
 }
+
+// -- lan_server.psk is ASKED: one case per form the key can now produce ------
+
+/// A row written by the encrypting setter (platform/core/src/settings/typed.rs:645)
+/// must read ENCRYPTED. Before this commit it read "CLEARTEXT(no family can seal
+/// this key)" and was COUNTED in the cleartext headline: the over-count this fixes.
+#[test]
+fn a_sealed_lan_psk_row_reads_encrypted_and_leaves_the_headline() {
+    use oz_core::settings::keys::LAN_SERVER_PSK;
+    let conn = fresh_db();
+    let cipher = oz_core::crypto::encrypt_lan_psk("kafe-lima-0725").unwrap();
+    Settings::set(&conn, LAN_SERVER_PSK, &cipher).unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(rows.len(), 1, "lan_server.psk is deny-listed: {rows:?}");
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::Encrypted, 1)],
+        "a sealed psk must read ENCRYPTED, not the false CLEARTEXT label HEAD gave it: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        0,
+        "the number that moved: a sealed row leaves the cleartext headline"
+    );
+    assert_eq!(total_encrypted_rows(&rows), 1);
+    assert_eq!(
+        total_excluded_rows(&rows),
+        0,
+        "resolved-encrypted is ANSWERED, not excluded; the two buckets must not merge"
+    );
+}
+
+/// The other form this key can genuinely hold: a row written before the sealing,
+/// where the WHOLE value is the passphrase. That is exposure, so it must reach the
+/// headline rather than being filed as unresolved.
+#[test]
+fn a_plaintext_lan_psk_row_reaches_the_headline_as_legacy_plaintext() {
+    use oz_core::settings::keys::LAN_SERVER_PSK;
+    let conn = fresh_db();
+    Settings::set(&conn, LAN_SERVER_PSK, "kafe-lima-0725").unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::LegacyPlaintext, 1)],
+        "a human passphrase is not base64-shaped, so the honest label is LEGACY-PLAINTEXT: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        1,
+        "and it DOES reach the headline: a plaintext PSK is exposure, not hygiene"
+    );
+    assert_eq!(total_encrypted_rows(&rows), 0);
+    assert_eq!(total_excluded_rows(&rows), 0);
+}
+
+/// MEASURED, not assumed: every portable family uses the same envelope
+/// base64url(nonce || ciphertext || tag) with no prefix, version or key id, so the
+/// shapes AGREE and only the key column picks the decryptor. Pinned here to stop
+/// anyone later turning the form column into a claim about which family wrote bytes.
+#[test]
+fn portable_envelopes_agree_so_only_the_key_column_separates_them() {
+    use oz_core::settings::keys::LAN_SERVER_PSK;
+    let lan = oz_core::crypto::encrypt_lan_psk("kafe-lima-0725").unwrap();
+    let sync = oz_core::crypto::encrypt_sync_api_key("kafe-lima-0725").unwrap();
+    assert_eq!(
+        lan.len(),
+        sync.len(),
+        "same layout, so length cannot be the discriminator either"
+    );
+    assert!(
+        oz_core::crypto::decrypt_lan_psk(&sync).is_err(),
+        "a sync envelope must not open with the lan decryptor: bytes alone do not name the family"
+    );
+
+    let conn = fresh_db();
+    Settings::set(&conn, LAN_SERVER_PSK, &sync).unwrap();
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::Invalid, 1)],
+        "a foreign portable envelope reads INVALID, never the claim 'this belongs to another key': {rows:?}"
+    );
+}
+
+/// The one case where asking this key can still UNDER-report, disclosed rather than
+/// hidden: a GENERATED psk of 38+ base64-alphabet chars is plaintext but passes the
+/// shape test, so it reads INVALID and is excluded. The report names this case, which
+/// is what keeps the count conservative without pretending it is complete.
+#[test]
+fn a_base64_shaped_plaintext_psk_reads_invalid_and_the_note_says_so() {
+    use oz_core::settings::keys::LAN_SERVER_PSK;
+    let conn = fresh_db();
+    Settings::set(
+        &conn,
+        LAN_SERVER_PSK,
+        "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+    )
+    .unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::Invalid, 1)],
+        "shape cannot separate it, so the tool declines rather than guesses: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        0,
+        "and it is excluded, so here the headline can under-claim"
+    );
+    assert!(
+        EXCLUDED_ROWS_NOTE.contains("a plaintext that merely looks like base64"),
+        "the report must disclose exactly this case: {EXCLUDED_ROWS_NOTE}"
+    );
+}

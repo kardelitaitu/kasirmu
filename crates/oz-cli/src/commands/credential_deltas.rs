@@ -361,9 +361,11 @@ type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
 ///     pg_sync.password      encrypt_pg_sync_password      -> PG_SYNC_PASSWORD
 ///     rate_sync.api_key     encrypt_rate_api_key          -> RATE_SYNC_API_KEY
 ///
+///   PORTABLE, asked here as of this commit (see why below):
+///     lan_server.psk        encrypt_lan_psk               -> LAN_SERVER_PSK
+///
 ///   PORTABLE but not a whole-row secret, so NOT asked here:
 ///     smtp_at_rest    one FIELD of a JSON blob     encrypt_smtp_at_rest
-///     lan_psk         has a family; see below      encrypt_lan_psk
 ///     profile_field   not a settings key at all    encrypt_profile_field
 ///
 ///   MACHINE-BOUND, needs the installation fingerprint, never derived here:
@@ -372,10 +374,30 @@ type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
 ///       tree: that machine-bound family is dead, and smtp_config is written by the
 ///       portable at-rest family inside its JSON blob, so it is not listed here.
 ///
-/// lan_server.psk is left OUT of the asked list on purpose. It does have a
-/// portable family, but it is not one of the keys the at-rest migration took over,
-/// and quietly widening the asked set would change what the cleartext headline
-/// counts with nobody deciding to; it answers Indeterminate, which under-claims.
+/// lan_server.psk is ASKED as of this commit, and the note that used to sit here
+/// was wrong twice over, so it is recorded rather than quietly deleted. It claimed
+/// the key "answers Indeterminate, which under-claims": it does not. With no family
+/// and no other-lane claim it fell through to UnsealableCleartext, so the shipped
+/// report asserted "CLEARTEXT(no family can seal this key)" about a row that
+/// platform/core/src/settings/typed.rs:645 seals with the portable lan-psk family,
+/// and COUNTED that row in the cleartext headline. Measured end to end before this
+/// commit on a throwaway store holding a real encrypt_lan_psk ciphertext: the
+/// headline read "1 of 2" and the 1 was this row. An over-count on a credential that
+/// is actually encrypted is the same defect the machine-bound fix below addresses: a
+/// label that is not evidence. Asking is correct HERE because the tool genuinely can
+/// tell, which is precisely what it cannot do for a machine-bound row — the reason
+/// the two cases get different forms, not the same one.
+///
+/// SEPARATED BY KEY, NOT BY BYTES, which is load-bearing for how the form column is
+/// read: every portable family uses the SAME envelope, base64url(nonce || ciphertext
+/// || tag) with no prefix, no version and no key id (crates/oz-crypto/src/lib.rs:13,
+/// 353, 389), so two families sealing the same plaintext emit strings of the SAME
+/// LENGTH. Measured in portable_envelopes_agree_so_only_the_key_column_separates: a
+/// sync_api_key envelope and a lan_psk envelope of one plaintext are both 56 chars
+/// and neither opens with the other's decryptor. The census asks the family that the
+/// KEY NAME owns, so a row whose value was sealed by a different portable family
+/// reads INVALID-CIPHERTEXT and never "this was written by another key". Nothing in
+/// the form column is a statement about which family wrote the bytes.
 fn credential_family(key: &str) -> Option<FamilyDecrypt> {
     use oz_core::settings::keys;
     match key {
@@ -383,6 +405,7 @@ fn credential_family(key: &str) -> Option<FamilyDecrypt> {
         keys::SYNC_TERMINAL_SECRET => Some(oz_core::crypto::decrypt_sync_terminal_secret),
         keys::PG_SYNC_PASSWORD => Some(oz_core::crypto::decrypt_pg_sync_password),
         keys::RATE_SYNC_API_KEY => Some(oz_core::crypto::decrypt_rate_api_key),
+        keys::LAN_SERVER_PSK => Some(oz_core::crypto::decrypt_lan_psk),
         _ => None,
     }
 }
@@ -484,6 +507,15 @@ impl SettingFormRow {
             .join(" + ")
     }
 
+    /// Rows of this key that this tool resolved as ENCRYPTED.
+    pub(crate) fn encrypted_rows(&self) -> usize {
+        self.forms
+            .iter()
+            .filter(|(form, _)| matches!(form, StoredForm::Encrypted))
+            .map(|(_, count)| *count)
+            .sum()
+    }
+
     /// Rows of this key that are positively cleartext.
     pub(crate) fn cleartext_rows(&self) -> usize {
         self.forms
@@ -553,11 +585,31 @@ pub(crate) fn total_settings_rows(rows: &SettingCounts) -> usize {
     rows.iter().map(|row| row.rows).sum()
 }
 
-/// Rows EXCLUDED from the cleartext headline: INVALID, Indeterminate and
-/// MachineBoundUntested. Exposed so the report can state the number instead of
-/// leaving the operator to subtract two printed totals by hand.
+/// Rows positively resolved as ENCRYPTED: the family named by the key column
+/// opened the value. Only ever true for a portable family, which is why asking
+/// lan_server.psk moved a row into this bucket instead of leaving it asserted.
+pub(crate) fn total_encrypted_rows(rows: &SettingCounts) -> usize {
+    rows.iter()
+        .map(|row| {
+            row.forms
+                .iter()
+                .filter(|(form, _)| matches!(form, StoredForm::Encrypted))
+                .map(|(_, count)| *count)
+                .sum::<usize>()
+        })
+        .sum()
+}
+
+/// Rows EXCLUDED from the cleartext headline: neither claimed cleartext nor
+/// resolved encrypted, i.e. INVALID, Indeterminate or MachineBoundUntested.
+/// Deliberately NOT "everything that is not cleartext": asking lan_server.psk made
+/// the first encrypted row exist, and subtracting cleartext from the total would
+/// have filed a row this tool PROVED as encrypted under "unresolved", which is the
+/// same confidence-in-the-wrong-direction this file keeps being about.
 pub(crate) fn total_excluded_rows(rows: &SettingCounts) -> usize {
-    rows.iter().map(|row| row.rows - row.cleartext_rows()).sum()
+    rows.iter()
+        .map(|row| row.rows - row.cleartext_rows() - row.encrypted_rows())
+        .sum()
 }
 
 /// Rows listed but explicitly NOT tested, because a machine-bound family holds
@@ -666,7 +718,8 @@ pub(crate) const EXCLUDED_ROWS_NOTE: &str = concat!(
 /// reason the census prints the form instead of a single yes/no.
 pub(crate) const LEGACY_PLAINTEXT_NOTE: &str = concat!(
     "A LEGACY-PLAINTEXT form on a key that HAS a crypto family (sync_api_key, ",
-    "sync_terminal_secret, pg_sync.password, rate_sync.api_key) is a row written before ",
+    "sync_terminal_secret, pg_sync.password, rate_sync.api_key, lan_server.psk) is a ",
+    "row written before ",
     "2026-08-29 and never re-saved, not a current bug: the encrypting setters pass legacy ",
     "plaintext through on purpose. A cleartext form on any OTHER listed key means nothing in ",
     "this build can seal it at all. The two read alike and mean different things — one is an ",
@@ -717,10 +770,11 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
         }
         println!("{LEGACY_PLAINTEXT_NOTE}");
     }
+    let encrypted_total = total_encrypted_rows(&settings);
     let excluded_total = total_excluded_rows(&settings);
     let untested_total = total_untested_rows(&settings);
     println!(
-        "SETTINGS TOTAL: {settings_total} row(s) — {cleartext_total} positively cleartext, {excluded_total} EXCLUDED from that headline (INVALID, undeterminable, or machine-bound untested). This total is NEVER added to, or read as, the LEDGER TOTAL above, which counts a different table."
+        "SETTINGS TOTAL: {settings_total} row(s) — {cleartext_total} positively cleartext, {encrypted_total} resolved encrypted, {excluded_total} EXCLUDED from that headline (INVALID, undeterminable, or machine-bound untested). This total is NEVER added to, or read as, the LEDGER TOTAL above, which counts a different table."
     );
     if excluded_total > 0 {
         println!("{EXCLUDED_ROWS_NOTE}");
