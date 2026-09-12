@@ -3,6 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DataManagementScreen from '@/features/settings/DataManagementScreen';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
+// Overridden per-test through vi.mocked, the pattern ui/src/test-setup.ts:136 documents.
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 // ── Shared mocks ─────────────────────────────────────────────────
 
@@ -169,7 +171,7 @@ describe('DataManagement — Backup', () => {
     await waitFor(() => expect(screen.getByText('Create backup now')).toBeInTheDocument());
     await user.click(screen.getByText('Create backup now'));
     // Was `expect(mockCreateBackup).toHaveBeenCalled()`. The harness provides a session token
-    // (test-setup.ts:113 -> HARNESS_SESSION_TOKEN), so the screen takes the permission-checked
+    // (test-setup.ts:161 -> HARNESS_SESSION_TOKEN), so the screen takes the permission-checked
     // path and the unscoped mock is never called -- the old assertion only passed while the
     // scoped mock delegated to it. Asserting the scoped command is the whole point: create_backup
     // writes a full copy of the database and enforces nothing, while create_backup_scoped
@@ -254,5 +256,74 @@ describe('DataManagement — Backup', () => {
     await waitFor(() => {
       expect(screen.getByText('data-mgmt-backup-never')).toBeInTheDocument();
     });
+  });
+});
+
+// ── KNOWN-HAZARD PIN ───────────────────────────────────────────────────
+
+/**
+ * What the screen does TODAY with no workspace session token: it calls the
+ * UNGATED pair, which checks no permission at all, so permissions::DATA_EXPORT is
+ * skipped on a path a human clicks. Recorded, not endorsed.
+ *
+ * The state is reachable in a normal install, not a corner: the token is minted
+ * only when an instance is resolvable, so ui/src/contexts/WorkspaceContext.tsx
+ * :469-473 returns without ever minting one and :463 returns without a user id,
+ * while :215, :274, :319 and :507 null an EXISTING token with this screen still
+ * mounted. The page's own requiredRole: 'owner' gate does not cover it either,
+ * because AppShell.tsx:368 reads session?.role_name — a different credential.
+ *
+ * Every other test in this file was blind to it: ui/src/test-setup.ts:161 seeds
+ * HARNESS_SESSION_TOKEN for all renders, so all of them take the gated path.
+ *
+ * IF BACKUP GATING LANDS, INVERT THIS TEST, DO NOT DELETE IT. Once
+ * create_backup / get_backup_status enforce the permission in Rust (see event
+ * backup_ungated_no_session in crates/oz-bridge/src/data.rs), or the screen stops
+ * calling them tokenlessly, flip these expectations to the scoped names or to a
+ * refusal. A flipped test keeps recording the decision; a deleted one leaves the
+ * fix as unobserved as the hole was.
+ */
+describe('DataManagement — Backup with NO session token (known hazard, not a goal)', () => {
+  it('calls the UNGATED backup pair when no session token exists', async () => {
+    const user = userEvent.setup();
+    // Nothing else in this file ever reaches the unscoped mocks, so this is the
+    // first test whose call counts could be polluted in either direction.
+    vi.clearAllMocks();
+    mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
+    mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
+    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
+    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
+    const harnessWorkspace = useWorkspace();
+    vi.mocked(useWorkspace).mockReturnValue({ ...harnessWorkspace, sessionToken: null });
+    try {
+      render(<DataManagementScreen />);
+      await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
+      // Mount path: the else branch of the ternary in DataManagementScreen.tsx.
+      // Messages name the command, so a red run says which door was used instead
+      // of saying "a spy was not called".
+      expect(
+        mockGetBackupStatus,
+        "expected the UNGATED get_backup_status (checks no permission) to be the command called",
+      ).toHaveBeenCalled();
+      expect(
+        mockGetBackupStatusScoped,
+        "expected get_backup_status_scoped NOT to run; a call there means DATA_EXPORT was checked",
+      ).not.toHaveBeenCalled();
+
+      await clickTab('Backup');
+      await waitFor(() => expect(screen.getByText('Create backup now')).toBeInTheDocument());
+      await user.click(screen.getByText('Create backup now'));
+      await waitFor(() => expect(mockCreateBackup).toHaveBeenCalled());
+      expect(
+        mockCreateBackup,
+        "expected the UNGATED create_backup (writes a full db copy, checks nothing) to be the command called",
+      ).toHaveBeenCalled();
+      expect(
+        mockCreateBackupScoped,
+        "expected create_backup_scoped NOT to run; a call there means DATA_EXPORT was checked",
+      ).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(useWorkspace).mockReturnValue(harnessWorkspace);
+    }
   });
 });

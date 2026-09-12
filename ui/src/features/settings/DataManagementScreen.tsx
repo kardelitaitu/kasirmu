@@ -223,9 +223,22 @@ function DataManagementScreenContent() {
   // ── Load backup status on mount ─────────────────────────────────
 
   useEffect(() => {
-    // ADR #7 conditional scoping, matching exportData/importPreview/importData in this same
-    // file (:305, :370, :426). get_backup_status_scoped enforces permissions::DATA_EXPORT;
-    // the unscoped command takes no token at all.
+    // NOT a designed gradation. The three lines this replaced called the shape
+    // "ADR #7 conditional scoping", as if falling back were the plan. Measured, it is
+    // a hole: the workspace token is NOT guaranteed for an authenticated owner. It is
+    // minted only when an instance is resolvable — ui/src/contexts/WorkspaceContext.tsx
+    // :469-473 bails without ever minting one, :463 bails without a user id, and :215,
+    // :274, :319, :507 null an EXISTING token while the shell and this screen stay
+    // mounted. So the else branch is reachable in a normal install, not a corner, and
+    // it calls get_backup_status, which checks nothing: permissions::DATA_EXPORT is
+    // skipped here and at :262. This page's requiredRole: 'owner' gate
+    // (features/settings/register.tsx:31) is a DIFFERENT credential — AppShell.tsx:368
+    // reads session?.role_name, never this token — so passing the gate proves nothing
+    // about holding one. Ledger: scripts/verify-scoped-coverage.sh:57, allowlisted at
+    // :100 alongside create_backup. Left OPEN on purpose: gating it would deny backup
+    // to installs that can never hold a token (offline, no admin instance). It is now
+    // LOUD — event backup_ungated_no_session in crates/oz-bridge/src/data.rs — and
+    // pinned by a known-hazard test in ui/src/__tests__/DataManagementBackup.test.tsx.
     const fetchStatus = sessionToken
       ? () => getBackupStatusScoped(sessionToken)
       : () => getBackupStatus();
