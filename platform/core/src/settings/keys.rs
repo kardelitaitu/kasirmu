@@ -341,20 +341,18 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 ///
 /// Built FROM the constants, as the two lists above are - never from retyped
 /// literals, so renaming a key value moves the guard with it.
-/// ONE named exception, recorded rather than forgotten: sync_enabled is NOT in
-/// this list, even though a peer flipping it tenant-wide belongs behind the same
-/// door. It is pinned as an ordinary key by
-/// raw_tests::an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_refused_at_ingest
-/// (platform/core/src/settings/raw_tests.rs:734-739), which asserts that BOTH
-/// untrusted lanes admit the folded spelling of it - and that file is outside the
-/// fence this change was briefed under. Closing the exception is one line here
-/// (move SYNC_ENABLED back into the list) plus moving that one leg to the refusal
-/// side of that test; it is a fence collision, not a judgement that the name is
-/// safe. Measured, not assumed: with SYNC_ENABLED in the list below,
-/// cargo test -p platform-core --lib is red at raw_tests.rs:736 and the other 371
-/// pass. Tracked in .agents/egress-surface.md.
+/// SIX names, and the sixth one cost a pin to add. sync_enabled sat outside this
+/// list for one commit because raw_tests pinned the folded spelling
+/// "  sync_enabled\t" as the example of an ordinary key that survives the
+/// normalisation fold - and a name on this list is by definition not that.
+/// Resolved by moving the EXAMPLE, not by deleting the leg
+/// (raw_tests.rs:732-760 now folds "  ui.locale\t"), because the assertion was
+/// the thing under test and the name was only ever a stand-in. Recorded here so
+/// nobody re-derives that collision at four in the morning: when a fold-leg
+/// example and a refusal list disagree, change the example.
 pub const PEER_NAMED_HAZARD_KEYS: &[&str] = &[
     SYNC_SERVER_URL,
+    SYNC_ENABLED,
     PG_SYNC_HOST,
     PG_SYNC_USER,
     PG_SYNC_DBNAME,

@@ -1490,10 +1490,11 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 ///   (crates/oz-core/src/sync_auth.rs:72 sends Authorization: Bearer <sync api key>
 ///   to whatever this row says), so the plant exfiltrates a credential without
 ///   ever naming a credential key.
-/// * sync_enabled - switches the transport on or off tenant-wide, and the ONE name
-///   in the set this commit does not close: refusing it red-pins
-///   raw_tests.rs:734-739, which asserts both untrusted lanes admit it. Recorded on
-///   the list itself and in .agents/egress-surface.md, not quietly dropped.
+/// * sync_enabled - switches the transport on or off tenant-wide. The one name in
+///   the set that had to be bought: it was the example a fold-leg pin used for
+///   "an ordinary key", and the example moved to ui.locale
+///   (raw_tests.rs:732-760) rather than the leg being deleted. Six doors, six
+///   refusals, no silent member lost.
 /// * pg_sync.host / pg_sync.user / pg_sync.dbname - repoint where this install
 ///   reads its reference data from. The password stays deny-listed; the destination
 ///   does not, and the destination is the half an attacker needs.
@@ -1511,12 +1512,12 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 fn remote_settings_update_refuses_the_named_hazard_set() {
     let store = setup_store();
     let queue = SyncQueue::new();
-    // sync_enabled is deliberately ABSENT from this list - it is the sixth door
-    // and this commit leaves it open. See the named exception documented on
-    // keys::PEER_NAMED_HAZARD_KEYS: its refusal collides with a pinned verdict in
-    // raw_tests.rs:734-739, a file outside this change's fence.
+    // Six names, six legs. The count is the point: a set that quietly loses a
+    // member is how the twelve stayed a twelve, so the list length is asserted
+    // below rather than trusted.
     let hazard = [
         ("hz-url", "sync_server_url"),
+        ("hz-enabled", "sync_enabled"),
         ("hz-pg-host", "pg_sync.host"),
         ("hz-pg-user", "pg_sync.user"),
         ("hz-pg-dbname", "pg_sync.dbname"),
@@ -1557,6 +1558,10 @@ fn remote_settings_update_refuses_the_named_hazard_set() {
             open.push(format!("{key} (written by the LEGACY dispatcher)"));
         }
     }
+    // The count is pinned as well as the behaviour: a hazard list that quietly
+    // loses a member keeps every other leg green, and the change still reads as
+    // the one that was briefed. Six names, six legs on the atomic door.
+    assert_eq!(hazard.len(), 6, "the named hazard set is six doors");
     assert!(
         open.is_empty(),
         "RED UNTIL THE HAZARD SET LANDS: {} refusal checks are still open across the six hazard names (six on the atomic door, two on the legacy door): {:?}",
@@ -1765,6 +1770,7 @@ fn ingestible_keys_cover_the_ui_egress_call_sites() {
 fn a_hazard_name_refused_from_the_network_still_travels_in_a_package() {
     for key in [
         "sync_server_url",
+        "sync_enabled",
         "pg_sync.host",
         "pg_sync.user",
         "pg_sync.dbname",

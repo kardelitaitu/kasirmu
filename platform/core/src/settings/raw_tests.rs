@@ -731,11 +731,43 @@ fn an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_r
     }
     // And the fold did not over-reach: ordinary keys stay non-manager and
     // still travel on both untrusted lanes, exact or sloppy.
-    for key in [keys::STORE_NAME, "STORE.NAME", "  sync_enabled\t"] {
+    //
+    // The third leg is the trim-and-fold leg, and its EXAMPLE moved here on
+    // 13-09-26 - from "  sync_enabled\t" to "  ui.locale\t" - when
+    // sync_enabled went onto keys::PEER_NAMED_HAZARD_KEYS. The leg is the thing
+    // under test (normalisation must not widen a refusal into a name nobody
+    // listed), and sync_enabled had only ever been the exemplar somebody picked
+    // before there was a reason to pick it. Deleting the leg to dodge the
+    // collision would have removed the only proof that the fold leaves ordinary
+    // names alone; the assertion is unchanged, the example is what was wrong.
+    //
+    // Why ui.locale is safe to pin as ordinary: it is a declared key
+    // (keys::UI_LOCALE), it sits on neither SECRET_KEY_DENY_LIST nor
+    // NON_EXPORTABLE_DEVICE_KEYS, it matches no manager prefix family, and it is
+    // one of the names ordinary operation replicates - a remote that stopped
+    // applying it would break the Settings page for every tenant, which is the
+    // property that keeps this leg from being quietly edited away later.
+    for key in [keys::STORE_NAME, "STORE.NAME", "  ui.locale\t"] {
         assert!(!is_manager_owned_key(key), "{key:?} is not manager-owned");
         assert!(
             IngestPolicy::PortablePackage.admits(key) && IngestPolicy::RemoteSync.admits(key),
             "an ordinary key must still travel on both untrusted lanes: {key:?}"
+        );
+    }
+    // And the fold cuts the other way too, which is the half that matters now
+    // that a third list exists: a hazard name arriving sloppy must still be
+    // REFUSED. Trimming and case-folding are one shared step
+    // (keys::normalised_candidate), so the RemoteSync arm cannot be walked past
+    // by padding a name - the spelling the exclusion lists see is the spelling
+    // every lane sees.
+    for key in ["  sync_enabled\t", "  SYNC_ENABLED  ", "\tPg_Sync.Host\n"] {
+        assert!(
+            !IngestPolicy::RemoteSync.admits(key),
+            "{key:?} is a peer-named hazard in sloppy clothing and must still be refused"
+        );
+        assert!(
+            IngestPolicy::PortablePackage.admits(key),
+            "{key:?} must still ride in a package: the hazard refusal belongs to one lane"
         );
     }
 }
