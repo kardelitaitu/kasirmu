@@ -530,23 +530,20 @@ fn hardware_settings_dto_serde_roundtrip() {
 
 /// The orphan-cleanup keys in `get_hardware_settings` must stay
 /// in sync with the constants in `platform_core::settings::keys`.
-/// If this test fails, update the `hw_keys` array.
+///
+/// Converted in the same pass as the license pin below, because it had the
+/// identical tautological shape: it retyped `"printer.connection"` and the other
+/// four **inside this test** and compared those transcriptions to the constants,
+/// so both sides of the equality were written by hand in one file. It stayed
+/// green however `settings.rs` moved and went red only when the test was edited.
+/// Now it sweeps `SETTINGS_RS` — `include_str!` of the real producer — and asks
+/// the two questions worth asking: does the producer name only declared keys in
+/// these families, and are all of the family constants still named there at all.
+/// A red run means `settings.rs` or `keys.rs` changed, not this file.
 #[test]
 fn hw_orphan_keys_match_platform_core_constants() {
-    use platform_core::settings::keys;
-    let expected = [
-        keys::PRINTER_CONNECTION,
-        keys::PRINTER_DEVICE_PATH,
-        keys::PRINTER_PAPER_SIZE,
-        keys::SCANNER_DEVICE_ID,
-        keys::SCANNER_INPUT_MODE,
-    ];
-    // These must match the hw_keys array in get_hardware_settings.
-    assert_eq!(expected[0], "printer.connection");
-    assert_eq!(expected[1], "printer.device_path");
-    assert_eq!(expected[2], "printer.paper_size");
-    assert_eq!(expected[3], "scanner.device_id");
-    assert_eq!(expected[4], "scanner.input_mode");
+    assert_producer_names_only_declared_keys(SETTINGS_RS, "settings.rs", "PRINTER_");
+    assert_producer_names_only_declared_keys(SETTINGS_RS, "settings.rs", "SCANNER_");
 }
 
 // ── Managed-key write guard (review MED-1) ─────────────────────
@@ -760,6 +757,146 @@ fn is_credential_family(name: &str) -> bool {
         "AUTH_TOKEN",
     ];
     MARKERS.iter().any(|marker| name.contains(marker))
+}
+
+/// `license.rs` and `settings.rs`, read as TEXT, so a sweep can look at what the
+/// writers actually say rather than at this file's recollection of it. A table
+/// here that retypes those spellings can only ever compare a transcription to a
+/// constant: it would go red by being edited and stay green while the producer
+/// drifted, which is the one thing a drift pin must not do. Same mechanism as
+/// [`KEYS_RS`] above, applied to the consumers.
+const LICENSE_RS: &str = include_str!("license.rs");
+const SETTINGS_RS: &str = include_str!("settings.rs");
+
+/// Suffixes that make a dotted literal a filename rather than a settings key.
+const NON_KEY_SUFFIXES: &[&str] = &[
+    ".rs", ".sql", ".json", ".toml", ".md", ".db", ".txt", ".css", ".ts", ".tsx",
+];
+
+/// Every string literal in a Rust source text, comments removed and backslash
+/// escapes honoured, so a key named in prose can never be mistaken for a key a
+/// call actually writes.
+fn string_literals(source: &str) -> Vec<String> {
+    let chars: Vec<char> = source.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        if c == '/' && next == Some('/') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == '/' && next == Some('*') {
+            i += 2;
+            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            i += 2;
+            continue;
+        }
+        if c == '"' {
+            i += 1;
+            let mut lit = String::new();
+            while i < chars.len() && chars[i] != '"' {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    lit.push(chars[i + 1]);
+                    i += 2;
+                } else {
+                    lit.push(chars[i]);
+                    i += 1;
+                }
+            }
+            i += 1;
+            out.push(lit);
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Whether a literal has the shape of a `family.leaf` settings key.
+///
+/// Deliberately conservative — dotted, lowercase, nothing the registry never
+/// spells. An underscore-only key (`machine_id`, `smtp_config`) is outside the
+/// shape rule, and a drift there is caught by the reverse leg below, which
+/// requires every constant of a swept family to still be named by the producer.
+fn looks_like_a_settings_key(lit: &str) -> bool {
+    let bytes = lit.as_bytes();
+    lit.len() >= 4
+        && lit.len() <= 48
+        && bytes[0].is_ascii_lowercase()
+        && lit.contains('.')
+        && !lit.starts_with('.')
+        && !lit.ends_with('.')
+        && !lit.contains("..")
+        && !lit.contains("__")
+        && !lit.ends_with('_')
+        && !NON_KEY_SUFFIXES.iter().any(|suffix| lit.ends_with(suffix))
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'.' || *b == b'_')
+}
+
+/// The swept assertion, run once per producer-and-family pair.
+///
+/// Forward: every key-shaped literal the producer actually wrote, in that
+/// family, must be a value `keys.rs` declares. Both directions of a rename trip
+/// this, because the writer's bytes are compared against the registry's bytes —
+/// nothing in this test file names a spelling at all.
+///
+/// Reverse: every declared constant of the family must still be named by the
+/// producer, either as a literal or through the constant. A writer that quietly
+/// stops naming a denied row is a fact worth a red line.
+fn assert_producer_names_only_declared_keys(source: &str, producer: &str, name_prefix: &str) {
+    let declared = declared_keys();
+    let families: Vec<(String, String)> = declared
+        .iter()
+        .filter(|(name, value)| name.starts_with(name_prefix) && looks_like_a_settings_key(value))
+        .cloned()
+        .collect();
+    assert!(
+        !families.is_empty(),
+        "keys.rs declares no {name_prefix}* constant with a dotted key: the parser broke, \
+         not the guard"
+    );
+    let swept: Vec<String> = string_literals(source)
+        .into_iter()
+        .filter(|lit| looks_like_a_settings_key(lit))
+        .collect();
+    assert!(
+        !swept.is_empty(),
+        "the sweep read no key-shaped literal out of {producer}: the include_str path \
+         moved or the parser broke"
+    );
+    for lit in &swept {
+        let prefix = format!("{}.", lit.split('.').next().unwrap_or_default());
+        if !families
+            .iter()
+            .any(|(_, value)| value.starts_with(prefix.as_str()))
+        {
+            continue;
+        }
+        assert!(
+            declared.iter().any(|(_, value)| value == lit),
+            "{producer} names the settings key {lit:?}, which no constant in \
+             platform/core/src/settings/keys.rs declares. The guard lists are built FROM \
+             those constants, so this row is written unguarded. Fix the call site or the \
+             registry — editing this test file cannot make this true."
+        );
+    }
+    for (name, value) in &families {
+        let named = source.contains(name.as_str()) || swept.iter().any(|lit| lit == value);
+        assert!(
+            named,
+            "keys.rs declares {name} = {value:?}, but {producer} names it neither as a \
+             literal nor through the constant: the guard now covers a row this producer \
+             does not write. Either name it, or retire the constant in the same commit."
+        );
+    }
 }
 
 #[test]
@@ -1493,87 +1630,49 @@ fn batch_refusal_inside_the_commands_own_transaction_writes_nothing() {
 
 // ── DRIFT PIN — the license rows must stay named by the constants ─────────
 
-/// A DRIFT PIN, not a behaviour test. `crates/oz-bridge/src/license.rs` writes
-/// its rows through the UNGUARDED `Settings::set_batch` door — four calls, at
-/// :181, :206, :231 and :313 — and two of those four pass RETYPED STRING
-/// LITERALS instead of naming the shared constants: seven literal rows, five
-/// distinct keys. `platform/core/src/settings/keys.rs:206-213` states the rule
-/// as plainly as it can be stated — the guard lists are built FROM the
-/// constants declared there, "never from retyped literals", exactly so that
-/// "renaming a key value moves the guard with it instead of silently dropping
-/// coverage". These license rows are the largest retyped group left in the
-/// tree, and nothing asserted the rule, so the rule was a comment.
+/// A DRIFT PIN, not a behaviour test. `license.rs` writes its rows through the
+/// UNGUARDED `Settings::set_batch` door, and it spells several of those keys as
+/// RETYPED STRING LITERALS instead of naming the shared constants.
+/// `platform/core/src/settings/keys.rs` states the rule as plainly as it can be
+/// stated — the guard lists are built FROM the constants declared there, "never
+/// from retyped literals", exactly so that "renaming a key value moves the guard
+/// with it instead of silently dropping coverage".
 ///
-/// Same hazard class as `edd605719` — one name spelled two ways, the two
-/// spellings free to drift — measured on the license rows rather than on the
-/// `smtp_config` duplicate name, and the same shape as
-/// `hw_orphan_keys_match_platform_core_constants` above, which already pins the
-/// printer/scanner group this way — the license group was the one left
-/// unasserted. This is NOT an open hole tonight: all five
-/// values are server-issued or locally minted and no renderer path reaches the
-/// key argument, so no operator action writes a different row today. The value
-/// of the assertion is that the next rename cannot move the guard off the row
-/// that exists without this test going red first.
+/// The guard side of that rule was never unasserted, and saying otherwise would
+/// be the second wrong claim this test has carried: clause (2) of
+/// [`every_credential_family_key_declared_in_keys_rs_is_blocked`] already fails
+/// on a deny-list entry that is a retyped literal rather than a declared key,
+/// and clause (3) fails on any entry dropped from either list. What had no
+/// assertion was the opposite seam — a WRITER drifting away from a constant —
+/// and that is the seam this test closes, by reading the writer.
 ///
-/// The table is the whole literal vocabulary of that file, not a sample: the
-/// two writes that already name their keys through constants (:206
-/// `keys::MACHINE_ID`, :231 `keys::HARDWARE_FINGERPRINT`) contribute no
-/// literal to compare, and every READER of these rows in the same file (:116,
-/// :252, :255, :474, :596, :597, :727, :762) uses one of the five spellings
-/// below. Both kinds of site are therefore named, and every literal in the
-/// table has a real constant — no row compares a spelling to itself.
+/// `LICENSE_RS` is `include_str!` of the real producer, so every spelling below
+/// is lifted out of the file it comes from. The first version of this test
+/// carried a hand-typed table of five spellings and compared that transcription
+/// to the constants: it could only go red by being edited, and stayed green
+/// while `license.rs` drifted, which is a decoration wearing a drift pin's
+/// name. If a reader is ever tempted to restate a spelling in here, that
+/// temptation is the bug — nothing in this function should know what the key is
+/// called.
 ///
-/// Deliberately narrow: spelling against constant, nothing else. No claim here
-/// about the VALUES stored under these keys and none about whether a value
-/// was encrypted — the license readers carry their own legacy-plaintext
-/// tolerance, pinned in the platform-core settings suite.
+/// Same hazard class as `edd605719` (one name, two spellings, free to drift) and
+/// the same mechanism as [`KEYS_RS`], aimed at a consumer instead of the
+/// registry. Not an open hole tonight either way: these values are server-issued
+/// or locally minted and no renderer path reaches the key argument. And nothing
+/// here claims anything about the VALUES stored under these keys, nor about
+/// whether a value was encrypted — the license readers carry their own
+/// legacy-plaintext tolerance, pinned in the platform-core settings suite.
 #[test]
-fn license_writer_literals_are_still_the_shared_key_constants_byte_for_byte() {
-    use platform_core::settings::keys;
-    // (spelling as written at the call site, the constant behind it, its name,
-    //  the sites) — byte for byte, so a one-character drift is red.
-    let table: &[(&str, &str, &str, &str)] = &[
-        (
-            "license.payload",
-            keys::LICENSE_PAYLOAD,
-            "LICENSE_PAYLOAD",
-            "license.rs:184 (activate) and :306 (renew)",
-        ),
-        (
-            "license.signature",
-            keys::LICENSE_SIGNATURE,
-            "LICENSE_SIGNATURE",
-            "license.rs:185 (activate) and :307 (renew)",
-        ),
-        (
-            "license.tenant_id",
-            keys::LICENSE_TENANT_ID,
-            "LICENSE_TENANT_ID",
-            "license.rs:186, :310; read at :252",
-        ),
-        (
-            "license.api_key",
-            keys::LICENSE_API_KEY,
-            "LICENSE_API_KEY",
-            "license.rs:187; read at :116, :255, :474, :727, :762",
-        ),
-        (
-            "license.phone",
-            keys::LICENSE_PHONE,
-            "LICENSE_PHONE",
-            "license.rs:188",
-        ),
-    ];
-    for (literal, constant, constant_name, sites) in table {
-        assert_eq!(
-            *literal, *constant,
-            "{sites} spells the settings key {literal:?} as a literal, but \
-             platform_core::settings::keys::{constant_name} is now {constant:?}. \
-             The deny list is built FROM that constant (rule: \
-             platform/core/src/settings/keys.rs:206-213), so this write has moved \
-             off the guarded row and the row it actually lands on is unguarded. \
-             Route the call site through the constant, or rename the two together \
-             in license.rs — do not fix this by editing the expectation here."
-        );
-    }
+fn license_writer_literals_are_swept_from_license_rs_not_from_a_transcription() {
+    assert_producer_names_only_declared_keys(LICENSE_RS, "license.rs", "LICENSE_");
+    // And the sweep really is reading a file that spells these things, so a moved
+    // include_str path can never pass by finding nothing.
+    let swept: Vec<String> = string_literals(LICENSE_RS)
+        .into_iter()
+        .filter(|lit| looks_like_a_settings_key(lit))
+        .collect();
+    assert!(
+        swept.len() >= 5,
+        "expected the license writer to name at least five key literals, swept {swept:?}"
+    );
 }
