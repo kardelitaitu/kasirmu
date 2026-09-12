@@ -21,6 +21,7 @@ use crate::seed_demo::run_seed_demo;
 
 pub(crate) mod backup;
 pub(crate) mod catalog;
+pub(crate) mod credential_deltas;
 pub(crate) mod customer;
 pub(crate) mod db;
 pub(crate) mod ozpkg;
@@ -33,6 +34,7 @@ pub(crate) mod user;
 // every family handler visible without enumerating them here.
 pub(crate) use backup::*;
 pub(crate) use catalog::*;
+pub(crate) use credential_deltas::*;
 pub(crate) use customer::*;
 pub(crate) use db::*;
 pub(crate) use ozpkg::*;
@@ -88,6 +90,7 @@ pub fn run() -> Result<()> {
             dry_run,
         }) => run_import_ozpkg(&conn, &input, &password, dry_run),
         Some(Command::SeedDemo(args)) => run_seed_demo(&conn, &args),
+        Some(Command::CredentialDeltas(args)) => run_credential_deltas(&conn, &args),
         None => {
             let mut cmd = Cli::command();
             cmd.print_help()?;
