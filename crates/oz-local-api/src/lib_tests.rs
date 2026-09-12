@@ -522,3 +522,53 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
     handle.stop_async().await;
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+// ── DRIFT PIN — these four spellings against the manager-prefix gate ──────
+
+/// A DRIFT PIN, not a behaviour test, and the half platform-core cannot write:
+/// `platform_core::settings::is_manager_owned_key` gates the untrusted ingest
+/// lanes on two hardcoded prefix literals (`raw.rs:723-726`), while the
+/// `local_api.*` keys this manager actually writes are spelled HERE and are
+/// named nowhere below — only [`SETTINGS_SECRET`] has a declared mirror
+/// (`platform_core::settings::keys::LOCAL_API_SECRET`, "mirrors
+/// `oz_local_api::SETTINGS_SECRET`", keys.rs:215-218). [`SETTINGS_ENABLED`],
+/// [`SETTINGS_PORT`] and [`SETTINGS_STORE`] have no name at all down there.
+///
+/// So if a spelling here moves and the literal does not, the live key of the
+/// manager stops being refused at `.ozpkg` and remote-sync ingest, and
+/// `managed_key_owner` in the desktop bridge answers `None` for it too: the
+/// write carries neither refusal nor label. That is a WIDENED admission, the
+/// direction this subsystem does not forgive, and it would be silent. Red the
+/// other way as well — retype the literal and these four stop matching it.
+///
+/// Landed in this crate rather than in platform-core because it is the one
+/// that already sees both sides: `oz-local-api` depends on `platform-core
+/// (`crates/oz-local-api/Cargo.toml`), and `platform-core` must NOT depend on
+/// it. `crates/oz-bridge` and `crates/oz-core` can neither: neither has an
+/// `oz-local-api` dependency, and no edge was added to force one.
+#[test]
+fn drift_pin_local_api_settings_keys_stay_manager_owned() {
+    use platform_core::settings::is_manager_owned_key;
+    use platform_core::settings::keys as platform_keys;
+
+    for key in [
+        SETTINGS_ENABLED,
+        SETTINGS_PORT,
+        SETTINGS_SECRET,
+        SETTINGS_STORE,
+    ] {
+        assert!(
+            is_manager_owned_key(key),
+            "{key} is written by the Local API manager but the ingest gate no longer recognises its prefix: the spelling here and the prefix literal in platform-core/settings/raw.rs have drifted apart, so both untrusted lanes now ADMIT this live key and the bridge labels it None. Rename together, or not at all."
+        );
+    }
+
+    // The one pair that is a declared copy rather than a shared name: if these
+    // two stop being the same bytes, the credential deny list and the manager
+    // gate cover different rows and neither side says so.
+    assert_eq!(
+        platform_keys::LOCAL_API_SECRET,
+        SETTINGS_SECRET,
+        "platform-core mirrors this key by literal, so the mirror and the original must stay byte-identical"
+    );
+}

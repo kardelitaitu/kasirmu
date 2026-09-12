@@ -739,3 +739,69 @@ fn an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_r
         );
     }
 }
+
+// ── DRIFT PIN — the prefix literals inside `is_manager_owned_key` against ──
+// the constants that spell the manager's real keys ────────────────────────
+
+/// A DRIFT PIN, not a behaviour test. The behaviour already has owners in this
+/// file (`manager_owned_prefixes_follow_the_policy` and
+/// `an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_refused_at_ingest`),
+/// both of which mix constants with hand-written literals in one list, so a
+/// failure there says "a policy answer changed". This one names ONLY the
+/// constants, so a red run can mean exactly one thing: the two prefix literals
+/// inside [`is_manager_owned_key`] and the `keys::` constants have stopped
+/// agreeing.
+///
+/// It goes red in BOTH directions of a rename, and the two directions are not
+/// equal:
+///
+/// * Rename a CONSTANT (`keys::LAN_SERVER_PSK` → `"lan.psk"`) and the literals
+///   stop matching what the manager actually writes, so the predicate answers
+///   `false` for a live manager key. Both untrusted ingest lanes then ADMIT it,
+///   and `managed_key_owner` (`crates/oz-bridge/src/settings.rs:99`) answers
+///   `None` for it too — the write carries neither a refusal nor a label. A
+///   WIDENED admission, and a silent one: the failure mode this subsystem has
+///   been treating as unforgivable all night.
+/// * Retype the LITERALS and the predicate over-claims instead: an ordinary row
+///   refused where it should travel, and a generic label where a real owner
+///   belongs. Still a bug, merely the survivable direction — the negative leg
+///   below is what sees it.
+///
+/// Why a pin and not a unification: the bridge already DERIVES its prefixes
+/// from these same constants (`family_prefix(LOCAL_API_SECRET)`), so what can
+/// drift is literal-against-constant, and one assertion is red on either move
+/// without any production line changing. Folding the two literals into an
+/// owner table would be a policy rewrite, not a drift fix.
+///
+/// Every constant platform-core names inside these two families IS
+/// manager-owned, so none is excused here: `LOCAL_API_SECRET`,
+/// `LAN_SERVER_PSK`, `LAN_SERVER_BIND`. It names no others —
+/// `local_api.enabled`, `local_api.port` and `local_api.store_id` are spelled
+/// only in `crates/oz-local-api/src/lib.rs`, because platform-core must not
+/// depend on that crate (`keys.rs:215-218`: `LOCAL_API_SECRET` is its declared
+/// mirror). Those four are pinned from the side that CAN see both halves, in
+/// that crate's own suite; no dependency edge was added to make this file
+/// reach them.
+#[test]
+fn drift_pin_manager_prefix_literals_still_match_the_key_constants() {
+    for key in [
+        keys::LOCAL_API_SECRET,
+        keys::LAN_SERVER_PSK,
+        keys::LAN_SERVER_BIND,
+    ] {
+        assert!(
+            is_manager_owned_key(key),
+            "{key:?} is a manager-owned settings key but is_manager_owned_key no longer recognises it: the prefix literal in raw.rs and the constant that spells the manager key have drifted apart, so both untrusted ingest lanes now ADMIT it and the label lookup answers None. Move one to meet the other; do not delete this assertion."
+        );
+    }
+    // The survivable direction, still worth seeing: a literal shortened to a
+    // stem, or dropped to an empty prefix, claims ordinary rows too — and
+    // ordinary rows travelling on both untrusted lanes is what the rest of this
+    // suite assumes.
+    for key in [keys::STORE_NAME, keys::SMTP_CONFIG, keys::SYNC_SERVER_URL] {
+        assert!(
+            !is_manager_owned_key(key),
+            "{key:?} belongs to the generic settings surface, not to a lifecycle manager: the prefix rule has widened past the two families it owns."
+        );
+    }
+}
