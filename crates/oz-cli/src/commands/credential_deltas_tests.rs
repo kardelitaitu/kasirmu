@@ -352,3 +352,204 @@ fn every_deny_listed_key_is_a_delete_candidate() {
     assert_eq!(total_rows(&deleted), SECRET_KEY_DENY_LIST.len());
     assert_eq!(total_ledger_rows(&conn), 0);
 }
+
+// -- The live settings census (report-only, never deletable) -----------------
+
+/// A sentinel that no production writer would ever store: if it shows up in the
+/// rendered report, a value leaked.
+const CENSUS_SENTINEL: &str = "CENSUS-SENTINEL-never-print-44-chars-lookalike";
+
+/// The census answers the question the ledger never could: how many credential
+/// rows sit in the table the app actually reads.
+#[test]
+fn settings_census_counts_a_live_cleartext_row_by_key_and_form() {
+    let conn = fresh_db();
+    Settings::set(&conn, STRIPE_API_KEY, CENSUS_SENTINEL).unwrap();
+    Settings::set(&conn, STORE_NAME, "Outlet Kopi").unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        total_settings_rows(&rows),
+        1,
+        "only the deny-listed key is censused, got {rows:?}"
+    );
+    assert_eq!(rows[0].key, STRIPE_API_KEY);
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        1,
+        "a key with no crypto family cannot have sealed this row, so it is cleartext"
+    );
+    let lines = format_setting_counts(&rows);
+    assert_eq!(lines.len(), 1);
+    assert!(
+        lines[0].contains(STRIPE_API_KEY) && lines[0].contains("form ="),
+        "the line names the key and carries a form column: {}",
+        lines[0]
+    );
+    for text in &lines {
+        assert!(
+            !text.contains(CENSUS_SENTINEL),
+            "the census printed a value: {text}"
+        );
+    }
+}
+
+/// THE CONSERVATISM ASSERTION: a live settings row for a deny-listed key is
+/// REPORTED and NOT DELETED even under --confirm, while the ledger rows for the
+/// same key do go. Without this, the census reads as a dry run for a purge of
+/// the table the app is running on.
+#[test]
+fn confirm_deletes_the_ledger_rows_and_leaves_every_settings_row_alone() {
+    let conn = fresh_db();
+    for key in [STRIPE_API_KEY, SYNC_API_KEY] {
+        Settings::set(&conn, key, CENSUS_SENTINEL).unwrap();
+        Settings::write_delta(&conn, key, CENSUS_SENTINEL, "term-1").unwrap();
+    }
+    assert_eq!(
+        total_settings_rows(&scan_credential_settings(&conn).unwrap()),
+        2,
+        "precondition: both live rows are reported"
+    );
+
+    run_credential_deltas(&conn, &CredentialDeltasArgs { confirm: true }).unwrap();
+
+    for key in [STRIPE_API_KEY, SYNC_API_KEY] {
+        assert_eq!(
+            Settings::get(&conn, key).unwrap().as_deref(),
+            Some(CENSUS_SENTINEL),
+            "--confirm must not delete or blank the live settings row for {key}"
+        );
+        assert_eq!(
+            delta_row_count(&conn, key),
+            0,
+            "the ledger row for {key} is the only thing this command may delete"
+        );
+    }
+    assert_eq!(
+        total_settings_rows(&scan_credential_settings(&conn).unwrap()),
+        2,
+        "the settings census is unchanged by the purge"
+    );
+}
+
+/// The form column is the point, so it must disagree when the data does: an
+/// encrypted row reads encrypted, a legacy plaintext row on a sealed key reads
+/// LEGACY-PLAINTEXT, and a hand-authored value that merely LOOKS like
+/// ciphertext reads INVALID instead of being resolved into the cleartext
+/// headline. Printing the ambiguity is required behaviour.
+#[test]
+fn the_form_column_separates_encrypted_from_legacy_plaintext_from_ambiguous() {
+    let conn = fresh_db();
+    Settings::set_sync_api_key(&conn, "sealed-sync-key").unwrap();
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::Encrypted, 1)],
+        "a row the family authenticates reads encrypted, got {rows:?}"
+    );
+    assert_eq!(total_cleartext_rows(&rows), 0);
+
+    Settings::set(&conn, SYNC_API_KEY, "legacy-plaintext-before-2026-08-29").unwrap();
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        1,
+        "the legacy row on a sealed key is the cleartext this census exists to count: {rows:?}"
+    );
+
+    let decoy = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    Settings::set(&conn, SYNC_API_KEY, decoy).unwrap();
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::Invalid, 1)],
+        "ciphertext-shaped but undecryptable must read INVALID, never cleartext: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        0,
+        "the ambiguous row is NOT resolved into the cleartext headline"
+    );
+    assert!(
+        !format_setting_counts(&rows)[0].contains(decoy),
+        "the ambiguity is printed as a label, never as the value"
+    );
+}
+
+/// A mistyped --db is created EMPTY by Connection::open, so the old behaviour
+/// was a confident zero about a file that did not exist a moment ago. The run
+/// now refuses before it can reassure anyone, and names the path.
+#[test]
+fn a_database_with_no_settings_table_is_refused_naming_the_path() {
+    let dir = std::env::temp_dir().join(format!("oz-census-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("ghost.db");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+
+    let err = require_store_database(&conn).expect_err("an empty database must be refused");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("ghost.db") && msg.contains(SETTINGS_TABLE),
+        "the refusal must name the path and the missing table, got: {msg}"
+    );
+    assert!(
+        msg.contains("oz backup"),
+        "the refusal must name the way to take a copy, got: {msg}"
+    );
+
+    let run_err = run_credential_deltas(&conn, &CredentialDeltasArgs { confirm: true })
+        .expect_err("the command must refuse the empty database too");
+    assert!(
+        run_err.to_string().contains("ghost.db"),
+        "the operator must see which path was refused: {run_err}"
+    );
+    drop(conn);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The two populations stay apart in the text as well as in the code, and the
+/// stale count pair must not come back.
+#[test]
+fn the_report_keeps_ledger_and_settings_totals_apart_and_says_why() {
+    let conn = fresh_db();
+    Settings::set(&conn, STRIPE_API_KEY, CENSUS_SENTINEL).unwrap();
+    for _ in 0..3 {
+        Settings::write_delta(&conn, STRIPE_API_KEY, CENSUS_SENTINEL, "term-1").unwrap();
+    }
+
+    let ledger = total_rows(&scan_credential_deltas(&conn).unwrap());
+    let settings = total_settings_rows(&scan_credential_settings(&conn).unwrap());
+    assert_eq!(
+        (ledger, settings),
+        (3, 1),
+        "three historical rows and one row in use: one key, two different questions"
+    );
+    for text in [
+        LEDGER_TOTAL_IS_NOT_A_MACHINE_COUNT,
+        SETTINGS_REPORT_ONLY,
+        HELP_BYTES_NOT_CONTENT,
+        LEGACY_PLAINTEXT_NOTE,
+        LONG_HELP.as_str(),
+    ] {
+        assert!(
+            !text.contains(CENSUS_SENTINEL),
+            "no notice may carry a stored value"
+        );
+    }
+    assert!(
+        HELP_BYTES_NOT_CONTENT.contains("journal_mode=WAL")
+            && HELP_BYTES_NOT_CONTENT.contains("oz backup"),
+        "the byte-level caveat must name the pragma and the copy command"
+    );
+    assert!(
+        SETTINGS_REPORT_ONLY.contains("smtp_config")
+            && SETTINGS_REPORT_ONLY.to_lowercase().contains("inert"),
+        "the report-only line must say WHY settings is never purged"
+    );
+    assert!(
+        !HYGIENE_NOT_REMEDIATION.contains("fourteen")
+            && !HYGIENE_NOT_REMEDIATION.contains("nine of"),
+        "the rotted count pair must not come back"
+    );
+}

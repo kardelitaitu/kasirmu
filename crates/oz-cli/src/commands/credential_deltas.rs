@@ -17,7 +17,10 @@
 //! it. No startup hook, no migration, no retention policy for non-credential
 //! keys (age-based retention that keeps the newest rows can never remediate
 //! credentials — a credential delta IS the newest row for its key).
-//! It does not touch the live `settings` table or the whole-file backup.
+//! The live `settings` table is READ by the census below and reported form by
+//! form, but this command NEVER writes or deletes a `settings` row, with or
+//! without `--confirm`: a ledger row is a copy nothing reads back, while a
+//! settings row IS the value in use. The whole-file backup stays out of scope.
 
 use std::sync::LazyLock;
 
@@ -51,38 +54,91 @@ pub(crate) const RESTART_WARNING: &str = concat!(
 );
 
 /// The sentence that matters most: this command is not a fix.
+///
+/// Deliberately COUNT-FREE. This sentence used to assert that "nine of the
+/// fourteen credential keys sit in plaintext" while the same run printed a
+/// deny list of seventeen — and the two numbers were not even measurements of
+/// the same population: fourteen is the size of the key fixture in
+/// `crates/oz-core/tests/credential_storage_form.rs` (a census of 14 keys chosen
+/// because they have setters to walk, not because the deny list has 14 rows),
+/// nine is how many of THOSE landed cleartext in that census, and seventeen is
+/// `SECRET_KEY_DENY_LIST.len()` today. Restating any of them here rots the day
+/// anyone edits either list or that fixture, and a rotting number in a warning
+/// line is worse than no number because it reads as measured. The count that is
+/// true is the one this run prints from the database in front of the operator.
 pub(crate) const HYGIENE_NOT_REMEDIATION: &str = concat!(
     "This is HYGIENE, not remediation. The delta ledger is the SECONDARY carrier; the dominant ",
-    "one is the live `settings` table, where nine of the fourteen credential keys sit in ",
-    "plaintext, plus every whole-file page copy (.db / .backup.db), which the CLI README already ",
-    "documents as the plaintext carrier. A perfect sweep of this table leaves the main problem ",
-    "untouched — running this and believing the exposure is closed is worse than running nothing."
+    "one is the live `settings` table, which the SETTINGS block below counts against THIS database ",
+    "on this run (no fixed key count is quoted here, because the last one quoted was a test ",
+    "fixture's population and rotted), plus every whole-file page copy (.db / .backup.db), which the ",
+    "CLI README already documents as the plaintext carrier. A perfect sweep of this ledger leaves the ",
+    "main problem untouched — running this and believing the exposure is closed is worse than ",
+    "running nothing."
 );
 
 /// What the command does, as the head of the long help.
 pub(crate) const HELP_HEAD: &str = concat!(
     "Report (default) or delete (--confirm) rows in the settings delta ledger `setting_updated` whose\n",
-    "key is on the credential deny list. Matching is by KEY NAME only, through the shared platform-core\n",
+    "key is on the credential deny list, AND report the live `settings` table's credential rows in a\n",
+    "separate SETTINGS block with their derived storage form. The two populations are counted, printed\n",
+    "and totalled SEPARATELY and are never added together: ledger rows are history, settings rows are\n",
+    "the value in use. Matching is by KEY NAME only, through the shared platform-core\n",
     "predicate, so every spelling of a listed key matches, not just its canonical one: the value column is\n",
     "bare TEXT,\n",
     "a plaintext secret and a ciphertext blob are indistinguishable without the key, and any\n",
     "value-shape heuristic would be wrong on real data. No value is ever printed or logged. The deny\n",
-    "list is imported from platform-core, never copied here. A bare invocation deletes nothing; the\n",
-    "delete requires --confirm and runs as one rusqlite transaction, printing a per-key row count."
+    "list is imported from platform-core, never copied here. A bare invocation deletes nothing;\n",
+    "--confirm deletes from the LEDGER ONLY — no flag ever makes this command delete a settings row."
 );
 
 /// What the command deliberately does not do, as the middle of the long help.
 pub(crate) const HELP_SCOPE: &str = concat!(
     "Out of scope on purpose: no startup hook, no migration, no retention policy for non-credential\n",
     "keys (age-based retention keeps the newest rows, and a credential delta IS the newest row for its\n",
-    "key), the live `settings` table, and the whole-file backup."
+    "key), DELETING from the live `settings` table (its rows are read and reported, never purged), and\n",
+    "the whole-file backup."
+);
+
+/// The byte-level caveat, in the help rather than discovered by an operator.
+/// `crate::commands::open_db` sets `PRAGMA journal_mode=WAL` on EVERY CLI path
+/// (unchanged by this command, deliberately), so even a bare report rewrites the
+/// database header and creates `<db>-wal` / `<db>-shm` beside the file. And
+/// `--db` defaults to `./oz-pos.db` in the CURRENT directory, which
+/// `Connection::open` will CREATE if it is not there.
+pub(crate) const HELP_BYTES_NOT_CONTENT: &str = concat!(
+    "READ-ONLY IN CONTENT, NOT BYTE-FOR-BYTE: a bare run updates no row and deletes nothing, but the\n",
+    "CLI opens the database with PRAGMA journal_mode=WAL, which persists WAL in the file header\n",
+    "(measured: byte 18 of the database header reads 2 after a run) and creates <db>-wal and\n",
+    "<db>-shm beside it for the duration of the run, so the bytes and the mtime DO change on a\n",
+    "report. A clean close checkpoints the sidecars away, so their absence afterwards is NOT\n",
+    "evidence the file was untouched. And --db defaults to ./oz-pos.db in the CURRENT DIRECTORY,\n",
+    "where opening a MISSING path creates one. Take a copy first and run the census on the copy:\n",
+    "oz backup --output <copy.db>, then oz credential-deltas --db <copy.db>. Do not do this to a\n",
+    "live store."
+);
+
+/// The line that keeps the SETTINGS block honest about what it will not do.
+pub(crate) const SETTINGS_REPORT_ONLY: &str = concat!(
+    "The settings rows above are REPORTED AND NOT PURGED, with or without --confirm: the delete lane\n",
+    "stays on the ledger. That is not timidity, it is that a settings row is the value the app is using\n",
+    "right now — deleting settings.sync.auth_token would be INERT (nothing reads that key back, which is\n",
+    "why it is on the list), while deleting settings.smtp_config would BREAK A WORKING MAILBOX. Same\n",
+    "table, same query, two different consequences, so nothing is deleted from it by this tool."
+);
+
+/// Why the ledger total cannot be read as a machine count.
+pub(crate) const LEDGER_TOTAL_IS_NOT_A_MACHINE_COUNT: &str = concat!(
+    "The LEDGER total is NOT the number of affected machines. One install appends many ledger rows per\n",
+    "key (one per tracked write, per terminal), so N rows is a count of historical WRITES, not of\n",
+    "installs or of live secrets. The count that answers 'how many machines' is the SETTINGS row count,\n",
+    "one row per key per install — which is exactly why the two blocks are printed apart."
 );
 
 /// The whole long help, assembled from the SAME constants the completion
 /// output prints, so the help text and the run can never disagree.
 pub(crate) static LONG_HELP: LazyLock<String> = LazyLock::new(|| {
     format!(
-        "{HELP_HEAD}\n\n{SAFETY_BASIS}\n\n{RESTART_WARNING}\n\n{HELP_SCOPE}\n\n{HYGIENE_NOT_REMEDIATION}"
+        "{HELP_HEAD}\n\n{SAFETY_BASIS}\n\n{RESTART_WARNING}\n\n{HELP_SCOPE}\n\n{HELP_BYTES_NOT_CONTENT}\n\n{SETTINGS_REPORT_ONLY}\n\n{HYGIENE_NOT_REMEDIATION}"
     )
 });
 
@@ -228,6 +284,280 @@ pub(crate) fn purge_credential_deltas(conn: &Connection) -> Result<DeltaCounts> 
     Ok(deleted)
 }
 
+/// The live table the settings census READS and never writes. Named here so the
+/// only settings statement this command builds is visible in one place: there is
+/// no DELETE against it at all, under any flag.
+pub(crate) const SETTINGS_TABLE: &str = "settings";
+
+/// The derived form of one stored credential value, as far as a tool that does
+/// not hold the plaintext can honestly say.
+///
+/// Indeterminate is PRINTED rather than resolved into a reassuring default: the
+/// value column is bare TEXT with no discriminator of any kind (see the module
+/// header, and the census in crates/oz-core/tests/credential_storage_form.rs
+/// which measures exactly that), so a report that guessed would be the lie this
+/// command exists to avoid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StoredForm {
+    /// A crypto family owns the key and AUTHENTICATED the value.
+    Encrypted,
+    /// A family owns the key and this value is not its ciphertext: a LEGACY row,
+    /// written before the family sealed that key (e105109f6, 2026-08-29, whose
+    /// setters pass legacy plaintext through on purpose) and never re-saved.
+    LegacyPlaintext,
+    /// A family owns the key, the shape says ciphertext, authentication failed.
+    Invalid,
+    /// No crypto family owns the key, so nothing at all can be asked of the value.
+    Indeterminate,
+    /// No family in this build can seal this key, so the value is cleartext by
+    /// construction rather than by inspection. Kept separate from Indeterminate
+    /// because the two say different things: this one is a measured claim about
+    /// the table, that one is an admission about the tool.
+    UnsealableCleartext,
+}
+
+impl StoredForm {
+    fn label(self) -> &'static str {
+        match self {
+            StoredForm::Encrypted => "encrypted",
+            StoredForm::LegacyPlaintext => "LEGACY-PLAINTEXT",
+            StoredForm::Invalid => "INVALID-CIPHERTEXT",
+            StoredForm::Indeterminate => "undeterminable(cannot be opened here)",
+            StoredForm::UnsealableCleartext => "CLEARTEXT(no family can seal this key)",
+        }
+    }
+
+    /// The forms that positively state the value sits in cleartext. INVALID and
+    /// INDETERMINATE are deliberately excluded: neither is a claim about the
+    /// bytes, and folding them in would inflate the headline with rows the tool
+    /// has not actually read.
+    pub(crate) fn is_cleartext(self) -> bool {
+        matches!(
+            self,
+            StoredForm::LegacyPlaintext | StoredForm::UnsealableCleartext
+        )
+    }
+}
+
+/// The decrypt half of a crypto family: the only question answerable about a
+/// value without knowing its plaintext.
+type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
+
+/// The four keys oz-crypto took over, and nothing else. Every other deny-listed
+/// key answers None: some of them are then reported cleartext BECAUSE no family
+/// can seal them, and the rest (local_api.secret, smtp_config) are reported
+/// undeterminable because a lane this crate cannot reach does seal them.
+fn credential_family(key: &str) -> Option<FamilyDecrypt> {
+    use oz_core::settings::keys;
+    match key {
+        keys::SYNC_API_KEY => Some(oz_core::crypto::decrypt_sync_api_key),
+        keys::SYNC_TERMINAL_SECRET => Some(oz_core::crypto::decrypt_sync_terminal_secret),
+        keys::PG_SYNC_PASSWORD => Some(oz_core::crypto::decrypt_pg_sync_password),
+        keys::RATE_SYNC_API_KEY => Some(oz_core::crypto::decrypt_rate_api_key),
+        _ => None,
+    }
+}
+
+/// Keys this build cannot seal but ANOTHER lane can: the bridge machine-binds
+/// local_api.secret, and smtp_config is a JSON envelope whose password FIELD is
+/// sealed while the rest of the row is in the clear. Neither is openable from
+/// here, so both answer Indeterminate rather than a guess about their bytes.
+fn sealed_in_another_lane(key: &str) -> bool {
+    use oz_core::settings::keys;
+    matches!(key, keys::LOCAL_API_SECRET | keys::SMTP_CONFIG)
+}
+
+/// A local restatement of the PRIVATE oz_crypto::looks_like_ciphertext, copied
+/// for the same reason the census copies it: there is no public discriminator to
+/// call, which is itself the finding. Used ONLY to split a FAILED decrypt into
+/// INVALID (it tried to be ciphertext) versus LEGACY-PLAINTEXT (it never was).
+/// It never decides alone that a value is encrypted, because a 44-character
+/// base64 plaintext decoy passes it.
+fn looks_like_ciphertext_shape(value: &str) -> bool {
+    const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-";
+    // A 12-byte nonce plus a 16-byte tag is 38 base64 characters at minimum.
+    value.len() >= 38 && value.chars().all(|c| ALPHABET.contains(c))
+}
+
+/// Classify one stored value. It reads the value and returns only a form:
+/// nothing derived from the value escapes this function.
+fn classify_stored_value(key: &str, value: &str) -> StoredForm {
+    let Some(decrypt) = credential_family(key) else {
+        if sealed_in_another_lane(key) {
+            return StoredForm::Indeterminate;
+        }
+        // No family here and none claimed elsewhere: nothing in this build could
+        // have sealed the value, which is a statement about the key, not about
+        // the bytes. That is why it is not Indeterminate.
+        return StoredForm::UnsealableCleartext;
+    };
+    if value.trim_start().starts_with('{') {
+        // A JSON envelope (smtp_config): only the password FIELD inside it is
+        // sealed, so neither encrypted nor cleartext describes the row.
+        return StoredForm::Indeterminate;
+    }
+    match decrypt(value) {
+        Ok(_) => StoredForm::Encrypted,
+        Err(_) if looks_like_ciphertext_shape(value) => StoredForm::Invalid,
+        Err(_) => StoredForm::LegacyPlaintext,
+    }
+}
+
+/// One deny-listed key's live settings rows: how many, and in which forms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SettingFormRow {
+    pub key: &'static str,
+    pub rows: usize,
+    pub forms: Vec<(StoredForm, usize)>,
+}
+
+/// The whole settings census.
+pub(crate) type SettingCounts = Vec<SettingFormRow>;
+
+impl SettingFormRow {
+    /// Form labels for the printed line. More than one appears when a key has
+    /// several stored spellings in the same table (BINARY collation makes
+    /// stripe.api_key and STRIPE.API_KEY two distinct rows), and the disagreement
+    /// is shown rather than collapsed away.
+    fn form_summary(&self) -> String {
+        self.forms
+            .iter()
+            .map(|(form, count)| {
+                if *count == 1 {
+                    form.label().to_string()
+                } else {
+                    format!("{} x{count}", form.label())
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" + ")
+    }
+
+    /// Rows of this key that are positively cleartext.
+    pub(crate) fn cleartext_rows(&self) -> usize {
+        self.forms
+            .iter()
+            .filter(|(form, _)| form.is_cleartext())
+            .map(|(_, count)| *count)
+            .sum()
+    }
+}
+
+/// Census the LIVE settings table for credential rows. READ ONLY.
+///
+/// It reads key and value, because the value is what a crypto family is asked
+/// about, and prints neither: what leaves this function is a canonical key name,
+/// a count and a form label. Membership comes through
+/// [`canonical_credential_key`] and so through [`is_secret_setting_key`], the
+/// SAME shared predicate the ledger count, the write funnel and the read-back
+/// use, so this tool holds exactly one fold and no second opinion about what a
+/// credential key is. A key the predicate claims but the fold cannot label is an
+/// ERROR here too, never a silent skip.
+pub(crate) fn scan_credential_settings(conn: &Connection) -> Result<SettingCounts> {
+    let mut rows: SettingCounts = Vec::new();
+    let sql = format!("SELECT key, value FROM {SETTINGS_TABLE}");
+    let mut stmt = conn
+        .prepare(&sql)
+        .with_context(|| format!("reading the {SETTINGS_TABLE} table"))?;
+    let found = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .with_context(|| format!("reading the {SETTINGS_TABLE} table"))?;
+    for row in found {
+        let (stored, value) = row.context("reading settings rows")?;
+        let Some(canonical) = canonical_credential_key(&stored)? else {
+            continue;
+        };
+        let form = classify_stored_value(canonical, &value);
+        if !rows.iter().any(|r| r.key == canonical) {
+            rows.push(SettingFormRow {
+                key: canonical,
+                rows: 0,
+                forms: Vec::new(),
+            });
+        }
+        let entry = rows
+            .iter_mut()
+            .find(|r| r.key == canonical)
+            .expect("row pushed immediately above");
+        entry.rows += 1;
+        match entry.forms.iter_mut().find(|(known, _)| *known == form) {
+            Some((_, count)) => *count += 1,
+            None => entry.forms.push((form, 1)),
+        }
+    }
+    // Deny-list order, so the two blocks list the same keys in the same order.
+    rows.sort_by_key(|row| {
+        SECRET_KEY_DENY_LIST
+            .iter()
+            .position(|key| *key == row.key)
+            .unwrap_or(usize::MAX)
+    });
+    Ok(rows)
+}
+
+/// Total live rows across the census.
+pub(crate) fn total_settings_rows(rows: &SettingCounts) -> usize {
+    rows.iter().map(|row| row.rows).sum()
+}
+
+/// The headline of the settings block: live rows that are POSITIVELY cleartext.
+/// Undeterminable rows are not folded into it; they are printed beside it, so
+/// the size of the unknown is visible instead of implied.
+pub(crate) fn total_cleartext_rows(rows: &SettingCounts) -> usize {
+    rows.iter().map(SettingFormRow::cleartext_rows).sum()
+}
+
+/// Render the settings census in the SAME line shape as the ledger block,
+/// right-aligned count then the key, with a form column appended, so an operator
+/// comparing the halves is reading one format twice. No value appears.
+pub(crate) fn format_setting_counts(rows: &SettingCounts) -> Vec<String> {
+    rows.iter()
+        .map(|row| {
+            format!(
+                "{:>6} row(s)  key = {}  form = {}",
+                row.rows,
+                row.key,
+                row.form_summary()
+            )
+        })
+        .collect()
+}
+
+/// Refuse a database that is not a store database BEFORE reporting a clean zero
+/// against it: the in-scope half of the path footgun.
+///
+/// --db defaults to ./oz-pos.db in the CURRENT directory and Connection::open
+/// CREATES a missing path, so a mistyped database opened an empty file, every
+/// count here returned zero, and the command reported "nothing to delete" about
+/// a file it had just made. Checking that both tables exist is the strongest
+/// claim available from a borrowed &Connection, and the message names the
+/// resolved path so an operator learns where the ghost came from. The CREATE
+/// itself belongs to commands::open_db, is shared by every subcommand, and is
+/// deliberately not changed from this file.
+pub(crate) fn require_store_database(conn: &Connection) -> Result<()> {
+    let path = conn
+        .path()
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "<unknown path>".to_string());
+    for table in [SETTINGS_TABLE, LEDGER_TABLE] {
+        let present: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                params![table],
+                |row| row.get(0),
+            )
+            .with_context(|| format!("looking for the {table} table"))?;
+        if present == 0 {
+            anyhow::bail!(
+                "the database at {path} has no {table} table, so it is not a migrated OZ-POS store and every count below would read zero. Note that --db defaults to ./oz-pos.db in the CURRENT directory and opening a MISSING path CREATES one, so this file may have been made by the very command meant to inspect it. Point --db at a real store, or take a copy first with oz backup --output <copy.db> and run this against the copy."
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Render `(key, count)` pairs as text. Values are never part of this.
 pub(crate) fn format_delta_counts(counts: &DeltaCounts) -> Vec<String> {
     counts
@@ -241,10 +571,29 @@ pub(crate) fn total_rows(counts: &DeltaCounts) -> usize {
     counts.iter().map(|(_, count)| *count).sum()
 }
 
-/// `oz credential-deltas` — report, or delete with `--confirm`.
+/// Why a LEGACY-PLAINTEXT verdict on one of the four sealed keys is not an
+/// incident: the at-rest encryption arrived on 2026-08-29 (e105109f6) and the
+/// setters pass a legacy plaintext value straight through, so a row written
+/// before that date and never re-saved is still cleartext at rest today,
+/// indefinitely. Only the FORM separates that from a live bug, which is the
+/// reason the census prints the form instead of a single yes/no.
+pub(crate) const LEGACY_PLAINTEXT_NOTE: &str = concat!(
+    "A LEGACY-PLAINTEXT form on a key that HAS a crypto family (sync_api_key, ",
+    "sync_terminal_secret, pg_sync.password, rate_sync.api_key) is a row written before ",
+    "2026-08-29 and never re-saved, not a current bug: the encrypting setters pass legacy ",
+    "plaintext through on purpose. A cleartext form on any OTHER listed key means nothing in ",
+    "this build can seal it at all. The two read alike and mean different things — one is an ",
+    "incident, the other is hygiene — and only the form tells you which you are looking at."
+);
+
+/// `oz credential-deltas` — report both populations, delete from the ledger only.
 pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasArgs) -> Result<()> {
+    require_store_database(conn)?;
     let found = scan_credential_deltas(conn)?;
     let found_total = total_rows(&found);
+    let settings = scan_credential_settings(conn)?;
+    let settings_total = total_settings_rows(&settings);
+    let cleartext_total = total_cleartext_rows(&settings);
 
     println!("{}", LONG_HELP.as_str());
     println!();
@@ -252,6 +601,9 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
         "Deny list: {} keys, imported from platform-core (never copied into this crate).",
         SECRET_KEY_DENY_LIST.len()
     );
+    println!();
+
+    println!("---- 1 of 2: LEDGER [{LEDGER_TABLE}] — deletable ----");
     if found_total == 0 {
         println!("Ledger rows for deny-listed keys: 0 — nothing to delete.");
     } else {
@@ -263,15 +615,37 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
             println!("  {line}");
         }
     }
+    println!("LEDGER TOTAL: {found_total} row(s). {LEDGER_TOTAL_IS_NOT_A_MACHINE_COUNT}");
     println!();
+
+    println!("---- 2 of 2: LIVE SETTINGS [{SETTINGS_TABLE}] — REPORT ONLY, never deleted ----");
+    if settings_total == 0 {
+        println!("Settings rows for deny-listed keys: 0.");
+    } else {
+        println!(
+            "CLEARTEXT HEADLINE: {cleartext_total} of {settings_total} live settings row(s) hold a deny-listed credential in cleartext. Form per key, as far as the value column can say:"
+        );
+        for line in format_setting_counts(&settings) {
+            println!("  {line}");
+        }
+        println!("{LEGACY_PLAINTEXT_NOTE}");
+    }
+    println!(
+        "SETTINGS TOTAL: {settings_total} row(s) — {cleartext_total} positively cleartext, {} NOT claimed either way (INVALID or undeterminable). This total is NEVER added to, or read as, the LEDGER TOTAL above, which counts a different table.",
+        settings_total - cleartext_total
+    );
+    println!("{SETTINGS_REPORT_ONLY}");
+    println!();
+
     println!("{SAFETY_BASIS}");
     println!("{RESTART_WARNING}");
     println!();
 
     if !args.confirm {
         println!(
-            "NOTHING DELETED — a bare invocation only reports. Re-run with --confirm to delete."
+            "NOTHING DELETED — a bare invocation only reports. Re-run with --confirm to delete the LEDGER rows above; --confirm will not delete any SETTINGS row above either."
         );
+        println!("{HELP_BYTES_NOT_CONTENT}");
         println!("{HYGIENE_NOT_REMEDIATION}");
         return Ok(());
     }
@@ -279,16 +653,19 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
     let deleted = purge_credential_deltas(conn)?;
     let deleted_total = total_rows(&deleted);
     if deleted_total == 0 {
-        println!("Deleted 0 rows (nothing matched at delete time).");
+        println!("Deleted 0 LEDGER rows (nothing matched at delete time).");
     } else {
         println!(
-            "Deleted {deleted_total} row(s) across {} key(s) in one transaction:",
+            "Deleted {deleted_total} LEDGER row(s) across {} key(s) in one transaction:",
             deleted.len()
         );
         for line in format_delta_counts(&deleted) {
             println!("  {line}");
         }
     }
+    println!(
+        "Deleted 0 row(s) from [{SETTINGS_TABLE}]: the settings census is report-only and no flag changes that."
+    );
     println!("{HYGIENE_NOT_REMEDIATION}");
     Ok(())
 }
