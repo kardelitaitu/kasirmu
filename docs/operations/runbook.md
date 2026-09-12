@@ -820,6 +820,123 @@ on both engines and the SQLite copy needs no ≥ 3.30 FILTER support.
 On a hosted read, run it as the schema owner or per tenant inside a
 transaction that opens with `SET LOCAL oz.tenant_id = '<tenant>'` (§6.3).
 
+### 8.8 Legacy cleartext credential rows — how to look, and the one-machine fix
+
+This is a **dev-machine and locally-built-binary note, not an incident
+procedure.** Transparent encryption at rest for the sync / PG / rate-sync
+credentials arrived at `e105109f6` (2026-08-29), and it deliberately passes a
+legacy plaintext value through instead of failing, so an install already holding
+one keeps working. The key it now encrypts, `sync_api_key`, had been written raw
+since it first existed at `2ea09a595` (2026-06-29) — a **61-day primary window**.
+A row written in that window and never re-saved is still stored in the clear
+today, and nothing converts it by itself. The published-release version of the
+question does not arise: `v0.0.5` is the only tag in the repository, it predates
+the window's close, nothing was ever published against it, and zero releases
+exist. So the population is a workstation, or a binary you built, and the fix
+below is for one machine at a time.
+
+The grep that produced the zero — re-run it rather than trusting this sentence:
+`git grep -lE "encrypt|decrypt|cipher" tags/v0.0.5 -- platform/core/src/settings`
+→ **0 files**. Tree-wide at that same tag the identical pattern hits 6 files and
+none of them is the settings lane, so the zero is about these accessors, not about
+the repository having no crypto vocabulary at all.
+
+**1. Look — read-only, and it prints keys and forms, never values.**
+
+```sql
+-- Device form: sqlite3 <the per-install .db the app already uses>
+SELECT key,
+       length(value) AS chars,
+       CASE
+         WHEN trim(value) = ''                       THEN 'EMPTY — never written, nothing to convert'
+         WHEN length(value) >= 38
+              AND value NOT GLOB '*[^A-Za-z0-9_-]*' THEN 'BASE64-SHAPED — read step 2'
+         ELSE 'NOT-SHAPED — cleartext, re-save it'
+       END AS form
+  FROM settings
+ WHERE key IN ('sync_api_key','sync.auth_token','sync_terminal_secret',
+               'pg_sync.password','redis.url','rate_sync.api_key','lan_server.psk',
+               'local_api.secret','smtp_config','license.api_key','license.payload',
+               'license.signature','license.tenant_id','license.phone',
+               'stripe.api_key','square.api_key','midtrans.server_key')
+ ORDER BY form DESC, key;
+```
+
+That key list is `SECRET_KEY_DENY_LIST` in `platform/core/src/settings/keys.rs` —
+copy it from there if it has moved since this section was written, and note that
+the comparison in `is_non_exportable_setting_key` is trim-then-ASCII-case-fold,
+so an oddly spelled row is judged on its folded form. The 38-character floor comes
+from `looks_like_ciphertext` in `crates/oz-crypto/src/lib.rs`: a 12-byte nonce and
+a 16-byte GCM tag minimum, base64url without padding. On PostgreSQL the same
+thinking applies but `GLOB` does not exist — use `value !~ '^[A-Za-z0-9_-]+$'` for
+the inverted class.
+
+**2. Read the rung, not the column.** Three rungs, and the middle one is weaker
+than it sounds:
+
+- **`NOT-SHAPED`** → cleartext. Certain.
+- **`BASE64-SHAPED`** → either a genuine ciphertext or a plaintext that happens to
+  look like one. The stored bytes cannot tell you which, and the envelope carries no
+  prefix, no version byte and no marker to check: a hand-authored value in that
+  character class is indistinguishable by inspection.
+- **`BASE64-SHAPED` and it authenticates** → encrypted against someone who does not
+  have the source. That is the whole of it; see the block below.
+
+> ⚠️ **The portable family keys are obfuscation, not confidentiality — and one rung
+> is out of reach from the row alone.** For these credentials
+> `encrypt_sync_api_key` and its siblings derive through `portable_key`, whose
+> fallback is `derive_key` over SHA-256 of the domain prefix concatenated with the
+> literal `"static"` — not machine-bound. The crate says so about itself, plainly,
+> in the threat-model note on `derive_static_key` in `crates/oz-crypto/src/lib.rs`:
+> that key is a public constant, anyone with the repository can derive it and
+> decrypt every portable at-rest value in any deployment's database, and what the
+> encoding buys is protection against opportunistic inspection of the file, not
+> confidentiality. Read the ladder that way: a `NOT-SHAPED` row is cleartext to
+> anyone who can open it, and a `BASE64-SHAPED` row is cleartext to anyone holding
+> both the file and the source.
+>
+> And the branch no query can see. If `OZ_MASTER_KEY` (64 hex chars) was set in the
+> environment that wrote the row, the value went through the HMAC derivation
+> instead, so it will NOT authenticate under the portable key on a machine where
+> that variable is absent — a shaped row that fails to decrypt is therefore not
+> evidence of tampering and not evidence of cleartext either; it may simply be a
+> different derivation. For the process in front of you, ask the code rather than
+> guessing: `oz_crypto::master_key_derivation_active()` reports which derivation
+> this process selected, and nothing else — a historical install may have had the
+> variable set and be long gone. Whether these families should move to
+> machine-bound derivation is a rewrap decision, and it is deliberately not taken
+> here: it changes what every existing install can read back.
+
+**3. Fix one machine — re-save the credential, do not edit the row.** Open
+Settings, on the surface that owns the field (Cloud sync, PostgreSQL sync, exchange
+rate sync, LAN server), type the credential in again and save. The save goes
+through the typed setter, which encrypts on the way in, so this is a single-key
+targeted conversion with no migration, no batch mutation and no downtime. Re-run
+step 1 afterwards: it is read-only and idempotent, and it is the only evidence that
+the row actually moved. Two limits worth saying plainly. Re-saving converts only a
+key you still know — if you no longer know it, rotate it at the provider and enter
+the replacement, which was the better hygiene outcome before you needed to. And
+where a form preserves the stored secret instead of rewriting it, saving its other
+field converts nothing; step 1 shows you exactly that, so read it after every fix,
+not before.
+
+**4. What not to do.**
+
+- **Do not hand-edit `settings.value`.** The encrypted form cannot be written by
+  hand: it is produced by the setter, and a value you wrap yourself fails to
+  authenticate on read — and the read path tolerates that failure by handing the
+  malformed string back to the caller as though it were the secret. That behaviour
+  is pinned as a *known hazard*, not as a contract, by the `known_hazard_*` tests in
+  `platform/core/src/settings/tests.rs`; turning it into an error is that crate's
+  own recorded next step and a runbook cannot shortcut it.
+- **Do not aim `oz credential-deltas purge` at the settings table.** That lane
+  walks the `setting_updated` delta ledger and its delete path belongs there; the
+  live settings row is untouched by it on purpose, which is the property that makes
+  the purge safe to run at all.
+- **Do not bulk-rewrite values in SQL** for tidiness. Step 3 is one credential at a
+  time precisely so that a mistaken save costs one credential.
+
+
 ---
 
 ---
