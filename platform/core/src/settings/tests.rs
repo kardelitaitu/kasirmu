@@ -1624,3 +1624,234 @@ fn brand_primary_colour_roundtrip_and_clear() {
     Settings::set_brand_primary_colour(&conn, "").unwrap();
     assert_eq!(Settings::get_brand_primary_colour(&conn).unwrap(), "");
 }
+
+// ── Mixed-generation reads: pre-encryption rows in the encrypted secret columns ──
+//
+// Five typed getters in `typed.rs` read a secret as
+// `decrypt(value).unwrap_or(value)`:
+//
+//   typed.rs:334  get_sync_api_key          -> decrypt_sync_api_key
+//   typed.rs:361  get_sync_terminal_secret  -> decrypt_sync_terminal_secret
+//   typed.rs:437  get_pg_sync_password      -> decrypt_pg_sync_password
+//   typed.rs:553  get_rate_sync_api_key     -> decrypt_rate_api_key
+//   typed.rs:639  get_lan_server_psk        -> decrypt_lan_psk
+//
+// That `unwrap_or` is load-bearing, not sloppiness. An install whose row
+// predates the setters encrypting still holds a PLAINTEXT `sync_api_key`,
+// `pg_sync.password` or `lan_server.psk` in the table, nothing ever rewrites
+// it, and the fallback is the only reason the store can read its own secret.
+// The property had no owner in this file — neither "legacy" nor "plaintext"
+// appeared anywhere in it before this section. Half one pins the read. Half
+// two pins, in the same file, the price the same tolerance pays, so a future
+// "surface decrypt failures" change (recorded at typed.rs:6-7) must answer
+// both at once.
+
+/// Insert a row straight into the `settings` table, bypassing every door on
+/// the write path — [`Settings::set`], the typed setters that encrypt first,
+/// and the tracked funnel with its policy and delta ledger. That is exactly
+/// what a row written by a pre-encryption build looks like on disk.
+fn seed_bare_row(conn: &Connection, key: &str, value: &str) {
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )
+    .unwrap();
+}
+
+/// A value with the exact shape of this crate's ciphertext — 64 URL-safe
+/// base64 characters decoding to 48 bytes, well past the `12 nonce + 16
+/// tag` floor that `oz_crypto`'s `looks_like_ciphertext` gate uses — which no
+/// key on any machine can decrypt, because every byte is zero so the
+/// AES-256-GCM tag check always fails. From the reader's side this is what a
+/// corrupted, truncated or tampered-with secret row looks like.
+const SHAPED_UNDECRYPTABLE: &str =
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+#[test]
+fn pinned_probe_values_are_the_two_shapes_this_path_cannot_tell_apart() {
+    // The referee is the crate's OWN format gate, reached through the public
+    // smtp reader — the one family (oz-crypto lib.rs:216-223) that separates
+    // "never encrypted" from "tampered". Used as a shape oracle only; the
+    // smtp key has nothing to do with the five columns below.
+    assert_eq!(
+        oz_crypto::decrypt_smtp_at_rest("sk-sync-legacy:0001").unwrap(),
+        "sk-sync-legacy:0001",
+        "the legacy sample must be a value the crate calls never-encrypted"
+    );
+    assert!(
+        oz_crypto::decrypt_smtp_at_rest(SHAPED_UNDECRYPTABLE).is_err(),
+        "the pinned value must be one the crate itself would call tampered,          not a legacy row — which is precisely what the five typed getters          below fail to do"
+    );
+}
+
+// Half one — the mixed-generation read an operator depends on. ──────────────
+
+#[test]
+fn legacy_plaintext_sync_api_key_reads_back_unchanged() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::SYNC_API_KEY, "sk-sync-legacy:0001");
+    // The row really is plaintext on disk: no write door encrypted it.
+    assert_eq!(
+        Settings::get(&conn, keys::SYNC_API_KEY).unwrap(),
+        Some("sk-sync-legacy:0001".into()),
+        "the seeded row must stand as stored, or this is not a legacy read"
+    );
+    assert_eq!(
+        Settings::get_sync_api_key(&conn).unwrap(),
+        Some("sk-sync-legacy:0001".into()),
+        "a sync key that never was encrypted must come back byte for byte"
+    );
+}
+
+#[test]
+fn legacy_plaintext_sync_terminal_secret_reads_back_unchanged() {
+    let conn = fresh();
+    seed_bare_row(
+        &conn,
+        keys::SYNC_TERMINAL_SECRET,
+        "terminal-secret-legacy:v1",
+    );
+    assert_eq!(
+        Settings::get(&conn, keys::SYNC_TERMINAL_SECRET).unwrap(),
+        Some("terminal-secret-legacy:v1".into())
+    );
+    assert_eq!(
+        Settings::get_sync_terminal_secret(&conn).unwrap(),
+        Some("terminal-secret-legacy:v1".into()),
+        "a paired terminal's pre-encryption secret must survive the read"
+    );
+}
+
+#[test]
+fn legacy_plaintext_pg_sync_password_reads_back_unchanged() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::PG_SYNC_PASSWORD, "legacy-pg-password!2019");
+    assert_eq!(
+        Settings::get(&conn, keys::PG_SYNC_PASSWORD).unwrap(),
+        Some("legacy-pg-password!2019".into())
+    );
+    assert_eq!(
+        Settings::get_pg_sync_password(&conn).unwrap(),
+        Some("legacy-pg-password!2019".into()),
+        "the PG sync password an install has been using since before          encryption-at-rest shipped must still read back unchanged"
+    );
+}
+
+#[test]
+fn legacy_plaintext_rate_sync_api_key_reads_back_unchanged() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::RATE_SYNC_API_KEY, "ratesync-legacy-key#77");
+    assert_eq!(
+        Settings::get(&conn, keys::RATE_SYNC_API_KEY).unwrap(),
+        Some("ratesync-legacy-key#77".into())
+    );
+    assert_eq!(
+        Settings::get_rate_sync_api_key(&conn).unwrap(),
+        Some("ratesync-legacy-key#77".into()),
+        "a never-encrypted rate provider key must read back byte for byte"
+    );
+}
+
+#[test]
+fn legacy_plaintext_lan_server_psk_reads_back_unchanged() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::LAN_SERVER_PSK, "lan-psk-legacy:alpha");
+    assert_eq!(
+        Settings::get(&conn, keys::LAN_SERVER_PSK).unwrap(),
+        Some("lan-psk-legacy:alpha".into())
+    );
+    assert_eq!(
+        Settings::get_lan_server_psk(&conn).unwrap(),
+        Some("lan-psk-legacy:alpha".into()),
+        "a LAN PSK written before the setter encrypted must still let the          KDS pair; that is the read this tolerance protects"
+    );
+}
+
+// Half two — the same tolerance, seen from the other side. A value that IS
+// ciphertext-shaped and merely FAILS authentication is indistinguishable, at
+// this call site, from the legacy rows above. So it comes back as garbage.
+//
+// THESE FIVE TESTS PIN A KNOWN HAZARD. They are not an endorsement of it: the
+// behaviour they assert is wrong, and the intent to change it is already
+// recorded in this crate's own audit header, typed.rs:6-7 ("next: surface
+// decrypt failures"). They are written so the hazard cannot be tightened
+// silently and cannot be tightened wrongly either — a guard that turns every
+// decrypt failure into an error BREAKS half one, because on this path "never
+// encrypted" and "tampered" look the same. Landing the fix therefore needs
+// the shape gate the smtp family already uses (oz-crypto lib.rs:216-223),
+// not a bare `.unwrap_or` removed.
+
+#[test]
+fn known_hazard_sync_api_key_hands_back_shaped_undecryptable_bytes() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::SYNC_API_KEY, SHAPED_UNDECRYPTABLE);
+    assert!(
+        oz_crypto::decrypt_sync_api_key(SHAPED_UNDECRYPTABLE).is_err(),
+        "premise: the value must fail the very decrypt this getter calls"
+    );
+    assert_eq!(
+        Settings::get_sync_api_key(&conn).unwrap(),
+        Some(SHAPED_UNDECRYPTABLE.into()),
+        "PIN OF KNOWN HAZARD (typed.rs:334): a tampered sync key is handed to          the caller as if it were the secret, silently"
+    );
+}
+
+#[test]
+fn known_hazard_sync_terminal_secret_hands_back_shaped_undecryptable_bytes() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::SYNC_TERMINAL_SECRET, SHAPED_UNDECRYPTABLE);
+    assert!(
+        oz_crypto::decrypt_sync_terminal_secret(SHAPED_UNDECRYPTABLE).is_err(),
+        "premise: the value must fail the very decrypt this getter calls"
+    );
+    assert_eq!(
+        Settings::get_sync_terminal_secret(&conn).unwrap(),
+        Some(SHAPED_UNDECRYPTABLE.into()),
+        "PIN OF KNOWN HAZARD (typed.rs:361): a tampered device secret is          signed with as if it were the secret, silently"
+    );
+}
+
+#[test]
+fn known_hazard_pg_sync_password_hands_back_shaped_undecryptable_bytes() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::PG_SYNC_PASSWORD, SHAPED_UNDECRYPTABLE);
+    assert!(
+        oz_crypto::decrypt_pg_sync_password(SHAPED_UNDECRYPTABLE).is_err(),
+        "premise: the value must fail the very decrypt this getter calls"
+    );
+    assert_eq!(
+        Settings::get_pg_sync_password(&conn).unwrap(),
+        Some(SHAPED_UNDECRYPTABLE.into()),
+        "PIN OF KNOWN HAZARD (typed.rs:437): base64 ciphertext is sent to          PostgreSQL as the password instead of erroring"
+    );
+}
+
+#[test]
+fn known_hazard_rate_sync_api_key_hands_back_shaped_undecryptable_bytes() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::RATE_SYNC_API_KEY, SHAPED_UNDECRYPTABLE);
+    assert!(
+        oz_crypto::decrypt_rate_api_key(SHAPED_UNDECRYPTABLE).is_err(),
+        "premise: the value must fail the very decrypt this getter calls"
+    );
+    assert_eq!(
+        Settings::get_rate_sync_api_key(&conn).unwrap(),
+        Some(SHAPED_UNDECRYPTABLE.into()),
+        "PIN OF KNOWN HAZARD (typed.rs:553): a tampered rate key is sent to          the provider as the API key, silently"
+    );
+}
+
+#[test]
+fn known_hazard_lan_server_psk_hands_back_shaped_undecryptable_bytes() {
+    let conn = fresh();
+    seed_bare_row(&conn, keys::LAN_SERVER_PSK, SHAPED_UNDECRYPTABLE);
+    assert!(
+        oz_crypto::decrypt_lan_psk(SHAPED_UNDECRYPTABLE).is_err(),
+        "premise: the value must fail the very decrypt this getter calls"
+    );
+    assert_eq!(
+        Settings::get_lan_server_psk(&conn).unwrap(),
+        Some(SHAPED_UNDECRYPTABLE.into()),
+        "PIN OF KNOWN HAZARD (typed.rs:639): the LAN server would run on 48          zero bytes as its pre-shared key rather than report a failure"
+    );
+}
