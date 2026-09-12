@@ -11,7 +11,8 @@ use rusqlite::Connection;
 
 use oz_core::settings::Settings;
 use oz_core::settings::keys::{
-    SECRET_KEY_DENY_LIST, SMTP_CONFIG, STORE_NAME, SYNC_API_KEY, is_secret_setting_key,
+    SECRET_KEY_DENY_LIST, SMTP_CONFIG, STORE_NAME, STRIPE_API_KEY, SYNC_API_KEY,
+    is_secret_setting_key,
 };
 
 fn fresh_db() -> Connection {
@@ -200,6 +201,137 @@ fn no_value_is_ever_printed_or_carried_in_the_output_text() {
     }
     run_credential_deltas(&conn, &CredentialDeltasArgs { confirm: true }).unwrap();
     assert_eq!(total_ledger_rows(&conn), 0);
+}
+
+/// THE CRITICAL TEST: the ledger `key` column is bare TEXT under BINARY
+/// collation, so a row written as `STRIPE.API_KEY` or `stripe.api_key ` is a
+/// distinct row that the deny-list constant matches neither by an SQL
+/// comparison nor by a hand-written `deny_key == key.as_str()`. The shared
+/// predicate `is_secret_setting_key` DOES match it — so until the tool asks
+/// the predicate, it reports zero for exactly the rows that carry cleartext.
+#[test]
+fn scan_and_purge_reach_variant_spellings_of_a_deny_listed_key() {
+    let conn = fresh_db();
+    // Two near-miss spellings of one deny-listed key, plus a non-credential
+    // row that must survive both passes.
+    Settings::write_delta(&conn, "STRIPE.API_KEY", "cleartext-upper", "term-1").unwrap();
+    Settings::write_delta(&conn, "stripe.api_key ", "cleartext-padded", "term-1").unwrap();
+    Settings::write_delta(&conn, STORE_NAME, "Outlet Kopi", "term-1").unwrap();
+    // Fixture repair (was missing, so the "live settings row is untouched"
+    // assertion below was vacuous — `write_delta` writes ONLY the ledger, never
+    // the `settings` table): seed the live row so "untouched" can be observed.
+    Settings::set(&conn, STORE_NAME, "Outlet Kopi").unwrap();
+    for key in ["STRIPE.API_KEY", "stripe.api_key "] {
+        assert!(
+            is_secret_setting_key(key),
+            "precondition: the shared predicate must see {key:?}"
+        );
+    }
+    assert_eq!(
+        delta_row_count(&conn, STRIPE_API_KEY),
+        0,
+        "precondition: no row is stored under the exact deny-list spelling"
+    );
+
+    let found = scan_credential_deltas(&conn).unwrap();
+    assert_eq!(
+        total_rows(&found),
+        2,
+        "the scan must count both variant spellings, got {found:?}"
+    );
+    assert_eq!(
+        delta_row_count(&conn, STORE_NAME),
+        1,
+        "the scan must not have touched the non-credential row"
+    );
+
+    let deleted = purge_credential_deltas(&conn).unwrap();
+    assert_eq!(
+        total_rows(&deleted),
+        2,
+        "the delete must remove both variant spellings, got {deleted:?}"
+    );
+    assert_eq!(delta_row_count(&conn, "STRIPE.API_KEY"), 0);
+    assert_eq!(delta_row_count(&conn, "stripe.api_key "), 0);
+    assert_eq!(
+        delta_row_count(&conn, STORE_NAME),
+        1,
+        "a non-credential ledger row survives the purge"
+    );
+    assert_eq!(
+        Settings::get(&conn, STORE_NAME).unwrap().as_deref(),
+        Some("Outlet Kopi"),
+        "the live settings row is untouched"
+    );
+}
+
+/// The same hole on the operator path: a bare invocation must not print
+/// "nothing to delete" while two cleartext credential rows sit in the table.
+#[test]
+fn a_bare_scan_reports_variant_spellings_instead_of_zero() {
+    let conn = fresh_db();
+    Settings::write_delta(&conn, "STRIPE.API_KEY", "cleartext-upper", "term-1").unwrap();
+    Settings::write_delta(&conn, "stripe.api_key ", "cleartext-padded", "term-1").unwrap();
+    Settings::write_delta(&conn, STORE_NAME, "Outlet Kopi", "term-1").unwrap();
+
+    run_credential_deltas(&conn, &CredentialDeltasArgs { confirm: false }).unwrap();
+    let found = scan_credential_deltas(&conn).unwrap();
+    assert_eq!(
+        total_rows(&found),
+        2,
+        "the reported count is the thing that can lie"
+    );
+    assert_eq!(
+        total_ledger_rows(&conn),
+        3,
+        "a bare invocation deletes nothing, variant spellings included"
+    );
+}
+
+/// The pair can never drift again: one run counts a variant spelling AND
+/// deletes it, and the two numbers are the same number. This replaces
+/// `delete_path_warning_fires_only_on_a_non_zero_count_and_names_the_lag`,
+/// which existed only to warn that the delete lagged the count — the delete now
+/// routes through the same shared predicate, so that warning would have been
+/// false, and a test asserting a false thing is worse than no test.
+#[test]
+fn a_counted_variant_spelling_is_deleted_in_the_same_run() {
+    let conn = fresh_db();
+    // Two variant spellings of one deny-listed key, plus a non-credential row
+    // that must survive both passes.
+    Settings::write_delta(&conn, "STRIPE.API_KEY", "cleartext-upper", "term-1").unwrap();
+    Settings::write_delta(&conn, "stripe.api_key ", "cleartext-padded", "term-1").unwrap();
+    Settings::write_delta(&conn, STORE_NAME, "Outlet Kopi", "term-1").unwrap();
+
+    let found = scan_credential_deltas(&conn).unwrap();
+    assert_eq!(
+        found,
+        vec![(STRIPE_API_KEY, 2usize)],
+        "both spellings fold onto the one canonical key for reporting"
+    );
+
+    let deleted = purge_credential_deltas(&conn).unwrap();
+    assert_eq!(
+        total_rows(&deleted),
+        total_rows(&found),
+        "the delete must remove exactly what the count counted"
+    );
+    assert_eq!(
+        deleted, found,
+        "same keys, same per-key counts — the pair cannot drift apart silently"
+    );
+    assert_eq!(delta_row_count(&conn, "STRIPE.API_KEY"), 0);
+    assert_eq!(delta_row_count(&conn, "stripe.api_key "), 0);
+    assert_eq!(
+        delta_row_count(&conn, STORE_NAME),
+        1,
+        "a non-credential ledger row is neither counted nor deleted"
+    );
+    assert_eq!(
+        total_rows(&scan_credential_deltas(&conn).unwrap()),
+        0,
+        "re-scanning after the purge finds nothing left to delete"
+    );
 }
 
 /// The command must key off the shared constant, not a local copy: every
