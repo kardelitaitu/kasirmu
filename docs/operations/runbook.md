@@ -663,7 +663,101 @@ SELECT id, sku, name, product_type
 > policy — for long-term diagnostics export the log stream before a
 > container is replaced.
 
+### 8.7 Converted-tender currency census (hosted data only)
+
+`migration 20260821_tender_currency.sql` added three nullable columns to the
+sale header — `base_currency`, `base_total_minor`, `tender_rate_millionths` —
+and its own comment records that **all three are NULL for single-currency
+sales, the common case**. The question this census answers is whether any
+hosted tenant has ever completed a currency conversion: a sale whose tender
+`currency` differs from its recorded `base_currency`.
+
+> 🛑 **Run this against hosted data. Every local store is empty.** Measured
+> 2026-09-12 on the dev machine: the six local databases hold **zero sales
+> rows**, so the question is undecidable on a workstation and any number read
+> from a local run is an artifact of an empty table. Re-measure that emptiness
+> rather than trusting this sentence — `SELECT COUNT(*) FROM sales;` is the
+> first statement in both blocks below for exactly that reason.
+
+**The three numbers are not equally bad news.** `base_currency_null_or_empty`
+is not a defect count: it is expected to be most of the table, because a
+single-currency sale legitimately stores no base currency. It is the
+denominator that makes the other two readable. Only `mismatch_all_time` and
+`mismatch_last_90d` count rows where both columns are present, non-empty, and
+differ.
+
+- **Non-zero mismatch** → those receipts cannot substantiate a completed
+  currency conversion, and there is paper in the world that cannot be
+  reconciled: the conversion happened, was printed, and the record does not
+  support it. Live exposure, escalate to the currency owner.
+- **Zero mismatch with a non-zero `sales_rows`** → the defect is **latent**.
+  The columns and the code path exist and nothing has exercised them; the work
+  is documentation plus a dormant code path, not remediation.
+- **`sales_rows = 0`** → the census means **nothing at all**. That is not a
+  zero-mismatch result, it is an absent measurement — the state of every
+  database on this machine tonight, and also the state an RLS-scoped
+  connection returns for a tenant that does have rows (§3.9, §6.3).
+
+SQLite form (per-install `.db`, the desktop/tablet lane):
+
+```sql
+SELECT COUNT(*) AS sales_rows FROM sales;  -- 0 ⇒ everything below is an absent measurement
+
+SELECT tenant_id,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                THEN 1 ELSE 0 END) AS mismatch_all_time,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                 AND created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-90 day')
+                THEN 1 ELSE 0 END) AS mismatch_last_90d,
+       SUM(CASE WHEN base_currency IS NULL OR base_currency = ''
+                THEN 1 ELSE 0 END) AS base_currency_null_or_empty,
+       COUNT(*)                    AS rows_for_tenant
+  FROM sales
+ GROUP BY tenant_id
+ ORDER BY mismatch_all_time DESC, tenant_id;
+```
+
+PostgreSQL form (the hosted `sales` table):
+
+```sql
+SELECT COUNT(*) AS sales_rows FROM sales;  -- 0 ⇒ check the RLS scope before believing it
+
+SELECT tenant_id,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                THEN 1 ELSE 0 END) AS mismatch_all_time,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                 AND created_at::timestamptz >= now() - interval '90 days'
+                THEN 1 ELSE 0 END) AS mismatch_last_90d,
+       SUM(CASE WHEN base_currency IS NULL OR base_currency = ''
+                THEN 1 ELSE 0 END) AS base_currency_null_or_empty,
+       COUNT(*)                    AS rows_for_tenant
+  FROM sales
+ GROUP BY tenant_id
+ ORDER BY mismatch_all_time DESC, tenant_id;
+```
+
+**What actually differs between the two engines.** Both declare
+`sales.currency TEXT NOT NULL`, both carry the three CUR-02 columns as nullable
+(`TEXT`/`BIGINT` in PG at `20260813_init.pg.sql:1028`, `TEXT`/`INTEGER` in
+SQLite), and both reach `tenant_id` — SQLite through
+`20260814_sales_tenant.sql`, PG from the init schema. `created_at` is `TEXT` in
+**both**, and in PG it is a `to_char(now() AT TIME ZONE 'UTC', …)` string, not a
+native timestamp (`20260813_init.pg.sql:1012`). So the only real divergence is
+the 90-day boundary: SQLite compares against a `strftime` text boundary, PG
+must cast `created_at::timestamptz` — or, if any malformed row makes that cast
+abort the scan, compare text against a `to_char`-formatted boundary instead.
+`SUM(CASE …)` is used rather than `COUNT(*) FILTER (WHERE …)` so one shape runs
+on both engines and the SQLite copy needs no ≥ 3.30 FILTER support.
+
+On a hosted read, run it as the schema owner or per tenant inside a
+transaction that opens with `SET LOCAL oz.tenant_id = '<tenant>'` (§6.3).
+
 ---
+
 ---
 
 ## 9. Website Deploy Token (Cloudflare) — lifecycle & rotation
