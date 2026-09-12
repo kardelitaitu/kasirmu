@@ -707,8 +707,10 @@ impl IngestPolicyKind for IngestPolicy {
 /// The candidate is folded exactly as the credential half of the same ingest
 /// boolean folds it — [`keys::is_non_exportable_setting_key`] trims and
 /// ASCII-case-folds through `keys::normalised_candidate`, and so does this,
-/// against the SAME shared fold (it is `pub(crate)` in `keys.rs` for exactly
-/// this reason; no second normalisation is written here). Before that, one
+/// against the SAME shared fold (it is `pub` in `keys.rs` because the two
+/// callers of the fold sit on opposite sides of the crate boundary — this gate
+/// inside platform-core, the owner label in `crates/oz-bridge/src/settings.rs`
+/// — and no second normalisation is written here). Before that, one
 /// boolean had two matching semantics inside it: `IngestPolicy::PortablePackage
 /// | RemoteSync` refused `STRIPE.API_KEY` on the credential arm while its
 /// manager arm `starts_with`-matched raw, so `LAN_SERVER.BIND` and
