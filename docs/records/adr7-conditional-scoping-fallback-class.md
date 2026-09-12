@@ -242,18 +242,36 @@ on which shell registers the command, not on the token.
 - **Four wrapper bodies were not read** — of the 13 named in §1. Which four is not recoverable from this
   record, so the sentence is a limit on coverage, not a finding about those four: treat their class as
   unverified rather than as a fourth shell gap waiting to be confirmed.
-- **This record was unreachable from the index, and half of that is now fixed.** Two negatives were
-  written here, each with its query. *Nothing regenerates the index on a schedule* — still true:
+- **This record was unreachable from the index. The generator half is fixed; the assertion half is
+  not, and the miss was never just this page.** Two negatives were written here, each with its query.
+  *Nothing regenerates the index on a schedule* — still true:
   `grep -rn 'generate-records-index' .githooks/ .github/workflows/*.yml scripts/check.sh` → no hits, run
   from the repo root, so the empty answer covers hooks, both live workflows and the local gate. *The
-  generator never scanned `docs/records/`* — **no longer true**, and the correction is the point: a
-  record added after this line was written is still invisible. `e3e5fcf54`
-  (fix(docs-index): scan docs/records so the index lists its own directory) made
-  `docs/records/` an enumerated root rather than only an output path, and HEAD's
-  `docs/records/README.md` now lists this page
-  (`git show HEAD:docs/records/README.md | grep -c 'adr7-conditional-scoping-fallback-class'` → 1). So
-  the generator half was code, it landed, and what remains is the assertion: nothing runs it, so the
-  index is fresh only because someone typed the command.
+  generator never scanned `docs/records/`* — no longer true: `e3e5fcf54` (fix(docs-index): scan
+  docs/records so the index lists its own directory) made `docs/records/` an enumerated root rather than
+  only an output path, and HEAD's `docs/records/README.md` lists this page
+  (`git show HEAD:docs/records/README.md | grep -c 'adr7-conditional-scoping-fallback-class'` → **1**, at
+  `:98`). The headline is this directory, not this file: **six records were invisible, not one.**
+  `git show --numstat e3e5fcf54` → `docs/records/README.md` +16/−1, and the index is 124 lines at
+  `e3e5fcf54^` against 139 at `e3e5fcf54` (`git show <sha>:docs/records/README.md | grep -c ''`); the six
+  added rows are `docs/records/README.md:97`–`:102` — the journal, this page, `audit-open-findings.md`,
+  the fluent page audit, `sqlite-pg-roles.md` and `statutory-rounding-and-estimate-stamps.md`. Tested
+  both directions: the same command run against the old generator returned the file byte-identical, so
+  the emptiness was the generator not seeing the directory, not the directory being empty. An empty diff
+  from a generator is a scope statement.
+  **So what is left is freshness, not coverage.** A record added to `docs/records/` from here on is
+  listed the moment anyone runs the script — the earlier sentence on this bullet said the opposite, and
+  that was the version this line replaces. The script can now answer the question itself:
+  `node scripts/generate-records-index.mjs --check` renders twice, fails if the two renders differ,
+  compares against the committed index, exits 1 on drift naming the differing lines and 0 when fresh,
+  and writes nothing — the contract copied from `scripts/generate-pg-migration.py --check`, which sits in
+  pre-commit step 7 and `dev-ci.yml#static-gates`. This one sits in neither, and that was decided rather
+  than overlooked: three of these records were dirty in concurrent working trees at the time
+  (`git status --porcelain -- docs/records` → `JOURNAL.md`, `audit-open-findings.md` and this file), and a
+  freshness gate that fires on content someone is mid-way through writing is an event that cries wolf.
+  The gate belongs in the same change as the first record that trips it, in a quiet tree. Both halves are
+  the class this record documents: a control no scheduled run asserts is a commitment, and a scan that
+  omits a directory reports that directory as absent.
 - **A green UI typecheck does not clear this class.** `cf1147423`'s own body records two pre-existing
   `tsc` errors in `ui/src/features/workspaces/WorkspaceHome.tsx` (`TS6133` unused import, `TS2440`
   import/local conflict) belonging to another session. A failure naming that file is not this finding.
