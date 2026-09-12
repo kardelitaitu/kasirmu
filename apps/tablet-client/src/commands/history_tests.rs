@@ -236,3 +236,202 @@ fn eod_report_serialize() {
     assert_eq!(json["void_count"], 1);
     assert!(!json["payment_breakdown"].as_array().unwrap().is_empty());
 }
+
+// ── F-017: the five session-scoped twins must CHECK a permission ────────
+//
+// `resolve_scope` resolves the session and opens the store database and
+// stops there, so a `_scoped` twin that asks nothing after it is a name that
+// looks gated and is not — worse than an unscoped door, because it survives
+// review. Each case drives the real command twice through the real harness:
+// a session whose role lacks the permission must be refused, and the same
+// door must open for a session that holds it. Deny comes first in every
+// case, because a check that never runs can only fail the deny leg. The
+// permission is named by constant, never by a copy of the wire string, and
+// the refusal text is checked for what it must not carry.
+
+use oz_core::migrations;
+use platform_core::StoreDatabaseManager;
+use tauri::Manager as _;
+
+const HIST_SALE: &str = "s-hist-1";
+const DENIED_TOKEN: &str = "tok-no-perm";
+const GRANTED_TOKEN: &str = "tok-granted";
+
+/// Global db seeded with the default roles; store-a holds the two roles and
+/// two users the doors are tested against, plus one sale row to identify.
+fn history_state() -> (AppState, tempfile::TempDir) {
+    let conn = migrations::fresh_db();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    let conn = state.db_manager.open_store("store-a").unwrap();
+    let db = conn.lock().unwrap();
+    db.execute_batch(
+        r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-nope', 'Nope', 'Nothing granted', '[]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+            ('role-full', 'Full', 'Both doors granted', '["sales:view","reports:export"]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
+            ('user-nope', 'nope', 'hash-not-a-real-pin', 'Nope', 'role-nope', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+            ('user-full', 'full', 'hash-not-a-real-pin', 'Full', 'role-full', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, user_id, created_at) VALUES
+            ('s-hist-1', 12000, 'USD', 1, 'completed', 'user-full', '2026-07-10T09:00:00Z');"#
+    )
+    .unwrap();
+    drop(db);
+    (state, temp_dir)
+}
+
+fn mint(state: &mut AppState, token: &str, user: &str, role: &str) {
+    state.session_store.write().unwrap().insert(
+        token.into(),
+        oz_core::session::SessionContext::new(
+            user.into(),
+            role.into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "ws-a-1".into(),
+            "store-pos".into(),
+            None,
+            0,
+        ),
+    );
+}
+
+fn mock_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+/// The refusal must say no, name nothing it should not, and carry no value.
+fn assert_refusal_text(cmd: &str, message: &str) {
+    assert!(
+        !message.is_empty(),
+        "{cmd}: an empty refusal tells the cashier nothing"
+    );
+    for leak in [DENIED_TOKEN, GRANTED_TOKEN, "hash-not-a-real-pin", "12000"] {
+        assert!(
+            !message.contains(leak),
+            "{cmd}: the refusal leaks a session token, a pin hash or a row value"
+        );
+    }
+}
+
+#[tokio::test]
+async fn list_sales_scoped_requires_sales_view() {
+    let (mut state, _dir) = history_state();
+    mint(&mut state, DENIED_TOKEN, "user-nope", "role-nope");
+    mint(&mut state, GRANTED_TOKEN, "user-full", "role-full");
+    let app = mock_app(state);
+
+    // Deny first: this is the leg a missing check cannot pass.
+    let denied = list_sales_scoped(DENIED_TOKEN.into(), app.state()).await;
+    let Err(AppError::PermissionDenied(message)) = denied else {
+        panic!("list_sales_scoped let a session without sales:view through: {denied:?}")
+    };
+    assert_refusal_text("list_sales_scoped", &message);
+
+    // Allow: the same door, same data, one role apart.
+    let allowed = list_sales_scoped(GRANTED_TOKEN.into(), app.state()).await;
+    assert!(
+        matches!(allowed, Ok(_)),
+        "list_sales_scoped must still open for a session holding sales:view: {allowed:?}"
+    );
+}
+
+#[tokio::test]
+async fn get_sale_scoped_requires_sales_view() {
+    let (mut state, _dir) = history_state();
+    mint(&mut state, DENIED_TOKEN, "user-nope", "role-nope");
+    mint(&mut state, GRANTED_TOKEN, "user-full", "role-full");
+    let app = mock_app(state);
+
+    // Deny first: this is the leg a missing check cannot pass.
+    let denied = get_sale_scoped(DENIED_TOKEN.into(), HIST_SALE.into(), app.state()).await;
+    let Err(AppError::PermissionDenied(message)) = denied else {
+        panic!("get_sale_scoped let a session without sales:view through: {denied:?}")
+    };
+    assert_refusal_text("get_sale_scoped", &message);
+
+    // Allow: the same door, same data, one role apart.
+    let allowed = get_sale_scoped(GRANTED_TOKEN.into(), HIST_SALE.into(), app.state()).await;
+    assert!(
+        matches!(allowed, Ok(_)),
+        "get_sale_scoped must still open for a session holding sales:view: {allowed:?}"
+    );
+}
+
+#[tokio::test]
+async fn export_daily_summary_scoped_requires_reports_export() {
+    let (mut state, _dir) = history_state();
+    mint(&mut state, DENIED_TOKEN, "user-nope", "role-nope");
+    mint(&mut state, GRANTED_TOKEN, "user-full", "role-full");
+    let app = mock_app(state);
+
+    // Deny first: this is the leg a missing check cannot pass.
+    let denied = export_daily_summary_scoped(DENIED_TOKEN.into(), app.state()).await;
+    let Err(AppError::PermissionDenied(message)) = denied else {
+        panic!(
+            "export_daily_summary_scoped let a session without reports:export through: {denied:?}"
+        )
+    };
+    assert_refusal_text("export_daily_summary_scoped", &message);
+
+    // Allow: the same door, same data, one role apart.
+    let allowed = export_daily_summary_scoped(GRANTED_TOKEN.into(), app.state()).await;
+    assert!(
+        matches!(allowed, Ok(_)),
+        "export_daily_summary_scoped must still open for a session holding reports:export: {allowed:?}"
+    );
+}
+
+#[tokio::test]
+async fn export_sales_by_hour_scoped_requires_reports_export() {
+    let (mut state, _dir) = history_state();
+    mint(&mut state, DENIED_TOKEN, "user-nope", "role-nope");
+    mint(&mut state, GRANTED_TOKEN, "user-full", "role-full");
+    let app = mock_app(state);
+
+    // Deny first: this is the leg a missing check cannot pass.
+    let denied = export_sales_by_hour_scoped(DENIED_TOKEN.into(), app.state()).await;
+    let Err(AppError::PermissionDenied(message)) = denied else {
+        panic!(
+            "export_sales_by_hour_scoped let a session without reports:export through: {denied:?}"
+        )
+    };
+    assert_refusal_text("export_sales_by_hour_scoped", &message);
+
+    // Allow: the same door, same data, one role apart.
+    let allowed = export_sales_by_hour_scoped(GRANTED_TOKEN.into(), app.state()).await;
+    assert!(
+        matches!(allowed, Ok(_)),
+        "export_sales_by_hour_scoped must still open for a session holding reports:export: {allowed:?}"
+    );
+}
+
+#[tokio::test]
+async fn export_eod_report_scoped_requires_reports_export() {
+    let (mut state, _dir) = history_state();
+    mint(&mut state, DENIED_TOKEN, "user-nope", "role-nope");
+    mint(&mut state, GRANTED_TOKEN, "user-full", "role-full");
+    let app = mock_app(state);
+
+    // Deny first: this is the leg a missing check cannot pass.
+    let denied = export_eod_report_scoped(DENIED_TOKEN.into(), app.state()).await;
+    let Err(AppError::PermissionDenied(message)) = denied else {
+        panic!("export_eod_report_scoped let a session without reports:export through: {denied:?}")
+    };
+    assert_refusal_text("export_eod_report_scoped", &message);
+
+    // Allow: the same door, same data, one role apart.
+    let allowed = export_eod_report_scoped(GRANTED_TOKEN.into(), app.state()).await;
+    assert!(
+        matches!(allowed, Ok(_)),
+        "export_eod_report_scoped must still open for a session holding reports:export: {allowed:?}"
+    );
+}

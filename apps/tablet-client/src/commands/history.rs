@@ -9,8 +9,10 @@ use tauri::{State, command};
 
 use oz_core::Money;
 use oz_core::db::{DailySummaryRow, SalesByHourRow, Store};
+use oz_core::permissions;
 use oz_core::subscription::TenantSubscription;
 
+use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -281,12 +283,18 @@ pub async fn list_sales_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<SaleListResponse, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
+    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // a session-scoped twin must CHECK something, not just resolve a session.
+    // Same permission constant the desktop path already uses for list_sales, asked
+    // of the one gate helper this lane uses, so neither the permission name nor the
+    // rule is copied into this crate.
+    require_permission_for_user(&store, &session.user_id, permissions::SALES_VIEW)?;
     let sub = TenantSubscription::load(&db, "default")?
         .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
     sub.verify_signature()?;
@@ -318,12 +326,18 @@ pub async fn get_sale_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<SaleDetail>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
+    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // a session-scoped twin must CHECK something, not just resolve a session.
+    // Same permission constant the desktop path already uses for get_sale, asked
+    // of the one gate helper this lane uses, so neither the permission name nor the
+    // rule is copied into this crate.
+    require_permission_for_user(&store, &session.user_id, permissions::SALES_VIEW)?;
     let sale = store.get_sale(&id)?;
     // F2-7: single-row getter on the detail door only (no list N+1).
     let tax_estimate_note = match &sale {
@@ -352,12 +366,18 @@ pub async fn export_daily_summary_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<DailySummaryRow>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
+    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // a session-scoped twin must CHECK something, not just resolve a session.
+    // Same permission constant the desktop path already uses for export_daily_summary, asked
+    // of the one gate helper this lane uses, so neither the permission name nor the
+    // rule is copied into this crate.
+    require_permission_for_user(&store, &session.user_id, permissions::REPORTS_EXPORT)?;
     let rows = store.export_daily_summary()?;
     drop(db);
     Ok(rows)
@@ -370,12 +390,18 @@ pub async fn export_sales_by_hour_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<SalesByHourRow>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
+    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // a session-scoped twin must CHECK something, not just resolve a session.
+    // Same permission constant the desktop path already uses for export_sales_by_hour, asked
+    // of the one gate helper this lane uses, so neither the permission name nor the
+    // rule is copied into this crate.
+    require_permission_for_user(&store, &session.user_id, permissions::REPORTS_EXPORT)?;
     let rows = store.export_sales_by_hour()?;
     drop(db);
     Ok(rows)
@@ -388,12 +414,18 @@ pub async fn export_eod_report_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EodReport, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
+    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // a session-scoped twin must CHECK something, not just resolve a session.
+    // Same permission constant the desktop path already uses for export_eod_report, asked
+    // of the one gate helper this lane uses, so neither the permission name nor the
+    // rule is copied into this crate.
+    require_permission_for_user(&store, &session.user_id, permissions::REPORTS_EXPORT)?;
 
     let daily = store.export_daily_summary()?;
     let hourly = store.export_sales_by_hour()?;
