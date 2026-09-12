@@ -340,6 +340,171 @@ pub async fn sync_pull_scoped(
         .map_err(Into::into)
 }
 
+// ── Sync conflict review (scoped) ────────────────────────────────────────
+//
+// Thin, read-mostly client for the cloud conflict endpoints. Conflicts are
+// recorded server-side (table `sync_conflicts`), so the desktop has no local
+// copy to read — these commands exist only so the UI never holds a server URL
+// or an API key of its own.
+//
+// Money is never merged here and never summed: a conflict is surfaced for a
+// manager to decide, and this layer only transports that decision.
+
+/// Filters accepted by [`list_sync_conflicts_scoped`].
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct ListSyncConflictsArgs {
+    /// `open` | `resolved` | `dismissed`; omitted means every status.
+    pub status: Option<String>,
+    /// `high` | `medium` | `low`; omitted means every severity.
+    pub severity: Option<String>,
+}
+
+/// Arguments for [`resolve_sync_conflict_scoped`].
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ResolveSyncConflictArgs {
+    /// Row to resolve.
+    pub id: String,
+    /// The chosen side or a custom merge, stored verbatim on the row.
+    pub resolution: String,
+}
+
+/// One flagged divergence, as returned by the cloud.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SyncConflictDto {
+    /// Row id.
+    pub id: String,
+    /// Entity type, e.g. `stock.adjusted`.
+    pub entity_type: String,
+    /// Entity the two mutations disagree about.
+    pub entity_id: String,
+    /// Terminal that produced the stored side.
+    pub local_terminal_id: String,
+    /// JSON version vector of the stored side. Never parsed client-side.
+    pub local_vector: String,
+    /// JSON version vector of the incoming side. Never parsed client-side.
+    pub remote_vector: String,
+    /// JSON body of the stored side.
+    pub local_payload: String,
+    /// JSON body of the incoming side.
+    pub remote_payload: String,
+    /// `high` | `medium` | `low`.
+    pub severity: String,
+    /// `open` | `resolved` | `dismissed`.
+    pub status: String,
+    /// Chosen side, once resolved.
+    pub resolution: Option<String>,
+    /// Who resolved it.
+    pub resolved_by: Option<String>,
+    /// When it was resolved.
+    pub resolved_at: Option<String>,
+    /// When the row was created.
+    pub created_at: String,
+}
+
+/// The configured sync server URL and API key.
+///
+/// Returns `None` when no server is configured — an unconfigured terminal has
+/// no cloud to ask, so callers treat that as "no conflicts" rather than an
+/// error, exactly as a disconnected terminal does today.
+async fn sync_server_credentials(
+    state: &State<'_, AppState>,
+) -> Result<Option<(String, Option<String>)>, AppError> {
+    let db = state.db.lock().await;
+    let url = oz_core::settings::Settings::get_sync_server_url(&db)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let key = oz_core::settings::Settings::get_sync_api_key(&db)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    drop(db);
+
+    let url = url.unwrap_or_default().trim_end_matches('/').to_string();
+    if url.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some((url, key)))
+    }
+}
+
+/// List conflicts flagged for manager review (scoped).
+#[tauri::command]
+pub async fn list_sync_conflicts_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+    args: ListSyncConflictsArgs,
+) -> Result<Vec<SyncConflictDto>, AppError> {
+    state.resolve_scope(&session_token)?;
+
+    let Some((base, key)) = sync_server_credentials(&state).await? else {
+        return Ok(Vec::new());
+    };
+
+    let mut request = reqwest::Client::new().get(format!("{base}/api/sync/conflicts"));
+    if let Some(status) = &args.status {
+        request = request.query(&[("status", status)]);
+    }
+    if let Some(severity) = &args.severity {
+        request = request.query(&[("severity", severity)]);
+    }
+    if let Some(key) = key {
+        request = request.bearer_auth(key);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("conflict list request failed: {e}")))?;
+
+    #[derive(serde::Deserialize)]
+    struct Body {
+        conflicts: Vec<SyncConflictDto>,
+    }
+
+    let body: Body = response
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("conflict list decode failed: {e}")))?;
+    Ok(body.conflicts)
+}
+
+/// Record a manager's decision on a conflict (scoped).
+///
+/// Returns `false` when the row was not open — it may already have been
+/// resolved on another terminal. The UI must treat that as "someone else got
+/// there first", not as a failure to retry blindly.
+#[tauri::command]
+pub async fn resolve_sync_conflict_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+    args: ResolveSyncConflictArgs,
+) -> Result<bool, AppError> {
+    // Resolving a conflict is an administrative act: it decides which version
+    // of the store's data is true.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+
+    let Some((base, key)) = sync_server_credentials(&state).await? else {
+        return Ok(false);
+    };
+
+    let mut request = reqwest::Client::new()
+        .post(format!("{base}/api/sync/conflicts/{}/resolve", args.id))
+        .json(&serde_json::json!({ "resolution": args.resolution }));
+    if let Some(key) = key {
+        request = request.bearer_auth(key);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("conflict resolve request failed: {e}")))?;
+
+    // 404 means the row is unknown, belongs to another tenant, or was already
+    // closed — all of which are "nothing to resolve", not errors.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
+    Ok(response.status().is_success())
+}
+
 /// Settings changed sink (scoped — no-op for session-validated callers).
 #[tauri::command]
 pub async fn settings_changed_sink_scoped(

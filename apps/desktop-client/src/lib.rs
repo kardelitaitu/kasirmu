@@ -1259,6 +1259,8 @@ pub fn run() {
             commands::sync::get_pg_sync_settings_scoped,
             commands::sync::update_pg_sync_settings_scoped,
             commands::sync::pg_sync_status_scoped,
+            commands::sync::list_sync_conflicts_scoped,
+            commands::sync::resolve_sync_conflict_scoped,
             commands::sync::pg_sync_start_scoped,
             commands::sync::pg_sync_stop_scoped,
             commands::sync::pending_sync_count_scoped,

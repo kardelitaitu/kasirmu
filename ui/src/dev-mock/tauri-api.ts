@@ -3723,6 +3723,13 @@ handlers['get_customer_history_scoped'] = (args) => {
 };
 handlers['list_in_transit_transfers_scoped'] = () => [];
 handlers['print_kds_chit_scoped'] = () => true;
+// Sync conflict review. The mock has no cloud to ask, so it reports "nothing
+// flagged" — the screen must render its empty state rather than crash. The
+// resolve stub returns false, the honest answer for a row that does not exist:
+// callers treat it as "already resolved elsewhere", which is exactly what an
+// empty mock is.
+handlers['list_sync_conflicts_scoped'] = () => [];
+handlers['resolve_sync_conflict_scoped'] = () => false;
 // HPP exposure: no historical sale lines exist in the mock, so the margin
 // report is empty (the UI hides the Cost/Margin columns when it is).
 handlers['get_sale_line_margins_scoped'] = () => [];
