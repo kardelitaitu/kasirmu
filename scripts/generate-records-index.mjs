@@ -24,10 +24,15 @@
 // docs/records/adr7-conditional-scoping-fallback-class.md §7 for why.
 
 import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, relative, basename, dirname } from 'node:path';
+import { join, relative, basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// OZPOS_RECORDS_ROOT points the whole generator at a throwaway docs tree; it exists
+// so scripts/test-records-index-escaping.sh can drive the live code instead of a
+// copy of it. Unset, this is the repository root and nothing about a normal run changes.
+const ROOT = process.env.OZPOS_RECORDS_ROOT
+  ? resolve(process.env.OZPOS_RECORDS_ROOT)
+  : join(dirname(fileURLToPath(import.meta.url)), '..');
 const RECORDS = join(ROOT, 'docs', 'records');
 const OUT = join(RECORDS, 'README.md');
 
@@ -131,12 +136,59 @@ function relFromRecords(filePath) {
   return md(relative(RECORDS, filePath));
 }
 
+// ── content safety for interpolated cells (precedent: relFromRecords) ───────
+// Every title, status and area cell is text a record's author wrote, dropped into
+// a markdown link label and a table cell. Left raw, a single "]" in a scraped
+// heading closes the label early and the rest of the line renders as a link to a
+// filename that does not exist — the mechanism behind a JOURNAL row appearing to
+// point at JOURNAL-TAMPERED.md, a file that has never existed in the tree. The
+// href itself is path-derived (relFromRecords) and never author-supplied, so this
+// is a display channel, not a write channel.
+//
+// Deliberately narrow, and measured: the corpus today has 94 generated links, of
+// which 55 status cells contain "(" ")", so parentheses are NOT escaped — they
+// cannot restructure a label that ends at "]", and escaping them would rewrite
+// most of the index for no safety. Brackets, backslashes and pipes are the ones
+// that can; a backtick can hide a bracket from a naive parser, so code spans go;
+// a "]" inside a label is the whole exploit, so brackets are escaped rather than
+// dropped, keeping the author's words readable.
+const TITLE_MAX = 120; // a heading may be a sentence; an index row may not
+
+function mdCell(text, cap) {
+  let s = String(text);
+  s = s.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1'); // [t](u) -> t: a heading is not a label
+  s = s.replace(/!?\[([^\]]*)\]/g, '$1'); // reference-style [t] -> t
+  s = s.replace(/`/g, ''); // code spans can mask a label closer
+  s = s.replace(/^#+[ \t]*/, ''); // a scraped heading marker is not text
+  s = s.replace(/\\/g, '\\\\').replace(/[[\]]/g, '\\$&');
+  s = s.replace(/\|/g, '\\|'); // a pipe would split the table cell
+  s = s.trim();
+  // The cap is a display rule for index LABELS, not a safety rule — an escaped
+  // label cannot close early at any length — so it is applied to titles only.
+  // Statuses are left whole: 5 of them exceed this, and truncating an audit
+  // verdict to make the index prettier is not what the hazard asks for.
+  const max = cap ?? 0;
+  if (max > 0 && s.length > max) s = s.slice(0, max - 1).trimEnd() + '\u2026';
+  return s;
+}
+
+// The single place this file builds a link out of document content. Every one of
+// the seven interpolations below goes through it, because seven copies of
+// "[title](href)" is the drift shape: fix one, six stay open.
+const EMITTED_LINKS = [];
+function linkCell(label, href) {
+  const target = String(href);
+  EMITTED_LINKS.push(target);
+  return '[' + mdCell(label, TITLE_MAX) + '](' + target + ')';
+}
+
 // ── render ───────────────────────────────────────────────────────────────
 // scan + emit are a pure function now: render() walks the documentation tree
 // and returns the index TEXT plus the per-section counts. It never writes —
 // the only write in this file is in main(), which is what lets --check render,
 // compare, and exit without touching the working tree.
 function render() {
+  EMITTED_LINKS.length = 0; // one registry per render; --check renders twice
   // ── build sections ─────────────────────────────────────────────────────────
   const decisionsDir = join(ROOT, 'docs', 'decisions');
   const auditDir = join(ROOT, 'audit');
@@ -161,13 +213,13 @@ function render() {
         const rec = readRecord(join(dir, f));
         if (rec.num !== undefined && Number.isFinite(rec.num)) {
           const statusFile = join(dir, f.replace(/\.md$/, '.status.md'));
-          const statusLink = existsSync(statusFile)
-            ? `${rec.status} (see [status](${relFromRecords(statusFile)}))`
-            : rec.status;
+          // Kept as data, not as pre-rendered markdown: the sibling link is composed at
+          // the row site so the sanitiser runs exactly once per cell.
           numbered.push({
             ...rec,
             num: rec.num,
-            status: isArchived ? `Archived — ${statusLink}` : statusLink,
+            status: isArchived ? `Archived — ${rec.status}` : rec.status,
+            statusHref: existsSync(statusFile) ? relFromRecords(statusFile) : undefined,
           });
         } else if (f.includes('research')) {
           research.push(rec);
@@ -282,7 +334,14 @@ function render() {
   L.push(row(['#', 'Area', 'Title', 'Status']));
   L.push(row(['---', '---', '---', '---']));
   for (const r of numbered) {
-    L.push(row([String(r.num), r.area, `[${r.title}](${relFromRecords(r.file)})`, r.status]));
+    L.push(
+      row([
+        String(r.num),
+        mdCell(r.area),
+        linkCell(r.title, relFromRecords(r.file)),
+        mdCell(r.status) + (r.statusHref ? ` (see ${linkCell('status', r.statusHref)})` : ''),
+      ]),
+    );
   }
   L.push('');
 
@@ -291,7 +350,7 @@ function render() {
     L.push('### Research Notes');
     L.push('');
     for (const r of research) {
-      L.push(`- **${r.area}** — [${r.title}](${relFromRecords(r.file)})`);
+      L.push(`- **${mdCell(r.area)}** — ${linkCell(r.title, relFromRecords(r.file))}`);
     }
     L.push('');
   }
@@ -307,7 +366,7 @@ function render() {
     for (const [area, list] of Object.entries(byArea)) {
       L.push(`**${area}:**`);
       for (const r of list) {
-        L.push(`- [${r.title}](${relFromRecords(r.file)})`);
+        L.push(`- ${linkCell(r.title, relFromRecords(r.file))}`);
       }
       L.push('');
     }
@@ -326,7 +385,7 @@ function render() {
   L.push(row(['Area', 'Title', 'Status']));
   L.push(row(['---', '---', '---']));
   for (const r of records) {
-    L.push(row([r.area, `[${r.title}](${relFromRecords(r.file)})`, r.status]));
+    L.push(row([mdCell(r.area), linkCell(r.title, relFromRecords(r.file)), mdCell(r.status)]));
   }
   L.push('');
 
@@ -337,7 +396,7 @@ function render() {
     L.push(row(['#', 'Area', 'Title', 'Status']));
     L.push(row(['---', '---', '---', '---']));
     for (const r of audits) {
-      L.push(row([r.num ?? '—', r.area, `[${r.title}](${relFromRecords(r.file)})`, r.status]));
+      L.push(row([r.num ?? '—', mdCell(r.area), linkCell(r.title, relFromRecords(r.file)), mdCell(r.status)]));
     }
     L.push('');
   } else {
@@ -361,7 +420,7 @@ function render() {
   L.push(row(['Area', 'Title', 'Status']));
   L.push(row(['---', '---', '---']));
   for (const r of observability) {
-    L.push(row([r.area, `[${r.title}](${relFromRecords(r.file)})`, r.status]));
+    L.push(row([mdCell(r.area), linkCell(r.title, relFromRecords(r.file)), mdCell(r.status)]));
   }
   L.push('');
 
@@ -418,6 +477,19 @@ function main(argv) {
       return 1;
     }
     const gen = text.replace(/\r\n/g, '\n');
+    // Sanity leg, not determinism: --check could always prove the generator agrees
+    // with itself and never once ask whether the result means anything. Every href
+    // this run emitted came from a path on disk, so a link to a file that does not
+    // exist is either a bug here or content that restructured a label — the
+    // JOURNAL-TAMPERED.md shape. Author text can no longer create a target; assert it.
+    const missingLinks = [...new Set(EMITTED_LINKS)].filter(
+      (h) => !h.startsWith('http') && !existsSync(join(RECORDS, h)),
+    );
+    if (missingLinks.length) {
+      console.error('error: generator emitted ' + missingLinks.length + ' link(s) to a path that does not exist:');
+      for (const h of missingLinks.slice(0, 10)) console.error('  - ' + h);
+      return 1;
+    }
     const committed = (existsSync(OUT) ? readFileSync(OUT, 'utf8') : '').replace(/\r\n/g, '\n');
     if (committed === gen) {
       console.log('ok: docs/records/README.md matches the generator (' + summary + ')');
