@@ -1056,6 +1056,16 @@ fn pg_row_to_product_with_details(
     let product_type_str: String = row
         .try_get("product_type")
         .map_err(|e| PgError::Db(e.to_string()))?;
+    // Keep serving the row on a failed parse and let the helper warn (its docs
+    // carry why the Retail fallback is ambiguous; the column has no CHECK
+    // constraint in either engine). Parsed here rather than in the literal below
+    // so the warning names `sku_str` before it moves into `Sku::new`, instead of
+    // re-reading the column.
+    let product_type = oz_core::ProductType::parse_stored_or_default(
+        Some(product_type_str.as_str()),
+        &sku_str,
+        "pg_row_to_product_with_details",
+    );
 
     let product = Product {
         id: row.try_get("id").map_err(|e| PgError::Db(e.to_string()))?,
@@ -1103,27 +1113,7 @@ fn pg_row_to_product_with_details(
             .try_get("price_updated_at")
             .map_err(|e| PgError::Db(e.to_string()))?,
         track_serial: pg_bool(row, "track_serial")?,
-        // products.product_type has no CHECK constraint (TEXT NOT NULL DEFAULT
-        // 'retail', 20260813_init.pg.sql:881 / 20260813_init.sql:451): only this
-        // crate's INSERT hardcodes 'retail', while the bridge writes raw IPC
-        // strings into SQLite with nothing upstream validating the value. Keep
-        // serving the row on a failed parse — but say so: the default (Retail) is
-        // a plausible value and silently relabelling e.g. a Service row flips
-        // tracks_inventory() for every consumer of this mapping.
-        product_type: match oz_core::ProductType::parse_str(&product_type_str) {
-            Some(pt) => pt,
-            None => {
-                // sku_str was moved into Sku::new above; re-read the row
-                // identifier for the log line (NOT NULL column, cannot fail).
-                let row_sku: String = row.try_get("sku").unwrap_or_default();
-                tracing::warn!(
-                    sku = %row_sku,
-                    raw = %product_type_str,
-                    "unmapped product_type on products row; falling back to default (retail)"
-                );
-                oz_core::ProductType::default()
-            }
-        },
+        product_type,
         version: row
             .try_get("version")
             .map_err(|e| PgError::Db(e.to_string()))?,

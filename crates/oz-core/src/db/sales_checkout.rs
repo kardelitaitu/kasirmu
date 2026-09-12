@@ -243,22 +243,13 @@ impl Store<'_> {
             };
             // The parsed type drives `tracks_inventory` below, which decides
             // whether this line is stock-checked at all — so an unmapped string
-            // is not a cosmetic miss. products.product_type has no CHECK
-            // constraint and the bridge writes raw IPC strings into it, so the
-            // value can be anything. The fallback (Retail) tracks inventory,
-            // which would shortfalled a Service product on stock it does not
-            // keep; and Retail is AMBIGUOUS between a legitimate 'retail' and a
-            // failed parse. The warning is how you tell them apart.
-            let ptype =
-                crate::product::ProductType::parse_str(ptype_str).unwrap_or_else(|| {
-                    tracing::warn!(
-                        sku = %line.sku,
-                        raw = %ptype_str,
-                        operation = "Store::complete_sale_deduction_with_locations_and_estimate",
-                        "unmapped product_type on sale line; falling back to default (retail) for the tracks_inventory decision"
-                    );
-                    crate::product::ProductType::default()
-                });
+            // is not a cosmetic miss: Retail would shortfalled a Service product
+            // on stock it does not keep. The fallback stays, the helper warns.
+            let ptype = crate::product::ProductType::parse_stored_or_default(
+                Some(ptype_str.as_str()),
+                line.sku.as_str(),
+                "Store::complete_sale_deduction_with_locations_and_estimate:sale_line",
+            );
             let tracks_inventory = ptype.tracks_inventory();
             let recipe = self.get_recipe_ingredients(pid)?;
             let has_recipe = !recipe.is_empty();
@@ -330,23 +321,14 @@ impl Store<'_> {
                     };
 
                     if let Some((ing_sku, ing_name, ing_ptype_str)) = ing_info {
-                        // Same contract as the sale-line parse above: the
-                        // fallback (Retail) tracks inventory, so an unmapped
-                        // ingredient type deducts stock a Service ingredient
-                        // does not keep. "retail" in the result is AMBIGUOUS
-                        // between a real answer and a failed parse; the warning
-                        // is how you tell them apart.
-                        let ing_ptype =
-                            crate::product::ProductType::parse_str(&ing_ptype_str)
-                                .unwrap_or_else(|| {
-                                    tracing::warn!(
-                                        sku = %ing_sku,
-                                        raw = %ing_ptype_str,
-                                        operation = "Store::complete_sale_deduction_with_locations_and_estimate",
-                                        "unmapped product_type on recipe ingredient; falling back to default (retail) for the tracks_inventory decision"
-                                    );
-                                    crate::product::ProductType::default()
-                                });
+                        // Same contract as the sale-line parse above: an
+                        // unmapped ingredient type deducts stock a Service
+                        // ingredient does not keep.
+                        let ing_ptype = crate::product::ProductType::parse_stored_or_default(
+                            Some(ing_ptype_str.as_str()),
+                            &ing_sku,
+                            "Store::complete_sale_deduction_with_locations_and_estimate:recipe_ingredient",
+                        );
                         if ing_ptype.tracks_inventory() {
                             // MONEY-03: line.qty arrives from untrusted IPC input
                             // and must use checked arithmetic like `compute_line_tax`

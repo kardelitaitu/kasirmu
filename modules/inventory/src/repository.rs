@@ -47,8 +47,29 @@ impl<'a> InventoryRepository<'a> {
         let barcode_str: Option<String> = row.get(6)?;
         let barcode = barcode_str.and_then(|b| Barcode::new(b).ok());
 
-        let ptype_str: String = row.get(11).unwrap_or_else(|_| "retail".to_string());
-        let product_type = ProductType::parse_str(&ptype_str).unwrap_or_default();
+        // Two swallows were stacked on this column: `row.get(11)
+        // .unwrap_or_else(|_| "retail")` turned a missing or unreadable column
+        // into the literal string `retail`, which parses cleanly — the helper
+        // would then faithfully report nothing wrong. Read it as Option<String>
+        // and warn at the get, so a missing column, a NULL and a real 'retail'
+        // stay three different outcomes.
+        let ptype_stored: Option<String> = match row.get::<_, Option<String>>(11) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    sku = %sku.as_str(),
+                    error = %e,
+                    operation = "InventoryRepository::get_product",
+                    "products row has no readable product_type column; treating it as NULL"
+                );
+                None
+            }
+        };
+        let product_type = ProductType::parse_stored_or_default(
+            ptype_stored.as_deref(),
+            sku.as_str(),
+            "InventoryRepository::get_product",
+        );
 
         Ok(Some(Product {
             id: row.get(0)?,
