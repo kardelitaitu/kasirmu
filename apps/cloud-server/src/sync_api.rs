@@ -15,13 +15,15 @@ next: none | perf: batch transaction also fixes per-item autocommit latency
 use std::sync::Arc;
 
 use axum::{
-    Router,
-    extract::{Extension, Request, State},
+    Json, Router,
+    extract::{Extension, Path, Query, Request, State},
+    http::StatusCode,
     middleware,
     response::IntoResponse,
     routing::{get, post},
 };
 use rusqlite::Connection;
+use serde::Deserialize;
 use sha2::Digest;
 use tokio::sync::Mutex;
 
@@ -193,6 +195,11 @@ pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) 
         .route("/api/sync/pull", post(pull_handler))
         .route("/api/sync/status", get(status_handler))
         .route("/api/sync/snapshot", get(snapshot_handler))
+        .route("/api/sync/conflicts", get(list_conflicts_handler))
+        .route(
+            "/api/sync/conflicts/:id/resolve",
+            post(resolve_conflict_handler),
+        )
         .with_state(state)
         .layer(middleware::from_fn(rate_limit_middleware))
         .layer(middleware::from_fn(plan_middleware))
@@ -675,6 +682,102 @@ async fn status_handler(
         pending_count,
         heartbeat_interval_secs: heartbeat_interval_secs as u64,
     })
+}
+
+/// Query filters for `GET /api/sync/conflicts`.
+///
+/// Both filters are optional; omitted means "every status" / "every severity".
+/// An unrecognised value simply matches nothing rather than erroring, because
+/// a filter is a narrowing of an already tenant-scoped list — there is no
+/// spoofing surface to protect here, only a smaller result set.
+#[derive(Debug, Deserialize)]
+pub struct ConflictListQuery {
+    /// `open` | `resolved` | `dismissed`.
+    pub status: Option<String>,
+    /// `high` | `medium` | `low`.
+    pub severity: Option<String>,
+}
+
+/// Response from `GET /api/sync/conflicts`.
+#[derive(Debug, serde::Serialize)]
+pub struct ConflictListResponse {
+    /// Matching conflicts, newest first.
+    pub conflicts: Vec<crate::conflict_resolution::SyncConflictRow>,
+    /// Number of rows returned.
+    pub count: usize,
+}
+
+/// Body of `POST /api/sync/conflicts/:id/resolve`.
+#[derive(Debug, Deserialize)]
+pub struct ResolveConflictRequest {
+    /// The chosen side or a custom merge, recorded verbatim on the row.
+    pub resolution: String,
+}
+
+/// `GET /api/sync/conflicts` — list this tenant's flagged conflicts.
+///
+/// Tenant scoping comes from the JWT claims and never from the query string,
+/// so one tenant cannot enumerate another's conflicts by editing a parameter.
+#[tracing::instrument(skip(state), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default")))]
+async fn list_conflicts_handler(
+    State(state): State<SyncState>,
+    Extension(claims): Extension<ApiTokenClaims>,
+    Query(query): Query<ConflictListQuery>,
+) -> Result<Json<ConflictListResponse>, StatusCode> {
+    let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
+    let store = state.store();
+
+    let conflicts = store
+        .list_conflicts(
+            tenant_id,
+            query.status.as_deref(),
+            query.severity.as_deref(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("list_conflicts failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(ConflictListResponse {
+        count: conflicts.len(),
+        conflicts,
+    }))
+}
+
+/// `POST /api/sync/conflicts/:id/resolve` — record a manager's decision.
+///
+/// Returns 404 when the id does not exist, belongs to another tenant, or is
+/// already closed. Resolving twice must not overwrite the first decision: the
+/// row is the audit trail, so a second write is a conflict of its own rather
+/// than a silent update.
+#[tracing::instrument(skip(state, body), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default")))]
+async fn resolve_conflict_handler(
+    State(state): State<SyncState>,
+    Extension(claims): Extension<ApiTokenClaims>,
+    Path(id): Path<String>,
+    Json(body): Json<ResolveConflictRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let tenant_id = claims.tenant_id.as_deref().unwrap_or("default");
+    let store = state.store();
+
+    let resolved = store
+        .resolve_conflict(tenant_id, &id, &body.resolution, &claims.sub)
+        .await
+        .map_err(|e| {
+            tracing::error!("resolve_conflict failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if !resolved {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(Json(serde_json::json!({
+        "id": id,
+        "status": "resolved",
+        "resolution": body.resolution,
+    })))
 }
 
 /// Response from the status endpoint.
