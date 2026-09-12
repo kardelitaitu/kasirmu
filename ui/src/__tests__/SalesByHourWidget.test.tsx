@@ -14,8 +14,23 @@ vi.mock('@/api/sales', () => ({
   exportSalesByHourScoped: (...args: unknown[]) => mockExportSalesByHour(...args),
 }));
 
+// ── auth ─────────────────────────────────────────────────────────────
+// Same pattern PermissionDenied.test.tsx uses: the widget asks the session
+// whether it holds reports:export before it calls the export command.
+const mockSession = vi.fn();
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ session: mockSession() }),
+}));
+
+/** A role that holds the key the scoped command enforces. */
+const EXPORT_GRANTED = ['sales:view', 'reports:export'];
+/** The Staff preset: sales:view, no reports:export (rbac_presets.rs). */
+const STAFF_NO_EXPORT = ['sales:view'];
+
 beforeEach(() => {
   mockExportSalesByHour.mockReset();
+  mockSession.mockReturnValue({ permissions: EXPORT_GRANTED });
 });
 
 function createRow(overrides: Record<string, unknown> = {}) {
@@ -87,5 +102,29 @@ describe('SalesByHourWidget', () => {
       const list = screen.getByRole('list');
       expect(list.getAttribute('aria-label')).toBe('Hourly sales bars');
     });
+  });
+
+  // ── F-017 permission gate ──────────────────────────────────────
+
+  it('refuses without reports:export and never calls the command', () => {
+    mockSession.mockReturnValue({ permissions: STAFF_NO_EXPORT });
+    const { container } = renderWithFluentSync(<SalesByHourWidget />, salesFtl);
+
+    // A visible denied affordance in the tile slot — not a missing tile.
+    expect(screen.getByRole('heading', { name: /access denied/i })).toBeInTheDocument();
+    expect(container.querySelector('.reporting-widget')).toBeInTheDocument();
+    expect(container.querySelector('.reporting-widget-title')).toBeInTheDocument();
+    expect(screen.getByText(/required permission: reports:export/i)).toBeInTheDocument();
+    // And the command is never called, so there is no spinner and no refusal log.
+    expect(mockExportSalesByHour).not.toHaveBeenCalled();
+  });
+
+  it('accepts the reports:* domain wildcard instead of demanding the exact key', async () => {
+    mockSession.mockReturnValue({ permissions: ['reports:*'] });
+    mockExportSalesByHour.mockResolvedValue([]);
+    renderWithFluentSync(<SalesByHourWidget />, salesFtl);
+
+    await waitFor(() => expect(mockExportSalesByHour).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: /access denied/i })).not.toBeInTheDocument();
   });
 });

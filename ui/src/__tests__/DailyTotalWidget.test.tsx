@@ -23,8 +23,23 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok-1' }),
 }));
 
+// ── auth ─────────────────────────────────────────────────────────────
+// Same pattern PermissionDenied.test.tsx uses: the widget asks the session
+// whether it holds reports:export before it calls the export command.
+const mockSession = vi.fn();
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ session: mockSession() }),
+}));
+
+/** A role that holds the key the scoped command enforces. */
+const EXPORT_GRANTED = ['sales:view', 'reports:export'];
+/** The Staff preset: sales:view, no reports:export (rbac_presets.rs). */
+const STAFF_NO_EXPORT = ['sales:view'];
+
 beforeEach(() => {
   mockExportDailySummary.mockReset();
+  mockSession.mockReturnValue({ permissions: EXPORT_GRANTED });
   vi.mocked(useSubscription).mockReturnValue({
     caps: null,
     state: 'active',
@@ -162,5 +177,56 @@ describe('DailyTotalWidget', () => {
     const skeletons = container.querySelectorAll('.skeleton');
     expect(skeletons.length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('Daily Sales Dashboard')).not.toBeInTheDocument();
+  });
+
+  // ── F-017 permission gate ──────────────────────────────────────
+
+  it('refuses without reports:export and never calls the command', () => {
+    mockSession.mockReturnValue({ permissions: STAFF_NO_EXPORT });
+    const { container } = renderWithFluentSync(<DailyTotalWidget />, salesFtl);
+
+    // A visible denied affordance in the tile slot — not a missing tile.
+    expect(screen.getByRole('heading', { name: /access denied/i })).toBeInTheDocument();
+    expect(container.querySelector('.reporting-widget')).toBeInTheDocument();
+    expect(container.querySelector('.reporting-widget-title')).toBeInTheDocument();
+    // And the command is never called, so there is no spinner and no refusal log.
+    expect(mockExportDailySummary).not.toHaveBeenCalled();
+  });
+
+  it('names the missing permission in the refusal', () => {
+    mockSession.mockReturnValue({ permissions: STAFF_NO_EXPORT });
+    renderWithFluentSync(<DailyTotalWidget />, salesFtl);
+
+    expect(screen.getByText(/required permission: reports:export/i)).toBeInTheDocument();
+  });
+
+  it('refuses on an empty grant list and on no session', () => {
+    mockSession.mockReturnValue({ permissions: [] });
+    const { unmount } = renderWithFluentSync(<DailyTotalWidget />, salesFtl);
+    expect(screen.getByRole('heading', { name: /access denied/i })).toBeInTheDocument();
+    expect(mockExportDailySummary).not.toHaveBeenCalled();
+    unmount();
+
+    mockSession.mockReturnValue(null);
+    renderWithFluentSync(<DailyTotalWidget />, salesFtl);
+    expect(screen.getByRole('heading', { name: /access denied/i })).toBeInTheDocument();
+    expect(mockExportDailySummary).not.toHaveBeenCalled();
+  });
+
+  it('accepts the reports:* domain wildcard, not only the exact key', async () => {
+    mockSession.mockReturnValue({ permissions: ['reports:*'] });
+    mockExportDailySummary.mockResolvedValue([]);
+    renderWithFluentSync(<DailyTotalWidget />, salesFtl);
+
+    await waitFor(() => expect(mockExportDailySummary).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: /access denied/i })).not.toBeInTheDocument();
+  });
+
+  it('accepts the Owner "*" wildcard', async () => {
+    mockSession.mockReturnValue({ permissions: ['*'] });
+    mockExportDailySummary.mockResolvedValue([]);
+    renderWithFluentSync(<DailyTotalWidget />, salesFtl);
+
+    await waitFor(() => expect(mockExportDailySummary).toHaveBeenCalled());
   });
 });
