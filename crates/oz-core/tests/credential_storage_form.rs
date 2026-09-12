@@ -850,3 +850,248 @@ fn a_removal_from_the_secret_list_would_make_auth_token_exportable_through_both_
         "control: the local lane owns this key and must NOT be filtered, or the refusals above would pass for a policy that rejects everything"
     );
 }
+
+// -- Decision pin: no ciphertext can be attributed to its key ---------------
+
+/// The frozen domain-separation prefixes in `crates/oz-crypto/src/lib.rs`
+/// (lines 152-176), copied here as OBSERVED STRINGS because every one of them
+/// is a private `const` — `SMTP_DOMAIN`, `API_KEY_DOMAIN`,
+/// `SYNC_API_KEY_DOMAIN`, `SYNC_TERMINAL_SECRET_DOMAIN`,
+/// `PG_SYNC_PASSWORD_DOMAIN`, `RATE_API_KEY_DOMAIN`, `LAN_PSK_DOMAIN`,
+/// `SMTP_AT_REST_DOMAIN`, `PROFILE_AT_REST_DOMAIN`. Nothing reaches them from
+/// an integration test and no production helper was added to expose them,
+/// which is itself part of what is pinned: a caller cannot ask a value which
+/// domain made it, and cannot ask the crate which domains it accepts.
+const FROZEN_DOMAINS: &[&str] = &[
+    "oz-pos.smtp-password.v1",
+    "oz-pos.api-key.v1",
+    "oz-pos.sync-api-key.v1",
+    "oz-pos.sync-terminal-secret.v1",
+    "oz-pos.pg-sync-password.v1",
+    "oz-pos.rate-api-key.v1",
+    "oz-pos.lan-psk.v1",
+    "oz-pos.smtp-at-rest.v1",
+    "oz-pos.user-profile-at-rest.v1",
+];
+
+/// A stored value, decomposed: base64url-nopad of nonce(12) || ciphertext ||
+/// tag(16).
+fn envelope(value: &str) -> Vec<u8> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(value)
+        .expect("stored ciphertext is base64url-nopad")
+}
+
+/// # Why this is a pin and not an endorsement
+///
+/// A re-encryption migration — decrypt every stored credential with the old
+/// key, re-encrypt with the new one, be done — is not merely risky here, it is
+/// UNDECIDABLE, and the reason is a fact about the envelope rather than a bug:
+///
+/// 1. the envelope records no key identifier, no family name and no version:
+///    its entire byte budget is nonce + payload + tag, so there is nowhere for
+///    that information to be;
+/// 2. `encrypt` and `decrypt` both ask `portable_key`, which calls
+///    `master_key_from_env()` on EVERY call — the key comes from live process
+///    state (`OZ_MASTER_KEY`) and never from the value in front of it;
+/// 3. so a row written by the portable static derivation and a row written
+///    under `OZ_MASTER_KEY` are the same KIND of object, and a sweep that dies
+///    half way cannot tell which rows it already converted. Every surviving
+///    row still decrypts under whichever branch the process happens to be in,
+///    and a row it cannot read fails with the same generic tag error as a
+///    corrupt row.
+///
+/// Rewrap is therefore not "hard", it is unsurveyable. This case makes that
+/// executable instead of a sentence in a doc someone has to believe.
+///
+/// # ACTIVATION — when this pin is safe to delete
+///
+/// The moment the envelope carries a key identifier INSIDE the value — a
+/// version byte, a `v2` marker, a key-id field, anything inspectable without
+/// holding a key — a sweep can tell converted rows from unconverted ones, the
+/// byte-budget and alphabet assertions below go red, and this is the case that
+/// noticed. Land such a fix as a prefix OUTSIDE the encrypted part (a leading
+/// id on the stored string, or a column), not inside the AEAD payload, or the
+/// identifier stops being readable without the key it names.
+#[test]
+fn decision_pin_no_stored_ciphertext_names_the_key_that_produced_it() {
+    // The accepted prefix set is v1-only. A second generation in it means
+    // somebody started versioning these envelopes.
+    for domain in FROZEN_DOMAINS {
+        assert!(
+            domain.ends_with(".v1"),
+            "DECISION PIN BROKEN: {domain} is not a frozen .v1 prefix. A second generation of these domain strings means the envelope is being versioned — check whether it now records WHICH key made a row. If it does, this pin is obsolete and should be deleted; if it does not, the migration it implies still cannot tell a converted row from an unconverted one. This case pins a known limitation, it does not endorse it."
+        );
+    }
+
+    /// One family: a name, the function that makes a row, and a DIFFERENT
+    /// family decrypter to try it against — its own would succeed and prove
+    /// nothing.
+    type Family = (
+        &'static str,
+        fn(&str) -> Result<String, oz_core::crypto::CryptoError>,
+        fn(&str) -> Result<String, oz_core::crypto::CryptoError>,
+    );
+    let families: [Family; 6] = [
+        (
+            "sync_api_key",
+            oz_core::crypto::encrypt_sync_api_key,
+            oz_core::crypto::decrypt_pg_sync_password,
+        ),
+        (
+            "sync_terminal_secret",
+            oz_core::crypto::encrypt_sync_terminal_secret,
+            oz_core::crypto::decrypt_lan_psk,
+        ),
+        (
+            "pg_sync.password",
+            oz_core::crypto::encrypt_pg_sync_password,
+            oz_core::crypto::decrypt_rate_api_key,
+        ),
+        (
+            "rate_sync.api_key",
+            oz_core::crypto::encrypt_rate_api_key,
+            oz_core::crypto::decrypt_sync_api_key,
+        ),
+        (
+            "smtp at-rest",
+            oz_core::crypto::encrypt_smtp_at_rest,
+            oz_core::crypto::decrypt_sync_terminal_secret,
+        ),
+        (
+            "lan psk",
+            oz_core::crypto::encrypt_lan_psk,
+            oz_core::crypto::decrypt_smtp_at_rest,
+        ),
+    ];
+    for (family, make, other_key) in families {
+        let value = make(SENTINEL).expect("the family encrypts");
+        let bytes = envelope(&value);
+        // 1. Byte budget: every byte is accounted for. No room for a key id.
+        assert_eq!(
+            bytes.len(),
+            12 + SENTINEL.len() + 16,
+            "DECISION PIN BROKEN ({family}): the envelope is no longer exactly nonce(12)+payload+tag(16), so something extra is stored with it. If that something identifies the key or the version, a rewrap sweep can finally survey what it has converted and this pin should be deleted; if not, the format drifted without saying so. Known limitation, pinned not endorsed."
+        );
+        // 2. Nothing labels the STRING: base64url-nopad only, so no `:` or
+        //    `.v1` suffix can sit in front of a value the way `$argon2id$`
+        //    labels a password hash.
+        assert!(
+            value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            "{family}: stored value {value} carries a character outside the base64url alphabet — something is now labelling the row"
+        );
+        // 3. Nothing labels the BYTES: the domain that chose the key never
+        //    appears in what the key produced.
+        for domain in FROZEN_DOMAINS {
+            assert!(
+                !bytes.windows(domain.len()).any(|w| w == domain.as_bytes()),
+                "{family}: the domain marker {domain} was found inside a stored value; the envelope has started naming its key"
+            );
+        }
+        // 4. The failure is key-blind too: refusing the wrong key names
+        //    nothing, so an unreadable row and a corrupt row sound alike.
+        let wrong = other_key(&value)
+            .expect_err("a row made by one family must not decrypt under another family key");
+        let msg = wrong.to_string();
+        for leak in ["oz-pos", ".v1", "sync", "pg", "rate", "smtp", "lan"] {
+            assert!(
+                !msg.contains(leak),
+                "{family}: the refusal {msg:?} names {leak:?} — the failure is no longer key-blind"
+            );
+        }
+    }
+
+    // 5. The leading bytes are a fresh nonce, not a header: the same value
+    //    under the same key never repeats them, so a sweep cannot group rows
+    //    by a common prefix either.
+    let a = envelope(&oz_core::crypto::encrypt_sync_api_key(SENTINEL).unwrap());
+    let b = envelope(&oz_core::crypto::encrypt_sync_api_key(SENTINEL).unwrap());
+    assert_ne!(a[..12], b[..12], "the first 12 bytes are the nonce");
+    assert_ne!(a, b, "repeated bytes for identical input would be a header");
+}
+
+/// Spawned by the branch pin below with `OZ_MASTER_KEY` set, so both
+/// derivations can be observed without mutating this process environment
+/// underneath the other cases.
+#[test]
+#[ignore = "child probe: run by the branch pin with OZ_MASTER_KEY injected"]
+fn decision_pin_child_probe_under_master_key() {
+    let Ok(ct) = std::env::var("OZ_PIN_CHILD_CT") else {
+        println!("OZ-PIN not-spawned");
+        return;
+    };
+    let active = oz_core::crypto::master_key_derivation_active();
+    let refused = oz_core::crypto::decrypt_sync_api_key(&ct).is_err();
+    let ours = oz_core::crypto::encrypt_sync_api_key(SENTINEL).expect("child encrypts");
+    println!("OZ-PIN active={active} refused={refused} ct={ours}");
+}
+
+/// The consequence the shape pin only describes: a row made under one branch
+/// does not decrypt under the other, and the two rows are the same kind of
+/// object — so which branch made a row is not recoverable from the row.
+#[test]
+fn decision_pin_portable_ciphertext_is_refused_under_the_other_branch() {
+    assert!(
+        !oz_core::crypto::master_key_derivation_active(),
+        "this case assumes the suite runs with OZ_MASTER_KEY unset; if it is set, both processes are on the same branch and the comparison proves nothing"
+    );
+    let portable = oz_core::crypto::encrypt_sync_api_key(SENTINEL).unwrap();
+    assert_eq!(
+        oz_core::crypto::decrypt_sync_api_key(&portable).unwrap(),
+        SENTINEL,
+        "the portable branch round-trips in this process"
+    );
+
+    let exe = std::env::current_exe().expect("path to this test binary");
+    let out = std::process::Command::new(exe)
+        .args([
+            "--exact",
+            "decision_pin_child_probe_under_master_key",
+            "--nocapture",
+            "--ignored",
+        ])
+        .env(
+            "OZ_MASTER_KEY",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )
+        .env("OZ_PIN_CHILD_CT", &portable)
+        .output()
+        .expect("spawn the child probe");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout
+        .lines()
+        .find(|l| l.starts_with("OZ-PIN active="))
+        .unwrap_or_else(|| panic!("child printed no probe line; stdout: {stdout}"));
+    assert!(line.contains("active=true"), "{line}");
+    assert!(
+        line.contains("refused=true"),
+        "DECISION PIN BROKEN: the child, running under OZ_MASTER_KEY, decrypted a row written by the portable static derivation ({line}). Either the envelope now says which key made it — in which case this pin is obsolete — or reading became branch-tolerant, which changes what a half-finished rewrap would do. Known limitation, pinned not endorsed."
+    );
+
+    let master = line
+        .split("ct=")
+        .nth(1)
+        .expect("child reports its own ciphertext")
+        .trim()
+        .to_string();
+    assert!(
+        oz_core::crypto::decrypt_sync_api_key(&master).is_err(),
+        "DECISION PIN BROKEN: a row written under OZ_MASTER_KEY decrypted here, where that key is not set: {master}"
+    );
+
+    // And the two rows are indistinguishable AS OBJECTS: same budget, same
+    // alphabet. That is the undecidability, and it is what a sweep faces.
+    let p = envelope(&portable);
+    let m = envelope(&master);
+    assert_eq!(p.len(), m.len(), "both are nonce(12)+payload+tag(16)");
+    assert_ne!(p[..12], m[..12], "neither leading run is a header");
+    assert!(
+        master
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+        "the master-branch row {master} is not the same shape as the portable row"
+    );
+}
