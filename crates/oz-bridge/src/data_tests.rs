@@ -12,6 +12,210 @@
 
 use super::*;
 
+// ── The bypass is LOUD: backup_ungated_no_session ─────────────────────────
+
+/*
+ * A thread-scoped capturing subscriber, hand-rolled because oz-bridge depends on
+ * tracing only. set_default installs on the CURRENT thread and restores on drop,
+ * and every test builds its own Capture, so two tests in this file cannot steal
+ * each other records: there is no global to install, no try_init, and no
+ * second-test-wins silent skip. The span methods are inert, only events matter.
+ *
+ * Assertions are on FIELD NAMES and VALUES, never the message string: a message is
+ * prose that can say anything while a structured event says nothing.
+ */
+use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Clone, Default)]
+struct Capture(Arc<Mutex<Vec<Vec<(String, String)>>>>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Fields(Vec<(String, String)>);
+
+const EVENT_KEY: &str = "event";
+const BACKUP_EVENT: &str = "backup_ungated_no_session";
+const OPERATION_KEY: &str = "operation";
+const PERMISSION_KEY: &str = "skipped_permission";
+const PAYLOAD_NAMES: &[&str] = &[
+    "value",
+    "path",
+    "db_path",
+    "backup_path",
+    "output",
+    "token",
+    "session_token",
+];
+
+impl Capture {
+    fn drain(&self) -> Vec<Fields> {
+        let mut g = self.0.lock().unwrap();
+        g.drain(..).map(Fields).collect()
+    }
+    fn install(&self) -> tracing::subscriber::DefaultGuard {
+        tracing::subscriber::set_default(self.clone())
+    }
+}
+
+impl Fields {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+    fn flat(&self) -> String {
+        self.0
+            .iter()
+            .map(|(k, v)| k.to_string() + "=" + v)
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+    fn backup_event(&self) -> bool {
+        self.get(EVENT_KEY) == Some(BACKUP_EVENT)
+    }
+}
+
+impl tracing::Subscriber for Capture {
+    fn enabled(&self, _m: &tracing::Metadata) -> bool {
+        true
+    }
+    fn event(&self, ev: &tracing::Event) {
+        struct V(Vec<(String, String)>);
+        impl tracing::field::Visit for V {
+            fn record_str(&mut self, f: &tracing::field::Field, val: &str) {
+                self.0.push((f.name().to_string(), val.to_string()));
+            }
+            fn record_debug(&mut self, f: &tracing::field::Field, val: &dyn std::fmt::Debug) {
+                self.0.push((f.name().to_string(), format!("{:?}", val)));
+            }
+        }
+        let mut v = V(Vec::new());
+        ev.record(&mut v);
+        self.0.lock().unwrap().push(v.0);
+    }
+    fn new_span(&self, _s: &tracing::span::Attributes) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _i: &tracing::span::Id, _v: &tracing::span::Record) {}
+    fn record_follows_from(&self, _i: &tracing::span::Id, _f: &tracing::span::Id) {}
+    fn enter(&self, _i: &tracing::span::Id) {}
+    fn exit(&self, _i: &tracing::span::Id) {}
+}
+
+fn temp_store_path(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("oz-bridge-{}-{}", tag, std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    dir.join("store.db")
+}
+
+fn assert_event_shape(ev: &Fields, expected_operation: &str, dir: &std::path::Path) {
+    assert_eq!(
+        ev.get(EVENT_KEY),
+        Some(BACKUP_EVENT),
+        "asserted on the event field, not the message: {}",
+        ev.flat()
+    );
+    assert_eq!(
+        ev.get(OPERATION_KEY),
+        Some(expected_operation),
+        "the event must name the operation that fired: {}",
+        ev.flat()
+    );
+    assert_eq!(
+        ev.get(PERMISSION_KEY),
+        Some(permissions::DATA_EXPORT),
+        "the event must name the permission actually skipped, from the constant: {}",
+        ev.flat()
+    );
+    for (k, v) in &ev.0 {
+        assert!(
+            !PAYLOAD_NAMES.contains(&k.as_str()),
+            "field {} is payload-shaped; this event must be pastable into a ticket, so it carries none",
+            k
+        );
+        assert!(
+            !v.contains("store.db")
+                && !v.contains(".db")
+                && !dir.to_string_lossy().is_empty()
+                && !v.contains(&dir.to_string_lossy().to_string()),
+            "field {} carries a filesystem path or backup file name: {}",
+            k,
+            v
+        );
+    }
+}
+
+#[tokio::test]
+async fn ungated_get_backup_status_emits_exactly_one_event() {
+    let db = temp_store_path("ungated");
+    let capture = Capture::default();
+    {
+        let _guard = capture.install();
+        get_backup_status(&db).await.expect("read backup status");
+    }
+    let all = capture.drain();
+    assert!(
+        !all.is_empty(),
+        "the capture recorded NOTHING, so the subscriber is not installed and a count of zero would be meaningless rather than a proof"
+    );
+    let hits: Vec<&Fields> = all.iter().filter(|f| f.backup_event()).collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "one ungated call must emit exactly one event; records were {:?}",
+        all.iter().map(Fields::flat).collect::<Vec<_>>()
+    );
+    assert_event_shape(
+        hits[0],
+        "get_backup_status",
+        &db.parent().unwrap().to_path_buf(),
+    );
+}
+
+/*
+ * The leg that needed the helper. Before TestBridge::token_granting existed, a
+ * scoped call from this file failed authorization and returned BEFORE reaching
+ * backup_status_direct, so it emitted nothing no matter how the delegate was
+ * written: the assertion below would have passed on broken code. Now the call is
+ * PROVEN to have reached the delegate by asserting it returned Ok, and the same
+ * test first emits one ungated event through the very same capture, so a zero here
+ * means the gated path is silent, not that the trap was never sprung.
+ */
+#[tokio::test]
+async fn scoped_get_backup_status_emits_zero_events_after_passing_the_check() {
+    use crate::testing::TestBridge;
+    let db = temp_store_path("scoped");
+    let bridge = TestBridge::new();
+    let token = bridge.token_granting(permissions::DATA_EXPORT).await;
+    let capture = Capture::default();
+
+    let liveness = {
+        let _guard = capture.install();
+        get_backup_status(&db).await.expect("ungated warm-up");
+        capture.drain().iter().filter(|f| f.backup_event()).count()
+    };
+    assert_eq!(
+        liveness, 1,
+        "the capture must see the event on the ungated path before a zero on the gated path means anything"
+    );
+
+    {
+        let _guard = capture.install();
+        let ctx = bridge.ctx();
+        get_backup_status_scoped(&ctx, &token, &db)
+            .await
+            .expect("the seeded grant must SATISFY the check, not skip it");
+    }
+    let after = capture.drain();
+    let hits: Vec<&Fields> = after.iter().filter(|f| f.backup_event()).collect();
+    assert_eq!(
+        hits.len(),
+        0,
+        "a call that presented a session and passed DATA_EXPORT must NOT be reported as ungated; saw {:?}",
+        after.iter().map(Fields::flat).collect::<Vec<_>>()
+    );
+}
+
 // ── Settings export redaction (review MED-2) ────────────────────────
 
 #[test]
