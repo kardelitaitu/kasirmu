@@ -185,6 +185,10 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     ("regional", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // The measured debt ledger is a .rs under src/commands, so the census walks it. It
+    // names no gate and no permission (6c574ee07 landed it): that is a row to record,
+    // not a file to skip - adding the stem to `skip` would stop ever looking at it.
+    ("registration_gate_debt.generated", 0, &[]),
     ("reports", 1, &["REPORTS_EXPORT", "REPORTS_VIEW"]),
     ("scale", 0, &[]),
     ("security", 2, &["SECURITY_MANAGE"]),
@@ -309,7 +313,12 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ),
     ("hardware", 0, &[]),
     ("health", 0, &[]),
-    ("history", 0, &[]),
+    // Re-pinned 13-09-26: 3a15dafe8 put a real permission check in the five
+    // scoped history twins. Counted at apps/tablet-client/src/commands/history.rs
+    // lines 297, 340 (SALES_VIEW) and 380, 404, 428 (REPORTS_EXPORT), using the
+    // SHELL_GATES vocabulary this census applies. history_tests.rs is skipped by
+    // stem, so 268198aba contributes nothing to this row.
+    ("history", 5, &["REPORTS_EXPORT", "SALES_VIEW"]),
     ("inventory_counts", 1, &["INVENTORY_COUNT"]),
     ("kds", 5, &["KDS_UPDATE", "KDS_VIEW"]),
     ("legal_entities", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
@@ -366,6 +375,10 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("receipt_format", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     ("regional", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // Same as the desktop leg: the tablet ledger landed in 3c793f8e3 and the census
+    // walks every non-skipped .rs in the commands dir. Pinned at its measured
+    // (0 calls, no keys) rather than skipped out of existence.
+    ("registration_gate_debt.generated", 0, &[]),
     ("reports", 1, &["REPORTS_EXPORT", "REPORTS_VIEW"]),
     ("scale", 0, &[]),
     ("settings", 13, &["SETTINGS_EDIT", "SETTINGS_READ"]),
