@@ -613,6 +613,105 @@ fn run_set_setting_rejects_lan_server_bind() {
     );
 }
 
+/// The THIRD refusal this door must raise, and the one that was misclassified.
+///
+/// `pg_sync.password` is on the credential deny list but is NOT manager-owned,
+/// so neither the `local_api.*` / `lan_server.*` guard above nor the read-side
+/// redaction can be what stops it — only the cleartext-credential rule can.
+///
+/// READ THIS BEFORE CALLING IT A DOOR: the tablet never stored the credential.
+/// `run_set_setting` ends in `Settings::set_tracked`, and platform-core asks
+/// `refuse_cleartext_credential` before it opens the transaction (and again per
+/// row inside it), so the write was refused here all along. What was missing was
+/// the CLASS: platform-core raises `PlatformError::Internal`, which reaches a
+/// tablet renderer as `AppError::Core { sub_kind: Platform }` — "the shell
+/// broke" — while the desktop bridge pre-flights the same rule and answers
+/// `Invalid` — "you asked for the wrong thing". Same refusal, two error
+/// classes, and the operator sees the wrong one on exactly one of the two
+/// shells. The pre-flight is now mirrored; these assertions pin both halves.
+#[test]
+fn run_set_setting_refuses_a_deny_listed_credential_as_invalid() {
+    let conn = fresh_conn();
+    const SPOOF: &str = "spoofed-db-password";
+    let err = run_set_setting(&conn, "pg_sync.password", SPOOF, "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m)
+            if m.contains("pg_sync.password") && !m.contains(SPOOF)),
+        "refusal must be Invalid, must name the key, and must never carry the value: {err:?}"
+    );
+    // And nothing was persisted — no value, no delta row. This is the leg that
+    // proves the class fix did not open a door on its way to renaming one.
+    assert!(
+        Settings::get(&conn, "pg_sync.password").unwrap().is_none(),
+        "a refused credential must not reach the settings table"
+    );
+    assert!(
+        Settings::get_version(&conn, "pg_sync.password", "term-1")
+            .unwrap()
+            .is_none(),
+        "a refused credential must not create a delta row either"
+    );
+}
+
+/// The tablet must not PARAPHRASE the rule. The sentence it returns has to be
+/// platform-core's, byte for byte — the same text the desktop bridge hands back
+/// (the bridge's `both_write_doors_credential_refusals_carry_the_identical_message`
+/// pins the pair on that side). A reworded refusal is a second definition of the
+/// policy wearing a message, and the day the exception changes, one shell keeps
+/// refusing while the other starts accepting and nothing fails.
+#[test]
+fn run_set_setting_credential_refusal_carries_platform_core_wording() {
+    let conn = fresh_conn();
+    let expected = platform_core::settings::Settings::cleartext_credential_refusal(
+        oz_core::settings::keys::STRIPE_API_KEY,
+    )
+    .expect("stripe.api_key must be on the credential deny list");
+    let err = run_set_setting(
+        &conn,
+        oz_core::settings::keys::STRIPE_API_KEY,
+        "sk_test_live",
+        "term-1",
+    )
+    .unwrap_err();
+    match err {
+        AppError::Invalid(m) => assert_eq!(m, expected),
+        other => panic!("expected AppError::Invalid, got {other:?}"),
+    }
+}
+
+/// Control for the two tests directly above, run on ONE connection: a guard
+/// that refused every key would pass them and brick the settings page. The
+/// ordinary key leg is what separates the pin from the decoration, and the
+/// `smtp_config` leg is the exception the pre-flight must NOT restate — if this
+/// lane ever writes its own copy of the deny list instead of asking
+/// `cleartext_credential_refusal`, the email card's save turns into a refusal
+/// here first.
+#[test]
+fn credential_refusal_is_per_key_and_the_smtp_exception_still_writes() {
+    let conn = fresh_conn();
+    let err = run_set_setting(&conn, "sync_api_key", "secret-key", "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m) if m.contains("sync_api_key")),
+        "the credential must be refused as Invalid: {err:?}"
+    );
+    run_set_setting(&conn, "store.name", "My Store", "term-1").unwrap();
+    assert_eq!(
+        Settings::get(&conn, "store.name").unwrap(),
+        Some("My Store".into())
+    );
+    assert_eq!(
+        Settings::get_version(&conn, "store.name", "term-1").unwrap(),
+        Some(1)
+    );
+    // Non-blob value: `merged_smtp_password_json` passes it through unchanged,
+    // so this line exercises the exception, not the merge seam.
+    run_set_setting(&conn, "smtp_config", "smtp-blob", "term-1").unwrap();
+    assert_eq!(
+        Settings::get(&conn, "smtp_config").unwrap(),
+        Some("smtp-blob".into())
+    );
+}
+
 /// Control: a guard that refused EVERYTHING would pass the two tests above
 /// and fail the shop — an ordinary store-owned key must still land through
 /// the tracked path, exactly as before the guard existed.

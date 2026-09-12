@@ -584,6 +584,18 @@ pub async fn set_setting(
 /// email-report card cannot read the stored password back and posts a blob
 /// whose `password` is null; the key's owner answers what should land and
 /// the write still goes through the tracked path so the delta is recorded.
+///
+/// The credential pre-flight has to be made here for the same twin reason.
+/// Without it the write is STILL refused — `Settings::set_tracked` asks the
+/// rule itself before it opens its transaction (`refuse_cleartext_credential`
+/// at the head of `set_tracked` in `platform/core/src/settings/raw.rs`, and
+/// again per row in `set_tracked_in_tx`) — but it refuses with
+/// `PlatformError::Internal`, which crosses this shell as
+/// `AppError::Core { sub_kind: Platform }`: the operator is told the shell
+/// broke, while the desktop, which pre-flights, says "invalid request". This
+/// door now raises `AppError::Invalid` carrying platform-core's own sentence,
+/// so one key and one refusal produce one error class on both shells. The
+/// per-row refusal stays as the floor under this ask, not its substitute.
 fn run_set_setting(
     conn: &rusqlite::Connection,
     key: &str,
@@ -599,6 +611,15 @@ fn run_set_setting(
         return Err(AppError::Invalid(format!(
             "{key} is managed by its dedicated manager controls — use those"
         )));
+    }
+    // The credential door, ASKED of platform-core before the tracked write —
+    // the same question the bridge's `run_set_setting` asks, so the two shells
+    // hand back the same error class and the same sentence. The predicate, the
+    // `smtp_config` exception and the wording all stay in platform-core: this
+    // lane only chooses the variant. The message names the key and never the
+    // value — a value in an error string is a leak through the log lane.
+    if let Some(refusal) = platform_core::settings::Settings::cleartext_credential_refusal(key) {
+        return Err(AppError::Invalid(refusal));
     }
     let merged;
     let value = if key == SMTP_CONFIG_SETTINGS_KEY {
