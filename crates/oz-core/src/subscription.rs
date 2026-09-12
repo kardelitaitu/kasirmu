@@ -350,7 +350,10 @@ impl SubscriptionTier {
 // ── Subscription Row ──────────────────────────────────────────────────
 
 /// A row from the `tenant_subscription` table.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is implemented by hand below — not derived — because three of
+/// these fields are credential material.
+#[derive(Clone)]
 pub struct TenantSubscription {
     /// The unique identifier of the tenant.
     pub tenant_id: String,
@@ -376,6 +379,47 @@ pub struct TenantSubscription {
     pub api_key: String,
     /// The timestamp of the last update in RFC 3339 format.
     pub updated_at: String,
+}
+
+/// Hand-written `std::fmt::Debug` that redacts the three secret fields:
+/// `api_key`, `signature` and `signed_payload`.
+///
+/// The derived impl printed all three. `api_key` is the worst of them:
+/// `crates/oz-bridge/src/license.rs` stores the RAW server response value
+/// on this struct while the settings row holds the machine-bound
+/// ciphertext, so this row carries the weaker of the two copies of one
+/// credential. `signature` and `signed_payload` are redacted for the
+/// reason the tree already records at
+/// `platform/core/src/settings/keys.rs` (`LICENSE_PAYLOAD`): replaying the
+/// signed grant into another install re-binds a license, so it never
+/// leaves the backend — and a `Debug` line is the backend's own exit.
+///
+/// Nothing formats this row today, so this commit prevents rather than
+/// repairs: the idiomatic future log line for this value is
+/// `tracing::debug!(?sub)`, and once the credential is in a log file no
+/// front-end redaction can scrub it. Every other field stays printed so
+/// the row remains debuggable for quota and sync work, and the impl (not
+/// a removal) is required because roughly forty test literals `assert_eq!`
+/// this type, which needs `Debug`.
+///
+/// House precedent: `modules/loyalty/src/models.rs` (`impl Debug for
+/// GiftCard`, redacting `pin` the same way).
+impl std::fmt::Debug for TenantSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TenantSubscription")
+            .field("tenant_id", &self.tenant_id)
+            .field("tier", &self.tier)
+            .field("status", &self.status)
+            .field("expires_at", &self.expires_at)
+            .field("max_locations", &self.max_locations)
+            .field("max_pos_instances", &self.max_pos_instances)
+            .field("allowed_types_json", &self.allowed_types_json)
+            .field("signature", &"<redacted>")
+            .field("signed_payload", &"<redacted>")
+            .field("api_key", &"<redacted>")
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 impl TenantSubscription {

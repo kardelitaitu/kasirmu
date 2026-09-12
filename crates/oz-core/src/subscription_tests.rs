@@ -1943,3 +1943,58 @@ fn test_trial_expired_deadline_terminates_grace_and_lifecycle() {
     );
     assert!(!sub_active.pos_read_only());
 }
+
+// ── Debug redaction (credential fields never printed) ────────
+
+/// The three secret fields must never reach `Debug` output under either
+/// specifier — `{sub:?}` (or the idiomatic `tracing::debug!(?sub)`) is the
+/// leak this pins, and a log file is not scrubbed by front-end redaction.
+/// The readable fields are asserted present too, so redaction cannot be
+/// satisfied by printing an empty struct.
+#[test]
+fn debug_redacts_credential_fields_but_keeps_the_row_readable() {
+    let sub = TenantSubscription {
+        tenant_id: "tenant-visible-42".into(),
+        tier: SubscriptionTier::Premium,
+        status: "active".into(),
+        expires_at: Some("2027-01-01T00:00:00Z".into()),
+        max_locations: 7,
+        max_pos_instances: 3,
+        allowed_types_json: r#"["store-pos"]"#.into(),
+        signature: "SENTINEL-SIGNATURE-1a7b".into(),
+        signed_payload: "SENTINEL-PAYLOAD-3c9d".into(),
+        api_key: "SENTINEL-API-KEY-8f2c".into(),
+        updated_at: "2026-09-09T00:00:00Z".into(),
+    };
+
+    for (specifier, out) in [("{:?}", format!("{sub:?}")), ("{:#?}", format!("{sub:#?}"))] {
+        for sentinel in [
+            "SENTINEL-API-KEY-8f2c",
+            "SENTINEL-SIGNATURE-1a7b",
+            "SENTINEL-PAYLOAD-3c9d",
+        ] {
+            assert!(
+                !out.contains(sentinel),
+                "{specifier} leaked a secret field: {out}"
+            );
+        }
+        // One marker per secret field — three, not zero and not fewer.
+        assert_eq!(
+            out.matches("<redacted>").count(),
+            3,
+            "{specifier} must redact api_key, signature and signed_payload: {out}"
+        );
+        // Quota and sync work debugs this row: the rest stays readable.
+        assert!(out.contains("tenant-visible-42"), "tenant_id vanished");
+        assert!(out.contains("Premium"), "tier vanished");
+        assert!(out.contains("active"), "status vanished");
+        assert!(out.contains("2027-01-01T00:00:00Z"), "expires_at vanished");
+        assert!(out.contains("max_locations: 7"), "max_locations vanished");
+        assert!(
+            out.contains("max_pos_instances: 3"),
+            "max_pos_instances vanished"
+        );
+        assert!(out.contains("store-pos"), "allowed_types vanished");
+        assert!(out.contains("2026-09-09T00:00:00Z"), "updated_at vanished");
+    }
+}
