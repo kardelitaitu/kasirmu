@@ -911,7 +911,13 @@ than it sounds:
 Settings, on the surface that owns the field (Cloud sync, PostgreSQL sync, exchange
 rate sync, LAN server), type the credential in again and save. The save goes
 through the typed setter, which encrypts on the way in, so this is a single-key
-targeted conversion with no migration, no batch mutation and no downtime. Re-run
+targeted conversion with no migration, no batch mutation and no downtime. The five
+setters that do it are `set_sync_api_key`
+(`platform/core/src/settings/typed.rs:338`, encrypting at `:339`),
+`set_sync_terminal_secret` (`:366`, `:367`), `set_pg_sync_password` (`:441`, `:442`),
+`set_rate_sync_api_key` (`:557`, `:558`) and `set_lan_server_psk` (`:643`, `:645`) —
+and they are the only production call sites of their `encrypt_*` functions, which is
+why following the save is the conversion and no other route is. Re-run
 step 1 afterwards: it is read-only and idempotent, and it is the only evidence that
 the row actually moved. Two limits worth saying plainly. Re-saving converts only a
 key you still know — if you no longer know it, rotate it at the provider and enter
@@ -919,6 +925,46 @@ the replacement, which was the better hygiene outcome before you needed to. And
 where a form preserves the stored secret instead of rewriting it, saving its other
 field converts nothing; step 1 shows you exactly that, so read it after every fix,
 not before.
+
+**Which of those saves is wired today, measured at HEAD, because three are and two
+are not.** `set_sync_api_key` is called from command lanes both shells reach
+(`crates/oz-bridge/src/sync.rs:76`, `apps/tablet-client/src/commands/sync.rs:92`), from
+the sync daemon (`platform/sync/src/daemon.rs:170`), from terminal auth
+(`crates/oz-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
+(`apps/desktop-client/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
+pairing path at `apps/desktop-client/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
+`crates/oz-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
+`set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:557`) and
+`set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production
+caller at all** — the only hits are their own definitions, the never-invoked
+`crates/oz-core/src/settings.rs:570` facade wrapper, tests and comments, and
+`crates/oz-core/tests/credential_storage_form.rs:258` already records one of them in
+those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
+is `platform/core/src/settings/typed.rs:560` and
+`platform/core/src/settings/typed.rs:646`, inside setters nobody invokes, while both
+keys are refused by the generic funnel as manager-owned. For those two rows this step
+is a shape to copy, not a lane to walk: there is no in-app re-save to perform, so
+rotate at whoever holds the value and let the lane that owns it write it. Re-run step 1
+after anything in this section — it is the only evidence either way.
+
+`smtp_config` is in step 1's list and is **not** written by any of those setters, so
+here is the chain instead of a sentence of prose to trust:
+`ui/src/features/settings/EmailReportSettings.tsx:163` (`setSettingScoped`) →
+`run_set_setting` in `crates/oz-bridge/src/settings.rs:500` (batch door `:593`; tablet
+`apps/tablet-client/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
+(`crates/oz-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
+at `:207` of that file. Note what that chain does and does not seal: it replaces the
+`password` **field of a JSON blob**, and only when a password was supplied
+(`:204-206`) — a value the keep-on-blank merge merely carried over is never
+re-encrypted (`:202`), which is the second limit above stated exactly. And name the
+shape honestly, because the family names invite the wrong reading: the
+credential-sealed-inside-its-own-settings-value pattern this section recommends is
+live through the **portable** family (`encrypt_smtp_at_rest`,
+`crates/oz-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
+`encrypt_smtp_password` (`crates/oz-crypto/src/lib.rs:193`), has no caller left in the
+tree at all. A reader who looks for that function as the exemplar lane will not find
+one; what they can follow is the seam above, and that seam is a recommendation about
+an envelope shape, not a conversion any of the four surfaces above performs.
 
 **4. What not to do.**
 
