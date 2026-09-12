@@ -70,7 +70,12 @@ const PG_LEAD_PARAMS: usize = 1;
 /// `GET /api/v1/products`, a caller-supplied `?hashes=a,b,c` on
 /// `GET /api/v1/images:missing`), not from a fixed schema. Above [`PG_MAX_PARAMS`]
 /// the statement stops executing: the handler answers 500, or — where the caller
-/// swallows the error with `unwrap_or_default()` — silently answers the empty set.
+/// keeps an empty-set fallback (`unwrap_or_default()`) — answers the empty set
+/// after a `tracing::warn` naming the failed operation and the error. No caller
+/// here swallows the failure silently any more: an empty answer is ambiguous
+/// between "genuinely empty" and "lookup failed", and the warning is how the two
+/// are told apart (see the `list_missing_hashes` callers in routes/images.rs and
+/// routes/products.rs).
 /// 10 000 keeps a 6.5x margin under the ceiling and stays small enough that one
 /// chunk is a single round trip.
 ///
@@ -1069,7 +1074,25 @@ fn pg_row_to_product_with_details(
         category_id: row
             .try_get("category_id")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        barcode: barcode_raw.and_then(|s| foundation::Barcode::new(&s).ok()),
+        // products.barcode is free text in both stores — a legacy or hand-edited
+        // row can hold a value Barcode::new rejects. Degrading to None costs a
+        // scan target, not a wrong fact, so the fallback stays — but None is
+        // ambiguous between "no barcode" and "unreadable barcode", and the
+        // warning is how you tell them apart.
+        barcode: barcode_raw.and_then(|s| match foundation::Barcode::new(&s) {
+            Ok(b) => Some(b),
+            Err(_) => {
+                // sku_str was moved into Sku::new above; re-read the row
+                // identifier for the log line (NOT NULL column, cannot fail).
+                let row_sku: String = row.try_get("sku").unwrap_or_default();
+                tracing::warn!(
+                    sku = %row_sku,
+                    raw = %s,
+                    "unparseable barcode on products row; serving the row without it"
+                );
+                None
+            }
+        }),
         created_at: row
             .try_get("created_at")
             .map_err(|e| PgError::Db(e.to_string()))?,
@@ -1123,7 +1146,25 @@ fn pg_row_to_product_with_details(
         default_supplier_id: row
             .try_get("default_supplier_id")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        image_hash: row.try_get("image_hash").ok(),
+        // products.image_hash is nullable by design (a product may have no
+        // image), so Ok(None) is a legitimate answer; only a type drift errors.
+        // Keep the None fallback — a missing thumbnail link is a degraded
+        // feature, not a wrong fact — but None is ambiguous between "no image"
+        // and "unreadable column", and the warning is how you tell them apart.
+        image_hash: match row.try_get::<_, Option<String>>("image_hash") {
+            Ok(h) => h,
+            Err(e) => {
+                // sku_str was moved into Sku::new above; re-read the row
+                // identifier for the log line (NOT NULL column, cannot fail).
+                let row_sku: String = row.try_get("sku").unwrap_or_default();
+                tracing::warn!(
+                    sku = %row_sku,
+                    error = %e,
+                    "image_hash column unreadable on products row; serving the row without the image link"
+                );
+                None
+            }
+        },
     };
 
     Ok(ProductWithDetails {
@@ -1964,7 +2005,26 @@ pub async fn get_sale(pool: &Pool, tenant_id: &str, id: &str) -> Result<Option<S
         id: sale_row
             .try_get("id")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        status: SaleStatus::from_stored_str(&status_str).unwrap_or(SaleStatus::Pending),
+        // sales.status has no CHECK constraint: a writer from a newer build can
+        // store a value from_stored_str does not know. Keep serving the row —
+        // failing the whole read over a label costs the sale — but Pending is
+        // itself a legitimate stored value, so the fallback is ambiguous between
+        // "genuinely pending" and "unmapped status", and the warning is how you
+        // tell them apart.
+        status: match SaleStatus::from_stored_str(&status_str) {
+            Some(s) => s,
+            None => {
+                // id is TEXT PRIMARY KEY (20260813_init.pg.sql:1006), so this
+                // re-read cannot fail.
+                let row_id: String = sale_row.try_get("id").unwrap_or_default();
+                tracing::warn!(
+                    sale_id = %row_id,
+                    raw = %status_str,
+                    "unmapped sale status on sales row; falling back to Pending"
+                );
+                SaleStatus::Pending
+            }
+        },
         total: Money {
             minor_units: sale_row
                 .try_get("total_minor")
@@ -2026,8 +2086,19 @@ pub async fn get_sale(pool: &Pool, tenant_id: &str, id: &str) -> Result<Option<S
         tender_rate_millionths: sale_row
             .try_get("tender_rate_millionths")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        tip_minor: sale_row.try_get("tip_minor").unwrap_or(0),
-        service_charge_minor: sale_row.try_get("service_charge_minor").unwrap_or(0),
+        // CUR-02 charge fields: BIGINT NOT NULL DEFAULT 0 in PG
+        // (20260813_init.pg.sql:1028) and INTEGER NOT NULL DEFAULT 0 in SQLite
+        // (20260822_sale_charges.sql:5-6), so a failed read here is a type
+        // drift, never a legitimate empty tip. Unlike the fallbacks above, 0 is
+        // a real answer on a receipt that nothing downstream can tell apart
+        // from a drifted read — the one swallow in this set that must fail the
+        // read instead of serving a wrong number.
+        tip_minor: sale_row
+            .try_get("tip_minor")
+            .map_err(|e| PgError::Db(e.to_string()))?,
+        service_charge_minor: sale_row
+            .try_get("service_charge_minor")
+            .map_err(|e| PgError::Db(e.to_string()))?,
     };
 
     let line_rows = tx
@@ -2677,15 +2748,34 @@ pub async fn ack_memo(
         // Either the recipient does not exist or it is already
         // acknowledged — distinguish so an already-acked memo stays a
         // no-op success (the UI's re-ack must not 404).
-        let existing: Option<String> = tx
+        // A `None` below is AMBIGUOUS: the recipient row may be genuinely
+        // absent (NotFound is then correct) or the SELECT may have failed on a
+        // row that exists — e.g. an already-acknowledged one, which should have
+        // returned the no-op success above and now reads as a 404. The
+        // fall-through is deliberate: the UPDATE's `changed == 0` is the
+        // authoritative write-side backstop (nothing was written either way),
+        // and the warning is how you tell the two None cases apart.
+        let existing: Option<String> = match tx
             .query_one(
                 "SELECT delivery_status FROM memo_recipients
                  WHERE memo_id = $1 AND terminal_id = $2",
                 &[&memo_id, &terminal_id],
             )
             .await
-            .ok()
-            .and_then(|row| row.get(0));
+        {
+            Ok(row) => Some(row.get(0)),
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    memo_id = %memo_id,
+                    terminal_id = %terminal_id,
+                    operation = "ack_memo delivery_status read",
+                    error = %e,
+                    "memo recipient lookup failed after a no-op ack; answering NotFound"
+                );
+                None
+            }
+        };
         match existing.as_deref() {
             Some("acknowledged") => {
                 let acknowledged_at: String = tx
