@@ -1018,3 +1018,285 @@ fn license_phone_is_denied_as_a_credential_and_refused_on_egress() {
         "license.phone must not be queued for sync egress"
     );
 }
+
+// -- Parity: the manager-owned refusal has exactly one producer ----------
+//
+// The credential sentence got one at fb63dc535 and a sweep at 371b6ace0.
+// This is the same seam one rule over: both lanes already asked
+// `is_manager_owned_key`, but the WORDING had no owner — the tablet
+// hardcoded one phrasing and the bridge built another at both of its
+// doors, so a paraphrase could drift with nothing failing.
+// `manager_owned_key_refusal` in platform-core is now the only place the
+// sentence exists.
+//
+// Mirrors the pattern the credential sweep established and transcribes no
+// wording: the sentence is read out of the producer at run time with a
+// marker owner name, split into the fixed words on either side of the
+// marker, and the lanes are read out of their own files. Nothing below is
+// a copy of a sentence, so a fix to platform-core wording moves this test
+// with it instead of failing here first. The helpers are duplicated from
+// `crates/oz-bridge/src/settings_tests.rs` because that file guards the
+// credential seam and is not this commit to edit.
+
+/// The producer, named once so the three files below are compared against it.
+use platform_core::settings::Settings as ManagerProducer;
+
+const PLAT_RAW_RS: &str = include_str!("../../../../platform/core/src/settings/raw.rs");
+const BRIDGE_SETTINGS_RS: &str = include_str!("../../../../crates/oz-bridge/src/settings.rs");
+const TABLET_SETTINGS_RS: &str = include_str!("settings.rs");
+
+/// String literals in a file, comments removed, so prose cannot be counted
+/// as a restated sentence.
+fn swept_literals(source: &str) -> Vec<String> {
+    let chars: Vec<char> = source.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        if c == '/' && next == Some('/') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == '/' && next == Some('*') {
+            i += 2;
+            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            i += 2;
+            continue;
+        }
+        if c == '"' {
+            i += 1;
+            let mut lit = String::new();
+            while i < chars.len() && chars[i] != '"' {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    lit.push(chars[i + 1]);
+                    i += 2;
+                } else {
+                    lit.push(chars[i]);
+                    i += 1;
+                }
+            }
+            i += 1;
+            out.push(lit);
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Code only: comments never count as a call site.
+fn swept_code_lines(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_block = false;
+    for line in source.lines() {
+        let t = line.trim_start();
+        if in_block {
+            if t.contains("*/") {
+                in_block = false;
+            }
+            continue;
+        }
+        if t.starts_with("/*") {
+            in_block = true;
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        let cut = match line.find("//") {
+            Some(at) => &line[..at],
+            None => line,
+        };
+        out.push(cut.to_string());
+    }
+    out
+}
+
+/// The longest contiguous case-insensitive word run two sentences share:
+/// the paraphrase meter — a copy shares everything, a paraphrase a phrase.
+fn longest_shared_word_run(text: &str, sentence: &str) -> usize {
+    let a: Vec<&str> = sentence.split_whitespace().collect();
+    let b: Vec<&str> = text.split_whitespace().collect();
+    let mut best = 0usize;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let mut k = 0usize;
+            while i + k < a.len() && j + k < b.len() && a[i + k].eq_ignore_ascii_case(b[j + k]) {
+                k += 1;
+            }
+            if k > best {
+                best = k;
+            }
+        }
+    }
+    best
+}
+
+#[test]
+fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
+    // (A) Read the sentence out of the producer with a marker in the NAME
+    // slot, so the fixed words on either side of the label are derived.
+    let marker = "marker-owner-name";
+    let probe = "local_api.enabled";
+    let sentence = ManagerProducer::manager_owned_key_refusal(probe, Some(marker))
+        .expect("the producer refuses a manager-owned key");
+    assert!(
+        sentence.starts_with(probe),
+        "the refusal must name the key: {sentence:?}"
+    );
+    let (head, tail) = sentence
+        .split_once(marker)
+        .expect("the producer puts the owner name inside the sentence");
+    let head_words: Vec<&str> = head[probe.len()..].trim().split_whitespace().collect();
+    let tail_words: Vec<&str> = tail.trim().split_whitespace().collect();
+    let frame = head_words.len() + tail_words.len();
+    assert!(
+        head_words.len() >= 3 && tail_words.len() >= 3 && frame >= 6,
+        "the sentence frame around the owner name collapsed to {frame} words, too thin to sweep against: {sentence:?}"
+    );
+    let head_run = head_words.join(" ");
+    let tail_run = tail_words.join(" ");
+
+    // The rule, asked of the producer: a generic label where a lane has no
+    // name, and silence for a key nobody owns — including a credential,
+    // which is the other door and must not collapse into this one.
+    let generic = ManagerProducer::manager_owned_key_refusal("lan_server.bind", None)
+        .expect("lan_server.* is manager-owned");
+    assert!(
+        !generic.contains(marker) && generic != sentence,
+        "the generic refusal is not a named one: {generic:?}"
+    );
+    for not_mine in [
+        "store.name",
+        "sync.auth_token",
+        "local_api",
+        "my_local_api.x",
+    ] {
+        assert!(
+            ManagerProducer::manager_owned_key_refusal(not_mine, None).is_none(),
+            "{not_mine} is not manager-owned, so the producer must not refuse it"
+        );
+    }
+
+    // (B) Exactly one of the three swept files carries the sentence.
+    let mut carriers: Vec<String> = Vec::new();
+    for (label, source) in [
+        ("platform/core/src/settings/raw.rs", PLAT_RAW_RS),
+        ("crates/oz-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
+        (
+            "apps/tablet-client/src/commands/settings.rs",
+            TABLET_SETTINGS_RS,
+        ),
+    ] {
+        let literals = swept_literals(source);
+        assert!(
+            literals.len() >= 5,
+            "the sweep read only {} string literals out of {label}: the include_str path moved, so this leg finds nothing rather than finding agreement",
+            literals.len()
+        );
+        let borrowed: Vec<String> = literals
+            .iter()
+            // A paraphrase keeps one half of the frame and bends the other, so
+            // the meter adds the two runs and lets exactly one word go: a copy
+            // scores the full frame, a reworded lane still scores frame - 1, and
+            // an unrelated sentence about the same subject scores one or two.
+            .filter(|lit| {
+                let h = longest_shared_word_run(lit, &head_run);
+                let t = longest_shared_word_run(lit, &tail_run);
+                h >= 2 && t >= 2 && h + t >= frame - 1
+            })
+            .cloned()
+            .collect();
+        assert!(
+            borrowed.len() <= 1,
+            "{label} carries the manager-refusal wording in {} separate literals, so the sentence is being rebuilt inside one lane: {borrowed:?}",
+            borrowed.len()
+        );
+        if !borrowed.is_empty() {
+            carriers.push(label.to_string());
+        }
+    }
+    let carrier_n = carriers.len();
+    assert_eq!(
+        carriers,
+        vec!["platform/core/src/settings/raw.rs".to_string()],
+        "the manager-owned-key refusal sentence has {carrier_n} carrier(s) among the swept lanes: {carriers:?} — it must live in raw.rs alone, beside cleartext_credential_refusal, and be CALLED from the lanes. Swept scope is those three files, not the whole tree."
+    );
+
+    // (C) Each lane asks the producer and wraps the answer in its own
+    // Invalid. Counts are what the files hold: bridge at two doors,
+    // tablet at one, platform-core defining it once.
+    for (label, source, wrap, asks) in [
+        (
+            "platform/core/src/settings/raw.rs",
+            PLAT_RAW_RS,
+            "pub fn",
+            1usize,
+        ),
+        (
+            "crates/oz-bridge/src/settings.rs",
+            BRIDGE_SETTINGS_RS,
+            "BridgeError::Invalid(refusal)",
+            2usize,
+        ),
+        (
+            "apps/tablet-client/src/commands/settings.rs",
+            TABLET_SETTINGS_RS,
+            "AppError::Invalid(refusal)",
+            1usize,
+        ),
+    ] {
+        let lines = swept_code_lines(source);
+        let asked: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.contains("manager_owned_key_refusal("))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            asked.len(),
+            asks,
+            "{label} names manager_owned_key_refusal at code lines {asked:?}, expected {asks}"
+        );
+        if wrap != "pub fn" {
+            let wrapped = asked
+                .iter()
+                .filter(|i| {
+                    lines
+                        .iter()
+                        .skip(**i)
+                        .take(5)
+                        .any(|later| later.contains(wrap))
+                })
+                .count();
+            assert_eq!(
+                wrapped, asks,
+                "{label} asks the producer {asks} time(s) but wraps the answer in {wrap} only {wrapped} time(s): a lane refusing the same act with a different variant, or building its own wording, is what this sweep exists to catch"
+            );
+        }
+    }
+
+    // (D) Executable leg, tablet side: the door emits the producer sentence
+    // unchanged and leaks no value into it.
+    let conn = fresh_conn();
+    let value = "0.0.0.0:48080";
+    let err = run_set_setting(&conn, "lan_server.bind", value, "term-1").unwrap_err();
+    let AppError::Invalid(message) = &err else {
+        panic!("the tablet door must refuse a manager key as Invalid: {err:?}")
+    };
+    assert_eq!(
+        message,
+        &ManagerProducer::manager_owned_key_refusal("lan_server.bind", None)
+            .expect("the producer refuses lan_server.bind"),
+        "the tablet lane did not pass the producer sentence through unchanged: {message:?}"
+    );
+    assert!(
+        !message.contains(value),
+        "the refusal leaked the value it was handed: {message}"
+    );
+}

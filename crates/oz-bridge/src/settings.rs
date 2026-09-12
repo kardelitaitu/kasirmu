@@ -479,10 +479,13 @@ pub fn run_set_setting(
     value: &str,
     terminal_id: &str,
 ) -> Result<String, BridgeError> {
-    if let Some(owner) = managed_key_owner(key) {
-        return Err(BridgeError::Invalid(format!(
-            "{key} is managed by the {owner} controls — use those"
-        )));
+    // The manager door, ASKED of platform-core: the rule and the wording are
+    // the producer there (`manager_owned_key_refusal`); this lane supplies only
+    // the manager NAME it can look up and chooses the variant. Restating the
+    // sentence here is what
+    // `both_shell_lanes_take_the_manager_refusal_from_its_one_producer` fails on.
+    if let Some(refusal) = TrackedSettings::manager_owned_key_refusal(key, managed_key_owner(key)) {
+        return Err(BridgeError::Invalid(refusal));
     }
     // The credential door, ASKED of platform-core before the tracked write —
     // the same pre-flight the batch loop runs, so the refusal crosses as
@@ -560,11 +563,16 @@ pub fn run_set_settings_batch(
     entries: &HashMap<String, String>,
     terminal_id: &str,
 ) -> Result<HashMap<String, String>, BridgeError> {
-    if let Some(key) = entries.keys().find(|k| is_manager_owned_key(k)) {
-        let owner = managed_key_owner(key).unwrap_or("dedicated");
-        return Err(BridgeError::Invalid(format!(
-            "{key} is managed by the {owner} controls — use those"
-        )));
+    // Batch-wide and BEFORE any write, like the credential pre-flight under it.
+    // One offender aborts the batch. The wording comes from the producer in
+    // platform-core, the label from the lookup this lane owns, and the variant
+    // is chosen here.
+    for key in entries.keys() {
+        if let Some(refusal) =
+            TrackedSettings::manager_owned_key_refusal(key, managed_key_owner(key))
+        {
+            return Err(BridgeError::Invalid(refusal));
+        }
     }
     // The credential door, ASKED of platform-core rather than restated here.
     // Batch-wide and BEFORE any write, as the command's all-or-nothing promise

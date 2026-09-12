@@ -602,20 +602,17 @@ fn run_set_setting(
     value: &str,
     terminal_id: &str,
 ) -> Result<(), AppError> {
-    // Manager-owned keys (`local_api.*`, `lan_server.*`) are refused with the
-    // SAME shared predicate the desktop bridge refuses them with and the sync
-    // egress policy admits against (`IngestPolicy::RemoteSync`) — no
-    // tablet-side prefix list, so the shells cannot drift on what the
-    // prefixes mean. Mirrors `oz_bridge::settings::run_set_setting`.
-    if platform_core::settings::is_manager_owned_key(key) {
-        return Err(AppError::Invalid(format!(
-            "{key} is managed by its dedicated manager controls — use those"
-        )));
+    // The rule AND the wording belong to the producer in platform-core, exactly
+    // like the credential door under it: `manager_owned_key_refusal` answers
+    // `None` for a key nobody owns and the refusal for one somebody does. No
+    // tablet-side prefix list, so the shells cannot drift on what the prefixes
+    // mean; and no tablet-side sentence, so they cannot drift on the refusal
+    // either. This lane has no manager-name lookup (no manager surface on the
+    // tablet), so it passes `None` and takes the generic label. Both lanes
+    // calling one producer is what
+    if let Some(refusal) = platform_core::settings::Settings::manager_owned_key_refusal(key, None) {
+        return Err(AppError::Invalid(refusal));
     }
-    // The credential door, ASKED of platform-core before the tracked write —
-    // the same question the bridge's `run_set_setting` asks, so the two shells
-    // hand back the same error class and the same sentence. The predicate, the
-    // `smtp_config` exception and the wording all stay in platform-core: this
     // lane only chooses the variant. The message names the key and never the
     // value — a value in an error string is a leak through the log lane.
     if let Some(refusal) = platform_core::settings::Settings::cleartext_credential_refusal(key) {

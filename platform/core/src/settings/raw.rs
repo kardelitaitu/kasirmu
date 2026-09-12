@@ -369,6 +369,35 @@ impl Settings {
         None
     }
 
+    /// The manager-owned-key refusal: ONE sentence, both shells.
+    ///
+    /// Same shape as [`Settings::cleartext_credential_refusal`] one door over:
+    /// the rule ([`is_manager_owned_key`]) and the WORDING of the refusal both
+    /// live here, and a lane that must refuse before it writes its first row
+    /// asks this and wraps the answer in its own error variant. It must NOT
+    /// rebuild the sentence.
+    ///
+    /// `owner` is the manager NAME, not the wording. Only the desktop lane can
+    /// name a manager (its `managed_key_owner` label lookup, in
+    /// `crates/oz-bridge/src/settings.rs`); the tablet has no manager surface and
+    /// passes `None`, which is the generic `dedicated` spelling the bridge batch
+    /// door already used. Before this, each lane carried its own paraphrase of
+    /// one rule — the tablet hardcoded one phrasing, the bridge built another at
+    /// both of its doors — three doors, two sentences, and nothing failed when
+    /// they drifted. That is the defect `371b6ace0` closed for the credential
+    /// sentence one door over, in the same subsystem, for the third time.
+    ///
+    /// Like the credential refusal, the message names the key and never the
+    /// value — a value in an error string is a leak through the log lane.
+    pub fn manager_owned_key_refusal(key: &str, owner: Option<&str>) -> Option<String> {
+        if !is_manager_owned_key(key) {
+            return None;
+        }
+        let owner = owner.unwrap_or("dedicated");
+        Some(format!(
+            "{key} is managed by the {owner} controls — use those"
+        ))
+    }
     /// Refuse to store a deny-listed credential in cleartext through the
     /// tracked funnel: the question above, turned into an error.
     ///
