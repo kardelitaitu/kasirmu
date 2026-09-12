@@ -342,3 +342,177 @@ fn decision_pin_credential_base_is_suffix_blind() {
         }
     }
 }
+
+// ── device_base + the egress rule + the membership ratchet ───
+
+/// The OLD egress expression, re-written here on purpose: parity is with what
+/// the file used to compute — its own `normalised_candidate` plus a
+/// `.contains` on the device list — not with a restatement of the new
+/// delegation, which could not catch the delegation itself moving.
+fn legacy_non_exportable_equality(key: &str) -> bool {
+    let candidate = normalised_candidate(key);
+    SECRET_KEY_DENY_LIST.contains(&candidate.as_str())
+        || NON_EXPORTABLE_DEVICE_KEYS.contains(&candidate.as_str())
+}
+
+/// De-duplication, not a behaviour change: `device_base` mirrors
+/// `credential_base`, `is_non_exportable_setting_key` is the OR of the two
+/// identity answers, and every verdict is what it always was. The two lists
+/// stay separate — a device key is refused on egress but stays readable, so
+/// the cross-family assertions below are what prove nothing merged.
+#[test]
+fn device_base_resolves_the_device_half_and_egress_keeps_every_verdict() {
+    assert!(
+        !NON_EXPORTABLE_DEVICE_KEYS.is_empty(),
+        "device list is empty; the parity sweep below would pass vacuously"
+    );
+
+    for marker in NON_EXPORTABLE_DEVICE_KEYS {
+        assert_eq!(
+            device_base(marker),
+            Some(*marker),
+            "device identity lost for the declared spelling of {marker}"
+        );
+        for variant in near_miss_variants(marker) {
+            assert_eq!(
+                device_base(&variant),
+                Some(*marker),
+                "near-miss {variant:?} must resolve to the base, not to itself"
+            );
+        }
+        // Suffix arms stay blind on this half too.
+        for suffixed in suffixed_variants(marker) {
+            assert_eq!(
+                device_base(&suffixed),
+                None,
+                "device half widened for {suffixed:?}"
+            );
+        }
+    }
+
+    // Both halves: the rewritten legacy expression and the delegated one must
+    // answer identically for declared spellings, fold spellings, suffix spellings
+    // and ordinary keys.
+    let mut corpus: Vec<String> = Vec::new();
+    for marker in SECRET_KEY_DENY_LIST
+        .iter()
+        .chain(NON_EXPORTABLE_DEVICE_KEYS.iter())
+    {
+        corpus.push((*marker).to_string());
+        corpus.extend(near_miss_variants(marker));
+        corpus.extend(suffixed_variants(marker));
+    }
+    corpus.extend(
+        [
+            "",
+            "store.name",
+            "smtp",
+            "smtp_config_",
+            "local_api",
+            "currency.default",
+        ]
+        .map(String::from),
+    );
+    for key in &corpus {
+        assert_eq!(
+            is_non_exportable_setting_key(key),
+            legacy_non_exportable_equality(key),
+            "egress verdict moved for {key:?}"
+        );
+        assert_eq!(
+            is_secret_setting_key(key),
+            credential_base(key).is_some(),
+            "read verdict moved for {key:?}"
+        );
+    }
+
+    // The two halves are NOT interchangeable: device keys are refused on
+    // egress only, so a merged list would show up as is_secret flipping true.
+    for device_key in NON_EXPORTABLE_DEVICE_KEYS {
+        assert!(
+            !credential_base(device_key).is_some(),
+            "{device_key} is device identity, not a credential: the read gate \
+                must stay open for it"
+        );
+        assert!(
+            is_non_exportable_setting_key(device_key),
+            "{device_key} must still be refused on egress"
+        );
+    }
+}
+
+/// The ratchet that makes the shape last. Every credential/device membership
+/// test in `keys.rs` must live inside `credential_base` or `device_base` —
+/// the two const definitions are the only other permitted sites — so the next
+/// person who wants a membership test has to add an arm to one of those two
+/// functions or fail a test that says why. This is the mechanical difference
+/// between one definition of identity and the two hand-copied shell lists.
+#[test]
+fn decision_pin_membership_tests_live_only_in_the_identity_functions() {
+    const KEYS_RS: &str = include_str!("keys.rs");
+    let lines: Vec<&str> = KEYS_RS.lines().collect();
+    assert!(
+        lines.len() > 300,
+        "the include_str path moved: keys.rs yielded only {} lines, so this \
+            ratchet would be reading nothing rather than agreeing",
+        lines.len()
+    );
+
+    // Allowed: the two const definitions and the two identity function bodies.
+    let mut allowed = vec![false; lines.len()];
+    let mut region: Option<&str> = None;
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_start();
+        if region.is_none() {
+            if t.starts_with("pub const SECRET_KEY_DENY_LIST")
+                || t.starts_with("pub const NON_EXPORTABLE_DEVICE_KEYS")
+            {
+                region = Some("const");
+            } else if t.starts_with("pub fn credential_base") || t.starts_with("pub fn device_base")
+            {
+                region = Some("fn");
+            }
+        }
+        if let Some(kind) = region {
+            allowed[i] = true;
+            let closed = match kind {
+                "const" => t.ends_with("];"),
+                _ => *line == "}",
+            };
+            if closed {
+                region = None;
+            }
+        }
+    }
+    assert!(
+        allowed.iter().filter(|a| **a).count() > 25,
+        "no identity-function body was located in keys.rs; the ratchet is vacuous"
+    );
+
+    let mut inside = 0usize;
+    let mut strays: Vec<String> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        if !(line.contains("SECRET_KEY_DENY_LIST") || line.contains("NON_EXPORTABLE_DEVICE_KEYS")) {
+            continue;
+        }
+        if line.trim_start().starts_with("///") {
+            continue; // prose may name the lists; code may not test them
+        }
+        if allowed[i] {
+            inside += 1;
+        } else {
+            strays.push(format!("line {}: {}", i + 1, line.trim()));
+        }
+    }
+    assert!(
+        inside >= 2,
+        "expected both lists to be resolved inside the identity functions; saw {inside}"
+    );
+    assert!(
+        strays.is_empty(),
+        "a settings-key list is tested outside credential_base/device_base, which is a \
+            second definition of identity and will drift. Add an arm to the right \
+            identity function instead. Offending lines:\n{}",
+        strays.join("\n")
+    );
+}

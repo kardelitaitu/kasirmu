@@ -349,7 +349,11 @@ pub fn normalised_candidate(key: &str) -> String {
 /// read, may it leave the backend, may it be deleted) are asked BY CALLERS of
 /// this function, against the base it returns, and never by a second
 /// membership test: a caller that re-derives the match has started a second
-/// definition of identity, and two definitions drift.
+/// definition of identity, and two definitions drift. The identity question
+/// lives here and the verdicts live in callers;
+/// `decision_pin_membership_tests_live_only_in_the_identity_functions` in this
+/// module's tests fails any line that adds a membership test elsewhere in this
+/// file, so the shape cannot quietly lapse.
 ///
 /// As of this commit the resolution is deliberately SUFFIX-BLIND: whole-key
 /// equality against the list, exactly the comparison [`is_secret_setting_key`]
@@ -374,6 +378,29 @@ pub fn credential_base(key: &str) -> Option<&'static str> {
         .copied()
 }
 
+/// The device-bound identity key a settings-key NAME denotes: the canonical
+/// [`NON_EXPORTABLE_DEVICE_KEYS`] entry it spells, or `None` when it spells
+/// none.
+///
+/// The twin of [`credential_base`], same shape, same rules, and the same
+/// division of labour: the IDENTITY question lives here and the VERDICTS live
+/// in callers. A name's device half answers “may this leave the backend in a
+/// portable package” and nothing else — these keys stay readable through
+/// `get_setting`, which is why the two lists are never merged and why no name
+/// moves between them. A second membership test would be a second definition
+/// of identity; `decision_pin_membership_tests_live_only_in_the_identity_functions
+/// in this module's tests fails any line that adds one.
+///
+/// Suffix-blind for the same reason and with the same consequence as
+/// [`credential_base`] — whole-key equality against a list that stays as
+/// declared — so `sync_terminal_id:tenant-a` resolves to `None` today.
+pub fn device_base(key: &str) -> Option<&'static str> {
+    let candidate = normalised_candidate(key);
+    NON_EXPORTABLE_DEVICE_KEYS
+        .iter()
+        .find(|entry| **entry == candidate.as_str())
+        .copied()
+}
 /// Returns true when the given settings key holds a credential that the raw
 /// get_setting IPC surface must never return (C-2).
 ///
@@ -421,17 +448,19 @@ pub fn is_secret_setting_key(key: &str) -> bool {
 /// [SECRET_KEY_DENY_LIST] plus the device-bound identity keys from
 /// [NON_EXPORTABLE_DEVICE_KEYS].
 ///
-/// The candidate is normalised exactly as [`is_secret_setting_key`] does —
-/// trimmed, ASCII case-folded, against a list that stays as declared — so the
-/// credential half and the device half of the egress rule answer near-miss
-/// spellings the same way instead of disagreeing by collation.
+/// Neither half computes a match of its own: the credential half resolves
+/// through [`credential_base`] and the device half through [`device_base`], so
+/// this predicate holds no local `normalised_candidate` call. That is the point
+/// — the fold, the case rules and the suffix-blindness are each defined once,
+/// which is what kept the two shells' hand-copied lists from ever agreeing.
+/// The egress rule is therefore exactly the OR of two identity answers, and
+/// this function is where a caller asks the “may it leave” verdict.
 ///
 /// Lifecycle-manager-owned prefixes (local_api.*, lan_server.*) are refused
 /// on top of this by the bridge lane, which owns the manager names; the
 /// tablet shell has no such manager surface, so this is the whole rule there.
 pub fn is_non_exportable_setting_key(key: &str) -> bool {
-    let candidate = normalised_candidate(key);
-    is_secret_setting_key(key) || NON_EXPORTABLE_DEVICE_KEYS.contains(&candidate.as_str())
+    credential_base(key).is_some() || device_base(key).is_some()
 }
 
 #[cfg(test)]
