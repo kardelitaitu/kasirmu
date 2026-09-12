@@ -309,6 +309,11 @@ pub(crate) enum StoredForm {
     Invalid,
     /// No crypto family owns the key, so nothing at all can be asked of the value.
     Indeterminate,
+    /// Sealed by a MACHINE-BOUND family: the key material is the installation
+    /// fingerprint, which this tool will not read. The row is UNTESTED, neither
+    /// cleartext nor safe. license.api_key is the live case, and it is the
+    /// credential a real install is most likely to hold,
+    MachineBoundUntested,
     /// No family in this build can seal this key, so the value is cleartext by
     /// construction rather than by inspection. Kept separate from Indeterminate
     /// because the two say different things: this one is a measured claim about
@@ -324,13 +329,14 @@ impl StoredForm {
             StoredForm::Invalid => "INVALID-CIPHERTEXT",
             StoredForm::Indeterminate => "undeterminable(cannot be opened here)",
             StoredForm::UnsealableCleartext => "CLEARTEXT(no family can seal this key)",
+            StoredForm::MachineBoundUntested => "UNTESTED-BY-THIS-TOOL(machine-bound family)",
         }
     }
 
-    /// The forms that positively state the value sits in cleartext. INVALID and
-    /// INDETERMINATE are deliberately excluded: neither is a claim about the
-    /// bytes, and folding them in would inflate the headline with rows the tool
-    /// has not actually read.
+    /// The forms that positively state the value sits in cleartext. INVALID,
+    /// INDETERMINATE and MACHINE-BOUND-UNTESTED are all excluded: none of the three
+    /// is a claim about the bytes, and folding any of them in would inflate the
+    /// headline with rows this tool has not actually read.
     pub(crate) fn is_cleartext(self) -> bool {
         matches!(
             self,
@@ -343,10 +349,33 @@ impl StoredForm {
 /// value without knowing its plaintext.
 type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
 
-/// The four keys oz-crypto took over, and nothing else. Every other deny-listed
-/// key answers None: some of them are then reported cleartext BECAUSE no family
-/// can seal them, and the rest (local_api.secret, smtp_config) are reported
-/// undeterminable because a lane this crate cannot reach does seal them.
+/// Every family oz-crypto exposes, enumerated because the blind spot this closes
+/// is a mislabelled family: license.api_key used to read CLEARTEXT, no family can
+/// seal this key, while crates/oz-bridge/src/license.rs:151 encrypts it with the
+/// installation machine id. A label that is not evidence is the same defect as a
+/// check that stays silent.
+///
+///   PORTABLE, derivable in this process with no local state, so ASKED here:
+///     sync_api_key          encrypt_sync_api_key          -> SYNC_API_KEY
+///     sync_terminal_secret  encrypt_sync_terminal_secret  -> SYNC_TERMINAL_SECRET
+///     pg_sync.password      encrypt_pg_sync_password      -> PG_SYNC_PASSWORD
+///     rate_sync.api_key     encrypt_rate_api_key          -> RATE_SYNC_API_KEY
+///
+///   PORTABLE but not a whole-row secret, so NOT asked here:
+///     smtp_at_rest    one FIELD of a JSON blob     encrypt_smtp_at_rest
+///     lan_psk         has a family; see below      encrypt_lan_psk
+///     profile_field   not a settings key at all    encrypt_profile_field
+///
+///   MACHINE-BOUND, needs the installation fingerprint, never derived here:
+///     api_key         encrypt_api_key(v, machine_id) -> LICENSE_API_KEY, untested
+///     smtp_password   encrypt_smtp_password(v, machine_id) -> no caller left in the
+///       tree: that machine-bound family is dead, and smtp_config is written by the
+///       portable at-rest family inside its JSON blob, so it is not listed here.
+///
+/// lan_server.psk is left OUT of the asked list on purpose. It does have a
+/// portable family, but it is not one of the keys the at-rest migration took over,
+/// and quietly widening the asked set would change what the cleartext headline
+/// counts with nobody deciding to; it answers Indeterminate, which under-claims.
 fn credential_family(key: &str) -> Option<FamilyDecrypt> {
     use oz_core::settings::keys;
     match key {
@@ -358,10 +387,20 @@ fn credential_family(key: &str) -> Option<FamilyDecrypt> {
     }
 }
 
-/// Keys this build cannot seal but ANOTHER lane can: the bridge machine-binds
-/// local_api.secret, and smtp_config is a JSON envelope whose password FIELD is
-/// sealed while the rest of the row is in the clear. Neither is openable from
-/// here, so both answer Indeterminate rather than a guess about their bytes.
+/// Keys this build cannot seal but ANOTHER lane can with a key of its own:
+/// local_api.secret is sealed by the bridge, and smtp_config is a JSON envelope
+/// whose password FIELD is sealed while the rest of the row is in the clear.
+/// Neither is openable from here, so both answer Indeterminate rather than a
+/// guess about their bytes. Machine-bound families are NOT this predicate's
+/// business: they answer MachineBoundUntested before classification gets here.
+/// The settings keys whose family needs the installation fingerprint, read off
+/// the enumeration on credential_family: api_key is the live one, smtp_password
+/// has no caller left in the tree.
+fn sealed_by_machine_bound_family(key: &str) -> bool {
+    use oz_core::settings::keys;
+    matches!(key, keys::LICENSE_API_KEY)
+}
+
 fn sealed_in_another_lane(key: &str) -> bool {
     use oz_core::settings::keys;
     matches!(key, keys::LOCAL_API_SECRET | keys::SMTP_CONFIG)
@@ -382,6 +421,18 @@ fn looks_like_ciphertext_shape(value: &str) -> bool {
 /// Classify one stored value. It reads the value and returns only a form:
 /// nothing derived from the value escapes this function.
 fn classify_stored_value(key: &str, value: &str) -> StoredForm {
+    if sealed_by_machine_bound_family(key) {
+        // Decided by KEY, before the value is looked at at all. This tool cannot
+        // derive the machine id, and it must not try: a census that reads the
+        // installation fingerprint in order to decrypt tenant credentials is a
+        // worse instrument than one that under-claims. A plaintext-looking value
+        // here is therefore NOT evidence either way, because license.api_key may
+        // legitimately be legacy plaintext on an install predating the sealing
+        // (license.rs:121 treats a failed decrypt as legacy plaintext, not as an
+        // error), and the tool cannot tell those two rows apart. So both are
+        // listed and neither is counted.
+        return StoredForm::MachineBoundUntested;
+    }
     let Some(decrypt) = credential_family(key) else {
         if sealed_in_another_lane(key) {
             return StoredForm::Indeterminate;
@@ -502,6 +553,27 @@ pub(crate) fn total_settings_rows(rows: &SettingCounts) -> usize {
     rows.iter().map(|row| row.rows).sum()
 }
 
+/// Rows EXCLUDED from the cleartext headline: INVALID, Indeterminate and
+/// MachineBoundUntested. Exposed so the report can state the number instead of
+/// leaving the operator to subtract two printed totals by hand.
+pub(crate) fn total_excluded_rows(rows: &SettingCounts) -> usize {
+    rows.iter().map(|row| row.rows - row.cleartext_rows()).sum()
+}
+
+/// Rows listed but explicitly NOT tested, because a machine-bound family holds
+/// the only key that would answer the question.
+pub(crate) fn total_untested_rows(rows: &SettingCounts) -> usize {
+    rows.iter()
+        .map(|row| {
+            row.forms
+                .iter()
+                .filter(|(form, _)| matches!(form, StoredForm::MachineBoundUntested))
+                .map(|(_, count)| *count)
+                .sum::<usize>()
+        })
+        .sum()
+}
+
 /// The headline of the settings block: live rows that are POSITIVELY cleartext.
 /// Undeterminable rows are not folded into it; they are printed beside it, so
 /// the size of the unknown is visible instead of implied.
@@ -534,8 +606,11 @@ pub(crate) fn format_setting_counts(rows: &SettingCounts) -> Vec<String> {
 /// a file it had just made. Checking that both tables exist is the strongest
 /// claim available from a borrowed &Connection, and the message names the
 /// resolved path so an operator learns where the ghost came from. The CREATE
-/// itself belongs to commands::open_db, is shared by every subcommand, and is
-/// deliberately not changed from this file.
+/// itself now happens upstream for this command: b0242e5e4 added
+/// commands::open_store_for_credential_deltas, which refuses a path it would have to
+/// create before opening it, while commands::open_db still creates for every other
+/// subcommand on purpose because migrate / init-db / restore provisioning a database on
+/// first run is legitimate. So arriving here means the file exists and is not a store.
 pub(crate) fn require_store_database(conn: &Connection) -> Result<()> {
     let path = conn
         .path()
@@ -570,6 +645,18 @@ pub(crate) fn format_delta_counts(counts: &DeltaCounts) -> Vec<String> {
 pub(crate) fn total_rows(counts: &DeltaCounts) -> usize {
     counts.iter().map(|(_, count)| *count).sum()
 }
+
+/// What EXCLUDED means, printed whenever the excluded count is not zero.
+pub(crate) const EXCLUDED_ROWS_NOTE: &str = concat!(
+    "An EXCLUDED row is listed and NOT asserted. Three forms are excluded, each for ",
+    "its own reason: INVALID (ciphertext-shaped, but it would not authenticate, so either ",
+    "tampering or a plaintext that merely looks like base64), undeterminable (sealed by a ",
+    "lane this build cannot open), and UNTESTED-BY-THIS-TOOL (a machine-bound family holds ",
+    "the key, and this tool will not read the installation fingerprint to get it). A ",
+    "NON-ZERO excluded count is the normal case, not a clean bill of health: an excluded ",
+    "row may well be cleartext, and the tool is saying it cannot tell, which is NOT the ",
+    "same as saying it is sealed."
+);
 
 /// Why a LEGACY-PLAINTEXT verdict on one of the four sealed keys is not an
 /// incident: the at-rest encryption arrived on 2026-08-29 (e105109f6) and the
@@ -630,10 +717,19 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
         }
         println!("{LEGACY_PLAINTEXT_NOTE}");
     }
+    let excluded_total = total_excluded_rows(&settings);
+    let untested_total = total_untested_rows(&settings);
     println!(
-        "SETTINGS TOTAL: {settings_total} row(s) — {cleartext_total} positively cleartext, {} NOT claimed either way (INVALID or undeterminable). This total is NEVER added to, or read as, the LEDGER TOTAL above, which counts a different table.",
-        settings_total - cleartext_total
+        "SETTINGS TOTAL: {settings_total} row(s) — {cleartext_total} positively cleartext, {excluded_total} EXCLUDED from that headline (INVALID, undeterminable, or machine-bound untested). This total is NEVER added to, or read as, the LEDGER TOTAL above, which counts a different table."
     );
+    if excluded_total > 0 {
+        println!("{EXCLUDED_ROWS_NOTE}");
+    }
+    if untested_total > 0 {
+        println!(
+            "EXCLUDED BECAUSE UNTESTED: {untested_total} row(s) sit on a MACHINE-BOUND family (license.api_key, sealed with the installation machine id), and that count is NOT zero. This tool lists those rows and does not test them: it neither reads the fingerprint to decrypt them nor calls the value cleartext, because a machine-bound row can be either, and the two are indistinguishable from here."
+        );
+    }
     println!("{SETTINGS_REPORT_ONLY}");
     println!();
 

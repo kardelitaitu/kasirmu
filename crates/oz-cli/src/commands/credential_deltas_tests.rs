@@ -644,3 +644,107 @@ fn an_existing_file_with_no_tables_is_refused_by_the_second_guard_not_the_first(
     drop(conn);
     let _ = std::fs::remove_dir_all(&dir);
 }
+// -- The machine-bound blind spot: listed, not tested -----------------------
+
+/// license.api_key is encrypted with the MACHINE-BOUND api_key family
+/// (crates/oz-bridge/src/license.rs:151 passes the installation machine id into
+/// encrypt_api_key), so a portable-only classifier labelled the row CLEARTEXT
+/// with the note that no family can seal it — false, and it landed inside the
+/// cleartext headline, over-stating exposure on exactly the credential a real
+/// install is most likely to hold. Such a row is now listed and NOT tested: a
+/// tool that reads the fingerprint to decrypt credentials is a worse instrument
+/// than one that under-claims.
+#[test]
+fn a_machine_bound_row_is_listed_as_untested_and_never_counted_cleartext() {
+    use oz_core::settings::keys::LICENSE_API_KEY;
+    let conn = fresh_db();
+    let sealed =
+        oz_core::crypto::encrypt_api_key("license-key-never-printed", "machine-fp-demo").unwrap();
+    Settings::set(&conn, LICENSE_API_KEY, &sealed).unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(rows.len(), 1, "license.api_key is deny-listed: {rows:?}");
+    assert_eq!(rows[0].key, LICENSE_API_KEY);
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::MachineBoundUntested, 1)],
+        "a machine-bound row must be UNTESTED, not INVALID or cleartext: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        0,
+        "the whole point: a machine-bound row must never reach the cleartext headline"
+    );
+    assert_eq!(total_untested_rows(&rows), 1);
+    assert_eq!(total_excluded_rows(&rows), 1);
+    let line = &format_setting_counts(&rows)[0];
+    assert!(
+        line.contains(LICENSE_API_KEY) && line.contains("UNTESTED-BY-THIS-TOOL"),
+        "the row is still LISTED, with its form: {line}"
+    );
+    assert!(
+        !line.contains(&sealed) && !line.contains("license-key-never-printed"),
+        "and listing it must not print the value or its ciphertext: {line}"
+    );
+}
+
+/// The other half of the same blindness, and the half that keeps the first test
+/// honest: a genuinely plaintext license.api_key row — legal on an install
+/// predating the sealing, and the case license.rs:121 handles by falling back to
+/// legacy plaintext — is reported EXACTLY the same way. Telling those two rows
+/// apart needs the fingerprint, so the tool does not claim either, and the
+/// control proves that is a machine-bound rule rather than a blanket refusal.
+#[test]
+fn a_plaintext_machine_bound_row_reads_the_same_because_the_tool_cannot_tell() {
+    use oz_core::settings::keys::LICENSE_API_KEY;
+    let conn = fresh_db();
+    Settings::set(&conn, LICENSE_API_KEY, "sk_live_handed_in_cleartext").unwrap();
+
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        rows[0].forms,
+        vec![(StoredForm::MachineBoundUntested, 1)],
+        "plaintext on a machine-bound key must not be reported as proof: {rows:?}"
+    );
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        0,
+        "untested is not cleartext, and the headline under-claims on purpose"
+    );
+    assert_eq!(total_untested_rows(&rows), 1);
+
+    // Control: a key with NO family anywhere is still claimed cleartext, so the
+    // exclusion above is the machine-bound rule and not the tool refusing to say
+    // anything at all.
+    Settings::set(&conn, STRIPE_API_KEY, "sk_live_handed_in_cleartext").unwrap();
+    let rows = scan_credential_settings(&conn).unwrap();
+    assert_eq!(
+        total_cleartext_rows(&rows),
+        1,
+        "stripe.api_key has no family in any lane, so its cleartext IS claimable"
+    );
+    assert_eq!(
+        total_untested_rows(&rows),
+        1,
+        "and only the machine-bound row is excluded"
+    );
+}
+
+/// The report has to say the excluded count is not zero and what exclusion
+/// means, or two totals with a gap between them read as a rounding difference.
+#[test]
+fn the_report_states_what_an_excluded_row_means() {
+    assert!(
+        EXCLUDED_ROWS_NOTE.contains("NON-ZERO excluded count is the normal case"),
+        "the note must say a non-zero exclusion is expected, not clean"
+    );
+    assert!(
+        EXCLUDED_ROWS_NOTE.contains("saying it cannot tell")
+            && EXCLUDED_ROWS_NOTE.contains("NOT the same as saying it is sealed"),
+        "and it must say what excluded means: {EXCLUDED_ROWS_NOTE}"
+    );
+    assert!(
+        LONG_HELP.as_str().contains("REPORTED AND NOT PURGED"),
+        "the help text carries the same report-only promise the run prints"
+    );
+}
