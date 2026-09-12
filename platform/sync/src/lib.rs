@@ -34,6 +34,7 @@ next: none | perf: 64KB priority-sorted batches
 #![allow(clippy::items_after_test_module)]
 
 pub mod conflict;
+pub mod crdt;
 pub mod daemon;
 pub mod image_push;
 pub mod pg_daemon;
