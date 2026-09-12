@@ -1270,3 +1270,57 @@ func TestCreateTenant_RaceReturnsExistingRowWithoutError(t *testing.T) {
 		t.Errorf("expected exactly 1 row after the race, got %d", len(dupes))
 	}
 }
+
+// TestRequestOTP_SendFailurePinsKnownHazard_ActiveUnverifiedRowSquatsEmail is a
+// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT (review finding parked as a
+// decision, not a deferred task): request-otp's register-or-login door
+// self-signs the tenant via createTenant with status="active" (web_otp.go)
+// BEFORE sendOTPEmail is attempted (create at :593, send at :626), so a
+// merchant whose mail relay is misconfigured gets a 500 yet the email is now
+// HELD by an ACTIVE, email_verified=false row nobody proved inbox ownership
+// for. Unlike /web/register this door sets no password, so the row cannot log
+// in — the hazard here is the active row squatting the identity while the
+// owner is told the code could not be delivered. The ordering repair (create
+// the tenant non-active, activate on verification) is a schema change —
+// tenants.status is a validated PocketBase select — plus a boot migration,
+// deliberately parked behind an operator decision. If this test fails because
+// the ordering changed, that is the intended loud outcome — update this pin
+// deliberately, not silently.
+func TestRequestOTP_SendFailurePinsKnownHazard_ActiveUnverifiedRowSquatsEmail(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+
+	// The SMTP gate passes (OZ_SMTP_HOST set) but the send itself fails.
+	t.Setenv("OZ_SMTP_HOST", "test.local")
+	orig := sendOTPEmail
+	sendOTPEmail = func(to, code string) error { return errors.New("smtp relay down (simulated)") }
+	defer func() { sendOTPEmail = orig }()
+
+	rec := webRequest(t, se, http.MethodPost, "/api/v1/web/request-otp",
+		`{"email":"otpfailpin@example.com"}`, "http://localhost:4321", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when the send fails, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Assert on the record read back, not the return value — the finding is
+	// precisely that the two disagree.
+	tenant, err := app.FindFirstRecordByData("tenants", "email", "otpfailpin@example.com")
+	if err != nil || tenant == nil {
+		t.Fatalf("hazard pin: tenant exists after a failed send: %v", err)
+	}
+	if tenant.GetString("status") != "active" {
+		t.Errorf("hazard pin: status = %q, want active (tenant created before the send)", tenant.GetString("status"))
+	}
+	if tenant.GetBool("email_verified") {
+		t.Error("hazard pin: email_verified should stay false — no inbox proof happened")
+	}
+
+	// The failed send must not leave a dead code behind (deleteCode path).
+	webOtpStore.mu.Lock()
+	_, codeStored := webOtpStore.codes["otpfailpin@example.com"]
+	webOtpStore.mu.Unlock()
+	if codeStored {
+		t.Error("hazard pin: a failed send must not leave a pending code")
+	}
+}

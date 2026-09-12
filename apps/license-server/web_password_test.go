@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -385,6 +386,15 @@ func TestRegister_ThenVerifyCompletesSignup(t *testing.T) {
 	}
 }
 
+// TestRegister_RejectsExistingAccount pins the EXISTING 409 behavior — this is
+// the refutation of the review premise that register does not answer 409 for a
+// taken identity (the check lives at web_password.go "Reject existing accounts").
+// That check sits deliberately BEFORE the OZ_SMTP_HOST gate so a duplicate-email
+// attempt gets its client error even when email delivery is down. The ordering
+// is load-bearing and its intent is documented nowhere outside the code
+// comment: DO NOT move it below the SMTP gate, or a caller asking "is this
+// identity taken?" starts receiving the server's delivery problem (503)
+// instead of the account answer (409).
 func TestRegister_RejectsExistingAccount(t *testing.T) {
 	resetRateLimiters()
 	app, se := setupDirectApp(t)
@@ -405,6 +415,71 @@ func TestRegister_RejectsExistingAccount(t *testing.T) {
 	}
 	if tenant.GetString("password_hash") != "" {
 		t.Error("409 must not set a password on the existing tenant")
+	}
+	if tenant.GetString("status") != "active" {
+		t.Errorf("409 must not mutate the existing tenant status, got %q", tenant.GetString("status"))
+	}
+	if tenant.GetBool("email_verified") {
+		t.Error("409 must not flip email_verified on the existing tenant")
+	}
+}
+
+// TestRegister_SendFailurePinsKnownHazard_ActiveUnverifiedTenantCanLogin is a
+// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT (review finding parked as a
+// decision, not a deferred task): /web/register creates the tenant via
+// createTenant with status="active" (web_otp.go) BEFORE sendOTPEmail is
+// attempted (web_password.go: create at :286, send at :312), so a merchant
+// whose mail relay is misconfigured gets a 500 yet still owns an ACTIVE,
+// email_verified=false tenant — and the submitted password AUTHENTICATES at
+// /web/login, because the login gate checks status only and never
+// email_verified (web_password.go:407, documented at :332-338). Nobody proved
+// inbox ownership, but the account is live. The ordering repair (create the
+// tenant non-active, activate on verification) is a schema change —
+// tenants.status is a validated PocketBase select — plus a boot migration,
+// deliberately parked behind an operator decision: making login depend on a
+// delivered email can lock a merchant out of a deploy with broken SMTP, the
+// same class of unattended call as the parked admin-gate half. If this test
+// starts failing because the ordering or the login gate changed, that is the
+// intended loud outcome — update this pin deliberately, not silently.
+func TestRegister_SendFailurePinsKnownHazard_ActiveUnverifiedTenantCanLogin(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+
+	// The SMTP gate passes (OZ_SMTP_HOST set) but the send itself fails.
+	t.Setenv("OZ_SMTP_HOST", "test.local")
+	orig := sendOTPEmail
+	sendOTPEmail = func(to, code string) error { return errors.New("smtp relay down (simulated)") }
+	defer func() { sendOTPEmail = orig }()
+
+	rec := webRequest(t, se, http.MethodPost, "/api/v1/web/register",
+		`{"email":"smtpfailpin@example.com","password":"SmtpFailPw!1"}`,
+		"http://localhost:4321", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when the confirmation send fails, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Assert on the record read back, not the return value — the finding is
+	// precisely that the two disagree.
+	tenant, err := app.FindFirstRecordByData("tenants", "email", "smtpfailpin@example.com")
+	if err != nil || tenant == nil {
+		t.Fatalf("hazard pin: tenant exists after a failed send: %v", err)
+	}
+	if tenant.GetString("status") != "active" {
+		t.Errorf("hazard pin: status = %q, want active (tenant created before the send)", tenant.GetString("status"))
+	}
+	if tenant.GetBool("email_verified") {
+		t.Error("hazard pin: email_verified should stay false — no inbox proof happened")
+	}
+
+	// Exercise the login gate itself: the never-verified password account
+	// authenticates today. 200 IS the hazard; a failure here means someone
+	// changed the ordering or the gate — revisit this pin deliberately.
+	rec = webRequest(t, se, http.MethodPost, "/api/v1/web/login",
+		`{"email":"smtpfailpin@example.com","password":"SmtpFailPw!1"}`,
+		"http://localhost:4321", "")
+	if rec.Code != http.StatusOK {
+		t.Errorf("hazard pin: login with the unverified account is expected to succeed today (200), got %d: %s — if this now 401s, the hazard was fixed or the gate changed; revisit this pin", rec.Code, rec.Body.String())
 	}
 }
 
