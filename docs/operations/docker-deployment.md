@@ -1,6 +1,6 @@
 # Docker Deployment Guide — Full-Stack OZ-POS
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (structural claims + all references verified) · verified against HEAD: all 4 services defined in docker-compose*.yml (pos-cloud-server/license-server/redis/pos-cloud-db); ports 3099/8080 match prod compose; scripts/generate-license-keys.{sh,ps1}, Dockerfile.server, apps/license-server/Dockerfile exist; ADR #10 + #11 links resolve with correct numbers. Scope: structural/reference claims verified; step-by-step deployment procedures not exhaustively executed -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (structural claims + all references verified) · verified against HEAD: all 4 services defined in docker-compose*.yml (pos-cloud-server/license-server/redis/pos-cloud-db); ports 3099/8080 match prod compose; scripts/generate-license-keys.{sh,ps1}, Dockerfile.server, apps/license-server/Dockerfile exist; ADR #10 + #11 links resolve with correct numbers. Scope: structural/reference claims verified; step-by-step deployment procedures not exhaustively executed · Repaired 12-09-26 (DSH, consistency vs 14a31a31f + license-server auth code): OZ_ADMIN_KEY added to every required-vars list (the compose `:?` default made the old "empty = dev mode open" row false); new admin-key / dev-fallback / OZ_PRODUCTION section — OZ_PRODUCTION is read by the cloud server only and appears in no compose artifact -->
 
 > **ADR:** [ADR #11](../decisions/2026-07-13-zero-downtime-vps-migration.md)
 > **Status:** Implemented (2026-07-20)
@@ -61,6 +61,7 @@ powershell -File scripts/generate-license-keys.ps1   # Windows
 
 # 2. Export required secrets (Compose fails closed if absent — DOCKER-04)
 export OZ_API_SECRET=$(openssl rand -hex 32)
+export OZ_ADMIN_KEY=$(openssl rand -hex 32)
 export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
 
 # 3. Start all services
@@ -81,8 +82,8 @@ docker compose logs -f
 The cloud server starts with SQLite (default) and connects to Redis at
 `redis://redis:6379`. The license server uses embedded PocketBase SQLite.
 
-`OZ_API_SECRET` and `OZ_LICENSE_PRIVATE_KEY` are required by Compose and
-startup fails fast when either is missing, so the stack never boots with
+`OZ_API_SECRET`, `OZ_ADMIN_KEY` and `OZ_LICENSE_PRIVATE_KEY` are required by Compose and
+startup fails at parse time when any is missing, so the stack never boots with
 an empty or well-known authentication secret.
 
 ### Step-by-Step
@@ -91,9 +92,10 @@ an empty or well-known authentication secret.
    server to sign subscription tokens. The script saves the private key
    to `crates/oz-core/oz-license-private.pem`.
 
-2. **Export secrets** — `OZ_API_SECRET` (JWT signing) and
-   `OZ_LICENSE_PRIVATE_KEY` are required. `docker compose up` fails fast
-   with a clear message if either is unset.
+2. **Export secrets** — `OZ_API_SECRET` (JWT signing), `OZ_ADMIN_KEY`
+   (admin/mint gate) and `OZ_LICENSE_PRIVATE_KEY` (license signing) are
+   required. `docker compose up` fails fast with a clear message if any is
+   unset.
 
 3. **Start the stack** — `docker compose up -d` starts `pos-cloud-server`,
    `license-server`, and `redis` in the default profile. The cloud server
@@ -130,6 +132,7 @@ bash scripts/generate-license-keys.sh
 
 # 2. Set required env vars
 export OZ_API_SECRET=$(openssl rand -hex 32)
+export OZ_ADMIN_KEY=$(openssl rand -hex 32)
 export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
 export PG_PASSWORD=$(openssl rand -hex 32)
 
@@ -164,6 +167,7 @@ profile that only applies when explicitly requested:
 
 ```bash
 export OZ_API_SECRET=$(openssl rand -hex 32)
+export OZ_ADMIN_KEY=$(openssl rand -hex 32)
 export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
@@ -272,6 +276,7 @@ needed.
 | Variable | Default | Service | Description |
 |----------|---------|---------|-------------|
 | `OZ_API_SECRET` | *(required)* | pos-cloud-server | JWT signing secret. Generate: `openssl rand -hex 32`. Compose fails fast if unset |
+| `OZ_ADMIN_KEY` | *(required)* | pos-cloud-server | Admin key gating `POST /api/v1/tokens` and the plan admin endpoint (ADR sync-auth-hardening P2). Generate: `openssl rand -hex 32`. Compose fails at parse time if unset (`:?`, DOCKER-04) — unset is no longer "dev mode, endpoints open" |
 | `OZ_LICENSE_PRIVATE_KEY` | *(required)* | license-server | PEM-encoded license signing private key. Generate with `scripts/generate-license-keys.*`. Compose fails fast if unset |
 | `PG_PASSWORD` | *(required, pg override)* | pos-cloud-db | PostgreSQL password. Required only when `docker-compose.pg.yml` is merged |
 
@@ -285,10 +290,70 @@ needed.
 | `REDIS_URL` | `redis://redis:6379` | pos-cloud-server | Redis connection string |
 | `REDIS_CACHE_TTL` | `300` | pos-cloud-server | Redis cache TTL (seconds) |
 | `DATABASE_URL` | _(empty)_ | pos-cloud-server | PostgreSQL connection string |
-| `OZ_ADMIN_KEY` | _(empty)_ | pos-cloud-server | Admin key gating `POST /api/v1/tokens` and the plan admin endpoint. Empty (unset) = dev mode, endpoints stay open; set in production so only callers with the matching `X-Admin-Key` header can mint tokens or change plans (ADR sync-auth-hardening P2, sync-plan-gating) |
+| `OZ_ADMIN_KEY` | _(unset)_ | license-server | Bearer key for the Go server's admin API (`admin_dashboard.go`). **Not** passed through by `docker-compose.yml`, so on this stack key auth is closed (every bearer 401s); admin access is an admin-tenant web session. Empty/whitespace behaves the same — fail-closed, never "unset = open" |
+| `OZ_ADMIN_EMAIL` | _(unset)_ | license-server | Admin tenant email anchoring the web-session admin path. Unset = the compiled-in fallback address is used — see the dev-fallback section below for a check |
 | `OZ_ENFORCE_PLANS` | _(empty)_ | pos-cloud-server | When `1`/`true`/`on`, sync requests from tenants on the `free` plan (or with no plan row) are rejected with `403 {"error":"plan_required"}`. Unset = gating off (dev mode) |
 | `PG_USER` | `ozpos` | pos-cloud-db | PostgreSQL user |
 | `PG_DATABASE` | `ozpos` | pos-cloud-db | PostgreSQL database name |
+
+---
+
+## Admin Keys, `OZ_PRODUCTION`, and the Dev Fallback
+
+### What an empty admin key does (per service)
+
+- **pos-cloud-server** — `OZ_ADMIN_KEY` is parse-time **required** in
+  `docker-compose.yml` (`${OZ_ADMIN_KEY:?...}`, DOCKER-04, since `14a31a31f`).
+  An operator who sets nothing gets a compose error, not the old dev-mode open
+  mint — the table row that said "empty (unset) = dev mode, endpoints stay
+  open" described pre-`14a31a31f` behaviour and has been removed.
+- **license-server** — the Go server reads `OZ_ADMIN_KEY`
+  (`admin_dashboard.go:52`), but compose does not pass it through, so on this
+  stack every `Authorization: Bearer` attempt against the admin API is
+  answered 401 (`adminKeyOK` returns false when the configured key is empty or
+  whitespace). An empty key is fail-closed here too — it is never treated as
+  "unset = open". Server-to-server admin calls need the key passed through
+  explicitly; otherwise admin access is the admin-tenant web session.
+
+### The compiled-in dev fallback, and a check you can run
+
+The fallback exists for local development: with `OZ_API_SECRET` unset and
+`OZ_PRODUCTION` not enabled, the cloud server signs JWTs with the hard-coded
+`oz-pos-dev-secret-change-in-production` constant
+(`crates/oz-api/src/auth.rs`) and prints a one-time WARNING containing
+"dev signing secret" to its log. In the Compose stack the fallback is
+unreachable (`OZ_API_SECRET` is parse-time required) — but verify the running
+deployment rather than trusting the compose file:
+
+```bash
+docker compose logs pos-cloud-server | grep 'dev signing secret'
+# no output  = a real secret is in use
+# a WARNING  = the deployment is running on the compiled-in fallback
+```
+
+The Go license-server has no secret fallback (an unset `OZ_ADMIN_KEY` just
+closes key auth, above), but it does compile in a fallback admin **identity**
+(`defaultAdminEmail`, used whenever `OZ_ADMIN_EMAIL` is unset). `/api/health`
+reports which one authentication anchors on:
+
+```bash
+curl -s http://localhost:8080/api/health | jq '.admin.source'
+# "env"      = the deployment named its admin address via OZ_ADMIN_EMAIL
+# "fallback" = admin auth anchors on the address compiled into the binary —
+#              set OZ_ADMIN_EMAIL (and provision the matching tenants row) to fix it
+```
+
+### `OZ_PRODUCTION`
+
+`OZ_PRODUCTION` is read by the cloud server (`crates/oz-api/src/lib.rs`,
+`apps/cloud-server/src/config.rs` — fail-closed boot unless both secrets are
+set, implies DB TLS) but it appears in **no artifact of this guide**:
+`docker-compose.yml` does not pass it through (neither does
+`docker-compose.prod.yml`), and the Go license-server ignores it entirely.
+The Compose stack gets its fail-closed guarantee from the `:?`
+required-variable syntax instead; an operator who wants the flag must add it
+to the service environment via an override file. Where the flag *is* set in
+production, see the Northflank runbook ([`runbook.md`](./runbook.md) §6.2).
 
 ---
 
@@ -483,9 +548,10 @@ path-looking argument.
 ## Security Notes
 
 1. **Set strong secrets** — `PG_PASSWORD` is required (no default) in
-   `docker-compose.pg.yml`; `OZ_API_SECRET` and `OZ_LICENSE_PRIVATE_KEY`
-   are required in the base stack. Compose fails fast when any of them
-   is absent, so a stack never boots with an empty/well-known secret.
+   `docker-compose.pg.yml`; `OZ_API_SECRET`, `OZ_ADMIN_KEY` and
+   `OZ_LICENSE_PRIVATE_KEY` are required in the base stack. Compose fails at
+   parse time when any of them is absent, so a stack never boots with an
+   empty/well-known secret.
 
 2. **Do not expose Redis or PostgreSQL ports externally** — Set
    `ports: ["6379:6379"]` only for local development. In production,
