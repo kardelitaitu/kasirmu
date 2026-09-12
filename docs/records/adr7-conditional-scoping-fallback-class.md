@@ -1,6 +1,9 @@
 # ADR #7 Conditional Scoping — the Fallback Class
 
 <!-- 2026-09-12 · DSH · measurement record, not a plan, not a fix list · branch 0.0.37 -->
+<!-- 2026-09-13 · DSH · §5 corrected after a false negative: the structured warning DOES exist, in
+     crates/oz-bridge/src/data.rs (c617739e7). §1 and §6 coordinates for the backup pair re-pointed for
+     the +13-line shift cf1147423 introduced. Every file:line pair below was read from HEAD. -->
 <!-- Companion to docs/operations/runbook.md §8.8 (legacy cleartext credential rows) and to
      ui/src/__tests__/api-data-contract.test.ts, whose two ungated cases at :47 and :53 are a
      DELIBERATE record of this class, not an oversight. Read them together: the contract test pins
@@ -15,9 +18,12 @@
      that cannot be checked out. -->
 
 **This repo closes a permission gap by adding a scoped twin and leaving the original call as the else
-branch of a ternary** — `sessionToken ? thingScoped(sessionToken) : thing()`. The comment at
-`ui/src/features/settings/DataManagementScreen.tsx:226`–`:228` names that pattern *ADR #7 conditional
-scoping*. The consequence is that an audit item recorded **complete** is still **open** through its own
+branch of a ternary** — `sessionToken ? thingScoped(sessionToken) : thing()`. The comment that stood
+at `ui/src/features/settings/DataManagementScreen.tsx:226`–`:228` up to `cf1147423^` named that pattern
+*ADR #7 conditional scoping* (`git show cf1147423^:ui/src/features/settings/DataManagementScreen.tsx`,
+those three lines). `cf1147423` rewrote it in place, so the same coordinates at HEAD hold the correction
+— it now opens "NOT a designed gradation" — which is why this page quotes the name rather than pointing
+at it. The consequence is that an audit item recorded **complete** is still **open** through its own
 fallback: the scoped command enforces a permission nobody without a token can satisfy, and the ungated
 command next to it enforces nothing.
 
@@ -37,11 +43,15 @@ states:
 - Four sites null an existing token while the shell stays mounted — `WorkspaceContext.tsx:215`, `:274`,
   `:319`, `:507` (`setSessionToken(null)`).
 - **There is no component-level auth guard to rule those states out.** `RequireAuth`, `AuthGuard` and a
-  login redirect return **nothing** over `ui/src`.
+  login redirect return **nothing** over `ui/src`: `git grep -n -e RequireAuth -e AuthGuard HEAD --
+  ui/src` → no hits (exit 1). Scope of that zero: `ui/src` only. It does not exclude a gate living
+  elsewhere — the shell's own gates, named two bullets down, are exactly such a thing.
 
   Narrow that, because the grep's *reason* is shakier than its *conclusion*: `ui/README.md` describes
   `App.tsx` as "setup guard → auth guard → AppLayout", and at this HEAD `ui/src/App.tsx` contains **no**
-  guard of any kind (37 lines: `AppProviders` → `AutofillBlocker` → `AppShell`). The gates live one level
+  guard of any kind — 38 lines (`grep -c '' ui/src/App.tsx`), and
+  `grep -n -e Auth -e Setup -e guard ui/src/App.tsx` → no hits: `AppProviders` → `AutofillBlocker` →
+  `AppShell`, plus a `DEV_TOOLBAR_ENABLED` conditional. The gates live one level
   down, in `ui/src/frontend/shell/AppShell.tsx`, which the README itself calls the place that "handles
   setup wizard flow, auth gates" and which does hold them — setup-complete, has-any-users, active-license
   (`:74`–`:80`). So guards exist; what does not exist is a guard on **the cloud session token**. The
@@ -62,8 +72,8 @@ design gap, not a defect list.
 | `ui/src/features/sales/EodReportScreen.tsx:402` | `exportEodReport` | READ | structural | shell gap — desktop registers no such command, so the ambient call rejected on every visit |
 | `ui/src/features/sales/hooks/usePosCartActions.ts:103` | `getCartDeductionLocation` | READ | structural | shell gap — tablet only |
 | `ui/src/hooks/useTerminalHardware.ts:239` | `getHardwareSettings` | READ | structural | shell gap, **inverted** — the unscoped call is the one that fails on desktop, so the bug is the fallback being *chosen*, not existing |
-| `ui/src/features/settings/DataManagementScreen.tsx:231` | `getBackupStatus` | READ | design | the pair that started this; see §5 |
-| `ui/src/features/settings/DataManagementScreen.tsx:263` | `createBackup` | WRITE | design | disk copy, no permission check |
+| `ui/src/features/settings/DataManagementScreen.tsx:244` | `getBackupStatus` | READ | design | the pair that started this; see §5 |
+| `ui/src/features/settings/DataManagementScreen.tsx:276` | `createBackup` | WRITE | design | disk copy, no permission check |
 | `ui/src/features/settings/LicenseSettings.tsx:249` | `pauseSubscription` | WRITE | design | unscoped variant reads the stored API key and calls the billing server unchecked |
 | `ui/src/features/settings/LicenseSettings.tsx:272` | `resumeSubscription` | WRITE | design | same; recovered by the depth-aware pass (§4) |
 | `ui/src/features/settings/AppearanceSettings.tsx:162` | `pickLogoFile` | SIDE-EFFECT | design | native file dialog, no permission check |
@@ -147,27 +157,64 @@ the corrected count, and the delta is the reason the method changed.
 
 ## 5. What is and is not decided
 
-- A **mitigation landed on the backup pair while this record was being written** — `cf1147423`
-  (test(ui): pin the tokenless backup bypass), touching `DataManagementScreen.tsx` (+19) and
-  `ui/src/__tests__/DataManagementBackup.test.tsx` (+73). It changes no security property:
-  **the bypass stays reachable**, and the misleading ADR comment at `DataManagementScreen.tsx:226`–`:228`
-  is corrected rather than left to certify the pattern.
-- **Still pending from that same plan, and NOT in `cf1147423`:** the structured warning on the Rust
-  ungated entry, naming the operation and stating that no session identity was presented. That commit's
-  diff contains **no `.rs` file at all** — `git show --name-only --format='' cf1147423 | grep -c '\.rs$'`
-  → **0** (do not use `--stat` for this: it prints the commit message too, and one message line matching
-  `.rs` yields a false 1, measured the hard way). Grep for such a warning in either shell's
-  `commands/data.rs` returns nothing. So as of this writing the operator-visible half of the mitigation
-  does not exist on either side of the IPC boundary.
-- A **known-hazard pin now renders the tokenless state for that one pair** (same commit). Before it,
-  **no test exercised the hole at all**, because the harness seeds a token globally —
-  `ui/src/test-setup.ts:161`, `sessionToken: HARNESS_SESSION_TOKEN` — so a component that falls back to
-  the ungated command in production never does so under Vitest. *That pin is the pattern for a WRITE or
-  side-effecting site ONLY, and only where the feature must keep working offline.* It is **not** a
+- A mitigation landed on the backup pair while this record was being written, and it is **two commits,
+  not one**. `cf1147423` (test(ui): pin the tokenless backup bypass and stop calling it a design) touched
+  `DataManagementScreen.tsx` +16/−3 and `ui/src/__tests__/DataManagementBackup.test.tsx` +72/−1 — from
+  `git show --numstat cf1147423`, not `--stat`, whose diff table is printed after the message. It changes
+  no security property: **the bypass stays reachable**. What it did change is the comment at
+  `DataManagementScreen.tsx:226`–`:228`, which had been certifying the pattern; those lines now certify
+  the hole instead.
+- The Rust half is `c617739e7` (feat(bridge): log every ungated backup call as
+  `backup_ungated_no_session`; one file, `crates/oz-bridge/src/data.rs`, +53/−4 by the same query). The
+  warning exists at HEAD, twice: `crates/oz-bridge/src/data.rs:291`–`:295` for `get_backup_status` and
+  `:337`–`:342` for `create_backup`, each carrying `operation` and
+  `skipped_permission = permissions::DATA_EXPORT`, and the sentence "served backup status with no session identity presented" /
+  "ran a full database backup with no session identity presented". Nothing else is carried, by design:
+  "The event carries the operation name and nothing else: no value, no backup path, no token"
+  (`:288`–`:289`).
+- **Why it is not in a shell file.** The command bodies moved out of the shells into the shared bridge
+  under ADR #49 (`docs/decisions/2026-09-11-adr49-headless-command-bridge.md`), so a shell is a delegate:
+  `apps/desktop-client/src/commands/data.rs:35` and `:45` call `oz_bridge::data::get_backup_status` and
+  `create_backup`, registered at `apps/desktop-client/src/lib.rs:843`–`:846`. One emit in the bridge
+  covers every caller of those bodies instead of needing a copy per shell. Scope the sentence before you
+  repeat it, because the un-scoped version is this record's error one size up: today the only caller is
+  the desktop shell — `git grep -in backup HEAD -- apps/tablet-client` → 3 hits, every one of them
+  `gen/android/` XML, and `apps/tablet-client/src/commands/mod.rs` declares no `data` module where
+  `apps/desktop-client/src/commands/mod.rs:29` declares it. On tablet the tokenless call has no
+  registered command to reach at all — the same shape as §1's three `shell gap` rows. That is a note
+  against this pair's `design` class in §1, found while correcting §5 and deliberately not resolved here:
+  changing it would move the four/fifteen split §1's reconciliation reports, and that arithmetic belongs
+  to the sweep, not to this correction.
+- The property that makes the event worth reading is structural, not decorative:
+  `backup_status_direct` (`:306`) and `create_backup_direct` (`:349`) are private; the ungated
+  `get_backup_status` / `create_backup` emit and then call them; and `get_backup_status_scoped` (`:786`)
+  / `create_backup_scoped` (`:801`) call the helper, not the public wrapper — `:795`–`:796`, "a call that
+  DID present a session must not emit backup_ungated_no_session". A call that presented a session and
+  enforced the permission therefore **cannot** emit the event, and "Nothing outside this file can reach
+  the un-warned path" (`:305`). **That is what makes `backup_ungated_no_session` a count of ungated calls
+  rather than a sample of them** — the property a reader needs before treating a log line as evidence.
+- **How this record got it wrong, kept in because the method matters more than the fact:** it searched
+  two paths, `apps/desktop-client/src/commands/data.rs` and `apps/tablet-client/src/commands/data.rs`,
+  saw nothing, and printed a tree-wide absence from a two-path query. The second path does not exist, so
+  half of that "nothing" was a missing-file error on stderr and an empty stdout — indistinguishable from
+  a clean negative unless the exit status is read. The query that establishes the truth is
+  `git grep -n backup_ungated_no_session HEAD` → `crates/oz-bridge/src/data.rs:292`, `:304`, `:338`,
+  `:796`, plus the two cross-references that make it load-bearing:
+  `ui/src/features/settings/DataManagementScreen.tsx:240` ("LOUD — event `backup_ungated_no_session` in
+  `crates/oz-bridge/src/data.rs`") and `ui/src/__tests__/DataManagementBackup.test.tsx:281`. A zero is
+  only worth what its scope covers, and a path that will not open returns a zero for the wrong reason.
+- A known-hazard pin renders the tokenless state for that one pair — the `cf1147423` half of the
+  mitigation; `c617739e7` added no test. Before it, no test had rendered **this screen** without a token:
+  `git show cf1147423^:ui/src/__tests__/DataManagementBackup.test.tsx | grep -c 'sessionToken: null'` →
+  **0**, and `ui/src/test-setup.ts:161` seeds `sessionToken: HARNESS_SESSION_TOKEN` for every render, so
+  a component that falls back to the ungated command in production never does so under Vitest. Scope that
+  zero to the pair: six other files under `ui/src/__tests__` do pass `sessionToken: null`
+  (`git grep -c 'sessionToken: null' HEAD -- ui/src/__tests__`), none of them this one. *That pin is
+  the pattern for a WRITE or side-effecting site ONLY, and only where the feature must keep working offline.* It is **not** a
   template for the 15 READ sites, and it is not extended to them by this document.
   (Coordinate correction, so nobody greps for a file that does not exist: the record as handed over cited
-  `ui/src/__tests__/test-setup.ts:113`. That path does not exist; the real file is `ui/src/test-setup.ts`
-  and the seed is at `:161`. `:113` there is the brand-settings mock.)
+  `ui/src/__tests__/test-setup.ts:113`. `git ls-files ui/src/__tests__/test-setup.ts` → no output; the
+  real file is `ui/src/test-setup.ts`, where the seed is at `:161` and `:113` is the brand-settings mock.)
 - **The real closure is server-side enforcement derived from a local identity, which the product does not
   have** (§3). Until an identity source exists, every scoped wrapper is gating on a bearer string the UI
   itself decides whether to pass.
@@ -175,7 +222,7 @@ the corrected count, and the delta is the reason the method changed.
 ## 6. The open decision, for the owner
 
 **What does a workspace-less session mean?** Three of these sites perform a disk copy
-(`DataManagementScreen.tsx:263`), a billing-server call (`LicenseSettings.tsx:249`/`:272`) and a native
+(`DataManagementScreen.tsx:276`), a billing-server call (`LicenseSettings.tsx:249`/`:272`) and a native
 file dialog with no permission check (`AppearanceSettings.tsx:162`). **That cannot be answered by hiding
 a control** — the command stays registered and callable regardless of what the screen renders, which is
 exactly what the §2 set shows.
@@ -185,16 +232,31 @@ on which shell registers the command, not on the token.
 
 ## 7. Not reached, named honestly
 
-- **Route reachability before workspace selection is unmeasured.** `ui/src/App.tsx` gates nothing (no
-  auth or setup conditional at all); the gates live in `ui/src/frontend/shell/AppShell.tsx`, which
-  imports `useWorkspace()` at `:82` and holds the setup/license/auth-gate flow. Whether every screen
-  above is renderable with `sessionToken === null` was **not** established — only that no named
-  `RequireAuth`/`AuthGuard` component stands in the way.
-- **Four wrapper bodies were not read.**
-- **This record is not in the index, by design.** `docs/records/README.md` is generated by
-  `scripts/generate-records-index.mjs` and nothing regenerates it automatically (no hook, no CI step —
-  `docs/README.md` records this at length), so this file is invisible to anyone who trusts the index.
-  Regenerating it is a second file and was out of scope here; run the script and commit its diff.
+- **Route reachability before workspace selection is unmeasured.** `ui/src/App.tsx` gates nothing —
+  38 lines, and `grep -n -e Auth -e Setup -e guard ui/src/App.tsx` → no hits; the gates live in
+  `ui/src/frontend/shell/AppShell.tsx`, which calls `useWorkspace()` at `:82` (imported at `:6`) and holds
+  the setup / has-any-users / active-license state at `:75`–`:77`. Whether every screen above is
+  renderable with `sessionToken === null` was **not** established — no query in this record walks the
+  router, and the only negative it rests on is the `RequireAuth`/`AuthGuard` grep, which is scoped to
+  named components and not to behaviour.
+- **Four wrapper bodies were not read** — of the 13 named in §1. Which four is not recoverable from this
+  record, so the sentence is a limit on coverage, not a finding about those four: treat their class as
+  unverified rather than as a fourth shell gap waiting to be confirmed.
+- **This record is not in the index, and regenerating cannot put it there.** Two negatives, each with
+  its query. *Nothing regenerates it:*
+  `grep -rn 'generate-records-index' .githooks/ .github/workflows/*.yml scripts/check.sh` → no hits, run from the repo root, so the empty answer covers hooks, both live
+  workflows and the local gate (verified rather than inherited from `docs/README.md`, which asserts it).
+  *The generator never looks at `docs/records/`:* it scans `docs/decisions/` and its `archived/`
+  subdirectory (`scripts/generate-records-index.mjs:124`), a root `audit/` directory that no longer
+  exists (`:125`, `:170`), `docs/observability/` (`:126`) and a hard-coded list of `docs/archived/` paths
+  (`:192`–`:207`); `docs/records/` is the output root (`:20`–`:21`), a `relative()` base (`:120`) and one
+  `existsSync` check (`:272`) — never a directory it enumerates, and `:303` writes the file. Measured for
+  this commit: `node scripts/generate-records-index.mjs` rewrote the file byte-identically — 124 lines
+  before and after, `git diff -- docs/records/README.md` empty, summary "46 ADRs, 4 research, 17 phased,
+  0 audits, 14 scattered, 2 observability". So the fix is a generator change, which is code, and is not
+  in this commit; until then this page is reachable only by someone who lists the directory.
+  Both halves are the class this record documents: a control no scheduled run asserts is a commitment,
+  and an index whose scan excludes a directory reports that directory as absent.
 - **A green UI typecheck does not clear this class.** `cf1147423`'s own body records two pre-existing
   `tsc` errors in `ui/src/features/workspaces/WorkspaceHome.tsx` (`TS6133` unused import, `TS2440`
   import/local conflict) belonging to another session. A failure naming that file is not this finding.
@@ -209,7 +271,12 @@ on which shell registers the command, not on the token.
 - **Answer the shell-gap question per command**, not per screen — four sites in §1 change class depending
   on which shell registers their scoped twin.
 - **Land the caller allowlist** — the ratchet is `registration_gate_tests` in `apps/desktop-client` and
-  `apps/tablet-client`. Neither file exists on disk yet at this HEAD, so the allowlist is a commitment,
-  not a control.
+  `apps/tablet-client`. It is **not in HEAD**: `git ls-files | grep registration_gate` → no output (exit
+  1). But it is **not absent either** — as measured 2026-09-13 both files are in the working tree as
+  another session's untracked work (`git status --porcelain` → `??`; 34,548 and 8,053 bytes, plus a
+  generated `registration_gate_debt.generated.rs` beside each). So the allowlist is **in flight, not yet
+  a control**: a reader at this HEAD cannot run it, and a reader later may find it landed and should
+  update this line rather than re-derive it. The two-part shape of the claim is the point — a HEAD-scoped
+  query and a working-tree query give opposite answers, and only the pair of them describes the state.
 - **Do not delete a fallback without proving the tokenless state unreachable.** Deleting one converts a
   *recorded* bypass into a broken feature, which is the worse outcome of the two.
