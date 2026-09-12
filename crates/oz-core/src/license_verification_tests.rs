@@ -167,13 +167,7 @@ fn store_subscription_inserts_row() {
         "issued_at": "2026-01-01T00:00:00Z"
     }"#;
 
-    let result = store_subscription(
-        &conn,
-        "test-tenant",
-        payload,
-        "TESTSIG",
-        "oz_test_api_key_123",
-    );
+    let result = store_subscription(&conn, "test-tenant", payload, "TESTSIG");
     assert!(result.is_ok(), "store_subscription failed: {result:?}");
 
     // Verify the row was inserted
@@ -186,7 +180,10 @@ fn store_subscription_inserts_row() {
     assert_eq!(stored.max_pos_instances, 3);
     assert_eq!(stored.signature, "TESTSIG");
     assert_eq!(stored.signed_payload, payload);
-    assert_eq!(stored.api_key, "oz_test_api_key_123");
+    assert_eq!(
+        stored.api_key, "",
+        "the cleartext copy is closed: the column holds only its empty default"
+    );
 }
 
 /// Phase C round-trip: a trial payload stored through the production path
@@ -215,7 +212,7 @@ fn store_subscription_round_trips_trial_fields() {
         "trial_ends_at": "2026-09-22T00:00:00Z"
     }"#;
 
-    store_subscription(&conn, "trial-tenant", payload, "BOOTSTRAP_FREE", "k")
+    store_subscription(&conn, "trial-tenant", payload, "BOOTSTRAP_FREE")
         .expect("store_subscription should succeed");
 
     let stored = TenantSubscription::load(&conn, "trial-tenant")
@@ -251,7 +248,7 @@ fn store_subscription_trial_fields_absent_reads_as_paid() {
         "issued_at": "2026-09-08T00:00:00Z"
     }"#;
 
-    store_subscription(&conn, "paid-tenant", payload, "BOOTSTRAP_FREE", "k")
+    store_subscription(&conn, "paid-tenant", payload, "BOOTSTRAP_FREE")
         .expect("store_subscription should succeed");
 
     let stored = TenantSubscription::load(&conn, "paid-tenant")
@@ -294,13 +291,7 @@ fn store_subscription_handles_all_tier_keys() {
         }}"#
         );
 
-        let result = store_subscription(
-            &conn,
-            &format!("tenant-{key}"),
-            &payload,
-            "TESTSIG",
-            "api_key_test",
-        );
+        let result = store_subscription(&conn, &format!("tenant-{key}"), &payload, "TESTSIG");
         assert!(
             result.is_ok(),
             "store_subscription for {key} failed: {result:?}"
@@ -340,14 +331,8 @@ fn store_subscription_reads_renamed_wire_field() {
         "issued_at": "2026-01-01T00:00:00Z"
     }"#;
 
-    store_subscription(
-        &conn,
-        "test-tenant",
-        payload,
-        "TESTSIG",
-        "oz_test_api_key_123",
-    )
-    .expect("store_subscription should accept the new wire name");
+    store_subscription(&conn, "test-tenant", payload, "TESTSIG")
+        .expect("store_subscription should accept the new wire name");
 
     let stored = TenantSubscription::load(&conn, "test-tenant")
         .expect("load")
@@ -378,14 +363,8 @@ fn store_subscription_dual_emitted_payload_prefers_consistent_value() {
         "issued_at": "2026-01-01T00:00:00Z"
     }"#;
 
-    store_subscription(
-        &conn,
-        "test-tenant",
-        payload,
-        "TESTSIG",
-        "oz_test_api_key_123",
-    )
-    .expect("store_subscription should accept the dual-emitted payload");
+    store_subscription(&conn, "test-tenant", payload, "TESTSIG")
+        .expect("store_subscription should accept the dual-emitted payload");
 
     let stored = TenantSubscription::load(&conn, "test-tenant")
         .expect("load")

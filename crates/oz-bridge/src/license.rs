@@ -168,14 +168,11 @@ pub async fn activate_license(
     // where Settings reflect the new tier but tenant_subscription
     // still has the old Free tier.
     let conn = ctx.lock_global().await;
-    store_subscription(
-        &conn,
-        "default",
-        &resp.signed_payload,
-        &resp.signature,
-        &resp.api_key,
-    )
-    .map_err(|e| BridgeError::Internal(format!("failed to persist subscription: {e}")))?;
+    // tenant_subscription carries quota facts only. The live key is sealed
+    // into `license.api_key` below and nowhere else — passing it here would
+    // write a second, cleartext copy for no reader.
+    store_subscription(&conn, "default", &resp.signed_payload, &resp.signature)
+        .map_err(|e| BridgeError::Internal(format!("failed to persist subscription: {e}")))?;
 
     // Store in settings table
     Settings::set_batch(
@@ -282,15 +279,12 @@ pub async fn renew_license(ctx: &BridgeCtx<'_>, new_key: String) -> Result<bool,
     // Persist the renewed subscription to both stores.
     let conn = ctx.lock_global().await;
 
-    // tenant_subscription (quota enforcement)
-    store_subscription(
-        &conn,
-        "default",
-        &resp.signed_payload,
-        &resp.signature,
-        &api_key,
-    )
-    .map_err(|e| BridgeError::Internal(format!("failed to persist renewed subscription: {e}")))?;
+    // tenant_subscription (quota enforcement) — no key argument, same rule as
+    // the activate lane: `api_key` above exists to call the server, not to be
+    // copied into a second table in the clear.
+    store_subscription(&conn, "default", &resp.signed_payload, &resp.signature).map_err(|e| {
+        BridgeError::Internal(format!("failed to persist renewed subscription: {e}"))
+    })?;
 
     // Settings (license status checks)
     // Parse the tenant_id from the renewed payload so Settings stays

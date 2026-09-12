@@ -576,16 +576,22 @@ pub async fn check_license_status(api_key: &str) -> Result<LicenseStatusResponse
     })
 }
 
-/// Store a signed subscription payload and API key in the local database.
+/// Store a signed subscription payload in the local `tenant_subscription`
+/// table after an activation or a renewal.
 ///
-/// Updates the `tenant_subscription` table with the payload and key
-/// received from the license server after activation or renewal.
+/// It deliberately does NOT take, or write, the API key. The live key is
+/// sealed once into the machine-bound `license.api_key` settings row by the
+/// bridge lane, which is the only reader of it; a second, unencrypted copy in
+/// this table duplicated the secret for no consumer. The
+/// `tenant_subscription.api_key` column keeps its empty default and is left
+/// out of the INSERT — dropping the column would mutate hosted merchant
+/// databases, and `TenantSubscription::load` still selects it, so the field
+/// stays on the struct.
 pub fn store_subscription(
     conn: &rusqlite::Connection,
     tenant_id: &str,
     signed_payload: &str,
     signature: &str,
-    api_key: &str,
 ) -> Result<(), CoreError> {
     // Parse the payload to extract tier info. The 1g primary wire name
     // is `max_locations`, with the legacy `max_stores` still accepted
@@ -601,8 +607,8 @@ pub fn store_subscription(
         "INSERT OR REPLACE INTO tenant_subscription
          (tenant_id, tier_key, status, expires_at, max_locations,
           max_pos_instances, allowed_types_json, signature, signed_payload,
-          api_key, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+          updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         rusqlite::params![
             tenant_id,
             payload.tier_key,
@@ -613,7 +619,6 @@ pub fn store_subscription(
             allowed_types_json,
             signature,
             signed_payload,
-            api_key,
         ],
     )?;
 

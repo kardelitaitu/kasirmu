@@ -228,7 +228,7 @@ fn store_subscription_updates_tenant_subscription_default() {
         "issued_at": "2026-07-12T00:00:00Z"
     }"#;
 
-    store_subscription(&conn, "default", payload, "SIG_PRO", "oz_apikey_pro")
+    store_subscription(&conn, "default", payload, "SIG_PRO")
         .expect("store_subscription should succeed");
 
     let updated = TenantSubscription::load(&conn, "default")
@@ -238,7 +238,10 @@ fn store_subscription_updates_tenant_subscription_default() {
     assert_eq!(updated.max_locations, 2);
     assert_eq!(updated.max_pos_instances, 3);
     assert_eq!(updated.signature, "SIG_PRO");
-    assert_eq!(updated.api_key, "oz_apikey_pro");
+    assert_eq!(
+        updated.api_key, "",
+        "store_subscription no longer writes a cleartext key copy"
+    );
     assert_eq!(updated.signed_payload, payload);
 }
 
@@ -303,4 +306,79 @@ fn grace_deadline_fails_closed_on_unknown_tiers() {
     let expiry = Utc::now();
     let want = expiry + chrono::Duration::days(7);
     assert_eq!(grace_deadline_for("mystery-tier", expiry), want);
+}
+
+/// THE DECIDING TEST FOR THE CLEARTEXT-COPY FIX: after a subscription is
+/// persisted the way both license lanes do it, `tenant_subscription.api_key`
+/// must still hold its empty default and must not equal the plaintext key,
+/// while the sealed `license.api_key` settings row still decrypts back to it.
+/// Proves the duplicate is closed without damaging the machine-bound lane.
+#[test]
+fn subscription_store_leaves_the_cleartext_column_empty_and_the_sealed_row_intact() {
+    let conn = oz_core::migrations::fresh_db();
+    let machine_id = "MACHINE-FOR-CLEARTTEXT-COPY-TEST";
+    let plaintext = "oz-live-API-KEY-9f2c1d";
+
+    // Seed the sealed lane exactly as the activate lane writes it, then persist
+    // the subscription through the production entry point.
+    let encrypted = encrypt_api_key(plaintext, machine_id).expect("encrypt");
+    Settings::set(&conn, "license.api_key", &encrypted).expect("seed sealed row");
+    let sealed_raw: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'license.api_key'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("sealed settings row");
+    assert_ne!(sealed_raw, plaintext, "the settings lane holds ciphertext");
+
+    let payload = r#"{
+        "tenant_id": "default",
+        "tier_key": "pro",
+        "status": "active",
+        "max_stores": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["store-pos"],
+        "starts_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2027-01-01T00:00:00Z",
+        "grace_until": "2027-01-15T00:00:00Z",
+        "issued_at": "2026-01-01T00:00:00Z"
+    }"#;
+    store_subscription(&conn, "default", payload, "SIG_CLEAR_COPY").expect("store");
+
+    // ABSENCE, read from the COLUMN rather than through the struct, so a
+    // default-on-read cannot masquerade as a default-on-write.
+    let stored_col: String = conn
+        .query_row(
+            "SELECT api_key FROM tenant_subscription WHERE tenant_id = 'default'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("the column must still exist — it was not dropped");
+    assert_eq!(
+        stored_col, "",
+        "tenant_subscription.api_key must hold its empty default"
+    );
+    assert_ne!(
+        stored_col, plaintext,
+        "and must never equal the plaintext key"
+    );
+    assert!(
+        !stored_col.contains(plaintext) && !sealed_raw.contains(plaintext),
+        "no cleartext form of the key may exist in either table"
+    );
+    // The lane that must keep working: the sealed row still decrypts back.
+    let back = decrypt_api_key(&sealed_raw, machine_id).expect("decrypt");
+    assert_eq!(
+        back, plaintext,
+        "the machine-bound settings row is unchanged"
+    );
+    assert_eq!(
+        TenantSubscription::load(&conn, "default")
+            .expect("load")
+            .expect("row")
+            .api_key,
+        "",
+        "the struct view agrees with the column"
+    );
 }
