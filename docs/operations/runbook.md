@@ -603,6 +603,25 @@ The unified image runs three processes under supervisord (caddy, license,
 sync); all write to the container's stdout/stderr, which Northflank
 captures and surfaces in **Dashboard → service → Logs**.
 
+**Everything below is a hosted-service diagnostic, and that is a limitation of
+the clients, not of this page.** No shipped binary writes a persistent local
+log: both Tauri apps initialise logging with `oz_logging::try_init()`
+(`apps/desktop-client/src/lib.rs:99`, `apps/tablet-client/src/lib.rs:69`),
+which installs an `EnvFilter` + `fmt` subscriber and **no writer**
+(`crates/oz-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
+— which for a double-clicked desktop build is nowhere. The two entry points
+that would have created a file, `init_with_file` and `init_json_with_file`
+(`crates/oz-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
+own tests**; `log_dir` / `LogRoot` / `app_log` / `path_resolver` return **0
+matches across `apps/`**, and the EventLog backend is never wired by any
+binary either. So there is no on-device log file to open, and nothing in this
+section can be run on a till or a tablet.
+
+The tablet is worse than unlogged: it is **unobservable by construction**.
+Android does not persist its logcat, no log-pull ships, and the device never
+reaches the container's stdout — so a field issue on a tablet cannot be
+diagnosed from logs at all, only from the SQL below and from reproducing it.
+
 **Recommended log format:** set `OZ_LOG_FORMAT=json` in the service env
 (§8 table) so the Rust cloud-server emits structured, queryable log lines
 instead of plain text. The Go license server (PocketBase) logs plain text
@@ -632,7 +651,14 @@ specified) and `unmapped product_type on sale line; stock was deducted
 anyway because the type could not be mapped`
 (`modules/inventory/src/handlers.rs`, `operation` =
 `InventoryStockHandler::handle_line`). Search the prefix, so that finding
-nothing for one never reads as health for the other. Each line carries
+nothing for one never reads as health for the other — and know which half the
+lane you are reading can even produce: `oz-cloud-server` links `oz-api` and
+`oz-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
+carry the fallback line (its `operation` there is
+`pg_row_to_product_with_details`, `crates/oz-api/src/pg.rs:1064`) but **never**
+the sale-line one, which lives in `modules/inventory` — its absence from a
+hosted log is architecture, not health. On a device both can fire and neither
+is recorded anywhere (see the scope note above). Each line carries
 `sku`, `stored` in `Debug` form — so a NULL (`None`), an empty string
 (`Some("")`) and an uppercase miss (`Some("RETAIL")`) stay three
 distinguishable causes — and `operation`, which names the reader that hit
@@ -658,6 +684,44 @@ SELECT id, sku, name, product_type
  WHERE product_type IS NULL
     OR product_type NOT IN ('retail','restaurant','both','service');
 ```
+
+**Runnable on a device — the same census without a log.** Because no client
+persists a log, the on-device question is never "which rows warned" but "which
+rows *could* have": group the stored values by their form.
+
+```sql
+-- Device form: sqlite3 /data/oz-pos.db  (per-install desktop/tablet DB)
+-- The identical statement runs on PostgreSQL unchanged; add `tenant_id` to the
+-- SELECT and GROUP BY when you run it hosted, and the forms group per tenant.
+SELECT CASE
+         WHEN product_type IS NULL         THEN 'NULL'
+         WHEN trim(product_type) = ''      THEN 'EMPTY'
+         ELSE product_type
+       END AS stored_form,
+       COUNT(*) AS rows
+  FROM products
+ GROUP BY 1
+ ORDER BY 2 DESC;
+```
+
+It is the **stored form** that picks the repair, not the count:
+
+- `EMPTY` → the **importer** wrote an empty string (CSV column blank, or a
+  header that matched nothing), so the fix is at the import boundary.
+- `NULL` → the **ingest mapping** never populated the column — a sync or
+  `.ozpkg` restore lane, not the importer.
+- a **case or padding variant** (`RETAIL`, `retail `) → the **accepted set** is
+  the problem: the parser is case-sensitive, so the value is legal to an
+  operator and unmapped to the code.
+
+Only `retail`, `restaurant`, `both` and `service` are clean; anything else in
+that first column is a row that reads as `retail` at runtime.
+
+> ⚠️ **Log volume is not a proxy for row count.** The parse runs per row on a
+> *read* path, so one bad hosted row logs once per listed row per query — a
+> single unmapped row behind a busy listing can out-log a table full of them.
+> Never size the problem by counting warning lines; count rows with the
+> statement above.
 
 > ⚠️ Crash logs are retained only as long as Northflank's log retention
 > policy — for long-term diagnostics export the log stream before a
