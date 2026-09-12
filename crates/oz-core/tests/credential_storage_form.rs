@@ -679,3 +679,32 @@ fn census_covers_the_deny_list_except_the_documented_five() {
         "the storage-form census no longer matches the deny list; a new credential key          was added (or removed) without updating SPEC"
     );
 }
+
+// -- Equality pin: one key value, two independent declarations --------------
+
+/// The exception named by
+/// `the_funnel_refuses_every_deny_listed_credential_except_smtp_config` is
+/// declared in platform-core (`keys::SMTP_CONFIG`, reached here through the
+/// `oz_core::settings::keys` re-export). The two merge seams that decide
+/// whether to re-read a stored blob and re-merge its password compare a
+/// SEPARATE declaration of the same value —
+/// `email_report::SMTP_CONFIG_SETTINGS_KEY` — one in the tablet command
+/// (`apps/tablet-client/src/commands/settings.rs:604`), one in the desktop
+/// funnel (`crates/oz-bridge/src/settings.rs:484`). Nothing links the two
+/// constants but their text, so they are one rename apart from disagreeing:
+/// the funnel would keep excepting the key it names while the merge writes
+/// under a key the exception no longer covers, the passwordless blob would
+/// overwrite the stored secret, and the refusal pin above would stay green.
+/// Neither constant is made an alias of the other here — the merge behaviour
+/// is deliberate and other code reads the literal — so this asserts the
+/// equality instead. It costs nothing while both read `"smtp_config"`; its
+/// value is the day they do not.
+#[test]
+fn smtp_config_exception_key_and_merge_key_hold_the_same_value() {
+    let exception = oz_core::settings::keys::SMTP_CONFIG;
+    let merge_key = oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
+    assert_eq!(
+        exception, merge_key,
+        "the cleartext-credential exception and the SMTP merge key drifted apart: keys::SMTP_CONFIG (platform/core/src/settings/keys.rs:220, compared by the tracked funnel) is {exception:?}, but SMTP_CONFIG_SETTINGS_KEY (crates/oz-core/src/export/email_report.rs:112, compared by both merge seams in apps/tablet-client/src/commands/settings.rs and crates/oz-bridge/src/settings.rs) is {merge_key:?} — reword either one and the merge writes under a key the exception no longer covers, so the passwordless blob overwrites the stored secret in silence"
+    );
+}
