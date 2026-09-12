@@ -63,13 +63,50 @@
   ```
 
 ### Phase 2.2: Extract Sales, Checkout & Inventory Mocks
-- [ ] Move `start_sale`, `add_line`, `complete_sale`, `hold_cart`, `list_open_bills` mocks to `handlers/sales.ts`.
-- [ ] Move `adjust_stock`, `list_stock_levels`, `open_shift`, `close_shift` mocks to `handlers/inventory.ts` & `handlers/shifts.ts`.
-- [ ] Verify: `npm run typecheck`.
-- [ ] **Commit Milestone:**
+- [x] Move `start_sale`, `add_line`, `complete_sale`, `hold_cart`, `list_open_bills` mocks to `handlers/sales.ts`.
+  - Done as commit `efd766226`, together with the inventory and shift domains
+    (one commit, as the milestone below is written). **42** sales handlers
+    moved: the cart/held-cart/sale/promotion state cluster and the checkout
+    command surface (`start_sale`, `add_line`, `complete_sale`, `hold_cart`,
+    `list_open_bills`, refunds, voids), plus `get_sale_promotions` so the
+    promotion state stays private to its owner.
+  - Left behind on purpose: the state-less promotion CRUD stubs (they own no
+    state) and the KDS push helper (see the factory note below).
+- [x] Move `adjust_stock`, `list_stock_levels`, `open_shift`, `close_shift` mocks to `handlers/inventory.ts` & `handlers/shifts.ts`.
+  - `inventory.ts` — **44** handlers: `adjust_stock` (+`_scoped`), inventory
+    locations, stock alerts, `start_inventory_shift`…`list_inventory_shifts`,
+    `create_inventory_transaction`, stock thresholds, stock counts, stock
+    transfers. **Self-contained**: reads one seed fixture, exports a plain map,
+    needs no injection.
+  - `shifts.ts` — **11** handlers: `open_shift`, `close_shift`, `list_shifts`,
+    `get_shift_report`, `create_cash_payout`. The shift state cluster moved with
+    it; every outside reference was its own declaration, so no injection.
+  - There is no `list_stock_levels` command in the mock — the real stock surface
+    is `adjust_stock`, `get_product_stock` (catalog, 2.1) and the
+    stock-count/transfer commands. Same class of dead name as `get_tax_rules`
+    in 2.1; substitutions recorded in the module headers.
+  - Two interleavings ruled on: `finalize_sale`/`void_pending_sale` sat inside
+    the inventory block but belong to sales; `adjust_stock` sat inside the
+    catalog block but belongs to inventory.
+- [x] Verify: `npm run typecheck`.
+  - Clean for every touched file. The same two pre-existing
+    `WorkspaceHome.tsx` errors persist (another workstream), so this commit
+    also used `OZPOS_SKIP_TYPECHECK=1` after running `tsc` by hand; the tripwire
+    recorded it.
+  - Key-set equivalence asserted mechanically: router 441 → **344**;
+    `inventory(44) + shifts(11) + sales(42) == 441` exactly. All **513** distinct
+    moved lines reappear verbatim (4 documented intentional edits exempted:
+    `CartLine` exported, `holdMockCart` parameterised, and its two entries).
+  - Full UI suite green: 554 files / 9,477 passed / 0 failed.
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "refactor(devmock-ops): extract sales, shifts, and inventory mock handlers"
   ```
+  - `tauri-api.ts` 4,664 → **3,905** lines. `sales.ts` is a factory because
+    `unwrapArgs`/`mockHandlerPayload` cannot be imported back (cycle), and
+    `pushKdsOrderFromCart` is injected whole because it closes over
+    `kdsDisplayCounter`, a module-level scalar — injecting the KDS state would
+    capture the counter by value and silently drop every increment.
 
 > **Coverage gap — needs a decision before the end-state can be reached.**
 > Phase 2.1 + 2.2 + agent 3's fences cover roughly 305 of the original 501
