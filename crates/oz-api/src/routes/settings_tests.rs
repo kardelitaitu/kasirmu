@@ -723,3 +723,179 @@ async fn pg_integration_settings_provision_per_tenant() {
     assert_eq!(json["store_name"], "B Cloud Store");
     assert_eq!(json["smtp_config"]["host"], "smtp.example.com");
 }
+
+// ── Shape guard: the scoped key space vs the credential deny list ──────────
+//
+// This lane is NOT guarded by the credential refusal. `apply_ops_sqlite`
+// writes through `Store::set_setting` into the unguarded `Settings::set`
+// (`platform/core/src/settings/raw.rs:37`): it never asks
+// `cleartext_credential_refusal` and never asks the ingest policy, so nothing
+// on the write path consults the deny list. What keeps a credential out of it
+// is the SHAPE of the key it can construct — three fixed Rust bases joined by
+// a `:` to a tenant id that arrives from an HTTP request and is filtered by
+// `validate::valid_tenant` to `[A-Za-z0-9_-]{1,64}`. And
+// `crates/oz-local-api/src/lib.rs:319` mounts this SAME router on loopback, so
+// a renderer-adjacent surface is standing on that one regex. Widen the tenant
+// charset, or give this route a fourth field with a fourth base, and the cases
+// below are the thing that notices: a red test, not a third door that writes a
+// credential row in cleartext and stays green. They are not duplicated by the
+// deny-list tests elsewhere — that list is exact equality on a whole
+// normalised key, so it can only ever catch a key this lane is able to SPELL.
+
+use oz_core::settings::keys::{SECRET_KEY_DENY_LIST, is_secret_setting_key, normalised_candidate};
+
+/// The bases this route writes, named by the same constants the handlers use
+/// so a rename moves the case instead of rotting it.
+const SHAPE_BASES: &[&str] = &[
+    STORE_NAME_SETTINGS_KEY,
+    SMTP_CONFIG_SETTINGS_KEY,
+    REPORT_SCHEDULE_SETTINGS_KEY,
+];
+
+/// Tenant ids that all pass `valid_tenant` — including the two deny-listed
+/// spellings that the charset happens to admit as bare words, which is the
+/// point: they are harmless ONLY because a base and a `:` always sit in front
+/// of them.
+const SHAPE_TENANTS: &[&str] = &[
+    "default",
+    "tenant-a",
+    "tenant_b",
+    "T1",
+    "0",
+    "smtp_config",
+    "sync_api_key",
+    "store",
+    "name",
+    "api_key",
+    "tenant-with-a-long-but-still-legal-name-0123456789",
+];
+
+/// Sweep the whole key space this lane can build: base × legal tenant.
+#[test]
+fn scoped_setting_key_cannot_spell_a_deny_listed_credential() {
+    let mut offenders: Vec<String> = Vec::new();
+    let mut built = 0usize;
+    for tenant in SHAPE_TENANTS {
+        // A tenant carrying the namespace separator is no longer a tenant: it
+        // is half a credential key. Name the member it spells, using the ONE
+        // fold in the tree, before anything else — this is the construction the
+        // charset is there to make unbuildable.
+        if tenant.contains('.') {
+            let spelled = if is_secret_setting_key(tenant) {
+                format!(" and IS the deny-listed key {tenant}")
+            } else {
+                String::new()
+            };
+            offenders.push(format!(
+                "fixture {tenant:?} carries the `.` namespace separator{spelled}"
+            ));
+        }
+        if !valid_tenant(tenant) {
+            offenders.push(format!(
+                "fixture {tenant:?} is refused by valid_tenant, so it is not a key this lane can build"
+            ));
+        }
+        for base in SHAPE_BASES {
+            let key = scoped_key(base, tenant);
+            built += 1;
+            if SECRET_KEY_DENY_LIST.contains(&key.as_str()) {
+                offenders.push(format!("{base} + {tenant:?} -> {key} (exact member)"));
+            }
+            // Folded equality, through keys::normalised_candidate — the same
+            // fold is_secret_setting_key applies, reused rather than rewritten.
+            let folded = normalised_candidate(&key);
+            if SECRET_KEY_DENY_LIST.contains(&folded.as_str()) {
+                offenders.push(format!("{base} + {tenant:?} -> {key} folds to {folded}"));
+            }
+            if is_secret_setting_key(&key) != SECRET_KEY_DENY_LIST.contains(&folded.as_str()) {
+                offenders.push(format!("{key}: the shared predicate and the list disagree"));
+            }
+        }
+    }
+    assert_eq!(built, SHAPE_BASES.len() * SHAPE_TENANTS.len());
+    assert!(
+        offenders.is_empty(),
+        "the settings route builds keys from a fixed base plus an HTTP tenant segment; these constructions reach the credential deny list: {offenders:?}"
+    );
+}
+
+/// Every deny-listed credential except a named few is out of the tenant
+/// namespace ONLY because the charset rejects `.`.
+#[test]
+fn tenant_charset_is_what_keeps_dot_namespaced_credentials_unreachable() {
+    for member in SECRET_KEY_DENY_LIST {
+        if member.contains('.') {
+            assert!(
+                !valid_tenant(member),
+                "{member}: deny-listed credentials are dot-namespaced, and a dot in the tenant namespace is exactly the character that would let an HTTP path segment complete a credential key — this member would become writable through the settings route"
+            );
+        }
+    }
+    let mut reachable: Vec<&str> = SECRET_KEY_DENY_LIST
+        .iter()
+        .copied()
+        .filter(|m| valid_tenant(m))
+        .collect();
+    reachable.sort_unstable();
+    assert_eq!(
+        reachable,
+        vec!["smtp_config", "sync_api_key", "sync_terminal_secret"],
+        "the charset admits these deny-listed spellings as a bare tenant segment; the route is safe only because it always joins a base in front of them, so a fourth field that ever writes a tenant UNSCOPED turns one of these into a cleartext credential row. Widen [A-Za-z0-9_-] and this list grows toward the whole deny list"
+    );
+}
+
+/// The rest of the shape, refused: empty (the bare-key fallback), over the
+/// length cap, and anything carrying a separator or a control byte.
+#[test]
+fn tenant_validator_refuses_empty_overlong_separator_and_control_tenants() {
+    for tenant in ["", " ", "\t", "\n", "\u{a0}"] {
+        assert!(
+            !valid_tenant(tenant),
+            "{tenant:?}: an empty or whitespace-only tenant must not resolve to the BARE key — scoped_key_falls_back_to_bare shows readers already treat bare as this tenant's config"
+        );
+    }
+    assert!(valid_tenant(&"t".repeat(64)), "64 is the cap, not 63");
+    assert!(
+        !valid_tenant(&"t".repeat(65)),
+        "a 65-char tenant must be refused; the cap is what bounds the key space the sweep above can enumerate"
+    );
+    for tenant in [
+        "a:b",
+        "smtp_config:sync_api_key",
+        "a/b",
+        "a\\b",
+        "a?b",
+        "a#b",
+        "a%b",
+        "a:b@c",
+        "a..b",
+        "a;b",
+        "\0",
+        "\u{1}",
+    ] {
+        assert!(
+            !valid_tenant(tenant),
+            "{tenant:?}: a separator, control byte or scope colon in a tenant lets the segment carry its own key structure"
+        );
+    }
+}
+
+/// The positive control, so a validator that refused everything could not
+/// pass this file: one ordinary tenant is accepted and its keys are ordinary.
+#[test]
+fn an_ordinary_tenant_is_accepted_and_its_scoped_keys_are_not_refused() {
+    let tenant = "tenant-a";
+    assert!(valid_tenant(tenant), "the happy path must stay open");
+    assert_eq!(
+        scoped_key(SMTP_CONFIG_SETTINGS_KEY, tenant),
+        "smtp_config:tenant-a",
+        "the scope separator is `:` — if it ever becomes `.`, the dotted-tenant assertions above stop describing the only defence this lane has"
+    );
+    for base in SHAPE_BASES {
+        let key = scoped_key(base, tenant);
+        assert!(
+            !is_secret_setting_key(&key),
+            "{key}: an ordinary tenant must be able to save its settings at all"
+        );
+    }
+}
