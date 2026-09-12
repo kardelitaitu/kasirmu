@@ -865,3 +865,108 @@ fn a_base64_shaped_plaintext_psk_reads_invalid_and_the_note_says_so() {
         "the report must disclose exactly this case: {EXCLUDED_ROWS_NOTE}"
     );
 }
+
+// ── The census sees a scoped name without aborting, and still deletes narrow ──
+
+/// The resolver is TOTAL: no stored spelling can make the walk fail, and the three
+/// verdicts stay apart. Exact identity still comes from credential_base alone.
+#[test]
+fn resolve_credential_name_is_total_and_never_returns_the_stored_spelling() {
+    assert_eq!(
+        resolve_credential_name("  STRIPE.API_KEY "),
+        CredentialName::Exact {
+            base: STRIPE_API_KEY
+        },
+        "a folded exact match is still EXACT"
+    );
+    assert_eq!(
+        resolve_credential_name("stripe.api_key:acme-corp"),
+        CredentialName::Resembles {
+            base: STRIPE_API_KEY,
+            marker: SCOPE_MARKER
+        },
+        "colon-suffixed: reported as a near-name"
+    );
+    assert_eq!(
+        resolve_credential_name("SMTP_CONFIG.tenant-7"),
+        CredentialName::Resembles {
+            base: SMTP_CONFIG,
+            marker: SCOPE_MARKER
+        },
+        "dot-suffixed too, folded"
+    );
+    assert_eq!(
+        resolve_credential_name("store.name"),
+        CredentialName::Unrelated
+    );
+    assert_eq!(
+        resolve_credential_name("currency.default"),
+        CredentialName::Unrelated,
+        "a dotted NON-credential key must not be flagged, or the bucket is noise"
+    );
+}
+
+/// THE PAIR THAT IS THE WHOLE POINT: one exact row and one near-name row. The walk
+/// reports both, in separate buckets, names the base the near-name resembles without
+/// its suffix, and then purge deletes the exact one and leaves the near-name alone.
+#[test]
+fn a_near_name_is_reported_bucketed_and_never_deleted_while_its_exact_twin_is() {
+    let conn = fresh_db();
+    let sentinel = "SENTINEL-TENANT-DO-NOT-ECHO-4197";
+    let near_key = format!("{STRIPE_API_KEY}:{sentinel}");
+    conn.execute(
+        "INSERT INTO setting_updated (key, value, version) VALUES (?1, ?2, 1)",
+        rusqlite::params![STRIPE_API_KEY, "sk-live-one"],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO setting_updated (key, value, version) VALUES (?1, ?2, 1)",
+        rusqlite::params![&near_key, "sk-live-two"],
+    )
+    .unwrap();
+
+    let exact = scan_credential_deltas(&conn).unwrap();
+    assert_eq!(
+        exact,
+        vec![(STRIPE_API_KEY, 1usize)],
+        "the exact bucket counts ONLY the exact row: {exact:?}"
+    );
+    let near = scan_resembling_names(&conn, LEDGER_TABLE).unwrap();
+    assert_eq!(
+        near,
+        vec![(STRIPE_API_KEY, 1usize)],
+        "the near-name is its own bucket, keyed by the base it resembles: {near:?}"
+    );
+    let line = format_resembling_names(&near)[0].clone();
+    assert!(
+        line.contains(STRIPE_API_KEY) && line.contains(SCOPE_MARKER),
+        "line must name the base and the marker: {line}"
+    );
+    assert!(
+        !line.contains(sentinel),
+        "THE LEAK ASSERTION: the tenant suffix must not appear in a returned line: {line}"
+    );
+
+    let deleted = purge_credential_deltas(&conn).unwrap();
+    assert_eq!(
+        deleted,
+        vec![(STRIPE_API_KEY, 1usize)],
+        "purge reports only what it deleted"
+    );
+    assert_eq!(
+        delta_row_count(&conn, STRIPE_API_KEY),
+        0,
+        "the exact row is gone"
+    );
+    let left: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM setting_updated WHERE key = ?1",
+            rusqlite::params![&near_key],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        left, 1,
+        "the near-name SURVIVES the purge: reports wide, deletes narrow"
+    );
+}

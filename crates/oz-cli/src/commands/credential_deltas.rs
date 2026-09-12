@@ -27,7 +27,7 @@ use std::sync::LazyLock;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 
-use oz_core::settings::keys::{SECRET_KEY_DENY_LIST, is_secret_setting_key, normalised_candidate};
+use oz_core::settings::keys::{SECRET_KEY_DENY_LIST, credential_base, normalised_candidate};
 
 use crate::cli::CredentialDeltasArgs;
 
@@ -155,30 +155,89 @@ pub(crate) type DeltaCounts = Vec<(&'static str, usize)>;
 /// is deliberately no SQL `LOWER`/`TRIM` here, because the deny list lives in
 /// platform-core and the decision must live here too.
 ///
-/// The fold below picks only the canonical LABEL to count and delete under; it
-/// is not a second membership test. It calls platform-core's own
-/// [`normalised_candidate`] — the same function the predicate folds with — so
-/// there is exactly one fold in the tree rather than two that can drift. A
-/// label is needed at all because the deny list is the only thing that has a
-/// stable spelling to report and delete under, and the ledger stores whatever
-/// spelling a writer used. If a fold ever does disagree, the lookup misses for
-/// a key the predicate accepted, and that is an ERROR, not a silent skip — an
-/// undercount on this path is exactly what hides cleartext credentials.
-fn canonical_credential_key(stored: &str) -> Result<Option<&'static str>> {
-    if !is_secret_setting_key(stored) {
-        return Ok(None);
+/// The fold lives in platform-core ([`normalised_candidate`]), so this is the same
+/// fold the predicate uses and there is one definition in the tree rather than two
+/// that can drift. A label is needed because the deny list is the only thing with a
+/// stable spelling to report and delete under, while the ledger stores whatever
+/// spelling a writer used.
+///
+/// It no longer ERRORS. The old version bailed on the first folded name that
+/// matched no deny-list entry, on the theory that a silent skip undercounts and an
+/// undercount hides cleartext credentials. 4142156ec made that arm unreachable and
+/// replaced it with something quieter: is_secret_setting_key is now
+/// credential_base().is_some(), and credential_base is suffix-blind by decision
+/// (keys_tests::decision_pin_credential_base_is_suffix_blind), so a scoped row like
+/// stripe.api_key:tenant-a stopped aborting the walk and started walking straight
+/// past it. A tool that goes red in front of a merchant does not get used; a tool
+/// that reports zero about rows it cannot see gets trusted. So the walk is TOTAL
+/// now: every stored spelling resolves to a CredentialName, and a name that merely
+/// resembles a credential is REPORTED rather than skipped or fatal.
+fn canonical_credential_key(stored: &str) -> Option<&'static str> {
+    match resolve_credential_name(stored) {
+        CredentialName::Exact { base } => Some(base),
+        _ => None,
+    }
+}
+
+/// A stored settings key classified by NAME only. Every field is a `&'static str`,
+/// either a deny-list entry or a fixed marker, which makes the leak guarantee
+/// structural rather than a discipline: a tenant suffix is operator data, and there
+/// is nowhere in this type for it to go. It cannot be returned, printed, counted into
+/// a label or logged, because no field can hold it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CredentialName {
+    /// Resolves through [`credential_base`] to a deny-list entry verbatim. The only
+    /// arm [`purge_credential_deltas`] acts on.
+    Exact { base: &'static str },
+    /// Looks like a deny-list entry plus a scope suffix. Reported under the base it
+    /// resembles, with a fixed marker standing in for the suffix. Deliberately NOT a
+    /// claim that the row IS a credential: credential_base answers None for it, so
+    /// today no gate refuses it on read or egress. It is a claim that the NAME is
+    /// shaped like one, which is the most a name-only walk can honestly say.
+    Resembles {
+        base: &'static str,
+        marker: &'static str,
+    },
+    /// Nothing about this name looks like a credential. store.name and
+    /// currency.default land here, which is the point: the census does not flag
+    /// every dotted key in the table.
+    Unrelated,
+}
+
+/// What a near-name carries in place of its suffix. Fixed text, so the suffix never
+/// has anywhere to be stored or printed.
+pub(crate) const SCOPE_MARKER: &str = "+resembles";
+
+/// The separators that make a suffixed name look scoped: the two forms the
+/// suffix-blind decision pin enumerates (keys_tests::suffixed_variants), matched to
+/// that decision rather than extended with a third. Naming a separator here widens
+/// NOTHING — credential_base, is_secret_setting_key and the egress predicate are
+/// untouched, so a Resembles row is still not treated as a credential by any gate.
+/// This table only decides what the census is willing to say out loud.
+const SCOPE_SEPARATORS: &[char] = &[':', '.'];
+
+/// Total function from a stored spelling to a name verdict. Exact wins first, by
+/// delegating to [`credential_base`] so identity is still decided in exactly one
+/// place; only a name that misses that is tested for a scope suffix.
+pub(crate) fn resolve_credential_name(stored: &str) -> CredentialName {
+    if let Some(base) = credential_base(stored) {
+        return CredentialName::Exact { base };
     }
     let folded = normalised_candidate(stored);
-    match SECRET_KEY_DENY_LIST
-        .iter()
-        .find(|&&deny_key| deny_key == folded.as_str())
-        .copied()
-    {
-        Some(entry) => Ok(Some(entry)),
-        None => anyhow::bail!(concat!(
-            "{stored:?} satisfies the shared credential predicate but matches no deny-list ",
-            "entry; refusing to count or delete it on a guess"
-        )),
+    let resembles = SECRET_KEY_DENY_LIST.iter().find(|entry| {
+        folded.len() > entry.len()
+            && folded.starts_with(*entry)
+            && folded
+                .as_bytes()
+                .get(entry.len())
+                .is_some_and(|byte| SCOPE_SEPARATORS.contains(&(*byte as char)))
+    });
+    match resembles {
+        Some(base) => CredentialName::Resembles {
+            base,
+            marker: SCOPE_MARKER,
+        },
+        None => CredentialName::Unrelated,
     }
 }
 
@@ -215,7 +274,7 @@ pub(crate) fn scan_credential_deltas(conn: &Connection) -> Result<DeltaCounts> {
         let (key, count) = row.context("counting ledger rows")?;
         // `Ok(None)` is the only skip, and it means the shared predicate says
         // this key is not a credential at all.
-        if let Some(canonical) = canonical_credential_key(&key)? {
+        if let Some(canonical) = canonical_credential_key(&key) {
             if let Some(entry) = totals
                 .iter_mut()
                 .find(|(deny_key, _)| *deny_key == canonical)
@@ -226,6 +285,52 @@ pub(crate) fn scan_credential_deltas(conn: &Connection) -> Result<DeltaCounts> {
     }
     totals.retain(|(_, count)| *count > 0);
     Ok(totals)
+}
+
+/// Rows whose NAME resembles a deny-listed credential plus a scope suffix, counted
+/// per canonical base and kept in its own bucket. Separate from the exact totals on
+/// purpose: an exact row is a credential this tool can delete, a near-name is a
+/// decision about what a scoped name means that nobody has authorised yet.
+///
+/// The map key is the BASE, a `&'static str` from the deny list, never the stored
+/// spelling — see CredentialName. The tenant suffix has no representation here at
+/// all, so it cannot be returned by this function, printed by the report, or reach a
+/// log.
+pub(crate) fn scan_resembling_names(conn: &Connection, table: &str) -> Result<ScopedCounts> {
+    let mut totals: ScopedCounts = SECRET_KEY_DENY_LIST
+        .iter()
+        .map(|key| (*key, 0usize))
+        .collect();
+    let sql = format!("SELECT key, COUNT(*) FROM {table} GROUP BY key");
+    let mut stmt = conn
+        .prepare(&sql)
+        .with_context(|| format!("reading the {table} table"))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .with_context(|| format!("reading the {table} table"))?;
+    for row in rows {
+        let (stored, count) = row.with_context(|| format!("counting {table} rows"))?;
+        if let CredentialName::Resembles { base, .. } = resolve_credential_name(&stored) {
+            if let Some(entry) = totals.iter_mut().find(|(b, _)| *b == base) {
+                entry.1 += count.max(0) as usize;
+            }
+        }
+    }
+    totals.retain(|(_, count)| *count > 0);
+    Ok(totals)
+}
+
+/// One line per base that has near-names, with the marker instead of the suffix.
+pub(crate) fn format_resembling_names(rows: &ScopedCounts) -> Vec<String> {
+    rows.iter()
+        .map(|(base, count)| {
+            format!(
+                "{count:>6} row(s)  base = {base}  name = {base}{SCOPE_MARKER} (suffix not shown)"
+            )
+        })
+        .collect()
 }
 
 /// Delete every ledger row the shared credential predicate claims, in ONE
@@ -259,7 +364,7 @@ pub(crate) fn purge_credential_deltas(conn: &Connection) -> Result<DeltaCounts> 
     let delete = format!("DELETE FROM {LEDGER_TABLE} WHERE key = ?1");
     let mut deleted: DeltaCounts = Vec::new();
     for key in &stored {
-        let Some(canonical) = canonical_credential_key(key)? else {
+        let Some(canonical) = canonical_credential_key(key) else {
             continue;
         };
         let n = tx
@@ -283,6 +388,11 @@ pub(crate) fn purge_credential_deltas(conn: &Connection) -> Result<DeltaCounts> 
     });
     Ok(deleted)
 }
+
+/// Ledger rows whose name only RESEMBLES a credential: base, then row count.
+/// Kept apart from [`DeltaCounts`] because the two buckets answer different
+/// questions and only one of them may be deleted.
+pub(crate) type ScopedCounts = Vec<(&'static str, usize)>;
 
 /// The live table the settings census READS and never writes. Named here so the
 /// only settings statement this command builds is visible in one place: there is
@@ -549,7 +659,7 @@ pub(crate) fn scan_credential_settings(conn: &Connection) -> Result<SettingCount
         .with_context(|| format!("reading the {SETTINGS_TABLE} table"))?;
     for row in found {
         let (stored, value) = row.context("reading settings rows")?;
-        let Some(canonical) = canonical_credential_key(&stored)? else {
+        let Some(canonical) = canonical_credential_key(&stored) else {
             continue;
         };
         let form = classify_stored_value(canonical, &value);
@@ -755,7 +865,19 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
             println!("  {line}");
         }
     }
-    println!("LEDGER TOTAL: {found_total} row(s). {LEDGER_TOTAL_IS_NOT_A_MACHINE_COUNT}");
+    let ledger_near = scan_resembling_names(conn, LEDGER_TABLE)?;
+    let ledger_near_total: usize = ledger_near.iter().map(|(_, count)| count).sum();
+    if ledger_near_total > 0 {
+        println!(
+            "NEAR-NAMES (reported, NOT deleted): ledger rows whose name resembles a credential base plus a scope suffix. The suffix is operator data and is never shown:",
+        );
+        for line in format_resembling_names(&ledger_near) {
+            println!("  {line}");
+        }
+    }
+    println!(
+        "LEDGER TOTAL: {found_total} row(s) EXACT + {ledger_near_total} row(s) NEAR-NAME; only EXACT rows are ever deleted. {LEDGER_TOTAL_IS_NOT_A_MACHINE_COUNT}"
+    );
     println!();
 
     println!("---- 2 of 2: LIVE SETTINGS [{SETTINGS_TABLE}] — REPORT ONLY, never deleted ----");
@@ -767,6 +889,16 @@ pub(crate) fn run_credential_deltas(conn: &Connection, args: &CredentialDeltasAr
         );
         for line in format_setting_counts(&settings) {
             println!("  {line}");
+        }
+        let near = scan_resembling_names(conn, SETTINGS_TABLE)?;
+        let near_total: usize = near.iter().map(|(_, count)| count).sum();
+        if near_total > 0 {
+            println!(
+                "NEAR-NAMES (reported, NOT deleted, NOT counted as cleartext either): settings rows whose name resembles a credential base plus a suffix. credential_base is suffix-blind, so these resolve to no base and no gate refuses them today:",
+            );
+            for line in format_resembling_names(&near) {
+                println!("  {line}");
+            }
         }
         println!("{LEGACY_PLAINTEXT_NOTE}");
     }
