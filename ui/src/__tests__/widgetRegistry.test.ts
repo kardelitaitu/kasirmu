@@ -19,6 +19,7 @@ import {
 } from '@/platform/ui/widget-registry';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import SalesDashboardScreen from '@/features/sales/SalesDashboardScreen';
+import { registerSalesWidgets } from '@/features/sales/widgets';
 import salesFtl from '@/locales/sales.ftl?raw';
 
 const mockSession = vi.fn();
@@ -164,6 +165,68 @@ describe('widget-registry access gate', () => {
       const refused = getDeniedWidgets(enabled, user).map((w) => w.id).sort();
       const every = ids(getWidgets()).filter((id) => id !== 'hidden').sort();
       expect([...seen, ...refused].sort()).toEqual(every);
+    }
+  });
+});
+
+/* ── the real sales registrations ─────────────────────────────────── */
+
+describe('registerSalesWidgets declarations', () => {
+  const enabled = new Set(['simple-retail']);
+  const EXPORT_ONLY = { userRole: 'Manager', permissions: ['sales:view', 'reports:export'] };
+  const VIEW_ONLY = { userRole: 'Auditor', permissions: ['audit:view', 'reports:view'] };
+  const STAFF = { userRole: 'Staff', permissions: ['sales:view'] };
+  const VIEW_TILES = ['revenue-line-chart', 'category-pie-chart', 'hourly-heatmap'];
+  const EXPORT_TILES = ['daily-total', 'sales-by-hour'];
+
+  beforeEach(() => {
+    clearWidgets();
+    registerSalesWidgets();
+  });
+
+  it('arms all five tiles, mirroring the permission each command checks', () => {
+    const declared = Object.fromEntries(
+      getWidgets().map((w) => [w.id, w.requiredPermission]),
+    );
+    // reports.rs:103/:261/:293 gate on REPORTS_VIEW through resolve_report_scope
+    // (:109, :267, :299); history.rs:365/:389 gate on REPORTS_EXPORT.
+    expect(declared).toEqual({
+      'daily-total': 'reports:export',
+      'sales-by-hour': 'reports:export',
+      'revenue-line-chart': 'reports:view',
+      'category-pie-chart': 'reports:view',
+      'hourly-heatmap': 'reports:view',
+    });
+  });
+
+  it('refuses every tile to a Staff session and reports each as denied, not removed', () => {
+    expect(getWidgets(enabled, STAFF).map((w) => w.id)).toEqual([]);
+    expect(getDeniedWidgets(enabled, STAFF).map((w) => w.id).sort()).toEqual(
+      [...VIEW_TILES, ...EXPORT_TILES].sort(),
+    );
+  });
+
+  it('keeps the three reports:view tiles for an Auditor, who holds no reports:export', () => {
+    // rbac_presets.rs:266 — the only preset with reports:view and not
+    // reports:export. If this test goes red, arming took data off a role.
+    expect(getWidgets(enabled, VIEW_ONLY).map((w) => w.id).sort()).toEqual(
+      [...VIEW_TILES].sort(),
+    );
+    expect(getDeniedWidgets(enabled, VIEW_ONLY).map((w) => w.id).sort()).toEqual(
+      [...EXPORT_TILES].sort(),
+    );
+  });
+
+  it('shows an export role its two tiles and refuses the reports:view three', () => {
+    expect(getWidgets(enabled, EXPORT_ONLY).map((w) => w.id).sort()).toEqual(
+      [...EXPORT_TILES].sort(),
+    );
+  });
+
+  it('accepts the reports:* and "*" wildcards on every tile', () => {
+    for (const permissions of [['reports:*'], ['*']]) {
+      expect(getWidgets(enabled, { userRole: 'Owner', permissions })).toHaveLength(5);
+      expect(getDeniedWidgets(enabled, { userRole: 'Owner', permissions })).toEqual([]);
     }
   });
 });

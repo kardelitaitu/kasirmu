@@ -51,19 +51,26 @@ export function registerSalesWidgets(): void {
     requiredPermission: 'reports:export',
   });
 
-  // The three tiles below deliberately carry no `requiredPermission`: their
-  // commands resolve a session but check no permission at all
-  // (get_daily_revenue_scoped, get_hourly_heatmap_scoped and
-  // get_category_breakdown_scoped — tablet-client src/commands/reports.rs:103,
-  // :261, :293; zero require_permission_for_user between them), so there is
-  // nothing for the host to mirror. If one of those ever gains a check, this
-  // field is already the way to say so.
+  // CORRECTED (48540aee0 shipped the opposite claim): these three commands ARE
+  // gated. Each one calls resolve_report_scope(&state, &session_token,
+  // permissions::REPORTS_VIEW) seven lines into its body —
+  // get_daily_revenue_scoped reports.rs:103 → :109, get_hourly_heatmap_scoped
+  // :261 → :267, get_category_breakdown_scoped :293 → :299. The old comment
+  // reported "no permission" because it grepped for require_permission_for_user
+  // (2 calls in this file) and never looked at resolve_report_scope (25 calls):
+  // a grep for one spelling of the gate vocabulary, not a census of it.
   registerWidget({
     id: 'revenue-line-chart',
     component: RevenueLineChartWidget,
     title: 'Revenue (14d)',
     feature: 'simple-retail',
     width: 2,
+    // Mirrors reports.rs:109 (permissions::REPORTS_VIEW). Arming it changes who
+    // can see the tile: nobody — the backend already refused the call. It changes
+    // what a refused session sees: RevenueLineChartWidget.tsx catches the
+    // rejection and renders an error card (its `if (error)` branch), which reads
+    // as a broken tile; the host's refusal slot renders Access Denied instead.
+    requiredPermission: 'reports:view',
   });
 
   registerWidget({
@@ -72,6 +79,8 @@ export function registerSalesWidgets(): void {
     title: 'By Category',
     feature: 'simple-retail',
     width: 1,
+    // Mirrors reports.rs:299 (permissions::REPORTS_VIEW); see the note above.
+    requiredPermission: 'reports:view',
   });
 
   registerWidget({
@@ -80,5 +89,7 @@ export function registerSalesWidgets(): void {
     title: 'Busiest Hours',
     feature: 'simple-retail',
     width: 1,
+    // Mirrors reports.rs:267 (permissions::REPORTS_VIEW); see the note above.
+    requiredPermission: 'reports:view',
   });
 }
