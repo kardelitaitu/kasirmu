@@ -103,7 +103,20 @@ impl tracing::Subscriber for Capture {
 }
 
 fn temp_store_path(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("oz-bridge-{}-{}", tag, std::process::id()));
+    // Unique per CALL, not just per process: `tag + pid` gave every
+    // `ungated`-tagged test in one binary the same `store.db`, so a second one
+    // would have read the first one's backup file (precedent: `unique_store_dir`
+    // in inventory_tests.rs, which carries nanos for the same reason).
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!(
+        "oz-bridge-{}-{}-{}",
+        tag,
+        std::process::id(),
+        nanos
+    ));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     dir.join("store.db")
 }
