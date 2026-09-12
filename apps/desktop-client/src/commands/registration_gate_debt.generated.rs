@@ -167,11 +167,19 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("sync::test_sync_connection", "no_session_resolution"),
 ];
 
-/// Registered commands the sweep found today. The test floors against it.
+/// Registered commands the sweep found today. The floor in
+/// registration_gate_tests.rs is asserted equal to this, so a regenerated ledger
+/// that disagrees with a hand-kept floor fails the build.
 pub const REGISTERED_TOTAL: usize = 448;
+
 /// Debt entries today: the ceiling the ledger may only shrink under.
 pub const DEBT_CEILING: usize = 70;
+
+/// Names that never resolve a session at all.
 pub const NO_SESSION_RESOLUTION: usize = 44;
+
+/// Authenticate-then-assume: a session is resolved and no permission asked.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 26;
-/// Commands with a registered name no wrapper body could be found for.
+
+/// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;
