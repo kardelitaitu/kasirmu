@@ -1393,3 +1393,80 @@ fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
         );
     }
 }
+
+/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. INVERT THIS TEST, DO NOT DELETE IT.
+///
+/// What the four refusal pins above prove is that the ingest gate refuses
+/// SECRET_KEY_DENY_LIST, the device-bound ids and the two manager prefixes. What they do
+/// not prove is the shape of the rule: IngestPolicy::RemoteSync is an EXCLUSION list over
+/// an OPEN namespace (platform/core/src/settings/raw.rs:660-670), not an allow-list, so
+/// every name the exclusion list does not carry — including names no screen can write
+/// through the local doors but a peer can type into a payload — is admitted and written
+/// through the bare Settings::set INSERT (raw.rs:98-114 delegating to raw.rs:37-45). The
+/// applied key is the payload's own string, read verbatim at queue.rs:525-531.
+///
+/// Two properties make that serious, and they are the whole reason this is pinned in a
+/// test rather than parked in a report:
+///
+/// 1. **The sender is not an authority.** Nothing in transport or sync_api signs or MACs
+///    a settings item (queue.rs:10-12), and the server stores a pushed payload opaquely
+///    (apps/cloud-server/src/sync_store.rs:201), so any peer inside the tenant — or the
+///    server operator — can name the key.
+/// 2. **The reader carries a bearer secret.** crates/oz-core/src/sync_auth.rs:72 sends
+///    `Authorization: Bearer <sync api key>` to whatever sync_server_url currently holds,
+///    so planting that one name exfiltrates a credential without ever naming a credential
+///    key. sync_enabled, pg_sync.host, pg_sync.user, pg_sync.dbname and redis.cache_ttl
+///    are the same door in other shapes.
+///
+/// When the ingest allow-list lands, this test must FLIP: the row must come back
+/// unchanged, the delta ledger must stay empty, and admits must answer false — keep the
+/// name so the inversion is visible in the diff. A green run today is the finding; a
+/// green run afterwards must mean the opposite thing.
+#[test]
+fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    let sentinel = "https://sync-ingest-hazard.invalid/";
+
+    // Negative control FIRST: admits must still be the narrow exclusion rule, or the
+    // assertions below would pass for a gate that refuses nothing at all.
+    assert!(
+        !IngestPolicy::RemoteSync.admits("machine_id"),
+        "machine_id stopped being refused — the controls below would prove nothing"
+    );
+    assert!(
+        !IngestPolicy::RemoteSync.admits("sync_api_key"),
+        "sync_api_key stopped being refused — the controls below would prove nothing"
+    );
+
+    // The hazard: a name outside all three exclusion families, and therefore admitted.
+    assert!(
+        IngestPolicy::RemoteSync.admits("sync_server_url"),
+        "sync_server_url is now refused by the ingest policy — INVERT this test"
+    );
+
+    let outcome = queue
+        .apply_remote_atomic_full(
+            &store,
+            &remote_settings_kv("ingest-unlisted", "sync_server_url", sentinel),
+        )
+        .unwrap();
+
+    assert_eq!(
+        Settings::get(store.conn(), "sync_server_url")
+            .unwrap()
+            .as_deref(),
+        Some(sentinel),
+        "PIN: an unlisted key carried by an unsigned item is applied to this install"
+    );
+    assert_eq!(
+        Settings::get_version(store.conn(), "sync_server_url", "term-remote").unwrap(),
+        Some(1),
+        "PIN: the planted value reaches the delta ledger as if it were an operator edit"
+    );
+    assert_eq!(
+        outcome.settings_change.as_ref().map(|(k, _)| k.as_str()),
+        Some("sync_server_url"),
+        "PIN: and the change is published to the UI as a settings change (SYNC-10)"
+    );
+}
