@@ -435,3 +435,137 @@ async fn export_eod_report_scoped_requires_reports_export() {
         "export_eod_report_scoped must still open for a session holding reports:export: {allowed:?}"
     );
 }
+
+// ── KNOWN HAZARD — daily totals count voided sales as revenue ───────
+//
+/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. INVERT OR DELETE WHEN THE
+/// QUERY IS FIXED. Nothing today distinguishes the two numbers this pins, so
+/// the pair is asserted side by side: the report is internally inconsistent
+/// by construction, and a green run here means the inconsistency is still
+/// live, not that it is correct.
+///
+/// `Store::export_daily_summary` (crates/oz-core/src/db/sales.rs:262-268)
+/// filters on DATE only — no status predicate at all — and five consumers
+/// then sum or count what comes back: the dashboard tile
+/// (ui/src/features/sales/widgets/DailyTotalWidget.tsx), the tablet EOD
+/// builder both unscoped (commands/history.rs:205) and scoped (:413), and
+/// the desktop bridge path (crates/oz-bridge/src/history.rs:199) which
+/// feeds the same daily rows into total_sales and total_revenue at :284 and
+/// :330-331. `void_sale` (crates/oz-core/src/db/sales_lifecycle.rs:769-773)
+/// sets status to voided and never touches total_minor, so the money of a
+/// cancelled sale stays inside the daily total.
+///
+/// The contamination is status `voided` plus anything still open: `active`
+/// and `pending` sit in the same family, because an open till mid-shift is
+/// not revenue yet either. (Held carts are NOT a sale status — they live in
+/// held_carts — so they are not what this pin is about.)
+///
+/// Why it is a reconciliation error rather than a cosmetic one: three lines
+/// from the unfiltered sum, the same report filters hard — the payment
+/// breakdown requires status completed, the void stats require status voided,
+/// the discount stats require completed and a discount. So on a day with one
+/// void, total_revenue exceeds the sum of the payment breakdown and the void
+/// amount is reported twice in one sheet, once inside total_revenue and once
+/// as void_total. A drawer counted against payment_breakdown will NOT equal
+/// total_revenue, and nothing on the sheet says why.
+///
+/// What the fix has to DECIDE, which is a product question and not a bug:
+/// whether the tile and the EOD header want completed only. Completed-only
+/// makes the header agree with the payment breakdown but changes what a
+/// merchant reads as a daily total, and the voided amount has to be shown
+/// somewhere or it vanishes from the sheet. This test takes no side: it
+/// pins both numbers so the day someone adds a status predicate, exactly one
+/// of these two assertions flips and names itself.
+#[tokio::test]
+async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
+    let (mut state, _dir) = history_state();
+    let completed_minor: i64 = 4_000;
+    let voided_minor: i64 = 1_500;
+    let today = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    {
+        let conn = state.db_manager.open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        db.execute(
+            r#"INSERT INTO sales
+                 (id, total_minor, currency, line_count, status, payment_method, user_id, created_at)
+               VALUES ('s-pin-completed', ?1, 'USD', 1, 'completed', 'cash', 'user-full', ?2),
+                      ('s-pin-voided',    ?3, 'USD', 1, 'active',   'card', 'user-full', ?2);"#,
+            rusqlite::params![completed_minor, today, voided_minor],
+        )
+        .unwrap();
+    }
+    // The void goes through the real lifecycle method, not a hand-written
+    // UPDATE, and the status is read back: a fixture that silently failed to
+    // void cannot produce a green pin.
+    let conn = state.db_manager.open_store("store-a").unwrap();
+    {
+        let db = conn.lock().unwrap();
+        let store = Store::new(&db);
+        store
+            .void_sale("s-pin-voided", "user-full", "pin fixture")
+            .expect("the fixture must be able to void its own active sale");
+        let back = store
+            .get_sale("s-pin-voided")
+            .unwrap()
+            .expect("voiding must not delete the row");
+        assert_eq!(
+            back.status,
+            oz_core::SaleStatus::Voided,
+            "the pin needs a real voided row, got {:?}",
+            back.status
+        );
+        assert_eq!(
+            back.total.minor_units, voided_minor,
+            "void_sale is expected to leave total_minor alone; if that changed, the hazard this pins changed too"
+        );
+        let daily = store.export_daily_summary().unwrap();
+        assert_eq!(
+            daily.len(),
+            2,
+            "vacuity guard: both seeded sales must come back from the DATE-only query, got {} (ids: {:?})",
+            daily.len(),
+            daily.iter().map(|r| r.sale_id.clone()).collect::<Vec<_>>()
+        );
+    }
+    drop(conn);
+    mint(&mut state, GRANTED_TOKEN, "user-full", "role-full");
+    let app = mock_app(state);
+    let report = export_eod_report_scoped(GRANTED_TOKEN.into(), app.state())
+        .await
+        .expect("the EOD twin must answer for a session holding reports:export");
+
+    // Half one: the header counts every row the DATE-only query returned.
+    assert_eq!(
+        report.total_sales, 2,
+        "total_sales counted the voided sale: the header is no longer a row count"
+    );
+    assert_eq!(
+        report.total_revenue,
+        completed_minor + voided_minor,
+        "total_revenue must equal both rows today; if it now equals the completed-only sum, the query was fixed — invert or delete this pin"
+    );
+
+    // Half two: the body of the same report filters, so it disagrees.
+    let paid: i64 = report.payment_breakdown.iter().map(|p| p.total).sum();
+    assert_eq!(
+        paid, completed_minor,
+        "the payment breakdown is completed-only; it must still exclude the voided sale for this pin to mean anything"
+    );
+    assert_eq!(
+        report.void_count, 1,
+        "the voided row must also be reported as a void, which is the double count"
+    );
+    assert_eq!(
+        report.void_total, voided_minor,
+        "the same 1500 rides in void_total and inside total_revenue"
+    );
+
+    // The pair, stated as the merchant meets it: a drawer counted against
+    // the payment breakdown will not equal the revenue line on the sheet.
+    assert_ne!(
+        report.total_revenue,
+        paid,
+        "reconciliation gap of {} minor: total_revenue vs the payment breakdown sum",
+        report.total_revenue - paid
+    );
+}
