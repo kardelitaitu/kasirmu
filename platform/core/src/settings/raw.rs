@@ -318,6 +318,18 @@ impl Settings {
     /// beside the refusal, and is deliberately not threaded through the
     /// callers: a policy that exists in three call sites is exactly the one
     /// the fourth funnel forgets.
+    ///
+    /// SECURITY DECISION, pinned: this exception is compared against the RAW
+    /// key, while the deny list is matched normalised (trimmed and ASCII
+    /// case-folded by `keys::is_secret_setting_key`). The asymmetry is
+    /// deliberate and must stay. An exception to a security guard is the
+    /// narrowest thing in the guard; folding the exception the same way would
+    /// let any casing or padding of `smtp_config` claim it and walk back
+    /// through the door the normalisation just closed. What that costs is that
+    /// a hand-written variant of the legitimate key is refused rather than
+    /// admitted — a support annoyance, not a hole, and a theoretical one: both
+    /// shells write this key from code as an exact constant.
+    /// Pinned by `decision_pin_the_credential_exception_is_matched_exactly`.
     const CLEARTEXT_CREDENTIAL_EXCEPTION: &str = crate::settings::keys::SMTP_CONFIG;
 
     /// The cleartext-credential rule as a QUESTION: `Some(message)` when the
@@ -344,6 +356,9 @@ impl Settings {
     /// The message names the key and never the value — a value in an error
     /// string is a leak through the log lane.
     pub fn cleartext_credential_refusal(key: &str) -> Option<String> {
+        // The predicate above normalises `key`; this comparison does NOT, on
+        // purpose — see `CLEARTEXT_CREDENTIAL_EXCEPTION`. Folding the
+        // exception would make it a bypass.
         if crate::settings::keys::is_secret_setting_key(key)
             && key != Self::CLEARTEXT_CREDENTIAL_EXCEPTION
         {

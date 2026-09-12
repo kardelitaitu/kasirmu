@@ -274,6 +274,79 @@ fn set_tracked_exception_still_writes_smtp_config() {
     );
 }
 
+/// DECISION PIN — the asymmetry between the folded deny list and the
+/// exactly-matched exception. This is a security decision, not an accident of
+/// implementation, and it is what the two halves below are here to keep apart.
+///
+/// Folded half: `keys::is_secret_setting_key` trims and ASCII-case-folds the
+/// candidate, so `STRIPE.API_KEY` and `"stripe.api_key "` are refused by the
+/// funnel where a case- and whitespace-exact match used to admit them — the
+/// settings table is TEXT under BINARY collation, so those are distinct rows
+/// that used to read straight back over IPC.
+///
+/// Exact half: the exception is compared against the RAW key, so no variant of
+/// `smtp_config` inherits it — `SMTP_CONFIG`, `"smtp_config "` and
+/// `" Smtp_Config"` are refused like any other credential. Folding the
+/// exception the same way would hand back the exact bypass the fold just
+/// closed, because an exception to a security guard is the narrowest thing in
+/// the guard. The cost is that a hand-written variant of the legitimate key is
+/// refused rather than admitted: a support annoyance, not a hole, and a
+/// theoretical one — both shells write that key from code as an exact constant.
+///
+/// The other edge of the pair — the legitimate key in exact form IS admitted
+/// through this funnel — is already pinned by
+/// `set_tracked_exception_still_writes_smtp_config` above, and is not restated
+/// here — nor are the in-tx and batch forms of the same admission.
+#[test]
+fn decision_pin_the_credential_exception_is_matched_exactly() {
+    let conn = fresh_with_delta();
+    // Every spelling below IS on the deny list once the candidate is folded;
+    // none of them is the exception, because the exception is matched raw.
+    let near_misses = [
+        "SMTP_CONFIG",    // the exception, uppercased
+        "smtp_config ",   // the exception, padded
+        " Smtp_Config",   // both at once
+        "STRIPE.API_KEY", // another deny-listed key
+        "stripe.api_key ",
+    ];
+    for key in near_misses {
+        assert!(
+            keys::is_secret_setting_key(key),
+            "the folded predicate must flag {key:?}, or this case proves nothing"
+        );
+        let msg = Settings::cleartext_credential_refusal(key).unwrap_or_else(|| {
+            panic!("{key:?} must be refused: it is deny-listed but is not the exact exception")
+        });
+        assert!(
+            msg.contains(key),
+            "the refusal must name the key as handed to it, got: {msg}"
+        );
+        let err = Settings::set_tracked(&conn, key, "leaked-credential-value", "term-a")
+            .expect_err("a near-miss of a deny-listed key must be refused, not written");
+        assert!(
+            !err.to_string().contains("leaked-credential-value"),
+            "the refusal must never echo the value, got: {err}"
+        );
+        assert_eq!(
+            Settings::get(&conn, key).unwrap(),
+            None,
+            "a refusal must not write the row for {key:?}"
+        );
+        assert_eq!(
+            Settings::get_version(&conn, key, "term-a").unwrap(),
+            None,
+            "a refusal must not write a delta for {key:?}"
+        );
+    }
+    // The exception key is still FLAGGED by the predicate in every casing — it
+    // is only the funnel's byte-exact comparison that lets the one spelling
+    // through, so casing can never widen the exception from either side.
+    assert!(
+        keys::is_secret_setting_key("SMTP_CONFIG"),
+        "the folded predicate must keep flagging the exception key too"
+    );
+}
+
 /// The bare face refuses BEFORE it opens its transaction: a caller that is
 /// already inside one and asks `set_tracked` with a deny-listed key gets the
 /// refusal — the same words the in-tx form raises — and never the rusqlite
