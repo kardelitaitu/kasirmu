@@ -703,8 +703,26 @@ impl IngestPolicyKind for IngestPolicy {
 ///
 /// Nothing is refused under [`IngestPolicy::TrustedLocal`]: the managers that
 /// own these keys write them locally, and filtering that would break them.
+///
+/// The candidate is folded exactly as the credential half of the same ingest
+/// boolean folds it — [`keys::is_non_exportable_setting_key`] trims and
+/// ASCII-case-folds through `keys::normalised_candidate`, and so does this,
+/// against the SAME shared fold (it is `pub(crate)` in `keys.rs` for exactly
+/// this reason; no second normalisation is written here). Before that, one
+/// boolean had two matching semantics inside it: `IngestPolicy::PortablePackage
+/// | RemoteSync` refused `STRIPE.API_KEY` on the credential arm while its
+/// manager arm `starts_with`-matched raw, so `LAN_SERVER.BIND` and
+/// `Local_api.enabled` were admitted by both untrusted lanes. Every consumer
+/// reads the exact lowercase constant, so no such variant row did anything
+/// today — this closes policy drift, not an exploit. The hazard was the next
+/// prefix: a reader adding one would have assumed the fold covered it.
+///
+/// The fold applies to the INPUT, never to the prefix literals, which stay the
+/// lowercase constants they are. Callers still hand this the raw key, so the
+/// signature is unchanged and no caller moves.
 pub fn is_manager_owned_key(key: &str) -> bool {
-    key.starts_with("local_api.") || key.starts_with("lan_server.")
+    let candidate = crate::settings::keys::normalised_candidate(key);
+    candidate.starts_with("local_api.") || candidate.starts_with("lan_server.")
 }
 
 #[cfg(test)]

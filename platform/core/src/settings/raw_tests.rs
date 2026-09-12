@@ -596,3 +596,146 @@ fn set_batch_tracked_admits_the_smtp_exception_and_ordinary_keys() {
         Some("ok")
     );
 }
+
+/// Near-miss spellings that ONLY the manager arm of the ingest boolean can
+/// refuse: the trimmed-and-folded form of each is neither on
+/// `SECRET_KEY_DENY_LIST` nor `NON_EXPORTABLE_DEVICE_KEYS` (asserted in the
+/// lanes below), so a refusal here is the lifecycle-manager prefix rule doing
+/// the work — not the credential arm happening to reach the same answer.
+/// Before this commit the two halves of one `||` disagreed: the credential
+/// arm folded, the prefix arm `starts_with`-matched raw, so these spellings
+/// walked through both untrusted lanes.
+fn manager_prefix_only_near_misses() -> Vec<&'static str> {
+    vec![
+        "LAN_SERVER.BIND",       // the whole manager key uppercased
+        "Local_api.enabled",     // mixed case, a non-credential manager key
+        "\tlan_server.bind\n",   // tab + newline padding, lowercase
+        "  LOCAL_API.ENABLED  ", // padded AND folded
+    ]
+}
+
+/// Lane 1 of the two untrusted lanes: `.ozpkg` ingest must refuse a variant
+/// spelling of a manager-owned key, not only the exact lowercase one.
+#[test]
+fn portable_package_ingest_refuses_a_variant_spelling_of_a_manager_key() {
+    let conn = fresh();
+    for key in manager_prefix_only_near_misses() {
+        assert!(
+            is_manager_owned_key(key),
+            "the prefix rule must fold {key:?}"
+        );
+        assert!(
+            !keys::is_non_exportable_setting_key(key),
+            "{key:?} must be refused by the MANAGER arm, not the credential arm"
+        );
+        assert!(
+            !IngestPolicy::PortablePackage.admits(key),
+            "PortablePackage must refuse the variant {key:?}"
+        );
+        let written = Settings::set_with_policy(
+            &conn,
+            key,
+            "from-foreign-package",
+            IngestPolicy::PortablePackage,
+        )
+        .unwrap();
+        assert!(!written, "PortablePackage must skip {key:?}, not store it");
+        assert_eq!(
+            Settings::get(&conn, key).unwrap(),
+            None,
+            "a refused variant must not create the {key:?} row"
+        );
+    }
+    for key in manager_prefix_only_near_misses() {
+        assert!(
+            IngestPolicy::TrustedLocal.admits(key),
+            "TrustedLocal must not filter {key:?}"
+        );
+    }
+}
+
+/// Lane 2: remote-sync ingest refuses the same variant spellings. Asserted
+/// separately because the two untrusted lanes reach the shared `||` through
+/// different accessors — sync via `set_with_policy` in
+/// `platform/sync/src/queue.rs`, the package lane via `load_exportable` /
+/// `set_batch_with_policy`. No transport, no network: driven through `admits`
+/// and the funnelled accessor, which is what the lane itself calls.
+#[test]
+fn remote_sync_ingest_refuses_a_variant_spelling_of_a_manager_key() {
+    let conn = fresh();
+    for key in manager_prefix_only_near_misses() {
+        assert!(
+            !IngestPolicy::RemoteSync.admits(key),
+            "RemoteSync must refuse the variant {key:?}"
+        );
+        let written =
+            Settings::set_with_policy(&conn, key, "from-sync-server", IngestPolicy::RemoteSync)
+                .unwrap();
+        assert!(!written, "RemoteSync must skip {key:?}, not store it");
+        assert_eq!(
+            Settings::get(&conn, key).unwrap(),
+            None,
+            "a refused variant must not create the {key:?} row"
+        );
+    }
+    // The fold refuses the incoming near-miss write; it does not reconcile or
+    // rewrite the real lowercase row.
+    Settings::set(&conn, keys::LAN_SERVER_BIND, "127.0.0.1").unwrap();
+    let written = Settings::set_with_policy(
+        &conn,
+        "LAN_SERVER.BIND",
+        "0.0.0.0",
+        IngestPolicy::RemoteSync,
+    )
+    .unwrap();
+    assert!(!written, "the variant write must be refused");
+    assert_eq!(
+        Settings::get(&conn, keys::LAN_SERVER_BIND)
+            .unwrap()
+            .as_deref(),
+        Some("127.0.0.1"),
+        "a refusal must not rewrite the real row"
+    );
+}
+
+/// The other side of the fold, and the side that matters more: an ordinary
+/// lowercase manager-owned key is STILL manager-owned. The exclusion exists
+/// because a bulk write of `local_api.enabled` desyncs the Local API server
+/// behind its back and `lan_server.bind` widens a listener with no PSK
+/// change — a fold that quietly admitted manager keys through ingest would be
+/// a real bug wearing a cleanup's clothes.
+#[test]
+fn an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_refused_at_ingest() {
+    for key in [
+        keys::LOCAL_API_SECRET,
+        "local_api.enabled",
+        keys::LAN_SERVER_BIND,
+        keys::LAN_SERVER_PSK,
+        "lan_server.enabled",
+    ] {
+        assert!(
+            is_manager_owned_key(key),
+            "{key} is manager-owned and must stay so under the fold"
+        );
+        for policy in [IngestPolicy::PortablePackage, IngestPolicy::RemoteSync] {
+            assert!(
+                !policy.admits(key),
+                "{:?} must refuse the manager key {key}",
+                policy
+            );
+        }
+        assert!(
+            IngestPolicy::TrustedLocal.admits(key),
+            "TrustedLocal must admit {key}: it is the lane that owns it"
+        );
+    }
+    // And the fold did not over-reach: ordinary keys stay non-manager and
+    // still travel on both untrusted lanes, exact or sloppy.
+    for key in [keys::STORE_NAME, "STORE.NAME", "  sync_enabled\t"] {
+        assert!(!is_manager_owned_key(key), "{key:?} is not manager-owned");
+        assert!(
+            IngestPolicy::PortablePackage.admits(key) && IngestPolicy::RemoteSync.admits(key),
+            "an ordinary key must still travel on both untrusted lanes: {key:?}"
+        );
+    }
+}

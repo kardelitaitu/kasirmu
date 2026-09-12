@@ -160,3 +160,61 @@ fn ordinary_keys_are_still_admitted_under_normalisation() {
         );
     }
 }
+/// One fold, shared. `raw::is_manager_owned_key` calls THIS function rather
+/// than writing a second normalisation, so the credential arm and the
+/// lifecycle-manager prefix arm of the ingest boolean cannot answer a near-miss
+/// spelling differently. Pinned on the helper itself — trim, then ASCII case
+/// fold — because the prefix rule is folded only while this stays the single
+/// definition of it.
+#[test]
+fn the_shared_fold_is_trim_then_ascii_case_fold() {
+    assert_eq!(normalised_candidate("  STRIPE.API_KEY  "), "stripe.api_key");
+    assert_eq!(
+        normalised_candidate("\tLan_Server.Bind\n"),
+        "lan_server.bind"
+    );
+    assert_eq!(normalised_candidate("store.name"), "store.name");
+}
+
+/// The correction to the comment that used to sit on `normalised_candidate`:
+/// it claimed an ASCII-only rule, but the trim half is `str::trim`, which is
+/// Unicode `White_Space`-aware — so U+00A0 (NO-BREAK SPACE) and U+2028 (LINE
+/// SEPARATOR) around a candidate DO strip, even though SQLite's BINARY
+/// collation treats them as ordinary key bytes. Asserted in both directions
+/// because that asymmetry is exactly what makes it harmless: the over-strip can
+/// only widen a REFUSAL (a padded credential folds onto a lowercase ASCII
+/// marker), never widen an admission (an ordinary key that loses Unicode
+/// padding matches no marker either way).
+#[test]
+fn the_trim_half_of_the_fold_is_unicode_whitespace_aware() {
+    const NBSP: char = '\u{00A0}';
+    const LINE_SEP: char = '\u{2028}';
+    for (name, pad) in [("U+00A0", NBSP), ("U+2028", LINE_SEP)] {
+        let credential = format!("{pad}{STRIPE_API_KEY}{pad}");
+        assert!(
+            is_secret_setting_key(&credential),
+            "{name} around a credential still folds to the deny-listed spelling"
+        );
+        assert!(
+            is_non_exportable_setting_key(&credential),
+            "{name} around a credential must not make it exportable"
+        );
+        let device = format!("{pad}{MACHINE_ID}");
+        assert!(
+            is_non_exportable_setting_key(&device),
+            "{name} around a device key must not make it exportable"
+        );
+        let ordinary = format!("{pad}{STORE_NAME}");
+        assert!(
+            !is_secret_setting_key(&ordinary) && !is_non_exportable_setting_key(&ordinary),
+            "{name} around an ordinary key must not turn it into a refusal"
+        );
+    }
+    // The prefix arm reuses this fold, so it over-strips the same way — again
+    // in the refusing direction only.
+    let manager = format!("{NBSP}LAN_SERVER.BIND");
+    assert!(
+        crate::settings::is_manager_owned_key(&manager),
+        "a NBSP-wrapped manager key folds through the same helper and refuses"
+    );
+}

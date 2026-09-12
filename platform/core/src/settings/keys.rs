@@ -298,13 +298,32 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// The comparison form of a candidate settings key: surrounding whitespace
 /// trimmed and ASCII case-folded.
 ///
-/// The candidate is normalised — never the lists — so [`SECRET_KEY_DENY_LIST`]
-/// and [`NON_EXPORTABLE_DEVICE_KEYS`] stay exactly as declared (lowercase,
-/// untrimmed) and every comparison against them goes through this one fold.
-/// ASCII-only on purpose: settings keys are ASCII identifiers, and a Unicode
-/// fold would promise a normalisation the TEXT/BINARY storage layer does not
-/// make.
-fn normalised_candidate(key: &str) -> String {
+/// `pub(crate)` so the lifecycle-manager prefix rule
+/// ([`crate::settings::is_manager_owned_key`]) folds a candidate through THIS
+/// function instead of writing a second normalisation: the credential half and
+/// the prefix half of one ingest boolean have to answer a near-miss spelling
+/// the same way, or the boolean has two matching semantics inside it.
+///
+/// The candidate is normalised — never the lists and never the prefix literals
+/// — so [`SECRET_KEY_DENY_LIST`], [`NON_EXPORTABLE_DEVICE_KEYS`] and the
+/// `local_api.` / `lan_server.` prefixes stay exactly as declared (lowercase,
+/// untrimmed), and every comparison this key family makes against them goes
+/// through this one fold.
+///
+/// Case-folding is ASCII-only on purpose: settings keys are ASCII identifiers,
+/// and a Unicode case fold would promise a normalisation the TEXT/BINARY
+/// storage layer does not make. Trimming is NOT ASCII-only, and a reader must
+/// not assume it is: [`str::trim`] is Unicode `White_Space`-aware, so
+/// `U+00A0` (NO-BREAK SPACE) and `U+2028` (LINE SEPARATOR) around a candidate
+/// DO strip even though they are not whitespace to SQLite's BINARY collation.
+/// The over-strip is harmless in one direction only, and which direction it is
+/// has to be said plainly: it can only ever widen a REFUSAL (a NBSP-wrapped
+/// `stripe.api_key` is folded to the deny-listed spelling and refused, while
+/// the row itself survives as its own distinct row in storage), never widen an
+/// admission — because every marker it is compared against is a lowercase
+/// ASCII literal. An ordinary key that loses Unicode padding is still not a
+/// marker, so no spelling of `store.name` becomes a refusal by way of this.
+pub(crate) fn normalised_candidate(key: &str) -> String {
     key.trim().to_ascii_lowercase()
 }
 
