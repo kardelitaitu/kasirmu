@@ -8,6 +8,7 @@
 
 use super::*;
 use rusqlite::Connection;
+use std::path::PathBuf;
 
 use oz_core::settings::Settings;
 use oz_core::settings::keys::{
@@ -17,6 +18,46 @@ use oz_core::settings::keys::{
 
 fn fresh_db() -> Connection {
     oz_core::migrations::fresh_db()
+}
+
+/*
+ * A temp directory that is removed even when the test fails.
+ *
+ * WHY THIS EXISTS, measured rather than theorised. An earlier shape here did
+ *     temp_dir().join(format!("oz-cd-missing-{}", process::id()))
+ * and cleaned up with a remove_dir_all on the LAST line of the test body. A
+ * failing run therefore never cleaned up: the mutation proof of b0242e5e4 left
+ * Temp/oz-cd-missing-65752/mistyped.db behind, which is the same path quoted in
+ * its own panic text, and it is still there two commits later. process idents are
+ * REUSED by Windows, so a later suite run can open a directory seeded by an older
+ * failed run, and the stale mistyped.db is exactly what makes the next line — a
+ * precondition assert that the path must not exist — flicker red once and green on
+ * the retry. Removing the directory in Drop, which unwinds do run, closes the class
+ * instead of re-tuning one assert.
+ */
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(tag: &str) -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        // pid alone is not unique across runs; the clock makes it per-run, so no
+        // earlier failure can seed this one.
+        let path = std::env::temp_dir().join(format!("oz-cd-{tag}-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&path).expect("create the per-run temp dir");
+        Self(path)
+    }
+    fn file(&self, name: &str) -> PathBuf {
+        self.0.join(name)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 fn delta_row_count(conn: &Connection, key: &str) -> i64 {
@@ -481,10 +522,8 @@ fn the_form_column_separates_encrypted_from_legacy_plaintext_from_ambiguous() {
 /// now refuses before it can reassure anyone, and names the path.
 #[test]
 fn a_database_with_no_settings_table_is_refused_naming_the_path() {
-    let dir = std::env::temp_dir().join(format!("oz-census-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("ghost.db");
-    let _ = std::fs::remove_file(&path);
+    let dir = TempDir::new("census");
+    let path = dir.file("ghost.db");
     let conn = Connection::open(&path).unwrap();
 
     let err = require_store_database(&conn).expect_err("an empty database must be refused");
@@ -505,7 +544,6 @@ fn a_database_with_no_settings_table_is_refused_naming_the_path() {
         "the operator must see which path was refused: {run_err}"
     );
     drop(conn);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The two populations stay apart in the text as well as in the code, and the
@@ -563,11 +601,16 @@ fn the_report_keeps_ledger_and_settings_totals_apart_and_says_why() {
 /// behind and the run reported confident zeroes about it.
 #[test]
 fn a_missing_db_path_is_refused_and_NOT_created() {
-    let dir = std::env::temp_dir().join(format!("oz-cd-missing-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("mistyped.db");
-    let _ = std::fs::remove_file(&path);
-    assert!(!path.exists(), "precondition: the path must not exist");
+    let dir = TempDir::new("missing");
+    let path = dir.file("mistyped.db");
+    // Asserted, not repaired: a per-run directory starts empty by construction, so
+    // finding a file here means some earlier run left one behind, which is the
+    // stale-state flicker this guard was added to kill. Discarding a remove_file
+    // error is what hid it before.
+    assert!(
+        !path.exists(),
+        "a fresh per-run temp dir must not already contain {path:?}"
+    );
 
     let err = crate::commands::open_store_for_credential_deltas(&path.to_string_lossy())
         .expect_err("a path that does not exist must be refused, not opened");
@@ -596,11 +639,10 @@ fn a_missing_db_path_is_refused_and_NOT_created() {
     );
     for sidecar in ["mistyped.db-wal", "mistyped.db-shm"] {
         assert!(
-            !dir.join(sidecar).exists(),
+            !dir.file(sidecar).exists(),
             "no sidecar may be created beside a refused path: {sidecar}"
         );
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The two guards are different failures and must read differently: a file that
@@ -609,10 +651,8 @@ fn a_missing_db_path_is_refused_and_NOT_created() {
 /// missing table.
 #[test]
 fn an_existing_file_with_no_tables_is_refused_by_the_second_guard_not_the_first() {
-    let dir = std::env::temp_dir().join(format!("oz-cd-empty-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("hollow.db");
-    let _ = std::fs::remove_file(&path);
+    let dir = TempDir::new("empty");
+    let path = dir.file("hollow.db");
     // Make the file EXIST, as a valid empty database: this is exactly the ghost
     // Connection::open leaves behind for a mistyped --db, so the PATH guard cannot
     // be what refuses it here.
@@ -642,7 +682,6 @@ fn an_existing_file_with_no_tables_is_refused_by_the_second_guard_not_the_first(
         "the table-guard must not impersonate the path-guard: {msg}"
     );
     drop(conn);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 // -- The machine-bound blind spot: listed, not tested -----------------------
 
