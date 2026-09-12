@@ -639,7 +639,10 @@ pub enum IngestPolicy {
     TrustedLocal,
     /// `.ozpkg` export/import: credentials and device-bound ids are refused.
     PortablePackage,
-    /// Settings arriving from the sync server: same refusals as a package.
+    /// Settings arriving from the sync server: the refusals a package makes,
+    /// PLUS the peer-named hazard set (`keys::PEER_NAMED_HAZARD_KEYS`) - the one
+    /// place the two untrusted lanes do not share a rule, because this is the only
+    /// lane where the key string belongs to a SENDER rather than to this app.
     RemoteSync,
 }
 
@@ -662,11 +665,35 @@ impl IngestPolicyKind for IngestPolicy {
             // The local lane owns the database; filtering it would break the
             // lifecycle managers that mint these very keys.
             IngestPolicy::TrustedLocal => true,
-            // Both untrusted directions share ONE rule, so the two lanes
-            // cannot drift the way the two hand-copied shell lists did.
-            IngestPolicy::PortablePackage | IngestPolicy::RemoteSync => {
+            // The package lane keeps the shared rule: a backup restore
+            // legitimately contains whatever the app owns, so this arm refuses
+            // exactly what it always refused and nothing else.
+            IngestPolicy::PortablePackage => {
                 !(crate::settings::keys::is_non_exportable_setting_key(key)
                     || is_manager_owned_key(key))
+            }
+            // Remote sync is the same refusals PLUS the hazard set, and this is
+            // the one deliberate asymmetry between the two untrusted lanes.
+            //
+            // keys::is_peer_named_hazard_key is refused HERE and nowhere else,
+            // because it is not about what may travel in a package: it is about
+            // what a SENDER may name. Those six names sit outside all three
+            // shared exclusion lists - none is a credential, a device identity
+            // or manager-owned - so an exclusion list over an open namespace
+            // admitted them, and nothing signs the item that carries them. See
+            // the doc on the list for why sync_server_url is the serious one.
+            //
+            // THE ASYMMETRY IS THE DEBT, stated so it does not read as a rule:
+            // these names still leave this install in a .ozpkg, and the egress
+            // gate in crates/oz-bridge/src/settings.rs and
+            // apps/tablet-client/src/commands/settings.rs asks admits(), so
+            // either list can still be OFFERED to the network and is now simply
+            // refused on arrival. Closing the namespace is the paired allow-list,
+            // not this arm.
+            IngestPolicy::RemoteSync => {
+                !(crate::settings::keys::is_non_exportable_setting_key(key)
+                    || is_manager_owned_key(key)
+                    || crate::settings::keys::is_peer_named_hazard_key(key))
             }
         }
     }
@@ -755,6 +782,65 @@ pub fn is_manager_owned_key(key: &str) -> bool {
     let candidate = crate::settings::keys::normalised_candidate(key);
     candidate.starts_with("local_api.") || candidate.starts_with("lan_server.")
 }
+
+/// Compile-time belt on the third list: a hazard name must be NEW to the guard,
+/// not a second refusal of a name `keys::SECRET_KEY_DENY_LIST` or
+/// `keys::NON_EXPORTABLE_DEVICE_KEYS` already carries.
+///
+/// Why it sits here and not beside the list in `keys.rs`: the ratchet
+/// `keys_tests::decision_pin_membership_tests_live_only_in_the_identity_functions`
+/// reads that file and fails any line that tests one of those two lists outside
+/// the identity functions - which is the second-definition rule it exists to
+/// hold. This module is the only other place that composes all three lists into
+/// one boolean (the `RemoteSync` arm of [`IngestPolicyKind::admits`]), so the
+/// belt belongs next to the composition it protects rather than at the
+/// declarations that composition reads.
+///
+/// Runtime is the wrong place to notice an overlap at all: both answers are
+/// refused, so a double membership would be invisible in behaviour and would
+/// survive as two lists agreeing by accident. A name on both lists is a defect;
+/// here it is a compile error.
+const _: () = {
+    const fn same_name(a: &str, b: &str) -> bool {
+        let (x, y) = (a.as_bytes(), b.as_bytes());
+        if x.len() != y.len() {
+            return false;
+        }
+        let mut i = 0;
+        while i < x.len() {
+            if x[i] != y[i] {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+    const fn already_refused(name: &str) -> bool {
+        let mut i = 0;
+        while i < crate::settings::keys::SECRET_KEY_DENY_LIST.len() {
+            if same_name(name, crate::settings::keys::SECRET_KEY_DENY_LIST[i]) {
+                return true;
+            }
+            i += 1;
+        }
+        let mut j = 0;
+        while j < crate::settings::keys::NON_EXPORTABLE_DEVICE_KEYS.len() {
+            if same_name(name, crate::settings::keys::NON_EXPORTABLE_DEVICE_KEYS[j]) {
+                return true;
+            }
+            j += 1;
+        }
+        false
+    }
+    let mut k = 0;
+    while k < crate::settings::keys::PEER_NAMED_HAZARD_KEYS.len() {
+        assert!(
+            !already_refused(crate::settings::keys::PEER_NAMED_HAZARD_KEYS[k]),
+            "a peer-named hazard key must not also sit on the credential or device list"
+        );
+        k += 1;
+    }
+};
 
 #[cfg(test)]
 #[path = "raw_tests.rs"]

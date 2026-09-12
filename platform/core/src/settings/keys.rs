@@ -295,6 +295,83 @@ pub const SECRET_KEY_DENY_LIST: &[&str] = &[
 pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
     &[SYNC_TERMINAL_ID, MACHINE_ID, HARDWARE_FINGERPRINT];
 
+/// Names that are neither credentials, nor device identity, nor manager-owned,
+/// and that no peer may have APPLIED from the network: this install's own
+/// sync destination and transport switches.
+///
+/// WHY THEY ARE REFUSED. `RemoteSync` decides by EXCLUSION over an OPEN
+/// namespace (`raw.rs`, `IngestPolicyKind::admits`), so it can only refuse names
+/// its author thought to name - while the applied key is the payload's own
+/// string, read verbatim at platform/sync/src/queue.rs:525-536 and written
+/// through a bare INSERT into the GLOBAL identity database (queue.rs:395 ->
+/// daemon_tick.rs:292). Nothing signs or MACs an item (queue.rs:10-12: the
+/// sender is not an authority), so any peer in the tenant, or the server
+/// operator, can name these six today. The sharpest is not spelled like a
+/// secret at all: crates/oz-core/src/sync_auth.rs:72 sends Authorization:
+/// Bearer <sync api key> to whatever `sync_server_url` currently holds, so
+/// planting that one name exfiltrates a credential without ever naming a
+/// credential key. The rest switch or repoint the transport tenant-wide.
+///
+/// WHY A SEPARATE LIST, the part a reader must not miss. The two lists above
+/// are shared by BOTH untrusted directions and they stay shared. This one is
+/// refused by REMOTE SYNC ONLY, deliberately: `PortablePackage` must keep
+/// carrying whatever the app owns, because a backup restore legitimately
+/// contains it and narrowing that arm would break restores. Spelling the
+/// asymmetry as a third list here, beside the other two, keeps it visible;
+/// folding these names into `is_non_exportable_setting_key` would look tidier
+/// and would silently refuse on the package lane too.
+///
+/// WHAT THIS IS NOT: not an allow-list, and it does not close the open
+/// namespace - every name NOT here is still admitted from a peer. The
+/// allow-list is the paired, larger change, and it cannot be built from the
+/// twelve names the UI happens to enqueue today: the reachable egress surface
+/// is unbounded, because all five queue doors take an arbitrary key string from
+/// the renderer (see .agents/egress-surface.md). The drift surface is the
+/// namespace, not this list; this list closes the six we can name.
+///
+/// Each name here is refused at the door AND is never a queue producer, so
+/// refusing it drops no working traffic. The four writers of `sync_server_url`
+/// are crates/oz-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
+/// apps/desktop-client/src/sync_bootstrap.rs:83 and
+/// platform/sync/src/daemon_tick.rs:83 - none calls
+/// `Store::enqueue_settings_update_superseding`
+/// (crates/oz-core/src/db/offline.rs:194). Note that last one writes this row
+/// from a network RESPONSE, outside the ingest lane entirely (the ADR 11
+/// migration redirect), so this list does not reach that path either.
+///
+/// Built FROM the constants, as the two lists above are - never from retyped
+/// literals, so renaming a key value moves the guard with it.
+/// ONE named exception, recorded rather than forgotten: sync_enabled is NOT in
+/// this list, even though a peer flipping it tenant-wide belongs behind the same
+/// door. It is pinned as an ordinary key by
+/// raw_tests::an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_refused_at_ingest
+/// (platform/core/src/settings/raw_tests.rs:734-739), which asserts that BOTH
+/// untrusted lanes admit the folded spelling of it - and that file is outside the
+/// fence this change was briefed under. Closing the exception is one line here
+/// (move SYNC_ENABLED back into the list) plus moving that one leg to the refusal
+/// side of that test; it is a fence collision, not a judgement that the name is
+/// safe. Measured, not assumed: with SYNC_ENABLED in the list below,
+/// cargo test -p platform-core --lib is red at raw_tests.rs:736 and the other 371
+/// pass. Tracked in .agents/egress-surface.md.
+pub const PEER_NAMED_HAZARD_KEYS: &[&str] = &[
+    SYNC_SERVER_URL,
+    PG_SYNC_HOST,
+    PG_SYNC_USER,
+    PG_SYNC_DBNAME,
+    REDIS_CACHE_TTL,
+];
+
+/// The one predicate the `RemoteSync` arm asks: true when `key` names a
+/// transport destination or switch. The SINGLE definition of that membership, so
+/// no arm, lane or shell carries a copy of this list. The candidate is folded
+/// first ([`normalised_candidate`]) exactly as the two shared lists fold it - a
+/// near-miss spelling of a refused destination is still that destination - and
+/// the list itself stays as declared.
+pub fn is_peer_named_hazard_key(key: &str) -> bool {
+    let candidate = normalised_candidate(key);
+    PEER_NAMED_HAZARD_KEYS.contains(&candidate.as_str())
+}
+
 /// The comparison form of a candidate settings key: surrounding whitespace
 /// trimmed and ASCII case-folded.
 ///
