@@ -28,6 +28,7 @@
 #![recursion_limit = "512"]
 
 mod config;
+mod conflict_resolution;
 mod db;
 mod email;
 mod email_pg;

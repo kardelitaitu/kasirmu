@@ -37,6 +37,8 @@ use deadpool_postgres::Pool;
 use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
+use crate::conflict_resolution::SyncConflictRow;
+
 use oz_core::TenantPlan;
 use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
 use platform_sync::transport::PushOutcome;
@@ -1223,6 +1225,225 @@ async fn pg_snapshot_users(
         );
     }
     Ok(out)
+}
+
+// ── Conflict rows (sync_conflicts) ────────────────────────────────────────
+//
+// Every statement below is scoped by tenant_id, matching the rest of this
+// store: this is the shared multi-tenant surface, so tenant A must never read
+// or resolve tenant B's conflicts. The Postgres arms additionally set the
+// `oz.tenant_id` GUC locally inside a transaction so RLS can key on it at
+// cutover.
+
+impl SyncStore {
+    /// Insert a conflict row.
+    pub async fn insert_conflict(&self, row: &SyncConflictRow) -> Result<(), String> {
+        match self {
+            Self::Sqlite(conn) => {
+                let conn = conn.lock().await;
+                conn.execute(
+                    "INSERT INTO sync_conflicts (id, tenant_id, entity_type, entity_id,
+                        local_terminal_id, local_vector, remote_vector, local_payload,
+                        remote_payload, severity, status)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open')
+                     ON CONFLICT (id) DO NOTHING",
+                    params![
+                        row.id,
+                        row.tenant_id,
+                        row.entity_type,
+                        row.entity_id,
+                        row.local_terminal_id,
+                        row.local_vector,
+                        row.remote_vector,
+                        row.local_payload,
+                        row.remote_payload,
+                        row.severity,
+                    ],
+                )
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+            }
+            Self::Postgres(pool) => {
+                let mut client = pool.get().await.map_err(|e| e.to_string())?;
+                let tx = client.transaction().await.map_err(|e| e.to_string())?;
+                tx.execute(
+                    "SELECT set_config('oz.tenant_id', $1, true)",
+                    &[&row.tenant_id],
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "INSERT INTO sync_conflicts (id, tenant_id, entity_type, entity_id,
+                        local_terminal_id, local_vector, remote_vector, local_payload,
+                        remote_payload, severity, status)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open')
+                     ON CONFLICT (id) DO NOTHING",
+                    &[
+                        &row.id,
+                        &row.tenant_id,
+                        &row.entity_type,
+                        &row.entity_id,
+                        &row.local_terminal_id,
+                        &row.local_vector,
+                        &row.remote_vector,
+                        &row.local_payload,
+                        &row.remote_payload,
+                        &row.severity,
+                    ],
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                tx.commit().await.map_err(|e| e.to_string())
+            }
+        }
+    }
+
+    /// List a tenant's conflicts, newest first, optionally filtered.
+    ///
+    /// Both filters are applied in SQL rather than in memory so a tenant with
+    /// a large backlog does not pay to serialise rows it filtered out.
+    pub async fn list_conflicts(
+        &self,
+        tenant_id: &str,
+        status: Option<&str>,
+        severity: Option<&str>,
+    ) -> Result<Vec<SyncConflictRow>, String> {
+        match self {
+            Self::Sqlite(conn) => {
+                let conn = conn.lock().await;
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id, tenant_id, entity_type, entity_id, local_terminal_id,
+                            local_vector, remote_vector, local_payload, remote_payload,
+                            severity, status, resolution, resolved_by, resolved_at, created_at
+                         FROM sync_conflicts
+                         WHERE tenant_id = ?1
+                           AND (?2 IS NULL OR status = ?2)
+                           AND (?3 IS NULL OR severity = ?3)
+                         ORDER BY created_at DESC",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map(
+                        params![tenant_id, status, severity],
+                        conflict_row_from_sqlite,
+                    )
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| e.to_string())
+            }
+            Self::Postgres(pool) => {
+                let client = pool.get().await.map_err(|e| e.to_string())?;
+                let stmt = client
+                    .prepare_cached(
+                        "SELECT id, tenant_id, entity_type, entity_id, local_terminal_id,
+                            local_vector, remote_vector, local_payload, remote_payload,
+                            severity, status, resolution, resolved_by, resolved_at, created_at
+                         FROM sync_conflicts
+                         WHERE tenant_id = $1
+                           AND ($2::text IS NULL OR status = $2)
+                           AND ($3::text IS NULL OR severity = $3)
+                         ORDER BY created_at DESC",
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let rows = client
+                    .query(&stmt, &[&tenant_id, &status, &severity])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(rows.iter().map(conflict_row_from_pg).collect())
+            }
+        }
+    }
+
+    /// Resolve an open conflict.
+    ///
+    /// Returns `false` when the id does not exist, belongs to another tenant,
+    /// or is already closed — resolving twice must not silently overwrite the
+    /// first decision, because the audit trail is the point of the row.
+    pub async fn resolve_conflict(
+        &self,
+        tenant_id: &str,
+        id: &str,
+        resolution: &str,
+        resolved_by: &str,
+    ) -> Result<bool, String> {
+        match self {
+            Self::Sqlite(conn) => {
+                let conn = conn.lock().await;
+                let changed = conn
+                    .execute(
+                        "UPDATE sync_conflicts
+                            SET status = 'resolved', resolution = ?3, resolved_by = ?4,
+                                resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                          WHERE id = ?1 AND tenant_id = ?2 AND status = 'open'",
+                        params![id, tenant_id, resolution, resolved_by],
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(changed > 0)
+            }
+            Self::Postgres(pool) => {
+                let client = pool.get().await.map_err(|e| e.to_string())?;
+                let stmt = client
+                    .prepare_cached(
+                        "UPDATE sync_conflicts
+                            SET status = 'resolved', resolution = $3, resolved_by = $4,
+                                resolved_at = to_char(now() AT TIME ZONE 'UTC',
+                                                      'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                          WHERE id = $1 AND tenant_id = $2 AND status = 'open'",
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let changed = client
+                    .execute(&stmt, &[&id, &tenant_id, &resolution, &resolved_by])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(changed > 0)
+            }
+        }
+    }
+}
+
+/// Map one SQLite row of `sync_conflicts`.
+fn conflict_row_from_sqlite(row: &rusqlite::Row<'_>) -> rusqlite::Result<SyncConflictRow> {
+    Ok(SyncConflictRow {
+        id: row.get(0)?,
+        tenant_id: row.get(1)?,
+        entity_type: row.get(2)?,
+        entity_id: row.get(3)?,
+        local_terminal_id: row.get(4)?,
+        local_vector: row.get(5)?,
+        remote_vector: row.get(6)?,
+        local_payload: row.get(7)?,
+        remote_payload: row.get(8)?,
+        severity: row.get(9)?,
+        status: row.get(10)?,
+        resolution: row.get(11)?,
+        resolved_by: row.get(12)?,
+        resolved_at: row.get(13)?,
+        created_at: row.get(14)?,
+    })
+}
+
+/// Map one Postgres row of `sync_conflicts`.
+fn conflict_row_from_pg(row: &tokio_postgres::Row) -> SyncConflictRow {
+    SyncConflictRow {
+        id: row.get(0),
+        tenant_id: row.get(1),
+        entity_type: row.get(2),
+        entity_id: row.get(3),
+        local_terminal_id: row.get(4),
+        local_vector: row.get(5),
+        remote_vector: row.get(6),
+        local_payload: row.get(7),
+        remote_payload: row.get(8),
+        severity: row.get(9),
+        status: row.get(10),
+        resolution: row.get(11),
+        resolved_by: row.get(12),
+        resolved_at: row.get(13),
+        created_at: row.get(14),
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
