@@ -19,7 +19,7 @@ use chrono::{DateTime, Utc};
 #[allow(unused_imports)]
 use oz_core::Settings;
 #[allow(unused_imports)]
-use oz_core::license_verification::{RenewLicenseRequest, store_subscription};
+use oz_core::license_verification::RenewLicenseRequest;
 
 use crate::error::AppError;
 use crate::state::AppState;
