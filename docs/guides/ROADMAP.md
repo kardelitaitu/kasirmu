@@ -200,13 +200,61 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] File writer with rotation (`oz_logging::init_with_file()`, `oz_logging::init_json_with_file()`)
     - Uses `tracing-appender` for hourly rolling files
     - Spawns background cleanup thread for log retention (configurable days)
+    - **Implemented, never wired — corrected 2026-09-12.** The two sentences
+      above are true of the crate and are kept checked: the functions exist,
+      rotate hourly, run the retention cleanup thread, and are exercised by
+      `lib_tests`. What no shipped binary does is **call** them. `git grep` for
+      `init_with_file` / `init_json_with_file` across the tree returns their
+      definitions and doc examples in `crates/oz-logging`, this box, and
+      `docs/operations/runbook.md` §8.6 — no hit under `apps/`, `modules/` or
+      `platform/`, and the `try_*` variants are called only from the crate's own
+      tests. Both Tauri clients initialise with `oz_logging::try_init()`
+      (`apps/desktop-client/src/lib.rs`, `apps/tablet-client/src/lib.rs`), which
+      installs an `EnvFilter` + `fmt` subscriber with **no writer**, so a
+      double-clicked desktop build discards its stdout and **no POS device has a
+      log file to open.** Name the missing call site: a client `setup` calling
+      `init_with_file(app_log_dir, "oz-pos", retention_days)` — there is no
+      `log_dir` / `LogRoot` / `app_log` / `path_resolver` anywhere in `apps/` to
+      hand it, so the call site needs a directory resolver with it. Not the same
+      as "no file writer": `docs/operations/runbook.md` §8.6 carries the
+      consequence for an operator.
 - [x] Syslog output (Linux) — `oz_logging::syslog::init_syslog()`
     - Uses `libc` FFI for syslog API
     - Combined subscriber: stdout + syslog via `tracing_subscriber::registry()`
     - Configurable facility (local0–local7, daemon, user, etc.)
-- [x] Windows Event Log output — `oz_logging::eventlog::init_eventlog()`
+    - **Implemented, never wired — corrected 2026-09-12.** Capability as
+      described: true, tested in `syslog_tests`, and left checked. `git grep`
+      `init_syslog` returns its definition, its module doc example and that
+      test file only — nothing in `apps/`, `modules/` or `platform/` calls it,
+      including `apps/cloud-server`, which is the one Linux process that ships
+      and which picks `try_init()` / `try_init_json()` instead. So no deployment
+      emits to a syslog daemon today; the container's stdout is the whole
+      surface (see runbook §8.6).
+- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — `oz_logging::eventlog::init_eventlog()`
     - Uses `OutputDebugStringW` via windows-sys FFI
     - Combined subscriber: stdout + debug output via registry()
+    - **Title corrected 2026-09-12, and also never wired.** Two separate
+      problems, stated in the order a reader will be harmed by them. (a) The
+      heading said
+      "Event Log", but `OutputDebugStringW` is the Win32 **debugger** channel —
+      visible to an attached debugger and to DebugView, gone when neither is
+      present. The Event Log API is a different thing (`RegisterEventSource` /
+      `ReportEvent`), and `git grep` for either returns nothing in this crate.
+      That is why a machine inspection of registered EventLog sources shows no
+      OZ-POS entry: nothing ever wrote one, so the surface cannot be diagnosed
+      by looking for our source name. The sub-bullet below was always honest —
+      it says "debug output", not "event log" — the heading oversold it. (b) The
+      sink itself is never installed: `git grep` `init_eventlog` returns its
+      definition, its module doc example and `eventlog_tests` only, with no
+      caller in `apps/`, `modules/` or `platform/` — including
+      `apps/desktop-client`, the only Windows binary that ships, which calls
+      `try_init()`.
+    - So the accurate statement of what a Windows field install gives you:
+      **no log file, no Event Log entry, and no debug channel** — one discarded
+      stdout stream. Anything reading this box as "Windows logs exist" is wrong
+      twice over.
+    - Kept checked as a delivered *capability* (it compiles, is tested, and
+      works when called); the wiring and the name were the lies, not the code.
 - [x] Shared `MessageVisitor` for field formatting (extracted to `visitor.rs`)
 
 ### Testing
