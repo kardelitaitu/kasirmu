@@ -70,8 +70,10 @@ const EXPECTED_KEYS: Record<string, string> = {
   // Analytics
   'card': 'features/analytics/analytics-cache.ts',
   'oz-analytics-cache-v1': 'features/analytics/analytics-cache.ts',
-  'oz-analytics-workspace-view': 'features/analytics/AnalyticsScreen.tsx',
-  'oz-analytics-zoom': 'features/analytics/AnalyticsScreen.tsx',
+  // R37 analytics-query moved the view + zoom state, and the two keys they
+  // persist, out of AnalyticsScreen.tsx into the filter hook.
+  'oz-analytics-workspace-view': 'features/analytics/hooks/useAnalyticsFilters.ts',
+  'oz-analytics-zoom': 'features/analytics/hooks/useAnalyticsFilters.ts',
 
   // Topology editor
   'oz-topology-template:': 'features/locations/topologyExport.ts',

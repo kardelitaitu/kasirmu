@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 
 import { createPortal } from 'react-dom';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { getPrimaryLocationScoped } from '@/api/locations';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
 import { useInvalidSession } from '@/hooks/useInvalidSession';
@@ -23,14 +22,13 @@ import { analyticsDataCache, clearAnalyticsCache, cardQueryKey } from './analyti
 import { useToastManager } from './useToastManager';
 import { useCardLayout } from './useCardLayout';
 import { useCommandPalette } from './useCommandPalette';
+import { useAnalyticsFilters } from './hooks/useAnalyticsFilters';
 import { AnalyticsHeatmap } from './AnalyticsHeatmap';
 import {
   CARD_PAYLOAD_VALIDATORS,
   buildHeatmapCells,
   heatPeak,
   heatmapGranularityForRange,
-  isoDaysAgo,
-  isoToday,
   loadHeatmapRows,
   yearlyHeatmapColumns,
   type HeatCell,
@@ -39,6 +37,9 @@ import { clearAnalyticsErrors, useAnalyticsQuery } from './useAnalyticsQuery';
 import { exportHeatmapCsv, shortCacheLabel } from './utils/analyticsExport';
 import {
   GRANULARITIES,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
   cardGranularity,
   cardRange,
   daysInCurrentMonth,
@@ -61,13 +62,6 @@ export type { Granularity, WorkspaceView };
 // from the screen module (the heatmap card owns its own copy of the helper
 // via analytics-data; this keeps the existing test import working).
 export { monthCalendarGrid } from './analytics-data';
-
-const ZOOM_MIN = 0.6;
-const ZOOM_MAX = 1.6;
-const ZOOM_STEP = 0.2;
-
-/** localStorage key for the last-chosen workspace view (retail/restaurant). */
-const WORKSPACE_VIEW_STORAGE_KEY = 'oz-analytics-workspace-view';
 
 /** Keyboard shortcut metadata — drives both the handler and the help popover. */
 const SHORTCUTS: { keys: string; labelKey: string }[] = [
@@ -161,19 +155,28 @@ export default function AnalyticsScreen() {
     runItemRef,
   } = useCommandPalette<PaletteItem>();
 
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(() => {
-    // Reopen on the last-chosen view across sessions; fall back to the
-    // workspace type the user was last in, then retail.
-    const saved = localStorage.getItem(WORKSPACE_VIEW_STORAGE_KEY);
-    if (saved === 'retail' || saved === 'restaurant') return saved;
-    return activeInstance?.type_key === 'restaurant-pos' ? 'restaurant' : 'retail';
-  });
-
-  // Keep the stored preference in sync — covers the selector, the command
-  // palette, and any future path that changes the view.
-  useEffect(() => {
-    localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, workspaceView);
-  }, [workspaceView]);
+  // R37 analytics-query: the view/granularity/range/zoom selections moved to
+  // `hooks/useAnalyticsFilters.ts`, which also owns the two localStorage keys
+  // they persist to. `workspaceLabel` below stays here — it needs
+  // `availableWorkspaces` and `l10n`, which the hook has no business knowing.
+  const {
+    workspaceView,
+    setWorkspaceView,
+    granularity,
+    setGranularity,
+    customFrom,
+    setCustomFrom,
+    customTo,
+    setCustomTo,
+    customTouched,
+    storeTz,
+    zoomLevel,
+    setZoomLevel,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    applyRangePreset,
+  } = useAnalyticsFilters({ sessionToken, activeInstance });
 
   // Label the selector with the real workspace names ("Store POS" /
   // "Restaurant POS") from the workspace registry; fall back to the
@@ -187,41 +190,6 @@ export default function AnalyticsScreen() {
       view === 'retail' ? 'analytics-workspace-retail' : 'analytics-workspace-restaurant',
     );
   };
-  const [granularity, setGranularity] = useState<Granularity>('weekly');
-  const [customFrom, setCustomFrom] = useState(isoToday());
-  const [customTo, setCustomTo] = useState(isoToday());
-  // REP-03: derived windows anchor to the PRIMARY STORE's calendar day,
-  // not the device's — a laptop in another region must still see "today"
-  // as the store sees it. Until the profile loads (or if the fetch fails)
-  // the anchor is FALLBACK_STORE_TZ in analytics-data (UTC, the schema's own
-  // column default), never the host zone — see the comment there.
-  const [storeTz, setStoreTz] = useState<string | null>(null);
-  const customTouched = useRef(false);
-  useEffect(() => {
-    if (!sessionToken) return;
-    let alive = true;
-    getPrimaryLocationScoped(sessionToken)
-      .then((p) => {
-        if (alive) setStoreTz(p?.timezone ?? null);
-      })
-      .catch(() => {
-        /* storeTz stays null, so isoToday/isoDaysAgo use FALLBACK_STORE_TZ */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionToken]);
-  useEffect(() => {
-    // Re-seed the untouched custom defaults once the store day is known.
-    if (!storeTz || customTouched.current) return;
-    const t = isoToday(storeTz);
-    setCustomFrom(t);
-    setCustomTo(t);
-  }, [storeTz]);
-  const [zoomLevel, setZoomLevel] = useState<number>(() => {
-    const saved = Number(localStorage.getItem('oz-analytics-zoom'));
-    return saved >= ZOOM_MIN && saved <= ZOOM_MAX ? saved : 1;
-  });
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [expandScale, setExpandScale] = useState(1);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -286,12 +254,12 @@ export default function AnalyticsScreen() {
     startRecalculating.current?.();
   }, [workspaceView, granularity, customFrom, customTo]);
 
-  const zoomIn = useCallback(() => setZoomLevel((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2))), []);
-  const zoomOut = useCallback(() => setZoomLevel((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2))), []);
+  // The hook owns the zoom state and the persisted level; the reset toast
+  // stays here, where `l10n` and `showToast` live.
   const zoomReset = useCallback(() => {
-    setZoomLevel(1);
+    resetZoom();
     showToast(l10n.getString('analytics-toast-zoom-reset'));
-  }, [showToast, l10n]);
+  }, [resetZoom, showToast, l10n]);
 
   // Live refresh of the debug cache-metrics readout while it is open.
   useEffect(() => {
@@ -299,15 +267,6 @@ export default function AnalyticsScreen() {
     const id = setInterval(() => setMetricsTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, [showCacheMetrics]);
-
-  // Persist zoom across sessions
-  useEffect(() => {
-    try {
-      localStorage.setItem('oz-analytics-zoom', String(zoomLevel));
-    } catch {
-      /* storage unavailable */
-    }
-  }, [zoomLevel]);
 
   // Keyboard shortcuts (ignored while typing in form fields)
   useEffect(() => {
@@ -522,13 +481,6 @@ export default function AnalyticsScreen() {
   // once and always reads the latest filtered list + run action.
   filteredItemsRef.current = filteredItems;
   runItemRef.current = runPaletteItem;
-
-  const applyRangePreset = (days: number) => {
-    customTouched.current = true;
-    // REP-03: presets end on the store's today, not the device's.
-    setCustomTo(isoDaysAgo(0, storeTz));
-    setCustomFrom(isoDaysAgo(days - 1, storeTz));
-  };
 
   // When a card is expanded, only it is shown; otherwise all visible cards
   const displayedCards = expandedKey && visibleCards.some((c) => cardId(c) === expandedKey)
