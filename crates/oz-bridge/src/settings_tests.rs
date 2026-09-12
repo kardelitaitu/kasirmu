@@ -1490,3 +1490,90 @@ fn batch_refusal_inside_the_commands_own_transaction_writes_nothing() {
         "the innocent sibling must not survive the aborted batch"
     );
 }
+
+// ── DRIFT PIN — the license rows must stay named by the constants ─────────
+
+/// A DRIFT PIN, not a behaviour test. `crates/oz-bridge/src/license.rs` writes
+/// its rows through the UNGUARDED `Settings::set_batch` door — four calls, at
+/// :181, :206, :231 and :313 — and two of those four pass RETYPED STRING
+/// LITERALS instead of naming the shared constants: seven literal rows, five
+/// distinct keys. `platform/core/src/settings/keys.rs:206-213` states the rule
+/// as plainly as it can be stated — the guard lists are built FROM the
+/// constants declared there, "never from retyped literals", exactly so that
+/// "renaming a key value moves the guard with it instead of silently dropping
+/// coverage". These license rows are the largest retyped group left in the
+/// tree, and nothing asserted the rule, so the rule was a comment.
+///
+/// Same hazard class as `edd605719` — one name spelled two ways, the two
+/// spellings free to drift — measured on the license rows rather than on the
+/// `smtp_config` duplicate name, and the same shape as
+/// `hw_orphan_keys_match_platform_core_constants` above, which already pins the
+/// printer/scanner group this way — the license group was the one left
+/// unasserted. This is NOT an open hole tonight: all five
+/// values are server-issued or locally minted and no renderer path reaches the
+/// key argument, so no operator action writes a different row today. The value
+/// of the assertion is that the next rename cannot move the guard off the row
+/// that exists without this test going red first.
+///
+/// The table is the whole literal vocabulary of that file, not a sample: the
+/// two writes that already name their keys through constants (:206
+/// `keys::MACHINE_ID`, :231 `keys::HARDWARE_FINGERPRINT`) contribute no
+/// literal to compare, and every READER of these rows in the same file (:116,
+/// :252, :255, :474, :596, :597, :727, :762) uses one of the five spellings
+/// below. Both kinds of site are therefore named, and every literal in the
+/// table has a real constant — no row compares a spelling to itself.
+///
+/// Deliberately narrow: spelling against constant, nothing else. No claim here
+/// about the VALUES stored under these keys and none about whether a value
+/// was encrypted — the license readers carry their own legacy-plaintext
+/// tolerance, pinned in the platform-core settings suite.
+#[test]
+fn license_writer_literals_are_still_the_shared_key_constants_byte_for_byte() {
+    use platform_core::settings::keys;
+    // (spelling as written at the call site, the constant behind it, its name,
+    //  the sites) — byte for byte, so a one-character drift is red.
+    let table: &[(&str, &str, &str, &str)] = &[
+        (
+            "license.payload",
+            keys::LICENSE_PAYLOAD,
+            "LICENSE_PAYLOAD",
+            "license.rs:184 (activate) and :306 (renew)",
+        ),
+        (
+            "license.signature",
+            keys::LICENSE_SIGNATURE,
+            "LICENSE_SIGNATURE",
+            "license.rs:185 (activate) and :307 (renew)",
+        ),
+        (
+            "license.tenant_id",
+            keys::LICENSE_TENANT_ID,
+            "LICENSE_TENANT_ID",
+            "license.rs:186, :310; read at :252",
+        ),
+        (
+            "license.api_key",
+            keys::LICENSE_API_KEY,
+            "LICENSE_API_KEY",
+            "license.rs:187; read at :116, :255, :474, :727, :762",
+        ),
+        (
+            "license.phone",
+            keys::LICENSE_PHONE,
+            "LICENSE_PHONE",
+            "license.rs:188",
+        ),
+    ];
+    for (literal, constant, constant_name, sites) in table {
+        assert_eq!(
+            *literal, *constant,
+            "{sites} spells the settings key {literal:?} as a literal, but \
+             platform_core::settings::keys::{constant_name} is now {constant:?}. \
+             The deny list is built FROM that constant (rule: \
+             platform/core/src/settings/keys.rs:206-213), so this write has moved \
+             off the guarded row and the row it actually lands on is unguarded. \
+             Route the call site through the constant, or rename the two together \
+             in license.rs — do not fix this by editing the expectation here."
+        );
+    }
+}
