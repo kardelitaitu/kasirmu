@@ -4,18 +4,14 @@
 //! `#[tauri::command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return so the registered IPC surface and the serialized error
 //! shape never move; it borrows a `BridgeCtx` from `AppState`, calls the bridge, and
-//! maps `BridgeError` back to `AppError` variant-for-variant. The five DTOs defined here
-//! moved with the bodies and are re-exported so `use super::*` in `license_tests.rs`
-//! still resolves them, and the three pure helpers that module calls directly stay as
-//! local adapters over the bridge.
+//! maps `BridgeError` back to `AppError` variant-for-variant. The five DTOs named by
+//! those signatures moved with the bodies and are re-exported below because the commands
+//! still name them. Nothing here is retained for a sibling test module: there is no
+//! `license_tests.rs` in this crate — that file moved to
+//! `crates/oz-bridge/src/license_tests.rs`, where the three pure helpers are tested
+//! against the bridge copies that actually run.
 
 use tauri::State;
-
-// Kept for `grace_deadline_for`'s signature below; the sibling test module this block
-// was once retained for does not exist in this crate (the license tests live in
-// `crates/oz-bridge/src/license_tests.rs`), so `Settings`, `RenewLicenseRequest` and
-// the three `#[allow(unused_imports)]` they hid behind are gone with the claim.
-use chrono::{DateTime, Utc};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -276,25 +272,4 @@ pub async fn resume_subscription_scoped(
     oz_bridge::license::resume_subscription_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
-}
-// ── Adapters the sibling test module calls directly (bodies moved) ─────────────────
-
-/// Per-installation 15-char machine ID generator (lives in
-/// [`oz_bridge::license::generate_machine_id`]).
-#[allow(dead_code)] // sibling license_tests.rs calls it directly
-fn generate_machine_id() -> String {
-    oz_bridge::license::generate_machine_id()
-}
-
-/// 64-char platform-stable hardware fingerprint (lives in
-/// [`oz_bridge::license::generate_hardware_fingerprint`]).
-#[allow(dead_code)] // sibling license_tests.rs calls it directly
-fn generate_hardware_fingerprint() -> String {
-    oz_bridge::license::generate_hardware_fingerprint()
-}
-
-/// Grace window end for one tier (lives in [`oz_bridge::license::grace_deadline_for`]).
-#[allow(dead_code)] // subscription.rs documents this contract against it
-fn grace_deadline_for(tier_key: &str, expires_at: DateTime<Utc>) -> DateTime<Utc> {
-    oz_bridge::license::grace_deadline_for(tier_key, expires_at)
 }
