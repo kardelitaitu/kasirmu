@@ -116,8 +116,17 @@ Dated claims, true when the review closed on 2026-09-12; none is a design invari
   (`Store::backup`, `db/mod.rs:276`). A perfect ledger sweep leaves the main problem untouched,
   and an operator command that reads as remediation is worse than no command: this is HYGIENE,
   not a fix.
-- **The one exception is still an inflow, measured at commit time.** `smtp_config` is still
-  admitted by `CLEARTEXT_CREDENTIAL_EXCEPTION` (`raw.rs:310`, unchanged since `0f26a4b29`; the
-  only later commit touching this file is test-only, `28f7ddcf9`), so every save still appends a
-  cleartext delta to a table nothing deletes from — the repair had not landed when this was
-  written.
+- **The one exception is an inflow of CIPHERTEXT rows, measured at `c80b7f7dd`.** `smtp_config`
+  is still admitted by `CLEARTEXT_CREDENTIAL_EXCEPTION` (`raw.rs:310`), and every save through the
+  shell funnels still appends a delta row — but the password field inside it is ciphertext, not
+  cleartext, for anything current code writes: the funnels pass the merged blob
+  (`Store::merged_smtp_password_json`, `export/email_report.rs:316`), which encrypts the supplied
+  password at rest and fails closed rather than falling back to plaintext (F-029: "an encrypt
+  failure is an error, never plaintext", `export/email_report.rs:203`), while the persisting call
+  in `export/email_report.rs:298` is `self.set_setting` — the plain untracked writer that touches
+  no delta row at all (`:305` is a doc-comment line, not a write). The only cleartext a delta row
+  can hold is a pre-F-029 stored value carried forward — a legacy condition, not a continuing
+  inflow — and the ledger still has no retention and no reader, so the purge decision above is
+  unaffected. The durable lesson: the exception exists so the settings screen can save, and what
+  made this look like a leak was counting delta rows rather than reading what goes into them —
+  the row exists, and the FORM of its value is what decides.
