@@ -218,3 +218,127 @@ fn the_trim_half_of_the_fold_is_unicode_whitespace_aware() {
         "a NBSP-wrapped manager key folds through the same helper and refuses"
     );
 }
+
+// ── credential_base: the identity contract (contract-first) ────
+
+/// The comparison `credential_base` replaced, written out here on purpose:
+/// parity is pinned against the OLD expression, not against a re-statement of
+/// the new one — a helper that calls the function under test cannot catch the
+/// function under test moving.
+fn legacy_whole_key_equality(key: &str) -> bool {
+    SECRET_KEY_DENY_LIST.contains(&normalised_candidate(key).as_str())
+}
+
+/// The suffix spellings a real install can hold. `{base}:{tenant}` is what
+/// `scoped_setting_key` in `crates/oz-api/src/pg.rs` emits, so a desktop
+/// install with the loopback API can copy its own bare SMTP secret into the
+/// store-suffixed row through the keep-on-blank merge.
+fn suffixed_variants(marker: &str) -> Vec<String> {
+    vec![
+        format!("{marker}:tenant-a"),
+        format!("{marker}:0"),
+        format!("{marker}.extra"),
+    ]
+}
+
+/// Parity pin: `credential_base` answers for exactly the names the whole-key
+/// equality used to answer for — and reports the CANONICAL list entry rather
+/// than the spelling handed in, which is the whole point of an identity
+/// function. Walks the deny list, so it carries its own floor: a shrunken or
+/// emptied list would make both sides agree vacuously.
+#[test]
+fn credential_base_resolves_the_same_names_the_whole_key_equality_matched() {
+    assert!(
+        SECRET_KEY_DENY_LIST.len() >= 10,
+        "deny list has {} entries; a parity sweep over a near-empty list proves nothing",
+        SECRET_KEY_DENY_LIST.len()
+    );
+
+    for marker in SECRET_KEY_DENY_LIST {
+        assert_eq!(
+            credential_base(marker),
+            Some(*marker),
+            "identity must resolve the declared spelling of {marker}"
+        );
+        // Fold spellings: the trim + ASCII-case fold already admitted these and
+        // must keep admitting them, resolving to the SAME canonical entry.
+        for variant in near_miss_variants(marker) {
+            assert_eq!(
+                credential_base(&variant).is_some(),
+                legacy_whole_key_equality(&variant),
+                "verdict moved for near-miss spelling {variant:?} of {marker}"
+            );
+            assert_eq!(
+                credential_base(&variant),
+                Some(*marker),
+                "near-miss {variant:?} must resolve to the base, not to itself"
+            );
+        }
+    }
+
+    // The None side: names that denote no credential. `sync.terminal_id` is on
+    // the DEVICE list, not the credential list, so its None here is what keeps
+    // identity from quietly absorbing the export-only half of the rule.
+    for other in [
+        "",
+        "store.name",
+        "smtp",
+        "smtp_config_",
+        "x_smtp_config",
+        SYNC_TERMINAL_ID,
+        "local_api",
+    ] {
+        assert_eq!(
+            credential_base(other),
+            None,
+            "{other:?} denotes no credential and must not resolve"
+        );
+        assert_eq!(
+            credential_base(other).is_some(),
+            legacy_whole_key_equality(other),
+            "None-side verdict moved for {other:?}"
+        );
+    }
+}
+
+/// KNOWN BLIND SPOT, pinned deliberately and by name. The suffix-blind
+/// identity resolution does not recognise the `{base}:{tenant}` spelling of a
+/// credential, so today a suffixed row is refused by NOTHING: not on read, not
+/// on the portable-package egress path, not on replication — asserted below
+/// through the two predicates that carry those verdicts, not merely claimed.
+///
+/// This test is INVERTED when the suffix arm lands, never deleted: flip every
+/// `is_none`/`is_false` to `Some(base)`/`true`. A test that silently passes
+/// after the flip is worse than no test at all, because it would erase the
+/// only executable record that the blind spot was a decision and not an
+/// oversight.
+#[test]
+fn decision_pin_credential_base_is_suffix_blind() {
+    assert!(
+        SECRET_KEY_DENY_LIST.len() >= 10,
+        "deny list has {} entries; this pin is meaningless without rows to suffix",
+        SECRET_KEY_DENY_LIST.len()
+    );
+
+    for marker in SECRET_KEY_DENY_LIST {
+        for suffixed in suffixed_variants(marker) {
+            assert_eq!(
+                credential_base(&suffixed),
+                None,
+                "suffix-blind today: {suffixed:?} must NOT resolve — if this now \
+                    returns Some, the suffix arm landed and this test must be \
+                    INVERTED, not deleted"
+            );
+            // The same verdict the read surface reaches for today: the row is
+            // not refused on read and not withheld from a portable package.
+            assert!(
+                !is_secret_setting_key(&suffixed),
+                "read gate widened for {suffixed:?}"
+            );
+            assert!(
+                !is_non_exportable_setting_key(&suffixed),
+                "egress gate widened for {suffixed:?}"
+            );
+        }
+    }
+}

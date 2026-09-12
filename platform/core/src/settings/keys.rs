@@ -339,12 +339,52 @@ pub fn normalised_candidate(key: &str) -> String {
     key.trim().to_ascii_lowercase()
 }
 
+/// The credential a settings-key NAME denotes: the canonical
+/// [`SECRET_KEY_DENY_LIST`] entry that this key spells, or `None` when the
+/// name spells no credential at all.
+///
+/// This is the IDENTITY question — “what credential does this name
+/// denote” — and it is the only place that question is answered. The four
+/// policy questions asked about a credential (may it be written, may it be
+/// read, may it leave the backend, may it be deleted) are asked BY CALLERS of
+/// this function, against the base it returns, and never by a second
+/// membership test: a caller that re-derives the match has started a second
+/// definition of identity, and two definitions drift.
+///
+/// As of this commit the resolution is deliberately SUFFIX-BLIND: whole-key
+/// equality against the list, exactly the comparison [`is_secret_setting_key`]
+/// already made, so nothing about a verdict moves tonight. The consequence,
+/// stated rather than discovered later: `smtp_config:tenant-a`, the
+/// `{base}:{tenant}` form `crates/oz-api/src/pg.rs` writes through
+/// `scoped_setting_key`, resolves to `None` even though it is the same SMTP
+/// secret. That is a KNOWN BLIND SPOT with a recorded owner — the
+/// credential-suffix wave — pinned by
+/// `decision_pin_credential_base_is_suffix_blind` in this module's tests, not
+/// a mystery.
+///
+/// The suffix arm is a PROJECTION change, not a caller change: whoever flips
+/// it flips one line inside this function and every delegating caller moves
+/// with it — which is exactly why it must not be flipped from inside a fix
+/// wave that only means to close one read path.
+pub fn credential_base(key: &str) -> Option<&'static str> {
+    let candidate = normalised_candidate(key);
+    SECRET_KEY_DENY_LIST
+        .iter()
+        .find(|entry| **entry == candidate.as_str())
+        .copied()
+}
+
 /// Returns true when the given settings key holds a credential that the raw
 /// get_setting IPC surface must never return (C-2).
 ///
 /// Both shells route through this one predicate so the match cannot drift the
 /// way the two hand-copied lists did; the bridge layer adds only the
 /// lifecycle-manager prefix rule on top of it.
+///
+/// The identity test itself lives in [`credential_base`]: this predicate is that
+/// function's `is_some()`, so the fold, the suffix-blindness and the
+/// canonical-entry contract are defined there and nowhere else. Same verdicts
+/// as before this indirection, one place that answers what a name denotes.
 ///
 /// The candidate key is normalised before the match — trimmed and ASCII
 /// case-folded — because the settings table is a TEXT primary key under the
@@ -373,8 +413,7 @@ pub fn normalised_candidate(key: &str) -> String {
 ///   predicate keeps flagging `smtp_config` in every casing, so casing can
 ///   never widen that exception from this side.
 pub fn is_secret_setting_key(key: &str) -> bool {
-    let candidate = normalised_candidate(key);
-    SECRET_KEY_DENY_LIST.contains(&candidate.as_str())
+    credential_base(key).is_some()
 }
 
 /// Returns true when the given key must never leave the backend inside a
