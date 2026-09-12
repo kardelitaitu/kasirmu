@@ -1251,6 +1251,78 @@ fn batch_write_refuses_a_deny_listed_credential_key() {
     );
 }
 
+/// The two doors must refuse the same key with the SAME VARIANT. The batch
+/// pre-flight raises `BridgeError::Invalid`; the single-write door now asks
+/// platform-core the same question (`TrackedSettings::cleartext_credential_refusal`)
+/// before its tracked write, so it raises `Invalid` too. Left to the funnel
+/// alone its refusal came back as `PlatformError::Internal` and crossed as
+/// `BridgeError::Core { sub_kind: Internal }` — one key, one sentence, two
+/// error classes depending on which button the user pressed. This test is
+/// what stops that drifting back.
+#[test]
+fn both_write_doors_refuse_a_credential_with_the_same_variant() {
+    let key = "pg_sync.password";
+    assert!(is_secret_setting_key(key));
+    assert!(
+        !is_manager_owned_key(key),
+        "the manager-key guard must not be what refuses this key"
+    );
+
+    let single = run_set_setting(&fresh_conn(), key, "spoofed-password", "term-1").unwrap_err();
+    assert!(
+        matches!(&single, BridgeError::Invalid(_)),
+        "single door must refuse a credential as Invalid, like the batch door: {single:?}"
+    );
+
+    let conn = fresh_conn();
+    let tx = conn.unchecked_transaction().unwrap();
+    let batch = run_set_settings_batch(
+        &tx,
+        &HashMap::from([(key.to_string(), "spoofed-password".to_string())]),
+        "term-1",
+    )
+    .unwrap_err();
+    tx.commit().unwrap();
+    assert!(
+        matches!(&batch, BridgeError::Invalid(_)),
+        "batch door must refuse a credential as Invalid: {batch:?}"
+    );
+}
+
+/// And the words must be IDENTICAL: both doors ask platform-core's
+/// `cleartext_credential_refusal`, so a refusal says exactly the same sentence
+/// whichever door raised it — and it names the key, never the value.
+#[test]
+fn both_write_doors_credential_refusals_carry_the_identical_message() {
+    let key = "pg_sync.password";
+    let refusal_message = |err: &BridgeError| match err {
+        BridgeError::Invalid(m) => m.clone(),
+        other => panic!("expected BridgeError::Invalid, got {other:?}"),
+    };
+    let single = refusal_message(
+        &run_set_setting(&fresh_conn(), key, "spoofed-password", "term-1").unwrap_err(),
+    );
+    let conn = fresh_conn();
+    let tx = conn.unchecked_transaction().unwrap();
+    let batch = refusal_message(
+        &run_set_settings_batch(
+            &tx,
+            &HashMap::from([(key.to_string(), "spoofed-password".to_string())]),
+            "term-1",
+        )
+        .unwrap_err(),
+    );
+    tx.commit().unwrap();
+    assert_eq!(
+        single, batch,
+        "the two doors must speak platform-core's one refusal wording"
+    );
+    assert!(
+        single.contains(key) && !single.contains("spoofed-password"),
+        "the shared refusal names the key and never the value: {single}"
+    );
+}
+
 /// Control, and the guard against over-correction: refusing a bad row by
 /// aborting the WHOLE batch is only safe because it is what the single-write
 /// funnel does too. Two ordinary keys must both land.

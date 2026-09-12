@@ -450,6 +450,17 @@ pub fn run_get_setting(
 /// never offered to the network, so the enqueue does not depend on
 /// [`remote_sync_admits`] refusing `smtp_config` to keep a passwordless
 /// re-post of the stored secret from shipping.
+///
+/// The credential refusal is asked HERE, of platform-core, before the tracked
+/// write — the same question and wording [`run_set_settings_batch`]
+/// pre-flights with. Left to the funnel alone, platform-core refuses with
+/// `PlatformError::Internal`, which crosses as `BridgeError::Core { sub_kind:
+/// Internal }` while the batch door raises the identical words as
+/// `BridgeError::Invalid` — one key, one sentence, two error classes
+/// depending on which door was pressed. A refused credential is a caller
+/// error, not an internal fault, so this door raises `Invalid` too; the
+/// message stays platform-core's (one owner of the text) and names the key,
+/// never the value.
 pub fn run_set_setting(
     conn: &rusqlite::Connection,
     key: &str,
@@ -460,6 +471,14 @@ pub fn run_set_setting(
         return Err(BridgeError::Invalid(format!(
             "{key} is managed by the {owner} controls — use those"
         )));
+    }
+    // The credential door, ASKED of platform-core before the tracked write —
+    // the same pre-flight the batch loop runs, so the refusal crosses as
+    // `BridgeError::Invalid` on both doors with platform-core's one wording.
+    // `set_tracked` below still refuses per row; that is the floor under this
+    // ask, not a substitute for the variant it would have produced.
+    if let Some(refusal) = TrackedSettings::cleartext_credential_refusal(key) {
+        return Err(BridgeError::Invalid(refusal));
     }
     let merged;
     let value = if key == SMTP_CONFIG_SETTINGS_KEY {
