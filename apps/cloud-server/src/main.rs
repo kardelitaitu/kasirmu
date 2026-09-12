@@ -202,6 +202,15 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
+    // One line, presence only: which portable key derivation this process
+    // picked. Emitted at boot because a re-keyed deployment is silent by
+    // default, and the value itself is never read or logged here.
+    if oz_core::crypto::master_key_derivation_active() {
+        tracing::warn!(
+            "portable credential derivation: master-key path ACTIVE (see portable_derivation_uses_master_key on /health)"
+        );
+    }
+
     // ── Config validation (--validate-config skips the server) ───────
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--validate-config") {
@@ -419,6 +428,22 @@ struct HealthResponse {
     sync_queue_depth: i64,
     /// ISO-8601 timestamp of the most recent sync activity, or null.
     last_sync_at: Option<String>,
+    /// Which portable key derivation THIS process selected: true when the
+    /// at-rest credential families derive through the master key, false when
+    /// they derive through the legacy static path.
+    ///
+    /// A selection report only. It carries no value, no length and no digest
+    /// of anything, and it is not a security assertion in either direction.
+    /// Note what false does and does not mean: this process is not using a
+    /// master key, which is NOT the claim that no such variable was set - a
+    /// malformed value selects legacy for exactly the reason the derivation
+    /// falls back.
+    ///
+    /// Publishable because the operator already controls the setting: knowing
+    /// which path a running service chose discloses nothing they do not know,
+    /// while its absence is what leaves them unable to explain why five
+    /// credential families stopped decrypting.
+    portable_derivation_uses_master_key: bool,
 }
 
 /// `GET /metrics` — Prometheus metrics endpoint.
@@ -554,6 +579,9 @@ async fn health_handler(
         db_latency_us,
         sync_queue_depth,
         last_sync_at,
+        // Read per request, never cached: the answer describes the process
+        // that is answering, and it costs one env read plus one hex decode.
+        portable_derivation_uses_master_key: oz_core::crypto::master_key_derivation_active(),
     })
 }
 

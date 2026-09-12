@@ -202,7 +202,17 @@ fn build_cloud_schemas() -> Value {
                 "db_connected": { "type": "boolean", "description": "Whether the database responded to a ping" },
                 "db_latency_us": { "type": "integer", "format": "int64", "description": "Database ping latency in microseconds" },
                 "sync_queue_depth": { "type": "integer", "format": "int64", "description": "Number of pending items in the sync queue" },
-                "last_sync_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of most recent sync" }
+                "last_sync_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of most recent sync" },
+                // Which portable-key derivation THIS process selected; see
+                // `HealthResponse` in main.rs. Selection provenance only -
+                // never the value, its length, or a digest of it, and false
+                // reports that this process is not using a master key rather
+                // than that no such variable exists.
+                "portable_derivation_uses_master_key": {
+                    "type": "boolean",
+                    "description": "Which portable at-rest key derivation this process selected: true = master-key path, false = legacy static path. Reports the derivation only: no key material is exposed, and false means this process is not using a master key, not that no such variable was set.",
+                    "example": false
+                }
             }
         },
         "SyncStatusResponse": {
