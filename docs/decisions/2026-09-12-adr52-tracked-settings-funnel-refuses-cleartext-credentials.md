@@ -91,3 +91,33 @@ session's half-finished WorkspaceHome extraction) and the pre-commit typecheck g
 tree, so an honest ui commit cannot land from this worktree until that file is clean.
 
 Nothing above is verified end to end; every claim traces to a named file or one of the four commits.
+
+## Amendment — the delta ledger, decision review 2026-09-12
+
+Dated claims, true when the review closed on 2026-09-12; none is a design invariant.
+- **Nothing reads the ledger back.** Outside the writer itself, the only two production SELECTs
+  against `setting_updated` take the version integer and neither reads the value — the writer's
+  own `next_delta_version` (`raw.rs:252`) and `get_version` (`raw.rs:284`) — and the one function
+  that would have made the ledger a concurrency contract, `get_version` ("detect concurrent
+  edits", `raw.rs:281-283`), has ZERO production callers (the `oz-core` facade delegation at
+  `settings.rs:854` and tests only). Deleting deny-listed rows from the ledger is NOT a sync
+  corruption event as of 2026-09-12 — the moment someone wires that reader, deletion starts to
+  look like a rewind; re-check this before building any purge on it.
+- **The ledger has no retention policy at all.** No `DELETE FROM setting_updated` anywhere in the
+  tree, no TTL column (`raw.rs:272`: key, value, terminal_id, version, created_at), no purge job,
+  and every production door passes a caller-supplied `terminal_id` into the delta INSERT (bridge
+  `settings.rs:464` and `:511`; tablet `settings.rs:610`), so remote ingest appends deltas under
+  foreign terminal ids and the table grows forever — a bigger finding than the credentials in
+  it. The recommended shape is a bounded operator command, not a startup sweep and not a
+  migration; caveat: deleting a key's rows restarts its version sequence at one.
+- **The ledger is the SECONDARY carrier.** The dominant one is the live `settings` table — nine
+  of the fourteen credential keys sit there in plaintext (census: only four have encrypting
+  typed setters, `credential_storage_form.rs:239-262`) — plus every whole-file page copy
+  (`Store::backup`, `db/mod.rs:276`). A perfect ledger sweep leaves the main problem untouched,
+  and an operator command that reads as remediation is worse than no command: this is HYGIENE,
+  not a fix.
+- **The one exception is still an inflow, measured at commit time.** `smtp_config` is still
+  admitted by `CLEARTEXT_CREDENTIAL_EXCEPTION` (`raw.rs:310`, unchanged since `0f26a4b29`; the
+  only later commit touching this file is test-only, `28f7ddcf9`), so every save still appends a
+  cleartext delta to a table nothing deletes from — the repair had not landed when this was
+  written.
