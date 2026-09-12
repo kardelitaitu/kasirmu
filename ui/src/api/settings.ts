@@ -213,9 +213,15 @@ export const getSetting = (key: string): Promise<string | null> =>
   loggedInvoke<string | null>('get_setting', { key });
 
 /**
- * Write (or overwrite) a single raw setting value. Unscoped —
- * reads/writes to the primary store database. Requires a valid
- * `userId` for the SETTINGS_EDIT permission check.
+ * Write (or overwrite) a single raw setting value. Unscoped, and unscoped
+ * here means the GLOBAL IDENTITY DATABASE, not a store database: the
+ * `set_setting` command locks the bridge's global identity connection
+ * (`ctx.db`). `setSettingScoped` is the store-scoped twin — it resolves the
+ * session and writes that store's own database.
+ *
+ * The two are NOT interchangeable for device-global keys: repointing a call
+ * changes which database is read, so what one writes the other never sees.
+ * Requires a valid `userId` for the SETTINGS_EDIT permission check.
  *
  * Prefer `setSettings` (batch) for multiple keys to reduce IPC
  * round-trips. This variant exists for single-key callers.
