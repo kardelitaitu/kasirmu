@@ -22,26 +22,48 @@ import { emit } from './tauri-event';
 // alongside Cargo.toml/tauri.conf.json, so importing it keeps mock and app in
 // lockstep.
 import pkg from '../../package.json';
+import {
+  MOCK_ACTIVE_SHIFT_KEY,
+  MOCK_CART_KEY,
+  MOCK_HELD_CARTS_KEY,
+  MOCK_KDS_KEY,
+  MOCK_LOGIN_ATTEMPTS_KEY,
+  MOCK_SALES_KEY,
+  MOCK_SHIFT_CLOSED_SENTINEL,
+  MOCK_SHIFT_HISTORY_KEY,
+  MOCK_TOPOLOGY_KEY,
+  MOCK_TOPOLOGY_REVISIONS_KEY,
+  MOCK_USER_PREFS_KEY,
+  MOCK_WORKSPACES_KEY,
+  readSlice,
+  readSliceRaw,
+  writeSlice,
+  writeSliceRaw,
+} from './core/mockDatabase';
+import {
+  MOCK_CATEGORIES,
+  MOCK_CURRENCIES,
+  MOCK_INVENTORY_LOCATIONS,
+  MOCK_LEGAL_ENTITY,
+  MOCK_STAFF,
+  MOCK_STORE,
+  MOCK_TERMINAL,
+  MOCK_WORKSPACES_SEED,
+} from './core/mockSeedData';
+import {
+  applyScopedAliases,
+  convertFileSrc,
+  handlers,
+  invoke,
+  isTauri,
+  registerHandlers,
+  type MockHandler,
+} from './core/mockDispatcher';
 
-// ── Mock staff data ────────────────────────────────────────────
-// Five-role taxonomy (ADR #35 D4 / spec 0048): owner, admin, manager,
-// staff, auditor — mirroring platform-core `ROLE_PRESETS`. Cashier and
-// kitchen were retired (0048 2c) and no longer exist; the mock must
-// exercise the same model the real backend seeds so browser previews gate
-// like production. Pins: 1234 for every account (dev convenience) except
-// admin, which keeps the historical 9999 that the E2E suite logs in with.
-const MOCK_STAFF: Record<string, {
-  user_id: string;
-  pin_hash: string;
-  role: string;
-  is_active: boolean;
-}> = {
-  'owner':   { user_id: 'owner-1',   pin_hash: '1234', role: 'role-owner',   is_active: true },
-  'admin':   { user_id: 'admin-1',   pin_hash: '9999', role: 'role-admin',   is_active: true },
-  'manager': { user_id: 'manager-1', pin_hash: '1234', role: 'role-manager', is_active: true },
-  'staff':   { user_id: 'staff-1',   pin_hash: '1234', role: 'role-staff',   is_active: true },
-  'auditor': { user_id: 'auditor-1', pin_hash: '1234', role: 'role-auditor', is_active: true },
-};
+// The mock's public surface is the three names the app actually imports through
+// the vite alias on `@tauri-apps/api/core`. They are defined by the dispatcher
+// and re-exported here so the alias target keeps answering for all of them.
+export { convertFileSrc, invoke, isTauri };
 
 /** Display name for a preset role id (the real seeded role names). */
 function mockRoleName(role: string): string {
@@ -394,28 +416,6 @@ const MOCK_PRODUCTS = RAW_MOCK_PRODUCTS.map((p, i) => ({
   default_supplier_id: null,
   popularity_score: RAW_MOCK_PRODUCTS.length - i, // descending demo ranking
 }));
-
-const MOCK_CATEGORIES = [
-  { id: 'cat-cpu', name: 'Processors (CPU)', colour: '#e74c3c', icon: 'cpu-1' },
-  { id: 'cat-gpu', name: 'Graphics Cards (GPU)', colour: '#2ecc71', icon: 'gpu-1' },
-  { id: 'cat-ram', name: 'Memory (RAM)', colour: '#9b59b6', icon: 'ram-1' },
-  { id: 'cat-storage', name: 'Storage (SSD/HDD)', colour: '#3498db', icon: 'hdd-1' },
-  { id: 'cat-mb', name: 'Motherboards', colour: '#f39c12', icon: 'mb-1' },
-  { id: 'cat-psu', name: 'Power Supply', colour: '#1abc9c', icon: 'psu-1' },
-  { id: 'cat-cooling', name: 'Cooling & Cases', colour: '#34495e', icon: 'cool-1' },
-];
-
-const MOCK_STORE = {
-  id: 'store-1',
-  name: 'TOKO TEST',
-  address: 'Jl. Contoh No. 123',
-  tax_id: 'TAX-001',
-  currency: 'IDR',
-  timezone: '+07:00',
-  is_primary: true,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-};
 
 /** Mutable store-profile list backing the mock — renames/creates persist
  *  for the session exactly like the real DB (dev preview parity). */
@@ -831,23 +831,6 @@ function deleteMockLocation(args: unknown): null {
   mockStores = mockStores.filter((location) => location.id !== id);
   return null;
 }
-
-/** Seed Legal Entity mirroring migration `20260908_legal_entities.sql`, which
- *  auto-creates one deterministic "Default Legal Entity" per existing tenant.
- *  `tenantId: 'default'` matches DEFAULT_TENANT_ID in
- *  apps/desktop-client/src/commands/legal_entities.rs, and the field names are
- *  camelCase because the Rust DTO uses `#[serde(rename_all = "camelCase")]`. */
-const MOCK_LEGAL_ENTITY = {
-  id: 'le-default',
-  tenantId: 'default',
-  name: 'Default Legal Entity',
-  legalName: 'Default Legal Entity',
-  registrationNumber: '',
-  taxId: '',
-  status: 'active' as 'active' | 'inactive',
-  createdAt: '2026-09-08T00:00:00.000Z',
-  updatedAt: '2026-09-08T00:00:00.000Z',
-};
 
 /** Mutable Legal Entity list backing the dev mock — creates and updates
  *  persist for the session exactly like the real DB (dev preview parity). */
@@ -1466,60 +1449,16 @@ function tablesSnapshot(): Array<{
   }));
 }
 
-const MOCK_CURRENCIES = [
-  { code: 'IDR', name: 'Indonesian Rupiah', minor_exponent: 0, symbol: 'Rp' },
-  { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
-  { code: 'JPY', name: 'Japanese Yen', minor_exponent: 0, symbol: '¥' },
-];
-
-const MOCK_TERMINAL = {
-  id: 'term-1',
-  name: 'Terminal 1',
-  deviceId: 'device-001',
-  isActive: true,
-  lastSeenAt: new Date().toISOString(),
-  metadata: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
 const MOCK_CUSTOMERS = [
   { id: 'cust-1', name: 'John Doe', email: 'john@example.com', phone: '08123456789', notes: 'Regular customer', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
   { id: 'cust-2', name: 'Jane Smith', email: 'jane@example.com', phone: '08987654321', notes: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
 ];
 
-const MOCK_INVENTORY_LOCATIONS = [
-  { id: 'loc-1', name: 'Main Store', type: 'store' as const, description: 'Main retail location', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'loc-2', name: 'Warehouse', type: 'warehouse' as const, description: 'Central warehouse', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-];
-
-// Stateful workspace instances — the real backend persists
-// workspace_instances rows, and apply_topology_diff mutates them. Seed
-// from localStorage so previews round-trip instance creates/archives the
-// same way the real store DB does.
-const MOCK_WORKSPACES_SEED = [
-  { instance_id: 'ws-1', type_key: 'store-pos', store_id: 'store-1', store_name: 'TOKO TEST', name: 'Store POS', description: 'Point of Sale', icon: 'shopping-cart', layout_mode: 'default', colour: '#10b981', is_default: true },
-  { instance_id: 'ws-2', type_key: 'restaurant-pos', store_id: 'store-1', store_name: 'TOKO TEST', name: 'Restaurant POS', description: 'Table service', icon: 'restaurant', layout_mode: 'fullscreen', colour: '#ef4444', is_default: false },
-  { instance_id: 'ws-3', type_key: 'kds', store_id: 'store-1', store_name: 'TOKO TEST', name: 'Kitchen Display', description: 'Order display', icon: 'utensils', layout_mode: 'kds', colour: '#f59e0b', is_default: false },
-  { instance_id: 'ws-4', type_key: 'warehouse', store_id: 'store-1', store_name: 'TOKO TEST', name: 'Warehouse', description: 'Product and stock management', icon: 'package', layout_mode: 'default', colour: '#3b82f6', is_default: false },
-  { instance_id: 'ws-5', type_key: 'admin', store_id: 'store-1', store_name: 'TOKO TEST', name: 'Admin', description: 'Settings & management', icon: 'settings', layout_mode: 'default', colour: '#8b5cf6', is_default: false },
-];
-const MOCK_WORKSPACES_KEY = 'oz-dev-mock:workspaces';
 function loadMockWorkspaces(): typeof MOCK_WORKSPACES_SEED {
-  try {
-    const raw = localStorage.getItem(MOCK_WORKSPACES_KEY);
-    if (raw) return JSON.parse(raw) as typeof MOCK_WORKSPACES_SEED;
-  } catch {
-    // storage unavailable — start from seed
-  }
-  return MOCK_WORKSPACES_SEED;
+  return readSlice(MOCK_WORKSPACES_KEY, () => MOCK_WORKSPACES_SEED);
 }
 function saveMockWorkspaces(): void {
-  try {
-    localStorage.setItem(MOCK_WORKSPACES_KEY, JSON.stringify(mockWorkspaces));
-  } catch {
-    // storage unavailable — keep in-memory copy for this session
-  }
+  writeSlice(MOCK_WORKSPACES_KEY, mockWorkspaces);
 }
 const mockWorkspaces: typeof MOCK_WORKSPACES_SEED = loadMockWorkspaces();
 
@@ -1711,47 +1650,42 @@ const _initialKdsLineItems: Record<string, Array<Record<string, unknown>>> = {
 // as the cart / sales / active-shift mocks above) so previews mirror the DB
 // across reloads — previously a reload wiped the queue, reverted every
 // status, and restarted ticket numbering at 104.
-const MOCK_KDS_KEY = 'oz-dev-mock:kds';
-function loadMockKdsState(): {
+type MockKdsState = {
   orders: Record<string, unknown>[];
   lineItems: Record<string, Array<Record<string, unknown>>>;
-} {
-  try {
-    const raw = localStorage.getItem(MOCK_KDS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as {
-        orders: Record<string, unknown>[];
-        lineItems: Record<string, Array<Record<string, unknown>>>;
-      };
-      if (Array.isArray(parsed.orders) && parsed.lineItems && typeof parsed.lineItems === 'object') {
-        return parsed;
-      }
-    }
-  } catch {
-    // storage unavailable or corrupt — fall through to the seed
-  }
+};
+
+/** Accept a persisted KDS queue only when both halves are present and shaped
+ *  right. A half-written payload must fall back to the seed rather than reach
+ *  a `.map` over undefined further down. */
+function asMockKdsState(value: unknown): MockKdsState | null {
+  if (!value || typeof value !== 'object') return null;
+  const parsed = value as MockKdsState;
+  if (!Array.isArray(parsed.orders)) return null;
+  if (!parsed.lineItems || typeof parsed.lineItems !== 'object') return null;
+  return parsed;
+}
+
+function loadMockKdsState(): MockKdsState {
   // First load: seed the queue (and its line items) so the KDS preview
   // renders without a completed sale. Shallow-clone each line so mutations
   // never bleed into the seed literal.
-  return {
-    orders: [..._initialKdsOrders],
-    lineItems: Object.fromEntries(
-      Object.entries(_initialKdsLineItems).map(([orderId, lines]) => [
-        orderId,
-        lines.map((l) => ({ ...l })),
-      ]),
-    ),
-  };
+  return readSlice(
+    MOCK_KDS_KEY,
+    () => ({
+      orders: [..._initialKdsOrders],
+      lineItems: Object.fromEntries(
+        Object.entries(_initialKdsLineItems).map(([orderId, lines]) => [
+          orderId,
+          lines.map((l) => ({ ...l })),
+        ]),
+      ),
+    }),
+    asMockKdsState,
+  );
 }
 function saveMockKdsState(): void {
-  try {
-    localStorage.setItem(
-      MOCK_KDS_KEY,
-      JSON.stringify({ orders: mockKdsOrders, lineItems: mockKdsLineItems }),
-    );
-  } catch {
-    // storage unavailable — keep the in-memory copies for this session
-  }
+  writeSlice(MOCK_KDS_KEY, { orders: mockKdsOrders, lineItems: mockKdsLineItems });
 }
 const mockKdsState = loadMockKdsState();
 const mockKdsOrders: Record<string, unknown>[] = mockKdsState.orders;
@@ -2070,22 +2004,11 @@ function pushKdsOrderFromCart(lines: CartLine[], storeId: string) {
 // attempt counter (same stateful pattern as the other mocks) so a
 // reloaded preview keeps enforcing the threshold — previously a reload
 // cleared the counter and defeated the lockout entirely.
-const MOCK_LOGIN_ATTEMPTS_KEY = 'oz-dev-mock:login-attempts';
 function loadMockLoginAttempts(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem(MOCK_LOGIN_ATTEMPTS_KEY);
-    if (raw) return JSON.parse(raw) as Record<string, number>;
-  } catch {
-    // storage unavailable or corrupt — start with a clean counter
-  }
-  return {};
+  return readSlice(MOCK_LOGIN_ATTEMPTS_KEY, () => ({}));
 }
 function saveMockLoginAttempts(): void {
-  try {
-    localStorage.setItem(MOCK_LOGIN_ATTEMPTS_KEY, JSON.stringify(loginAttempts));
-  } catch {
-    // storage unavailable — keep the in-memory copy for this session
-  }
+  writeSlice(MOCK_LOGIN_ATTEMPTS_KEY, loginAttempts);
 }
 const loginAttempts: Record<string, number> = loadMockLoginAttempts();
 const LOCKOUT_THRESHOLD = 4;
@@ -2103,22 +2026,11 @@ interface CartLine {
 // Persisted so a reloaded preview keeps its in-progress cart — the real
 // backend stores active-cart lines in the store DB. Same stateful pattern
 // as the user-prefs / active-shift mocks below.
-const MOCK_CART_KEY = 'oz-dev-mock:cart';
 function loadMockCart(): { lines: CartLine[] } {
-  try {
-    const raw = localStorage.getItem(MOCK_CART_KEY);
-    if (raw) return JSON.parse(raw) as { lines: CartLine[] };
-  } catch {
-    // storage unavailable — start with an empty cart
-  }
-  return { lines: [] };
+  return readSlice(MOCK_CART_KEY, () => ({ lines: [] }));
 }
 function saveMockCart(): void {
-  try {
-    localStorage.setItem(MOCK_CART_KEY, JSON.stringify(cartState));
-  } catch {
-    // storage unavailable — keep the in-memory copy for this session
-  }
+  writeSlice(MOCK_CART_KEY, cartState);
 }
 let cartState: { lines: CartLine[] } = loadMockCart();
 
@@ -2224,8 +2136,6 @@ interface MockHeldCart {
   deduction_location_id: string | null;
 }
 
-const MOCK_HELD_CARTS_KEY = 'oz-dev-mock:held-carts';
-
 function isMockHeldCart(value: unknown): value is MockHeldCart {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
@@ -2256,16 +2166,13 @@ function isMockHeldCart(value: unknown): value is MockHeldCart {
 }
 
 function loadMockHeldCarts(): MockHeldCart[] {
-  try {
-    const raw = localStorage.getItem(MOCK_HELD_CARTS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) return parsed.filter(isMockHeldCart);
-    }
-  } catch {
-    // storage unavailable or corrupt — start with an empty hold list
-  }
-  return [];
+  // A stored array is filtered rather than rejected wholesale: one malformed
+  // row must not cost the user the entire hold list.
+  return readSlice(
+    MOCK_HELD_CARTS_KEY,
+    () => [],
+    (value) => (Array.isArray(value) ? value.filter(isMockHeldCart) : null),
+  );
 }
 
 function createMockHeldCartId(): string {
@@ -2282,11 +2189,7 @@ function createMockHeldCartId(): string {
 let mockHeldCarts: MockHeldCart[] = loadMockHeldCarts();
 
 function saveMockHeldCarts(): void {
-  try {
-    localStorage.setItem(MOCK_HELD_CARTS_KEY, JSON.stringify(mockHeldCarts));
-  } catch {
-    // storage unavailable — keep the in-memory copy for this session
-  }
+  writeSlice(MOCK_HELD_CARTS_KEY, mockHeldCarts);
 }
 
 function holdMockCart(args: unknown): { id: string } {
@@ -2349,7 +2252,6 @@ interface MockSaleDetails extends MockCompletedSale {
 }
 // Persisted alongside the cart so sales history (and the per-sale detail
 // view) survives a reload exactly like the store DB does.
-const MOCK_SALES_KEY = 'oz-dev-mock:sales';
 function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<string, MockSaleDetails> } {
   const createdAt = new Date(Date.now() - 3600000).toISOString();
   // Pre-seeded sale so sales history always has at least one row.
@@ -2379,23 +2281,13 @@ function seedMockSalesStore(): { sales: MockCompletedSale[]; details: Record<str
   };
 }
 function loadMockSalesStore(): { sales: MockCompletedSale[]; details: Record<string, MockSaleDetails> } {
-  try {
-    const raw = localStorage.getItem(MOCK_SALES_KEY);
-    if (raw) return JSON.parse(raw) as { sales: MockCompletedSale[]; details: Record<string, MockSaleDetails> };
-  } catch {
-    // storage unavailable — fall through to the seed
-  }
-  return seedMockSalesStore();
+  return readSlice(MOCK_SALES_KEY, seedMockSalesStore);
 }
 const mockSalesStore = loadMockSalesStore();
 const completedSales: MockCompletedSale[] = mockSalesStore.sales;
 const saleDetails: Record<string, MockSaleDetails> = mockSalesStore.details;
 function saveMockSales(): void {
-  try {
-    localStorage.setItem(MOCK_SALES_KEY, JSON.stringify({ sales: completedSales, details: saleDetails }));
-  } catch {
-    // storage unavailable — keep the in-memory copies for this session
-  }
+  writeSlice(MOCK_SALES_KEY, { sales: completedSales, details: saleDetails });
 }
 
 // ── Date helpers (for seeded report data) ───────────────────────
@@ -2423,35 +2315,30 @@ function mockRevenue(i: number): number {
 // resto-POS "Current Order" shift duration to 0m. Seed from localStorage
 // (same stateful pattern as user prefs below) so previews behave like a
 // real store DB across reloads.
-const MOCK_ACTIVE_SHIFT_KEY = 'oz-dev-mock:active-shift';
-// Persisted marker for an explicitly-closed shift. Without it, a reload
-// after close would re-seed a fresh open shift (the demo convenience below
-// applies only on the very first load) and resurrect the clock the user
-// just stopped — the real DB returns no open shift after close.
-const MOCK_SHIFT_CLOSED_SENTINEL = '__closed__';
+// The closed-shift marker itself lives with the slice's wire format, in
+// `core/mockDatabase.ts`.
 function loadMockActiveShift(): Record<string, unknown> | null {
+  const raw = readSliceRaw(MOCK_ACTIVE_SHIFT_KEY);
+  if (raw === null || raw === MOCK_SHIFT_CLOSED_SENTINEL) return null;
   try {
-    const raw = localStorage.getItem(MOCK_ACTIVE_SHIFT_KEY);
-    if (raw === MOCK_SHIFT_CLOSED_SENTINEL) return null;
-    if (raw) return JSON.parse(raw) as Record<string, unknown>;
+    return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    // storage unavailable — fall through to the in-session default
+    // Corrupt payload — treat as "no shift open" rather than throwing at load.
+    return null;
   }
-  return null;
 }
 function hasPersistedShiftState(): boolean {
-  try {
-    return localStorage.getItem(MOCK_ACTIVE_SHIFT_KEY) !== null;
-  } catch {
-    return false;
-  }
+  return readSliceRaw(MOCK_ACTIVE_SHIFT_KEY) !== null;
 }
 function saveMockActiveShift(shift: Record<string, unknown> | null): void {
+  if (shift === null) {
+    writeSliceRaw(MOCK_ACTIVE_SHIFT_KEY, MOCK_SHIFT_CLOSED_SENTINEL);
+    return;
+  }
   try {
-    if (shift) localStorage.setItem(MOCK_ACTIVE_SHIFT_KEY, JSON.stringify(shift));
-    else localStorage.setItem(MOCK_ACTIVE_SHIFT_KEY, MOCK_SHIFT_CLOSED_SENTINEL);
+    writeSliceRaw(MOCK_ACTIVE_SHIFT_KEY, JSON.stringify(shift));
   } catch {
-    // storage unavailable — keep in-memory copy for this session
+    // Circular payload or storage unavailable — keep the in-memory copy.
   }
 }
 let mockActiveShift: Record<string, unknown> | null = loadMockActiveShift();
@@ -2477,7 +2364,6 @@ if (!hasPersistedShiftState()) {
 // the history (same stateful pattern as the other mocks) — previously a
 // reload reverted to just the seed and every reconciliation record
 // vanished.
-const MOCK_SHIFT_HISTORY_KEY = 'oz-dev-mock:shift-history';
 const _initialShiftHistory: Array<Record<string, unknown>> = [
   {
     id: 'shift-seed-1', userId: 'user-1', terminalId: null,
@@ -2489,25 +2375,16 @@ const _initialShiftHistory: Array<Record<string, unknown>> = [
   },
 ];
 function loadMockShiftHistory(): Array<Record<string, unknown>> {
-  try {
-    const raw = localStorage.getItem(MOCK_SHIFT_HISTORY_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // storage unavailable or corrupt — fall through to the seed
-  }
   // First load: seed one closed shift so the history table renders without
   // an open/close cycle. Shallow-clone so pushes never bleed into the seed.
-  return _initialShiftHistory.map((s) => ({ ...s }));
+  return readSlice(
+    MOCK_SHIFT_HISTORY_KEY,
+    () => _initialShiftHistory.map((s) => ({ ...s })),
+    (value) => (Array.isArray(value) ? (value as Array<Record<string, unknown>>) : null),
+  );
 }
 function saveMockShiftHistory(): void {
-  try {
-    localStorage.setItem(MOCK_SHIFT_HISTORY_KEY, JSON.stringify(mockShiftHistory));
-  } catch {
-    // storage unavailable — keep the in-memory copy for this session
-  }
+  writeSlice(MOCK_SHIFT_HISTORY_KEY, mockShiftHistory);
 }
 const mockShiftHistory: Array<Record<string, unknown>> = loadMockShiftHistory();
 // ── User preferences (stateful mock) ─────────────────────────────
@@ -2516,22 +2393,11 @@ const mockShiftHistory: Array<Record<string, unknown>> = loadMockShiftHistory();
 // while discarding writes, which made the restaurant-menu hamburger
 // configuration (sort / card size / font size) revert on every reload.
 // Seed from localStorage so previews behave like a real store DB.
-const MOCK_USER_PREFS_KEY = 'oz-dev-mock:user-prefs';
 function loadMockUserPrefs(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(MOCK_USER_PREFS_KEY);
-    if (raw) return JSON.parse(raw) as Record<string, string>;
-  } catch {
-    // storage unavailable — start empty
-  }
-  return {};
+  return readSlice(MOCK_USER_PREFS_KEY, () => ({}));
 }
 function saveMockUserPrefs(prefs: Record<string, string>): void {
-  try {
-    localStorage.setItem(MOCK_USER_PREFS_KEY, JSON.stringify(prefs));
-  } catch {
-    // storage unavailable — keep in-memory copy for this session
-  }
+  writeSlice(MOCK_USER_PREFS_KEY, prefs);
 }
 const mockUserPrefs: Record<string, string> = loadMockUserPrefs();
 
@@ -2571,8 +2437,6 @@ interface MockTopology {
   wires: MockTopologyWire[];
 }
 
-const MOCK_TOPOLOGY_KEY = 'oz-dev-mock:topology';
-
 /** First-run canvas: matches the current preview's starting topology.
  *  Cards are 240px wide/tall, so positions sit on a spread grid (rows 80/320,
  *  columns 80/380) that never overlaps on load. Wires carry labels so the
@@ -2592,20 +2456,10 @@ const MOCK_TOPOLOGY_SEED: MockTopology = {
 };
 
 function loadMockTopology(): MockTopology {
-  try {
-    const raw = localStorage.getItem(MOCK_TOPOLOGY_KEY);
-    if (raw) return JSON.parse(raw) as MockTopology;
-  } catch {
-    // storage unavailable — start from seed
-  }
-  return MOCK_TOPOLOGY_SEED;
+  return readSlice(MOCK_TOPOLOGY_KEY, () => MOCK_TOPOLOGY_SEED);
 }
 function saveMockTopology(topology: MockTopology): void {
-  try {
-    localStorage.setItem(MOCK_TOPOLOGY_KEY, JSON.stringify(topology));
-  } catch {
-    // storage unavailable — keep in-memory copy for this session
-  }
+  writeSlice(MOCK_TOPOLOGY_KEY, topology);
 }
 const mockTopology: MockTopology = loadMockTopology();
 
@@ -2616,7 +2470,6 @@ const mockTopology: MockTopology = loadMockTopology();
 // §4's DEFlation rule, not just the append — otherwise `restorable: false`
 // is unreachable in the browser and the "record only — snapshot pruned"
 // state the real sweep produces can never be exercised during development.
-const MOCK_TOPOLOGY_REVISIONS_KEY = 'oz-dev-mock:topology-revisions';
 /** Mirrors `TOPOLOGY_REVISION_RESTORABLE_KEEP` in revisions.rs. */
 const MOCK_TOPOLOGY_REVISION_KEEP = 20;
 
@@ -2643,21 +2496,11 @@ interface MockTopologyRevision {
 }
 
 function loadMockTopologyRevisions(): MockTopologyRevision[] {
-  try {
-    const raw = localStorage.getItem(MOCK_TOPOLOGY_REVISIONS_KEY);
-    if (raw) return JSON.parse(raw) as MockTopologyRevision[];
-  } catch {
-    // storage unavailable — start empty
-  }
-  return [];
+  return readSlice(MOCK_TOPOLOGY_REVISIONS_KEY, () => []);
 }
 
 function saveMockTopologyRevisions(rows: MockTopologyRevision[]): void {
-  try {
-    localStorage.setItem(MOCK_TOPOLOGY_REVISIONS_KEY, JSON.stringify(rows));
-  } catch {
-    // storage unavailable — keep the in-memory copy for this session
-  }
+  writeSlice(MOCK_TOPOLOGY_REVISIONS_KEY, rows);
 }
 
 const mockTopologyRevisions: MockTopologyRevision[] = loadMockTopologyRevisions();
@@ -2780,7 +2623,7 @@ function mockAuditMatches(row: MockAuditRow, f: { outcome?: string; query?: stri
 // a browser preview starting over, and keeps a stale high-water mark from
 // claiming a review that never happened on the tenant's real log.
 const mockAuditReview: { checkpoint: MockReviewCheckpoint | null } = { checkpoint: null };
-const handlers: Record<string, (args: unknown) => unknown> = {
+const entryHandlers: Record<string, MockHandler> = {
   // ═══════════════════════════════════════════════════════════════
   // AUTH / STAFF
   // ═══════════════════════════════════════════════════════════════
@@ -4929,8 +4772,13 @@ const handlers: Record<string, (args: unknown) => unknown> = {
     // header) to stay in lockstep with the shipped app.
     return { appVersion: pkg.version };
   },
-
 };
+
+// Merge this file's handlers into the registry the dispatcher routes through.
+// The sibling work orders move whole domains out of this literal and into
+// `core/handlers/*`; until they land, the literal remains the registry's main
+// source, and everything below patches it in place.
+registerHandlers(entryHandlers);
 
 // ── Scoped aliases (ADR #7) ──────────────────────────────────────
 // The API layer calls the *_scoped variant for nearly every command, but most were only
@@ -5129,98 +4977,15 @@ handlers['list_warehouse_products_at_location'] = (args) => {
   }));
 };
 
-/**
- * True when running inside a real Tauri webview (packaged app or `tauri dev`).
- *
- * The mock is aliased in for the dev server, but a real webview provides
- * `window.__TAURI_INTERNALS__` — in that case we MUST delegate to the actual
- * Rust backend instead of serving mock data (the Jul 2026 regression where
- * the unconditional alias shipped mock IPC into production builds).
- */
-function hasTauriInternals(): boolean {
-  try {
-    return (
-      typeof window !== 'undefined' &&
-      typeof (window as unknown as { __TAURI_INTERNALS__?: { invoke?: unknown } })
-        .__TAURI_INTERNALS__?.invoke === 'function'
-    );
-  } catch {
-    return false;
-  }
-}
-
 // ── General scoped aliasing ───────────────────────────────────────
 //
-// This replaces SCOPED_ALIASES, a hand-maintained list that had fallen 115 entries behind:
-// the ADR #7 migration moved the api layer to the `_scoped` spelling of commands while
-// the mock kept registering the unscoped names, so every scoped name outside the curated
-// list fell through to `return null` in invoke() below. That fails silently, not loudly —
-// the component swallows the null and the test still passes while asserting against the
-// failure path, which is the exact defect invokeCoverage.ts documents for hand-written
-// mock chains (R36-02). Measured on the tree: 217 calls across 4 commands were landing
-// there, including get_hardware_settings_scoped since 1fbcc8a0, so ~78 terminal-hardware
-// test invocations were exercising the catch-and-default branch while reading as if the
-// DTO had loaded.
-//
-// So alias by rule instead of by list: any registered command whose name does not already
-// end in `_scoped` gets a `_scoped` alias unless one is genuinely registered. This runs
-// here, after every registration in the file, so it sees the complete registry — the
-// curated loop above ran before the direct stubs and could not have.
-//
-// It deliberately does NOT invent handlers for names with no base: an unknown command
-// must still warn, because keeping the truly-unknown case loud is the whole point.
-for (const base of Object.keys(handlers)) {
-  if (base.endsWith('_scoped')) continue;
-  const scoped = `${base}_scoped`;
-  // Bound to a local: `handlers[base]` is `T | undefined` under noUncheckedIndexedAccess,
-  // and the guard below narrows `handlers[scoped]`, not this.
-  const twin = handlers[base];
-  if (twin !== undefined && handlers[scoped] === undefined) {
-    handlers[scoped] = twin;
-  }
-}
-
-/** Mock Tauri invoke — delegates to real IPC in a webview, else mock data. */
-export async function invoke<T>(
-  cmd: string,
-  args?: Record<string, unknown>,
-  options?: unknown,
-): Promise<T> {
-  if (hasTauriInternals()) {
-    // Real Tauri webview — pass straight through to the Rust backend.
-    // Default args to {} like the real invoke(cmd, args = {}, options).
-    return (window as unknown as {
-      __TAURI_INTERNALS__: { invoke: (c: string, a?: Record<string, unknown>, o?: unknown) => Promise<T> };
-    }).__TAURI_INTERNALS__.invoke(cmd, args ?? {}, options);
-  }
-
-  console.log('[TAURI MOCK] invoke:', cmd, args);
-
-  // Small delay to simulate async IPC
-  await new Promise((r) => setTimeout(r, 50));
-
-  const handler = handlers[cmd];
-  if (handler) {
-    return handler(args?.['args'] ?? args) as T;
-  }
-
-  console.warn('[TAURI MOCK] Unhandled command:', cmd);
-  return null as T;
-}
-
-/** Mock convertFileSrc — delegates to real IPC in a webview, else path as-is. */
-export function convertFileSrc(path: string, protocol = 'asset'): string {
-  if (hasTauriInternals()) {
-    return (window as unknown as {
-      __TAURI_INTERNALS__: { convertFileSrc: (p: string, pr: string) => string };
-    }).__TAURI_INTERNALS__.convertFileSrc(path, protocol);
-  }
-  return path;
-}
-
-export function isTauri(): boolean {
-  return hasTauriInternals();
-}
+// The rule that mirrors every registered command onto its `_scoped` twin lives
+// in `core/mockDispatcher.ts`; the reasoning is documented there. It is invoked
+// from here because it has to run AFTER every registration in this file — the
+// 460-entry literal, the direct stubs above, and the `handlers['x'] = …`
+// patches — so that it sees the complete registry. A pass placed earlier, as
+// the retired curated loop was, cannot.
+applyScopedAliases();
 
 export class Resource {}
 export class Channel {}

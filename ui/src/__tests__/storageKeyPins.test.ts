@@ -92,18 +92,20 @@ const EXPECTED_KEYS: Record<string, string> = {
   'updater.previous_version': 'frontend/shell/UpdateBanner.tsx',
 
   // Dev mock -- browser-only fixtures, never shipped data. Pinned anyway so the
-  // completeness check has no exceptions to reason about.
-  'oz-dev-mock:active-shift': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:cart': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:held-carts': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:kds': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:login-attempts': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:sales': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:shift-history': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:topology': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:topology-revisions': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:user-prefs': 'dev-mock/tauri-api.ts',
-  'oz-dev-mock:workspaces': 'dev-mock/tauri-api.ts',
+  // completeness check has no exceptions to reason about. These moved from the
+  // entry router to the persistence registry, which is now the single module
+  // that names a slice key; the entry file no longer declares any of them.
+  'oz-dev-mock:active-shift': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:cart': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:held-carts': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:kds': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:login-attempts': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:sales': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:shift-history': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:topology': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:topology-revisions': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:user-prefs': 'dev-mock/core/mockDatabase.ts',
+  'oz-dev-mock:workspaces': 'dev-mock/core/mockDatabase.ts',
 };
 
 const KEY_DECL =
