@@ -242,21 +242,18 @@ on which shell registers the command, not on the token.
 - **Four wrapper bodies were not read** — of the 13 named in §1. Which four is not recoverable from this
   record, so the sentence is a limit on coverage, not a finding about those four: treat their class as
   unverified rather than as a fourth shell gap waiting to be confirmed.
-- **This record is not in the index, and regenerating cannot put it there.** Two negatives, each with
-  its query. *Nothing regenerates it:*
-  `grep -rn 'generate-records-index' .githooks/ .github/workflows/*.yml scripts/check.sh` → no hits, run from the repo root, so the empty answer covers hooks, both live
-  workflows and the local gate (verified rather than inherited from `docs/README.md`, which asserts it).
-  *The generator never looks at `docs/records/`:* it scans `docs/decisions/` and its `archived/`
-  subdirectory (`scripts/generate-records-index.mjs:124`), a root `audit/` directory that no longer
-  exists (`:125`, `:170`), `docs/observability/` (`:126`) and a hard-coded list of `docs/archived/` paths
-  (`:192`–`:207`); `docs/records/` is the output root (`:20`–`:21`), a `relative()` base (`:120`) and one
-  `existsSync` check (`:272`) — never a directory it enumerates, and `:303` writes the file. Measured for
-  this commit: `node scripts/generate-records-index.mjs` rewrote the file byte-identically — 124 lines
-  before and after, `git diff -- docs/records/README.md` empty, summary "46 ADRs, 4 research, 17 phased,
-  0 audits, 14 scattered, 2 observability". So the fix is a generator change, which is code, and is not
-  in this commit; until then this page is reachable only by someone who lists the directory.
-  Both halves are the class this record documents: a control no scheduled run asserts is a commitment,
-  and an index whose scan excludes a directory reports that directory as absent.
+- **This record was unreachable from the index, and half of that is now fixed.** Two negatives were
+  written here, each with its query. *Nothing regenerates the index on a schedule* — still true:
+  `grep -rn 'generate-records-index' .githooks/ .github/workflows/*.yml scripts/check.sh` → no hits, run
+  from the repo root, so the empty answer covers hooks, both live workflows and the local gate. *The
+  generator never scanned `docs/records/`* — **no longer true**, and the correction is the point: a
+  record added after this line was written is still invisible. `e3e5fcf54`
+  (fix(docs-index): scan docs/records so the index lists its own directory) made
+  `docs/records/` an enumerated root rather than only an output path, and HEAD's
+  `docs/records/README.md` now lists this page
+  (`git show HEAD:docs/records/README.md | grep -c 'adr7-conditional-scoping-fallback-class'` → 1). So
+  the generator half was code, it landed, and what remains is the assertion: nothing runs it, so the
+  index is fresh only because someone typed the command.
 - **A green UI typecheck does not clear this class.** `cf1147423`'s own body records two pre-existing
   `tsc` errors in `ui/src/features/workspaces/WorkspaceHome.tsx` (`TS6133` unused import, `TS2440`
   import/local conflict) belonging to another session. A failure naming that file is not this finding.
@@ -270,13 +267,16 @@ on which shell registers the command, not on the token.
   possesses; without one, "gated" means "a ternary the renderer controls".
 - **Answer the shell-gap question per command**, not per screen — four sites in §1 change class depending
   on which shell registers their scoped twin.
-- **Land the caller allowlist** — the ratchet is `registration_gate_tests` in `apps/desktop-client` and
-  `apps/tablet-client`. It is **not in HEAD**: `git ls-files | grep registration_gate` → no output (exit
-  1). But it is **not absent either** — as measured 2026-09-13 both files are in the working tree as
-  another session's untracked work (`git status --porcelain` → `??`; 34,548 and 8,053 bytes, plus a
-  generated `registration_gate_debt.generated.rs` beside each). So the allowlist is **in flight, not yet
-  a control**: a reader at this HEAD cannot run it, and a reader later may find it landed and should
-  update this line rather than re-derive it. The two-part shape of the claim is the point — a HEAD-scoped
-  query and a working-tree query give opposite answers, and only the pair of them describes the state.
+- **The caller allowlist has landed for one shell.** `405fb1a36` (test(desktop-client): land the desktop
+  registration-gate ratchet) put `registration_gate_tests.rs` (922 lines) and its generated
+  `registration_gate_debt.generated.rs` (177 lines) under `apps/desktop-client/src/commands/`, wired by
+  `commands/mod.rs` (+3), so **the control now exists for the desktop registration gate** —
+  `git ls-files | grep registration_gate` returns those two paths where an hour ago it returned nothing.
+  It covers **desktop only**: the tablet counterparts are still untracked in the shared tree
+  (`git status --porcelain` → `??` on both `apps/tablet-client` files), and what it enumerates is
+  **registered command names** (its own header: "448 registered names as measured 12-09-26"), not
+  permissions. The **widget and page-command permission ratchet the thinker scoped is still a proposal**
+  — no such file is tracked (`git ls-files` over `widget_gate` / `page_command` / `permission_ratchet` →
+  nothing) — so §1's nineteen sites are still policed only by the React ternary at each call site.
 - **Do not delete a fallback without proving the tokenless state unreachable.** Deleting one converts a
   *recorded* bypass into a broken feature, which is the worse outcome of the two.
