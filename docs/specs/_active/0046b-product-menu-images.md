@@ -95,7 +95,7 @@ author; tablets render).
   - `products.image_hash` is a **mirror of slot 1** kept in the same
     transaction (grid queries read the product row only; no JOIN on the POS
     hot path). `product_images` is authoritative.
-  - **Menu invariant** (`product_type = 'menu'`): exactly 1 image — enforced
+  - **Menu invariant** (`product_type = 'restaurant'`): exactly 1 image — enforced
     in the set/clear commands (clear refused if it would leave a menu item
     without a primary; UI hides the alternatives strip for menu items).
   - **Product invariant**: slots 1..5, alternatives ordered by `position`;
