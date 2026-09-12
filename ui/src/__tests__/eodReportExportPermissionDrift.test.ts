@@ -10,6 +10,12 @@
  *       (export_eod_report_scoped → require_permission_for_user(…, permissions::REPORTS_EXPORT);
  *        the daily-summary twin at :380 and the sales-by-hour twin at :404 check the SAME constant)
  *
+ * BOTH DECLARATIONS, not one: the screen is armed twice in that file — the page
+ * gate at register.tsx:48 and the nav-item gate at :49-57 (token on :53) — and
+ * both say reports:view, so this pin covers the second declaration rather than
+ * resolving the hazard; flipping one and not the other is a half-fix and goes
+ * red here.
+ *
  * The role that makes it user-visible, also measured, not inferred:
  * platform/core/src/rbac_presets.rs — `Auditor` (builtin_roles::AUDITOR, the permission list at
  * :266) holds REPORTS_VIEW and does NOT hold REPORTS_EXPORT. Manager (:81-83) and Admin
@@ -75,6 +81,35 @@ function registerCall(src: string, route: string): string {
   return src.slice(start < 0 ? at : start, end < 0 ? at + 400 : end);
 }
 
+/**
+ * Every declaration that arms one route - a screen is declared TWICE here: once
+ * as a page (registerPage, the route gate) and once as a nav item
+ * (registerNavItem, the entry point), each carrying its own
+ * requiredPermission. For eod-report both say reports:view - register.tsx:48 is
+ * the page declaration, :49-57 the nav item with the token on :53 - so this
+ * returns EVERY block rather than the first one: arming the page while
+ * forgetting the nav item, or the reverse, is a half-fix that reads as whole.
+ */
+function declarationsFor(src: string, route: string): { kind: string; block: string }[] {
+  const needle = "route: '" + route + "'";
+  const found: { kind: string; block: string }[] = [];
+  for (let at = src.indexOf(needle); at >= 0; at = src.indexOf(needle, at + 1)) {
+    const pageAt = src.lastIndexOf('registerPage(', at);
+    const navAt = src.lastIndexOf('registerNavItem(', at);
+    const isNav = navAt > pageAt;
+    const start = isNav ? navAt : pageAt;
+    const end = src.indexOf('});', at);
+    found.push({
+      kind: isNav ? 'registerNavItem' : 'registerPage',
+      block: src.slice(start < 0 ? at : start, end < 0 ? at + 400 : end),
+    });
+  }
+  return found;
+}
+
+const armToken = (block: string): string | undefined =>
+  /requiredPermission: '([^']+)'/.exec(block)?.[1];
+
 /** The body of a Rust `pub async fn <name>(`, up to its closing brace at column 0. */
 function rustFn(src: string, name: string): string {
   const sig = `pub async fn ${name}(`;
@@ -129,6 +164,28 @@ describe('EOD-report arm token vs the export command gate', () => {
   it('known_hazard_all_three_export_commands_share_the_refusing_token', () => {
     for (const fn of ['export_daily_summary_scoped', 'export_sales_by_hour_scoped', 'export_eod_report_scoped']) {
       expect(checkedPermission(fn), `${fn} no longer gates on REPORTS_EXPORT`).toBe('REPORTS_EXPORT');
+    }
+  });
+
+  it('known_hazard_both_declarations_of_the_surface_carry_the_same_view_token', () => {
+    // The route gate and the nav gate are two declarations of one screen, and
+    // tonight only the first was attributed. Both arm reports:view, so both
+    // stand in front of the same export-gated command, and a fix that flips one
+    // and not the other leaves the entry point and the gate disagreeing. This
+    // case covers the SECOND declaration; it resolves nothing.
+    const decls = declarationsFor(read(REGISTER_TSX), 'eod-report');
+    const kinds = decls.map((d) => d.kind).sort();
+    expect(kinds, 'eod-report must still be declared as both a page and a nav item').toEqual([
+      'registerNavItem',
+      'registerPage',
+    ]);
+    const tokens = decls.map((d) => armToken(d.block));
+    expect(tokens).toEqual([tokenOf('REPORTS_VIEW'), tokenOf('REPORTS_VIEW')]);
+    const gate = checkedPermission('export_eod_report_scoped');
+    for (const t of tokens) {
+      expect(t, `a declaration of eod-report was armed on ${t}, not the measured view token`).not.toBe(
+        tokenOf(gate!),
+      );
     }
   });
 
