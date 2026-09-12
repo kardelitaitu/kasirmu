@@ -708,3 +708,145 @@ fn smtp_config_exception_key_and_merge_key_hold_the_same_value() {
         "the cleartext-credential exception and the SMTP merge key drifted apart: keys::SMTP_CONFIG (platform/core/src/settings/keys.rs:220, compared by the tracked funnel) is {exception:?}, but SMTP_CONFIG_SETTINGS_KEY (crates/oz-core/src/export/email_report.rs:112, compared by both merge seams in apps/tablet-client/src/commands/settings.rs and crates/oz-bridge/src/settings.rs) is {merge_key:?} — reword either one and the merge writes under a key the exception no longer covers, so the passwordless blob overwrites the stored secret in silence"
     );
 }
+
+// -- The borrowed refusal: why ONE list row carries this key's egress --------
+
+// `sync.auth_token` is non-exportable TRANSITIVELY, and until now nothing in
+// the repo said so. `keys::AUTH_TOKEN` is declared at
+// `platform/core/src/settings/keys.rs:95` and enters `SECRET_KEY_DENY_LIST`
+// (`:265-283`) as the IDENTIFIER `AUTH_TOKEN`, not as a retyped string literal,
+// so renaming the key's value moves the guard with it. It is NOT in
+// `NON_EXPORTABLE_DEVICE_KEYS` (`:295-296`). What keeps it out of a package is
+// the definition of `is_non_exportable_setting_key` (`:393-396`) — in the secret
+// list OR in the device list — so its egress refusal is a property this key
+// BORROWS from the credential list. That one line in a `&[&str]` is the only
+// thing holding it up.
+//
+// That is the fact the three cases below pin, and why all three are
+// predicate-only: no connection, no `settings` row, no sqlite file. The claim is
+// about WHICH LIST a key sits in, and a DB write would let a case pass for a
+// storage reason while staying green after the membership is deleted.
+//
+// The hazard is historical, not hypothetical. Before commit `b2196d701` this key
+// was on neither list and left the device as a duplicate cleartext copy of the
+// tenant's sync secret on BOTH untrusted lanes. Deleting the entry again is one
+// keystroke, is invisible from the read path, and has no reader anywhere in the
+// tree that could notice — so the only defence left is a test that says so.
+
+/// The spellings the `auth_token_*` cases must all refuse. Every one is DERIVED
+/// from the constant — uppercased, space-padded, tab/newline-padded, case-mixed
+/// — never typed as a literal, so the fixture moves with the key exactly as the
+/// list does. The predicate trims and ASCII-case-folds the CANDIDATE while list
+/// entries stay lowercase and untrimmed, which is what makes these spellings part
+/// of the contract rather than decoration.
+fn auth_token_spellings() -> Vec<String> {
+    let exact = oz_core::settings::keys::AUTH_TOKEN;
+    let mixed: String = exact
+        .chars()
+        .enumerate()
+        .map(|(i, c)| {
+            if i % 2 == 0 {
+                c.to_ascii_uppercase()
+            } else {
+                c
+            }
+        })
+        .collect();
+    vec![
+        exact.to_string(),
+        exact.to_ascii_uppercase(), // SYNC.AUTH_TOKEN
+        format!("  {exact}  "),     // space-padded both sides
+        format!("\t{exact}\n"),     // tab + newline padded
+        mixed,                      // Sync.Auth_TOKen
+    ]
+}
+
+/// Case 1 — the secret refusal itself, in every spelling the fold recognises.
+///
+/// Carries its own opposite: an ordinary non-credential key must stay admissible
+/// in the SAME kinds of spelling, so this case cannot be satisfied by a predicate
+/// that has started refusing everything. Without that half, a green run would not
+/// distinguish a guard from a bug.
+#[test]
+fn auth_token_is_refused_as_a_secret_in_every_folded_spelling() {
+    use oz_core::settings::keys;
+    let spellings = auth_token_spellings();
+    assert!(
+        spellings.len() >= 5,
+        "the fixture must exercise more than the exact form, got {spellings:?}"
+    );
+    for spelling in &spellings {
+        assert!(
+            keys::is_secret_setting_key(spelling),
+            "{spelling:?} is the tenant's sync API key under another spelling: keys::AUTH_TOKEN is on SECRET_KEY_DENY_LIST, so the fold must refuse it"
+        );
+    }
+    for control in ["store.name", "STORE.NAME", "  sync_server_url\t"] {
+        assert!(
+            !keys::is_secret_setting_key(control) && !keys::is_non_exportable_setting_key(control),
+            "the fold must still admit the ordinary key {control:?} — if this fails, the refusals above prove nothing"
+        );
+    }
+}
+
+/// Case 2 — WHY it is refused: the secret list, not the device list.
+///
+/// This is the case that keeps case 1 honest. `is_non_exportable_setting_key` is
+/// an OR, so a key moved from `SECRET_KEY_DENY_LIST` to
+/// `NON_EXPORTABLE_DEVICE_KEYS` would keep passing every "is it refused"
+/// assertion while the credential list silently stopped carrying it — and the
+/// list it would then sit on is documented as identifiers rather than
+/// credentials, the wrong home for a secret. Asserting device-list NON-membership
+/// is what forces the difference to be noticed.
+#[test]
+fn auth_token_is_non_exportable_through_the_secret_list_and_not_the_device_list() {
+    use oz_core::settings::keys;
+    //
+    assert!(
+        keys::SECRET_KEY_DENY_LIST.contains(&keys::AUTH_TOKEN),
+        "SECRET_KEY_DENY_LIST no longer contains keys::AUTH_TOKEN: that single membership is the whole reason a cleartext duplicate of the sync secret cannot leave the device"
+    );
+    assert!(
+        !keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&keys::AUTH_TOKEN),
+        "keys::AUTH_TOKEN is now on NON_EXPORTABLE_DEVICE_KEYS. is_non_exportable_setting_key still answers true through the OR, so no other test would fail — but that list is for per-install IDENTIFIERS (machine_id, hardware_fingerprint, sync_terminal_id), not credentials, and this key holds the tenant's sync API secret. Give the secret list the membership it is supposed to have."
+    );
+    assert!(
+        keys::is_secret_setting_key(keys::AUTH_TOKEN),
+        "the credential predicate must flag it on its own, not only via the egress OR"
+    );
+    assert!(
+        keys::is_non_exportable_setting_key(keys::AUTH_TOKEN),
+        "and the egress predicate must refuse it, which is what load_exportable asks"
+    );
+}
+
+/// Case 3 — the consequence, at the two doors that actually export.
+///
+/// Refused by the predicate is not the same as refused by the LANE, so this asks
+/// the lane. `is_non_exportable_setting_key` is what `Settings::load_exportable`
+/// filters on for the GUI settings export (`crates/oz-bridge/src/data.rs`) and
+/// `IngestPolicy::PortablePackage` is what the `.ozpkg` lane asks
+/// (`crates/oz-cli/src/commands/ozpkg.rs`, plus `set_batch_with_policy` on
+/// restore). Lift `keys::AUTH_TOKEN` out of `SECRET_KEY_DENY_LIST` and a
+/// credential-bearing key becomes packageable in cleartext through BOTH doors, in
+/// every folded spelling at once — the exact state the tree was in before
+/// `b2196d701`.
+#[test]
+fn a_removal_from_the_secret_list_would_make_auth_token_exportable_through_both_doors() {
+    use oz_core::settings::{IngestPolicy, IngestPolicyKind, keys};
+    for spelling in auth_token_spellings() {
+        assert!(
+            !IngestPolicy::PortablePackage.admits(&spelling)
+                && !IngestPolicy::RemoteSync.admits(&spelling),
+            "{spelling:?} is admitted by an untrusted ingest lane, which happens the day keys::AUTH_TOKEN is removed from SECRET_KEY_DENY_LIST: a credential-bearing key then travels in cleartext through the .ozpkg package AND the GUI settings export, in both directions"
+        );
+        assert!(
+            keys::is_non_exportable_setting_key(&spelling),
+            "{spelling:?} must be non-exportable — load_exportable filters on exactly this predicate, so a false here is a cleartext sync secret inside a package"
+        );
+    }
+    assert!(
+        IngestPolicy::TrustedLocal.admits(keys::AUTH_TOKEN),
+        "control: the local lane owns this key and must NOT be filtered, or the refusals above would pass for a policy that rejects everything"
+    );
+}
