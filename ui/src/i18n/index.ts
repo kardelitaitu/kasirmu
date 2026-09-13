@@ -13,6 +13,7 @@ import inventoryEn from '../locales/inventory.ftl?raw';
 import tablesEn from '../locales/tables.ftl?raw';
 import terminalsEn from '../locales/terminals.ftl?raw';
 import offlineEn from '../locales/offline.ftl?raw';
+import syncEn from '../locales/sync.ftl?raw';
 import bundlesEn from '../locales/bundles.ftl?raw';
 import promotionsEn from '../locales/promotions.ftl?raw';
 import kdsEn from '../locales/kds.ftl?raw';
@@ -41,6 +42,7 @@ import inventoryId from '../locales/inventory.id.ftl?raw';
 import tablesId from '../locales/tables.id.ftl?raw';
 import terminalsId from '../locales/terminals.id.ftl?raw';
 import offlineId from '../locales/offline.id.ftl?raw';
+import syncId from '../locales/sync.id.ftl?raw';
 import bundlesId from '../locales/bundles.id.ftl?raw';
 import promotionsId from '../locales/promotions.id.ftl?raw';
 import kdsId from '../locales/kds.id.ftl?raw';
@@ -65,7 +67,7 @@ const enFTL = [
   terminalsEn, offlineEn, bundlesEn, promotionsEn, kdsEn,
   kioskEn, loyaltyEn, shiftsEn, reportsEn, analyticsEn, multiStoreEn,
   stockTransfersEn, giftCardsEn, purchasingEn, stockCountingEn,
-  subscriptionEn,
+  subscriptionEn, syncEn,
 ].join('\n');
 
 const idFTL = [
@@ -74,7 +76,7 @@ const idFTL = [
   terminalsId, offlineId, bundlesId, promotionsId, kdsId,
   kioskId, loyaltyId, shiftsId, reportsId, analyticsId, multiStoreId,
   stockTransfersId, giftCardsId, purchasingId, stockCountingId,
-  subscriptionId,
+  subscriptionId, syncId,
 ].join('\n');
 
 const RESOURCES: Record<LocaleCode, string> = {

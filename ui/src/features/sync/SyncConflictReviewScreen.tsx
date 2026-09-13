@@ -1,3 +1,4 @@
+import { Localized } from '@fluent/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -20,11 +21,15 @@ import { ConflictDiffViewer } from './components/ConflictDiffViewer';
 // unrecognised label is promoted to `high` so a conflict can never be hidden
 // by a typo in a newer server's payload.
 
-const SEVERITY_TABS: ReadonlyArray<{ id: ConflictSeverity | 'all'; label: string }> = [
-  { id: 'high', label: 'High' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'low', label: 'Low' },
-  { id: 'all', label: 'All' },
+const SEVERITY_TABS: ReadonlyArray<{
+  id: ConflictSeverity | 'all';
+  key: string;
+  label: string;
+}> = [
+  { id: 'high', key: 'sync-conflicts-severity-high', label: 'High' },
+  { id: 'medium', key: 'sync-conflicts-severity-medium', label: 'Medium' },
+  { id: 'low', key: 'sync-conflicts-severity-low', label: 'Low' },
+  { id: 'all', key: 'sync-conflicts-severity-all', label: 'All' },
 ];
 
 export function SyncConflictReviewScreen() {
@@ -78,7 +83,9 @@ export function SyncConflictReviewScreen() {
         if (!ok) {
           // Not an error to retry blindly: another terminal may have resolved
           // the same row first.
-          setError('This conflict was already resolved elsewhere. Refreshing.');
+          setError(
+            'This conflict was already resolved elsewhere. Refreshing.',
+          );
         }
         await load();
       } catch (e) {
@@ -98,15 +105,19 @@ export function SyncConflictReviewScreen() {
   return (
     <div className="sync-conflict-review" data-testid="sync-conflict-review">
       <header className="sync-conflict-review__head">
-        <h2>Sync Conflicts</h2>
-        <label className="sync-conflict-review__toggle">
-          <input
-            type="checkbox"
-            checked={showResolved}
-            onChange={(e) => setShowResolved(e.target.checked)}
-          />
-          Show resolved history
-        </label>
+        <Localized id="sync-conflicts-title">
+          <h2>Sync Conflicts</h2>
+        </Localized>
+        <Localized id="sync-conflicts-show-resolved">
+          <label className="sync-conflict-review__toggle">
+            <input
+              type="checkbox"
+              checked={showResolved}
+              onChange={(e) => setShowResolved(e.target.checked)}
+            />
+            Show resolved history
+          </label>
+        </Localized>
       </header>
 
       <nav className="sync-conflict-review__tabs" role="tablist">
@@ -123,16 +134,22 @@ export function SyncConflictReviewScreen() {
             }
             onClick={() => setSeverity(tab.id)}
           >
-            {tab.label}
+            <Localized id={tab.key}>{tab.label}</Localized>
           </button>
         ))}
       </nav>
 
       {error ? <p className="sync-conflict-review__error">{error}</p> : null}
-      {loading ? <p className="sync-conflict-review__loading">Loading…</p> : null}
+      {loading ? (
+        <Localized id="sync-conflicts-loading">
+          <p className="sync-conflict-review__loading">Loading…</p>
+        </Localized>
+      ) : null}
 
       {!loading && rows.length === 0 ? (
-        <p className="sync-conflict-review__empty">No conflicts to review.</p>
+        <Localized id="sync-conflicts-empty">
+          <p className="sync-conflict-review__empty">No conflicts to review.</p>
+        </Localized>
       ) : null}
 
       <ul className="sync-conflict-review__list">

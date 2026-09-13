@@ -21,6 +21,7 @@ import inventoryFtl from './inventory.ftl?raw';
 import tablesFtl from './tables.ftl?raw';
 import terminalsFtl from './terminals.ftl?raw';
 import offlineFtl from './offline.ftl?raw';
+import syncFtl from './sync.ftl?raw';
 import bundlesFtl from './bundles.ftl?raw';
 import promotionsFtl from './promotions.ftl?raw';
 import kdsFtl from './kds.ftl?raw';
@@ -49,6 +50,7 @@ const ALL_FTL = [
   tablesFtl,
   terminalsFtl,
   offlineFtl,
+  syncFtl,
   bundlesFtl,
   promotionsFtl,
   kdsFtl,

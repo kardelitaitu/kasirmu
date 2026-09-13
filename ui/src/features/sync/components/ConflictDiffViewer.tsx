@@ -1,3 +1,5 @@
+import { Localized } from '@fluent/react';
+
 import type { SyncConflictDto } from '@/api/syncConflicts';
 
 // ── Conflict diff viewer ──────────────────────────────────────────
@@ -51,44 +53,57 @@ export function ConflictDiffViewer({
 
       <div className="conflict-diff__panes">
         <section className="conflict-diff__pane">
-          <h4>Terminal {conflict.local_terminal_id}</h4>
+          <Localized
+            id="sync-conflicts-pane-local"
+            vars={{ terminal: conflict.local_terminal_id }}
+          >
+            <h4>{`Terminal ${conflict.local_terminal_id}`}</h4>
+          </Localized>
           <pre className="conflict-diff__vector">{conflict.local_vector}</pre>
           <pre className="conflict-diff__payload">
             {formatPayload(conflict.local_payload)}
           </pre>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onAcceptLocal(conflict.local_payload)}
-          >
-            Accept Store A
-          </button>
+          <Localized id="sync-conflicts-accept-local">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAcceptLocal(conflict.local_payload)}
+            >
+              Accept Store A
+            </button>
+          </Localized>
         </section>
 
         <section className="conflict-diff__pane">
-          <h4>Cloud / Terminal B</h4>
+          <Localized id="sync-conflicts-pane-remote">
+            <h4>Cloud / Terminal B</h4>
+          </Localized>
           <pre className="conflict-diff__vector">{conflict.remote_vector}</pre>
           <pre className="conflict-diff__payload">
             {formatPayload(conflict.remote_payload)}
           </pre>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onAcceptRemote(conflict.remote_payload)}
-          >
-            Accept Cloud
-          </button>
+          <Localized id="sync-conflicts-accept-remote">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAcceptRemote(conflict.remote_payload)}
+            >
+              Accept Cloud
+            </button>
+          </Localized>
         </section>
       </div>
 
       <div className="conflict-diff__custom">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onCustomMerge('custom')}
-        >
-          Custom Merge
-        </button>
+        <Localized id="sync-conflicts-custom-merge">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onCustomMerge('custom')}
+          >
+            Custom Merge
+          </button>
+        </Localized>
       </div>
     </div>
   );
