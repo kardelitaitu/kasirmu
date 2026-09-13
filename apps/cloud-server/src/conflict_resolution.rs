@@ -334,6 +334,10 @@ pub fn entity_id_of(payload: &str, fallback: &str) -> String {
 /// never interpreted — in particular never summed — because a conflict on a
 /// money entity is exactly the case where combining the two sides would
 /// invent value that neither write authorised.
+// One parameter per persisted column of `sync_conflicts`: bundling them into a
+// struct would add a type that only exists to be immediately destructured here,
+// and the column-for-column signature is what keeps the row honest to the schema.
+#[allow(clippy::too_many_arguments)]
 pub fn build_conflict_row(
     id: &str,
     tenant_id: &str,

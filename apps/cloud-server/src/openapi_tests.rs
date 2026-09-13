@@ -942,19 +942,14 @@ fn validates(spec: &Value, schema: &Value, value: &Value) -> bool {
         return false;
     }
     match schema.get("type") {
-        Some(Value::String(kind)) => {
-            if !type_matches(kind, value) {
-                return false;
-            }
-        }
-        Some(Value::Array(kinds)) => {
+        Some(Value::String(kind)) if !type_matches(kind, value) => return false,
+        Some(Value::Array(kinds))
             if !kinds
                 .iter()
                 .filter_map(Value::as_str)
-                .any(|kind| type_matches(kind, value))
-            {
-                return false;
-            }
+                .any(|kind| type_matches(kind, value)) =>
+        {
+            return false;
         }
         _ => {}
     }
