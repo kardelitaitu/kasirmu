@@ -232,6 +232,195 @@ Closed by that audit: the parity gate's scope (1 surface / `features/**` only �
 - **I18N-04 — 21 hardcoded sites classified benign, open to challenge** — **OPEN**: brand marks (OZ-POS ×2), an `aria-hidden` locked-tier preview (4), a hidden form-submit shim and `Ctrl`/`S`/`F12` key hints (4), a `Pro` tier badge, and input examples (`e.g. 50000`, `pcs / kg / box` ×2, `A-01` ×2). The `pcs / kg / box` and `A-01` **placeholders** are the defensible disagreement — they are user-visible hint text, and "not worth localizing" was the audit's judgment, not a measured one.
 - ~~**I18N-05 — `verify-ci-docs-drift.py` is red and unenforced** — **RESOLVED 2026-09 (0.0.37 CI-gate restoration)**: the two retired gates were restored into `dev-ci.yml#static-gates` + `#ci-docs-drift` (commits `bf8f0da3`, `ecbcc635`, `af246396`, `f5d94a20`, `6e270d70`), `scripts/gates.json` now carries 69 gate records (52 required + 1 advisory + 16 retired), and `verify-ci-docs-drift.py` exits **0 with 0 drift items** when run today. The "78 dead workflow references" were closed by `af246396` (police the hook's CI pointers, fix the four that were already wrong). The original root cause — `23c96330` retired `ci.yml`/`nightly.yml` without a `gates.json` record — is no longer live; the checker now polices hook→workflow references (consistent with AGENTS.md's re-injected "10 gates / dev-ci.yml" claims, which are accurate).~~
 
+## Bridge extraction (`crates/oz-bridge`) — 2026-09-11 — PRESERVED, NOT REMEDIATED
+
+**Status:** New section, no fixes made. Every line below was located in the tree on
+2026-09-11 (branch `0.0.37`, measured from `3cc76b156` through `abbedfb4b`) and is deliberately **left in
+place**: ADR #49 §*The parity iron rule* forbids repairing a pre-existing defect inside an
+extraction, because a behaviour change hidden in a `refactor` commit is an unreviewed
+behaviour change. This is the register the iron rule's "and REPORTED" half points to.
+**All 29 claims in the hand-off list were located; none had to be dropped.** Five were
+corrected against what the code says rather than copied: `BR-S4` (the ADR #38 wording is a
+module doc + ADR line, not an inline "authorises nothing" comment), `BR-D1` (39 confirmed,
+and two further test arrays carry 33/37), `BR-D3` (**15** such adapters, not five — and the
+named settings/tax precedents are already deleted), `BR-D4` (the permission is
+`SALES_PROCESS` on **both** carts, and both live tablet-side), `BR-T1` (the non-recursive
+glob is at `:272`, not `:277`). Two more corrections land in the ADR rather than here:
+`BridgeCtx` carries **14** public fields, not 16, and the parts-taking topology helpers are
+**four**, not three. One item was **added** while cross-checking the gates: `BR-T4`.
+
+Legend: **[PBD]** = preserved by design (ADR #49). Cites are `path:line` at this HEAD; a
+sibling lane may shift them, so re-grep the symbol before trusting a number.
+
+### Security / authz-shaped
+
+- **BR-S1** — **[PBD]** the ungated backup pair takes no session at all and writes a
+  `.backup.db` beside the live db: `apps/desktop-client/src/commands/data.rs:33`
+  (`get_backup_status`), `:42` (`create_backup`) → `crates/oz-bridge/src/data.rs:274` /
+  `:294`, target derived at `crates/oz-bridge/src/data.rs:148` (`set_extension("backup.db")`);
+  `DATA_EXPORT` is held only by the twins `crates/oz-bridge/src/data.rs:712` and `:725`.
+  Not scope-aware, so it stays not scope-aware.
+- **BR-S2** — **[PBD]** `set_brand_logo_path` writes an **unvalidated** path whenever no
+  `AppHandle` is present, under a comment skipping validation "for backward
+  compatibility" — `crates/oz-bridge/src/branding.rs:188-192` (comment `:189-190`) — and the
+  scoped twin repeats the same skip at `crates/oz-bridge/src/branding.rs:254-256`, so the
+  H-3 containment rule (`branding.rs:71-74`) is conditional on the shell, not on the caller.
+- **BR-S3** — **[PBD]** `set_brand_logo_path_scoped` gates `SETTINGS_EDIT`
+  (`crates/oz-bridge/src/branding.rs:247`), opens the scope's **store** db (`:249`) and then
+  persists to the **global** db (`:252`, `:255`) — while both siblings in the same file write
+  the store db (`:215-217` colour, `:232-234` name). A scoped logo write therefore lands on
+  the shared tenant row, not the store's.
+- **BR-S4** — **[PBD]** `open_product_images_scoped` authenticates and authorises nothing:
+  `apps/desktop-client/src/commands/browser.rs:32-41` delegates to
+  `crates/oz-bridge/src/browser.rs:64`, which calls `resolve_store` and no `require_permission`
+  anywhere in the module — the *intent* is stated at `crates/oz-bridge/src/browser.rs:61-63`
+  and ADR #38 frames the same line as auth-only
+  (`docs/decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md:81`, "resolves
+  the session (auth precedent, ADR #7)"), which is why this reads as designed rather than
+  as a hole. **Correction to the hand-off:** no `ADR #38` *code* comment describes the
+  missing authorisation; the descriptive text is the module doc above plus the ADR line.
+- **BR-S5** — **[PBD]** `pick_logo_file` has no gate (`apps/desktop-client/src/commands/branding.rs:102`)
+  where `pick_logo_file_scoped` holds `SETTINGS_EDIT`
+  (`apps/desktop-client/src/commands/branding.rs:164`, gate at `:171`). Both keep their bodies
+  desktop-side (no seam for `tauri::dialog` — ADR #49 §What was NOT extracted).
+- **BR-S6** — **[PBD]** `set_setting` authorises a **caller-supplied** identity:
+  `crates/oz-bridge/src/settings.rs:989` takes `user_id: &str` (`:993`) and gates *that* at
+  `:1007` (`require_permission_for_user`), while the value arrives from the renderer at
+  `apps/desktop-client/src/commands/settings.rs:277` — the gate answers for whoever the
+  caller names, not for the session.
+- **BR-S7** — **[PBD]** `resolve_report_scope` authorises against the **global** identity db
+  (`crates/oz-bridge/src/reports.rs:65`, `:67-69`) and then opens
+  `session.store_id`'s store db (`:71-73`) with no re-check of the binding between them.
+
+### Correctness / robustness
+
+- **BR-C1** — **[PBD]** `register_terminal` is a registered-shaped command that is **not in
+  `invoke_handler!`**: `apps/desktop-client/src/commands/terminals.rs:123` carries
+  `#[tauri::command]`, but `apps/desktop-client/src/lib.rs:1036-1051` registers 16
+  `commands::terminals::` entries and `register_terminal` is not one of them (16 of 17).
+  Dead on the wire, alive in the test suite.
+- **BR-C2** — **[PBD]** `build_device_binding_dto` treats a keyring **read failure** as an
+  invalid signature: `crates/oz-bridge/src/terminals.rs:343` →
+  `verify_binding(...).unwrap_or(false)` at `:357-364`, so `signature_valid:false` cannot be
+  distinguished from "the device secret could not be read" (`verify_binding` is at `:78`).
+- **BR-C3** — **[PBD]** `export_data` accepts `date_from` / `date_to` over IPC
+  (`crates/oz-bridge/src/data.rs:63`, `:65`) and **never reads them** — zero references in
+  the whole body `:310-485`. A user-scoped "export this date range" silently exports
+  everything.
+- **BR-C4** — **[PBD]** `create_backup` holds the **global connection guard** from
+  `Store::backup` through a filesystem stat with no explicit drop:
+  `crates/oz-bridge/src/data.rs:299` (`lock_global`) → `:301` (`store.backup`) → `:302`
+  (`std::fs::metadata`).
+- **BR-C5** — **[PBD]** `import_data` mixes connection-bound existence probes with
+  transaction writes inside one open transaction: tx at `crates/oz-bridge/src/data.rs:518`,
+  `store.conn()` probes at `:562`, `:589`, `:614`, `:645`, `tx.execute` writes at `:570`,
+  `:575`, `:624`, `:629`, `:653`, `:659`. The two paths can disagree about the same row.
+- **BR-C6** — **[PBD]** `export_data`'s features map silently **empties** on a read error:
+  `crates/oz-bridge/src/data.rs:424-427` (`load_features().map(...).unwrap_or_default()`)
+  — a failed feature read exports as "no features", not as an error.
+- **BR-C7** — **[PBD]** `gather_usage` turns four database faults into logged zeros:
+  `crates/oz-bridge/src/subscription.rs:127-145` (`count_locations`, `count_staff_users`,
+  `count_terminals`, `count_warehouse_locations`, each `unwrap_or_else(|e| { warn; 0 })`), so
+  quota gates see "no usage" rather than "unknown".
+- **BR-C8** — **[PBD]** `per_location_over_quota_rows` has a TOCTOU shape:
+  `crates/oz-bridge/src/subscription.rs:639` probes `manager.store_db_exists(store_id)` and
+  `:642` then opens it (`open_store`); the file can appear or vanish between the two. A
+  store that fails to answer is skipped, not fatal (`:660-663`).
+- **BR-C9** — **[PBD]** `gate_permission` is computed twice for the same feature in one
+  verdict: `crates/oz-bridge/src/subscription.rs:382` and again at `:386`.
+- **BR-C10** — **[PBD]** `get_hardware_settings_scoped` carries an inherited **double
+  session read**: `crates/oz-bridge/src/settings.rs:672` resolves the session, `:676` calls
+  `resolve_scope`, which resolves it **again** (`crates/oz-bridge/src/ctx.rs:170`), and `:677`
+  delegates to `get_hardware_settings` (`:557`). Preserved because the unscoped reader is
+  shared; the second resolve is what makes an expiry between the two calls observable.
+- **BR-C11** — **[PBD]** `run_list_credit_sales` binds the **payment reference** into the
+  **customer name** column: `crates/oz-bridge/src/settings.rs:380` selects
+  `p.gateway_reference` at index 1 and `:392` reads it as
+  `customer_name: row.get::<_, Option<String>>(1)?` (DTO field declared at `:167`).
+
+### Consistency across modules — **a PATTERN, three independent instances**
+
+- **BR-X1** — **[PBD]** store-open asymmetry inside one module:
+  `crates/oz-bridge/src/terminals.rs` reaches the store db through `db_manager.open_store` in
+  **9** commands (`:436`, `:474`, `:525`, `:556`, `:591`, `:664`, `:700`, `:758`, `:810`) and
+  through `ctx.resolve_store` in **7** (`:187`, `:217`, `:240`, `:265`, `:285`, `:308`, `:332`)
+  — two session-resolution paths with different failure text and different re-entry
+  behaviour, in the same file.
+- **BR-X2** — **[PBD]** same split as a *db-selection* asymmetry in features:
+  `list_all_features` reads the **global** db (`crates/oz-bridge/src/features.rs:53-54`) while
+  `list_all_features_scoped` reads the scope's **store** db
+  (`crates/oz-bridge/src/features.rs:629-633`) — the pair can answer differently for one user.
+- **BR-X3** — **[PBD]** and in prose: `apps/desktop-client/src/commands/settings.rs:9-11`
+  still promises that store name / currency / features "may be exposed here in the future",
+  while the generic key-value (`:274` `set_setting`), hardware (`:178`, `:351`) and batch
+  (`:311` `set_settings_scoped`) commands are already exposed in that same file.
+
+### Doc / test debt
+
+- **BR-D1** — **[PBD]** `"all 32 features"` is wrong in three places —
+  `apps/desktop-client/src/commands/features.rs:9`, `crates/oz-bridge/src/features.rs:45` and
+  `:383` — while the enum carries **39** variants (`crates/oz-core/src/features.rs:31`), the
+  metadata table returns **39** rows (`crates/oz-bridge/src/features.rs:385`), and the desktop
+  test enumeration lists **39** (`apps/desktop-client/src/commands/features_tests.rs:195`).
+  Additional drift found while counting: the two core test enumerations carry **33** and **37**
+  (`crates/oz-core/src/features_tests.rs:181`, `:389`) — neither matches 39 either.
+- **BR-D2** — **[PBD]** `device_hostname` is undocumented at
+  `crates/oz-bridge/src/features.rs:375`: its doc block (`:348-352`) is fused into the comment
+  run that ends on `feature_to_module_id`'s own doc (`:353-358`), so rustdoc attaches both
+  runs to `feature_to_module_id` (`:359`) and `missing_docs` never fires for the helper.
+- **BR-D3** — **[PBD]** caller-outside-tests-only desktop adapters. **Correction to the
+  hand-off:** the count is **15**, not five, and the two named precedents are already
+  harvested — the settings adapter went in `2d233fc5b` and the tax rounding-mode adapter in
+  `ee56fd04d`. Remaining: `commands/data.rs:53`, `:86`, `:95`; `commands/features.rs:33`,
+  `:38`; `commands/offline.rs:24`, `:31`, `:36`; `commands/products_images.rs:139`;
+  `commands/sync.rs:81`, `:95`, `:105`, `:135`, `:148`; `commands/terminals.rs:270`.
+  Each is `#[allow(dead_code)]` with a comment naming its test file as the only caller; all
+  are cleanup candidates **once their tests relocate to `oz-bridge`**, not before.
+- **BR-D4** — **[PBD]** dead IPC surface per the parity gate (measured, `python
+  scripts/verify-ipc-parity.py`): 25 allowlisted orphans = **23 redundant twins** with no
+  check + **2 GATED DEAD SURFACE** carrying a real `SALES_PROCESS` gate with no reachable
+  caller — `get_active_cart_scoped` and `list_active_carts_scoped
+  (`scripts/ipc-parity-allowlist.json:194`, `:201`). **Correction to the hand-off:** the
+  second is `SALES_PROCESS`, not `SALE_PROCESS`, and both live tablet-side
+  (`apps/tablet-client/src/commands/pos.rs:270`, `:305`; registered in tablet
+  `lib.rs:550-551`), which is why the desktop allowlist holds them.
+- **BR-D5** — **[PBD]** four model helpers are `pub` **only** so `model_tests.rs` can reach
+  them: `crates/oz-bridge/src/topology/model.rs:27` (`ser_f64_finite`), `:35`
+  (`de_f64_or_null`), `:55` (`de_direction_or_null`), `:250` (`default_direction`). They are
+  the narrowable half of the topology visibility cost in ADR #49 §Consequences (4 of 28).
+
+### Tooling gaps found while building the gates
+
+- **BR-T1** — `scripts/verify-ipc-parity.py` walks `commands/` **recursively** for its
+  registry/unregistered scan (`rglob` at `:119`) but the gate-balance half
+  (`orphan_permission`, `:246`) reads bodies through a **non-recursive** glob —
+  `scripts/verify-ipc-parity.py:272` (`for rs in sorted(cmd_dir.glob("*.rs"))`).
+  **Correction to the hand-off:** the line is `:272`, not `:277`. Consequence:
+  `apps/desktop-client/src/commands/topology/` — 7 `require_permission` sites today, all in
+  `topology/commands.rs` — has never been examined by that half.
+- **BR-T2** — the extraction's own count invariant is blind in the same way: `grep -rh
+  'pub async fn' apps/desktop-client/src/commands/*.rs` is non-recursive, so it cannot see the
+  **12** sites under `commands/topology/`. Measured today: **488** top-level vs **500**
+  recursive. Any lane pinning "488" is pinning a glob artefact, not a property of the code.
+- **BR-T3** — an isolated git worktree that shares the main `CARGO_TARGET_DIR` can produce a
+  **false-fresh compile**: `Finished` with no `Checking` line and no error, because the
+  fingerprint/dep-info in the shared dir is owned by the other workspace path — sabotage-proven
+  at `manager-2-journal.md:950` (a deliberate type error still "compiled" in 0.52s). And a
+  **runtime test binary** built that way may be the *other* tree's image, because the artefact
+  path is keyed by crate and profile, not by source directory —
+  `manager-2-journal.md:1098`. **Not re-measured here** (this pass ran no cargo, per the shared
+  target-dir contention rule); recorded as a gate-provenance rule: a compile proof needs the
+  `Checking <crate> (<this tree's path>)` line, and a runtime proof needs the merged tree or a
+  private `--target-dir`.
+- **BR-T4** — **new, found while cross-checking BR-T1**: `orphan_permission`'s body window is
+  the **desktop** file (`scripts/verify-ipc-parity.py:272-291`, "`require_permission` not in
+  body → None"), but after extraction the gate text lives in the bridge
+  (`crates/oz-bridge/src/pos.rs:232`, `:345`). 16 of the 25 allowlisted orphans now have zero
+  gate text in their desktop body; for those 16 the bridge body also has none, so no verdict
+  has flipped **yet** — but the check can no longer see an extracted desktop gate, and the
+  campaign is still moving bodies. The two GATED verdicts in `BR-D4` were reachable only
+  because a **tablet** copy of the body still carries the gate inline.
+
 ---
 
 ## How to close these
