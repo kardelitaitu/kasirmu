@@ -55,9 +55,14 @@ WHAT IT CHECKS
       against the hook's section NAMES, not only their count: seven wrong names still
       read as "seven steps", which is how a file can state the right number and
       describe the wrong hook. Both directions are findings -- dropping a gate the hook
-      runs, and naming a gate the hook does not run. A numbered list that never claimed
-      to enumerate the steps, or one marked as history by the same HISTORICAL_MARKERS
-      notion the skill parser uses, is left alone.
+      runs, and naming a gate the hook does not run. The expected names come from the
+      COMMITTED hook, the same surface the count is graded against, with the working copy
+      used only as a fallback that says it is a fallback. A numbered list that never
+      claimed to enumerate the steps is left alone, and so is any item whose OWN line is
+      marked as history by the same HISTORICAL_MARKERS notion the skill parser uses --
+      per item, because a revision note on one line must not excuse the six claims beside
+      it. Order within the list and one-label-covers-two-gates ambiguity are not policed
+      yet; both are known and named in step_enumerations.
   2. FALSE CI COVERAGE CLAIM -- a mirror listing step K as "no CI backstop" /
      "local-only" when a live workflow actually runs it. This is the check that
      catches the bug class that motivated the script.
@@ -221,11 +226,20 @@ def step_enumerations(text: str, hook_names: list[str]) -> list[list]:
 
     * fewer than MIN_ENUM_ITEMS consecutive numbered bold items -- two names is a
       sentence about two things, not an enumeration;
-    * ANY item of the run carrying a HISTORICAL_MARKERS entry -- an audit stamp that
-      records "the hook ran six gates (cargo fmt, i18n lint, ...)" is preserved
-      evidence, and falsifying it is worse than the stale claim it carries;
+    * an ITEM whose own line carries a HISTORICAL_MARKERS entry is dropped, per item
+      and not per run -- an audit stamp recording "the hook ran six gates (cargo fmt,
+      i18n lint, ...)" is preserved evidence and falsifying it is worse than the stale
+      claim it carries, but a note on one line must not excuse the six claims next to
+      it. A run whose remaining live items fall below MIN_ENUM_ITEMS is not policed;
     * a run with 0 names matching the hook -- a numbered list about something else
       never claimed to enumerate the steps, so it has no opinion about their names.
+
+    The matcher is form-specific on purpose: it reads "N. **label**" lines and nothing
+    else. A mirror that renders the same seven steps as a table row, or with the labels
+    unbolded, presents zero checkable enumerations and falls back to the numeral alone --
+    and today that file's output is indistinguishable from a mirror whose enumeration is
+    clean. Widening the matcher to tables is how a checker ends up parsing everything and
+    matching nothing, so the hole is named here rather than closed by growing the parser.
     """
     runs: list[list] = []
     cur: list = []
@@ -246,13 +260,20 @@ def step_enumerations(text: str, hook_names: list[str]) -> list[list]:
     for run in runs:
         if len(run) < MIN_ENUM_ITEMS:
             continue
-        if any(any(marker in body for marker in HISTORICAL_MARKERS)
-               for _, _, _, body in run):
+        # The marker acts on the ITEM it sits on, never on the run. Dropping a whole run
+        # because one of its lines was marked was one of the five ways past this rule:
+        # item 6 renamed to an invented gate plus the two words "count corrected"
+        # anywhere above it -- on the heading, on item 1, wherever -- excused all seven,
+        # which is a claim cleared by something that was not a claim about that thing.
+        # A marked item is a record and is skipped; the items beside it stay live.
+        live = [(n, nm, ln) for n, nm, ln, body in run
+                if not any(marker in body for marker in HISTORICAL_MARKERS)]
+        if len(live) < MIN_ENUM_ITEMS:
             continue
         if not any(step_names_match(nm, hn)
-                   for _, nm, _, _ in run for hn in hook_names):
+                   for _, nm, _ in live for hn in hook_names):
             continue
-        out.append([(n, nm, ln) for n, nm, ln, _ in run])
+        out.append(live)
     return out
 
 
@@ -525,11 +546,40 @@ def scan(root: Path, head_hook_text: str | None = None,
     wfs = live_workflows(root)
     all_ci_text = "\n".join(wfs.values())
     types = accepted_commit_types(root)
-    # (ordinal, name, line) for every gate the hook actually runs: the line is carried so a
-    # finding can cite where the expected name comes from.
+    # (ordinal, name, line) for the gates an enumeration is graded against, plus the line
+    # of each so a finding can cite where the expected name comes from. The source is the
+    # COMMITTED hook, the same surface the count is checked against: reading names off the
+    # working copy was bypass one, and it is the defect this file spent a commit removing
+    # from the count, relocated rather than new. Rename a header on disk only, point both
+    # mirrors at the invented name, and a worktree-based name check certifies a hook that
+    # exists in no commit -- with equal section counts on both sides the count divergence
+    # never fires, so the names were the only place the lie could be caught.
+    if head_text is not None:
+        name_source = head_text
+        name_source_label = f"HEAD:{HOOK_REL}"
+    else:
+        name_source = read(root, HOOK_REL)
+        name_source_label = f"{HOOK_REL} (working copy, HEAD unreadable)"
+        if notices is not None:
+            notices.append(
+                f"{HOOK_REL}: HEAD is not readable from {root}, so step NAMES fall back "
+                f"to the working copy -- the documented no-comparison convention, but it "
+                f"means a name claim is being graded against bytes no commit is known to "
+                f"contain")
     hook_step_index = [(o, nm, ln) for (o, nm), ln in
-                       zip(steps, gate_section_lines(read(root, HOOK_REL)))]
+                       zip(gate_sections(name_source), gate_section_lines(name_source))]
     hook_step_names = [nm for _, nm, _ in hook_step_index]
+    worktree_step_names = [nm for _, nm in steps]
+    if head_text is not None and worktree_step_names != hook_step_names and \
+            notices is not None:
+        # Names diverging while the counts agree is exactly the shape of bypass one, and
+        # it is invisible to the count check -- so it is said out loud, and the grading
+        # stays on the committed side.
+        notices.append(
+            f"{HOOK_REL} STEP NAMES DIVERGE: HEAD runs {hook_step_names} while the "
+            f"working copy names {worktree_step_names} -- same section count, "
+            f"different gates. Enumerations are graded against HEAD, so a mirror "
+            f"matching the working copy is matching a hook that is not committed.")
 
     # Which ordinals are genuinely covered by a live workflow? Determined by
     # matching each step's own tooling against the workflow text, so "which
@@ -617,13 +667,14 @@ def scan(root: Path, head_hook_text: str | None = None,
                      if not any(step_names_match(nm, hnm) for _, hnm, _ in hook_step_index)]
             if not missing and not extra:
                 continue
-            bits = [f'omits step {o} "{nm}" ({HOOK_REL}:{hl})'
+            bits = [f'omits step {o} "{nm}" ({name_source_label}:{hl})'
                     for o, nm, hl in missing]
             bits += [f'lists "{nm}" as item {n} ({rel}:{ln}), which is not a gate '
                      f'the hook runs' for n, nm, ln in extra]
             problems.append(
                 f"{rel}: numbered enumeration of the steps from {rel}:{run[0][2]} "
-                f"disagrees with the hook on NAMES rather than count: "
+                f"disagrees with the hook's step NAMES rather than its count "
+                f"(graded against {name_source_label}): "
                 + "; ".join(bits))
 
         # (2) FALSE COVERAGE CLAIM -- the motivating bug.
@@ -1089,7 +1140,7 @@ def self_test() -> int:
                     newline="\n").write(mutated8)
             probs = scan(tmp)
             hit = [p for p in probs
-                   if rel8 in p and "disagrees with the hook on NAMES" in p]
+                   if rel8 in p and "disagrees with the hook's step NAMES" in p]
             named = [p for p in hit if "i18n lint" in p]
             numeral_silent = not any(rel8 in p and "pre-commit steps; " in p
                                       for p in probs)
@@ -1108,6 +1159,109 @@ def self_test() -> int:
                 bad += 1
             else:
                 print(f"  CLEAN   {rel8:20s} {desc}")
+
+    # (9) BYPASS ONE regression: a step header renamed in the WORKING COPY only, with both
+    # mirrors moved to the invented name. Section counts stay equal on both sides, so the
+    # count divergence never fires and the only thing that can catch the lie is grading
+    # NAMES against the committed hook. The paired case asserts the other half of the
+    # repair: with no commit to read, the fallback is accepted AND said out loud, because
+    # silently grading a claim against uncommitted bytes is what let this through.
+    def rename_item6(text, label):
+        return re.sub(r"^(6\. \*\*)([^*]+)(\*\*)",
+                      lambda m: m.group(1) + label + m.group(3), text, count=1, flags=re.M)
+
+    committed_hook0 = read(src, ".githooks/pre-commit")
+    renamed_hook = committed_hook0.replace("# ── Go gate: apps/license-server ─",
+                                           "# ── Style formatting gate: apps/license-server ─",
+                                           1)
+    rel9 = MIRRORS[0]
+    if renamed_hook == committed_hook0:
+        print("  WRONG names-from-HEAD: the Go gate header anchor is gone from the hook, "
+              "so case (9) controls nothing")
+        bad += 1
+    else:
+        for desc, head_arg, want_problem in (
+            ("renamed header, HEAD readable -- mirrors follow the invented name",
+             committed_hook0, True),
+            ("renamed header, no HEAD readable -- accepted but announced", None, False),
+        ):
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                make_fixture(src, tmp)
+                io.open(tmp / ".githooks/pre-commit", "w", encoding="utf-8",
+                        newline="\n").write(renamed_hook)
+                changed = 0
+                for rel in MIRRORS:
+                    base9 = read(tmp, rel)
+                    mut9 = rename_item6(base9, "Style formatting gate")
+                    if mut9 == base9:
+                        print(f"  WRONG {rel}: case (9) anchored on nothing -- no "
+                              "item 6 with a bold label")
+                        bad += 1
+                    else:
+                        changed += 1
+                    io.open(tmp / rel, "w", encoding="utf-8",
+                            newline="\n").write(mut9)
+                if changed != len(MIRRORS):
+                    continue
+                notes9: list[str] = []
+                probs9 = scan(tmp, head_hook_text=head_arg, notices=notes9)
+                named = [p for p in probs9
+                         if "Style formatting gate" in p
+                         and "disagrees with the hook's step NAMES" in p]
+                fell_back = any("fall back" in s for s in notes9)
+                diverged = any("NAMES DIVERGE" in s for s in notes9)
+                if want_problem:
+                    if named and diverged:
+                        print(f"  CAUGHT  {rel9:20s} {desc} "
+                              f"({len(named)} finding(s), divergence announced)")
+                    else:
+                        print(f"  MISSED  {rel9:20s} {desc} -- {len(named)} finding(s) "
+                              f"naming the invented gate, NAMES-divergence notice: "
+                              f"{diverged}; {[p[:60] for p in probs9[:2]]}")
+                        bad += 1
+                elif named:
+                    print(f"  MISSED  {rel9:20s} {desc} -- the no-git fallback was "
+                          f"turned into a failure: {[p[:60] for p in named]}")
+                    bad += 1
+                elif not fell_back:
+                    print(f"  MISSED  {rel9:20s} {desc} -- fell back silently, which is "
+                          "the half of the repair that keeps it honest")
+                    bad += 1
+                else:
+                    print(f"  CLEAN   {rel9:20s} {desc} (fallback announced)")
+
+    # (10) BYPASS TWO regression: one HISTORICAL_MARKERS hit anywhere in a run used to
+    # excuse the whole list. Item 6 is set to the invented "i18n lint" -- the same drift
+    # case (8) uses -- and the marker words land on item 1, three lines away from the
+    # claim they are now supposed to have nothing to do with.
+    rel10 = MIRRORS[0]
+    base10 = read(src, rel10)
+    mut10 = rename_item6(base10, "i18n lint")
+    lines10 = mut10.splitlines()
+    lines10[28] = lines10[28] + "  (count corrected in this revision)"
+    mut10 = "\n".join(lines10)
+    if mut10 == base10 or "i18n lint" not in mut10:
+        print("  WRONG " + rel10 + ": case (10) anchored on nothing -- dead probe")
+        bad += 1
+    else:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            make_fixture(src, tmp)
+            io.open(tmp / rel10, "w", encoding="utf-8",
+                    newline="\n").write(mut10)
+            probs10 = scan(tmp)
+            hit10 = [p for p in probs10
+                     if rel10 in p and "i18n lint" in p
+                     and "disagrees with the hook's step NAMES" in p]
+            if hit10:
+                print(f"  CAUGHT  {rel10:20s} marker on another item does not excuse "
+                      "this one")
+            else:
+                print(f"  MISSED  {rel10:20s} marker on another item excuses the whole "
+                      f"run -- {len(probs10)} problem(s): "
+                      f"{[p[:62] for p in probs10[:2]]}")
+                bad += 1
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0
