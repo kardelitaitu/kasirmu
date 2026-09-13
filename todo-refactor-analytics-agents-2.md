@@ -125,48 +125,47 @@ Cards are in `features/`, so gate 4 scans them for `<Localized id>` / `getString
 
 ### Phase 2.0: Baseline audit
 
-- [ ] `cd ui && npm run typecheck`
-- [ ] `cd ui && npm run test -- src/__tests__/AnalyticsCardContent.test.tsx` (16 tests — record the count)
-- [ ] `cd ui && npm run test -- src/__tests__/AnalyticsScreen.test.tsx` (106 tests — this is your regression net; the screen renders your cards)
-- [ ] Confirm for yourself that the five names in the old plan do not exist: `grep -n 'RevenueKpiCard\|GrossMarginCard\|BasketSizeCard\|CustomerTrafficCard\|RefundRateCard' -r ui/src` returns nothing.
+- [x] typecheck → clean (only the devmock lane's live `tauri-api.ts` errors, unrelated).
+- [x] `AnalyticsCardContent.test.tsx` → **16 tests**, recorded.
+- [x] `AnalyticsScreen.test.tsx` → **106 tests**, recorded as the regression net.
+- [x] The five invented names from the old plan → confirmed absent repo-wide (`grep` returns 0) at close too.
 
 ### Phase 2.1: Shared primitives and card CSV
 
-- [ ] Create `cards/shared/**` from the table above. Pure moves; no behaviour change.
-- [ ] Create `utils/analyticsCardCsv.ts` from `staffCsvColumns` + the 11 exporters (265–532).
-- [ ] Verify: `npm run typecheck`, `npm run test -- src/__tests__/AnalyticsCardContent.test.tsx`.
-- [ ] **Commit Milestone:**
-  ```bash
-  git commit ui/src/features/analytics/AnalyticsCardContent.tsx ui/src/features/analytics/cards ui/src/features/analytics/utils/analyticsCardCsv.ts -m "refactor(analytics-kpi): extract shared card primitives and per-card csv exporters"
-  ```
+> Landed in two halves. The stalled analytics lane's `a9c0fdf3b7` moved the 11 CSV
+> exporters + `PAYMENT_NAMES` only; the primitives table below was finished in
+> `8703694583`, which also resolved two artifacts of the stall (a doc comment
+> orphaned in `constants.ts` above a function that had not moved; the stale
+> staff-CSV comment stranded over `DeltaChip`).
+
+- [x] Create `cards/shared/**` from the table above. → Done `8703694583`: useMoney, Visual, CardStates, Kpi, DeltaChip, buckets, RankedList, Legend, useCardData, constants (incl. `largestRemainderPcts`, whose comment already lived there).
+- [x] Create `utils/analyticsCardCsv.ts`. → Done `a9c0fdf3b7`.
+- [x] Verify. → typecheck + 16/16.
+- [x] **Commit Milestone:** → `a9c0fdf3b7` + `8703694583`.
 
 ### Phase 2.2: Seven chart-free cards
 
-- [ ] Extract `StaffCard`, `DiscountsCard`, `RefundsCard`, `TopItemsCard`, `LowStockCard`, `WaitstaffCard`, `VoidsCard` into `cards/`, preserving each one's exact prop shape (including the two exceptions).
-- [ ] Verify: `npm run typecheck`, `npm run test -- src/__tests__/AnalyticsCardContent.test.tsx`.
-- [ ] **Commit Milestone:**
-  ```bash
-  git commit ui/src/features/analytics/AnalyticsCardContent.tsx ui/src/features/analytics/cards -m "refactor(analytics-kpi): extract seven chart-free analytics cards"
-  ```
+- [x] Extract `StaffCard`, `DiscountsCard`, `RefundsCard`, `TopItemsCard`, `LowStockCard`, `WaitstaffCard`, `VoidsCard` into `cards/`, preserving exact prop shapes. → Done `90399c28cb`, including the two exceptions verbatim (Refunds `{q, compare}`, LowStock `{q, title, expanded}`). `ExportCsvButton`'s implementation moved to `cards/shared/` (the cards need it; importing up would cycle through the dispatcher) with the re-export kept at the constraint-2 path.
+- [x] Verify. → typecheck + 16/16 + 106/106.
+- [x] **Commit Milestone:** → `90399c28cb`.
 
 ### Phase 2.3: Nine chart-bearing shells — **waits on Agent 3 Phase 3.1**
 
-- [ ] Do not start until Agent 3 has committed `charts/**` and `charts/chartTheme.ts`. Check the git log for `refactor(analytics-charts):`.
-- [ ] Extract `RevenueCard`, `AovCard`, `CustomersCard`, `PaymentsCard`, `CategoryCard`, `BasketCard`, `InventoryCard`, `TablesCard`, `OccupancyCard` into `cards/`, keeping loading/error/empty states, the title row and the delta chips; replace each inline `ReactEChartsCore` block with the corresponding `charts/` component.
-- [ ] `CategoryCard`: keep the per-currency tab strip here (constraint §3); only the pie moves.
-- [ ] Repoint `AnalyticsCardContent.tsx:54` — `import type { Granularity, WorkspaceView } from './AnalyticsScreen'` — at `utils/dateRangePresets.ts`. Agent 1 kept a re-export in the screen specifically so this could be deferred to your commit; once your commit is in, Agent 1 drops the shim. This is the only line in your file that touches Agent 1's ownership, and it is a type-only import, so it cannot cause a runtime coupling.
-- [ ] Verify line count in `AnalyticsCardContent.tsx` drops from 1,529 to **≤ 300**.
-- [ ] Verify: `npm run typecheck`, `npm run test -- src/__tests__/AnalyticsCardContent.test.tsx`, `npm run test -- src/__tests__/AnalyticsScreen.test.tsx`.
-- [ ] **Commit Milestone:**
-  ```bash
-  git commit ui/src/features/analytics/AnalyticsCardContent.tsx ui/src/features/analytics/cards -m "refactor(analytics-kpi): extract chart-bearing card shells and thin the dispatcher"
-  ```
+- [x] Gate checked: `refactor(analytics-charts):` = `89b739728d` in the log before work started.
+- [x] Extract the nine shells, replacing each inline `ReactEChartsCore` block with its `charts/` module. → Done `d3f551ff44`; the file ends at **91 lines** (dispatcher + props interface + re-export), well under ≤300.
+- [x] `CategoryCard`: tab strip stayed in `cards/CategoryCard.tsx`; only the pie moved. → The four REP-06a tests pass unchanged.
+- [x] Repoint `AnalyticsCardContent.tsx` type import at `utils/dateRangePresets.ts`. → Done in `d3f551ff44`; the remaining three shim consumers were repointed and the shim deleted in the agents-1 close `c05133d757`.
+- [x] Verify line count → 91 ≤ 300 ✓. (From 1,529 at repair-time via `a9c0fdf3b7` −315, `8703694583` −255, `90399c28cb` −268, `d3f551ff44` −612 net.)
+- [x] Verify: typecheck, content 16/16, screen 106/106. → All green; whole-ui re-run at close.
+- [x] **Commit Milestone:** → `d3f551ff44` (`refactor(analytics-kpi): complete the card split on the frozen chart modules`).
 
 ---
 
 ## 📏 Line-count expectation
 
 1,529 → **≤ 300**. The arithmetic, so you can check it rather than trust it: ~450 lines of the seven chart-free cards, ~450 of the nine shells, ~250 of the 11 exporters, ~200 of shared primitives = ~1,350 out; the dispatcher, the props interface and the re-exports stay. If you land above 300, say so and name what remains — do not quietly edit the target.
+
+> **CLOSED: 1,529 → 91 physical lines** (measured after `d3f551ff44`). The dispatcher, the props interface and the constraint-2 re-export are the whole file, as the arithmetic above promised.
 
 ---
 

@@ -116,30 +116,42 @@ The option-builders call `l10n.getString` for series names (`analytics-card-reve
 
 ### Phase 3.0: Baseline audit
 
-- [ ] `cd ui && npm run typecheck`
-- [ ] `cd ui && npm run test -- src/__tests__/AnalyticsCardContent.test.tsx` (16 tests)
-- [ ] `cd ui && npm run test -- src/__tests__/AnalyticsScreen.test.tsx` (106 tests)
-- [ ] Confirm the nine render sites: `grep -n 'ReactEChartsCore' ui/src/features/analytics/AnalyticsCardContent.tsx` returns 9. Confirm `AnalyticsScreen.tsx` has none.
-- [ ] Confirm the stack: `grep -n 'd3\|victory' ui/package.json` returns nothing. If it returns something, the previous revision was right after all and you should say so in your journal.
+- [x] `npm run typecheck` → clean (only the devmock lane's live file, unrelated).
+- [x] `AnalyticsCardContent.test.tsx` → **16 tests** confirmed.
+- [x] `AnalyticsScreen.test.tsx` → **106 tests** confirmed.
+- [x] Nine render sites confirmed in the content file; `AnalyticsScreen.tsx` has zero `ReactEChartsCore`.
+- [x] Stack confirmed echarts-only: `d3`/`victory` → **0 matches** in `ui/package.json`. The previous revision stays wrong, correctly stamped so.
 
 ### Phase 3.1: Chart theme + frozen signatures — **blocking, do this first**
 
-- [ ] Create `charts/chartTheme.ts` with the palette, `CHART_HEIGHT`, `chartHeight`, and the `echarts.use([...])` registration.
-- [ ] Create the nine chart modules with their frozen props and the moved `option` builders. Keep the existing echarts option objects byte-for-byte apart from the prop plumbing — this commit changes structure, not appearance.
-- [ ] Publish the nine-row signature table in your journal.
-- [ ] Verify: `npm run typecheck` (the old inline blocks still compile until Agent 2 removes them; both paths may coexist for this commit).
-- [ ] **Commit Milestone:**
-  ```bash
-  git commit ui/src/features/analytics/charts -m "refactor(analytics-charts): add chart theme and nine frozen chart modules"
-  ```
+- [x] Create `charts/chartTheme.ts`. → Landed `89b739728d` — with a provenance note: the untracked orphan draft the stalled analytics lane left at 06:35 (never wired, imported by nothing) was adopted after byte-equivalence verification against the inline infrastructure; the commit message carries the attribution.
+- [x] Create the nine chart modules, option objects verbatim. → Done `89b739728d` (479 insertions). Two amendments were required while wiring Phase 2.3, both structural, neither visual: `getString` args narrowed to `Record<string, string>` (every real call site passes strings; the narrowing lets `cards/shared/useGetString` adapt Fluent's overload pair with a stable identity), and `CustomerMixChart`'s interim `splitLoaded` guard-prop was dropped — dead at the only render site.
+- [x] Publish the nine-row signature table. → Below.
+
+**Published signature table (as shipped):**
+
+| Module | Props (beyond `expanded?: boolean`) | Source builder |
+|---|---|---|
+| `RevenueTrendChart` | `data: Bucket[]`, `prev: Bucket[]`, `compare: boolean`, `fmt`, `getString` | `RevenueCard` |
+| `AovTrendChart` | `buckets: Bucket[]`, `prevBuckets: Bucket[]`, `compare`, `fmt`, `getString` | `AovCard` |
+| `CustomerMixChart` | `newCount: number`, `returningCount: number`, `getString` | `CustomersCard` |
+| `PaymentMixChart` | `segs: PaymentSeg[]`, `pcts: number[]`, `getString` (exports `PaymentSeg`; the seg derivation stays in the shell for the Legend) | `PaymentsCard` |
+| `CategoryDistributionChart` | `names: string[]`, `pcts: number[]` — no `getString`, builder never localized | `CategoryCard` (tabs stay in shell) |
+| `BasketTrendChart` | `data`, `prev`, `compare`, `getString` | `BasketCard` |
+| `InventoryTrendChart` | `data`, `prev`, `compare`, `getString` | `InventoryCard` |
+| `TablesTrendChart` | `data`, `prev`, `compare`, `getString` (minutes tooltip lives here) | `TablesCard` |
+| `OccupancyTrendChart` | `hourly`, `prevHourly`, `compare`, `getString` (`alignPrevHourly` moved with the curve) | `OccupancyCard` |
+
+- [x] Verify typecheck with both paths coexisting. → Clean.
+- [x] **Commit Milestone:** → `89b739728d`.
 
 ### Phase 3.2: Hand off and verify the swap
 
-- [ ] Announce to Agent 2 that Phase 3.1 is in the log and the signatures are frozen.
-- [ ] Agent 2 performs the swap inside `cards/**` (its Phase 2.3). You do not edit its files.
-- [ ] Verify jointly: `npm run test -- src/__tests__/AnalyticsCardContent.test.tsx src/__tests__/AnalyticsScreen.test.tsx`, plus `npm run typecheck`.
-- [ ] Confirm `grep -c 'ReactEChartsCore' ui/src/features/analytics/AnalyticsCardContent.tsx` is 0 once Agent 2's commit lands.
-- [ ] No commit of your own here unless the joint run reveals a chart-side defect.
+- [x] Announcement: Phase 3.1 landed; signatures frozen before shell work began (one agent executed both roles this time; the ordering was still honoured commit-first, and the amendments above are the announced deltas).
+- [x] Agent 2 performed the swap in `cards/**`. → `d3f551ff44`.
+- [x] Joint verify: content 16/16 + screen 106/106 + typecheck. → All green; whole-ui 9,568 passed at close.
+- [x] `grep -c 'ReactEChartsCore'` in the content file → **0** after Agent 2's commit.
+- [x] No chart-side defects found during the swap ⇒ no separate fixup commit, as the phase predicted.
 
 ---
 
@@ -148,6 +160,8 @@ The option-builders call `l10n.getString` for series names (`analytics-card-reve
 The previous target was "`AnalyticsScreen.tsx` from 1,551 to < 450". Both numbers were wrong: the file is 1,623 lines and contains no charts, so your work cannot move it at all. **Agent 3 does not change `AnalyticsScreen.tsx`'s line count.** Agent 1 owns that file and has its own restated target there.
 
 What your work does move: **~450 lines out of `AnalyticsCardContent.tsx`** (nine option-builders plus the chart infrastructure), which is the larger part of that file's journey from 1,529 to Agent 2's ≤ 300 target. Your own modules should land at roughly 40–120 lines each — if one runs longer, it is probably still carrying shell logic that belongs to Agent 2.
+
+> **CLOSED.** The nine modules landed at 34–57 lines each (theme 93); the content file's journey finished at **91** with `d3f551ff44`. `AnalyticsScreen.tsx` was never touched by this order, exactly as restated.
 
 ---
 

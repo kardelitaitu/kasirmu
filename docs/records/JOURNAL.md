@@ -10449,3 +10449,47 @@ the hook, since CI has no index to diff; CI still never runs on this branch at a
 because `dev-ci.yml` has no push trigger; and the ~50 keys of real orphan debt plus the
 75 dead Indonesian translations need an owner's decision. **The reverse-parity gap that
 this entry originally listed as remaining does not exist** — see correction 4 above.
+
+## 2026-09-13 — analytics trilogy close-out: adopting a dead lane's draft, and what byte-for-byte really means
+
+The three `todo-refactor-analytics-agents-{1,2,3}.md` orders were repaired against
+`ce8666604` (all 20 boxes unchecked) but half-EXECUTED by a lane that stalled at 06:42:
+agents-1 fully landed (`1cade9e55e`, `8d03585f3c`, `00a18777f9`), agents-2 landed only its
+CSV half (`a9c0fdf3b7`), and agents-3 left an orphan — `charts/chartTheme.ts` created 06:35,
+never modified, imported by nothing. The stall also left two seams visible on inspection:
+`constants.ts` held `largestRemainderPcts`' doc comment while the function itself stayed in
+the content file, and a stale "Column labels for the staff-performance CSV" comment sat above
+`DeltaChip`. Half-movements announce themselves exactly like this.
+
+Executing the rest, in the docs' own order (3.1 first — the only hard edge):
+
+- `89b739728d` — nine frozen chart modules + the theme. The orphan was **adopted as-is**
+  after byte-comparing every export against the still-inline infrastructure (it passed);
+  provenance stated in the commit message, not laundered. Purely additive per its own rule:
+  the inline builders and the modules coexist at this commit, which is what "structure, not
+  appearance" buys.
+- `8703694583` — the Phase-2.1 remainder: all shared primitives into `cards/shared/**`.
+- `90399c28cb` — the seven chart-free cards, prop exceptions verbatim; `ExportCsvButton`
+  moved to shared with its constraint-2 re-export kept (cards importing it back up from the
+  content file would have cycled through the dispatcher).
+- `d3f551ff44` — the nine shells swap onto the frozen modules; content file ends at **91
+  lines** against the ≤300 target.
+- `c05133d757` — agents-1's deferred tail: last three shim consumers repointed, the
+  self-expiring re-export block deleted per its own comment.
+
+**"Byte-for-byte apart from the prop plumbing" met reality twice.** Fluent's `getString` is
+overloaded, not `(id, args?)`-shaped, so the injected-lookup prop needed an adapter hook
+(`cards/shared/useGetString`); typing it forced `Record<string, unknown>` down to
+`Record<string, string>` (every real call site already passed strings only), and an interim
+`splitLoaded` guard-prop died on the discovery that the original guard was dead code at the
+one render site. Amendments announced in the published signature table in the agents-3 doc —
+a freeze you cannot amend while honest is a freeze that selects for quiet lies.
+
+**The honest-miss record:** agents-1's restated ≤1,200-line target measured **1,409** — a
+~200-line gap that is precisely the JSX-shell bulk the order itself declared out of scope.
+Reported in the doc rather than retargeted; the JSX-split order (`AnalyticsToolbar`/
+`AnalyticsCardGrid`/`AnalyticsPopovers`) remains genuinely open.
+
+Gates: typecheck clean beyond the devmock lane's live file; 16/16 + 106/106 analytics suites
+at every commit; whole-ui 9,568/9,597 with the 5 failures pre-existing and attributed
+(restaurant tooltip baseline ×2, kds expo selectors + storage key, devmock session-lock).
