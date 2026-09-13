@@ -1001,6 +1001,17 @@ async fn sqlite_unstamped_payload_is_skipped_not_flagged() {
 /// does NOT raise: reads match nothing and the UPDATE affects zero rows, so
 /// the failure mode is a permanently clean review queue, not a 500. SQLite
 /// cannot catch any of this — it has no RLS.
+///
+/// CAVEAT: this test does NOT prove the RLS half. `throwaway_pool` connects
+/// as `postgres`, and a superuser bypasses RLS even with FORCE — setting a
+/// deliberately wrong tenant still passes here. The RLS behaviour was
+/// therefore measured directly, as a non-superuser role given DML on the two
+/// tables: with no GUC an INSERT fails with "new row violates row-level
+/// security policy" and reads return 0; with `set_config('oz.tenant_id', …,
+/// true)` inside the transaction the same INSERT succeeds and the row is
+/// visible only to its own tenant (and an UPDATE from another tenant matches
+/// 0 rows). What this test proves is that the PG arms execute at all —
+/// before it, none of the six methods had ever run against Postgres.
 #[tokio::test]
 async fn pg_integration_conflict_detection_end_to_end() {
     let Some((pool, db_name)) = throwaway_pool().await else {
