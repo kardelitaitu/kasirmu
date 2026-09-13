@@ -49,15 +49,19 @@ that found something -- 'FAIL: N unguarded ambient IPC call(s)', or a member of 
 this gate could read as a file and could not read as a command name -- and 2 is a REFUSAL that
 graded nothing: the allowlist missing, a directory, busy past the retry ceiling, undecodable,
 not JSON, not an object, a named section absent or holding a non-list; a --shell value naming
-no shell; or a corpus whose walk returns zero gradeable production files. Refusals print one
+no shell; a corpus whose walk returns zero gradeable production files; or an api layer that
+resolves to zero command-to-wrapper pairs, which is the same zero one level deeper -- the tree
+was walked, the file was read, and the surface every command is looked up in was not there.
+Refusals print one
 'error:' line on stderr, verdicts print 'FAIL:' on stdout. Before that split both left as
 'FAIL:' at exit 1, so a file nobody could read was told apart from a broken tree only by its
 wording, and anything reading the number -- dev-ci.yml#static-gates, scripts/check.sh, a grep
 for a red build -- saw one code for 'the tree is broken' and for 'nobody read a file'. This is
 the law scripts/verify-ftl-orphans.py keeps at its _refusal() and scripts/verify-ipc-parity.py
-keeps at its AllowlistUnusable, and all three read the one shared allowlist. The last refusal
-is the same rule aimed outward at the TREE instead of the file: an allowlist nobody read cannot
-make a claim about commands, and a tree nobody walked cannot make a claim about call sites.
+keeps at its AllowlistUnusable, and all three read the one shared allowlist. The last two refusals
+are the same rule aimed outward at the checkout instead of the file: an allowlist nobody read
+cannot make a claim about commands, a tree nobody walked cannot make a claim about call sites,
+and a wrapper map that found nothing cannot make a claim about either one.
 
 One level in from that guard sits the shell list itself, and it needed its own refusal: the
 list drives WHICH section the guard above is allowed to ask about, so `--shell ''` named none,
@@ -181,6 +185,26 @@ class AllowlistUndecodable(AllowlistUnreadable):
     arrive, this means they arrived and are not UTF-8. Nothing widens an except clause and
     nothing here is retried -- a decode failure is a property of the bytes on disk, like a
     bad parse, and unlike a denial it cannot clear on its own.
+    """
+
+
+class EmptyWrapperSurface(AllowlistUnreadable):
+    """The api layer resolved to nothing, so no allowlisted command could have been looked up.
+
+    The fourth member of the family and the deepest one: the allowlist was read and is
+    well-shaped, the corpus is non-empty and was walked, and BOTH guards above cleared -- what
+    is empty is the third surface a verdict is drawn from, the command-string to wrapper-name
+    map this gate looks every allowlisted command UP in. An empty map makes the inner loop
+    iterate nothing for every name, so zero call sites can be found, and the run prints
+    'clean for desktop.' at exit 0 on 3 graded production files. Measured tonight after the
+    corpus guard landed: delete ui/src/api from an otherwise populated tree and the gate that
+    just learned to refuse an empty walk still grades clean, because a non-empty corpus is not
+    the same thing as a non-empty SURFACE.
+
+    Subclass of AllowlistUnreadable for the same reason EmptyCorpus is: main() keeps ONE
+    handler, one 'error:' line on stderr and exit 2. Never the verdict code 1 -- an api layer
+    nobody found is not evidence about anybody's call sites -- and never the 0 it used to
+    return, which is how this survived three rounds of guards.
     """
 
 
@@ -625,6 +649,57 @@ def require_gradeable_corpus(ui_dir, files):
         'and says that instead of clean.')
 
 
+def require_wrapper_surface(api_dir, cmd_to_wrapper, names_by_shell):
+    """Refuse an api layer that resolves to zero command-to-wrapper pairs, BEFORE the verdict.
+
+    Called from audit() the moment find_wrappers() answers -- before a single production file
+    body is opened, and so before main() can print anything at all. This is the same law
+    applied one level deeper than the corpus, and it took the corpus guard to expose it: with
+    ui/src/api deleted from an otherwise populated tree, the allowlist cleared its shape guard,
+    the walk found 3 gradeable production files, require_gradeable_corpus() cleared on them,
+    and the run still printed 'clean for desktop.' at exit 0. Nothing was wrong with the
+    corpus; the surface the corpus is graded AGAINST was gone, and every inner loop over
+    cmd_to_wrapper.get(cmd, ()) silently iterated nothing.
+
+    A non-empty walk over an empty lookup is not a smaller verdict, it is no verdict: the
+    command names on one side and the wrappers that call them on the other are BOTH inputs to
+    every finding this gate can make, and an empty map makes the intersection empty by
+    construction, whatever the tree holds. So the refusal says which surface went missing, and
+    how much grading it would have cancelled, because that number is the size of the blind
+    spot and '3 files graded' was not.
+
+    The distinction this file keeps everywhere still holds: a POPULATED surface whose verdict
+    happens to be zero findings is a claim about the tree and it grades -- cmd_to_wrapper
+    non-empty returns here before anything raises. What is refused is a surface that resolves
+    to nothing, which is never a claim about call sites at all.
+    """
+    if cmd_to_wrapper:
+        return
+    pending = sum(len(names) for _shell, names in names_by_shell)
+    per_shell = ", ".join(shell + ": " + str(len(names)) for shell, names in names_by_shell)
+    if not os.path.isdir(api_dir):
+        raise EmptyWrapperSurface(
+            'the wrapper surface this gate grades is not there: ' + api_dir + ' is not a '
+            'directory, so find_wrappers() returned an empty command-to-wrapper map. The corpus '
+            'guard above cleared -- the walk found production files -- and that is exactly why '
+            'this refusal is separate: every allowlisted command would look itself up in a map '
+            'with nothing in it, iterated zero call sites apiece, and the run would still print '
+            'a verdict. This run had ' + str(pending) + ' command name(s) awaiting that lookup '
+            '(' + per_shell + '). Run it from the repository root; if the api layer has moved, '
+            'this gate reads exactly one path and does not go looking for it.')
+    ts_seen = sum(1 for _root, _dirs, found in os.walk(api_dir)
+                  for fn in found if fn.endswith('.ts'))
+    raise EmptyWrapperSurface(
+        api_dir + ' exists and its ' + str(ts_seen) + ' .ts file(s) were read, but '
+        'WRAPPER_RE matched 0 command strings, so the command-to-wrapper map is empty. A layer '
+        'of ' + str(ts_seen) + ' source file(s) with no wrapper in it is not a clean api '
+        'surface, it is a lookup table with no rows: ' + str(pending) + ' allowlisted command '
+        'name(s) for this run (' + per_shell + ') would each resolve to zero wrappers and zero '
+        'call sites, which is the same zero as an empty tree and reads the same on the page. '
+        'If the wrapper syntax changed, the pattern in this file is the thing to fix -- not the '
+        'run that reports clean while it matches nothing.')
+
+
 def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     """Return (violations, shape_problems, production_files_scanned).
 
@@ -650,6 +725,17 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     moment they are built, and neither may be empty by accident -- the allowlist because
     payload.get() would invent an exemption list, the tree because an empty os.walk would
     invent a clean bill of health. So 'scanned' below is never 0 on a run that returns.
+
+    The third surface gets the same treatment from the inside: find_wrappers() is asked, and
+    require_wrapper_surface() ends the run if the map comes back empty, before a single
+    production file body is opened. That one took the corpus guard to find -- with ui/src/api
+    deleted the walk still found 3 files, so the corpus guard cleared, every command resolved
+    to zero wrappers, and the run printed 'clean for desktop.' at exit 0. Three inputs now
+    stand behind any verdict this function returns: a file that was read, a tree that was
+    walked, and a wrapper map with rows in it. The per-shell names are hoisted above that
+    guard (same call, same order) only so the refusal can state how much grading an empty map
+    would have cancelled -- the hoist is why the sentence and the verdict cannot disagree
+    about what was pending.
     """
     allow = read_allowlist(allowlist)
     require_allowlist_shape(allow, shells, allowlist)
@@ -660,7 +746,17 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     # first, the zero was computed, and it was only ever PRINTED -- by which point main() had a
     # verdict in hand and returned 0 with it.
     require_gradeable_corpus(ui_dir, files)
-    cmd_to_wrapper = find_wrappers(os.path.join(ui_dir, "api"))
+    api_dir = os.path.join(ui_dir, "api")
+    cmd_to_wrapper = find_wrappers(api_dir)
+    shape_problems = []
+    # The per-shell names are read HERE, before the surface guard and before any file body is
+    # opened: the sentence that refuses needs to say how many command names an empty map would
+    # have cancelled, and that count is exactly what the loop below would have iterated. Same
+    # call, same arguments, same shell order -- hoisted, not duplicated, so the refusal and the
+    # verdict cannot disagree about what was pending.
+    names_by_shell = [(shell, allowlist_names(allow, shell, shape_problems, allowlist))
+                      for shell in shells]
+    require_wrapper_surface(api_dir, cmd_to_wrapper, names_by_shell)
 
     texts = {}
     for p in files:
@@ -668,11 +764,10 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
             texts[p] = strip_comments(fh.read())
 
     violations = []
-    shape_problems = []
-    for shell in shells:
+    for shell, names in names_by_shell:
         # Read through allowlist_names so an entry in the object form contributes its
         # command name here instead of reaching the lookup below as a dict.
-        for cmd in allowlist_names(allow, shell, shape_problems, allowlist):
+        for cmd in names:
             for wrapper in cmd_to_wrapper.get(cmd, ()):
                 pat = re.compile(r"\b" + re.escape(wrapper) + r"\s*\(")
                 for path, text in texts.items():
@@ -1315,6 +1410,136 @@ def _guard_self_test():
     return failures
 
 
+def _wrapper_self_test():
+    """Cases 17-20: the WRAPPER surface, which is the same zero one level deeper.
+
+    The corpus guard landed and this file's own case 16 then found the hazard from the other
+    side: a temp checkout with a populated ui/src and no ui/src/api cleared every guard in
+    the chain and still reported on nothing. Measured again after the guard landed -- delete
+    the api layer from an otherwise healthy tree and the run prints
+    'clean for desktop.' at exit 0 on 2-3 graded files, because the corpus is not what went
+    missing; the surface the corpus is graded against is.
+
+    Each case pins the SENTENCE, not the number: an exit 2 is shared by five refusals, and
+    reading a generic 2 as 'my guard fired' is exactly the mistake this file's history has
+    made twice. So case 17 forbids the corpus wording, and case 18 asks for the words only
+    the wrapper arm can print. Case 19 is the control that keeps the guard from being
+    satisfied by a tree with no api layer at all -- the same fixture plus one wrapper file
+    must grade -- and case 20 is the one that keeps the refusal from becoming the verdict
+    path: a populated surface that DOES find an unguarded call still returns 1 and still
+    says FAIL, because 1 is the finding code and a guard that quieted it would be worse than
+    the hole it closed.
+    """
+    print("  verify-scoped-reads self-test / the wrapper surface")
+    failures = 0
+    saved_defaults = audit.__defaults__
+
+    def tree(root, api, cmd=None):
+        src = os.path.join(root, "ui", "src")
+        os.makedirs(os.path.join(src, "features"))
+        with io.open(os.path.join(src, "features", "Thing.tsx"), "w", encoding="utf-8") as fh:
+            fh.write("export const Thing = () => null;\n")
+        if api:
+            os.makedirs(os.path.join(src, "api"))
+            body = ("export const zzProbe = (t: string) => loggedInvoke<any>('" + cmd
+                    + "', { t });\n") if cmd else "export const nothing = 1;\n"
+            with io.open(os.path.join(src, "api", "probe.ts"), "w", encoding="utf-8") as fh:
+                fh.write(body)
+        return os.path.join(src, "api")
+
+    def drive(root, allowlist):
+        buf, ebuf = io.StringIO(), io.StringIO()
+        saved, saved_err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = buf, ebuf
+        try:
+            audit.__defaults__ = (root, ALLOWLIST)
+            rc = main(["--allowlist", allowlist])
+        except BaseException as exc:
+            rc = "bare " + type(exc).__name__ + ": " + str(exc)
+        finally:
+            sys.stdout, sys.stderr = saved, saved_err
+            audit.__defaults__ = saved_defaults
+        return rc, buf.getvalue() + ebuf.getvalue()
+
+    probe = os.path.join(tempfile.mkdtemp(prefix="oz-scoped-surface-"),
+                         "allowlist.json")
+    with io.open(probe, "w", encoding="utf-8") as fh:
+        json.dump({"desktop": ["zz_probe_cmd"], "tablet": []}, fh)
+
+    for kind, api, cmd, label, want, forbid in (
+            ("no-api", False, None,
+             "case 17 a populated corpus with NO ui/src/api",
+             ["wrapper surface", "is not a directory",
+              "1 command name(s) awaiting that lookup", "desktop: 1"],
+             ["0 of them are gradeable", "clean for", "production file(s) graded"]),
+            ("empty-api", True, None,
+             "case 18 a ui/src/api whose .ts files hold no wrapper at all",
+             ["WRAPPER_RE matched 0 command strings",
+              "1 allowlisted command name(s) for this run", "desktop: 1"],
+             ["0 of them are gradeable", "clean for", "production file(s) graded",
+              "is not a directory"]),
+    ):
+        root = tempfile.mkdtemp(prefix="oz-scoped-surface-")
+        tree(root, api, cmd)
+        try:
+            rc, out = drive(root, probe)
+        finally:
+            import shutil
+            shutil.rmtree(root, ignore_errors=True)
+        lines = [ln for ln in out.splitlines() if ln.strip()]
+        said = all(w in out for w in want)
+        quieted = [w for w in forbid if w in out]
+        if (rc == 2 and said and len(lines) == 1
+                and lines[0].startswith("error: ") and not quieted):
+            print(f"    ok   {label} -- refused at exit 2 by the WRAPPER arm: it says "
+                  f"{want[0]!r}, not the corpus, and prints no verdict")
+        else:
+            print(f"    FAIL {label}  rc={rc!r}, says={said}, forbidden={quieted}")
+            for ln in lines[:2]:
+                print("           | " + ln[:150])
+            failures += 1
+
+    # Case 19: the same tree, one wrapper file added. Nothing about the corpus changed, so
+    # the only thing that can move the answer is the surface -- and it must move, to a grade.
+    root = tempfile.mkdtemp(prefix="oz-scoped-surface-")
+    tree(root, True, "some_other_cmd")
+    try:
+        rc, out = drive(root, probe)
+    finally:
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+    if rc == 0 and "clean for" in out and "error:" not in out:
+        print("    ok   case 19 the same tree PLUS a populated api surface grades and returns "
+              "its verdict -- the refusal was the empty map, not the small tree")
+    else:
+        print(f"    FAIL case 19  rc={rc!r} verdict={'clean for' in out} "
+              f"error={'error:' in out}")
+        for ln in out.splitlines()[:3]:
+            print("           | " + ln[:150])
+        failures += 1
+
+    # Case 20: and a populated surface that FINDS something still spends the verdict code.
+    root = tempfile.mkdtemp(prefix="oz-scoped-surface-")
+    tree(root, True, "zz_probe_cmd")
+    src = os.path.join(root, "ui", "src", "features")
+    with io.open(os.path.join(src, "Uses.tsx"), "w", encoding="utf-8") as fh:
+        fh.write("export const use = async () => {\n  await zzProbe(t);\n};\n")
+    try:
+        rc, out = drive(root, probe)
+    finally:
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+    if rc == 1 and "FAIL: 1 unguarded ambient IPC call(s)" in out and "error:" not in out:
+        print("    ok   case 20 a populated surface with a real violation still returns 1 and "
+              "still says FAIL -- the refusal did not become the verdict path")
+    else:
+        print(f"    FAIL case 20  rc={rc!r} verdict=", repr(out[:120]))
+        failures += 1
+    if audit.__defaults__ != saved_defaults:
+        print("    FAIL the wrapper self-test left audit()'s defaults rebound")
+        failures += 1
+    return failures
+
 def _corpus_self_test():
     """Case 13-16: the CORPUS, which is the empty-corpus hazard one level further out.
 
@@ -1369,7 +1594,17 @@ def _corpus_self_test():
             with io.open(os.path.join(src, "README.md"), "w", encoding="utf-8") as fh:
                 fh.write("nothing to walk here\n")
         elif kind == "populated-clean":
+            # A corpus alone is not enough to reach the verdict any more, and this fixture is
+            # the first place that showed up: with no ui/src/api the run now refuses on the
+            # WRAPPER surface at exit 2, which is the ninth guard doing its job on a test that
+            # meant to exercise the eighth. The api file below is the surface this case needs
+            # to be out of the way -- and note the command it names is in the real allowlist,
+            # so the surface is populated AND the verdict stays clean.
             os.makedirs(os.path.join(src, "features"))
+            os.makedirs(os.path.join(src, "api"))
+            with io.open(os.path.join(src, "api", "probe.ts"), "w", encoding="utf-8") as fh:
+                fh.write("export const getActiveCart = (t: string) => "
+                         "loggedInvoke<any>('get_active_cart', { t});\n")
             with io.open(os.path.join(src, "features", "Thing.tsx"), "w",
                          encoding="utf-8") as fh:
                 fh.write("export const Thing = () => null;\n")
@@ -1409,7 +1644,14 @@ def _corpus_self_test():
     finally:
         import shutil
         shutil.rmtree(root, ignore_errors=True)
-    graded = "1 production file(s) graded" in out
+    # The count is PARSED, never asserted as a literal: this fixture's api file also lands in
+    # the walk (the ui/src/api exclusion compares an unnormalized join against a normalized
+    # root, so it does not fire on Windows), and a case that demanded exactly 1 would fail on
+    # a number that is not the claim. The claim is nonzero -- a populated corpus grades.
+    marker = " production file(s) graded"
+    at = out.find(marker)
+    head = out[:at].rsplit(': ', 1)[-1] if at > 0 else ""
+    graded = head.isdigit() and int(head) > 0
     if rc == 0 and graded and "clean for" in out and "error:" not in out:
         print("    ok   case 16 a populated corpus with nothing wrong in it STILL grades and "
               "returns its verdict -- zero files is refused, zero findings is not")
@@ -1549,6 +1791,7 @@ def self_test():
     failures += _guard_self_test()
     failures += _shell_self_test()
     failures += _corpus_self_test()
+    failures += _wrapper_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
