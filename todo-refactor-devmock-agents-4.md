@@ -61,14 +61,20 @@
   - *Note:* the above counts are approximate because some command names cross domains (e.g. `print_sales_receipt` is settings, `list_role_holders_scoped` is staff). The baseline audit will reclassify each entry exactly before carving.
 
 ### Phase 4.1: Extract KDS & Loyalty Mocks
-- [ ] Move KDS command surface to `handlers/kds.ts`.
+- [x] Move KDS command surface to `handlers/kds.ts`.
+  - Done as commit `ba557c54a`. **17** literal entries + 5 state blocks + 3 out-of-literal patches.
+  - `kdsDisplayCounter` exported as mutable wrapper object `{ value: number }` so the
+    router's `pushKdsOrderFromCart` can increment it without violating ES-module
+    import immutability. `mockKdsOrders`, `mockKdsLineItems`, `saveMockKdsState`
+    also exported for the router. `MEMO_CADENCE` was mistakenly swept in by the
+    `kds` keyword heuristic and was returned to the router.
 - [x] Move loyalty, gift card, voucher, coupon, and promotion command surface to `handlers/loyalty.ts`.
   - Done as commit `2d2da4ba6` (phase 4.1+4.3 combined). **34** entries, no state cluster — all stubs.
   - Self-contained plain map; zero deps.
-- [ ] Verify: `npm run typecheck`.
-- [ ] **Commit Milestone:**
+- [x] Verify: `npm run typecheck` — clean (only pre-existing `WorkspaceHome.tsx` errors).
+- [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(devmock-services): extract kds and loyalty mock handlers"
+  git commit -m "refactor(dev-mock): extract KDS handlers to kds.ts"
   ```
 
 ### Phase 4.2: Extract Payment & Analytics Mocks
@@ -119,10 +125,10 @@
   ```
 
 > **Arithmetic check.**
-> Original literal: 501 entries. Current literal: **233** entries.
-> Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) = 268 removed.
-> Remaining: agent 3 (–100) + agent 2 leftovers (–14) + KDS (~–17) + analytics (~–22) + locations (~–19) + system (~–59) = 231.
-> The 2-entry gap (233 vs 231) is the unclassified tail. After all extractions and cleanup,
+> Original literal: 501 entries. Current literal: **216** entries.
+> Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) + KDS (–17) = 285 removed.
+> Remaining: agent 3 (–100) + agent 2 leftovers (–14) + analytics (~–22) + locations (~–19) + system (~–59) = 214.
+> The 2-entry gap (216 vs 214) is the unclassified tail. After all extractions and cleanup,
 > < 200 lines is reachable.
 >
-> `tauri-api.ts` currently **3,593** lines (was 3,905).
+> `tauri-api.ts` currently **3,005** lines (was 3,905).
