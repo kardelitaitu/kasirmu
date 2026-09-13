@@ -15,7 +15,7 @@ export interface TablesTrendChartProps {
   compare: boolean;
   expanded?: boolean | undefined;
   /** Fluent lookup — minutes unit and series name both come from it. */
-  getString: (id: string, args?: Record<string, unknown>) => string;
+  getString: (id: string, args?: Record<string, string>) => string;
 }
 
 export function TablesTrendChart({ data, prev, compare, expanded, getString }: TablesTrendChartProps) {

@@ -19,7 +19,7 @@ export interface AovTrendChartProps {
   /** Minor-unit formatter, from the card's useMoney(). */
   fmt: (minor: number) => string;
   /** Fluent lookup, so the series names stay translatable. */
-  getString: (id: string, args?: Record<string, unknown>) => string;
+  getString: (id: string, args?: Record<string, string>) => string;
 }
 
 export function AovTrendChart({ buckets, prevBuckets, compare, expanded, fmt, getString }: AovTrendChartProps) {

@@ -19,7 +19,7 @@ export interface OccupancyTrendChartProps {
   compare: boolean;
   expanded?: boolean | undefined;
   /** Fluent lookup, so the series name stays translatable. */
-  getString: (id: string, args?: Record<string, unknown>) => string;
+  getString: (id: string, args?: Record<string, string>) => string;
 }
 
 export function OccupancyTrendChart({ hourly, prevHourly, compare, expanded, getString }: OccupancyTrendChartProps) {

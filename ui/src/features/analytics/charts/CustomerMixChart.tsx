@@ -11,15 +11,16 @@ import { CHART_ACCENT, CHART_ACCENT_SOFT, DONUT_BORDER, chartHeight, echarts } f
 export interface CustomerMixChartProps {
   newCount: number;
   returningCount: number;
-  /** Non-null while loading gates the card; kept in deps like the original. */
-  splitLoaded: boolean;
   expanded?: boolean | undefined;
   /** Fluent lookup, so the segment names stay translatable. */
-  getString: (id: string, args?: Record<string, unknown>) => string;
+  getString: (id: string, args?: Record<string, string>) => string;
 }
 
-export function CustomerMixChart({ newCount, returningCount, splitLoaded, expanded, getString }: CustomerMixChartProps) {
-  const option = useMemo(() => (splitLoaded ? ({
+export function CustomerMixChart({ newCount, returningCount, expanded, getString }: CustomerMixChartProps) {
+  // The original guarded on `split ? ... : null`; the card returns early
+  // while split is null, so the guard was dead at the render site and the
+  // donut builds unconditionally here.
+  const option = useMemo(() => ({
     tooltip: { trigger: 'item' as const },
     series: [{
       type: 'pie' as const, radius: ['58%', '82%'], center: ['50%', '50%'],
@@ -30,6 +31,6 @@ export function CustomerMixChart({ newCount, returningCount, splitLoaded, expand
         { value: returningCount, name: getString('analytics-card-customers-returning'), itemStyle: { color: CHART_ACCENT_SOFT } },
       ],
     }],
-  }) : null), [newCount, returningCount, getString, splitLoaded]);
+  }), [newCount, returningCount, getString]);
   return <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('customers', expanded) }} notMerge />;
 }

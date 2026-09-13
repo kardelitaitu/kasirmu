@@ -19,7 +19,7 @@ export interface PaymentMixChartProps {
   pcts: number[];
   expanded?: boolean | undefined;
   /** Fluent lookup, so the category axis label stays translatable. */
-  getString: (id: string, args?: Record<string, unknown>) => string;
+  getString: (id: string, args?: Record<string, string>) => string;
 }
 
 export function PaymentMixChart({ segs, pcts, expanded, getString }: PaymentMixChartProps) {
