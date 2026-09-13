@@ -2036,7 +2036,8 @@ def _pattern_self_test():
     return failures
 
 def _coverage_self_test():
-    """Cases 21-25: the coverage line, whose numbers are pinned on synthetic trees.
+    """Cases 21-25 and 38: the informational lines, whose numbers are pinned on
+    synthetic trees.
 
     This group tests a PRINT, so the assertion is the exact string -- 'N of M' with the N and
     M this fixture was built to produce, counted by hand from the file below and not read back
@@ -2159,6 +2160,178 @@ def _coverage_self_test():
     else:
         print(f"    FAIL case 25  rc={rc!r} line={line!r} verdict=",
               repr("FAIL: 1 call site(s)" in out))
+        failures += 1
+    # Case 38: the guard-clearance line. A printed number stops being evidence three ways -- it
+    # goes ABSENT, it stops matching what the run computed, or something starts branching on it
+    # -- so all three are asserted, and asserted as RELATIONSHIPS. No count this file owns is
+    # pinned here: the digits are parsed back out of the line and checked against the rows the
+    # SAME fixture handed audit(), against their own per-shell, per-file and per-command parts,
+    # and against a count forced to 500 and to 0 at the source. A tree fact would have been a
+    # false alarm waiting for the next edit to the front end -- tonight three numbers were
+    # briefed and re-measured, 30 against 67 among them.
+    #
+    # The planted source: two ADR #7 ternaries in Guards.tsx, one bare call in Uses.tsx, in
+    # separate files deliberately -- the window is 9 lines wide, so a ternary in one function is
+    # read as guarding a neighbour's call, and the cleared tree and the bare tree would stop
+    # being two different trees. The two shapes have to DIFFER, that is the whole fixture.
+    #
+    # Cases 22 to 25 were written for the ratio five hours after it shipped. This one is written
+    # the day the line ships.
+    GUARDS_TS = (
+        "export const a = async (sessionToken: string, t: string) => {\n"
+        "  return sessionToken\n"
+        "    ? await wv0_zz_alphaScoped(sessionToken, t)\n"
+        "    : await wv0_zz_alpha(t);\n"
+        "};\n"
+        "export const b = async (sessionToken: string, t: string) => {\n"
+        "  return sessionToken\n"
+        "    ? await wv0_zz_alphaScoped(sessionToken, t)\n"
+        "    : await wv0_zz_alpha(t);\n"
+        "};\n")
+    CLEAR_RE = re.compile(r"cleared by the guard window: (\d+) \(([^)]*)\), across (\d+) "
+                          r"file\(s\) and (\d+) command\(s\)\.")
+    PART_RE = re.compile(r"(\w+) (\d+)")
+    real_audit = audit
+
+    def clearance(out):
+        """The one clearance line, parsed: (total, per-shell dict, files, commands).
+
+        None when it is absent or printed twice; a string when it is present but does not match
+        its own sentence. An absent line and a zero read the same to a reader and mean different
+        things, which is the defect this whole group is a guard against.
+        """
+        hits = [ln for ln in out.splitlines() if "cleared by the guard window" in ln]
+        if len(hits) != 1:
+            return None
+        found = CLEAR_RE.search(hits[0])
+        if not found:
+            return "unparseable: " + hits[0]
+        return (int(found.group(1)),
+                dict((s, int(n)) for s, n in PART_RE.findall(found.group(2))),
+                int(found.group(3)), int(found.group(4)))
+
+    def verdict_line(out):
+        hits = [ln for ln in out.splitlines() if ln.startswith("FAIL:")]
+        return (hits[0] if len(hits) == 1 else None)
+
+    def shape(writes_uses, guards, force=None):
+        """Drive main() over one fixture; optionally replace the cleared rows at the source.
+
+        force is what makes 'nothing branches on this' a claim about the COUNT rather than about
+        one string: audit's fifth value is swapped for N rows before main() ever sees it, so the
+        printed line and any branch someone later adds on len(cleared) both read the forced
+        value. Returns (rc, out, rows real_audit computed for this same tree, printed parse).
+        """
+        root, al = build({"desktop": ["zz_alpha"], "tablet": []}, ["zz_alpha"],
+                         "wv0_zz_alpha" if writes_uses else None)
+        try:
+            if guards:
+                with io.open(os.path.join(root, "ui", "src", "features", "Guards.tsx"), "w",
+                             encoding="utf-8") as fh:
+                    fh.write(GUARDS_TS)
+            rows = None
+            if force is not None:
+                planted = [("desktop", "zz_forced_" + str(i), "ui/src/features/Forced%d.tsx" % i,
+                            i + 1) for i in range(force)]
+
+                def forced(shells, repo=REPO, allowlist=ALLOWLIST):
+                    out_rows = real_audit(shells, repo=repo, allowlist=allowlist)[4]
+                    return real_audit(shells, repo=repo, allowlist=allowlist)[:4] + (planted,)
+
+                globals()["audit"] = forced
+                rows = planted
+            try:
+                rc, out = drive(root, al)
+            finally:
+                globals()["audit"] = real_audit
+            if rows is None:
+                rows = real_audit(["desktop"], repo=root, allowlist=al)[4]
+            return rc, out, rows, clearance(out)
+        finally:
+            import shutil
+            shutil.rmtree(root, ignore_errors=True)
+
+    def agrees(rows, parsed):
+        """Every printed part equals the rows that produced it."""
+        want = (len(rows),
+                dict((s, sum(1 for r in rows if r[0] == s))
+                     for s in dict.fromkeys(r[0] for r in rows)),
+                len(set(r[2] for r in rows)), len(set(r[1] for r in rows)))
+        want = (want[0], dict((k, v) for k, v in want[1].items() if v), want[2], want[3])
+        return parsed == want, parsed, want
+
+    clean_rc, clean_out, clean_rows, clean_c = shape(False, True)
+    mixed_rc, mixed_out, mixed_rows, mixed_c = shape(True, True)
+    bare_rc, bare_out, bare_rows, bare_c = shape(True, False)
+    high_rc, high_out, high_rows, high_c = shape(True, True, force=500)
+    zero_rc, zero_out, zero_rows, zero_c = shape(True, True, force=0)
+    tall_rc, tall_out, _tr, tall_c = shape(False, True, force=500)
+    clean_ok, _, clean_want = agrees(clean_rows, clean_c)
+    mixed_ok, _, mixed_want = agrees(mixed_rows, mixed_c)
+    bare_ok, _, bare_want = agrees(bare_rows, bare_c)
+    high_ok, _, high_want = agrees(high_rows, high_c)
+    pos = (mixed_out.find("resolving to a wrapper"),
+           mixed_out.find("cleared by the guard window"), mixed_out.find("FAIL:"))
+    checks = [
+        ("present, exactly once, in all three trees",
+         all(isinstance(shape_c, tuple) for shape_c in (clean_c, mixed_c, bare_c))
+         and all(o.count("cleared by the guard window") == 1
+                 for o in (clean_out, mixed_out, bare_out)),
+         "one parseable line per run",
+         [o.count("cleared by the guard window") for o in (clean_out, mixed_out, bare_out)]),
+        ("the digits equal the rows the same run computed",
+         clean_ok and mixed_ok and bare_ok and high_ok,
+         "total / per shell / files / commands == the rows",
+         "clean %r vs %r | mixed %r vs %r | bare %r vs %r | forced %r vs %r"
+         % (clean_c, clean_want, mixed_c, mixed_want, bare_c, bare_want, high_c, high_want)),
+        ("its own parts add up to its own total",
+         mixed_ok and sum(mixed_c[1].values()) == mixed_c[0]
+         and bare_ok and sum(bare_c[1].values()) == bare_c[0],
+         "the per-shell figures sum to the total", "mixed %r bare %r" % (mixed_c, bare_c)),
+        ("a cleared tree and a bare tree print DIFFERENT numbers",
+         mixed_ok and bare_ok and mixed_c[0] > 0 and bare_c[0] == 0,
+         "the guard tree prints above zero while the bare tree prints a real zero",
+         "mixed=%r bare=%r" % (mixed_c[0] if mixed_ok else None,
+                               bare_c[0] if bare_ok else None)),
+        ("the bare tree keeps the line and keeps the finding",
+         isinstance(bare_c, tuple) and bare_c[0] == 0 and bare_rc == 1
+         and str(verdict_line(bare_out)).startswith("FAIL: 1 call site(s)"),
+         "line present at zero, one verdict line still there",
+         "line=%r rc=%r verdict=%r" % (bare_c, bare_rc, verdict_line(bare_out))),
+        ("500 clears at the source move no exit code and no verdict",
+         high_rc == mixed_rc == 1 and high_c is not None and high_c[0] == 500
+         and verdict_line(high_out) == verdict_line(mixed_out),
+         "rc 1 and one identical verdict line at 500 and at the truth",
+         "rc=%r line=%r verdict=%r" % (high_rc, high_c, verdict_line(high_out))),
+        ("0 clears at the source move no exit code and no verdict",
+         zero_rc == mixed_rc == 1 and zero_c is not None and zero_c == (0, {}, 0, 0)
+         and verdict_line(zero_out) == verdict_line(mixed_out),
+         "rc 1 and one identical verdict line at 0 and at the truth",
+         "rc=%r line=%r verdict=%r" % (zero_rc, zero_c, verdict_line(zero_out))),
+        ("and a cleared-out run still exits 0 whatever the count says",
+         clean_rc == 0 and tall_rc == 0 and "clean for desktop." in clean_out
+         and "clean for desktop." in tall_out and "FAIL:" not in clean_out
+         and "FAIL:" not in tall_out and clean_ok and clean_c[0] > 0 and tall_c[0] == 500,
+         "rc 0 and the clean sentence at the truth AND at 500, no FAIL line either way",
+         "rc=%r/%r line=%r/%r" % (clean_rc, tall_rc, clean_c, tall_c)),
+        ("it sits below the ratio and above the verdict",
+         -1 not in pos and pos[0] < pos[1] < pos[2],
+         "ratio < clearance < verdict", "positions %r" % (pos,)),
+    ]
+    bad = [c for c in checks if not c[1]]
+    if not bad:
+        print("    ok   case 38 the clearance line is present in every tree, prints the count the "
+              "same")
+        print("                 run computed, adds up against its own parts, and moves neither the "
+              "exit code")
+        print("                 nor the verdict when its count is forced to 500 and to 0 at the "
+              "source")
+        print("                 (%d assertions, no tree count pinned)" % len(checks))
+    else:
+        print(f"    FAIL case 38  {len(bad)} of {len(checks)} relationships about the clearance "
+              "line did not hold")
+        for label, _ok, want, got in bad:
+            print(f"                 {label}: want {want} -- got {got}")
         failures += 1
     if audit.__defaults__ != saved_defaults:
         print("    FAIL the coverage self-test left audit()'s defaults rebound")
