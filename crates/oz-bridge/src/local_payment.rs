@@ -15,14 +15,26 @@ use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
 /// One rail in the card's replace-set submission.
+///
+/// Wire contract (fixed 2026-09-13): the UI has sent **snake_case**
+/// (`rail_code`, `is_enabled`) since slice 6 (c549f7e5ab), but this DTO
+/// carried `rename_all = "camelCase"` from the same commit, so the
+/// settings card's save path could never deserialize against a real
+/// backend — `missing field 'railCode'` on every submission. The rename
+/// is removed so the DTO matches the wire the only caller actually
+/// sends; the camelCase form is accepted too via aliases, so a desktop
+/// or tablet caller that already adopted the (never-wire-proven)
+/// camelCase shape keeps working. No test deserialized the wire shape
+/// before, which is why this survived three shells since Sep 9.
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LocalPaymentRailArgs {
     /// Stable rail code (e.g. `qris`, `va-bca`).
+    #[serde(alias = "railCode")]
     pub rail_code: String,
     /// Display label.
     pub label: String,
     /// Whether the scope offers the rail.
+    #[serde(alias = "isEnabled")]
     pub is_enabled: bool,
     /// Per-rail market metadata (JSON object). Credential-shaped keys are
     /// rejected by the core write path.

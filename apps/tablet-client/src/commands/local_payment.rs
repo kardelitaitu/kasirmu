@@ -3,6 +3,16 @@
 //! the location-resource scoping that the desktop shell layers on top
 //! (ADR #47) has no tablet helper yet, matching this shell's other scoped
 //! write commands.
+//!
+//! Phase 3.3 T3: `LocalPaymentRailArgs` is re-exported from the shared
+//! `oz_bridge::local_payment` module (Agent 2's Wave F extraction), same
+//! as the desktop shell — single wire definition, and it inherits the
+//! 2026-09-13 casing repair: the UI has always sent snake_case
+//! (`rail_code`, `is_enabled` — LocalPaymentSettingsCard.tsx handleSave,
+//! verified back to slice 6 c549f7e5ab), which the old camelCase rename
+//! on both shells silently rejected. The bodies stay tablet-native
+//! (native `resolve_scope` + `require_permission_for_session`; no
+//! BridgeCtx on tablet yet — see the T2 seam notes in `void.rs`).
 
 use oz_core::db::payment_methods::{EffectivePaymentRail, NewPaymentRail};
 use oz_core::{Store, permissions};
@@ -12,21 +22,7 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// One rail in the card's replace-set submission.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalPaymentRailArgs {
-    /// Stable rail code (e.g. `qris`, `va-bca`).
-    pub rail_code: String,
-    /// Display label.
-    pub label: String,
-    /// Whether the scope offers the rail.
-    pub is_enabled: bool,
-    /// Per-rail market metadata (JSON object). Credential-shaped keys are
-    /// rejected by the core write path.
-    #[serde(default)]
-    pub parameters: String,
-}
+pub use oz_bridge::local_payment::LocalPaymentRailArgs;
 
 /// Read the effective payment-rail surface for one location (slice 6).
 #[tauri::command]

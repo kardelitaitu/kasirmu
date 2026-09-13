@@ -21,6 +21,16 @@
 //! therefore a faithful pass-through of the **stored** string — it never
 //! re-derives or formats an offset on this side of the boundary, and the
 //! front-end must not either.
+//!
+//! Phase 3.3 T3: `SetRegionalConfig` is re-exported from the shared
+//! `oz_bridge::regional` module (Agent 2's Wave A extraction), same as the
+//! desktop shell — single wire definition. Casing already agreed
+//! (snake_case both sides, matching the UI caller's
+//! `SetRegionalConfigArgs`), so this is pure dedup, no behavior change.
+//! The bodies stay tablet-native (native `resolve_scope` +
+//! `require_permission_for_session`; the desktop twin's extra ADR #47
+//! location-resource gate still has no tablet helper — see the module
+//! header above and the T2 seam notes in `void.rs`).
 
 use oz_core::{Store, permissions};
 use tauri::State;
@@ -28,6 +38,8 @@ use tauri::State;
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
+
+pub use oz_bridge::regional::SetRegionalConfig;
 
 /// Read the effective regional configuration for one location of the
 /// session's store (regional slice 2, saas-2 design slice queue #2).
@@ -96,26 +108,12 @@ pub async fn set_regional_config_scoped(
     Ok(config)
 }
 
-/// The write payload for `set_regional_config_scoped`. Field names match the
-/// axis names in `locations`/`legal_entities` (snake_case on the wire, like
-/// the read model); "" means "clear, inherit from the scope above".
-#[derive(serde::Deserialize)]
-pub struct SetRegionalConfig {
-    /// Locale override (BCP-47); blank to inherit.
-    #[serde(default)]
-    pub locale: String,
-    /// Timezone (IANA preset or the legacy `UTC` sentinel); blank clears
-    /// the column so the chain inherits from the scope above.
-    #[serde(default)]
-    pub timezone: String,
-    /// Currency override (ISO-4217 alpha-3); blank to inherit.
-    #[serde(default)]
-    pub currency: String,
-    /// Market anchor (ISO-3166 alpha-2), resolved through the linked legal
-    /// entity; blank leaves the entity's anchor untouched.
-    #[serde(default)]
-    pub country_code: String,
-}
+/// The write payload for `set_regional_config_scoped` moved to the shared
+/// bridge module (`oz_bridge::regional::SetRegionalConfig`, re-exported
+/// above): field names match the axis names in `locations`/`legal_entities`
+/// (snake_case on the wire, like the read model); "" means "clear, inherit
+/// from the scope above".
+
 #[cfg(test)]
 #[path = "regional_tests.rs"]
 mod tests;

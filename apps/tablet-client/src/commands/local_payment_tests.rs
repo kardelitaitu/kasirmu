@@ -159,3 +159,17 @@ async fn denies_staff_without_settings_edit() {
 
     assert!(matches!(result, Err(AppError::PermissionDenied(_))));
 }
+
+#[test]
+fn rail_args_accept_the_snake_case_wire_the_ui_sends() {
+    // Wire pin for the 2026-09-13 casing repair: the settings card sends
+    // snake_case (`rail_code`, `is_enabled` — the only caller, since
+    // slice 6 c549f7e5ab); the old camelCase rename on this shell's local
+    // copy rejected it with `missing field 'railCode'`. The re-exported
+    // bridge DTO now matches the real wire.
+    let json = r#"[{"rail_code":"qris","label":"QRIS","is_enabled":true,"parameters":"{}"}]"#;
+    let rails: Vec<LocalPaymentRailArgs> = serde_json::from_str(json).unwrap();
+    assert_eq!(rails[0].rail_code, "qris");
+    assert!(rails[0].is_enabled);
+    assert_eq!(rails[0].parameters, "{}");
+}

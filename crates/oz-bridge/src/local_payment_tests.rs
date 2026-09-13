@@ -189,3 +189,30 @@ async fn denies_staff_without_settings_edit() {
 
     assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
+
+#[test]
+fn rail_args_accept_the_snake_case_wire_the_ui_sends() {
+    // The regression this closes (2026-09-13): the DTO carried
+    // `rename_all = "camelCase"` from slice 6, but the only caller —
+    // LocalPaymentSettingsCard.tsx handleSave — has always sent
+    // snake_case (`rail_code`, `is_enabled`, verified back to c549f7e5ab).
+    // Tauri does not case-fold, so the real save path failed with
+    // `missing field 'railCode'` on every submission, on desktop AND
+    // tablet. This test pins the exact wire payload the card builds.
+    let json = r#"[{"rail_code":"qris","label":"QRIS","is_enabled":true,"parameters":"{}"}]"#;
+    let rails: Vec<LocalPaymentRailArgs> = serde_json::from_str(json).unwrap();
+    assert_eq!(rails[0].rail_code, "qris");
+    assert!(rails[0].is_enabled);
+    assert_eq!(rails[0].parameters, "{}");
+}
+
+#[test]
+fn rail_args_still_accept_the_camelcase_alias() {
+    // Back-compat for any caller that adopted the (never-wire-proven)
+    // camelCase shape: the alias keeps it working rather than breaking
+    // a second time in the opposite direction.
+    let json = r#"[{"railCode":"va-bca","label":"BCA VA","isEnabled":false,"parameters":""}]"#;
+    let rails: Vec<LocalPaymentRailArgs> = serde_json::from_str(json).unwrap();
+    assert_eq!(rails[0].rail_code, "va-bca");
+    assert!(!rails[0].is_enabled);
+}
