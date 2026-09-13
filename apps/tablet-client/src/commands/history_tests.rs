@@ -613,7 +613,7 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
 #[tokio::test]
 async fn known_hazard_eod_header_and_payment_breakdown_use_different_day_boundaries() {
     const OFFSET_HOURS: i64 = 7;
-    let (mut state, _dir) = history_state();
+    let (state, _dir) = history_state();
 
     // Derived from `now`, not hardcoded: a fixed instant sits in the
     // disagreeing band only while the clock allows it, so a hardcoded pin

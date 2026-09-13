@@ -150,6 +150,7 @@ fn lookup_product_by_sku_without_stock() {
 #[test]
 fn product_dto_debug() {
     let dto = ProductDto {
+        id: "prod-1".into(),
         sku: "LATTE".into(),
         name: "Caffè Latte".into(),
         category: Some("Drinks".into()),
@@ -172,6 +173,8 @@ fn product_dto_debug() {
         is_active: true,
         default_supplier_id: None,
         popularity_score: 0.0,
+        image_hash: None,
+        images: None,
     };
     let d = format!("{dto:?}");
     assert!(d.contains("LATTE"));

@@ -4,7 +4,6 @@
 //! Each variant is linked to a parent product via `parent_sku` and has
 //! its own SKU, optional price override, and barcode.
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use oz_core::permissions;
@@ -16,66 +15,14 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// ── DTOs ──────────────────────────────────────────────────────────────
-
-/// Money DTO matching the front-end `Money` type (snake_case keys).
-#[derive(Debug, Serialize)]
-pub struct MoneyDto {
-    /// Minor Units.
-    pub minor_units: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-}
-
-/// Product variant DTO for the front-end.
-#[derive(Debug, Serialize)]
-pub struct ProductVariantDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Parent Sku.
-    pub parent_sku: String,
-    /// Display name.
-    pub name: String,
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Unit price in minor currency units.
-    pub price: Option<MoneyDto>,
-    /// Barcode string.
-    pub barcode: Option<String>,
-    /// Display sort order.
-    pub sort_order: i64,
-    /// Whether this is active.
-    pub is_active: bool,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 last-update timestamp.
-    pub updated_at: String,
-}
-
-impl From<ProductVariant> for ProductVariantDto {
-    fn from(v: ProductVariant) -> Self {
-        Self {
-            id: v.id,
-            parent_sku: v.parent_sku,
-            name: v.name,
-            sku: v.sku,
-            price: v.price.map(|m| {
-                let cur_str = std::str::from_utf8(&m.currency.0)
-                    .unwrap_or("USD")
-                    .to_owned();
-                MoneyDto {
-                    minor_units: m.minor_units,
-                    currency: cur_str,
-                }
-            }),
-            barcode: v.barcode.map(|b| b.to_string()),
-            sort_order: v.sort_order,
-            is_active: v.is_active,
-            created_at: v.created_at,
-            updated_at: v.updated_at,
-        }
-    }
-}
+// Phase 3.3 T6: the variant wire DTOs and their `From<ProductVariant>` impl
+// moved to the shared `oz_bridge::product_variants` module and are
+// re-exported here, same as the desktop shell. Command bodies stay
+// tablet-native.
+pub use oz_bridge::product_variants::{
+    CreateProductVariantArgs, CreateProductVariantResult, MoneyDto, ProductVariantDto,
+    UpdateProductVariantArgs, UpdateProductVariantResult,
+};
 
 // ── List ──────────────────────────────────────────────────────────────
 
@@ -115,34 +62,6 @@ pub async fn get_product_variant(
 }
 
 // ── Create ────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Createproductvariantargs.
-pub struct CreateProductVariantArgs {
-    /// Parent Sku.
-    pub parent_sku: String,
-    /// Display name.
-    pub name: String,
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Price Minor.
-    pub price_minor: Option<i64>,
-    /// ISO-4217 currency code.
-    pub currency: Option<String>,
-    /// Barcode string.
-    pub barcode: Option<String>,
-    /// Display sort order.
-    pub sort_order: Option<i64>,
-    /// Whether this is active.
-    pub is_active: Option<bool>,
-}
-
-#[derive(Debug, Serialize)]
-/// Createproductvariantresult.
-pub struct CreateProductVariantResult {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-}
 
 /// Create a new product variant.
 #[command]
@@ -191,32 +110,6 @@ pub async fn create_product_variant(
 }
 
 // ── Update ────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Updateproductvariantargs.
-pub struct UpdateProductVariantArgs {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Display name.
-    pub name: Option<String>,
-    /// Price Minor.
-    pub price_minor: Option<i64>,
-    /// ISO-4217 currency code.
-    pub currency: Option<String>,
-    /// Barcode string.
-    pub barcode: Option<String>,
-    /// Display sort order.
-    pub sort_order: Option<i64>,
-    /// Whether this is active.
-    pub is_active: Option<bool>,
-}
-
-#[derive(Debug, Serialize)]
-/// Updateproductvariantresult.
-pub struct UpdateProductVariantResult {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-}
 
 /// Update an existing product variant (matched by SKU).
 #[command]
