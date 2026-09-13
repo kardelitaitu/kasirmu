@@ -6,7 +6,6 @@
 //! Main:   smart card grid — cards adapt to retail vs restaurant
 
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
-import { createPortal } from 'react-dom';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
@@ -36,6 +35,7 @@ import {
 import { clearAnalyticsErrors, useAnalyticsQuery } from './useAnalyticsQuery';
 import { exportHeatmapCsv } from './utils/analyticsExport';
 import { CacheMetricsPanel } from './components/CacheMetricsPanel';
+import { AnalyticsCardFrame } from './components/AnalyticsCardFrame';
 import { CommandPalette } from './components/CommandPalette';
 import { NoWorkspacePrompt } from './components/NoWorkspacePrompt';
 import { SessionRecoveryBanner } from './components/SessionRecoveryBanner';
@@ -857,201 +857,57 @@ export default function AnalyticsScreen() {
             const isFirst = idx === 0;
             const isLast = idx === cardOrder.length - 1;
             return (
-            <div
+            <AnalyticsCardFrame
               key={cid}
-              role="group"
-              aria-labelledby={`analytics-card-title-${cid}`}
-              onDragOver={(e) => { e.preventDefault(); if (overId !== cid) setOverId(cid); }}
+              cid={cid}
+              size={card.size}
+              titleKey={card.titleKey}
+              title={card.title}
+              descKey={card.descKey}
+              expanded={isExpanded}
+              collapsed={isCollapsed}
+              dragging={isDragging}
+              dropTarget={isDropTarget}
+              menuOpen={menuOpen}
+              first={isFirst}
+              last={isLast}
+              menuAnchor={menuAnchor}
+              menuRef={cardMenuRef}
+              expandScale={expandScale}
+              expandedBodyRef={expandedBodyRef}
+              onDragStart={() => setDragId(cid)}
+              onDragEnd={() => { setDragId(null); setOverId(null); }}
               onDragLeave={() => setOverId((o) => (o === cid ? null : o))}
-              onDrop={(e) => { e.preventDefault(); reorderCard(dragId ?? '', cid); setDragId(null); setOverId(null); }}
-              className={`analytics-card${card.size ? ` analytics-card--${card.size}` : ''}${isExpanded ? ' analytics-card--expanded' : ''}${isCollapsed ? ' analytics-card--collapsed' : ''}${isDragging ? ' analytics-card--dragging' : ''}${isDropTarget ? ' analytics-card--drop-target' : ''}`}
+              onDragOver={() => { if (overId !== cid) setOverId(cid); }}
+              onDrop={() => { reorderCard(dragId ?? '', cid); setDragId(null); setOverId(null); }}
+              onOpenMenu={(el) => {
+                // Anchor the (portaled) menu to the trigger so it escapes
+                // the card's overflow clipping, and remember the trigger
+                // so closeCardMenu can restore focus.
+                const rect = el.getBoundingClientRect();
+                menuTriggerRef.current = el;
+                setMenuAnchor({ bottom: rect.bottom, right: window.innerWidth - rect.right });
+                setMenuCardId(cid);
+              }}
+              onCloseMenu={closeCardMenu}
+              onToggleExpand={() => setExpandedKey((current) => {
+                const next = nextExpandedKey(current, cid);
+                // Expanding a card while in compact mode shows the card
+                // in full; collapse-all and expand are mutually exclusive.
+                if (next) setAllCollapsed(false);
+                return next;
+              })}
+              onMenuToggleExpand={() => setExpandedKey((current) => nextExpandedKey(current, cid))}
+              onMenuMove={(dir) => { moveCard(cid, dir); closeCardMenu(); }}
+              onMenuCollapse={() => { toggleCardCollapsed(cid); closeCardMenu(); }}
+              exportSlot={card.key === 'heatmap' && heatmapData ? (
+                <ExportCsvButton
+                  ariaLabel={l10n.getString('analytics-export-heatmap-aria')}
+                  onClick={() => exportHeatmapCsv(heatmapGranularity, heatmapData, heatmapRange.from, heatmapRange.to, fmt, (id) => l10n.getString(id))}
+                />
+              ) : undefined}
             >
-              {/* Drag starts from the header only (the grip marks it), so the
-                  card body no longer reads as draggable/clickable; the drop
-                  target stays the whole card. Keyboard reorder lives in the
-                  card menu (Move up/down/top/bottom), so the aria-hidden grip
-                  keeps a keyboard-equivalent path (notes.md drag affordances). */}
-              <div
-                className="analytics-card-header"
-                draggable={!isExpanded}
-                onDragStart={(e) => {
-                  setDragId(cid);
-                  if (e.dataTransfer) {
-                    e.dataTransfer.effectAllowed = 'move';
-                    // Firefox refuses to begin a drag without setData.
-                    e.dataTransfer.setData('text/plain', cid);
-                  }
-                }}
-                onDragEnd={() => { setDragId(null); setOverId(null); }}
-              >
-                <span className="analytics-card-grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
-                    <circle cx="9" cy="5" r="1.4" /><circle cx="15" cy="5" r="1.4" />
-                    <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
-                    <circle cx="9" cy="19" r="1.4" /><circle cx="15" cy="19" r="1.4" />
-                  </svg>
-                </span>
-                <Localized id={card.titleKey}>
-                  <h2 className="analytics-card-title" id={`analytics-card-title-${cid}`}>{card.title}</h2>
-                </Localized>
-                <div className="analytics-card-actions">
-                  {card.key === 'heatmap' && heatmapData && (
-                    <ExportCsvButton
-                      ariaLabel={l10n.getString('analytics-export-heatmap-aria')}
-                      onClick={() => exportHeatmapCsv(heatmapGranularity, heatmapData, heatmapRange.from, heatmapRange.to, fmt, (id) => l10n.getString(id))}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="analytics-card-action analytics-card-info"
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label={l10n.getString(card.descKey)}
-                    title={l10n.getString(card.descKey)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                      strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="16" x2="12" y2="12" />
-                      <line x1="12" y1="8" x2="12.01" y2="8" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="analytics-card-action"
-                    onClick={() => setExpandedKey((current) => {
-                      const next = nextExpandedKey(current, cid);
-                      // Expanding a card while in compact mode shows the card
-                      // in full; collapse-all and expand are mutually exclusive.
-                      if (next) setAllCollapsed(false);
-                      return next;
-                    })}
-                    aria-label={l10n.getString(isExpanded ? 'analytics-card-restore-aria' : 'analytics-card-expand-aria')}
-                    title={l10n.getString(isExpanded ? 'analytics-card-restore-aria' : 'analytics-card-expand-aria')}
-                  >
-                    {isExpanded ? (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                        strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                        <polyline points="4 14 10 14 10 20" />
-                        <polyline points="20 10 14 10 14 4" />
-                        <line x1="14" y1="10" x2="21" y2="3" />
-                        <line x1="3" y1="21" x2="10" y2="14" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                        strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                        <polyline points="15 3 21 3 21 9" />
-                        <polyline points="9 21 3 21 3 15" />
-                        <line x1="21" y1="3" x2="14" y2="10" />
-                        <line x1="3" y1="21" x2="10" y2="14" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className={`analytics-card-action${menuOpen ? ' analytics-card-action--active' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (menuOpen) {
-                        closeCardMenu();
-                      } else {
-                        // Anchor the (portaled) menu to the trigger so it
-                        // escapes the card's overflow clipping, and remember
-                        // the trigger so focus can be restored on close.
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        menuTriggerRef.current = e.currentTarget;
-                        setMenuAnchor({ bottom: rect.bottom, right: window.innerWidth - rect.right });
-                        setMenuCardId(cid);
-                      }
-                    }}
-                    aria-label={l10n.getString('analytics-card-menu-aria')}
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    title={l10n.getString('analytics-card-menu-aria')}
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true">
-                      <circle cx="5" cy="12" r="1.6" />
-                      <circle cx="12" cy="12" r="1.6" />
-                      <circle cx="19" cy="12" r="1.6" />
-                    </svg>
-                  </button>
-                  {menuOpen && createPortal(
-                    <div
-                      ref={cardMenuRef}
-                      className="analytics-card-menu"
-                      role="menu"
-                      tabIndex={-1}
-                      aria-label={l10n.getString('analytics-card-menu-aria')}
-                      style={{
-                        position: 'fixed',
-                        top: (menuAnchor?.bottom ?? 0) + 4,
-                        right: menuAnchor?.right ?? 0,
-                      }}
-                      onKeyDown={(e) => {
-                        const items = Array.from(
-                          e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])'),
-                        );
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          closeCardMenu();
-                          return;
-                        }
-                        if (items.length === 0) return;
-                        const idx = items.indexOf(document.activeElement as HTMLButtonElement);
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          items[(idx + 1) % items.length]?.focus();
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          items[(idx - 1 + items.length) % items.length]?.focus();
-                        } else if (e.key === 'Home') {
-                          e.preventDefault();
-                          items[0]?.focus();
-                        } else if (e.key === 'End') {
-                          e.preventDefault();
-                          items[items.length - 1]?.focus();
-                        }
-                      }}
-                    >
-                      <button type="button" role="menuitem" disabled={isFirst}
-                        onClick={() => { moveCard(cid, 'up'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-up')}
-                      </button>
-                      <button type="button" role="menuitem" disabled={isLast}
-                        onClick={() => { moveCard(cid, 'down'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-down')}
-                      </button>
-                      <button type="button" role="menuitem" disabled={isFirst}
-                        onClick={() => { moveCard(cid, 'top'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-top')}
-                      </button>
-                      <button type="button" role="menuitem" disabled={isLast}
-                        onClick={() => { moveCard(cid, 'bottom'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-bottom')}
-                      </button>
-                      <div className="analytics-card-menu-sep" role="separator" />
-                      <button type="button" role="menuitem"
-                        onClick={() => {
-                          setExpandedKey((current) => nextExpandedKey(current, cid));
-                          closeCardMenu();
-                        }}>
-                        {l10n.getString(isExpanded ? 'analytics-card-restore-aria' : 'analytics-card-expand-aria')}
-                      </button>
-                      <button type="button" role="menuitem"
-                        onClick={() => { toggleCardCollapsed(cid); closeCardMenu(); }}>
-                        {l10n.getString(isCollapsed ? 'analytics-menu-show-card' : 'analytics-menu-collapse-card')}
-                      </button>
-                    </div>,
-                    document.body,
-                  )}
-                </div>
-              </div>
-              <div className="analytics-card-body" ref={isExpanded ? expandedBodyRef : undefined}>
-                <div
-                  className="analytics-card-content"
-                  style={isExpanded ? { transform: `scale(${expandScale})` } : undefined}
-                >
-                  {card.key === 'heatmap' ? (
+              {card.key === 'heatmap' ? (
                     <AnalyticsHeatmap
                       granularity={heatmapGranularity}
                       range={heatmapRange}
@@ -1078,9 +934,7 @@ export default function AnalyticsScreen() {
                       compare={compare}
                     />
                   )}
-                </div>
-              </div>
-            </div>
+            </AnalyticsCardFrame>
             );
           })}
         </div>

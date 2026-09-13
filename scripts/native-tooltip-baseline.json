@@ -4,7 +4,8 @@
   "generated": "2026-09-07",
   "total": 82,
   "counts": {
-    "features/analytics/AnalyticsScreen.tsx": 8,
+    "features/analytics/AnalyticsScreen.tsx": 5,
+    "features/analytics/components/AnalyticsCardFrame.tsx": 3,
     "features/analytics/components/ZoomControls.tsx": 4,
     "features/analytics/components/CacheMetricsPanel.tsx": 3,
     "features/locations/topologyNodeCard.tsx": 9,
