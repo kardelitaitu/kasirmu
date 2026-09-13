@@ -144,6 +144,8 @@ If a smaller screen is genuinely wanted, the next step is a **separate** work or
 
 > **CLOSED HONEST — TARGET MISSED, AS PREDICTED.** Final measurement `c05133d757`: **1,409 physical lines** ((Get-Content).Count), against ≤1,200. The three phases moved exactly the 214 lines they owned (module logic + filter state); the ~200-line gap is precisely the JSX markup bulk this order named as its out-of-scope remainder. The target is not being edited retroactively — the miss is the report, and the JSX-shell order above is the real next step.
 
+> **FOLLOW-UP (same day, `411e6dccfb`): the miss is now retired — by the next step, not by this order.** The JSX-shell work order was opened and executed as its own job: slice 1 extracted `components/ZoomControls.tsx`, `components/CacheMetricsPanel.tsx`, `components/SessionRecoveryBanner.tsx`, `components/NoWorkspacePrompt.tsx` (verbatim bodies, 106/106 screen tests untouched and green, tooltip ratchet moved 15→8+4+3). `AnalyticsScreen.tsx` now measures **1,170 lines** — under ≤1,200. The named `AnalyticsToolbar`/`AnalyticsCardGrid` split (command palette + the coupled grid core) remains open as future slices of THAT order; this file's honest record stands as written.
+
 ---
 
 ## 🚦 Wait gates
