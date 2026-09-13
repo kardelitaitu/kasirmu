@@ -310,4 +310,6 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 
 ---
 
-> last audited 08-08-26 by docs-auditor · Activation and Ownership appended 09-09-26
+> Activation and Ownership appended 09-09-26.
+
+> last audited 08-08-26 by docs-auditor

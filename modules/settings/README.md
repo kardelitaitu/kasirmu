@@ -82,4 +82,6 @@ kernel.start_all()?;
 }
 ```
 
-> last audited 31-08-26 by docs-auditor; extended 12-09-26 with the MSL-5 hazard note above
+> Extended 12-09-26 with the MSL-5 hazard note above.
+
+> last audited 31-08-26 by docs-auditor
