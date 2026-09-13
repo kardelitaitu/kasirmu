@@ -129,7 +129,7 @@ export function usePosCartActions({
       }
       addProduct(product, qty);
     },
-    [addProduct, addToast, cartId], // l10n via ref
+    [addProduct, addToast, cartId, activeShiftRef, l10nRef], // refs stable; identity of the wrapped value must not enter deps
   );
 
   // ADR-19 §17: badge click → FastPINOverlay for manager override
@@ -191,7 +191,7 @@ export function usePosCartActions({
     setShowDiscountInput(false);
     setDiscountInput('');
     setDiscountName('');
-  }, [discountInput, discountName, setDiscount]);
+  }, [discountInput, discountName, setDiscount, setDiscountInput, setDiscountName, setShowDiscountInput]);
 
   const handleClearDiscount = useCallback(() => {
     setDiscount(0, '');
@@ -205,7 +205,7 @@ export function usePosCartActions({
     if (selected.length > 0) {
       addToast({ message: l10nRef.current.getString('pos-promotions-applied', { name: names }) || names, type: 'success' });
     }
-  }, [addToast]);
+  }, [addToast, l10nRef, setAppliedPromotions, setShowPromotions]);
 
     // ── Multi-step undo stack ───────────────────────────────────
   // Each removed line is pushed onto the stack. Pressing Undo pops

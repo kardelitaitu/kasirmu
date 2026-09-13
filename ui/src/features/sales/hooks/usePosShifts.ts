@@ -124,7 +124,7 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
     setClosingBalance('');
     setShiftNotes('');
     setShowCloseShift(true);
-  }, [lines]); // l10n via ref
+  }, [lines, l10nRef]); // l10n via ref - the ref itself is now a listed, stable dep
 
   const handleConfirmCloseShift = useCallback(async () => {
     if (!activeShift) return;
@@ -145,7 +145,7 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
     } finally {
       setClosingShift(false);
     }
-  }, [activeShift, closingBalance, shiftNotes, sessionToken]); // l10n via ref
+  }, [activeShift, closingBalance, shiftNotes, sessionToken, l10nRef]); // l10n via ref - stable dep, see above
 
   const handleOpenShiftClick = useCallback(() => {
     setOpeningBalance('');

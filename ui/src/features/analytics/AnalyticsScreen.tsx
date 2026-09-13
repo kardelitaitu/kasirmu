@@ -285,7 +285,7 @@ export default function AnalyticsScreen() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [zoomIn, zoomOut, zoomReset, paletteOpen]);
+  }, [zoomIn, zoomOut, zoomReset, paletteOpen, setGranularity]);
 
   // Smart scaling: when a card is expanded, scale its content to fill the
   // available body area (works for any card — heatmap, table, or chart).

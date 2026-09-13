@@ -125,7 +125,7 @@ export function usePosHeldCarts({
     } finally {
       setOpeningBill(false);
     }
-  }, [activeShift, lines, subtotal, openBillName, discountPercent, discountLabel, resetCart, loadOpenBills, addToast, openBillInputExit, sessionToken]);
+  }, [activeShift, lines, subtotal, openBillName, discountPercent, discountLabel, resetCart, loadOpenBills, addToast, openBillInputExit, sessionToken, setAppliedPromotions]);
 
   const handleResumeOpenBill = useCallback(async (id: string) => {
     try {

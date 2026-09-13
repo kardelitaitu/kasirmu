@@ -276,7 +276,7 @@ export function useTopologyEditorApplyPanel(deps: TopologyApplyPanelDeps) {
     // failure there is reported by toast — it is not a PIN problem, so the
     // dialog must not reopen claiming one.
     return true;
-  }, [nodes, wires, topologyRevision, resolvedIssues, onSave, addToast, l10n, beginApply, failApply, finishApply, commitSnapshot, sessionToken]);
+  }, [nodes, wires, topologyRevision, resolvedIssues, onSave, addToast, l10n, beginApply, failApply, finishApply, commitSnapshot, sessionToken, pinVerifiedRef, skipNextLoadRef, setNodes, setWires, setHistory, setRedo, clearAll, setReloadKey]);
 
   // ── Header actions (extracted JSX lives in topologyHeader.tsx) ─────
   // The Apply gate: validate the raw canvas, then build the diff preview

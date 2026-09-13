@@ -373,7 +373,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       } catch {
         // Silently ignore — the scanner will beep, user retries.
       }
-    }, [handleAddProduct, addToast, sessionToken]), // l10n via ref
+    }, [handleAddProduct, addToast, sessionToken, activeShiftRef, l10nRef]), // l10n via ref
     onError: useCallback(
       (error: string) => {
         addToast({
@@ -396,7 +396,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     }
     if (!total) return;
     setShowPayment(true);
-  }, [total, addToast]);
+  }, [total, addToast, activeShiftRef]);
 
   // P7-1: Swipe left on cart panel → open payment modal (tablet flow)
   const cartSwipe = useSwipe({
@@ -484,7 +484,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     resetCart();
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken]);
+  }, [resetCart, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
