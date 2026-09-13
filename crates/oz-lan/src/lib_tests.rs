@@ -1248,7 +1248,7 @@ async fn device_peer_reconnect_from_new_port_replays_buffered_events() {
     // the one the failed write happened on.
     let (fwd, server) = rp_spawn().await;
 
-    let mut p1 = RpPeer::connect(server, &rp_hello_station("kds-9", &["grill"]), None).await;
+    let p1 = RpPeer::connect(server, &rp_hello_station("kds-9", &["grill"]), None).await;
     let addr1 = p1.addr;
     // Simulated kitchen-tablet dropout: linger-0 close → RST.
     drop(p1);
@@ -1350,7 +1350,7 @@ async fn legacy_peer_without_device_id_stays_addr_keyed() {
     // exact address reconnects.
     let (fwd, server) = rp_spawn().await;
 
-    let mut l1 = RpPeer::connect(server, &rp_hello_legacy(), None).await;
+    let l1 = RpPeer::connect(server, &rp_hello_legacy(), None).await;
     let addr1 = l1.addr;
     drop(l1);
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
