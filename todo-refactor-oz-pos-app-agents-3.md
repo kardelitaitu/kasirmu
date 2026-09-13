@@ -44,9 +44,9 @@ Establish baseline metrics before performing test relocations and shell consolid
 - [x] Run `bash scripts/verify-scoped-coverage.sh` (must be PASS). → **EXIT=0, PASS: all registered commands covered** (Git-bash path, not WSL).
 - [x] Record current lines of code in `apps/desktop-client/src/lib.rs` (Baseline: ~1,282 lines). → **1,281 lines**; generate_handler block starts ~:780, 448 entries / 57 module prefixes.
 - [x] Record current total file count in `apps/desktop-client/src/commands/` (Baseline: ~123 files). → **137 files** = 123 top-level + 14 under `topology/`; **70 `*_tests.rs` totalling 31,803 lines** (largest: topology_command_tests 2,071 ln · topology_stress 1,936 · kds 1,877).
-- [x] **Commit Baseline Record (Optional / Local note):** Keep record ready. → Kept as local note in `manager-2-journal.md` (Agent-3 section, D-A3), per "Optional" — no commit; measured at HEAD `38d08f115` (branch `0.0.37`), zero refactor-campaign commits existed at audit time; crates/oz-bridge absent.
+- [x] **Commit Baseline Record (Optional / Local note):** Keep record ready. → Kept as local note in `docs/archived/manager-2-journal.md` (Agent-3 section, D-A3; moved from root at archival), per "Optional" — no commit; measured at HEAD `38d08f115` (branch `0.0.37`), zero refactor-campaign commits existed at audit time; crates/oz-bridge absent.
 
-> **Baseline record (Agent-3, 2026-09-10):** measurement commands and full output tails live in `manager-2-journal.md` § Objective: todo-refactor-oz-pos-app-agents-3.md / D-A3. Phase 3.1–3.4 are gated on Agent-2's `feat(bridge):` per-wave commits (wait protocol L28-33); battle plan accepted in journal (thin-shell Option A with recorded deviation, adjacent-test placement, per-wave slices A0–E5d).
+> **Baseline record (Agent-3, 2026-09-10):** measurement commands and full output tails live in `docs/archived/manager-2-journal.md` § Objective: todo-refactor-oz-pos-app-agents-3.md / D-A3. Phase 3.1–3.4 are gated on Agent-2's `feat(bridge):` per-wave commits (wait protocol L28-33); battle plan accepted in journal (thin-shell Option A with recorded deviation, adjacent-test placement, per-wave slices A0–E5d).
 
 ---
 

@@ -55,7 +55,7 @@ Nothing caught it: HEAD stayed green (the bad imports were never committed),
 CI only runs on PRs while work lands directly on `0.0.37`, and `1c59fea5f`
 had just moved the repo-wide typecheck off the pre-commit hook — the state
 was already logged as FOREIGN-red by the pos-screen lane the same afternoon
-(`manager-2-journal-posscreen.md` LIVE block, 09-11 14:2xZ).
+(`docs/archived/manager-2-journal-posscreen.md` LIVE block, 09-11 14:2xZ; archived root-relative since the journal moved).
 
 Closed by commit `091ffe2e29` (one-line pathspec form: `WorkspaceHome.tsx`,
 `components/ToolCard.tsx`, `components/ToolsCategoryGrid.tsx`):
