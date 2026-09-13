@@ -60,17 +60,22 @@ order retired that miss (1,409 -> 1,170 ln, now under the <=1,200 goal). -->
   compact-mode side effect) — recorded so nobody "simplifies" them back.
 - [x] Screen: 1,139 → **994 ln**. Ratchet moved 8→5 + frame 3, sum 82.
 
-## Open — slice 3b: the toolbar rows (`:589–772` of the pre-slice file)
+## Done — slice 3b (`a070d2ab72`): the toolbar rows
 
-- [ ] Workspace selector row + granularity pills + inline custom-date
-  inputs + collapse/refresh actions. Likely closer to ZoomControls'
-  shape (values + intent callbacks, screen keeps state) than to the
-  frame — but MEASURE the real free-variable set per row before
-  promising props; the refresh button rides `startRecalculating`'s ref
-  and the date inputs ride `customTouched` semantics that deserve a
-  look, not a guess.
-- [ ] Expect `title=` movement on the action buttons; check the ratchet
-  output for the actual delta and move the JSON with it.
+- [x] `components/AnalyticsToolbar.tsx` — pure layout; every composed side
+  effect (workspace-switch reset cascade, `customTouched`, the three
+  toasts, collapse-all's expanded-card restore) stayed screen-composed
+  behind one callback each, as measured. Zoom cluster crosses as a
+  slot; `ZoomControls`' wiring never re-threads. (One pre-existing
+  indentation damage in the From-input handler was NOT copied; named in
+  the commit.)
+- [x] Ratchet moved by measured delta: screen 5→1 (scroll-top stays),
+  toolbar +4, sum pinned 82.
+
+**Order status: COMPLETE.** `AnalyticsScreen.tsx` 1,409 → **864 ln**
+across six slices; every extraction verbatim; 106 screen tests never
+touched. What remains of the analytics trilogy's ambition (further
+component counts, CSS split) was never in THIS order's boxes.
 
 ## Rules inherited from the parent order
 
