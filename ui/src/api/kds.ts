@@ -210,3 +210,53 @@ export const resolveKdsTargetsScoped = (
   orderId: string,
 ): Promise<string[]> =>
   loggedInvoke<string[]>('resolve_kds_targets_scoped', { sessionToken, orderId });
+
+// ── KDS Routing Rules ──────────────────────────────────────────
+
+/** What a routing rule matches a line item against (mirrors Rust `KdsRuleMatcher`). */
+export type KdsRuleMatcher = 'sku' | 'category' | 'tag';
+
+/** One row of `kds_routing_rules` (mirrors Rust `KdsRoutingRule`). */
+export interface KdsRoutingRule {
+  /** Server-assigned UUID v7. */
+  id: string;
+  /** FK to the owning Restaurant POS terminal — the rule scope. */
+  restaurant_pos_id: string;
+  /** Lower number = higher priority (1 outranks 10). */
+  priority: number;
+  matcher: KdsRuleMatcher;
+  /** SKU string or category id, depending on `matcher`. */
+  matcher_value: string;
+  /** Topology station the matched line routes to. */
+  target_station: string;
+  /** Whether the rule participates in routing. */
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Client-supplied rule for the save IPC (mirrors Rust `KdsRoutingRuleInput`). */
+export interface KdsRoutingRuleInput {
+  /** Lower number = higher priority (1 outranks 10). */
+  priority: number;
+  matcher: KdsRuleMatcher;
+  /** SKU string or category id, depending on `matcher`. */
+  matcher_value: string;
+  /** Topology station the matched line routes to. */
+  target_station: string;
+  /** Omitted means active — the server applies the column default. */
+  is_active?: boolean;
+}
+
+/** List the session restaurant's routing rules, highest priority first (scoped — ADR #7). */
+export const getKdsRoutingRulesScoped = (
+  sessionToken: string,
+): Promise<KdsRoutingRule[]> =>
+  loggedInvoke<KdsRoutingRule[]>('get_kds_routing_rules_scoped', { sessionToken });
+
+/** Replace the session restaurant's whole routing-rule set (scoped — ADR #7). */
+export const saveKdsRoutingRulesScoped = (
+  sessionToken: string,
+  rules: KdsRoutingRuleInput[],
+): Promise<KdsRoutingRule[]> =>
+  loggedInvoke<KdsRoutingRule[]>('save_kds_routing_rules_scoped', { sessionToken, rules });
