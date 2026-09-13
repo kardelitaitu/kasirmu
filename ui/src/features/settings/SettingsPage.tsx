@@ -73,7 +73,7 @@ import './SettingsNavTree.css';
 const KEPT_SECTIONS = new Set([
   'general', 'license-subscription', 'devices-connectivity', 'business-defaults',
   'features-modules', 'security-account', 'data-sync', 'data-management',
-  'sync-status', 'offline-queue', 'tax-configuration', 'exchange-rates', 'system-diagnostics',
+  'sync-status', 'sync-conflicts', 'offline-queue', 'tax-configuration', 'exchange-rates', 'system-diagnostics',
 ]);
 
 /** Snapshot of initial loaded values for the Revert-to-saved button. */
