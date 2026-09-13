@@ -883,8 +883,10 @@ fn keys_literal_value(keys_src: &str, ident: &str) -> Option<String> {
 /// directions, counted as no site and flagged as no offender. 479 sites in this sweep were
 /// written that way, 462 of them in production source, none of them in the 196 the pin
 /// reported. The eye reads 675 now.
-/// One invoke-shaped call site: the 1-based line, the identifier actually called, and
-/// whether the command name arrived as a string literal.
+/// One invoke-shaped call site: the 1-based line, the identifier actually called, whether
+/// the command name arrived as a string literal, and that first argument as written. The
+/// token travels with the site so a report can name what it saw instead of asking the
+/// reader to open the file and re-derive a verdict.
 ///
 /// The needle is case-insensitive over the word and accepts one balanced `<...>` list in
 /// front of the paren, so `loggedInvoke(`, `loggedInvoke<Customer[]>(`, `mockInvoke(` and
@@ -896,9 +898,12 @@ fn keys_literal_value(keys_src: &str, ident: &str) -> Option<String> {
 /// list or the paren. That gap is open, not covered, and the `pin_counts_a_generic_spelled_`
 /// `wrapper_call` case below says which shapes it closes and which it leaves. That is why the
 /// pin reports the shape of what it counted and not only a number.
-fn scan_invoke_sites(text: &str) -> Vec<(usize, String, bool)> {
+fn scan_invoke_sites(text: &str) -> Vec<(usize, String, bool, String)> {
     let mut out = Vec::new();
-    for (i, line) in text.lines().enumerate() {
+    // The whole file, not just the current line: an argument can sit below its own paren.
+    let lines: Vec<&str> = text.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        let line = *line;
         let trimmed = line.trim_start();
         if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
             continue;
@@ -930,11 +935,12 @@ fn scan_invoke_sites(text: &str) -> Vec<(usize, String, bool)> {
                 word -= 1;
             }
             let callee = line[word..start + "invoke".len()].to_string();
-            let first = lower[after..].trim_start().chars().next().unwrap_or('x');
+            let (first, token) = first_arg(&lines, i, after);
             out.push((
                 i + 1,
                 callee,
                 first == DOUBLE_QUOTE || first == SINGLE_QUOTE,
+                token,
             ));
             from = after;
         }
@@ -990,6 +996,48 @@ fn invoke_open_paren(lower: &str, at: usize) -> Option<usize> {
     }
 }
 
+/// The first thing an invoke-shaped call is handed: the character that decides literal or
+/// not, and the token as written. Read across line breaks on purpose --
+/// `loggedInvoke(\n  "sync_pull", args)` passes its name on the next line, and a scan that
+/// stops at the end of its own line scores that as a name built at runtime. That blindness
+/// predates the generic widening; the widening folded in 462 more production sites and two
+/// of them happened to be written this way, which is what made it visible.
+///
+/// Only the ARGUMENT may arrive late. The paren is still matched on its own line by
+/// `invoke_open_paren`, which is what keeps a prose mention such as "loggedInvoke (no
+/// direct invoke)" out of the surface: no bracket list, no paren on the word, no call.
+/// Returns `('x', "")` when nothing follows within the look-ahead, the same sentinel the
+/// scan used before, so an argument-less call is still read as computed rather than as no
+/// verdict at all.
+fn first_arg(lines: &[&str], line_at: usize, col: usize) -> (char, String) {
+    // Bounded look-ahead: three lines below the call is an argument, thirty lines below is
+    // somebody else's code, and a token read from there would be a guess dressed as data.
+    for li in line_at..(line_at + 4).min(lines.len()) {
+        let rest = if li == line_at {
+            lines[li].get(col..).unwrap_or("")
+        } else {
+            lines[li]
+        };
+        let trimmed = rest.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut token = String::new();
+        for ch in trimmed.chars() {
+            if ch.is_whitespace() || ch == ',' || ch == ';' {
+                break;
+            }
+            if token.chars().count() >= 40 {
+                token.push('~');
+                break;
+            }
+            token.push(ch);
+        }
+        return (trimmed.chars().next().unwrap_or('x'), token);
+    }
+    ('x', String::new())
+}
+
 /// Is this file test scaffolding rather than production source? Mirrors
 /// `scripts/verify-ipc-parity.py:91`, which drops any path with a `__tests__` component
 /// before it extracts UI command strings (measured 2026-09-13: its `UI_SCAN_DIRS` at :50
@@ -1011,10 +1059,12 @@ fn counts_as_test_scaffold(rel: &str) -> bool {
 /// `__tests__` path at :91, so a test file cannot skew parity either way. A `vi.mock`
 /// factory written as `loggedInvoke: (cmd, args) => mockInvoke(cmd, args)` is not a UI
 /// building a command name; it is a test handing one through, which is the entire point
-/// of a mock. Failing on those 58 sites would train the next reader to delete the pin.
+/// of a mock. Failing on all of them would train the next reader to delete the pin; the
+/// live count is the one this sweep prints (60 on 2026-09-13), not a number parked in a
+/// comment, because a prose count cannot be refreshed by the code it describes.
 ///
 /// The counts are still taken on both halves, so this routes findings - it never deletes
-/// numbers. A scope that silently dropped 58 sites would be an allowlist with the
+/// numbers. A scope that silently dropped 60 sites would be an allowlist with the
 /// reasons left out.
 fn computed_name_is_an_offender(rel: &str, inside_allowed: bool) -> bool {
     !inside_allowed && !counts_as_test_scaffold(rel)
@@ -1025,14 +1075,14 @@ fn computed_name_is_an_offender(rel: &str, inside_allowed: bool) -> bool {
 /// breakdown reported beside them cannot drift apart.
 fn classify_invoke_surface(text: &str, inside_allowed: bool) -> (usize, usize, Vec<usize>) {
     let sites = scan_invoke_sites(text);
-    let literal = sites.iter().filter(|(_, _, is_lit)| *is_lit).count();
+    let literal = sites.iter().filter(|(_, _, is_lit, _)| *is_lit).count();
     let computed = if inside_allowed {
         Vec::new()
     } else {
         sites
             .iter()
-            .filter(|(_, _, is_lit)| !*is_lit)
-            .map(|(line, _, _)| *line)
+            .filter(|(_, _, is_lit, _)| !*is_lit)
+            .map(|(line, _, _, _)| *line)
             .collect()
     };
     (sites.len(), literal, computed)
@@ -1088,11 +1138,17 @@ fn drift_pin_no_computed_command_names_in_ui() {
         "__tests__/useSessionKeepalive.test.ts",
     ];
 
-    // Three counts, both halves, printed whether or not the leg is red.
+    // Three counts, both halves, printed whether or not the leg is red. The production
+    // computed count is not tallied on its own any more: every such site is rendered into
+    // the prod_sites list as it is found, and the number printed beside it is that list's
+    // length, so a headline cannot disagree with the evidence under it. This file shipped a
+    // line reading "6 computed, these offend" over a two-entry offender list while the prose
+    // beside it said five -- three numbers, two of them about different things, none of them
+    // checkable against another.
     let mut offenders = Vec::new();
+    let mut prod_sites: Vec<String> = Vec::new();
     let mut total = 0usize;
     let mut prod_total = 0usize;
-    let mut prod_computed = 0usize;
     let mut test_total = 0usize;
     let mut test_computed = 0usize;
     let mut test_callees: Vec<String> = Vec::new();
@@ -1104,7 +1160,7 @@ fn drift_pin_no_computed_command_names_in_ui() {
         let inside_allowed = allowed.iter().any(|a| rel.ends_with(a));
         let offend = computed_name_is_an_offender(&rel, inside_allowed);
         let scaffold = counts_as_test_scaffold(&rel);
-        for (at, callee, is_lit) in scan_invoke_sites(&read(f)) {
+        for (at, callee, is_lit, token) in scan_invoke_sites(&read(f)) {
             total += 1;
             if scaffold {
                 test_total += 1;
@@ -1115,7 +1171,22 @@ fn drift_pin_no_computed_command_names_in_ui() {
             } else {
                 prod_total += 1;
                 if !is_lit {
-                    prod_computed += 1;
+                    prod_sites.push(format!(
+                        "{}:{}  callee `{}(`  first argument as seen: {}  {}",
+                        rel,
+                        at,
+                        callee,
+                        if token.is_empty() {
+                            "(nothing follows the paren on this line or the next three)".to_string()
+                        } else {
+                            token
+                        },
+                        if offend {
+                            "OFFENDS"
+                        } else {
+                            "tolerated by rule: a forwarder"
+                        }
+                    ));
                     if offend {
                         offenders.push(format!("{}:{}", rel, at));
                     }
@@ -1123,6 +1194,11 @@ fn drift_pin_no_computed_command_names_in_ui() {
             }
         }
     }
+    prod_sites.sort();
+    offenders.sort();
+    // The count IS the list. Nothing below re-derives it.
+    let prod_computed = prod_sites.len();
+    let offenders_len = offenders.len();
     let prod_literal = prod_total - prod_computed;
     let test_literal = test_total - test_computed;
     test_callees.sort();
@@ -1142,9 +1218,18 @@ fn drift_pin_no_computed_command_names_in_ui() {
     println!(
         "INVOKE SURFACE, BOTH HALVES: {total} invoke-shaped call sites in ui/src = \
          {prod_total} production non-test ({prod_literal} literal / {prod_computed} \
-         computed, these offend) + {test_total} test scaffolding ({test_literal} literal / \
-         {test_computed} computed, these are reported, not failed).",
+         computed, each one listed below) + {test_total} test scaffolding ({test_literal} \
+         literal / {test_computed} computed, these are reported, not failed).",
     );
+    println!(
+        "PRODUCTION COMPUTED SITES: {prod_computed} listed, {offenders_len} offend, {} sit in \
+         a tolerated file. Count and list are the same value; if they ever disagree, the \
+         list is right.",
+        prod_computed - offenders_len
+    );
+    for site in &prod_sites {
+        println!("  {site}");
+    }
     print!("{breakdown}");
     assert!(
         offenders.is_empty(),
@@ -1442,7 +1527,7 @@ fn pin_classifies_a_computed_name_built_behind_the_wrapper() {
     assert!(!computed_name_is_an_offender(test_path, false));
     // The callee is what the excluded population is reported by, so the reader sees the
     // shape: `loggedInvoke` for a production funnel, `mockInvoke` for a test double.
-    let (_, callee, _) = &scan_invoke_sites(computed)[0];
+    let (_, callee, _, _) = &scan_invoke_sites(computed)[0];
     assert_eq!(callee, "loggedInvoke");
 
     // The bare form still scores, so this is a widening and not a replacement.
@@ -1534,6 +1619,37 @@ fn pin_counts_a_generic_spelled_wrapper_call() {
         "the letters invoke inside a plain identifier are not a call"
     );
 
+    // Part five, the shape that folding in the generic calls turned up, and the reason the
+    // pin went red: a call whose first argument sits on the NEXT line. The scan reads a
+    // line at a time, so the byte after the open paren is the end of the line, "no byte"
+    // fell through to not-a-quote, and a literal name was scored as one built at runtime.
+    // A wrapped literal is a literal.
+    let (wrapped, wrapped_lit, wrapped_off) = classify_invoke_surface(
+        "  return loggedInvoke<Customer[]>(\n    \"sync_pull\",\n    args,\n  );\n",
+        false,
+    );
+    assert_eq!(
+        (wrapped, wrapped_lit, wrapped_off.as_slice()),
+        (1, 1, &[][..]),
+        "a command name written on the line after the paren is still a literal"
+    );
+
+    // Part six, the tolerance part five reaches across, held shut. ui/src/api/staff.ts:3 is
+    // a header comment whose prose says "every call through loggedInvoke (no direct
+    // invoke)": a space where a bracket list would be, so it is not a call, and looking
+    // past a newline for an argument must not make it one either. Guarded rather than
+    // trusted, because the comment skip never sees that line (it starts with "findings:",
+    // not "*"), so the only thing keeping it out of the surface is the needle.
+    let (prose, prose_lit, prose_off) = classify_invoke_surface(
+        "/*\nfindings: clean IPC contract -- every call through loggedInvoke (no direct invoke)\n*/\n",
+        false,
+    );
+    assert_eq!(
+        (prose, prose_lit, prose_off.len()),
+        (0, 0, 0),
+        "a call mentioned in prose is not a call site"
+    );
+
     // And the previously caught forms still score, so this is additive in the same
     // direction as the case-insensitivity widening, not a replacement for it.
     let (before_plain, before_lit, _) =
@@ -1550,7 +1666,7 @@ fn pin_counts_a_generic_spelled_wrapper_call() {
         (1, 1),
         "the raw tauri form still scores"
     );
-    let (_, callee, _) = &scan_invoke_sites(computed)[0];
+    let (_, callee, _, _) = &scan_invoke_sites(computed)[0];
     assert_eq!(
         callee, "loggedInvoke",
         "the callee is still the identifier actually called"
