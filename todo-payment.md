@@ -12,12 +12,15 @@
 > (`1f6a162a3`), device egress commands on both clients (`fb9ef9042a`), and
 > the checkout UI — real QR, 300 s countdown, settlement poll, re-issue/
 > cancel (`289be3959a`). The :34 rule holds as designed: the secret is a
-> cloud-only platform `MIDTRANS_SERVER_KEY`, the device never sees it. What
-> remains of this epic: **Phase 3.2 of `todo-payment-agents-3.md`** (wiring
-> the already-shipped `edc_*` commands into a card-terminal UI — the drivers
-> exist, the wire does not) and row 4's stale HAL note: the EDC protocol
-> stack shipped in `crates/oz-hal/src/drivers/edc/` (agents-2 stamped
-> absorbed 08:38 today).
+> cloud-only platform `MIDTRANS_SERVER_KEY`, the device never sees it.
+> **The epic's EDC thread has also landed**: the checkout now drives the
+> shipped `edc_*` commands — scoped pre-flight, tap/insert/swipe overlay,
+> capture-then-complete with the terminal's transaction fields on the
+> payment split, declined/cancelled returning to selection (`26ffd89c1c`).
+> `todo-payment-agents-3.md` is COMPLETE (3.0–3.2); what remains in this
+> master doc is its non-blocking backlog (per-row notes), not an open work
+> order. Row 4's stale HAL note: the EDC protocol stack shipped in
+> `crates/oz-hal/src/drivers/edc/` (agents-2 stamped absorbed 08:38 today).
 
 ## Goal
 
