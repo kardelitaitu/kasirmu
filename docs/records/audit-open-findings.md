@@ -972,6 +972,40 @@ forcing the race (hold the file open, or point the parser at a path that denies 
 than by an absence of crashes in a quiet tree. A green here proves nothing; mechanism 9 with the
 receipt inverted.
 
+### Dated corrections (2026-09-13, 20:30) — the live-writer race, and the same class in a fifth gate
+
+**The 19:45 finding is closed by `4d1a85b15`** (20:28, `scripts/verify-ftl-orphans.py`, 186/7 — one
+file). A locale file that cannot be *read* is now routed instead of crashing: `PermissionError`
+appears at two handling sites, and exit **1** (which in this file means `FAIL: N orphan
+problem(s)`) is no longer reachable from a failed read. Verified by me at 20:29 on the committed
+tree, with the baseline blob placed *inside* `scripts/` so `ROOT` resolves to the real repo, then
+deleted: `--census` **1781 B exit 0**, `--self-test` **68 B exit 0**, `--staged-only` **62 B exit 0**
+— all three **byte-identical** to `HEAD^`, so the refusal is purely additive on the failure path.
+**Honest limit on this entry**: the forced-`PermissionError` repro was *reported* by the worker
+(a holder process keeping the file open, correct for this OS, since `chmod 000` does not deny reads
+under msys/NTFS). I did not re-drive that race myself and this line does not claim I did.
+
+**A fifth gate, same class, closed earlier: `868fe3582`** (19:59, `scripts/verify-commit-subjects.py`,
+71/7). Its git helper returned `r.stdout` with no `check=` and `returncode` unread, so a rejected
+revision and a genuinely empty range were the same value. Verified by me at 20:01: the old code
+printed `0 commit(s) checked, 0 non-conforming subject(s)` at exit **1** over a range git had
+**rejected**; the new code exits **2** with **0 stdout bytes**. Healthy-path output unchanged.
+
+**Two verification traps found while closing these, both mine, both worth keeping.**
+1. *Identical results can mean two crashes.* My first attempt ran the extracted blob from a temp
+   dir, where `ROOT` (derived from `__file__`) pointed outside the repo; both old and new died on
+   an unrelated `FileNotFoundError` reading `.githooks/commit-msg` and returned the *same* exit and
+   byte counts. A diff that shows no change is only evidence when both sides ran the intended code.
+2. *A single read of a file being written is a photograph of a transit.* At 20:14 `wc -l` returned
+   493 and clean while the lane was mid-write; I concluded a 176-line rollback and told the worker
+   so. Two minutes later the same file read 669, dirty. The lesson generalises the porcelain rule
+   in §3 — inspect twice, and only where you are not the disturbance.
+
+**Residuals left open deliberately.** `--range HEAD..HEAD` still prints its `0 commit(s) checked`
+verdict to stdout *before* its own honest exit-1 refusal — print ordering, and reordering it would
+change healthy-path output. And an unreadable `.githooks/commit-msg` is still a `FileNotFoundError`
+traceback rather than a refusal: same family, different read.
+
 ### Dated correction (2026-09-13, 19:28) — the hollow-root census finding is closed by `ef2058f28`
 
 `ef2058f28` (38/1, one file) adds a `hollow_root_reason()` gate on the `LOCALES` surface. Proven by
