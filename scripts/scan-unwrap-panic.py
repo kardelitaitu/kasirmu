@@ -14,11 +14,28 @@ or the line above marks a documented invariant panic. The script prints
 `[INVARIANT]` when such a comment is found so reviewers can distinguish
 intentional setup panics from recoverable runtime panics.
 
-Exit code 0 = inventory generated; the output is the machine-readable list.
-Exit code 1 = `--fail-on-recoverable` set and at least one finding lacks a
-documented invariant comment (the recoverable set must stay at zero, ADR #33).
-Exit code 2 = the `--roots` list resolved to no directory to scan, so there was
-no inventory to report -- a REFUSED command line, not a failed check.
+Exit code 0 = inventory generated AND the strictness contract held: the recoverable
+set (findings lacking a documented invariant comment) is at or below this run's
+tolerance, which is 0 unless an operator raises it with --allow-recoverable N.
+Exit code 1 = the recoverable set went past that tolerance (ADR #33: it stays at
+zero). THIS IS THE DEFAULT -- the scan is strict unless told otherwise.
+Exit code 2 = a REFUSED command line, not a failed check: the `--roots` list resolved
+to no directory to scan so there was no inventory to report, or
+`--allow-recoverable` was handed a negative N, which forgives nothing and would fail
+a clean tree.
+
+STRICT IS THE DEFAULT, NOT A FLAG
+=================================
+
+`--fail-on-recoverable` used to be the only way to get a verdict that could be red,
+which made the green a property of a command line rather than of the tree: every
+invocation that omitted the flag -- a human re-running the gate, the recipe at
+scripts/diagnose-pr.py:36, and the `--json` re-measure instruction named in ADR #33 --
+printed a clean-looking inventory over a tree that held undocumented panics. The
+strictness is now the behaviour itself, and `--fail-on-recoverable` stays accepted as
+an inert alias so the existing call sites (scripts/check.sh, dev-ci.yml#static-gates)
+keep running unchanged. An operator who wants the old permissive run opts out by NAME
+and by NUMBER: `--allow-recoverable N`.
 
 THE EMPTY ROOT LIST IS NOT A CLEAN RESULT
 =========================================
@@ -36,9 +53,11 @@ printing `# total: 0 production unwrap/expect calls`. Refusal zeroes mean
 "nothing was scanned"; exit-0 zeroes mean "everything was scanned and clean".
 
 Usage:
-    python scripts/scan-unwrap-panic.py                             # default roots
-    python scripts/scan-unwrap-panic.py --json                      # JSON summary
-    python scripts/scan-unwrap-panic.py --fail-on-recoverable       # exit 1 on untagged findings (CI gate)
+    python scripts/scan-unwrap-panic.py                             # default roots, STRICT
+    python scripts/scan-unwrap-panic.py --json                      # JSON summary (also strict)
+    python scripts/scan-unwrap-panic.py --allow-recoverable 3       # opt-out: forgive up to 3
+    python scripts/scan-unwrap-panic.py --fail-on-recoverable       # no-op alias (CI gate, unchanged)
+    python scripts/scan-unwrap-panic.py --self-test                 # pin the default strictness
     python scripts/scan-unwrap-panic.py --roots crates apps         # named roots (REFUSED if none resolves)
 """
 
@@ -48,6 +67,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 ROOTS = ["crates", "apps", "platform", "modules"]
@@ -377,14 +397,27 @@ def refuse_nothing_to_scan(
     return 2
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The command line, in one place, so `--self-test` parses the real flags."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="emit JSON summary")
     parser.add_argument(
+        "--allow-recoverable",
+        dest="allow_recoverable",
+        type=int,
+        default=None,
+        metavar="N",
+        help="operator opt-out: forgive up to N production unwrap/expect calls that lack "
+        "a documented invariant comment. Omit it and N is 0, i.e. STRICT (ADR #33).",
+    )
+    parser.add_argument(
         "--fail-on-recoverable",
+        dest="fail_on_recoverable",
         action="store_true",
-        help="exit 1 when any production unwrap/expect lacks a documented "
-        "invariant comment (the recoverable set must stay at zero, ADR #33)",
+        help="no-op alias. Strictness about recoverable calls is now the default, so this "
+        "flag changes no verdict; it is accepted only so call sites that already pass it "
+        "(scripts/check.sh, dev-ci.yml#static-gates) keep working. It does still select the "
+        "one-line success summary in place of the plain-run `# total:` line.",
     )
     parser.add_argument(
         "--roots",
@@ -393,7 +426,176 @@ def main() -> int:
         help="roots to scan; when the list resolves to no directory at all this gate "
         "REFUSES with exit 2 rather than print an inventory over nothing",
     )
+    parser.add_argument(
+        "--self-test",
+        dest="self_test",
+        action="store_true",
+        help="run the in-process checks that pin this gate's own behaviour and exit",
+    )
+    return parser
+
+
+def strictness_tolerance(allow_recoverable: int | None) -> int:
+    """How many undocumented calls a run forgives. Zero unless an operator raised it.
+
+    `None` means the flag was not passed, and not-passing it is now the STRICT case --
+    that inversion is the whole point of the change. The old shape asked for a flag to
+    get a verdict that could be red; this asks for a flag to get one that cannot.
+    """
+    return 0 if allow_recoverable is None else allow_recoverable
+
+
+def over_tolerance(findings: list[dict], tolerance: int) -> list[dict]:
+    """The findings that make the run RED: recoverable calls BEYOND the tolerance.
+
+    Green is the equation `len(recoverable) <= tolerance`, i.e. an empty slice here --
+    not a count the reader has to compare against a number printed elsewhere. Slicing
+    rather than comparing keeps the offending subset available to the failure report.
+    """
+    return [f for f in findings if not f["invariant"]][tolerance:]
+
+
+def refuse_negative_tolerance(value: int) -> int:
+    """A negative --allow-recoverable is a broken command line, not a lenient one.
+
+    It would forgive nothing AND fail a clean tree (0 recoverable is never <= -1), so
+    reading it as entered turns the opt-out flag into a gate that can never pass. That
+    is a refusal (exit 2, the same voice as an empty root list), not a finding (exit 1).
+    """
+    print(
+        f"scan-unwrap-panic: REFUSED - --allow-recoverable needs a non-negative count, "
+        f"got {value}."
+    )
+    print(
+        "  a negative tolerance forgives nothing and fails even a clean tree, so it is "
+        "not a looser run, it is an unsatisfiable one"
+    )
+    print(
+        "  the default is already the strictest possible value: omit --allow-recoverable "
+        "entirely (that is N=0) or pass 0"
+    )
+    print(
+        "  nothing was measured and no inventory is printed, so this run holds no verdict "
+        "about the tree"
+    )
+    return 2
+
+
+def self_test() -> int:
+    """Pin this gate's own behaviour: strict by default, opt-out by name, alias inert.
+
+    In-process and repo-free -- hand-built findings plus one temp fixture read by the
+    real scanner, in a temp dir, never in the working tree. The cases exist because the
+    default was FLIPPED: the property worth nailing down is that a bare run is the strict
+    one, that --allow-recoverable N moves the ceiling and does not remove it, and that
+    --fail-on-recoverable can no longer change a verdict.
+    """
+    cases: list[tuple[str, bool]] = []
+
+    def check(name: str, ok: bool) -> None:
+        cases.append((name, ok))
+
+    undocumented = {
+        "path": "fixture.rs",
+        "line": 3,
+        "call": "unwrap",
+        "text": "a.unwrap();",
+        "invariant": False,
+    }
+    documented = dict(undocumented, invariant=True)
+    parser = build_parser()
+
+    bare = parser.parse_args([])
+    check(
+        "no flags at all => tolerance 0, i.e. the DEFAULT is strict",
+        strictness_tolerance(bare.allow_recoverable) == 0,
+    )
+    legacy = parser.parse_args(["--fail-on-recoverable"])
+    check(
+        "--fail-on-recoverable is still ACCEPTED and changes no verdict (tolerance 0)",
+        legacy.fail_on_recoverable
+        and strictness_tolerance(legacy.allow_recoverable) == 0,
+    )
+    opted = parser.parse_args(["--allow-recoverable", "1"])
+    check(
+        "--allow-recoverable 1 parses to a tolerance of 1",
+        strictness_tolerance(opted.allow_recoverable) == 1,
+    )
+    zero = parser.parse_args(["--allow-recoverable", "0"])
+    check(
+        "--allow-recoverable 0 is the same verdict as omitting it",
+        strictness_tolerance(zero.allow_recoverable) == 0,
+    )
+
+    check(
+        "one undocumented call REDS the default run",
+        len(over_tolerance([undocumented, documented], 0)) == 1,
+    )
+    check(
+        "that same call goes green once an operator opts out to 1",
+        over_tolerance([undocumented, documented], 1) == [],
+    )
+    check(
+        "the opt-out is a ceiling, not an amnesty: 2 undocumented vs N=1 still reds",
+        len(over_tolerance([undocumented, undocumented, documented], 1)) == 1,
+    )
+    check(
+        "an all-documented corpus is green at the default tolerance",
+        over_tolerance([documented, documented], 0) == [],
+    )
+
+    # The classifier behind the verdict, exercised on a real file the real scanner reads.
+    with tempfile.TemporaryDirectory(prefix="unwrap-selftest-") as tmp:
+        fixture = Path(tmp) / "fixture.rs"
+        fixture.write_text(
+            "fn main() {\n"
+            "    let a: Option<u8> = None;\n"
+            "    a.unwrap();\n"
+            "    let b: Option<u8> = Some(1);\n"
+            "    // SAFETY: INVARIANT: a literal cannot yield None\n"
+            "    b.unwrap();\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        found = scan_file(fixture)
+        check("the scanner sees both unwrap calls in a production fn", len(found) == 2)
+        check(
+            "the annotated one is documented, the bare one is recoverable",
+            sum(1 for f in found if not f["invariant"]) == 1
+            and sum(1 for f in found if f["invariant"]) == 1,
+        )
+        check(
+            "a synthetic recoverable call reds a DEFAULT run of the real scanner",
+            len(over_tolerance(found, strictness_tolerance(bare.allow_recoverable))) == 1,
+        )
+        check(
+            "...and clears only under --allow-recoverable 1",
+            over_tolerance(found, strictness_tolerance(opted.allow_recoverable)) == [],
+        )
+
+    failed = [name for name, ok in cases if not ok]
+    for name, ok in cases:
+        print(f"  {'ok' if ok else 'FAIL'}  {name}")
+    if failed:
+        print(f"\nself-test: {len(failed)} of {len(cases)} case(s) FAILED")
+        return 1
+    print(
+        f"\nself-test: all {len(cases)} case(s) passed -- strict by default, "
+        "--allow-recoverable N raises the ceiling, --fail-on-recoverable is inert"
+    )
+    return 0
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
+
+    if args.allow_recoverable is not None and args.allow_recoverable < 0:
+        return refuse_negative_tolerance(args.allow_recoverable)
+    tolerance = strictness_tolerance(args.allow_recoverable)
 
     # Refuse BEFORE the walk, not after the verdict: a root list that names no directory
     # has no corpus, and a gate with no corpus must not print a count. Only the names that
@@ -420,12 +622,41 @@ def main() -> int:
             all_findings.extend(scan_file(path))
 
     recoverable = [f for f in all_findings if not f["invariant"]]
-    if args.fail_on_recoverable and recoverable:
+    offending = over_tolerance(all_findings, tolerance)
+
+    if args.json:
+        by_file: dict[str, int] = {}
+        for f in all_findings:
+            by_file[f["path"]] = by_file.get(f["path"], 0) + 1
+        print(
+            json.dumps(
+                {
+                    "total": len(all_findings),
+                    "invariant_annotated": len(all_findings) - len(recoverable),
+                    "recoverable": len(recoverable),
+                    "tolerance": tolerance,
+                    "files": len(by_file),
+                    "by_file": dict(sorted(by_file.items(), key=lambda kv: -kv[1])),
+                },
+                indent=2,
+            )
+        )
+        # The report is emitted BEFORE the verdict so a red --json run still yields the
+        # machine-readable inventory it was asked for; the ADR's re-measure recipe points
+        # at this flag, and a recipe that cannot fail is how a red tree reads as green.
+        if not offending:
+            return 0
+
+    if offending:
         print(
             f"panic-inventory FAIL: {len(recoverable)} recoverable unwrap/expect "
-            "call(s) lack a documented invariant comment (ADR #33):",
+            f"call(s) lack a documented invariant comment (ADR #33) and this run "
+            f"forgives {tolerance}:",
             file=sys.stderr,
         )
+        # Every recoverable call is named, not just the ones past the ceiling, so the
+        # report matches the count in its own header. At the default tolerance the two
+        # sets are identical, which is why `offending` decides and this lists `recoverable`.
         for f in recoverable:
             print(
                 f'{f["path"]}:{f["line"]}: {f["call"]}()  {f["text"]}',
@@ -436,40 +667,35 @@ def main() -> int:
             "immediately preceding line, or convert the call to a Result path.",
             file=sys.stderr,
         )
+        print(
+            "This verdict is the DEFAULT, not a flag someone forgot to pass. Raising it is "
+            "an explicit act: --allow-recoverable N forgives up to N and says so in the "
+            "summary line; --fail-on-recoverable no longer means anything.",
+            file=sys.stderr,
+        )
         return 1
 
     if args.json:
-        by_file: dict[str, int] = {}
-        invariant = 0
-        for f in all_findings:
-            by_file[f["path"]] = by_file.get(f["path"], 0) + 1
-            if f["invariant"]:
-                invariant += 1
-        print(
-            json.dumps(
-                {
-                    "total": len(all_findings),
-                    "invariant_annotated": invariant,
-                    "recoverable": len(recoverable),
-                    "files": len(by_file),
-                    "by_file": dict(sorted(by_file.items(), key=lambda kv: -kv[1])),
-                },
-                indent=2,
-            )
-        )
         return 0
 
     for f in all_findings:
         tag = " [INVARIANT]" if f["invariant"] else ""
         print(f'{f["path"]}:{f["line"]}: {f["call"]}()  {f["text"]}{tag}')
-    if args.fail_on_recoverable:
+    if args.fail_on_recoverable or args.allow_recoverable is not None:
         # Concise success line for the CI / check.sh gate — plain mode would
         # otherwise dump the whole inventory into the build log.
-        print(
-            f"{len(all_findings)} production unwrap/expect calls, all documented "
-            "invariants",
-            file=sys.stderr,
-        )
+        if recoverable:
+            print(
+                f"{len(all_findings)} production unwrap/expect calls, "
+                f"{len(recoverable)} recoverable within --allow-recoverable {tolerance}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"{len(all_findings)} production unwrap/expect calls, all documented "
+                "invariants",
+                file=sys.stderr,
+            )
     else:
         print(f"\n# total: {len(all_findings)} production unwrap/expect calls", file=sys.stderr)
     return 0
