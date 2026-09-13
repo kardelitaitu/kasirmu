@@ -40,9 +40,13 @@ Three exit codes, and the gap between them is the contract, exactly as in
 scripts/verify-ftl-orphans.py: 0 is a clean verdict, 1 is a VERDICT that found something --
 `FAIL: N IPC parity violation(s)`, or a wrong ENTRY inside an allowlist this run could read --
 and 2 is a refusal that graded nothing: a shell lib missing, or a shared allowlist that did
-not arrive as an object stating every enforced section as a list. A crash must never spend 1,
-because 1 is the number a reader (and `apps/tablet-client/src/commands/sync.rs:639`) treats
-as evidence about real commands. See `AllowlistUnusable`.
+not arrive as an object stating every enforced section as a list, or a `--write-*` flag whose
+own write did not happen (`AllowlistWriteRefused` -- the file moved under this run, the target
+would not accept the rename, the swap failed outright). A write that did not happen is a WRITE
+problem and gets the refusal code; it says nothing about anybody's command names. A crash
+must never spend 1, because 1 is the number a reader (and
+`apps/tablet-client/src/commands/sync.rs:639`) treats as evidence about real commands. See
+`AllowlistUnusable`.
 """
 
 from __future__ import annotations
@@ -466,9 +470,11 @@ class AllowlistBusyError(AllowlistUnusable):
     """The target would not accept the rename, so nothing was written.
 
     A subclass of `AllowlistUnusable` so the read path keeps ONE handler while the name still
-    says which of the refusals a reader is looking at. Every existing
-    `except AllowlistBusyError` -- the two writer wraps and the self-test's busy cases -- still
-    catches exactly this class, and nothing about the retry or the message changes.
+    says which of the refusals a reader is looking at. Raised from BOTH sides of the swap: the
+    reader that could not open the file (`read_allowlist_text`, answered at 2 by
+    `refuse_unusable_allowlist`) and the writer whose rename the target never accepted
+    (`write_allowlist_payload`, re-raised by `update_allowlist` as an `AllowlistWriteRefusal`,
+    which is the write voice and also 2). Nothing about the retry or the message changes.
     """
 
 
@@ -788,10 +794,66 @@ def merge_section_entries(raw_section, gaps, allow_objects: bool = True) -> list
     return [merged[name] for name in sorted(merged)]
 
 
+class AllowlistWriteRefusal(RuntimeError):
+    """This run read a good allowlist, decided what to change, and the WRITE did not happen.
+
+    Not a subclass of `AllowlistUnusable`, and that separation is the whole point: that class
+    means the bytes never arrived, while every refusal in this class arrives AFTER a clean read
+    and a clean validation. Three causes, all of them about this process and its attempt to put
+    new bytes where a shared file sits, none of them about the surface the gate grades --
+
+    1. drift: the file on disk is not the file this run validated, because another lane
+       committed inside the sweep between the two. Routine under concurrent agents, and
+       re-runnable in one second;
+    2. a busy target: Windows denied the rename onto a file a reader holds open, past the
+       `REPLACE_ATTEMPTS` ceiling (the `AllowlistBusyError` from `write_allowlist_payload`);
+    3. any other failure of the write itself: the sibling temp could not be made, the
+       directory could not be created, the swap raised something that is not a sharing denial.
+
+    Until now all three came back through `update_allowlist` as a `list[str]` and were
+    printed as `FAIL: N allowlist write problem(s)` at exit 1 -- the VERDICT
+    code, the one `apps/tablet-client/src/commands/sync.rs:639` and `scripts/gates.json` read
+    as evidence about real command names. So a lock collision or a mid-commit sibling was
+    reportable as a finding about somebody's keys, which is the confusion this file already
+    closed at its read site (`e931220d9a`, `21da42e70f`) and the same one closed in
+    scripts/verify-ftl-orphans.py (`4d1a85b15`) and scripts/verify-scoped-reads.py
+    (`551f2a38eb`). This was the last live instance of it in the family.
+
+    What stays at 1, unchanged, is what is genuinely a finding: a wrong ENTRY inside an
+    allowlist this run did read (`allowlist_shape_problems`), and the parity verdict itself.
+    """
+
+    def __init__(self, sentences: list[str]):
+        super().__init__("\n".join(sentences))
+        self.sentences = list(sentences)
+
+
+def refuse_unwritten_allowlist(refusal: AllowlistWriteRefusal) -> int:
+    """The ONE handler for the ONE write-side class: `error:` on stderr, exit 2, no verdict.
+
+    A separate voice from `refuse_unusable_allowlist` because the two sentences describe
+    opposite facts -- there, nothing arrived; here, everything arrived and the new bytes still
+    did not go back. And a separate voice from the FAIL lines because there is no count of
+    findings to print: the run neither wrote nor graded. Every line names the WRITE, since an
+    exit code alone is not evidence (see the module docstring and the register entry at
+    `docs/records/audit-open-findings.md` for 2026-09-13 22:02, where a bare 2 was a broken
+    allowlist path wearing a guard's face and got written down as something it was not).
+    """
+    for sentence in refusal.sentences:
+        print(f"error: {sentence}", file=sys.stderr)
+    print("error: the WRITE is what failed above. The allowlist arrived, this run read and "
+          "validated it, and the new bytes never landed -- nothing was rewritten, nothing was "
+          "graded, and this refusal says nothing about any command name.", file=sys.stderr)
+    return 2
+
+
 def update_allowlist(mutate, validated, label: str) -> list[str]:
     """The ONE place the write path opens this file: read, compare, mutate, replace.
 
-    Returns sentences explaining why nothing was written; an empty list means it wrote.
+    Returns entry-level FINDINGS (sentences, exit 1) or nothing; an empty list means it wrote.
+    A write that could not be performed at all raises `AllowlistWriteRefusal` and is answered at
+    exit 2 by `refuse_unwritten_allowlist` -- see that class for why the two are not the same
+    kind of sentence.
 
     Two failures are closed here. The first is ordering: main() validates the payload, runs a
     sweep of roughly a third of a second, and then handed each writer a bare flag -- so every
@@ -811,12 +873,12 @@ def update_allowlist(mutate, validated, label: str) -> list[str]:
     """
     current = load_allowlist()
     if validated is not None and current != validated:
-        return [
+        raise AllowlistWriteRefusal([
             f"{label} did not write {ALLOWLIST_PATH.name}: the file changed after this run "
             f"read and validated it, during the sweep between the two. Writing now would seal "
             f"an edit nobody validated and possibly overwrite one somebody did. Re-run the "
             f"command; if both edits are meant to exist, make them one edit."
-        ]
+        ])
     problems = allowlist_shape_problems(current, ALLOWLIST_PATH)
     if problems:
         return [
@@ -829,33 +891,66 @@ def update_allowlist(mutate, validated, label: str) -> list[str]:
     try:
         write_allowlist_payload(payload)
     except AllowlistBusyError as busy:
-        return [f"{label} did not write {ALLOWLIST_PATH.name}: {busy}"]
+        # Somebody else has the file open and never let go. The previous bytes are still on
+        # disk, intact -- that is the whole content of this refusal, and it is not a verdict.
+        raise AllowlistWriteRefusal(
+            [f"{label} did not write {ALLOWLIST_PATH.name}: {busy}"]) from None
+    except OSError as exc:
+        # The other ways a write fails: the sibling temp would not be created, the directory
+        # is not there or not writable, the swap raised something that is not a sharing denial.
+        # Uncaught, each one escaped main() as a traceback, and an uncaught exception exits 1 --
+        # the verdict code spent on a disk, not on a command.
+        raise AllowlistWriteRefusal([
+            f"{label} could not write {ALLOWLIST_PATH.name}: the write itself failed "
+            f"({type(exc).__name__}: {exc.strerror or exc}). Nothing was put in its place, so "
+            f"the file on disk is the file that was already there."
+        ]) from None
     if summary:
         print(summary)
     return []
 
 
-def report_write_refusals(refusals: list[str]) -> int:
-    """Print refusals in the gate's own convention, and say what to return."""
-    if not refusals:
+def report_shape_findings(findings: list[str]) -> int:
+    """Print the entry-level findings one writer met, in the verdict voice, and return 1.
+
+    Only shape findings reach this any more, and they keep exit 1 because they are findings:
+    the file arrived, this run read it, and an ENTRY inside it is wrong. That is a statement
+    about somebody's exemption, which is exactly what code 1 means here. What left this
+    function is everything that used to be printed alongside it -- the drift, the busy
+    rename, the failed write -- none of which say a word about the tree.
+
+    The header says "shape" rather than the "write problem" it used to say, because that
+    phrase described every refusal the writer could meet as a problem with the write and then
+    charged all of them to the verdict code. The count is of the ENTRY-LEVEL problems, which
+    are what the lines below it name: the first sentence is the flag's own report of what it
+    declined to do, and counting it as a problem would print 2 about one bad entry -- the
+    same numeral-printed-as-what-it-is-not this file already documents at case 13.
+    """
+    if not findings:
         return 0
-    print(f"\nFAIL: {len(refusals)} allowlist write problem(s):", file=sys.stderr)
-    for line in refusals:
+    lead, *problems = findings
+    print(f"\nFAIL: allowlist shape, {len(problems)} problem(s):", file=sys.stderr)
+    for line in [lead, *problems]:
         print(f"  - {line}", file=sys.stderr)
     return 1
 
 
 def write_or_refuse(run) -> int:
-    """Run one writer flag, and pay for a read-site refusal with the refusal code.
+    """Run one writer flag, and pay for each kind of refusal in the voice that fits it.
 
-    `report_write_refusals` keeps its 1 for the two things a writer can answer about its own
-    attempt -- the file moved after this run validated it, and the target would not accept
-    the rename. An allowlist that never arrived is not an answer about the write; it is the
-    same boundary main() refuses at, met on the writer's side of the sweep, and it must not
-    cost the verdict code either.
+    Three outcomes, three codes. A writer that met an allowlist which never arrived is the
+    read boundary seen from the writer's side of the sweep: `error:`, exit 2, unchanged by
+    this function. A writer whose own WRITE did not happen raises
+    `AllowlistWriteRefusal` -- drift, a busy target, or any other failure of the write --
+    and is answered by `refuse_unwritten_allowlist` at exit 2, because a lock collision and
+    a sibling mid-commit are not evidence about anybody's command names. What `run()`
+    RETURNS is the remaining case and the only one that keeps 1: the entry-level shape
+    findings inside a file this run did read.
     """
     try:
-        return report_write_refusals(run())
+        return report_shape_findings(run())
+    except AllowlistWriteRefusal as refused:
+        return refuse_unwritten_allowlist(refused)
     except AllowlistUnusable as unusable:
         return refuse_unusable_allowlist(unusable)
 
@@ -1674,7 +1769,11 @@ def self_test() -> int:
             moved = dict(validated_copy)
             moved["desktop"] = [drift_planted]
             write_allowlist_payload(moved)
-            refusals["drift"] = write_scoped_orphans({"new_orphan_scoped"}, validated_copy)
+            try:
+                refusals["drift"] = write_scoped_orphans({"new_orphan_scoped"},
+                                                        validated_copy)
+            except AllowlistWriteRefusal as refused:
+                refusals["drift"] = refused.sentences
             refusals["drift_bytes"] = probe8.read_bytes()
             write_allowlist_payload(clean)
             quiet = io.StringIO()
@@ -1696,7 +1795,11 @@ def self_test() -> int:
                 PermissionError(5, "simulated permanent contention"))
             try:
                 refusals["before_busy"] = probe8.read_bytes()
-                refusals["busy"] = write_dev_mock_gaps(["busy_gap_scoped"], load_allowlist())
+                try:
+                    write_dev_mock_gaps(["busy_gap_scoped"], load_allowlist())
+                    refusals["busy"] = ["<WROTE, DID NOT REFUSE>"]
+                except AllowlistWriteRefusal as refused:
+                    refusals["busy"] = refused.sentences
                 refusals["busy_bytes"] = probe8.read_bytes()
             finally:
                 os.replace = real_rep
@@ -2040,6 +2143,116 @@ def self_test() -> int:
          and "\nerror: " not in empty_ok[1], )
     case("case 21  (and the committed allowlist still clears that same read-site floor)",
          isinstance(load_allowlist(), dict), )
+
+    # 22: the WRITE side of that same boundary, end to end through main(). The claim is about the
+    # VOICE, because an exit code alone has twice tonight been filed as a verdict: a writer whose
+    # own write could not happen used to print `FAIL: N allowlist write problem(s)` and return 1,
+    # and 1 is the number a reader (sync.rs:639, scripts/gates.json) treats as evidence about
+    # somebody owning command names. What actually produced it was another agent mid-commit, or a
+    # reader holding the file open for microseconds. Each arm runs against a probe path and checks
+    # the bytes, so the shared allowlist is never the thing under test, and each asserts that the
+    # sentence names the WRITE -- a 2 describing the wrong failure is the other way to be wrong.
+    probe_clean = {"_comment": "probe file, never the real allowlist",
+                   "dev_mock": [], "desktop": [], "tablet": [], "scoped_orphans": []}
+    probe_drifted = {**probe_clean, "dev_mock": ["drifted_in_scoped"]}
+
+    def writer_run(flag, drift=False, replace_error=None):
+        """main() on a throwaway probe whose write is forced to fail: (code, text, wrote)."""
+        with tempfile.TemporaryDirectory() as tmp15:
+            saved_path = globals()["ALLOWLIST_PATH"]
+            saved_argv = list(sys.argv)
+            saved_read = globals()["read_allowlist_text"]
+            saved_replace = os.replace
+            probe15 = Path(tmp15) / "ipc-parity-allowlist.json"
+            try:
+                globals()["ALLOWLIST_PATH"] = probe15
+                sys.argv = ["probe", flag]
+                write_allowlist_payload(dict(probe_clean))
+                before15 = probe15.read_bytes()
+                if drift:
+                    good = before15.decode("utf-8")
+                    moved = json.dumps(probe_drifted, indent=2, ensure_ascii=False) + "\n"
+                    reads = {"n": 0}
+                    def drifting_text(_g=good, _m=moved, _r=reads):
+                        # One writer run reads the file twice: main() validates the first
+                        # answer, the writer re-reads for itself. A different second answer IS
+                        # the drift case -- a commit landing inside the sweep -- with no thread,
+                        # no sleep, and no chance of it clearing before the assertion runs.
+                        _r["n"] += 1
+                        return _g if _r["n"] == 1 else _m
+                    globals()["read_allowlist_text"] = drifting_text
+                if replace_error is not None:
+                    os.replace = lambda src, dst, *a, **k: (_ for _ in ()).throw(
+                        replace_error())
+                out15, err15 = io.StringIO(), io.StringIO()
+                with redirect_stdout(out15), redirect_stderr(err15):
+                    code15 = main()
+                return (code15, out15.getvalue() + err15.getvalue(),
+                        probe15.read_bytes() != before15)
+            finally:
+                globals()["ALLOWLIST_PATH"] = saved_path
+                sys.argv = saved_argv
+                globals()["read_allowlist_text"] = saved_read
+                os.replace = saved_replace
+
+    drift_run = writer_run("--write-scoped-orphans", drift=True)
+    case("case 22  a write refused by DRIFT costs 2, not the verdict code",
+         drift_run[0] == 2 and not drift_run[2] and drift_run[1].startswith("error:")
+         and "FAIL" not in drift_run[1] and "Traceback" not in drift_run[1]
+         and "did not write" in drift_run[1]
+         and "changed after this run" in drift_run[1], )
+    case("case 22  and the drift sentence names the write, not a read that failed",
+         "did not write" in drift_run[1].splitlines()[0]
+         and "the WRITE is what failed" in drift_run[1]
+         and "could not be opened" not in drift_run[1]
+         and "not a usable allowlist" not in drift_run[1], )
+
+    busy_run = writer_run("--write-dev-mock-gaps", replace_error=lambda: PermissionError(
+        5, "simulated permanent contention"))
+    case("case 22  a rename the target never accepts costs 2, not the verdict code",
+         busy_run[0] == 2 and not busy_run[2] and busy_run[1].startswith("error:")
+         and "FAIL" not in busy_run[1] and "Traceback" not in busy_run[1]
+         and "would not accept the rename" in busy_run[1]
+         and "did not write" in busy_run[1], )
+    case("case 22  and a busy target is refused in the write voice, never the read voice",
+         "held open by another process" in busy_run[1]
+         and "could not be opened" not in busy_run[1], )
+
+    space_run = writer_run("--write-allowlist", replace_error=lambda: OSError(
+        28, "No space left on device"))
+    case("case 22  any other failure of the write is an error too, and never a traceback",
+         space_run[0] == 2 and not space_run[2] and space_run[1].startswith("error:")
+         and "FAIL" not in space_run[1] and "Traceback" not in space_run[1]
+         and "could not write" in space_run[1] and "OSError" in space_run[1], )
+
+    # The half that must NOT move. An ENTRY inside a file this run did read is a finding about
+    # a decision somebody made, so it keeps the FAIL voice and code 1, met by the writer or by
+    # main(). Checked on the return value and on the bytes: the refusal to write must still hold
+    # the bad entry in place rather than sealing a new decision over it.
+    shape_code = None
+    shape_bytes = b""
+    with tempfile.TemporaryDirectory() as tmp16:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe16 = Path(tmp16) / "ipc-parity-allowlist.json"
+        try:
+            globals()["ALLOWLIST_PATH"] = probe16
+            sys.argv = ["probe"]
+            write_allowlist_payload({**probe_clean, "desktop": [
+                {"name": "typed_scoped", "reason": "an object in a bare-name section"}]})
+            quiet_out, quiet_err = io.StringIO(), io.StringIO()
+            with redirect_stdout(quiet_out), redirect_stderr(quiet_err):
+                shape_code = report_shape_findings(
+                    write_dev_mock_gaps(["shape_gap_scoped"]))
+            shape_printed = quiet_out.getvalue() + quiet_err.getvalue()
+            shape_bytes = probe16.read_bytes()
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    case("case 22  but a bad ENTRY in a file that arrived still costs the verdict code 1",
+         shape_code == 1 and "FAIL:" in shape_printed and "error:" not in shape_printed
+         and "FAIL: allowlist shape, 1 problem(s)" in shape_printed
+         and b"typed_scoped" in shape_bytes and b"shape_gap_scoped" not in shape_bytes, )
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
