@@ -1000,12 +1000,39 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated correction (2026-09-13, 22:35) — a number I invented, and an inference of mine that was a harness artifact
+
+Two of my own errors, both surfaced by a worker *measuring* rather than by me checking. Written here because
+they are the kind that survive into other documents if only the fix is recorded.
+
+**One. `14 unguarded calls` was never measured; the truth is `112`.** A lane reported "14", I repeated it,
+and it then propagated into `6b405857d` and `958a56009` — into three places, all of them mine, none of them
+mineasured. The worker that landed `3cf078aad` corrected itself (`grep -o 'FAIL: [0-9]* unguarded'` →
+`FAIL: 112 unguarded ambient IPC call(s)`), and I reproduced **112** myself at 22:31. The byte-identity
+claims were never at risk: the 20473-byte CI-form output is identical on both sides and carries 112 on both
+sides. A wrong adjective on a right verdict is still wrong, and this repo has now twice seen a number
+invent itself a life in prose (see the `130 / 0` still sitting in `scripts/gates.json`).
+
+**Two. My "the guard already refuses a genuinely missing root" (in `6b405857d`) was my own broken path.**
+At 22:02 I built a temp tree, put the allowlist at `<root>/ipc-parity-allowlist.json`, and watched the gate
+exit 2. I read that as the corpus guard. It was `read_allowlist()` failing on a path it could not find —
+the gate reads `REPO/scripts/ipc-parity-allowlist.json` (line 110). The lane measured the same cell with a
+*valid* allowlist and a missing `ui/`: **rc 0, 197 B, `0 production file(s) graded`, `clean for desktop.`**
+The seventh gate therefore did **not** already cover the missing root; the eighth gate (`3cf078aad`) is what
+covers it, and my inference had shrunk a bigger hole into a smaller one. That is the failure mode of a
+reasonable-sounding exit code, and I wrote the paragraph about it in the same document two lines later.
+
+**The rule, restated where it will be read:** an exit code identifies *that* something refused; only the
+sentence it prints identifies *what*. Read the `error:` line, or reproduce the cell with the input you
+actually intended, before writing that a guard exists. I have now confirmed this gate refuses a missing root
+the honest way, at 22:31, allowlist present and correct, `ui/` gone: exit **2**, 0 stdout, no graded line.
+
 ### Dated correction (2026-09-13, 22:32) — the eighth gate: an empty corpus no longer grades as clean
 
 `3cf078aad` (211/3), `scripts/verify-scoped-reads.py` only — the residual the seventh gate left open,
 closed inside the same fence. Verified by me at 22:29, and this time against **my own** baselines taken
 30 minutes earlier at 22:02: bare default **180 B exit 0** and `--shell desktop,tablet` **20473 B at
-exit 1** both reproduced exactly, the 1 still carrying the tree's 14 unguarded-call verdict (a
+exit 1** both reproduced exactly, the 1 still carrying the tree's 112 unguarded-call verdict (a
 *regression* if it had moved), `--self-test` exit 0, allowlist still `e5663346ef`, zero scratch.
 
 **The two-sided proof, run in isolation.** With a *valid* stated-empty allowlist in place, so only the
@@ -1027,7 +1054,7 @@ prints, not by the code it returns.
 `scripts/ipc-parity-allowlist.json`, which the `e931220d9a` guard did not cover. Verified by me at
 22:02 on the committed tree: numstat one file; default run **byte-identical 180 B exit 0** against a
 baseline copy placed inside `scripts/`; CI form `--shell desktop,tablet` **byte-identical 20473 B at
-exit 1**, that 1 being the tree's own pre-existing verdict (14 unguarded calls) which the lane
+exit 1**, that 1 being the tree's own pre-existing verdict (112 unguarded calls) which the lane
 correctly did *not* silence; `--self-test` exit 0; mirrors from the repository root exit 0; allowlist
 still `e5663346ef` in worktree and HEAD; zero scratch.
 
