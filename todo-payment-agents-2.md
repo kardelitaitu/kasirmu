@@ -1,5 +1,16 @@
 # Orchestrator Agent 2: Hardware Abstraction Layer & LAN EDC Drivers
 
+<!-- Partial stamp: 2026-09-13 · DSH · DO NOT RE-EXECUTE PHASES 2.0–2.1.
+The driver tree LANDED on 31-08-26 with a different layout than this
+fence: `drivers/edc/{mod,wired,wireless}.rs` + `drivers/edc/protocol/
+{pax,ingenico,verifone}.rs` + three test files, and the mock lives in
+`drivers/mock.rs::MockEdcTerminal` (fails closed until set_success) per
+the AGENTS.md mandatory-mock rule, not `edc/mock.rs`. HardwareConfig in
+`bootstrap.rs` carries the EDC wiring. What does NOT exist: the
+`test_edc_connection_scoped` IPC of Phase 2.2 (zero references tree-wide).
+That single item remains open; it touches the bridge campaign's hot zone
+(desktop-client commands), so re-scope it there before acting. -->
+
 **Document:** `todo-payment-agents-2.md`  
 **Role:** Orchestrator Agent 2 (Peripherals & Embedded Hardware Architect)  
 **Goal:** Implement real and mock hardware driver protocols for LAN/USB Electronic Data Capture (EDC) card terminals (PAX POS-link, Ingenico, Verifone) and expose terminal-scoped override configurations in `oz-hal` and `oz-core`.

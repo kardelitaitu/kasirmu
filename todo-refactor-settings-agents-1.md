@@ -1,5 +1,13 @@
 # Orchestrator Agent 1: Settings Backend IPC Command Modularization
 
+<!-- Superseded stamp: 2026-09-13 · DSH · DO NOT EXECUTE. The 1,109-line
+`commands/settings.rs` this doc targets is now 379 lines: the oz-bridge
+campaign (todo-refactor-oz-pos-app-*, 54 commits in 36h at stamp time)
+achieved the modularization goal by extracting logic into
+`crates/oz-bridge/src/settings.rs` (1,394 lines) instead of splitting the
+command file in place. The size debt moved with the logic — it is now the
+bridge campaign's to decompose. No checklist item here was ever run. -->
+
 **Document:** `todo-refactor-settings-agents-1.md`  
 **Role:** Orchestrator Agent 1 (Settings Backend IPC Architect)  
 **Goal:** Decompose `apps/desktop-client/src/commands/settings.rs` (1,109 lines) into modular sub-modules: printer settings, receipt layout configurations, currency/tax defaults, and local API keys.

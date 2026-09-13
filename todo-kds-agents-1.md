@@ -1,5 +1,18 @@
 # Orchestrator Agent 1: Multi-Station KDS Routing Engine
 
+<!-- Partial stamp: 2026-09-13 · DSH · THIS IS STILL OPEN FEATURE WORK,
+but the design was superseded in part. Static station routing SHIPPED:
+`crates/oz-core/src/kds.rs::resolve_kds_targets` (station_ids match with
+broadcast fallback and dedup; device pairing via SHA-256 token) and is
+heavily tested in `db/kds_tests.rs` (SKU→station map, target selection).
+What this doc's Phase 1.1 still asks for and does NOT exist: a dynamic
+rules TABLE (`kds_routing_rules` — no migration, no table), category/TAG
+rule matching beyond the static station map, split-routing rule config,
+and the `get/save_kds_routing_rules_scoped` IPC pair. Any UI/IPC work must
+also ship dev-mock handlers — `ui/src/dev-mock/` is mid-extraction by
+another session (typecheck-red at stamp time). Defer until that settles,
+then reconcile this doc against the bridge layout first. -->
+
 **Document:** `todo-kds-agents-1.md`  
 **Role:** Orchestrator Agent 1 (Kitchen Routing & Rules Architect)  
 **Goal:** Implement backend routing rules in `oz-core` and `desktop-client` that evaluate order line items by category/tags and route them to designated station queues (Grill, Fryer, Salad, Bar, Expo).

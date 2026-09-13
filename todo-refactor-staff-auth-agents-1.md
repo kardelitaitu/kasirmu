@@ -1,5 +1,12 @@
 # Orchestrator Agent 1: Auth & PIN Verification Core
 
+<!-- Superseded stamp: 2026-09-13 · DSH · DO NOT EXECUTE. `commands/auth.rs`
+is now 300 lines (claim: 1,189) and `authz.rs` 262: the oz-bridge campaign
+moved the auth business logic to `crates/oz-bridge/src/auth.rs` (1,348
+lines, tests alongside). The goal — modular headless security services —
+was achieved by a different mechanism than this doc's fence anticipated.
+No checklist item here was ever run. -->
+
 **Document:** `todo-refactor-staff-auth-agents-1.md`  
 **Role:** Orchestrator Agent 1 (Security & Identity Architect)  
 **Goal:** Modularize authentication, PIN hashing, session generation, and lockout policy from `apps/desktop-client/src/commands/auth.rs` (1,189 lines) into headless security services.

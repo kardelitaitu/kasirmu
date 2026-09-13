@@ -1,5 +1,11 @@
 # Orchestrator Agent 2: Staff Profile & Permissions Engine
 
+<!-- Superseded stamp: 2026-09-13 · DSH · DO NOT EXECUTE. `commands/staff.rs`
+is now 276 lines (claim: 1,248): the oz-bridge campaign moved staff
+lifecycle/RBAC logic to `crates/oz-bridge/src/staff.rs` (1,401 lines,
+1,514 lines of tests). Same fate as staff-auth-agents-1. No checklist item
+here was ever run. -->
+
 **Document:** `todo-refactor-staff-auth-agents-2.md`  
 **Role:** Orchestrator Agent 2 (RBAC & Staff Operations Architect)  
 **Goal:** Modularize staff member lifecycle, role assignments, wage settings, and audit event dispatching from `apps/desktop-client/src/commands/staff.rs` (1,248 lines).
