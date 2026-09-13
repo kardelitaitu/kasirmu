@@ -858,8 +858,11 @@ fn keys_literal_value(keys_src: &str, ident: &str) -> Option<String> {
 }
 
 /// The call surface the computed-name ban reads: every invoke-shaped call in a file,
-/// matched regardless of the case of the leading i, so `loggedInvoke(`,
-/// `loggedInvokeGeneric(` and any future wrapper ending in the word invoke are in it.
+/// matched regardless of the case of the leading i and regardless of whether a generic
+/// argument list stands between the name and its paren, so `loggedInvoke(`,
+/// `loggedInvoke<Customer[]>(` and `mockInvoke(` are in it. A wrapper that puts letters of
+/// its own between the word and the paren (`loggedInvokeGeneric(`) is NOT, and never was
+/// -- see `invoke_open_paren` for the anchor and the open gap recorded with it.
 ///
 /// Returns (sites, sites naming the command as a string literal, 1-based line numbers of
 /// the rest). `inside_allowed` suppresses the offender list only, never the counts: the
@@ -873,15 +876,26 @@ fn keys_literal_value(keys_src: &str, ident: &str) -> Option<String> {
 /// the surface and reading a slice of it. `scripts/verify-ipc-parity.py` handled the
 /// wrapper from the start - the comment above its regex names `loggedInvoke` with a generic
 /// parameter - and this twin next to it had not caught up.
+///
+/// Catching up exposed a second hole of the same kind, found the night the first one was
+/// closed: the needle also required the paren hard against the word, so a call spelled with
+/// a type argument -- `loggedInvoke<Customer[]>("sync_pull")` -- was invisible in both
+/// directions, counted as no site and flagged as no offender. 479 sites in this sweep were
+/// written that way, 462 of them in production source, none of them in the 196 the pin
+/// reported. The eye reads 675 now.
 /// One invoke-shaped call site: the 1-based line, the identifier actually called, and
 /// whether the command name arrived as a string literal.
 ///
-/// The needle is case-insensitive over the whole word, so `loggedInvoke(`,
-/// `loggedInvokeGeneric(`, `mockInvoke(` and any future wrapper ending in the word
-/// invoke are all in the surface. The breadth is deliberate - a new wrapper is covered
-/// on day one rather than after the next audit - and its cost is that a local helper
-/// named `myInvoke` stays in the denominator forever. That is why the pin below reports
-/// the shape of what it counted and not only a number.
+/// The needle is case-insensitive over the word and accepts one balanced `<...>` list in
+/// front of the paren, so `loggedInvoke(`, `loggedInvoke<Customer[]>(`, `mockInvoke(` and
+/// any future wrapper whose name ends where the call opens are in the surface. The breadth
+/// is deliberate - a new wrapper is covered on day one rather than after the next audit -
+/// and its cost is that a local helper named `myInvoke` stays in the denominator forever.
+/// The cost it does not pay is an alias with a suffix of its own: `loggedInvokeGeneric(`
+/// still scores zero sites, because the anchor is the word invoke as it meets the bracket
+/// list or the paren. That gap is open, not covered, and the `pin_counts_a_generic_spelled_`
+/// `wrapper_call` case below says which shapes it closes and which it leaves. That is why the
+/// pin reports the shape of what it counted and not only a number.
 fn scan_invoke_sites(text: &str) -> Vec<(usize, String, bool)> {
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
@@ -895,9 +909,22 @@ fn scan_invoke_sites(text: &str) -> Vec<(usize, String, bool)> {
         let bytes = line.as_bytes();
         let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'$';
         let mut from = 0usize;
-        while let Some(hit) = lower[from..].find("invoke(") {
+        while let Some(hit) = lower[from..].find("invoke") {
             let start = from + hit;
-            let after = start + "invoke(".len();
+            let word_end = start + "invoke".len();
+            // The paren may be held back by one generic argument list: loggedInvoke<T>( is
+            // the same call as loggedInvoke(. None means this is not a call site.
+            let open = match invoke_open_paren(&lower, word_end) {
+                Some(o) => o,
+                None => {
+                    // "invoke" has no border, so no occurrence of it can start inside the
+                    // six bytes skipped here: advancing past a non-call cannot lose a site
+                    // the old needle saw.
+                    from = word_end;
+                    continue;
+                }
+            };
+            let after = open + 1;
             let mut word = start;
             while word > 0 && ident(bytes[word - 1]) {
                 word -= 1;
@@ -913,6 +940,54 @@ fn scan_invoke_sites(text: &str) -> Vec<(usize, String, bool)> {
         }
     }
     out
+}
+
+/// Where the `(` of an invoke-shaped call opens, given the byte just past the letters
+/// `invoke`: either that byte, or the first byte after one balanced `<...>` list. Angle
+/// brackets nest, so `List<Map<K, V>>` closes on its second bracket and not its first, and
+/// `=>` is an arrow rather than a close, so a function-type argument such as
+/// `<(c: number) => void>` cannot cut the scan short.
+///
+/// `None` means "not a call site": the list never closes on this line, a `;` turns up
+/// before it closes, or what follows the word is neither a bracket list nor a paren.
+/// Whitespace is tolerated only after a bracket list, never between the word and its own
+/// paren, so the only calls this adds to the surface are generic-spelled ones. The needle
+/// before 2026-09-13 could not see `loggedInvoke<Customer[]>(` at all, which is how a ban on
+/// computed command names came to be reading a third of the surface it names.
+fn invoke_open_paren(lower: &str, at: usize) -> Option<usize> {
+    let bytes = lower.as_bytes();
+    let mut i = at;
+    if i < bytes.len() && bytes[i] == b'<' {
+        let mut depth = 0usize;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'<' => depth += 1,
+                // `=>` is an arrow inside a function-type argument, not the close.
+                b'>' if i > at && bytes[i - 1] == b'=' => {}
+                b'>' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                b';' => return None,
+                _ => {}
+            }
+            i += 1;
+        }
+        if i >= bytes.len() {
+            return None;
+        }
+        i += 1;
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+    }
+    if i < bytes.len() && bytes[i] == b'(' {
+        Some(i)
+    } else {
+        None
+    }
 }
 
 /// Is this file test scaffolding rather than production source? Mirrors
@@ -966,8 +1041,10 @@ fn classify_invoke_surface(text: &str, inside_allowed: bool) -> (usize, usize, V
 /// build the name at runtime, so this bans invoke(variable) outright. It reads as a text
 /// sweep because that is the only mechanism available across a crate boundary.
 ///
-/// The surface swept is every call whose name ends in `invoke`, wrapper included: see
-/// `classify_invoke_surface` below. The wrapper is where the UI actually sends traffic.
+/// The surface swept is every call where the word `invoke` meets the paren, a generic
+/// argument list allowed in between, wrapper included: see `classify_invoke_surface` below.
+/// The wrapper is where the UI actually sends traffic. A suffixed alias is still outside
+/// that surface, and the open gap is named where the needle lives.
 #[test]
 fn drift_pin_no_computed_command_names_in_ui() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src");
@@ -1072,8 +1149,10 @@ fn drift_pin_no_computed_command_names_in_ui() {
     assert!(
         offenders.is_empty(),
         "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {total} invoke-shaped call sites in \
-         ui/src, counting every call whose name ends in invoke - so `invoke(`,
-         `loggedInvoke(` and `loggedInvokeGeneric(` are all in the denominator. \
+         ui/src, counting every call where the word invoke meets the paren, one balanced \
+         generic argument list allowed in between - so `invoke(`, `loggedInvoke(` and \
+         `loggedInvoke<Customer[]>(` are all in the denominator, while `loggedInvokeGeneric(` \
+         is not and never was (an alias with a suffix of its own still escapes the anchor). \
          PRODUCTION non-test source: {prod_total} sites, {prod_literal} literal, \
          {prod_computed} built at runtime, and these offend: {offenders:?}. \
          TEST SCAFFOLDING: {test_total} sites, {test_literal} literal, {test_computed} \
@@ -1369,4 +1448,111 @@ fn pin_classifies_a_computed_name_built_behind_the_wrapper() {
     // The bare form still scores, so this is a widening and not a replacement.
     let (sites, literal, _) = classify_invoke_surface("  return invoke('list_roles');\n", false);
     assert_eq!((sites, literal), (1, 1));
+}
+
+/// The second hole in the same eye: a type argument between the wrapper's name and its
+/// paren. The needle used to require "(" hard against the letters invoke, so a generic
+/// spelling -- which is how most of ui/src writes the wrapper -- was invisible to the ban
+/// in both directions, neither counted as a site nor flagged as an offender. Same
+/// technique as the test above: the shapes are fed in memory, not added to ui/src.
+///
+/// What this does NOT close, for the next reader rather than for comfort: an alias whose
+/// extra letters sit between the word and the paren (a wrapper named loggedInvokeGeneric)
+/// is still outside the surface, because the scan still anchors on the word immediately
+/// before the bracket list or the paren. That is a separate widening, and the sentences
+/// that used to claim it was covered now say what is covered.
+#[test]
+fn pin_counts_a_generic_spelled_wrapper_call() {
+    // Part one, the case that must offend: a name built at runtime, handed to the wrapper
+    // through a type argument. Against the old needle this scored zero sites, which is the
+    // whole defect -- a ban that does not see the call cannot flag it.
+    let computed = "export function load(kind: string) {\n  return loggedInvoke<Customer[]>(buildName(kind));\n}\n";
+    let (sites, literal, offenders) = classify_invoke_surface(computed, false);
+    assert_eq!(
+        sites, 1,
+        "a generic-spelled wrapper call is one invoke-shaped site"
+    );
+    assert_eq!(
+        literal, 0,
+        "a name assembled at runtime is still not a literal behind a type argument"
+    );
+    assert_eq!(
+        offenders,
+        vec![2],
+        "and the composing line belongs in the offender list"
+    );
+
+    // Part two, the shape thousands of ordinary calls already have: a literal name behind
+    // a type argument. Counted toward the surface, never flagged. The widening is allowed
+    // to add numbers, not to turn existing traffic into debt.
+    let (sites, literal, offenders) = classify_invoke_surface(
+        "  return loggedInvoke<Customer[]>(\"sync_pull\", args);\n",
+        false,
+    );
+    assert_eq!(
+        (sites, literal),
+        (1, 1),
+        "the generic form counts toward the denominator"
+    );
+    assert!(
+        offenders.is_empty(),
+        "a literal name through a generic wrapper is not debt"
+    );
+
+    // Part three, the two shapes that make a naive bracket scan wrong. Angle brackets
+    // nest, so List<Map<K, V>> closes on its second bracket; and "=>" is an arrow, not a
+    // close, so a function-type argument must not cut the scan short.
+    let (nested, nested_lit, nested_off) = classify_invoke_surface(
+        "  return loggedInvoke<List<Map<string, number>>>(names);\n",
+        false,
+    );
+    assert_eq!(
+        (nested, nested_lit, nested_off.as_slice()),
+        (1, 0, &[1][..]),
+        "a nested bracket list is still one computed site, and still one offender"
+    );
+    let (arrow, arrow_lit, _) =
+        classify_invoke_surface("  return loggedInvoke<(c: number) => void>(cb);\n", false);
+    assert_eq!(
+        (arrow, arrow_lit),
+        (1, 0),
+        "an arrow inside the type argument is not the end of the list"
+    );
+
+    // Part four, the cost side of the widening: the bare word must not become a call site,
+    // or the denominator turns into a keyword count. An unmatched bracket list and a word
+    // that merely starts with the letters invoke both stay out.
+    let (unclosed, _, _) =
+        classify_invoke_surface("  const broken = loggedInvoke<Customer[];\n", false);
+    assert_eq!(
+        unclosed, 0,
+        "a bracket list that never closes is not a call"
+    );
+    let (bare, _, _) = classify_invoke_surface("  const invokeCount = 3;\n", false);
+    assert_eq!(
+        bare, 0,
+        "the letters invoke inside a plain identifier are not a call"
+    );
+
+    // And the previously caught forms still score, so this is additive in the same
+    // direction as the case-insensitivity widening, not a replacement for it.
+    let (before_plain, before_lit, _) =
+        classify_invoke_surface("  return loggedInvoke('list_customers', args);\n", false);
+    assert_eq!(
+        (before_plain, before_lit),
+        (1, 1),
+        "the unbracketed form still scores"
+    );
+    let (bare_call, bare_lit, _) =
+        classify_invoke_surface("  return invoke('list_roles');\n", false);
+    assert_eq!(
+        (bare_call, bare_lit),
+        (1, 1),
+        "the raw tauri form still scores"
+    );
+    let (_, callee, _) = &scan_invoke_sites(computed)[0];
+    assert_eq!(
+        callee, "loggedInvoke",
+        "the callee is still the identifier actually called"
+    );
 }
