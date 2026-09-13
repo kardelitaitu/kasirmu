@@ -5,17 +5,19 @@
 > This doc captures the architecture decision and a phased backlog. Add detail
 > as design progresses.
 
-> **Status (2026-09-13):** the QRIS Auto / Midtrans **server path landed** via
-> `todo-payment-agents-1.md`: `POST /api/payment/midtrans/qris` (issue) and
-> `POST /api/webhooks/midtrans` (SHA512-verified settlement) over the existing
-> `crates/oz-payment` driver, with a cloud-side `midtrans_transactions` ledger
-> driving `finalize_sale` — commits `08adf9fe8d` (driver `qr_string` alias fix),
-> `9e143fc5ca` (endpoint + webhook + ledger). The :34 rule holds as designed:
-> the secret is a cloud-only platform `MIDTRANS_SERVER_KEY`, the device never
-> sees it. The **UI half stays open** in `todo-payment-agents-3.md` (QR render,
-> expiry countdown, status polling, EDC checkout flow). Row 4's HAL note is
-> also stale: the EDC protocol stack shipped in
-> `crates/oz-hal/src/drivers/edc/` (agents-2 stamped absorbed 08:38 today).
+> **Status (2026-09-13):** the QRIS Auto / Midtrans path has **landed end to
+> end**: `POST /api/payment/midtrans/qris` (issue), `POST /api/webhooks/midtrans`
+> (SHA512-verified settlement), the `midtrans_transactions` ledger
+> (`9e143fc5ca`), the status poll `GET /api/payment/midtrans/{order_id}/status`
+> (`1f6a162a3`), device egress commands on both clients (`fb9ef9042a`), and
+> the checkout UI — real QR, 300 s countdown, settlement poll, re-issue/
+> cancel (`289be3959a`). The :34 rule holds as designed: the secret is a
+> cloud-only platform `MIDTRANS_SERVER_KEY`, the device never sees it. What
+> remains of this epic: **Phase 3.2 of `todo-payment-agents-3.md`** (wiring
+> the already-shipped `edc_*` commands into a card-terminal UI — the drivers
+> exist, the wire does not) and row 4's stale HAL note: the EDC protocol
+> stack shipped in `crates/oz-hal/src/drivers/edc/` (agents-2 stamped
+> absorbed 08:38 today).
 
 ## Goal
 
