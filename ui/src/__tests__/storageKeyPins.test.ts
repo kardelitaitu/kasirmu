@@ -50,6 +50,10 @@ const EXPECTED_KEYS: Record<string, string> = {
   'kds-last-sync': 'hooks/useKdsOffline.ts',
   'kds-offline-dead-letter': 'hooks/useKdsOffline.ts',
   'kds-offline-queue': 'hooks/useKdsOffline.ts',
+  // bbb4402c4 (0.0.37 KDS wave) gave the Expo screen its own per-user station
+  // selector. Deliberately a separate key from kds_zone under oz-kds-prefs-:
+  // the two screens answer different questions and would fight across tabs.
+  'oz-kds-expo-station-': 'features/kds/kdsStationPrefs.ts',
   'oz-kds-prefs-': 'features/kds/hooks/useKdsPreferences.ts',
 
   // POS / retail
