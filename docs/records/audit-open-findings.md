@@ -1027,7 +1027,77 @@ the only witness, and nothing branches on it, so **the owner should drop one nam
 
 **The next idiom is the same bug.** `export default function`, a wrapper built in a loop, a re-export —
 each would silently drop the ratio again and every command it loses becomes unfindable. The ratio line is
-now the canary; it is informational by contract, so a human has to read line 2.
+
+### Dated correction (2026-09-14, 02:23) — the 105 are a shell gap
+
+**The premise under the entry above is false, and two lanes disproved it.** That entry counted `17`
+newly-visible sites, and the 00:53 entry queued them as product work in `ui/`, both on the reading that
+a missing token check had been found. Measured at 02:23 the reading was wrong: the finding says a
+command is not registered on the shell being graded. That is an `apps/tablet-client` registration and
+allowlist fact, not a component fact, and it is not fixable in `ui/`.
+
+**`LicenseActivationScreen.tsx` has no token string at all.** In the 361-line file, `sessionToken`,
+`useAuth`, `token`, `invoke(` and `Scoped` each return **0** matches. Four of its call sites are in the
+tablet list — `:96`, `:100`, `:106`, `:115` — and its wrappers take no token argument. It is the
+pre-auth cold path: `AppShell.tsx:642` mounts it inside the `step === 'activate'` branch, before any
+session exists, so a token bail there guards nothing and disables license activation on both shells.
+And there is no twin to route to. `activate_license_scoped` has **0** references across `ui/src`, `apps`
+and `crates`; `apps/tablet-client/src` registers `activate_license` **0** times while
+`apps/desktop-client/src/lib.rs:1177` registers it once; and
+`apps/desktop-client/src/commands/registration_gate_debt.generated.rs:102` already carries
+`("license::activate_license", "no_session_resolution")` — a no-session command recorded as accepted,
+which is the opposite of a missed guard.
+
+**One message template, in all 17 committed versions of the gate.** `git log --oneline` over
+`scripts/verify-scoped-reads.py` is 17 commits, and the string `is not registered in that shell`
+appears exactly once in each of the 17 blobs — there is no second per-finding voice the report could
+have used. The word `unguarded` appears **once** in a tablet report, in the headline
+`FAIL: 105 unguarded ambient IPC call(s):`, and **0** times in the desktop run. I read a headline as a reason,
+which is the same class this file closed three times tonight, and I filed it against other lanes while
+committing it myself.
+
+**The counts, with their units, all measured on this tree at 02:23.** `--shell tablet` prints **105**
+finding lines over **64** distinct command names; `--shell desktop` prints **0** findings. Of the 105
+sites, **61** across **34** names already call something ending in `_scoped` — for those the advice
+footer, "route through the scoped twin under the ADR #7 conditional", describes work already done. The
+remaining **44** sites across **30** names carry no `_scoped` suffix, and of those 30 names **23** have
+no `*_scoped` reference anywhere in `ui/src`, `apps` or `crates` while **7** have a twin the tablet
+shell never registers. The brief asking for this correction paraphrased that last split as "30 commands
+with no twin anywhere"; measured it is 23 and 7, and the difference is between a command that does not
+exist and one that is not registered.
+
+**CI has never graded the half that reports anything.** `dev-ci.yml:602`, step "Unguarded ambient IPC
+call sites", runs the gate **bare**, and `scripts/verify-scoped-reads.py:1048` defaults `--shell` to
+`desktop`; the only other invocation is the `--self-test` at `:600`. The bare run right now prints
+`550 production file(s) graded`, then `27 of 27 (desktop 27 of 27)`, then `clean for desktop.` at exit
+**0**. So for the whole life of this gate CI has shown the desktop verdict of a checker whose 105 real
+findings are all tablet. Filed as its own open item, and it is a one-word change in a workflow this
+lane will not edit: the step needs `--shell desktop,tablet`.
+
+**What survives tonight, by commit.** `2050292bf` (01:31) tightened `GUARD_RE` and stands — the guard
+fix is real, and the lane holding the gate audited it at **0** false clearances across a 28-site
+sample. `85101c0c5` (01:54) and `32173bfd95` (01:36) adopted the shared allowlist schema validator in
+the two gates and are unaffected. `af89fee21` (02:08) made the dead-api exclusion match on Windows and
+moved the corpus from 614 to **550** graded files, which is why the byte counts and the unguarded
+totals quoted across the 20:30-to-00:16 entries (`FAIL: 112`, `FAIL: 129`) are stale as arithmetic
+even where the verdicts they describe still hold.
+
+**An accounting gap, reported here and not reproduced.** The lane holding the gate reports **30** sites
+cleared today by the guard veto with **nothing printed saying so**: the veto counts internally and
+stays silent, so a cleared site and an unexamined site are indistinguishable in the log. I did not
+independently reproduce that number, and it is labelled as theirs rather than mine for that reason. It
+is the silent-continue class this file closed three times tonight — the hollow-root `--census`, the
+staged-diff swallow, the empty-corpus green — one level further in, because this time the silence sits
+inside a guard rather than around a read.
+
+**Who owns what, once the two gates are read as themselves.** `verify-ipc-parity.py` owns the set of
+NAMES and already filed the same fact on its own side, in one line:
+`info[tablet]: 458 UI command strings, 322 registered, 156 unregistered UI command names … (154 allowlisted)`,
+with per-name lines naming
+`apps/tablet-client/src/lib.rs` `generate_handler` as the place a name is missing.
+`verify-scoped-reads.py` owns the set of CALL SITES: 105 of them over those same 64 names. So 105
+component tickets would double-book 64 gaps that are already known, against an owner that is not the
+reporting component — and the 00:53 entry's queue of 17 pointed "in `ui/`" is aimed at the wrong tree.
 
 ### Dated corrections (2026-09-14, 00:10) — gates ten, eleven and twelve, and a premise of mine corrected by the lane holding the fence
 
