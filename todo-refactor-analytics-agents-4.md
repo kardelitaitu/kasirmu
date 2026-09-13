@@ -42,20 +42,35 @@ order retired that miss (1,409 -> 1,170 ln, now under the <=1,200 goal). -->
 - [x] `components/CommandPalette.tsx` — the hook (`useCommandPalette`) already owned state and keys; the component is the thinnest possible presentation seam, generic in the item shape (the union stays the screen's). Screen: 1,170 → **1,139 ln**.
 - [x] Ratchet sweep: confirmed zero `title=` in the palette (measured, as predicted) — baseline untouched; the suite's two reds stay restaurant-only.
 
-## Open — slice 3: the coupled core (grid `:845–~1110` + toolbar rows
-`:589–772`) — LAST, and only with its own plan pass
+## Done — slice 3a (`86e4dc5670`): the card grid — decided, then moved
 
-- [ ] `AnalyticsCardGrid` / `AnalyticsToolbar` split: the grid closes over
-  ~12 screen values per card (orderedCards, cardId, cardGranularity,
-  cardWindow, expandedKey, allCollapsed, collapsedCards, dragId, overId,
-  menuCardId, session-scoped query helpers, handlers). A props-drill
-  this wide is a design decision, not a mechanical move — decide
-  (context object vs reducer + dispatch vs render props) AFTER reading
-  `useCardLayout.ts` fully, so state ownership moves with the JSX
-  instead of being threaded through it.
-- [ ] Known trap for this slice: `dragstart` handlers set
-  `dataTransfer` — jsdom tests (`fireEvent.dragStart`) must keep passing;
-  run the 106-test suite per step, not per slice.
+- [x] Plan pass done against `useCardLayout.ts` read fully: the chosen
+  seam is a **children-slot `components/AnalyticsCardFrame.tsx`**, not a
+  context/reducer migration. The frame owns chrome (shell classes, header
+  drag wiring, info/expand/menu buttons, portaled menu + its keyboard-nav
+  loop) and reports intent; card DATA (heatmap's 11 query variables, the
+  content dispatcher) renders into the slot from the screen — the wide
+  drill the order feared never crosses the seam. State stays where its
+  other drivers (keydown effect, palette) already are.
+- [x] Drag trap handled as predicted: jsdom drag tests passed untouched
+  (106/106), `dataTransfer` handling verbatim including the Firefox
+  comment. Three drifts caught in the pre-commit verbatim audit (info
+  button is `descKey` not `titleKey`; `onDragLeave` ≠ `onDragEnd` —
+  leave clears only the marker; menu-expand lacks the header's
+  compact-mode side effect) — recorded so nobody "simplifies" them back.
+- [x] Screen: 1,139 → **994 ln**. Ratchet moved 8→5 + frame 3, sum 82.
+
+## Open — slice 3b: the toolbar rows (`:589–772` of the pre-slice file)
+
+- [ ] Workspace selector row + granularity pills + inline custom-date
+  inputs + collapse/refresh actions. Likely closer to ZoomControls'
+  shape (values + intent callbacks, screen keeps state) than to the
+  frame — but MEASURE the real free-variable set per row before
+  promising props; the refresh button rides `startRecalculating`'s ref
+  and the date inputs ride `customTouched` semantics that deserve a
+  look, not a guess.
+- [ ] Expect `title=` movement on the action buttons; check the ratchet
+  output for the actual delta and move the JSON with it.
 
 ## Rules inherited from the parent order
 
