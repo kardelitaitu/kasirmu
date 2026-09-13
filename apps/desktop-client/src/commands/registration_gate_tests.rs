@@ -1066,6 +1066,60 @@ fn counts_as_test_scaffold(rel: &str) -> bool {
 /// The counts are still taken on both halves, so this routes findings - it never deletes
 /// numbers. A scope that silently dropped 60 sites would be an allowlist with the
 /// reasons left out.
+/// Files whose computed names this ban tolerates, as trailing path components. Each entry
+/// is a decision about ONE FILE, never a directory and never a substring: the sweep is
+/// whole-tree, so an entry that reads like a folder hands out an exemption to everything in
+/// it. The two `FOUND TONIGHT` rulings below are flagged as un-pre-authorised on purpose
+/// -- they tolerate a forwarder, not a name resolver.
+///
+/// Measured 12-09-26: five entries, two of them carrying the four surviving production
+/// computed sites (`ui/src/utils/logged-invoke.ts` at :14 and :18, `dev-mock/core/mockDispatcher.ts`
+/// at :98 and :108). `utils/logged-invoke.ts` is the wrapper's own file, so this table is the
+/// only thing standing between those two sites and an offender list.
+const TOLERATED_FORWARDS: &[&str] = &[
+    "dev-mock/tauri-api.ts",
+    // FOUND TONIGHT, NOT PRE-AUTHORISED - FLAGGED FOR A RULING. The dispatcher that
+    // ce8666604 extracted declares `async invoke(cmd, ...)` at :98 and forwards the
+    // parameter it was handed to the Tauri internals at :108, so it composes no
+    // command name. This entry tolerates a FORWARDER and does not bless the handlers
+    // registry at :116, which resolves a caller-supplied name at runtime: a name
+    // built there is still a computed name and still belongs in the offender list.
+    // One exact path, deliberately no `dev-mock/` prefix - a glob would swallow the
+    // parked unscoped mock rows for free, which is the cover-up this list exists to
+    // refuse.
+    "dev-mock/core/mockDispatcher.ts",
+    "__tests__/dev-mock-scoped-aliases.test.ts",
+    // FOUND TONIGHT, NOT PRE-AUTHORISED - FLAGGED FOR A RULING. A production
+    // wrapper that takes the command name as a parameter and forwards it, so the
+    // name is a literal at every call site but invisible to this sweep. Its two
+    // sibling entries below are test scaffolding doing the same thing. If
+    // logged-invoke is meant to be the only funnel, this ban should be rewritten
+    // to run over its callers instead of over invoke( sites.
+    "utils/logged-invoke.ts",
+    "__tests__/useSessionKeepalive.test.ts",
+];
+
+/// Does `rel` fall under one of the `TOLERATED_FORWARDS` entries? An entry matches when its components
+/// are the trailing components of the swept path -- component-by-component, at any depth,
+/// and never as a substring of a component.
+///
+/// The rule used to be `rel.ends_with(entry)` on an ABSOLUTE path, i.e. a bare character
+/// suffix. That inherits an exemption for anything whose name merely ends with the same
+/// letters: `ui/src/mynested-dev-mock/tauri-api.ts` was tolerated by `dev-mock/tauri-api.ts`,
+/// because "mynested-dev-mock" ends with "dev-mock" and the rule never looked at where the
+/// component boundary was. A tolerated file is not a tolerated directory and a tolerated
+/// name is not a tolerated prefix of one.
+fn toleration_applies(rel: &str) -> bool {
+    let rel_parts: Vec<&str> = rel.split('/').filter(|c| !c.is_empty()).collect();
+    TOLERATED_FORWARDS.iter().any(|entry| {
+        let want: Vec<&str> = entry.split('/').filter(|c| !c.is_empty()).collect();
+        // Whole trailing components, and never the whole path: a swept path always has the
+        // sweep root above it, so an entry that could consume the entire path would be a
+        // glob in disguise -- exactly what the mockDispatcher entry refuses to be.
+        want.len() < rel_parts.len() && rel_parts[rel_parts.len() - want.len()..] == want[..]
+    })
+}
+
 fn computed_name_is_an_offender(rel: &str, inside_allowed: bool) -> bool {
     !inside_allowed && !counts_as_test_scaffold(rel)
 }
@@ -1112,31 +1166,9 @@ fn drift_pin_no_computed_command_names_in_ui() {
         files.len()
     );
 
-    // The three known non-literal sites, all dev-mock or test scaffolding, measured
-    // 12-09-26: a mock forwarding a variable it was handed, and one test doing the same.
-    // Neither is a screen calling a command.
-    let allowed = [
-        "dev-mock/tauri-api.ts",
-        // FOUND TONIGHT, NOT PRE-AUTHORISED - FLAGGED FOR A RULING. The dispatcher that
-        // ce8666604 extracted declares `async invoke(cmd, ...)` at :98 and forwards the
-        // parameter it was handed to the Tauri internals at :108, so it composes no
-        // command name. This entry tolerates a FORWARDER and does not bless the handlers
-        // registry at :116, which resolves a caller-supplied name at runtime: a name
-        // built there is still a computed name and still belongs in the offender list.
-        // One exact path, deliberately no `dev-mock/` prefix - a glob would swallow the
-        // parked unscoped mock rows for free, which is the cover-up this list exists to
-        // refuse.
-        "dev-mock/core/mockDispatcher.ts",
-        "__tests__/dev-mock-scoped-aliases.test.ts",
-        // FOUND TONIGHT, NOT PRE-AUTHORISED - FLAGGED FOR A RULING. A production
-        // wrapper that takes the command name as a parameter and forwards it, so the
-        // name is a literal at every call site but invisible to this sweep. Its two
-        // sibling entries below are test scaffolding doing the same thing. If
-        // logged-invoke is meant to be the only funnel, this ban should be rewritten
-        // to run over its callers instead of over invoke( sites.
-        "utils/logged-invoke.ts",
-        "__tests__/useSessionKeepalive.test.ts",
-    ];
+    // The tolerated files moved to TOLERATED_FORWARDS, next to the rule that reads them, so
+    // the path shape can be tested as a case that can fail instead of living where only the
+    // sweep can reach it. Nothing about the entries themselves changed in the move.
 
     // Three counts, both halves, printed whether or not the leg is red. The production
     // computed count is not tallied on its own any more: every such site is rendered into
@@ -1157,7 +1189,7 @@ fn drift_pin_no_computed_command_names_in_ui() {
             .display()
             .to_string()
             .replace(std::path::MAIN_SEPARATOR, "/");
-        let inside_allowed = allowed.iter().any(|a| rel.ends_with(a));
+        let inside_allowed = toleration_applies(&rel);
         let offend = computed_name_is_an_offender(&rel, inside_allowed);
         let scaffold = counts_as_test_scaffold(&rel);
         for (at, callee, is_lit, token) in scan_invoke_sites(&read(f)) {
@@ -1503,6 +1535,39 @@ fn pin_classifies_a_computed_name_built_behind_the_wrapper() {
     let (sites, _, offenders) = classify_invoke_surface(computed, true);
     assert_eq!(sites, 1, "toleration must not shrink the denominator");
     assert!(offenders.is_empty());
+
+    // Toleration is a claim about a PATH, so it is tested as one. The four surviving
+    // production computed sites live in two real files, and a fix that stopped tolerating
+    // those is not a fix; the lookalike below is the case that shows the rule reads
+    // components and not characters. Against the bare-suffix rule
+    // ("mynested-dev-mock" ends with "dev-mock") the third assertion below fails and the
+    // lookalike walks free with an exemption it was never given.
+    for real in [
+        "C:/checkout/apps/desktop-client/../../ui/src/utils/logged-invoke.ts",
+        "C:/checkout/apps/desktop-client/../../ui/src/dev-mock/core/mockDispatcher.ts",
+        "C:/checkout/apps/desktop-client/../../ui/src/dev-mock/tauri-api.ts",
+        "C:/checkout/ui/src/__tests__/useSessionKeepalive.test.ts",
+    ] {
+        assert!(
+            toleration_applies(real),
+            "a file the list names must stay tolerated: {real}"
+        );
+    }
+    assert!(
+        !toleration_applies("C:/checkout/ui/src/mynested-dev-mock/tauri-api.ts"),
+        "a directory whose name merely ENDS WITH a tolerated directory is not that directory"
+    );
+    assert!(
+        !toleration_applies("C:/checkout/ui/src/features/not-logged-invoke.ts"),
+        "and a file whose name merely ENDS WITH a tolerated file is not that file"
+    );
+    // Any depth, deliberately. Every swept path is under the sweep's own root, so depth
+    // carries no information here; what must be unambiguous is the directory name and the
+    // file name. This is a choice the assertion pins rather than an accident of ends_with.
+    assert!(
+        toleration_applies("C:/checkout/anywhere/at/all/utils/logged-invoke.ts"),
+        "the entries name a file's trailing components, not its location: any depth is          tolerated, and that is the reading the code has to prove"
+    );
 
     // Part four, the scoping rule as a case that can fail. The same computed name in a
     // production-shaped path offends; the same computed name under `__tests__` does not.
