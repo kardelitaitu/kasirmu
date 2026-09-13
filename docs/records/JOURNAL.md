@@ -1,4 +1,27 @@
 
+## 2026-09-13 — Absorb: the QRIS Auto pair lands on the desktop registration floor (desktop-client/records)
+
+**Context:**
+`fb9ef9042ad` (13:00, twelve files) registered `qris_auto::qris_auto_charge_scoped` and `qris_auto::qris_auto_status_scoped` in `apps/desktop-client/src/lib.rs` — two names, both arriving already gated, so they moved no ceiling and no debt-ledger row. The only leg in `apps/desktop-client/src/commands/registration_gate_tests.rs` that can see a command which arrives gated is `drift_pin_registration_floor_is_met`, whose second assertion is an equality against the tree, and that leg has been red on a clean checkout ever since the commit landed: `lib.rs registers 453 commands and this floor says 451`. The 451 it replaced is barely an hour old — raised at 12:22 by `a63fd08b65` for the KDS routing-rule pair, which left the header prose at :6 and the const doc at :78 still describing 449 registered names. This entry records the absorb; it does not author either registration.
+
+**Changes:**
+1. `apps/desktop-client/src/commands/registration_gate_tests.rs:82` — `REGISTERED_FLOOR` 451 → 453, the number the harness prints rather than a chosen one.
+2. Same file, `:6` and `:78` — the two prose measurements moved with the const: 449 → 453, "two more than the 451 this floor was last written against", and the causal clause now names `fb9ef9042ad` and the two `qris_auto::` commands instead of the sync-conflict pair it had been crediting since 12:22.
+3. Deliberately untouched: the ceilings, `REGISTERED_SLACK` (24) and `registration_gate_debt.generated.rs`. A gated pair adds no debt, and a pass that widened an allowance while raising a pin would be the wrong kind of green.
+
+**What it means:**
+Provenance, because the message on the commit says so too: this floor step was prepared in another lane's working tree and withdrawn from the index before it was committed; the 449 → 451 half of it landed independently at `a63fd08b65` while the absorb was being briefed, so what this pass files is the remaining 451 → 453 plus the JOURNAL line the assertion asks for. It landed here, and not there, because the file is red at HEAD, CI has no working copy to absorb a withdrawn bump from, and the lane that registered the QRIS pair had moved on. Raising the floor records what landed; it does not approve it — the two names are counted, not endorsed, and their permission is `qris_auto`'s own business.
+
+An asymmetry this entry does not fix: `apps/tablet-client/src/commands/registration_gate_tests.rs:71` certifies a surface of 322 against a floor of 318, and cannot see the difference, because its second leg compares the floor to the generated ledger's total — which is also 318, the same measurement restated — rather than to the tree, and its third leg allows 318 + 24. The desktop file had exactly that bug until it was made an equality against `registered_names(LIB_RS)`. Left open for that file's owner; not edited in a desktop-fence pass.
+
+**Verification:**
+- Before: `cargo test -p oz-pos-app registration_gate` → `11 passed; 1 failed`, the one failure `drift_pin_registration_floor_is_met` (`left: 451`, `right: 453`), exit 1.
+- After: `cargo test -p oz-pos-app registration_gate` → `12 passed; 0 failed`, exit 0.
+- `grep -i qris docs/records/JOURNAL.md` now names both commands in this entry; it named neither before.
+
+**Commit:** single pathspec commit `test(desktop-client): absorb the QRIS Auto pair into the registration floor` — never push without a direct user order.
+
+
 ## 2026-09-13 — Policy: remove workspace-wide cargo fmt from pre-commit (agents)
 
 **Context:**

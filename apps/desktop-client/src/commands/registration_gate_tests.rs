@@ -3,10 +3,10 @@
 //! # What this is
 //!
 //! A ratchet over the CLASS, not the instances. The tauri::generate_handler! macro in
-//! ../lib.rs is the whole renderer-reachable surface of this shell: 449 registered
-//! names as measured 13-09-26, two more than the 447 this floor was last written
-//! against, because `028056eaaeb` registered `sync::list_sync_conflicts_scoped` and
-//! `sync::resolve_sync_conflict_scoped`. Every registered name is parsed out of this crate's own
+//! ../lib.rs is the whole renderer-reachable surface of this shell: 453 registered
+//! names as measured 13-09-26, two more than the 451 this floor was last written
+//! against, because `fb9ef9042ad` registered `qris_auto::qris_auto_charge_scoped` and
+//! `qris_auto::qris_auto_status_scoped`. Every registered name is parsed out of this crate's own
 //! source at test time and placed in exactly one of three states:
 //!
 //! 1. gated — the wrapper resolves a session AND a permission is named on the path the
@@ -75,11 +75,11 @@ use std::path::{Path, PathBuf};
 #[path = "registration_gate_debt.generated.rs"]
 mod debt;
 
-/// The registered surface of this shell, measured from `../lib.rs` as 449 names on
+/// The registered surface of this shell, measured from `../lib.rs` as 453 names on
 /// 13-09-26. This is an EQUALITY and the leg below checks it against the tree, so a
 /// moved include_str path cannot pass by finding nothing and a registered name cannot
 /// pass by being gated. Raising this number records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 451;
+const REGISTERED_FLOOR: usize = 453;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
