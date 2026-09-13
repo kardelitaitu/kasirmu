@@ -747,16 +747,22 @@ before being written, nothing outside this file touched. Owner named by file:
   false green, and the distinction matters: a loud failure is not the hazard, a quiet green is.
 - **Scope:** the hand-off swept 21 gates, each run as its own HEAD blob in a fresh temp
   directory with the data files it names copied beside it, and found **five that return a false
-  green; the other 16 fail loudly, with the missing path in the message.** All five re-run
-  here, each exit 0 in the temp tree: `verify-flaky-quarantine` — `PASS: quarantine manifest
-  valid (0 entries, none expired)`, the manifest being its whole corpus; `verify-ftl-orphans` —
-  `nothing staged under ui/src; nothing to verify.` against `ftl orphans: OK` in the real tree,
-  arguably a different class because it is legitimately index-bound;
-  `verify-migration-column-types` — prints nothing (`if not files: return 0`, `:151-152`)
-  against `(59 files scanned, 12 float hits all exempt)` in the real tree, the count existing
-  only when non-zero; `verify-no-hardcoded-money-format` — `PASS (0 production .rs file(s), …)`
-  against 1080 here, the best behaved of the five because the number carries its unit (`:293`),
-  so the lie is legible to anyone who reads it.
+  green; the other 16 fail loudly, with the missing path in the message.** All five were re-run
+  here at exit 0 in the temp tree at 13:0x +07; the standing count is **three open, two closed**,
+  and a register still saying five would hide finished work the way it hid the defect. Closed —
+  `verify-flaky-quarantine` at `ae7f19c03` (106 insertions / 8 deletions) and
+  `verify-no-hardcoded-money-format` at `1f7c2311c` (129 / 9), both re-measured by this lane in a
+  throwaway root at 13:3x +07: the quarantine blob beside its own manifest now exits **1** on
+  `FAIL: REFUSED -- the manifest at this root has no test corpus behind it` and its real-tree PASS
+  names the root plus `1134 candidate .rs file(s) found`; the money-format blob exits **2** on
+  `REFUSED — a gate that walked nothing must not print clean` and its real-tree line reads
+  `PASS (1080 production .rs file(s) under <root>, from current working directory)`. Still open —
+  `verify-scoped-reads` (re-run 13:3x +07: still exit 0, still the one indistinguishable line);
+  `verify-ftl-orphans` — `nothing staged under ui/src; nothing to verify.` against
+  `ftl orphans: OK` in the real tree, arguably a different class because it is legitimately
+  index-bound; and `verify-migration-column-types`, which printed nothing (`if not files: return
+  0`, `:151-152`) against `(59 files scanned, 12 float hits all exempt)` here at 13:0x — its own
+  repair is in flight in another lane, so its outcome is deliberately not recorded.
 - **The closed instance** is `scripts/verify-agents-mirrors.py` at `6809719a91`, 149 insertions
   / 5 deletions, which additionally prints a `files walked` tally whenever the walk is not
   whole (`:896-905`), git answering the root with script-relative kept only as the recorded
@@ -769,6 +775,37 @@ before being written, nothing outside this file touched. Owner named by file:
   CI-enforced path and not a pure robustness fix — one lane proposed it, another declined on
   that evidence. The load-bearing half of the closure is the refusal on an empty walk and on an
   absent input, not the anchor.
+
+## The records index has no caller, and its drift report counts positions (`RI-1` parked, `RI-2`
+  mechanism, added 2026-09-13 13:4x +07, tip `ae7f19c03`)
+
+**Status:** neither is repaired from here — `RI-1` is a parked decision for an owner, `RI-2` is
+not a defect. Both handed over by the records-index lane, which landed `0d5eb0e00` at 13:33 +07,
+and both re-grepped here.
+
+- **RI-1 — nothing regenerates or gates `docs/records/README.md`.** The five live runners were
+  grepped individually (13:3x +07) — `.githooks`, `scripts/check.sh`, `scripts/run-pre-push.py`,
+  `scripts/gates.json`, `.github/workflows` — and **none names it** (exit 1 each); the workspace
+  grep's hits at this tip are 26, all prose, self-references inside the generator, or
+  `scripts/test-records-index-escaping.sh` driving it against a temp tree, and that script is
+  named in none of the five runners either, so the only executable caller has no caller. Nothing
+  regenerates or gates the index, which is why one row sat missing and why drift returns the
+  moment another record lands. **Recommendation, stated not done:** wire `--check` into the
+  `static-gates` job — that means editing `scripts/gates.json` and
+  `.github/workflows/dev-ci.yml`, both outside what this session may touch, so it is parked for
+  an owner and not an open task for us.
+- **RI-2 — a mechanism, not a bug: `--check` reports differences by position.**
+  `scripts/generate-records-index.mjs:498-506` seeds `differing` at `Math.abs(g.length -
+  c.length)` and then compares `g[i]` to `c[i]`, so one insertion near the top of a sorted group
+  makes every following line look changed. That is what turned `0d5eb0e00`'s real nine-line diff
+  (`git show --numstat` → 5/4: five of them the ADR-51 row, four genuine
+  generator-versus-hand-edit differences — `mdCell` `:161` strips code-span backticks from three
+  status cells, ADR 5, ADR 39 and the Structured Logging row, and `TITLE_MAX = 120` at `:155`,
+  applied to labels only at `:182`, truncates the ADR 41 title with an ellipsis) into a reported
+  cascade of 48 differing lines. **General form, same family as a count that agrees while its
+  content disagrees:** a positional red is a statement about the checker's arithmetic and not
+  about the tree, and the only defense is to ask what the real diff is before repeating a
+  reported number.
 
 ---
 
