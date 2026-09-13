@@ -81,10 +81,16 @@ resolved to a wrapper, per shell. Both are reports about the SITUATION, and neit
 verdict -- nothing in this file reads either number to decide an exit code, which is the
 difference between making a thin wrapper map legible and pretending this gate owns the
 threshold that would call one insufficient. Measured on the real tree the moment the line
-landed: 26 of 27 on the default desktop run, 150 of 181 across both shells -- so 31 allowlisted
-names have no TS wrapper to search for and never could have produced a finding. That is what
-the ninth guard could not see (it refuses only a map with ZERO rows) and what case 21 below
-pins on a synthetic fixture instead of on a tree that will drift.
+landed: 26 of 27 on the default desktop run, 150 of 181 across both shells. Read straight, that
+says 31 allowlisted names have no wrapper to search for and never could have produced a finding.
+Read a day later it says something else: the ratio is only as honest as the pattern that builds
+the map, and WRAPPER_RE could not see the 'export async function' idiom at all, so most of those
+31 were wrappers this file was blind to rather than gaps in the front end. It now reads 27 of 27
+and 180 of 181, and the single remaining name is a deleted command with no wrapper to find. The
+lesson is the reason the line exists and the reason it stays informational: a number printed is a
+number somebody checks, and what they check next is the tool that produced it. The ninth guard
+still cannot see a thin map (it refuses only a map with ZERO rows), which is what case 21 pins on
+a synthetic fixture instead of on a tree that will drift.
 
 usage:
     python scripts/verify-scoped-reads.py                # check the tree
@@ -435,11 +441,46 @@ def require_allowlist_shape(allow, shells, path=ALLOWLIST):
             f'run refuses instead. An allowlist is a JSON object keyed by {want}.')
 
 
-# Wrappers are `export const name = (args): Ret => loggedInvoke<T>('cmd', {...});`. The body is an
-# arrow, so the pattern must cross `=>`; a character class that excludes `=` cannot, and matching
-# nothing would report every entry as clean.
+# A wrapper is an EXPORTED function whose body reaches loggedInvoke. Two idioms write that, and
+# for its whole life this pattern saw only one of them:
+#
+#     export const name = (args): Ret => loggedInvoke<T>('cmd', {...});   // the arrow form
+#     export async function name(args): Promise<Ret> {
+#       return loggedInvoke('cmd');                                       // the function form
+#
+# The comment above used to describe the first as THE form, and 27 of the 30 allowlisted names
+# that resolved to nothing were written the second way (ui/src/api/license.ts:34-35 and
+# workspaces.ts:83-86 are two of them). The gate could not see those wrappers, so it reported the
+# commands they wrap as having no call site to find -- 'clean', at exit 0, with the call site in
+# plain sight. A pattern that matches nothing is not a conservative pattern, it is a silent one,
+# and this file has now spent three guards on exactly that distinction.
+#
+# The other half of the blindness was the span. '[^;]*?' stopped at ANY semicolon between the
+# name and the invoke, and a semicolon in that span is ordinary TypeScript, not a statement
+# boundary: an inline param type ('args: { userId: string; sku: string }', products.ts:213) and an
+# early-return guard ('if (!sessionToken) { return Promise.reject(...); }' ahead of the invoke,
+# settings.ts:279-282) each put one there. So delete_product and set_settings_scoped were invisible
+# while a plain one-line arrow was found.
+#
+# Tolerating ';' is only safe if the span still cannot walk into the NEXT declaration: a pattern
+# that pairs one wrapper's name with another wrapper's command turns every call site of the first
+# into a violation blamed on the second shell. That is THE failure mode of this change, and the
+# tempered token below is the guard -- the span now consumes anything (semicolons included) but
+# stops dead at another 'export', so two declarations can never share one command and one
+# declaration can never borrow its neighbour's. Verified on the real tree, not by inspection:
+# every (command, wrapper) pair the widened pattern adds names a declaration whose own body is
+# where that loggedInvoke sits, and the pairs the old pattern already found are unchanged.
+#
+# One allowlisted name still resolves to nothing after this and is expected to:
+# 'rotate_encryption_key'. There is no wrapper because the command was ungated and deleted
+# (ui/src/api/security.ts:29-36 says so in its own voice), which makes the entry stale in the
+# allowlist rather than invisible to this file. It is named here instead of special-cased in
+# code: a gate that forgives one known name on a ratio it does not read is a gate starting to
+# own a threshold it was told not to invent.
 WRAPPER_RE = re.compile(
-    r"export const (\w+)[^;]*?loggedInvoke(?:<[^>]*>)?\(\s*'(\w+)'", re.S)
+    r"export\s+(?:async\s+)?(?:const|let|var|function)\s+(\w+)"
+    r"(?:(?!export\s+(?:async\s+)?(?:const|let|var|function)\b).)*?"
+    r"loggedInvoke(?:<[^>]*>)?\(\s*'(\w+)'", re.S)
 
 # An ADR #7 conditional: the scoped twin appears before this call, within a few lines.
 GUARD_RE = re.compile(
@@ -1589,6 +1630,119 @@ def _wrapper_self_test():
         failures += 1
     return failures
 
+def _pattern_self_test():
+    """Cases 26-30: the wrapper PATTERN, which is the surface every lookup is built from.
+
+    The four groups above all ask what the gate does with a map it was handed. These ask
+    whether the map is the right one, because the gate was blind in two specific ways and
+    each blindness was invisible from inside the run: 27 of the 30 allowlisted names that
+    resolved to nothing were written as 'export async function' and the pattern required
+    'export const', and two more had a semicolon between the name and the invoke -- an inline
+    param type, an early-return guard -- which the old '[^;]*?' span refused to cross. Both
+    produced the same wrong output as a real absence: 'resolving to a wrapper: 26 of 27',
+    and a clean verdict, and no way to tell the two apart on the page.
+
+    Case 29 is the one that matters most and it asserts that NOTHING was found: widening a
+    lazy span to admit semicolons also admits the next declaration, and a pattern that pairs
+    one export's name with another export's command converts every call site of the first
+    into a violation blamed on the second shell. The tempered token is the only thing standing
+    between those two readings, so it gets a case whose pass condition is an empty set.
+    """
+    print("  verify-scoped-reads self-test / what counts as a wrapper")
+    failures = 0
+
+    def wrappers_from(body):
+        root = tempfile.mkdtemp(prefix="oz-scoped-pattern-")
+        with io.open(os.path.join(root, "one.ts"), "w", encoding="utf-8") as fh:
+            fh.write(body)
+        try:
+            return find_wrappers(root)
+        finally:
+            import shutil
+            shutil.rmtree(root, ignore_errors=True)
+
+    for label, body, cmd, want in (
+            ("case 26 the async-function idiom (license.ts:34-35), which the old pattern could "
+             "not see at all",
+             "/** Doc comment. */\nexport async function getLicenseStatus(): "
+             "Promise<LicenseStatusDto> {\n  return loggedInvoke('get_license_status');\n}\n",
+             "get_license_status", {"getLicenseStatus"}),
+            ("case 27 a semicolon inside an inline param type (products.ts:213)",
+             "export const deleteProduct = (args: { userId: string; sku: string }): "
+             "Promise<void> =>\n  loggedInvoke('delete_product', { args });\n",
+             "delete_product", {"deleteProduct"}),
+            ("case 28 a semicolon from an early-return guard before the invoke "
+             "(settings.ts:279-282)",
+             "export const setSettingsScoped = (\n  sessionToken: string | null,\n"
+             "  entries: Record<string, string>,\n): Promise<void> => {\n"
+             "  if (!sessionToken) {\n    return Promise.reject(new Error('No token'));\n  }\n"
+             "  return loggedInvoke<void>('set_settings_scoped', { sessionToken, entries });\n};\n",
+             "set_settings_scoped", {"setSettingsScoped"}),
+    ):
+        got = wrappers_from(body).get(cmd, set())
+        if got == want:
+            print(f"    ok   {label} -- resolves {cmd!r} to {sorted(want)}")
+        else:
+            print(f"    FAIL {label}  got={sorted(got)} want={sorted(want)}")
+            failures += 1
+
+    two = ("export const MAX_ITEMS = 5;\n"
+           "export const listThings = () => loggedInvoke('list_things');\n")
+    got = wrappers_from(two)
+    if got.get("list_things") == {"listThings"} and "MAX_ITEMS" not in got.get("list_things", set()):
+        print("    ok   case 29 two declarations in one file, one with no invoke -- the span "
+              "stops at 'export' and does not borrow its neighbour's command")
+    else:
+        print(f"    FAIL case 29  map={ {k: sorted(v) for k, v in got.items()} }")
+        failures += 1
+
+    # Case 30: and a wrapper declaration is not a call to the wrapper. The api layer IS walked
+    # as production source here (see the ui/src/api exclusion note in production_files), so an
+    # unguarded-looking 'export async function name(...)' sits in a graded file and would be
+    # reported as a violation of its own definition if _is_call_site did not reject a leading
+    # 'function'/'async' token. A tree whose ONLY occurrence of the name is the declaration must
+    # therefore grade clean -- and clean here means the wrapper counted (1 of 1), not skipped.
+    saved_defaults = audit.__defaults__
+    root = tempfile.mkdtemp(prefix="oz-scoped-decl-")
+    src = os.path.join(root, "ui", "src")
+    os.makedirs(os.path.join(src, "api"))
+    os.makedirs(os.path.join(src, "features"))
+    with io.open(os.path.join(src, "features", "Blank.tsx"), "w", encoding="utf-8") as fh:
+        fh.write("export const Blank = () => null;\n")
+    with io.open(os.path.join(src, "api", "license.ts"), "w", encoding="utf-8") as fh:
+        fh.write("export async function getLicenseStatus(): Promise<Status> {\n"
+                 "  return loggedInvoke('get_license_status');\n}\n")
+    al = os.path.join(root, "allowlist.json")
+    with io.open(al, "w", encoding="utf-8") as fh:
+        json.dump({"desktop": ["get_license_status"], "tablet": []}, fh)
+    buf, ebuf = io.StringIO(), io.StringIO()
+    saved, saved_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = buf, ebuf
+    try:
+        audit.__defaults__ = (root, ALLOWLIST)
+        rc = main(["--allowlist", al])
+    except BaseException as exc:
+        rc = "bare " + type(exc).__name__ + ": " + str(exc)
+    finally:
+        sys.stdout, sys.stderr = saved, saved_err
+        audit.__defaults__ = saved_defaults
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+    out = buf.getvalue() + ebuf.getvalue()
+    if (rc == 0 and "FAIL:" not in out
+            and "resolving to a wrapper: 1 of 1 (desktop 1 of 1)." in out):
+        print("    ok   case 30 a file whose only mention of a wrapper is its own async "
+              "declaration counts the wrapper and reports no call site")
+    else:
+        print(f"    FAIL case 30  rc={rc!r} findings={'FAIL:' in out}")
+        for ln in out.splitlines()[:4]:
+            print("           | " + ln[:150])
+        failures += 1
+    if audit.__defaults__ != saved_defaults:
+        print("    FAIL the pattern self-test left audit()'s defaults rebound")
+        failures += 1
+    return failures
+
 def _coverage_self_test():
     """Cases 21-25: the coverage line, whose numbers are pinned on synthetic trees.
 
@@ -1964,6 +2118,7 @@ def self_test():
     failures += _corpus_self_test()
     failures += _wrapper_self_test()
     failures += _coverage_self_test()
+    failures += _pattern_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
