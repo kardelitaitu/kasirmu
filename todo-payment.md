@@ -17,7 +17,7 @@
 > shipped `edc_*` commands — scoped pre-flight, tap/insert/swipe overlay,
 > capture-then-complete with the terminal's transaction fields on the
 > payment split, declined/cancelled returning to selection (`26ffd89c1c`).
-> `todo-payment-agents-3.md` is COMPLETE (3.0–3.2); what remains in this
+> `done-done-todo-payment-agents-3.md` is COMPLETE (3.0–3.2); what remains in this
 > master doc is its non-blocking backlog (per-row notes), not an open work
 > order. Row 4's stale HAL note: the EDC protocol stack shipped in
 > `crates/oz-hal/src/drivers/edc/` (agents-2 stamped absorbed 08:38 today).

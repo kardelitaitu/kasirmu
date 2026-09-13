@@ -9,7 +9,7 @@ order retired that miss (1,409 -> 1,170 ln, now under the <=1,200 goal). -->
 
 ## Source
 
-- Parent order: [`todo-refactor-analytics-agents-1.md`](./todo-refactor-analytics-agents-1.md)
+- Parent order: [`done-todo-refactor-analytics-agents-1.md`](./done-todo-refactor-analytics-agents-1.md)
   (:145 follow-up stamp — do not restate its phases here).
 - Target file: `ui/src/features/analytics/AnalyticsScreen.tsx` — **1,170 ln**
   at this order's opening (component `:110`, main `return (` at `:553`,

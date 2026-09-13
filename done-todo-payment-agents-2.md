@@ -11,14 +11,25 @@ the AGENTS.md mandatory-mock rule, not `edc/mock.rs`. HardwareConfig in
 That single item remains open; it touches the bridge campaign's hot zone
 (desktop-client commands), so re-scope it there before acting. -->
 
-**Document:** `todo-payment-agents-2.md`  
+<!-- CLOSURE stamp: 2026-09-14 · DSH (agents-5 close-out sweep) · the open
+item above is CLOSED BY SUBSTITUTION, not by building it. 3.2 shipped
+`edc_terminal_status_scoped` (desktop commands/edc.rs, registered, UI
+contract-pinned) as the scoped pre-flight, and the dedicated probe
+remains deliberately unbuilt — agents-3's box :61 records the decision,
+`api/edc.ts` the rationale. The HardwareConfig wiring this stamp doubted
+is real: crates/oz-hal/src/bootstrap.rs:179 carries
+`terminals: Vec<TerminalConfig>` ("Card-payment terminals"). All phases
+are landed or superseded; renamed done- with the history left as written.
+-->
+
+**Document:** `done-todo-payment-agents-2.md` (was `todo-payment-agents-2.md`)  
 **Role:** Orchestrator Agent 2 (Peripherals & Embedded Hardware Architect)  
 **Goal:** Implement real and mock hardware driver protocols for LAN/USB Electronic Data Capture (EDC) card terminals (PAX POS-link, Ingenico, Verifone) and expose terminal-scoped override configurations in `oz-hal` and `oz-core`.
 
 **Target Crate:** `crates/oz-hal/` & `crates/oz-core/src/terminal_override.rs`  
 **Sibling Documents:**
-- [`todo-payment-agents-1.md`](./todo-payment-agents-1.md) (Agent 1 — Cloud Gateway, Midtrans API & Webhooks)
-- [`todo-payment-agents-3.md`](./todo-payment-agents-3.md) (Agent 3 — Checkout UI, Dynamic QR & Payment Polling)
+- [`done-todo-payment-agents-1.md`](./done-todo-payment-agents-1.md) (Agent 1 — Cloud Gateway, Midtrans API & Webhooks)
+- [`done-todo-payment-agents-3.md`](./done-todo-payment-agents-3.md) (Agent 3 — Checkout UI, Dynamic QR & Payment Polling)
 
 ---
 

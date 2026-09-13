@@ -2,14 +2,14 @@
 
 <!-- Audit stamp: 2026-09-13 · Budak Korporat · status: REPAIRED against HEAD ce8666604 · WHAT WAS WRONG IN THE PREVIOUS REVISION: (1) baseline "1,467 lines" -> 1,529 (`wc -l`); (2) ALL FIVE proposed component names were invented — `RevenueKpiCard`, `GrossMarginCard`, `BasketSizeCard`, `CustomerTrafficCard` and `RefundRateCard` do not exist anywhere in the repo. The file holds SIXTEEN cards under different names, enumerated below; the closest real matches are RevenueCard, BasketCard, CustomersCard and RefundsCard, and there is no gross-margin card at all (margin is a series inside RevenueCard); (3) the proposed props contract — "current period value, previous period value, percent change, currency" — is invented: every real card takes a single `q: AnalyticsQuery` object plus `{ title, expanded?, compare? }`; (4) "Turn AnalyticsCardContent.tsx into a clean switch/router" describes work that is ALREADY DONE — the dispatcher exists at lines 1510–1526 and already returns null for an unknown key; (5) the plan silently orphaned `ExportCsvButton` (exported, and imported by a test), the 11 per-card CSV exporters, and ~15 shared primitives; (6) the `< 250` target is unreachable if those stay in the file, so the split is now specified. All six repaired below. -->
 
-**Document:** `todo-refactor-analytics-agents-2.md`
+**Document:** `done-todo-refactor-analytics-agents-2.md` (was `todo-refactor-analytics-agents-2.md`)
 **Role:** Orchestrator Agent 2 (Metric Card & KPI Presentation Architect)
 **Goal:** Decompose `AnalyticsCardContent.tsx` into a dispatcher, a shared card-primitive layer, seven chart-free card modules, nine chart-bearing card shells, and a card CSV module.
 
 **Target File:** `ui/src/features/analytics/AnalyticsCardContent.tsx` — **1,529 lines** (measured `wc -l`, HEAD `ce8666604`)
 **Sibling Documents:**
-- [`todo-refactor-analytics-agents-1.md`](./todo-refactor-analytics-agents-1.md) (Agent 1 — Query State, Date Range & Export)
-- [`todo-refactor-analytics-agents-3.md`](./todo-refactor-analytics-agents-3.md) (Agent 3 — Chart Extraction)
+- [`done-todo-refactor-analytics-agents-1.md`](./done-todo-refactor-analytics-agents-1.md) (Agent 1 — Query State, Date Range & Export)
+- [`done-todo-refactor-analytics-agents-3.md`](./done-todo-refactor-analytics-agents-3.md) (Agent 3 — Chart Extraction)
 
 ---
 

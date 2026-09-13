@@ -83,7 +83,20 @@ LANDED (backend only, this session), one commit per milestone:
   registration_gate_tests.rs (two self-test reds unrelated to the floor).
 -->
 
-**Document:** `todo-kds-agents-1.md`  
+<!-- CLOSURE stamp: 2026-09-14 · DSH (agents-5 close-out sweep) · ORDER IS
+FULLY DONE. Backend landed as stamped above (b7ab48870, 652f18494,
+f8b91e5be, a63fd08b6); the deferred UI landed as `9f6fcd828`
+(`features/kds/components/KdsRoutingRulesEditor.tsx` +
+`kdsRoutingRulesModel.ts` + hamburger-panel section, 41 `kds-routing*`
+ftl keys, editor + api-contract test suites); the deferred dev-mock pair
+is live (`handlers/kds.ts:613-614`); the follow-up obligation this stamp
+named — gate_audit ("kds_routing",3,["KDS_UPDATE","KDS_VIEW"]) — is
+measured at apps/desktop-client/tests/gate_audit.rs:115. The three
+unchecked Phase boxes above (baseline inspect, commit milestone, dev-mock
+pair) were overtaken by those commits and stay as written history.
+Renamed done- with that record in place. -->
+
+**Document:** `done-todo-kds-agents-1.md` (was `todo-kds-agents-1.md`)  
 **Role:** Orchestrator Agent 1 (Kitchen Routing & Rules Architect)  
 **Goal:** Implement backend routing rules in `oz-core` and `desktop-client` that evaluate order line items by category/tags and route them to designated station queues (Grill, Fryer, Salad, Bar, Expo).
 

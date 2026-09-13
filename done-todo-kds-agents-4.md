@@ -6,7 +6,7 @@
 
 **Sibling Documents:**
 - [`done-todo-kds-agents-2.md`](./done-todo-kds-agents-2.md) (the crate + desktop wiring this validates)
-- [`todo-kds-agents-1.md`](./todo-kds-agents-1.md) (rules table — out of scope here)
+- [`done-todo-kds-agents-1.md`](./done-done-todo-kds-agents-1.md) (rules table — out of scope here)
 
 ---
 

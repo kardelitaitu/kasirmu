@@ -2,14 +2,14 @@
 
 <!-- Audit stamp: 2026-09-13 · Budak Korporat · status: REPAIRED against HEAD ce8666604 · WHAT WAS WRONG IN THE PREVIOUS REVISION: (1) THE PREMISE. It told this agent to extract charts from "AnalyticsScreen.tsx (Lower JSX tree), Lines 500+" and to "reduce AnalyticsScreen to < 450 lines". The charts are not in AnalyticsScreen.tsx. That file contains exactly ONE chart render site — line 1507, `<AnalyticsHeatmap />`, which is already a separate 276-line component. All NINE other chart render sites are in AnalyticsCardContent.tsx (lines 721, 779, 851, 940, 1116, 1173, 1229, 1333, 1408). The < 450 target was therefore unreachable by construction. (2) "SVG, D3/Victory wrappers" — the stack is echarts 6 + echarts-for-react 3; there is no d3 and no victory in the repo, and recharts is present but unused by this feature. (3) `HourlySalesHeatmap.tsx` would have duplicated the existing `AnalyticsHeatmap.tsx`. (4) `CategoryDistributionChart.tsx` was in the owned fence but appeared in NO checklist phase — fenced and never scheduled. (5) The fence "Lines 500+" overlapped Agent 1's "Lines 1–350" while leaving 350–500 unowned. All five repaired: this agent no longer touches AnalyticsScreen.tsx at all, and owns the chart half of Agent 2's file instead. -->
 
-**Document:** `todo-refactor-analytics-agents-3.md`
+**Document:** `done-todo-refactor-analytics-agents-3.md` (was `todo-refactor-analytics-agents-3.md`)
 **Role:** Orchestrator Agent 3 (Data Visualization Architect)
 **Goal:** Extract the nine inline echarts option-builders out of `AnalyticsCardContent.tsx` into isolated chart components, and move the chart colour/height infrastructure into a single theme module.
 
 **Target File:** `ui/src/features/analytics/AnalyticsCardContent.tsx` — the nine chart-bearing card bodies (Agent 2 owns the shells; you own the charts inside them)
 **Sibling Documents:**
-- [`todo-refactor-analytics-agents-1.md`](./todo-refactor-analytics-agents-1.md) (Agent 1 — Query State, Date Range & Export)
-- [`todo-refactor-analytics-agents-2.md`](./todo-refactor-analytics-agents-2.md) (Agent 2 — KPI Card Decomposition)
+- [`done-todo-refactor-analytics-agents-1.md`](./done-todo-refactor-analytics-agents-1.md) (Agent 1 — Query State, Date Range & Export)
+- [`done-todo-refactor-analytics-agents-2.md`](./done-todo-refactor-analytics-agents-2.md) (Agent 2 — KPI Card Decomposition)
 
 ---
 

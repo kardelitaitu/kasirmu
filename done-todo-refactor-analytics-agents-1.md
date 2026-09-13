@@ -2,14 +2,14 @@
 
 <!-- Audit stamp: 2026-09-13 · Budak Korporat · status: REPAIRED against HEAD ce8666604 · every figure below was re-measured, not carried over. WHAT WAS WRONG IN THE PREVIOUS REVISION: (1) baseline "1,551 lines" -> 1,623 (`wc -l`); (2) the owned fence "Lines 1–350" described a hook-wiring region that does not exist — lines 1–158 are imports plus nine EXPORTED helpers consumed by two test files, and the component does not begin until 287; (3) "today, yesterday, last 7 days, this month" presets DO NOT EXIST anywhere in the feature — the real control is a `Granularity` selector (weekly/monthly/yearly/custom) over `customFrom`/`customTo`, and the range maths already lives in `analytics-data.ts`; (4) "CSV / PDF export" — there is no PDF, no `window.print`, no jspdf and no html2canvas in the feature (grep returns zero hits), and 11 of the 12 CSV exporters are in AnalyticsCardContent.tsx, which the previous revision assigned to Agent 2 while Agent 1 was told to own "export"; (5) `hooks/useAnalyticsData.ts` as specified would have duplicated three existing modules (`useAnalyticsQuery.ts` 173, `analytics-data.ts` 1,007, `analytics-cache.ts` 495); (6) the plan never mentioned the storage-key pin test, which FAILS the moment `oz-analytics-workspace-view` moves out of AnalyticsScreen.tsx. All six repaired below. -->
 
-**Document:** `todo-refactor-analytics-agents-1.md`
+**Document:** `done-todo-refactor-analytics-agents-1.md` (was `todo-refactor-analytics-agents-1.md`)
 **Role:** Orchestrator Agent 1 (Analytics Query State & Export Architect)
 **Goal:** Move the module-level pure logic out of `AnalyticsScreen.tsx` into typed utilities, lift the screen's filter/zoom state into a hook, and give the heatmap CSV export a home outside the screen.
 
 **Target File:** `ui/src/features/analytics/AnalyticsScreen.tsx` — **1,623 lines** (measured `wc -l`, HEAD `ce8666604`)
 **Sibling Documents:**
-- [`todo-refactor-analytics-agents-2.md`](./todo-refactor-analytics-agents-2.md) (Agent 2 — KPI Card Decomposition)
-- [`todo-refactor-analytics-agents-3.md`](./todo-refactor-analytics-agents-3.md) (Agent 3 — Chart Extraction)
+- [`done-todo-refactor-analytics-agents-2.md`](./done-todo-refactor-analytics-agents-2.md) (Agent 2 — KPI Card Decomposition)
+- [`done-todo-refactor-analytics-agents-3.md`](./done-todo-refactor-analytics-agents-3.md) (Agent 3 — Chart Extraction)
 
 ---
 
@@ -144,7 +144,7 @@ If a smaller screen is genuinely wanted, the next step is a **separate** work or
 
 > **CLOSED HONEST — TARGET MISSED, AS PREDICTED.** Final measurement `c05133d757`: **1,409 physical lines** ((Get-Content).Count), against ≤1,200. The three phases moved exactly the 214 lines they owned (module logic + filter state); the ~200-line gap is precisely the JSX markup bulk this order named as its out-of-scope remainder. The target is not being edited retroactively — the miss is the report, and the JSX-shell order above is the real next step.
 
-> **FOLLOW-UP (same day, `411e6dccfb` → `a070d2ab72`): the miss is retired — by the next step, not by this order.** The JSX-shell work order (`todo-refactor-analytics-agents-4.md`) was opened and executed to completion in six slices: ZoomControls, CacheMetricsPanel, SessionRecoveryBanner, NoWorkspacePrompt (`411e6dccfb`), CommandPalette (`d5e3aba339`), the children-slot AnalyticsCardFrame (`86e4dc5670`), and the toolbar rows (`a070d2ab72`). `AnalyticsScreen.tsx` now measures **864 lines** — from 1,409, every body verbatim, the 106-test suite never edited. This file's honest record stands as written.
+> **FOLLOW-UP (same day, `411e6dccfb` → `a070d2ab72`): the miss is retired — by the next step, not by this order.** The JSX-shell work order (`done-todo-refactor-analytics-agents-4.md`) was opened and executed to completion in six slices: ZoomControls, CacheMetricsPanel, SessionRecoveryBanner, NoWorkspacePrompt (`411e6dccfb`), CommandPalette (`d5e3aba339`), the children-slot AnalyticsCardFrame (`86e4dc5670`), and the toolbar rows (`a070d2ab72`). `AnalyticsScreen.tsx` now measures **864 lines** — from 1,409, every body verbatim, the 106-test suite never edited. This file's honest record stands as written.
 
 ---
 
@@ -152,4 +152,4 @@ If a smaller screen is genuinely wanted, the next step is a **separate** work or
 
 - You do **not** wait on Agent 2 or Agent 3. Your three new files and your screen edits touch nothing they own.
 - Agent 3 does **not** wait on you either: the heatmap already lives in its own file (`AnalyticsHeatmap.tsx`, 276 lines) and your Phase 1.1 moves `exportHeatmapCsv` without changing its signature.
-- The one ordering constraint in the whole analytics refactor runs **Agent 3 → Agent 2**, not through you. See the interface freeze in `todo-refactor-analytics-agents-3.md`.
+- The one ordering constraint in the whole analytics refactor runs **Agent 3 → Agent 2**, not through you. See the interface freeze in `done-todo-refactor-analytics-agents-3.md`.

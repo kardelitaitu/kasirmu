@@ -2,14 +2,14 @@
 
 <!-- Audit stamp: 2026-09-13 · DSH · status: REPAIRED against HEAD · every premise below was re-measured, not carried over. WHAT WAS WRONG IN THE PREVIOUS REVISION: (1) "Create apps/cloud-server/src/payments/midtrans_client.rs" — the Midtrans Core-API client ALREADY EXISTS and is production-shaped: crates/oz-payment/src/drivers/qris.rs (charge/capture/refund/void, sandbox+prod base URLs, MIDTRANS_SERVER_KEY env read, caller idempotency keys honored since the 09-09 PAY-2 fix, HTTP bounded per COR-31, wiremock + recorded-fixture tests, and a module audit header that honestly documents the two-phase contract: sale() success means the QR was ISSUED, not settled). Creating a second client beside it would fork that hard-won edge-case handling. (2) "routes/payments.rs" — cloud-server has NO routes/ directory; it is a flat 47-file crate and API surfaces are per-domain modules (sync_api.rs, webhooks.rs, outbound_webhooks.rs, admin.rs) merged in main.rs; the fence named a structure that does not exist. (3) "tenant secret resolver" — every gateway already integrated here (Stripe, Square) uses ONE platform env key, and tenant attribution happens at webhook time via lookup_sale_by_gateway_reference over the gateway_reference, not at key time; a per-tenant Midtrans secret store would invent a column no sibling gateway has. USER-RATIFIED 09-13: platform key model + server-side issue-time payment row (see 1.1b). (4) The order's own Goal line asked for "asynchronous sale settlement reconciliation" and its checklist scheduled none. (5) The webhook signature is genuinely missing — crates/oz-payment/src/webhook.rs is a stub whose header says "PLANNED" — and webhooks.rs verifies Stripe + Square only; that half of the order stands. -->
 
-**Document:** `todo-payment-agents-1.md` (repaired 09-13)
+**Document:** `done-todo-payment-agents-1.md` (was `todo-payment-agents-1.md`) (repaired 09-13)
 **Role:** Orchestrator Agent 1 (Payment Cloud Gateway Architect)
 **Goal:** Expose the EXISTING Midtrans QRIS driver through `apps/cloud-server`: an authenticated charge endpoint that records the issued transaction server-side (so settlement can be reconciled even when the device syncs late), and a webhook receiver with real signature verification that drives `finalize_sale`.
 
 **Target Crate:** `apps/cloud-server/src/` (consuming `crates/oz-payment` as a dependency — the driver itself is DONE and must not be re-written or forked)
 **Sibling Documents:**
-- [`todo-payment-agents-2.md`](./todo-payment-agents-2.md) (Agent 2 — HAL & EDC drivers; already stamped absorbed: the PAX/Ingenico/Verifone protocol stack shipped in `crates/oz-hal/src/drivers/edc/`)
-- [`todo-payment-agents-3.md`](./todo-payment-agents-3.md) (Agent 3 — Checkout UI, Dynamic QR & Payment Polling; depends on THIS order's endpoint existing)
+- [`done-todo-payment-agents-2.md`](./done-todo-payment-agents-2.md) (Agent 2 — HAL & EDC drivers; already stamped absorbed: the PAX/Ingenico/Verifone protocol stack shipped in `crates/oz-hal/src/drivers/edc/`)
+- [`done-todo-payment-agents-3.md`](./done-todo-payment-agents-3.md) (Agent 3 — Checkout UI, Dynamic QR & Payment Polling; depends on THIS order's endpoint existing)
 
 ---
 
