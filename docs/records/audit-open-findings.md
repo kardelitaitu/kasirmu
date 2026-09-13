@@ -919,6 +919,22 @@ Two of the three named items remain genuinely open: the identical wrong-shape ha
 allowlist and so can re-publish a shape nothing can read, and `scripts/coverage_top.py:40`
 opening JSON with no `encoding=`. Recorded as findings, not touched.
 
+**(later same day)** the first of those two was taken up and closed by `409d09334` (78/8, one file,
+`scripts/verify-bundle-parity.py`): `--scan-dirs` with a blank value, a lone comma, or `""` all now
+exit **2** with one `error:` line on stderr, **0 bytes on stdout**, and no `missing key` token in
+either stream, so a CI log grep for the verdict string cannot match a refusal. Note the`""`
+case was worse than reported, it did not merely scan nothing, it silently *widened* to a full
+scan of 330 files, so a typo in the flag turned into a different audit than the one asked for.
+Director-measured at 15:38: bare run exit 0 at 685 bytes, byte-identical to the lane's 15:26
+baseline, and the six-dir CI form still `scanned 448 file(s)`. The voice question was decided by
+the worker and accepted here, it refused with this gate's own `error:`/exit 2 rather than the
+`FAIL:`/exit 1 of the reference gate, because in this file **exit 1 already means "a scan ran and
+found missing keys"**, so a shared voice would have been a shared *lie*; consistency of format is
+worthless when the code means something different on the other side. It also reported, without
+being asked, that `--staged-only` with no paths prints `0 missing key(s)` and exits 0, and did NOT
+change it, because that behaviour is documented in the file's own EXIT CODES and relied on by
+`.githooks/pre-commit` for delete-only commits, a contract decision rather than a fence edit.
+
 ## How to close these
 
 Each finding's original remediation guidance lives in git history under
