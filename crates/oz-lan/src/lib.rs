@@ -14,8 +14,10 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! Entry points: [`LanEventForwarder`] (construct with a bind address +
 //! optional PSK, then `handle()` for a cloneable [`LanForwarderHandle`]
 //! and `run()` to spawn the accept loop). Event-bus bridges are
-//! [`SaleCompletedHandler`] / [`CourseFiredHandler`]; KDS discovery
-//! payloads are [`KdsDiscoverResponse`].
+//! [`SaleCompletedHandler`] / [`CourseFiredHandler`] / [`KdsSyncHandler`];
+//! KDS discovery payloads are [`KdsDiscoverResponse`]; multi-terminal KDS
+//! state sync (typed events, station-scoped delivery, reconnect
+//! snapshots) lives in the `kds_sync` module (re-exported here).
 //!
 //! LAN event forwarder — a lightweight TCP server that broadcasts domain
 //! events to KDS tablet peers on the local network.
@@ -24,12 +26,21 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //!
 //! - Broadcasts `sale.completed` and `order.course_fired` events to all
 //!   connected LAN peers via newline-delimited JSON over TCP.
+//! - Broadcasts tagged [`kds_sync::KdsSyncEvent`] lines (`kds.order_placed`,
+//!   `kds.line_item_bumped`, `kds.order_ready`, `kds.order_recalled`) with
+//!   station-scoped delivery: peers subscribe via `station_ids` on their
+//!   hello/discover line; peers with no or empty `station_ids` (Expo and
+//!   all legacy clients) keep receiving everything.
 //! - Sends a `{"type":"ping"}` heartbeat every 5 seconds to detect
 //!   silent disconnections.
 //! - When a TCP write fails, buffers the undelivered event in an
 //!   in-memory per-peer queue.
 //! - When a peer reconnects, automatically flushes buffered events
 //!   before entering the normal broadcast loop.
+//! - A booting KDS peer can request an active-queue snapshot with
+//!   `{"op":"discover","want_queue":true}`; the discovery response then
+//!   carries a live `active_queue` [`KdsQueueSnapshot`]
+//!   (see [`LanEventForwarder::with_kds_queue`]).
 //!
 //! # Wire format
 //!
@@ -37,6 +48,8 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //!
 //! - `sale.completed`: `{"sale_id":"...","line_items":[...],...}`
 //! - `order.course_fired`: `{"sale_id":"...","course_id":"...",...}`
+//! - `kds.*`: `{"type":"kds.order_placed","kds_order_id":"...","stations":[...],...}`
+//!   — the `"type"` tag is always the first key.
 //! - Heartbeat: `{"type":"ping"}`
 //!
 //! # Transports
@@ -72,10 +85,27 @@ use std::sync::Arc;
 use foundation::contracts::{EventHandler, ModuleResult};
 use oz_core::events::{CourseFired, SaleCompleted};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, broadcast};
+
+mod kds_sync;
+mod noise;
+
+pub(crate) use noise::{
+    NOISE_MAGIC_BYTE, PeerTx, noise_handshake_responder, read_frame, write_frame,
+};
+// Re-exported only for the reference noise initiator sequence in
+// `lib_tests.rs` (the module doc points at it).
+#[cfg(test)]
+pub(crate) use noise::{NOISE_MAX_FRAME, NOISE_PATTERN, noise_psk_bytes, noise_static_secret};
+
+pub use kds_sync::{
+    EVENT_LINE_ITEM_BUMPED, EVENT_ORDER_PLACED, EVENT_ORDER_READY, EVENT_ORDER_RECALLED,
+    KDS_EVENT_TAG_PREFIX, KdsLineItemBumped, KdsOrderPlaced, KdsOrderReady, KdsOrderRecalled,
+    KdsQueueProvider, KdsQueueSnapshot, KdsQueueTicket, KdsSyncEvent, KdsSyncHandler,
+    PeerSubscription, event_station_scope, should_deliver,
+};
 
 /// Maximum number of pending broadcast messages before old ones are
 /// dropped (avoids unbounded memory growth for slow peers).
@@ -147,193 +177,36 @@ fn psk_matches(provided: &str, expected: &str) -> bool {
 }
 
 /// First message a peer must send when PSK is configured.
+///
+/// `station_ids`/`device_id` are the kds-sync subscription fields; both
+/// are `#[serde(default)]` so a pre-kds-sync hello line parses unchanged
+/// and yields no subscription (see [`kds_sync`] for the wire-compat story).
 #[derive(Debug, Deserialize)]
 struct HelloMsg {
     op: String,
     psk: String,
+    #[serde(default)]
+    station_ids: Vec<String>,
+    #[serde(default)]
+    device_id: Option<String>,
 }
 
 /// A peer request for KDS discovery information.
+///
+/// `want_queue` opts the response into a live `active_queue` snapshot
+/// injection (see `kds_sync::build_discovery_response`); `station_ids`
+/// and `device_id` carry the same subscription semantics as on
+/// [`HelloMsg`] for loopback binds without a PSK. All are
+/// `#[serde(default)]` — legacy `{"op":"discover"}` bytes parse as before.
 #[derive(Debug, Deserialize)]
 struct DiscoverMsg {
     op: String,
-}
-
-// ── noise-psk-v1 transport ───────────────────────────────────────────
-
-/// Noise-PSK-v1 protocol selector byte. A peer whose first stream byte
-/// is this value negotiates the encrypted transport; any other byte is
-/// treated as the start of a legacy JSON hello.
-const NOISE_MAGIC_BYTE: u8 = 0x01;
-
-/// Noise handshake pattern for the `noise-psk-v1` LAN transport.
-///
-/// `XXpsk3` = mutual ephemeral key exchange with the pre-shared key
-/// mixed into message 3: the PSK never crosses the wire, and a peer
-/// without it cannot complete the handshake (unlike the legacy hello,
-/// which sends the PSK in cleartext JSON — see the DC-1 note on
-/// [`psk_matches`]).
-const NOISE_PATTERN: &str = "Noise_XXpsk3_25519_ChaChaPoly_SHA256";
-
-/// Maximum frame (ciphertext) size — the Noise protocol hard cap
-/// (65535 bytes, enforced by snow's `write_message`/`read_message`).
-const NOISE_MAX_FRAME: usize = 65535;
-
-/// Derive the 32-byte Noise PSK from the configured passphrase.
-///
-/// snow requires exactly 32 bytes; SHA-256 expands the human-chosen
-/// `lan_server.psk` setting deterministically so both ends derive the
-/// same key from the shared secret without ever transmitting it.
-fn noise_psk_bytes(psk: &str) -> [u8; 32] {
-    Sha256::digest(psk.as_bytes()).into()
-}
-
-/// Derive the responder's Noise static private key from the PSK.
-///
-/// `XXpsk3` requires a responder static key (message 2 carries `s`).
-/// Deriving it deterministically from the PSK — domain-separated from
-/// [`noise_psk_bytes`] so the two 32-byte keys can never collide —
-/// avoids persisting a key file for a LAN-only transport while still
-/// binding each peer's advertised identity to the shared secret.
-fn noise_static_secret(psk: &str) -> [u8; 32] {
-    Sha256::digest(format!("oz-pos-lan-static|{psk}").as_bytes()).into()
-}
-
-/// Read one length-prefixed frame (4-byte big-endian length + payload).
-async fn read_frame(stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf).await?;
-    let len = u32::from_be_bytes(len_buf) as usize;
-    if len > NOISE_MAX_FRAME {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("frame too large: {len} > {NOISE_MAX_FRAME}"),
-        ));
-    }
-    let mut buf = vec![0u8; len];
-    stream.read_exact(&mut buf).await?;
-    Ok(buf)
-}
-
-/// Write one length-prefixed frame (4-byte big-endian length + payload).
-async fn write_frame(stream: &mut TcpStream, data: &[u8]) -> std::io::Result<()> {
-    stream.write_all(&(data.len() as u32).to_be_bytes()).await?;
-    stream.write_all(data).await
-}
-
-/// Handshake step timed out.
-fn handshake_timeout(step: &str) -> std::io::Error {
-    std::io::Error::new(
-        std::io::ErrorKind::TimedOut,
-        format!("noise handshake {step} timed out"),
-    )
-}
-
-/// Handshake step failed cryptographically or on the wire.
-fn handshake_failed(step: &str, reason: impl std::fmt::Display) -> std::io::Error {
-    std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        format!("noise handshake {step} failed: {reason}"),
-    )
-}
-
-/// Perform the server (responder) side of the noise-psk-v1 handshake.
-///
-/// Reads initiator message 1 (`-> e`), responds with message 2
-/// (`<- e ee s es`), then authenticates message 3 (`-> s es psk3`),
-/// where the PSK is mixed: a peer without the correct pre-shared key
-/// fails here and is dropped, and the PSK itself never crosses the
-/// wire. Every step is bounded by [`PSK_HANDSHAKE_TIMEOUT_SECS`].
-async fn noise_handshake_responder(
-    stream: &mut TcpStream,
-    psk: &str,
-) -> std::io::Result<snow::TransportState> {
-    let dur = std::time::Duration::from_secs(PSK_HANDSHAKE_TIMEOUT_SECS);
-    let params: snow::params::NoiseParams = NOISE_PATTERN
-        .parse()
-        .map_err(|e| handshake_failed("pattern", e))?;
-    // Bound before the builder chain: `Builder<'builder>` keeps the key
-    // references alive for its whole lifetime, so temporaries won't do.
-    let static_secret = noise_static_secret(psk);
-    let psk_bytes = noise_psk_bytes(psk);
-    let mut hs = snow::Builder::new(params)
-        .local_private_key(&static_secret)
-        .map_err(|e| handshake_failed("static key", e))?
-        .psk(3, &psk_bytes)
-        .map_err(|e| handshake_failed("psk", e))?
-        .build_responder()
-        .map_err(|e| handshake_failed("responder init", e))?;
-    let mut buf = vec![0u8; NOISE_MAX_FRAME];
-
-    // Message 1: -> e
-    let msg1 = match tokio::time::timeout(dur, read_frame(stream)).await {
-        Ok(Ok(m)) => m,
-        Ok(Err(e)) => return Err(e),
-        Err(_) => return Err(handshake_timeout("msg1 read")),
-    };
-    if let Err(e) = hs.read_message(&msg1, &mut buf) {
-        return Err(handshake_failed("msg1", e));
-    }
-
-    // Message 2: <- e ee s es
-    let n = hs
-        .write_message(&[], &mut buf)
-        .map_err(|e| handshake_failed("msg2", e))?;
-    match tokio::time::timeout(dur, write_frame(stream, &buf[..n])).await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => return Err(e),
-        Err(_) => return Err(handshake_timeout("msg2 write")),
-    }
-
-    // Message 3: -> s es psk3 — the PSK authenticates the initiator
-    // here; a wrong PSK fails the MAC check and the peer is dropped.
-    let msg3 = match tokio::time::timeout(dur, read_frame(stream)).await {
-        Ok(Ok(m)) => m,
-        Ok(Err(e)) => return Err(e),
-        Err(_) => return Err(handshake_timeout("msg3 read")),
-    };
-    if let Err(e) = hs.read_message(&msg3, &mut buf) {
-        return Err(handshake_failed("msg3 (bad PSK or tampering)", e));
-    }
-
-    hs.into_transport_mode()
-        .map_err(|e| handshake_failed("transport switch", e))
-}
-
-/// Write surface for one authenticated peer session.
-///
-/// `Plain` preserves the original wire format (newline-delimited JSON).
-/// `Noise` wraps each event in one encrypted frame — the frame boundary
-/// replaces the newline, so the JSON payload inside a frame carries no
-/// trailing `\n`. Events larger than [`NOISE_MAX_FRAME`] cannot be
-/// encrypted as a single Noise message; the resulting write error is
-/// treated like any delivery failure (the event is offline-buffered,
-/// itself capped at [`MAX_OFFLINE_BUFFER_PER_PEER`]).
-enum PeerTx {
-    Plain(TcpStream),
-    Noise(TcpStream, snow::TransportState),
-}
-
-impl PeerTx {
-    /// Write one event or heartbeat: a JSON line for plain peers, one
-    /// encrypted frame for noise peers.
-    async fn send_line(&mut self, line: &str) -> std::io::Result<()> {
-        match self {
-            PeerTx::Plain(stream) => stream.write_all(format!("{line}\n").as_bytes()).await,
-            PeerTx::Noise(stream, state) => {
-                let mut out = vec![0u8; line.len() + 32];
-                let n = state
-                    .write_message(line.as_bytes(), &mut out)
-                    .map_err(|e| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("noise encrypt failed: {e}"),
-                        )
-                    })?;
-                write_frame(stream, &out[..n]).await
-            }
-        }
-    }
+    #[serde(default)]
+    want_queue: bool,
+    #[serde(default)]
+    station_ids: Vec<String>,
+    #[serde(default)]
+    device_id: Option<String>,
 }
 
 // ── LanEventForwarder ────────────────────────────────────────────────
@@ -360,6 +233,10 @@ pub struct LanEventForwarder {
     /// Discovery payload returned when a peer sends `{"op":"discover"}`.
     /// Set at construction time; `None` disables discovery responses.
     discovery_payload: Option<Arc<String>>,
+    /// Live active-queue snapshot source for reconnecting KDS peers
+    /// (`{"op":"discover","want_queue":true}`). `None` disables snapshot
+    /// injection — legacy discovery responses are then byte-identical.
+    kds_queue: Option<KdsQueueProvider>,
 }
 
 /// Handle for registering event bus handlers.
@@ -380,6 +257,7 @@ impl LanEventForwarder {
             bind_addr,
             psk: psk.map(Arc::new),
             discovery_payload: None,
+            kds_queue: None,
         }
     }
 
@@ -391,6 +269,34 @@ impl LanEventForwarder {
     /// identity, active devices, and version information.
     pub fn with_discovery(mut self, payload: String) -> Self {
         self.discovery_payload = Some(Arc::new(payload));
+        self
+    }
+
+    /// Attach a live active-queue snapshot provider for KDS reconnect
+    /// reconciliation.
+    ///
+    /// When set **and** a peer's discovery request carries
+    /// `want_queue: true`, the discovery response gains an `active_queue`
+    /// key holding a [`KdsQueueSnapshot`] captured at response time
+    /// (injection logic: [`kds_sync::build_discovery_response`]). Peers
+    /// that do not opt in — every pre-kds-sync client — receive the
+    /// payload byte-identically, so this is wire-compatible by
+    /// construction. Requires [`Self::with_discovery`] as the response
+    /// envelope.
+    ///
+    /// The provider runs synchronously inside the per-peer accept task:
+    /// keep it cheap (serve from an in-memory cache; never block on a
+    /// long SQLite read from inside the tokio task).
+    //
+    // INTEGRATION(oz-lan kds-sync): desktop-client owns the provider
+    // wiring — build the KdsQueueProvider at startup in lib.rs next to
+    // `LanEventForwarder::new(...)` (chain `.with_kds_queue(...)` after
+    // `.with_discovery(...)`), sourcing tickets from the kds_orders /
+    // kds_line_items rows and stations from `oz_core::kds::
+    // resolve_kds_targets`. Not edited here: apps/desktop-client/** is
+    // owned by the live registration-gate session.
+    pub fn with_kds_queue(mut self, provider: KdsQueueProvider) -> Self {
+        self.kds_queue = Some(provider);
         self
     }
 
@@ -422,6 +328,7 @@ impl LanEventForwarder {
         };
 
         let psk = self.psk.clone();
+        let kds_queue = self.kds_queue.clone();
 
         loop {
             match listener.accept().await {
@@ -449,6 +356,7 @@ impl LanEventForwarder {
                     let buffer = self.offline_buffer.clone();
                     let psk_clone = psk.clone();
                     let discovery = self.discovery_payload.clone();
+                    let kds_queue_clone = kds_queue.clone();
                     tokio::spawn(handle_peer(
                         stream,
                         addr,
@@ -457,6 +365,7 @@ impl LanEventForwarder {
                         initial_events,
                         psk_clone,
                         discovery,
+                        kds_queue_clone,
                     ));
                 }
                 Err(e) => {
@@ -471,6 +380,12 @@ impl LanEventForwarder {
     /// Multi-terminal: events broadcast to ALL connected terminals in the
     /// same store. Terminal-specific events (e.g., KDS ack) should be
     /// filtered by the receiver using terminal_id from the event payload.
+    ///
+    /// Exception (kds-sync): lines tagged `{"type":"kds.*", ...}` are
+    /// filtered **server-side** per peer by their station subscription
+    /// ([`should_deliver`]) before delivery, so a station terminal never
+    /// receives another station's tickets; Expo/legacy peers still get
+    /// every line.
     ///
     /// This is non-blocking — broadcast messages are queued in the
     /// channel and delivered asynchronously.
@@ -497,19 +412,37 @@ impl Default for LanEventForwarder {
 }
 
 /// Discovery endpoint response for KDS device enrollment.
-#[derive(Debug, serde::Serialize)]
+///
+/// Deserializes too (kds-sync): a reconnecting KDS peer parses the
+/// response — including the optional [`KdsQueueSnapshot`] injected under
+/// `active_queue` — with this same type. Pre-kds-sync payloads omit the
+/// field and still deserialize thanks to `#[serde(default)]`.
+///
+/// Fields are owned `String`s: `&'static str` fields make the serde
+/// derive emit `Deserialize<'static>` only, which is not
+/// `DeserializeOwned`, so a peer could never parse a wire response held
+/// in an owned buffer. The JSON bytes are unchanged by the field types.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KdsDiscoverResponse {
     /// The Restaurant POS terminal ID.
     pub restaurant_pos_id: String,
     /// Active KDS devices registered under this POS.
     pub devices: Vec<oz_core::kds::KdsDevice>,
     /// Application version.
-    pub version: &'static str,
+    pub version: String,
     /// LAN transports this POS accepts, in preference order:
     /// `"noise-psk-v1"` (encrypted, PSK never crosses the wire) then
     /// `"legacy-psk-v1"` (cleartext JSON hello, deprecated for external
     /// binds). Clients should use the first transport they support.
-    pub transports: Vec<&'static str>,
+    pub transports: Vec<String>,
+    /// Reconnect reconciliation (kds-sync): the live active-queue
+    /// snapshot, present only when the peer's discovery request opted
+    /// in with `want_queue: true` **and** a provider is configured via
+    /// [`LanEventForwarder::with_kds_queue`]. `skip_serializing_if`
+    /// keeps non-opting traffic byte-identical to the pre-kds-sync
+    /// response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_queue: Option<KdsQueueSnapshot>,
 }
 
 // ── Peer handler ─────────────────────────────────────────────────────
@@ -518,16 +451,25 @@ pub struct KdsDiscoverResponse {
 ///
 /// Phase 0 selects and authenticates the transport (noise-psk-v1 or
 /// legacy-psk-v1 hello) when a PSK is configured; loopback binds without
-/// a PSK keep the original passive-connect behavior. Phase 1 answers an
-/// optional discovery request, Phase 2 flushes offline-buffered events,
-/// and Phase 3 streams broadcast events with a 5-second heartbeat. All
-/// writes go through [`PeerTx`], so a noise peer receives the same JSON
-/// events inside encrypted frames. When a write fails, the undelivered
-/// message is pushed to the offline buffer keyed by `peer_addr` so it
-/// can be replayed on reconnection.
+/// a PSK keep the original passive-connect behavior. A legacy hello may
+/// additionally carry the kds-sync subscription fields (`station_ids`,
+/// `device_id`) — absent on pre-kds-sync clients, which then receive
+/// every event as before. Phase 1 answers an optional discovery request,
+/// injecting a live `active_queue` snapshot when the peer opts in with
+/// `want_queue` and a [`KdsQueueProvider`] is configured, and may refine
+/// the subscription on loopback binds. Phase 2 flushes offline-buffered
+/// events, phase 3 streams broadcast events with a 5-second heartbeat —
+/// both gated by [`should_deliver`], so a station-scoped peer only ever
+/// sees tickets routed to its stations (and all unscoped/legacy traffic;
+/// Expo peers and unregistered peers see everything). All writes go
+/// through [`PeerTx`], so a noise peer receives the same JSON events
+/// inside encrypted frames. When a write fails, the undelivered message
+/// is pushed to the offline buffer keyed by `peer_addr` so it can be
+/// replayed on reconnection.
 ///
 /// The handshake runs inside the spawned task so a slow/malicious peer
 /// cannot block the accept loop (DoS protection).
+#[allow(clippy::too_many_arguments)]
 async fn handle_peer(
     mut stream: TcpStream,
     peer_addr: String,
@@ -536,8 +478,12 @@ async fn handle_peer(
     initial_events: Vec<String>,
     psk: Option<Arc<String>>,
     discovery_payload: Option<Arc<String>>,
+    kds_queue: Option<KdsQueueProvider>,
 ) {
     let timeout_dur = std::time::Duration::from_secs(PSK_HANDSHAKE_TIMEOUT_SECS);
+    // Per-peer kds-sync subscription; None = receive everything
+    // (pre-kds-sync peers and Expo devices keep the legacy behavior).
+    let mut subscription: Option<PeerSubscription> = None;
 
     // Phase 0: authentication + transport selection (only when a PSK is
     // configured — the external-bind mode). The first stream byte picks
@@ -591,6 +537,11 @@ async fn handle_peer(
                         // DC-1 fix: constant-time comparison (see
                         // `psk_matches`) instead of plain string equality.
                         Ok(msg) if msg.op == "hello" && psk_matches(&msg.psk, expected_psk) => {
+                            // kds-sync: honor optional subscription
+                            // fields; a legacy hello yields None and the
+                            // peer keeps receiving everything.
+                            subscription =
+                                kds_sync::subscription_from_wire(msg.station_ids, msg.device_id);
                             tracing::debug!(peer = %peer_addr, "LAN legacy-psk-v1 handshake accepted");
                             PeerTx::Plain(stream)
                         }
@@ -636,12 +587,26 @@ async fn handle_peer(
                         let mut answered = false;
                         if let Ok(n) = state.read_message(&ct, &mut pt) {
                             let text = std::str::from_utf8(&pt[..n]).unwrap_or("");
-                            if serde_json::from_str::<DiscoverMsg>(text)
-                                .map(|m| m.op == "discover")
-                                .unwrap_or(false)
+                            if let Ok(d) = serde_json::from_str::<DiscoverMsg>(text)
+                                && d.op == "discover"
                             {
-                                let mut out = vec![0u8; payload.len() + 32];
-                                if let Ok(en) = state.write_message(payload.as_bytes(), &mut out) {
+                                // kds-sync: the discover line can carry
+                                // the subscription on noise binds (there
+                                // is no hello frame to attach it to), and
+                                // `want_queue` opts the response into a
+                                // live active-queue snapshot.
+                                if let Some(sub) =
+                                    kds_sync::subscription_from_wire(d.station_ids, d.device_id)
+                                {
+                                    subscription = Some(sub);
+                                }
+                                let response = kds_sync::build_discovery_response(
+                                    payload,
+                                    d.want_queue,
+                                    kds_queue.as_ref(),
+                                );
+                                let mut out = vec![0u8; response.len() + 32];
+                                if let Ok(en) = state.write_message(response.as_bytes(), &mut out) {
                                     let sent = tokio::time::timeout(
                                         timeout_dur,
                                         write_frame(stream, &out[..en]),
@@ -684,10 +649,23 @@ async fn handle_peer(
                 };
                 match read_result {
                     Ok(Ok(_)) => {
-                        if let Ok(msg) = serde_json::from_str::<DiscoverMsg>(line.trim())
-                            && msg.op == "discover"
+                        if let Ok(d) = serde_json::from_str::<DiscoverMsg>(line.trim())
+                            && d.op == "discover"
                         {
-                            let response = format!("{payload}\n");
+                            // kds-sync: subscription refinement + opt-in
+                            // snapshot injection (see the noise branch
+                            // above for the same rules on PSK binds).
+                            if let Some(sub) =
+                                kds_sync::subscription_from_wire(d.station_ids, d.device_id)
+                            {
+                                subscription = Some(sub);
+                            }
+                            let response = kds_sync::build_discovery_response(
+                                payload,
+                                d.want_queue,
+                                kds_queue.as_ref(),
+                            );
+                            let response = format!("{response}\n");
                             if let Err(e) = stream.write_all(response.as_bytes()).await {
                                 tracing::debug!(
                                     peer = %peer_addr,
@@ -714,8 +692,14 @@ async fn handle_peer(
         }
     }
 
-    // Phase 2: Flush any buffered events first.
+    // Phase 2: Flush any buffered events first, applying the peer's
+    // station scope so replayed lines obey the same filter as live
+    // traffic (a line outside this peer's scope is dropped here — it
+    // was buffered for this address only).
     for event in initial_events {
+        if !should_deliver(subscription.as_ref(), &event) {
+            continue;
+        }
         if let Err(e) = conn.send_line(&event).await {
             tracing::debug!(
                 peer = %peer_addr,
@@ -743,6 +727,12 @@ async fn handle_peer(
             msg = rx.recv() => {
                 match msg {
                     Ok(msg) => {
+                        // kds-sync: station-scoped peer filter — a line
+                        // outside this peer's stations is dropped, not
+                        // buffered (it belongs to another station).
+                        if !should_deliver(subscription.as_ref(), &msg) {
+                            continue;
+                        }
                         if let Err(e) = conn.send_line(&msg).await {
                             tracing::debug!(
                                 peer = %peer_addr,
@@ -795,6 +785,25 @@ impl LanForwarderHandle {
     /// event to JSON and broadcasts it to all connected LAN peers.
     pub fn course_fired_handler(&self) -> CourseFiredHandler {
         CourseFiredHandler {
+            tx: self.tx.clone(),
+        }
+    }
+
+    /// Create an `EventHandler<KdsSyncEvent>` that serialises the
+    /// tagged multi-terminal KDS sync event to JSON and broadcasts it
+    /// to connected LAN peers, subject to per-peer station filtering
+    /// (see [`should_deliver`] and the `kds_sync` module docs).
+    //
+    // INTEGRATION(oz-lan kds-sync): desktop-client registers this next
+    // to the existing two in apps/desktop-client/src/lib.rs `setup`:
+    //     bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
+    // Commands in apps/desktop-client/src/commands/kds.rs then publish
+    // the four `kds.*` transitions as `KdsSyncEvent` values (placed /
+    // bumped / ready / recalled) on the kernel event bus. Not edited
+    // here: apps/desktop-client/** is owned by the live
+    // registration-gate session.
+    pub fn kds_sync_handler(&self) -> KdsSyncHandler {
+        KdsSyncHandler {
             tx: self.tx.clone(),
         }
     }

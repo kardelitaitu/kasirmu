@@ -157,6 +157,7 @@ async fn spawn_test_peer(
             initial_events,
             None,
             None,
+            None,
         )
         .await;
     });
@@ -463,6 +464,7 @@ async fn spawn_psk_peer(
             vec![],
             expected,
             None,
+            None,
         )
         .await;
     });
@@ -577,5 +579,362 @@ async fn legacy_hello_with_wrong_psk_is_dropped() {
         .await
         .unwrap();
     assert!(buf.is_empty(), "bad-hello peer must receive nothing");
+    server_handle.await.unwrap();
+}
+
+// ── kds-sync: multi-terminal station filtering & snapshots ─────────────
+
+/// Spawn `handle_peer` with the full option set (PSK, discovery
+/// payload, queue provider) and connect a plain client.
+async fn spawn_peer_with(
+    rx: broadcast::Receiver<String>,
+    initial_events: Vec<String>,
+    psk: Option<&str>,
+    discovery: Option<&str>,
+    kds_queue: Option<KdsQueueProvider>,
+) -> (tokio::task::JoinHandle<()>, TcpStream) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let buffer = Arc::new(Mutex::new(HashMap::new()));
+    let expected = psk.map(|p| Arc::new(p.to_string()));
+    let payload = discovery.map(|p| Arc::new(p.to_string()));
+    let server_handle = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        handle_peer(
+            stream,
+            "kds-sync-peer".into(),
+            rx,
+            buffer,
+            initial_events,
+            expected,
+            payload,
+            kds_queue,
+        )
+        .await;
+    });
+    let client = TcpStream::connect(addr).await.unwrap();
+    (server_handle, client)
+}
+
+/// Serialise a `kds.order_placed` wire line scoped to `stations`.
+fn placed_line(stations: &[&str]) -> String {
+    serde_json::to_string(&KdsSyncEvent::OrderPlaced(KdsOrderPlaced {
+        kds_order_id: "kds-1".into(),
+        sale_id: "sale-1".into(),
+        store_id: None,
+        stations: stations.iter().map(|s| s.to_string()).collect(),
+        display_number: Some(7),
+        table_number: None,
+        ticket_prefix: String::new(),
+        items: vec![],
+        notes: String::new(),
+        priority: false,
+        occurred_at: "2026-09-13T08:00:00Z".into(),
+    }))
+    .unwrap()
+}
+
+const DISCOVERY_BASE: &str =
+    r#"{"restaurant_pos_id":"pos-1","devices":[],"version":"0.0.37","transports":[]}"#;
+
+/// Parse a discovery response text into the typed response. Goes via
+/// `from_value` because `KdsDiscoverResponse` carries `&'static str`
+/// fields, which cannot borrow from an owned read buffer.
+fn parse_discovery(text: &str) -> KdsDiscoverResponse {
+    serde_json::from_value(serde_json::from_str(text).expect("discovery response must be JSON"))
+        .expect("discovery response must match KdsDiscoverResponse")
+}
+
+fn snapshot_provider() -> KdsQueueProvider {
+    use oz_core::kds::KdsOrder;
+    Arc::new(|| KdsQueueSnapshot {
+        generated_at: "2026-09-13T09:00:00Z".into(),
+        tickets: vec![KdsQueueTicket {
+            order: KdsOrder {
+                id: "kds-9".into(),
+                sale_id: "sale-9".into(),
+                store_id: None,
+                target_instance_id: None,
+                status: "preparing".into(),
+                items_summary: "Steak x2".into(),
+                item_count: 2,
+                display_number: Some(9),
+                ticket_prefix: String::new(),
+                received_at: "2026-09-13T08:50:00Z".into(),
+                started_at: None,
+                ready_at: None,
+                served_at: None,
+                prep_time_seconds: 300,
+                kitchen_zone: None,
+                notes: String::new(),
+                table_number: None,
+                priority: false,
+            },
+            line_items: vec![],
+            stations: vec!["grill".into()],
+        }],
+    })
+}
+
+#[tokio::test]
+async fn passive_legacy_peer_receives_scoped_kds_events() {
+    // Fail-open: a pre-kds-sync peer (no hello, no discover) must see
+    // station-scoped lines exactly like any other traffic.
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client, _) = spawn_test_peer(rx, vec![]).await;
+    tx.send(placed_line(&["fry"])).unwrap();
+    drop(tx);
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    assert!(
+        text.contains("kds.order_placed"),
+        "legacy peer must receive scoped KDS events: {text}"
+    );
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn subscribed_station_peer_receives_only_its_station() {
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client) =
+        spawn_peer_with(rx, vec![], None, Some(DISCOVERY_BASE), None).await;
+    tokio::io::AsyncWriteExt::write_all(
+        &mut client,
+        b"{\"op\":\"discover\",\"station_ids\":[\"grill\"],\"device_id\":\"kds-1\"}\n",
+    )
+    .await
+    .unwrap();
+
+    tx.send(placed_line(&["grill"])).unwrap();
+    tx.send(placed_line(&["fry"])).unwrap();
+    tx.send("{\"type\":\"ping\"}".to_string()).unwrap();
+    drop(tx);
+
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
+    // discover response + grill event + ping; the fry event is filtered.
+    assert_eq!(lines.len(), 3, "unexpected stream: {text}");
+    assert!(lines[0].contains("restaurant_pos_id"));
+    assert!(lines[1].contains("\"stations\":[\"grill\"]"));
+    assert!(lines[2].contains("ping"));
+    assert!(
+        !text.contains("fry"),
+        "station-scoped peer must not receive other stations: {text}"
+    );
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn expo_peer_receives_every_station() {
+    // device_id without station_ids = Expo: sees all stations.
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client) =
+        spawn_peer_with(rx, vec![], None, Some(DISCOVERY_BASE), None).await;
+    tokio::io::AsyncWriteExt::write_all(
+        &mut client,
+        b"{\"op\":\"discover\",\"device_id\":\"expo-1\"}\n",
+    )
+    .await
+    .unwrap();
+    tx.send(placed_line(&["grill"])).unwrap();
+    tx.send(placed_line(&["fry"])).unwrap();
+    drop(tx);
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    assert!(text.contains("grill"), "expo must see grill: {text}");
+    assert!(text.contains("fry"), "expo must see fry: {text}");
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn station_peer_reconnect_replays_only_matching_buffered_events() {
+    // Phase 2 flush applies the station filter to buffered replays.
+    let (tx, rx) = broadcast::channel(16);
+    let initial = vec![placed_line(&["fry"]), placed_line(&["grill"])];
+    let (server_handle, mut client) =
+        spawn_peer_with(rx, initial, None, Some(DISCOVERY_BASE), None).await;
+    tokio::io::AsyncWriteExt::write_all(
+        &mut client,
+        b"{\"op\":\"discover\",\"station_ids\":[\"grill\"]}\n",
+    )
+    .await
+    .unwrap();
+    drop(tx);
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    assert!(text.contains("grill"));
+    assert!(
+        !text.contains("fry"),
+        "buffered replay must be filtered: {text}"
+    );
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn psk_hello_peer_receives_scoped_events_without_subscription() {
+    // Byte-for-byte pre-kds-sync hello line + provider-less PSK peer:
+    // the scoped event still arrives (legacy behavior intact).
+    let (server_handle, mut client, tx) = spawn_psk_peer("s3cret").await;
+    tokio::io::AsyncWriteExt::write_all(&mut client, b"{\"op\":\"hello\",\"psk\":\"s3cret\"}\n")
+        .await
+        .unwrap();
+    tx.send(placed_line(&["grill"])).unwrap();
+    drop(tx);
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    assert!(String::from_utf8_lossy(&buf).contains("kds.order_placed"));
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn psk_hello_with_station_ids_filters_scoped_events() {
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client) = spawn_peer_with(rx, vec![], Some("s3cret"), None, None).await;
+    tokio::io::AsyncWriteExt::write_all(
+        &mut client,
+        b"{\"op\":\"hello\",\"psk\":\"s3cret\",\"station_ids\":[\"grill\"],\"device_id\":\"kds-2\"}\n",
+    )
+    .await
+    .unwrap();
+    tx.send(placed_line(&["fry"])).unwrap();
+    tx.send(placed_line(&["grill"])).unwrap();
+    drop(tx);
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    assert!(text.contains("grill"), "matching station delivered: {text}");
+    assert!(
+        !text.contains("fry"),
+        "non-matching station filtered on PSK hello: {text}"
+    );
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn legacy_discover_response_is_byte_identical() {
+    // Opt-out (no want_queue) + configured provider: bytes must not move.
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client) = spawn_peer_with(
+        rx,
+        vec![],
+        None,
+        Some(DISCOVERY_BASE),
+        Some(snapshot_provider()),
+    )
+    .await;
+    tokio::io::AsyncWriteExt::write_all(&mut client, b"{\"op\":\"discover\"}\n")
+        .await
+        .unwrap();
+    drop(tx);
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&buf),
+        format!("{DISCOVERY_BASE}\n"),
+        "non-opting discovery response must be byte-identical"
+    );
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn discover_with_want_queue_gets_snapshot_injected() {
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client) = spawn_peer_with(
+        rx,
+        vec![],
+        None,
+        Some(DISCOVERY_BASE),
+        Some(snapshot_provider()),
+    )
+    .await;
+    tokio::io::AsyncWriteExt::write_all(
+        &mut client,
+        b"{\"op\":\"discover\",\"want_queue\":true}\n",
+    )
+    .await
+    .unwrap();
+    drop(tx);
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    let parsed = parse_discovery(text.trim());
+    assert_eq!(parsed.restaurant_pos_id, "pos-1");
+    let queue = parsed
+        .active_queue
+        .expect("want_queue must inject active_queue");
+    assert_eq!(queue.generated_at, "2026-09-13T09:00:00Z");
+    assert_eq!(queue.tickets[0].order.id, "kds-9");
+    assert_eq!(queue.tickets[0].stations, vec!["grill".to_string()]);
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn noise_peer_subscribes_and_receives_snapshot_and_filter() {
+    // Full noise-psk-v1 path: discover (encrypted frame) with
+    // want_queue + station_ids — snapshot injected, then live traffic
+    // station-filtered inside encrypted frames.
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client) = spawn_peer_with(
+        rx,
+        vec![],
+        Some("s3cret"),
+        Some(DISCOVERY_BASE),
+        Some(snapshot_provider()),
+    )
+    .await;
+    let mut transport = noise_initiator(&mut client, "s3cret").await;
+
+    let discover = b"{\"op\":\"discover\",\"want_queue\":true,\"station_ids\":[\"grill\"]}";
+    let mut out = vec![0u8; discover.len() + 32];
+    let n = transport.write_message(discover, &mut out).unwrap();
+    write_frame(&mut client, &out[..n]).await.unwrap();
+
+    let ct = read_frame(&mut client).await.unwrap();
+    let mut pt = vec![0u8; ct.len()];
+    let n = transport.read_message(&ct, &mut pt).unwrap();
+    let text = std::str::from_utf8(&pt[..n]).unwrap();
+    let parsed = parse_discovery(text);
+    assert!(
+        parsed.active_queue.is_some(),
+        "noise opt-in request must receive the snapshot"
+    );
+
+    tx.send(placed_line(&["fry"])).unwrap();
+    tx.send(placed_line(&["grill"])).unwrap();
+    drop(tx);
+
+    let ct = read_frame(&mut client).await.unwrap();
+    let mut pt = vec![0u8; ct.len()];
+    let n = transport.read_message(&ct, &mut pt).unwrap();
+    let delivered = std::str::from_utf8(&pt[..n]).unwrap().to_string();
+    assert!(
+        delivered.contains("grill"),
+        "noise subscriber receives its station: {delivered}"
+    );
+    assert!(
+        !delivered.contains("fry"),
+        "noise subscriber must not receive other stations: {delivered}"
+    );
     server_handle.await.unwrap();
 }
