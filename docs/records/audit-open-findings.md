@@ -944,6 +944,33 @@ fine and dies 30 lines later on `UnicodeEncodeError: 'charmap' codec can't encod
 carry a partial report. Fixing it needs an output-side decision outside the brief, so it is
 recorded here. Every path in this repo's real cargo-llvm-cov exports is ASCII.
 
+### Dated correction (2026-09-13, 19:28) — the hollow-root census finding is closed by `ef2058f28`
+
+`ef2058f28` (38/1, one file) adds a `hollow_root_reason()` gate on the `LOCALES` surface. Proven by
+me on the committed tree, not on the report: run from outside any repository `--census` now exits
+**2** printing one `error: cannot run --census here: the required directory \`ui/src/locales\` is
+missing (looked under ROOT=…); nothing was counted, so this refusal is not an orphan verdict.` line
+(stderr, 0 stdout bytes, **0** occurrences of `candidates`, **0** tracebacks). Inside the real tree
+`HEAD^` and `ef2058f28` censused back to back at 19:22 are **byte-identical** at 1,781 bytes, exit 0
+both, `candidates` still 68.
+
+**A caution for anyone re-verifying this entry.** The `declared`/`referenced` figures above are not
+stable: they drifted 4823 → 4831 → 4871 while this finding was being closed, because other sessions
+were landing `.ftl` keys mid-flight. Only `candidates` (68) and the byte count (1,781) held. A
+diff-and-blame against a quoted figure from this page is therefore meaningless — compare two
+*sibling* runs taken from the same tree at the same instant, never a run against a number written
+in prose.
+
+**Still open in the same file, newly confirmed rather than inherited:** at a hollow ROOT,
+`--self-test` **crashes** — exit **1**, one `Traceback`, measured by me at 19:27 — where `--census`
+and `--staged-only` now refuse at exit 2. This was recorded at 17:04 on a worker report and
+explicitly labelled unverified; it is verified now. Same class, smaller fix: the guard already
+exists in the file, `self_test()` just does not call it. Worth noting how easily this one hides —
+the crash exits **1**, the same code a real self-test failure produces, so a hollow invocation
+looks exactly like a genuine check that found something. The worker also reported `ui_blob()`
+still reachable (a tree with bundles but no `ui/src/**/*.ts*` censuses every key as a candidate,
+loud rather than clean-looking) and `load_allowlist()` still returning `{}` for an absent file.
+
 ### New verified finding (2026-09-13, 17:04) — `--census` reports a clean orphan sheet over a hollow root
 
 `scripts/verify-ftl-orphans.py --census` run with `ROOT` resolving **outside any checkout** exits
