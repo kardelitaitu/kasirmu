@@ -138,6 +138,19 @@ class AllowlistWrongShape(AllowlistUnreadable):
     """
 
 
+class AllowlistUndecodable(AllowlistUnreadable):
+    """The bytes arrived; this reader's decoder cannot turn them into text.
+
+    A subclass on purpose, exactly as AllowlistWrongShape is one: main() keeps ONE handler,
+    so the gate keeps ONE voice -- `FAIL: <sentence>`, exit 1 -- and no traceback escapes
+    `sys.exit(main())` over a file this script happens not to decode. The name says which
+    of the two a reader is looking at: AllowlistUnreadable means the bytes would not
+    arrive, this means they arrived and are not UTF-8. Nothing widens an except clause and
+    nothing here is retried -- a decode failure is a property of the bytes on disk, like a
+    bad parse, and unlike a denial it cannot clear on its own.
+    """
+
+
 def _read_json(path):
     with io.open(path, encoding="utf-8") as fh:
         return json.load(fh)
@@ -198,6 +211,20 @@ def read_allowlist(path=ALLOWLIST, opener=None):
                 f"{path} is not valid JSON: {exc}. Not retried: the writer publishes with "
                 f"os.replace, which is atomic, so a half-written file is not what this "
                 f"is.") from None
+        except UnicodeDecodeError as exc:
+            # Caught by name, as the arm above is, for the same reason: swallowing ValueError
+            # would also swallow a decoder bug. This one is NOT called a bad parse, because it
+            # is not one -- the bytes may be perfectly good JSON written in another encoding (a
+            # UTF-16 file raises here, before a single character reaches json.load), and this
+            # gate's job is to say plainly that it cannot read the file, not to transcode the
+            # world by guessing at a codec. Not retried: like a bad parse, these bytes are a
+            # property of the file rather than a race with the writer, so waiting out 50 tries
+            # changes nothing but the runtime of the red.
+            raise AllowlistUndecodable(
+                f"{path} cannot be decoded as UTF-8 by this gate: {exc}. Not retried, and not "
+                f"a verdict on the file -- it may be valid JSON in an encoding this reader will "
+                f"not guess. scripts/verify-ipc-parity.py owns that file and writes it as UTF-8;"
+                f" if you aimed --allowlist at something else, aim it at a UTF-8 copy.") from None
     raise AssertionError("unreachable")  # every path above returns or raises
 
 
@@ -888,7 +915,7 @@ def _aim_self_test():
 
 
 def _guard_self_test():
-    """The seven ways an aimed --allowlist path can fail to be a gradeable file.
+    """The ways an aimed --allowlist path can fail to be a gradeable file.
 
     One case per input, each asserting the exact reason word, because the finding this
     closes is a MISDIAGNOSIS: a directory used to reach the busy-file handler and print
@@ -904,7 +931,9 @@ def _guard_self_test():
     uncaught AttributeError. The shape cells therefore forbid more than the wrong reason:
     they forbid the verdict line, because a refusal that still printed a verdict would be
     the same hazard wearing a red exit code. Case 8 is the control that keeps the guard
-    from being satisfied only by fixtures.
+    from being satisfied only by fixtures. Cases 9-10 are the DECODE of a file that exists,
+    opens and never reaches the parser -- valid JSON to another codec, unreadable to this one,
+    and the pair that used to escape as an uncaught UnicodeDecodeError traceback.
     """
     print("  verify-scoped-reads self-test / why a path could not be graded")
     failures = 0
@@ -942,6 +971,19 @@ def _guard_self_test():
             shapes[stem] = os.path.join(tmp, f"shape-{stem}.json")
             with io.open(shapes[stem], "w", encoding="utf-8") as fh:
                 fh.write(body)
+        # Cases 9-10: bytes that exist, are not a directory, and never reach the
+        # parser. Written as real UTF-16, which is the finding this closes: a
+        # UTF-8 read of them raises UnicodeDecodeError, a class the reader caught
+        # by nobody, so it escaped sys.exit(main()) as a traceback naming the wrong
+        # gate. Case 9 is a WELL-SHAPED allowlist on purpose -- the file is valid
+        # JSON to any tool that picks the right codec, so the honest sentence is
+        # that this gate cannot read it, not that it is broken.
+        undecodable = {}
+        for stem, body in (("well-shaped", '{"desktop": []}'),
+                           ("not-json", "not json")):
+            undecodable[stem] = os.path.join(tmp, f"utf16-{stem}.json")
+            with io.open(undecodable[stem], "w", encoding="utf-16") as fh:
+                fh.write(body)
 
         cases = [
             ("case 1  a path that is not there", [missing], "does not exist",
@@ -965,6 +1007,20 @@ def _guard_self_test():
             ("case 7b  a JSON string at the top level", [shapes["top-level-string"]],
              "has no .get",
              ["clean", "is not valid JSON", "would not open after", "AttributeError"]),
+            # The decode cells: same refusal for both, because the bytes are given
+            # up on before anything is parsed -- and both forbid the busy sentence,
+            # which would send an operator off to hunt a process that is not
+            # running, and the parse sentence, which would call a readable file
+            # broken. Not retried, so these two also prove the retry loop is not
+            # widened to a class that can never clear.
+            ("case 9  a well-shaped allowlist this reader cannot decode",
+             [undecodable["well-shaped"]], "cannot be decoded as UTF-8",
+             ["clean", "is not valid JSON", "would not open after",
+              "another process is holding it", "AttributeError"]),
+            ("case 10 undecodable bytes that are not JSON either",
+             [undecodable["not-json"]], "cannot be decoded as UTF-8",
+             ["clean", "is not valid JSON", "would not open after",
+              "another process is holding it"]),
         ]
         for label, extra, reason, forbidden in cases:
             rc, out = run(["--allowlist"] + extra)
