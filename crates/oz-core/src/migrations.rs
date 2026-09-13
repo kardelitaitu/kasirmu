@@ -308,6 +308,14 @@ pub const ALL: &[Migration] = &[
         id: "20261004_midtrans_transactions.sql",
         sql: include_str!("../migrations/20261004_midtrans_transactions.sql"),
     },
+    // Dynamic KDS routing rules (todo-kds-agents-1.md backend slice): an
+    // explicit per-line station assignment composed on top of the frozen
+    // zone router — burger→Kitchen / cocktail→Bar splits without touching
+    // catalog data. Date 20261005 sorts last and only creates a new table.
+    Migration {
+        id: "20261005_kds_routing_rules.sql",
+        sql: include_str!("../migrations/20261005_kds_routing_rules.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

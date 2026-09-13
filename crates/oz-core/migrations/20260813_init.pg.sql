@@ -1188,6 +1188,20 @@ CREATE TABLE IF NOT EXISTS "memo_recipients" (
     UNIQUE (memo_id, terminal_id)
 );
 
+CREATE TABLE IF NOT EXISTS kds_routing_rules (
+    id                 TEXT PRIMARY KEY,          -- UUID v7
+    restaurant_pos_id  TEXT NOT NULL,             -- FK to the owning Restaurant POS terminal
+    priority           BIGINT NOT NULL,          -- lower number = higher priority; ranks rules per line
+    matcher_kind       TEXT NOT NULL
+                       CHECK (matcher_kind IN ('sku', 'category', 'tag')),
+    matcher_value      TEXT NOT NULL,             -- SKU string or category id, per matcher_kind
+    target_station     TEXT NOT NULL,             -- topology station the matched line routes to
+    is_active          BIGINT NOT NULL DEFAULT 1,
+    created_at         TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at         TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    FOREIGN KEY (restaurant_pos_id) REFERENCES terminals(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS "user_workspace_instances" (
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     instance_id  TEXT NOT NULL REFERENCES "workspace_instances"(id) ON DELETE CASCADE,

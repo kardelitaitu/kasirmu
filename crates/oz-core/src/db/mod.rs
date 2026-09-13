@@ -76,6 +76,8 @@ pub mod gift_cards;
 pub mod inventory;
 /// Kitchen Display System order CRUD.
 pub mod kds;
+/// KDS routing rules CRUD — per-restaurant explicit station assignments.
+pub mod kds_rules;
 /// Loyalty points / rewards CRUD.
 pub mod loyalty;
 /// Offline queue and sync state.
