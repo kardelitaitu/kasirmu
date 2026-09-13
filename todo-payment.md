@@ -22,6 +22,19 @@
 > order. Row 4's stale HAL note: the EDC protocol stack shipped in
 > `crates/oz-hal/src/drivers/edc/` (agents-2 stamped absorbed 08:38 today).
 
+> **Absorption inventory (2026-09-14, `todo-payment-agents-4.md`):** every
+> open box in this doc was re-measured against HEAD. Roughly half have
+> since shipped (often under different commits than the plan that owned
+> them) or were superseded by wire decisions; the genuine remainder is
+> six ranked items R1–R6 there — R1 the modal not consuming the rails it
+> owns, R2 the manual QRIS static-QR string (still a demo grid), R3
+> typed errors replacing the UI's string-match `classifyError`. The
+> boxes below are left physically untouched (this doc's own rulings are
+> its record); the inventory is the triage, and its execution proposal
+> stands: agents-5 = R1+R2 on request. `09eec83868` also landed since:
+> manual QRIS now confirms only on the cashier's explicit assertion —
+> the 8-second demo auto-confirm no longer exists.
+
 ## Goal
 
 Model the supported payment types as **config-driven, terminal-scoped** methods
