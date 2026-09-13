@@ -4733,6 +4733,7 @@ dependencies = [
  "modules-staff",
  "modules-tax",
  "modules-terminal",
+ "oz-bridge",
  "oz-core",
  "oz-hal",
  "oz-logging",

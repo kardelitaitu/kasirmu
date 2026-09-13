@@ -2,8 +2,23 @@
 //!
 //! Delegates to `Store::void_sale` which handles the status transition,
 //! stock restoration, and audit logging inside a single transaction.
+//!
+//! Phase 3.3 T2: the args DTOs moved to the shared `oz_bridge::void`
+//! module (Agent 2's Wave D extraction) and are re-exported here, same
+//! as the desktop shell. The bodies stay tablet-native this slice: the
+//! tablet `AppState` cannot yet build a full `BridgeCtx` (its `db` is a
+//! bare tokio `Mutex<Connection>`, not `Arc`, and it has no cache /
+//! plugins / emitter / topology_apply_lock fields), so the shims keep
+//! the native `state.resolve_session` + `require_permission_for_user`
+//! path until that seam exists.
+//!
+//! WIRE FIX riding this slice: the UI caller sends camelCase
+//! (`args: { saleId, reason }` — ui/src/api/sales.ts voidSaleScoped);
+//! the old local DTO was snake_case-only, so the tablet command could
+//! not deserialize its own caller's payload. The bridge DTO carries
+//! `#[serde(rename_all = "camelCase")]`, which is exactly the wire
+//! shape the desktop twin already answers.
 
-use serde::Deserialize;
 use tauri::{State, command};
 
 use oz_core::permissions;
@@ -12,16 +27,7 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize)]
-/// Voidsaleargs.
-pub struct VoidSaleArgs {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Reason.
-    pub reason: String,
-}
+pub use oz_bridge::void::{VoidSaleArgs, VoidSaleScopedArgs};
 
 /// Void an active (completed) sale.
 ///
@@ -44,15 +50,6 @@ pub async fn void_sale(
 
     tracing::info!(sale_id = %args.sale_id, reason = %args.reason, "sale voided");
     Ok(sale)
-}
-
-/// Args for `void_sale_scoped` — without `user_id`.
-#[derive(Debug, Deserialize)]
-pub struct VoidSaleScopedArgs {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// Reason.
-    pub reason: String,
 }
 
 /// Void a completed sale within the session scope. ADR #7.
