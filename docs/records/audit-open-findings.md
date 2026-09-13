@@ -437,6 +437,104 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 - a pin over unreachable code is a monument, so the honest repair is **deletion**, parked with the tablet crate owner because the delete slice crosses into `apps/tablet-client` and into the allowlist, neither of which this lane edits.
 - the recurrence: `docs/plans/0.0.36-backlog.md:3127-3135` records this exact error once — a manual triage reported 6 gated, the gate found 8, because permissions were checked only for orphans whose unscoped twin the ui calls and the group where neither was called was skipped. tonight's sweep (`python scripts/verify-ipc-parity.py`, 09:48 +07, exit 1) prints `2 GATED DEAD SURFACE -> get_active_cart_scoped=SALES_PROCESS, list_active_carts_scoped=SALES_PROCESS` against those 8. one mechanism, one sentence: **a manual sweep restricted to orphans with a called unscoped twin systematically undercounts the gated ones.** that backlog file is right and was not touched.
 
+## Git scratch — `git clean -xdf` deletes the ignored `.agents/` set (`GH-CLEAN-01`, OPEN, added 2026-09-13 11:15 +07, tip `867cec26a`)
+
+**Status:** OPEN, and this entry is **a record and a request, not a repair** — nothing here touches
+`.gitignore`, `.githooks/`, `scripts/gates.json`, `.agents/salvage/` or `C:/dev/ozpos/backups/`.
+Every figure carries the minute it was taken; five dry runs of the same command between 11:09 and
+11:19 +07 printed 71, 72, 73 and 75 entries, so a total quoted without its minute is worthless in
+this checkout — sibling sessions are writing into it continuously.
+
+- **The command.** `git clean -xdf`. `-x` is the load-bearing flag: it means *also remove ignored
+  files*, and this repo has been parking in-flight agent work in ignored paths all morning.
+  Measured in this worktree (`git clean -xdn`, 11:15 +07, tip `867cec26a`): 71 entries, 21 of them
+  directories collapsed to a single line each; 23 entries — 59 files — belong to the `.agents/`
+  ignore block below. The same run also names `.env` (ignored at `.gitignore:66`, never committed,
+  named by `AGENTS.md` as the source of truth for every `OZPOS_*` key), so a command repeated as
+  routine "reset the tree" advice deletes the credential file along with the recovery material.
+  `git clean -dfn` without `-x` names 8 entries and touches nothing under `.agents/` (11:19 +07):
+  the whole hazard is the one flag.
+- **What it deletes, by line, as measured now** (`git check-ignore -v` against a live path per
+  pattern, 11:09 +07 — not from memory): the block is **`.gitignore:259`–`:267` plus
+  `:272`–`:273`**. Salvage is `:259`, *outside* the 260–267 range it is usually quoted with, and
+  two more ignored scratch paths sit below that range. `git blame` puts all of them on
+  2026-09-13 **morning**, not tonight — `9d14f999fff` 07:29:48 (`:259`, `:262`–`:267`),
+  `bc3a12e67b8` 07:46:54 (`:272`–`:273`), `b37ca26436b` 08:31:33 (`:260`–`:261`):
+
+  | line | pattern | live matches | files | bytes |
+  |---|---|---|---|---|
+  | `:259` | `/.agents/salvage/` | dir present | 37 | 1,007,612 |
+  | `:260` | `/.agents/devmock-*` | 8 | 8 | 39,998 |
+  | `:261` | `/.agents/tauri-api.pre-*.ts` | 5 | 5 | 953,512 |
+  | `:262` | `/.agents/gate-cont*.sh` | 4 | 4 | 3,932 |
+  | `:263` | `/.agents/gate-continuation.sh` | 1 | 1 | 665 (already inside `:262`'s 4) |
+  | `:264` | `/.agents/gate-wave-12.sh` | 1 | 1 | 1,370 |
+  | `:265` | `/.agents/gate-gap.raw.txt` | 1 | 1 | 36,599 |
+  | `:266` | `/.agents/phase21-commitmsg.txt` | 1 | 1 | 2,502 |
+  | `:267` | `/.agents/registration-gate-harness-state.md` | 1 | 1 | 18,473 |
+  | `:272` | `/..rev_ae_bridge_commands.rs` | 1, repo root | 1 | 44,987 |
+  | `:273` | `/.agents/orphan-mod-rs.diff` | 1 | 1 | 1,429 |
+
+  Counts and bytes at 11:12 +07: 23 distinct paths, nothing missing, 2,110,414 bytes across the
+  whole block including salvage. One of the 23 is **tracked** — `.agents/devmock-kds-extract.py`
+  (`git ls-files --error-unmatch`, 11:12 +07) — so `clean` will not take it and the removable set
+  is 22 scratch + 37 salvage = 59, which is exactly what the dry run prints.
+- **Is any live path there right now? Yes, both halves.** `.agents/salvage/` exists and is **not**
+  empty — 37 files / 1,007,612 bytes, 14 of them under `salvage/blobs/` (11:12 +07). So for the 22
+  other paths the hazard is **current**, and for the salvage set it is **prospective and covered**.
+  Writing it the other way round either way is the error this entry exists to avoid.
+- **The claimed mitigation, verified from the filesystem rather than trusted.**
+  `C:/dev/ozpos/backups/salvage-outside-repo-0755` **exists**: 37 files, 1,007,612 bytes, the same
+  37 names as the in-repo set with **zero** one-sided files, and **37/37 sha256 pairs identical**
+  between the copy and the working tree (11:12 +07). It carries **two** manifests —
+  `MANIFEST.sha256` (19 rows) and `blobs/MANIFEST.sha256` (14 rows) — and all **33 rows verify**
+  against both copies. Two gaps to record honestly: the rows name paths as `.agents/salvage/...`
+  relative to the **repo**, so `sha256sum -c` run *inside* the backup dir fails on every row — the
+  hashes are right, the recorded paths are unusable from there; and two files appear in **neither**
+  manifest (`eodpin-reland-msg.txt` 2,774 B, `sixth-name.COMMIT-MSG.txt` 3,947 B) — copied but
+  unlisted, so the manifests prove 33 of 35 contents files and are silent on the rest. The newest
+  `mtime` on both sides is 06:15 +07 (dir `mtime` 06:15:46 +07, not the 07:55 the name implies), so
+  the copy is **in sync with the live set at the minute measured**, not merely once made.
+- **What the mitigation does NOT cover.** The salvage directory and nothing else. A name scan of
+  every sibling under `C:/dev/ozpos/backups` (`git-20260913-061103`, `packdir-20260913-062232`,
+  `probe`, `reflog-0634`) for `devmock|gate-cont|tauri-api\.pre|orphan-mod-rs|phase21-commitmsg|registration-gate-harness|rev_ae_bridge`
+  returns **zero** hits (11:12 +07), and the object store is no fallback for those 22 files either:
+  `git hash-object` + `git cat-file -t` per file (11:12 +07) shows **16 with no git object at all** —
+  the 7 non-kds `devmock-*`, all 4 `gate-cont*.sh`, `gate-wave-12.sh`, `gate-gap.raw.txt`,
+  `phase21-commitmsg.txt`, `registration-gate-harness-state.md`, `orphan-mod-rs.diff` — against 6
+  that exist as blobs (the five `tauri-api.pre-*.ts` and `..rev_ae_bridge_commands.rs`). Within
+  salvage, 5 of its 21 non-blob contents are likewise absent from the store
+  (`registration_gate_tests.rs` and `.CEILINGS`, `kernel_lifecycle.COMMIT-MSG.txt`, plus the two
+  unlisted files above). Separately the 14 salvaged blob names **all still resolve**
+  (`cat-file --batch-check` → `blob` ×14) but **0 of 14** appear in `git rev-list --objects --all`
+  (79,057 objects) and **0 of 14** are loose — packs only, which puts `git gc --prune` on the same
+  material as a different command, mitigated by the outside copies at
+  `backups/git-20260913-061103` and `backups/packdir-20260913-062232` (`.agents/incident-object-loss.md:8`,
+  `:144`). The 14 salvaged blobs are therefore **not** the fragile half; the 16 uncommitted scratch
+  files are.
+- **Residual risk, one line:** an in-flight scratch directory is unrecoverable if cleaned — 16 of
+  the 22 removable paths exist nowhere else by any measure above, and nothing that was never
+  committed has any backup.
+- **The fix is NOT this file, NOT `.gitignore`, and NOT a git config.** Editing `.gitignore` only
+  changes what `git status` shows; widening a pattern is not safety, and this block disproves it
+  twice — `:263` is already inside `:262`, and `:260` reaches a **tracked** file that `clean`
+  refuses to delete. An ignore line is a visibility filter, not a guard. Nor is a config:
+  `core.hooksPath` = `.githooks` here, and `git config --get clean.requireForce` is **unset**
+  (11:15 +07), whose default only refuses a force-less clean — every invocation typed with `-f`,
+  which is every invocation anyone types in a hurry, walks straight past it. `git --version` is
+  2.50.0.windows.2 and its `githooks(5)` documents **no `pre-clean` hook** (no match for
+  `pre-clean` in `share/doc/git-doc/githooks.html`; it does document `pre-auto-gc`), so a
+  clean-time guard has to be a policy or a wrapper that owns the `-x` flag, with `pre-auto-gc`
+  carrying the prune side. `.githooks/` holds four hooks today (`commit-msg`, `post-commit`,
+  `pre-commit`, `pre-push`) and no `CODEOWNERS` is tracked, so the owner is whoever lands
+  `.githooks` commits — last three `9898b3b1e`, `1c59fea5f`, `df5d0dc16`, all 2026-09-12/13.
+  **This entry is the request to that owner; the guard is theirs to place.**
+- **Where this hazard was recorded before now:** only in
+  `.agents/manager-journal-repair-validated-findings.md:2992`, which is itself ignored
+  (`.gitignore:252` `.agents/manager-journal*`, `git check-ignore -v` 11:15 +07) — the sole
+  written record of the deletion sat in a file the same command deletes. `git grep -n "xdf"` over
+  tracked files returns nothing (exit 1, 11:15 +07), which is why it is filed here.
+
 ---
 
 ## How to close these
