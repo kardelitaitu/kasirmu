@@ -400,6 +400,63 @@ describe('PaymentModal — edge cases', () => {
     expect(callCount).toBe(2);
   });
 
+  it('classifies by TYPED kind when the message text disagrees (R3)', async () => {
+    // A reader that timed out mid-exchange can echo the chip's decline
+    // text. The deleted substring scan saw 'declined' and suppressed
+    // Retry; the typed kind says the TRANSPORT failed, which is exactly
+    // what a cashier can act on. (And the mirror case below proves the
+    // kind wins in both directions: an internal failure that happens to
+    // say 'timeout' gets no Retry.)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invokeMock.mockImplementation((cmd: string): any => {
+      if (cmd === 'complete_sale' || cmd === 'complete_sale_scoped') {
+        return Promise.reject({
+          kind: 'hardware',
+          subKind: 'Timeout',
+          message: 'card declined: reader timeout',
+        });
+      }
+      return (defaultImpl as (c: string) => Promise<unknown>)(cmd);
+    });
+
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const tenderInput = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(tenderInput, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    await waitFor(() => {
+      expect(document.querySelector('.payment-error-retry-btn')).toBeInTheDocument();
+    }, { timeout: 3000 });
+    // ERR-05 still holds on the typed path: the raw wire message never
+    // reaches the banner — only the safe hardware copy does.
+    const banner = document.querySelector('.payment-error-banner');
+    expect(banner?.textContent).not.toMatch(/reader timeout/i);
+
+    // Mirror case: kind says terminal even though the text begs Retry.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invokeMock.mockImplementation((cmd: string): any => {
+      if (cmd === 'complete_sale' || cmd === 'complete_sale_scoped') {
+        return Promise.reject({ kind: 'internal', message: 'connection timeout in pool' });
+      }
+      return (defaultImpl as (c: string) => Promise<unknown>)(cmd);
+    });
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-error-banner')).toBeInTheDocument();
+    }, { timeout: 3000 });
+    expect(document.querySelector('.payment-error-retry-btn')).toBeNull();
+  });
+
   it('handles complete sale failure gracefully (processing resets)', async () => {
     setErrorMock();
 

@@ -35,7 +35,7 @@ import { animDuration } from '@/utils/animation';
 import StockShortfallDialog from '@/features/sales/StockShortfallDialog';
 import ReceiptPreview from '@/features/sales/ReceiptPreview';
 import type { PrintSalesReceiptArgs } from '@/api/sales';
-import { plainErrorMessage } from '@/utils/app-error';
+import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
 
 type PaymentMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
@@ -207,28 +207,26 @@ export default function PaymentModal({
 
   // ── Error classification ───────────────────────────────────────
 
-  /** Determine whether an error is likely retryable (network) or terminal (declined). */
+  /**
+   * Adapt an IPC rejection to the banner's {message, retryable} shape.
+   *
+   * This used to be a private ~20-line English substring scan ('timeout',
+   * 'declined', 'already'…) maintained beside — and below the quality of
+   * — the shared boundary classifier in utils/app-error (ERR-06), which
+   * reads the typed `AppError.kind`/`subKind` every command actually
+   * rejects with and keyword-sniffs only genuinely untyped values. A
+   * gateway that localizes its messages or words them without the
+   * hardcoded substrings classified wrong HERE but right THERE; two
+   * answers to one question means one of them is dead weight. The retry
+   * decision now delegates; only the message keeps this screen's own
+   * fallback (raw text for unrecognized shapes, safe copy otherwise —
+   * plainErrorMessage, ERR-05, unchanged).
+   */
   const classifyError = useCallback((err: unknown): { message: string; retryable: boolean } => {
     const errMsg = err instanceof Error ? err.message : String(err);
-    const lower = errMsg.toLowerCase();
-    // Retryable: network, timeout, connection, server errors
-    const retryablePatterns = [
-      'timeout', 'timed out', 'network', 'econnrefused', 'etimedout',
-      'econnreset', 'enotfound', 'connection', 'server error',
-      'try again', 'unavailable', 'offline',
-    ];
-    const isRetryable = retryablePatterns.some((p) => lower.includes(p));
-    // Terminal: explicitly declined or invalid — NOT retryable even if also matches retryable patterns
-    const terminalPatterns = [
-      'declined', 'invalid', 'not found', 'insufficient',
-      'unauthorized', 'forbidden', 'already',
-    ];
-    const isTerminal = terminalPatterns.some((p) => lower.includes(p));
     return {
-      // The classification above reads the raw text on purpose; the message
-      // surfaced to the user goes through the shared safe mapper (ERR-05).
       message: plainErrorMessage(err, errMsg),
-      retryable: isRetryable && !isTerminal,
+      retryable: classifyRetry(err) === 'retryable',
     };
   }, []);
 
