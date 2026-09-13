@@ -1,4 +1,4 @@
-import { Localized } from '@fluent/react';
+import { Localized, useLocalization } from '@fluent/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -33,6 +33,7 @@ const SEVERITY_TABS: ReadonlyArray<{
 ];
 
 export function SyncConflictReviewScreen() {
+  const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
 
@@ -80,6 +81,10 @@ export function SyncConflictReviewScreen() {
           id: conflict.id,
           resolution,
         });
+        // Refresh first, then surface the notice: `load()` clears the banner
+        // at its start, so setting it before the await batched both updates
+        // in one tick and the message never reached the screen.
+        await load();
         if (!ok) {
           // Not an error to retry blindly: another terminal may have resolved
           // the same row first.
@@ -87,7 +92,6 @@ export function SyncConflictReviewScreen() {
             'This conflict was already resolved elsewhere. Refreshing.',
           );
         }
-        await load();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -108,19 +112,30 @@ export function SyncConflictReviewScreen() {
         <Localized id="sync-conflicts-title">
           <h2>Sync Conflicts</h2>
         </Localized>
-        <Localized id="sync-conflicts-show-resolved">
-          <label className="sync-conflict-review__toggle">
-            <input
-              type="checkbox"
-              checked={showResolved}
-              onChange={(e) => setShowResolved(e.target.checked)}
-            />
-            Show resolved history
-          </label>
-        </Localized>
+        {/* Localized must wrap the text node, not the <label>: with a plain
+            string translation @fluent/react replaces ALL of the wrapped
+            element's children, which silently unmounted the checkbox and
+            made the audit-trail view unreachable. */}
+        <label
+          className="sync-conflict-review__toggle"
+          htmlFor="sync-conflicts-show-resolved-toggle"
+        >
+          <input
+            id="sync-conflicts-show-resolved-toggle"
+            type="checkbox"
+            checked={showResolved}
+            onChange={(e) => setShowResolved(e.target.checked)}
+            aria-label={l10n.getString('sync-conflicts-show-resolved')}
+          />
+          <Localized id="sync-conflicts-show-resolved">
+            <span>Show resolved history</span>
+          </Localized>
+        </label>
       </header>
 
-      <nav className="sync-conflict-review__tabs" role="tablist">
+      {/* `div`, not `nav`: jsx-a11y rejects an interactive role on a
+          landmark element, and the tablist needs an accessible name. */}
+      <div className="sync-conflict-review__tabs" role="tablist" aria-label={l10n.getString('sync-conflicts-title')}>
         {SEVERITY_TABS.map((tab) => (
           <button
             key={tab.id}
@@ -137,7 +152,7 @@ export function SyncConflictReviewScreen() {
             <Localized id={tab.key}>{tab.label}</Localized>
           </button>
         ))}
-      </nav>
+      </div>
 
       {error ? <p className="sync-conflict-review__error">{error}</p> : null}
       {loading ? (
