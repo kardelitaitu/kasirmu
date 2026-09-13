@@ -1016,19 +1016,84 @@ fn invoke_open_paren(lower: &str, at: usize) -> Option<usize> {
 /// Only the ARGUMENT may arrive late. The paren is still matched on its own line by
 /// `invoke_open_paren`, which is what keeps a prose mention such as "loggedInvoke (no
 /// direct invoke)" out of the surface: no bracket list, no paren on the word, no call.
-/// Returns `('x', "")` when nothing follows within the look-ahead, the same sentinel the
-/// scan used before, so an argument-less call is still read as computed rather than as no
-/// verdict at all.
+/// Returns `('x', "")` when nothing survives the look-ahead, the same sentinel the scan used
+/// before, so an argument-less call is still read as computed rather than as no verdict at all.
+///
+/// # Prose is not an argument. The bound is unchanged.
+///
+/// The first version of this look-ahead skipped only BLANK lines, so the first non-blank line
+/// below the paren won whether or not it was code. A comment written between the paren and the
+/// name therefore BECAME the argument: the token read was `//`, a slash is not a quote, and a
+/// literal command name was scored as one assembled at runtime. Measured out of tree against
+/// the committed code (verbatim copy of these three functions, 13-09-26 11:31): one comment
+/// line above a string literal classified as 1 site, 0 literal, computed at the call line --
+/// the identical verdict a genuinely computed name produces. Two comment lines, a `/* ... */`
+/// that opens and closes on the call's own line, and a `/** ... */` block all did the same.
+/// The direction is worth naming for whoever reads the next red: a misread literal can only ADD
+/// an offender, never hide one, so this defect was a false positive, not a silent pass.
+///
+/// Comment lines -- a `//` to end of line, a `/* ... */` block, and a `*` continuation with its
+/// closer -- are now stepped over, so prose can neither become the argument nor push a real one
+/// out of sight. The window itself is untouched: the call's own line plus three lines below it.
+/// That is deliberate and it is the part of this fix most likely to be "improved" away later.
+/// Widening it to chase a deeper comment would let the scan read across an intervening
+/// statement and call that data, which is the same guess the bound exists to refuse. So a name
+/// that only appears on the fourth line below the call is still scored computed, and
+/// `pin_a_comment_between_the_
+/// paren_and_the_argument_is_not_the_argument` asserts all three -- crossed at one and two
+/// comment lines, refused at three, and refused for the right reason (an empty token, never
+/// the prose) -- so the wall cannot quietly become a tunnel in either direction.
+///
+/// Zero instances of the shape exist in ui/src today (measured 13-09-26: the four listed
+/// computed sites report the tokens `cmd`, `cmd:`, `cmd`, `cmd:`, none reports a comment), so
+/// this wall is built before the fall, and the printed surface counts are the evidence that it
+/// moved no verdict on the tree as it stands.
 fn first_arg(lines: &[&str], line_at: usize, col: usize) -> (char, String) {
     // Bounded look-ahead: three lines below the call is an argument, thirty lines below is
     // somebody else's code, and a token read from there would be a guess dressed as data.
     for li in line_at..(line_at + 4).min(lines.len()) {
-        let rest = if li == line_at {
+        let raw = if li == line_at {
             lines[li].get(col..).unwrap_or("")
         } else {
             lines[li]
         };
-        let trimmed = rest.trim_start();
+        let mut trimmed = raw.trim_start();
+        // Step over the prose. A block comment may open and close inside one line, run to the
+        // edge of the window, or continue across lines; none of it may be read as the argument,
+        // and none of it may hide an argument that follows it on the same line.
+        loop {
+            if trimmed.starts_with("/*") {
+                trimmed = trimmed[2..].trim_start();
+                match trimmed.find("*/") {
+                    Some(end) => {
+                        trimmed = trimmed[end + 2..].trim_start();
+                    }
+                    None => {
+                        trimmed = "";
+                        break;
+                    }
+                }
+                continue;
+            }
+            if trimmed.starts_with("//") {
+                trimmed = ""; // a line comment runs to the end of the line
+                break;
+            }
+            if trimmed.starts_with('*') {
+                // A continuation of a block opened above, or its closer.
+                match trimmed.find("*/") {
+                    Some(end) => {
+                        trimmed = trimmed[end + 2..].trim_start();
+                        continue;
+                    }
+                    None => {
+                        trimmed = "";
+                        break;
+                    }
+                }
+            }
+            break;
+        }
         if trimmed.is_empty() {
             continue;
         }
@@ -1130,8 +1195,97 @@ fn toleration_applies(rel: &str) -> bool {
     })
 }
 
+/// The root this sweep owns: `ui/src` of THIS checkout, spelled exactly the way the pin at
+/// the top of `drift_pin_no_computed_command_names_in_ui` spells it. Derived from
+/// `CARGO_MANIFEST_DIR` inside the predicate rather than passed in, because the whole point of
+/// the wall is that a caller cannot supply it.
+fn ui_sweep_root_string() -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../ui/src")
+        .display()
+        .to_string()
+}
+
+/// Whole components of a path, forward-slashed the way the sweep normalises to. Owned
+/// strings, so the caller cannot be left holding a reference into a temporary.
+fn path_components(path: &str) -> Vec<String> {
+    path.replace(std::path::MAIN_SEPARATOR, "/")
+        .split('/')
+        .filter(|c| !c.is_empty())
+        .map(|c| c.to_string())
+        .collect()
+}
+
+/// Does this path arrive absolute? A drive prefix or a leading separator. Kept crude and
+/// lexical on purpose: an absolute path claims a filesystem, and only the sweep root may say
+/// which one; a relative path is read as relative to the repo, which is the shape the
+/// in-memory fixtures use (`ui/src/features/...`) and nothing looser.
+fn looks_absolute(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    path.starts_with('/') || path.starts_with("\\") || (bytes.len() > 1 && bytes[1] == b':')
+}
+
+/// Is this path inside THIS checkout's `ui/src`, as whole leading components?
+///
+/// Until now the predicate below never asked. It decided "is this an offending UI call site"
+/// from two things, neither of which is a location: whether the caller said the file was
+/// tolerated, and whether the path contains a `__tests__` component. That is a shape test
+/// wearing a verdict, and this layout is multi-root -- a bare `main`, one directory per
+/// release, registered worktrees beside each other -- so the shape is not unique to a
+/// checkout and one checkout's gate can read another's files.
+///
+/// Measured, not inferred (out of tree against the predicate exactly as it stood at HEAD,
+/// 13-09-26 11:41, using the sibling checkouts that exist on this disk: `git worktree list`
+/// reports `C:/dev/ozpos/kds-m2-scratch`, and `C:/dev/ozpos/main` plus
+/// `C:/dev/ozpos/0.0.34` both hold a real `ui/src`):
+///
+/// * `C:/dev/ozpos/main/ui/src/features/sales/SalesScreen.tsx` --> offender = TRUE
+/// * `C:/dev/ozpos/0.0.34/ui/src/features/sales/SalesScreen.tsx` --> offender = TRUE
+/// * `C:/dev/ozpos/kds-m2-scratch/ui/src/features/sales/SalesScreen.tsx` --> offender = TRUE
+/// * `C:/dev/ozpos/main/crates/oz-core/src/sales.rs`, a Rust file, not a UI file at all
+///   --> offender = TRUE
+///
+/// So the bug is not a theoretical root confusion. A gate running in `0.0.35` was
+/// adjudicating the bare `main` checkout, a sibling release and a live worktree, and it was
+/// doing it in both directions: the same `ui/src`-shaped rule also excused
+/// `main/ui/src/utils/logged-invoke.ts` and `0.0.34/ui/src/dev-mock/tauri-api.ts`, files this
+/// sweep never touched and has no standing to forgive. Every one of those verdicts was wrong
+/// without looking wrong, which is the reason for the wall.
+///
+/// Deliberately LEXICAL, not canonical: `fs::canonicalize` would make the answer depend on
+/// what happens to exist on disk, and the fixtures below pass paths that do not. It also
+/// keeps the `..` segments as written rather than resolving them -- a swept path and this
+/// root are built by the same expression, so the two agree component for component with no
+/// help from the filesystem.
+fn under_ui_sweep_root(rel: &str) -> bool {
+    let here = path_components(rel);
+    let root = path_components(&ui_sweep_root_string());
+    if here.len() >= root.len() && here[..root.len()] == root[..] {
+        return true;
+    }
+    if looks_absolute(rel) {
+        return false;
+    }
+    let tail = &root[root.len() - 2..];
+    here.len() > 2 && &here[..2] == tail
+}
+
+/// Does a computed-name site in this file make it a UI offender? It must be a UI file at all
+/// first; then production source, and never a file already on the toleration list.
+///
+/// The root check comes FIRST and short-circuits, so a path outside this checkout gets no
+/// verdict in either direction -- not "offends", and not the quieter harm of "excused".
+/// `toleration_applies` keeps its any-depth trailing-component rule untouched, because that
+/// is what c5292bae8 pinned it to be: a way of naming a FILE by the components that identify
+/// it, inside the root. It was never a statement about which checkout the file lives in, and
+/// the pairing is now explicit -- the list decides which UI file is forgiven, this predicate
+/// decides whether the file is UI at all.
+///
+/// Behaviour on the real tree is unchanged by construction: every path the sweep hands over
+/// is built from the same manifest expression this function re-derives, so all 675 sites keep
+/// the verdict they had. That is what makes it a wall and not a policy change.
 fn computed_name_is_an_offender(rel: &str, inside_allowed: bool) -> bool {
-    !inside_allowed && !counts_as_test_scaffold(rel)
+    under_ui_sweep_root(rel) && !inside_allowed && !counts_as_test_scaffold(rel)
 }
 
 /// The three counts for one file, with the offender list suppressed when the file is on
@@ -1301,6 +1455,13 @@ fn drift_pin_no_computed_command_names_in_ui() {
 /// different fix owner from a line in lib.rs. A gate that goes red on an intentional
 /// record is a gate somebody deletes, so this leg informs and never blocks. Nothing
 /// below it asserts.
+///
+/// Where the other half prints, since it does not print here: the invoke-surface census
+/// (`INVOKE SURFACE, BOTH HALVES` / `PRODUCTION COMPUTED SITES`) is emitted by
+/// `drift_pin_no_computed_command_names_in_ui`, not by this fn, and cargo captures a PASSING
+/// test's stdout unless the run is `-- --nocapture` -- so a plain `cargo test ... registration_gate`
+/// shows this census line and nothing else, which is exactly how a green printout came to be read
+/// as an absent one on 2026-09-13.
 #[test]
 fn report_ui_census_informs_and_does_not_block() {
     let s = run_sweep();
@@ -1745,5 +1906,148 @@ fn pin_counts_a_generic_spelled_wrapper_call() {
     assert_eq!(
         callee, "loggedInvoke",
         "the callee is still the identifier actually called"
+    );
+}
+
+/// Risk one, the comment that swallows the argument. `first_arg` may read below its own
+/// paren on purpose (a wrapped literal is a literal, part five of the case above), but the
+/// look-ahead skips only BLANK lines -- so the first non-blank line wins whether or not it
+/// is code. A comment between the paren and the argument therefore BECOMES the argument:
+/// the token read is `//`, `//` is not a quote, and a literal command name is scored as one
+/// built at runtime. The direction matters for whoever reads the red: a misread literal can
+/// only add an offender, never hide one, so this fails LOUD as a false positive rather than
+/// quietly passing a real violation -- which is also why it can be fixed without changing a
+/// verdict on today's tree (measured 2026-09-13 11:12: zero such shape exists in ui/src, and
+/// all four listed computed sites name a real token: `cmd`, `cmd:`, `cmd`, `cmd:`).
+#[test]
+fn pin_a_comment_between_the_paren_and_the_argument_is_not_the_argument() {
+    // The exact shape from the brief: open paren, a comment line, then the string literal.
+    let (sites, literal, offenders) = classify_invoke_surface(
+        "  return loggedInvoke(\n    // the name the parity extractor reads\n    \"sync_pull\",\n    args,\n  );\n",
+        false,
+    );
+    assert_eq!(sites, 1, "one invoke-shaped call site");
+    assert_eq!(
+        literal, 1,
+        "a comment line is not an argument: the literal two lines down is the first thing          this call is handed, so the site is a literal and NOT debt"
+    );
+    assert!(
+        offenders.is_empty(),
+        "and it must not reach the offender list -- this is the false positive the          three-line bound used to manufacture"
+    );
+
+    // The brief named a two-line comment block; two lines is the last shape the bound can
+    // still reach, so it is pinned first -- and it is a literal, which is the repair.
+    let (t2, t2lit, t2off) = classify_invoke_surface(
+        "  return loggedInvoke(\n    // one\n    // two\n    \"sync_pull\",\n  );\n",
+        false,
+    );
+    assert_eq!(
+        (t2, t2lit, t2off.len()),
+        (1, 1, 0),
+        "two comment lines are crossed: the literal on the third line below the call is still the argument"
+    );
+
+    // A three-line JSDoc block puts the name on the FOURTH line below the call, which is
+    // outside the look-ahead the brief told me to keep as a backstop. So the honest verdict
+    // is computed -- and the reason matters. It is NOT the comment being read as the
+    // argument (the hazard); the scan finds nothing inside its window and falls back to the
+    // sentinel. Asserting the token distinguishes those two, and only the first is a bug.
+    let wide = scan_invoke_sites(
+        "  return loggedInvoke(\n    /**\n     * documented elsewhere\n     */\n    \"sync_pull\",\n  );\n",
+    );
+    assert_eq!(wide.len(), 1, "one invoke-shaped call site");
+    assert_eq!(
+        wide[0].2, false,
+        "past the bound the site is scored computed, which is the bound doing its job"
+    );
+    assert_eq!(
+        wide[0].3, "",
+        "the argument token must be EMPTY (nothing reached), not the comment text -- a \"*\" or
+         \"/*\" here would mean the prose was read as the name, which is the defect this fix
+         removes and the shape that must never come back"
+    );
+
+    // A block comment that opens and closes on the call's own line is pure prose inline
+    // before the argument, and the window was never the obstacle: same line, literal read.
+
+    let (ssites, sliterals, soffenders) = classify_invoke_surface(
+        "  return loggedInvoke(/* note */ \"sync_pull\", args);\n",
+        false,
+    );
+    assert_eq!(
+        (ssites, sliterals, soffenders.len()),
+        (1, 1, 0),
+        "a comment closing on the call's own line must not become the argument"
+    );
+
+    // The bound is a backstop, not a target: an argument parked past the look-ahead stays
+    // computed, so a comment skip cannot turn the scan into an unbounded read into somebody
+    // else's function. And a genuinely computed name is still computed.
+    let (fsites, fliterals, foffenders) = classify_invoke_surface(
+        "  return loggedInvoke(\n    // one\n    // two\n    // three\n    // four\n    \"sync_pull\",\n  );\n",
+        false,
+    );
+    assert_eq!(
+        (fsites, fliterals, foffenders.len()),
+        (1, 0, 1),
+        "past the look-ahead the argument is nobody's business and stays computed"
+    );
+    let (_, cliteral, coffenders) =
+        classify_invoke_surface("  return loggedInvoke(cmdName);\n", false);
+    assert_eq!(
+        (cliteral, coffenders.as_slice()),
+        (0, &[1][..]),
+        "a real computed name is still caught by the ban"
+    );
+}
+
+/// Risk two, the predicate that did not know where it was. `computed_name_is_an_offender`
+/// decided "is this a UI offender" from the path's trailing shape alone and never asked
+/// whether the path was inside the sweep root at all; the only thing holding that invariant
+/// was the single caller's fixed root at the top of the pin. That is fine until a second
+/// sweep appears over a different directory, at which point the same function starts
+/// rendering UI verdicts about non-UI files, and the failure is invisible because the
+/// verdict looks plausible.
+///
+/// The wall is the ROOT, not the depth: `toleration_applies` keeps its any-depth
+/// trailing-component rule (c5292bae8, and pinned at the case above), because inside
+/// `ui/src` depth carries no information. What must stop being root-blind is the offender
+/// decision, so the root is re-derived INSIDE the predicate from `CARGO_MANIFEST_DIR` and
+/// cannot be talked into believing a caller.
+#[test]
+fn pin_the_offender_predicate_refuses_a_path_outside_the_sweep_root() {
+    // A dev-mock lookalike under a DIFFERENT root. It has no __tests__ component, so the
+    // old predicate read it as production UI and called it an offender -- a UI verdict
+    // about a file no UI sweep ever touched.
+    let foreign_lookalike = "/tmp/not-this-checkout/ui/src/dev-mock/tauri-api.ts";
+    assert!(
+        !computed_name_is_an_offender(foreign_lookalike, false),
+        "a path outside the sweep root is not UI source, so it cannot be a UI offender: {foreign_lookalike}"
+    );
+    // Same shape for a path that is not even trying to look like UI code.
+    assert!(
+        !computed_name_is_an_offender("/tmp/some/rust/crate/src/commands/sync.rs", false),
+        "a Rust file must never produce a UI verdict"
+    );
+    // The wall must not become "always false": a production path inside the root still
+    // offends, as both an absolute path from the real sweep and as the root-relative form
+    // the sibling case above already uses.
+    let inside = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../ui/src/features/customers/CustomerScreen.tsx")
+        .display()
+        .to_string()
+        .replace(std::path::MAIN_SEPARATOR, "/");
+    assert!(
+        computed_name_is_an_offender(&inside, false),
+        "a computed name under the real sweep root must still offend: {inside}"
+    );
+    assert!(
+        computed_name_is_an_offender("ui/src/features/sales/SalesScreen.tsx", false),
+        "and the root-relative spelling still offends"
+    );
+    assert!(
+        !computed_name_is_an_offender("ui/src/__tests__/api-customers-contract.test.ts", false),
+        "test scaffolding inside the root is still scaffolded, not offending"
     );
 }
