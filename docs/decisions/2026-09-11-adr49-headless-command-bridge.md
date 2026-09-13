@@ -8,7 +8,7 @@ status: Accepted (2026-09-11) — implemented for the desktop shell; tablet clie
 
 **Status:** Accepted (2026-09-11). The desktop side is built; the tablet side is not.
 **Date:** 2026-09-11
-**Recorded against:** branch `0.0.37` @ `3cc76b156`
+**Recorded against:** branch `0.0.37` @ `abbedfb4b` (measurements taken from `3cc76b156` forward)
 **Tags:** architecture, tauri, ipc, desktop-client, oz-bridge, testing, error-handling
 
 > **Cite this record by filename, not by number.** `docs/decisions/README.md` documents
@@ -161,8 +161,9 @@ A future reader will otherwise file these as gaps. Each is a boundary decision.
 `:493` (`snapshot_workspace_rows`), `:532` (`compensate_workspace_diff`); the module doc at
 that file's `:10-13` names them “the four helpers that took `&AppState`”, with
 `validate_apply_gate` as the in-file precedent for taking `&[&Connection]` over a ctx.
-Recorded for the ledger: **that file is still untracked at `3cc76b156`** — the topology
-persistence slice was in flight while this ADR was written, so its line numbers can move.
+Recorded for the ledger: the persistence slice was mid-flight when this record was
+drafted (untracked at `3cc76b156`) and landed at `79e8c26f2` / `cf77cbbee`, so these
+line numbers are the merged-tree ones and move with the next topology commit.
 
 **`currency_info` is the in-tree precedent for the opposite choice:** a body that
 genuinely wants no context drops context entirely — `pub fn currency_info(code: &str)`
