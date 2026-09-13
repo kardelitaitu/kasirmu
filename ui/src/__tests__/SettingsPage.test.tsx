@@ -2,7 +2,7 @@
 //
 // The settings hub is now: roleAtLeast(session.role_name, 'admin') gates the
 // whole shell (owner/admin see it, everyone else gets the locked card), and
-// the shell renders the FLAT 13-page sidebar IA whose bodies are the blank
+// the shell renders the FLAT 14-page sidebar IA whose bodies are the blank
 // screens in features/settings/screens/ (SettingsNavTree commit 3c76e6c97).
 //
 // Deliberately NOT covered here anymore (behavior removed with the old
@@ -324,13 +324,13 @@ describe('SettingsPage role gate', () => {
   });
 });
 
-describe('SettingsPage admin shell — flat 13-page IA', () => {
-  it('lists all 13 flat pages in the sidebar, defaulting to General', async () => {
+describe('SettingsPage admin shell — flat 14-page IA', () => {
+  it('lists all 14 flat pages in the sidebar, defaulting to General', async () => {
     await openShell();
 
     const sidebar = screen.getByTestId('settings-sidebar');
     const navButtons = Array.from(sidebar.querySelectorAll<HTMLButtonElement>('button.settings-nav-item'));
-    expect(navButtons).toHaveLength(13);
+    expect(navButtons).toHaveLength(14);
     expect(navButtons.map((b) => b.getAttribute('aria-label'))).toEqual(NAV_ITEMS.map((n) => navLabel(n.key)));
 
     // Default section renders the General placeholder and its breadcrumb.
@@ -372,6 +372,7 @@ describe('SettingsPage admin shell — flat 13-page IA', () => {
         'rcptfmt-empty',
         'fiscalnum-error',
       ],
+      'sync-conflicts': ['sync-conflict-review'],
     };
 
     for (const item of NAV_ITEMS) {

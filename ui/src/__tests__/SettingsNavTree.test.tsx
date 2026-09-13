@@ -1,11 +1,12 @@
-// ── SettingsNavTree tests — FLAT 13-page settings IA ─────────────
+// ── SettingsNavTree tests — FLAT 14-page settings IA ─────────────
 //
 // The category accordion is gone: the sidebar is ONE role="list" of
-// 13 pages in a fixed order (general, license-subscription, devices-
+// 14 pages in a fixed order (general, license-subscription, devices-
 // connectivity, business-defaults, features-modules, security-account,
 // data-sync, data-management [subpage, Plus], sync-status [subpage,
-// Plus], offline-queue [subpage], tax-configuration, exchange-rates,
-// system-diagnostics). These tests assert that mandated reality:
+// Plus], sync-conflicts [subpage], offline-queue [subpage],
+// tax-configuration, exchange-rates, system-diagnostics). These tests
+// assert that mandated reality:
 // order, roles, subpage/plus marking, pins, flat Fuse search (both
 // locales), flat keyboard cycling, the resize separator, and the
 // per-key debounced localStorage persistence.
@@ -192,7 +193,7 @@ function fireKey(key: string, dispatchTarget: EventTarget = document) {
 
 // ── Tests ────────────────────────────────────────────────────────
 
-describe('SettingsNavTree (flat 13-page IA)', () => {
+describe('SettingsNavTree (flat 14-page IA)', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -202,7 +203,7 @@ describe('SettingsNavTree (flat 13-page IA)', () => {
 
   // ── Render: the mandated flat list ───────────────────────────
 
-  it('renders all 13 nav items as ONE flat role=list in the mandated order', () => {
+  it('renders all 14 nav items as ONE flat role=list in the mandated order', () => {
     render(<SettingsNavTree {...defaultProps} />);
 
     const sidebar = screen.getByTestId('settings-sidebar');
@@ -211,7 +212,7 @@ describe('SettingsNavTree (flat 13-page IA)', () => {
     const lists = Array.from(sidebar.querySelectorAll('[role="list"]'));
     expect(lists).toHaveLength(1);
     const list = lists[0]!;
-    expect(list.querySelectorAll('[role="listitem"]')).toHaveLength(13);
+    expect(list.querySelectorAll('[role="listitem"]')).toHaveLength(14);
 
     // The mandated key order, asserted against the DOM via bundle-resolved names.
     expect(NAV_ITEMS.map((n) => n.key)).toEqual([
@@ -224,6 +225,7 @@ describe('SettingsNavTree (flat 13-page IA)', () => {
       'data-sync',
       'data-management',
       'sync-status',
+      'sync-conflicts',
       'offline-queue',
       'tax-configuration',
       'exchange-rates',
@@ -290,7 +292,7 @@ describe('SettingsNavTree (flat 13-page IA)', () => {
   it('marks drill-down pages with the --subpage class and top-level pages without it', () => {
     render(<SettingsNavTree {...defaultProps} />);
 
-    const subpageKeys = ['data-management', 'sync-status', 'offline-queue'];
+    const subpageKeys = ['data-management', 'sync-status', 'sync-conflicts', 'offline-queue'];
     for (const item of getNavItems()) {
       const key = visibleNavKeys().find((k) => labelOf(k) === item.getAttribute('aria-label'));
       if (!key) throw new Error('nav button did not map to a known key: ' + item.getAttribute('aria-label'));
@@ -406,8 +408,8 @@ describe('SettingsNavTree (flat 13-page IA)', () => {
     const group = document.querySelector('[data-testid="settings-sidebar"] .settings-sidebar-pinned');
     expect(group).not.toBeNull();
     expect(group!.querySelectorAll('[role="listitem"]')).toHaveLength(0);
-    // The stale pin does not pollute the main list: still exactly 13 items.
-    expect(getNavItems()).toHaveLength(13);
+    // The stale pin does not pollute the main list: still exactly 14 items.
+    expect(getNavItems()).toHaveLength(14);
   });
 
   // ── Flat search ───────────────────────────────────────────────
@@ -432,8 +434,8 @@ describe('SettingsNavTree (flat 13-page IA)', () => {
   it('returns flat results in NAV order, never relevance order', () => {
     render(<SettingsNavTree {...defaultProps} searchQuery="sync" />);
 
-    // Both sync pages match, and they render in NAV_ITEMS order.
-    expect(visibleNavKeys()).toEqual(['data-sync', 'sync-status']);
+    // Three sync pages match, and they render in NAV_ITEMS order.
+    expect(visibleNavKeys()).toEqual(['data-sync', 'sync-status', 'sync-conflicts']);
   });
 
   it('shows the no-results state and clears via the clear button', async () => {
@@ -826,7 +828,7 @@ describe('SettingsNavTree (flat 13-page IA)', () => {
 
       rerender(<SettingsNavTree {...defaultProps} searchQuery="sync" />);
 
-      expect(getLiveRegion()?.textContent).toBe(announceFtl('settings-announce-search-count', { count: 2 }));
+      expect(getLiveRegion()?.textContent).toBe(announceFtl('settings-announce-search-count', { count: 3 }));
     });
 
     it('announces the empty search state when no results match', () => {
