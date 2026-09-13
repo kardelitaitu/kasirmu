@@ -113,4 +113,44 @@ global one.
   keep-on-blank merge that landed in `07eb48347` (`crates/oz-core/src/export/email_report.rs:183-200`) is
   not yet on the destructive path. OPEN ITEM, being fixed separately — recorded, not implied closed.
 
+- **It is not an authority model, and it is nowhere near exhaustive.** `RemoteSync` refuses **21** of the
+  **75** declared keys, so **54 stay admissible** from a channel that authenticates nobody (Context). An
+  exclusion list can only refuse what its author thought to name; that is the shape of the rule, not a
+  gap in this list. The per-name breakdown, the query that re-derives it and the self-test floor live in
+  [`docs/records/2026-09-12-sync-settings-ingest-and-redirect-census.md`](../records/2026-09-12-sync-settings-ingest-and-redirect-census.md).
+  `sync_server_url` is on the admitted side, and it is the one admitted name whose reader carries a bearer
+  secret, so the 54 are not equally boring.
+
+- **Membership is a whole-name fold, so the scoped spellings the hosted API writes are admitted.
+  `normalised_candidate` (`keys.rs:404`) trims and lowercases the ENTIRE name, and `credential_base`
+  (`keys.rs:439`) and `is_secret_setting_key` (`keys.rs:508`) compare that fold by equality against the
+  list — so `smtp_config:tenant-a`, the `{base}:{tenant}` form `crates/oz-api/src/pg.rs` writes through
+  `scoped_setting_key`, resolves to `None` while bare `smtp_config` resolves to a refusal. Both functions
+  are deliberately SUFFIX-BLIND and say so at `keys.rs:424-436`; the choice is pinned by
+  `decision_pin_credential_base_is_suffix_blind` (`keys_tests.rs:316`) and the file's shape is policed by
+  `decision_pin_membership_tests_live_only_in_the_identity_functions` (`keys_tests.rs:451`). This ADR
+  admits a value it would refuse unscoped; the blind spot has a recorded owner, the credential-suffix
+  wave, and is not closed here.
+
+- **The same key has a second writer that this policy does not govern.** ADR #11's migration redirect
+  persists `sync_server_url` via `persist_migration_url` (`platform/sync/src/daemon_tick.rs:77-87`) →
+  `Settings::set_sync_server_url` (`typed.rs:327`) → the **bare** `Self::set` (`raw.rs:37`), never
+  `set_with_policy` (`raw.rs:98`). That write is untracked — no delta row, no audit row, nothing for
+  `admits()` to have decided. So on this one key there are two independent ways of not checking: an
+  exclusion list that omits the name, and a write path that never consults the list. Pinned by
+  `8d9253c7e`.
+
+- **The prefix half of the rule lives in `raw.rs`, where the `keys.rs` ratchet cannot see it.**
+  `is_manager_owned_key` is defined at `raw.rs:781`, outside the identity functions, while the
+  membership-shape test named above only polices `keys.rs`. A future allow-list that grows a prefix
+  therefore shrinks the admitted set with every `keys.rs` pin still green — the drift direction nothing
+  currently catches, and the reason `is_non_exportable_setting_key(key) || is_manager_owned_key(key)`
+  reads as two predicates from two files rather than one rule.
+
+**Pinned state, so this section reads as open work and not as a decision already implemented:** three
+redirect hazard pins at `8d9253c7e` (`platform/sync/src/daemon_tests.rs` — status-blindness, no TLS floor,
+no shape check) and one ingest hazard pin at `29f8f2634` (`platform/sync/src/queue_tests.rs` — the open
+namespace). **All four are to be INVERTED, not deleted, when a guard lands.** An ADR that only describes
+the guard is how next month reads this as done.
+
 Nothing above is verified end to end; every claim traces to a named file or one of the six commits.
