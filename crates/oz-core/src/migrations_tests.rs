@@ -402,7 +402,11 @@ fn init_sql_creates_complete_schema_surface() {
     // sync-crdt lane shipped both tables without re-measuring this pin —
     // nothing saw it because dev-ci runs only on pull_request while work
     // lands directly on `0.0.37` (re-pinned by 25dfa46596). This lane's own
-    // 20261004_midtrans_transactions.sql is the 122nd. Count measured, not
+    // 20261004_midtrans_transactions.sql is the 122nd, and
+    // 20261005_kds_routing_rules.sql — the multi-station KDS routing table,
+    // one per terminal, the pin the routing lane shipped without
+    // re-measuring — is the 123rd; this assert is where that omission
+    // surfaced. Count measured, not
     // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
@@ -410,7 +414,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        122,
+        123,
         "table surface drifted"
     );
     assert_eq!(
@@ -457,7 +461,12 @@ fn init_sql_creates_complete_schema_surface() {
         // three more without re-measuring (20261002_sync_conflicts.sql and
         // 20261003_sync_entity_vectors.sql — red unobserved because CI runs
         // only on PRs), and 20261004_midtrans_transactions.sql adds the
-        // tenant-lookup index `idx_midtrans_transactions_tenant`. Count
+        // tenant-lookup index `idx_midtrans_transactions_tenant`.
+        // 20261005_kds_routing_rules.sql moves this count by exactly zero,
+        // by design: the file states the rule set is O(tens) rows per
+        // terminal read only by restaurant_pos_id and ships no secondary
+        // index, and its TEXT PRIMARY KEY lands as a `sqlite_autoindex_*`
+        // this query excludes. Count
         // measured by replaying the registry, as ever.
         181,
         "index surface drifted"
@@ -469,7 +478,9 @@ fn init_sql_creates_complete_schema_surface() {
         ),
         // 2 trigger pairs (audit + per-tenant-unique) predate the pin; the
         // assignment scope-id pair triggers (insert + update) arrive with
-        // `20260916_role_assignment_scopes.sql`.
+        // `20260916_role_assignment_scopes.sql`. Nothing since: the
+        // 20261002–20261005 tables (sync, midtrans, KDS routing) are plain
+        // CREATE TABLE/INDEX DDL — no trigger shipped with them.
         6,
         "trigger surface drifted"
     );
@@ -617,6 +628,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20261002_sync_conflicts.sql".to_string(),
             "20261003_sync_entity_vectors.sql".to_string(),
             "20261004_midtrans_transactions.sql".to_string(),
+            "20261005_kds_routing_rules.sql".to_string(),
         ]
     );
 
@@ -639,20 +651,22 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run (122 tables: the
+    // Schema surface is unchanged after the no-op re-run (123 tables: the
     // 111 pinned before 20260918, plus payables and payable_payments from
     // 20260918, plus over_quota_markers from 20260922, plus fiscal_schemes
     // and document_number_sequences from 20260923, plus
-    // local_payment_methods from 20260924, plus sale_idempotency from
+    // local_payment_methods from 20260924, plus receipt_formats from
+    // 20260925, plus sale_idempotency from
     // 20261001, plus sync_conflicts from 20261002, plus sync_entity_vectors
-    // from 20261003, plus midtrans_transactions from 20261004 — each
+    // from 20261003, plus midtrans_transactions from 20261004, plus
+    // kds_routing_rules from 20261005 — each
     // recorded once, idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        122,
+        123,
         "table surface must be unchanged after upgrade"
     );
 }
