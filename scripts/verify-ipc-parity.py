@@ -1641,6 +1641,27 @@ def self_test() -> int:
          "could not be opened" in refused and "another process is holding it" in refused
          and "PermissionError" not in refused, )
 
+    # 18: the liveness rule is exact set membership, and this pins that it stays that way.
+    # A report claimed the orphan test matches command names by substring, which would let one
+    # live command keep a dead entry alive. It does not today -- orphan_allow is never an input
+    # to orphan_scoped, so entries cannot support each other -- but the claim is cheap to make
+    # true by accident, and a containment rewrite reads exactly as plausible as the current
+    # line. These are the two shapes that would break first under it, on synthetic inputs.
+    contains_ui = {
+        "x_scoped_for_terminal": ["ui/b.ts"], # a longer name containing the entry IS invoked
+        "get_encryption_status": ["ui/c.ts"], # the bare stem of another entry IS invoked
+    }
+    suffix_only = orphan_scoped(["x_scoped", "y_scoped"], contains_ui)
+    family = orphan_scoped(["get_encryption_status_scoped"], contains_ui)
+    control = [orphan_scoped(["x_scoped"], {"x_scoped": ["ui/a.ts"]}),
+               orphan_scoped(["x_scoped"], {"unrelated_name": ["ui/a.ts"]})]
+    case("case 18  an orphan stays an orphan when only a LONGER name has a caller",
+         suffix_only == ["x_scoped", "y_scoped"], )
+    case("case 18  the bare stem being invoked does not make its _scoped twin called",
+         family == ["get_encryption_status_scoped"], )
+    case("case 18  controls, invoked is called and a name with no caller is an orphan",
+         control == [[], ["x_scoped"]], )
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
