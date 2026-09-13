@@ -43,7 +43,7 @@ impl Store<'_> {
     ///   credit may not exceed what it deducted. The money bound does not
     ///   imply this one: under-priced repeat refunds stay inside the money
     ///   bound while returning more units than were ever sold.
-    /// Both bounds fail CLOSED — a failed cumulative read aborts the refund.
+    ///   Both bounds fail CLOSED — a failed cumulative read aborts the refund.
     ///
     /// **Stock restoration (ADR-19 §5.3):**
     /// - Reads the sale's `deduction_locations` JSON column.

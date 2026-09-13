@@ -869,11 +869,9 @@ impl Store<'_> {
             //    copy of the same healing; the row is a derived placeholder, not an
             //    event, so its delta is updated in place if the shortfall moves again.
             for (product_id, shortfall, sku) in shortfalls {
-                let insert_sql = format!(
-                    "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO UPDATE SET delta = excluded.delta, created_at = excluded.created_at"
-                );
+                let insert_sql = "INSERT INTO stock_movements (id, item_id, location_id, delta, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO UPDATE SET delta = excluded.delta, created_at = excluded.created_at";
                 tx.execute(
-                    &insert_sql,
+                    insert_sql,
                     params![
                         format!("{LEGACY_BACKFILL_REASON}:{product_id}"),
                         product_id,

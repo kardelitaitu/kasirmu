@@ -535,12 +535,10 @@ impl Store<'_> {
                         "SELECT location_id, qty FROM stock_summary
                          WHERE item_id = ?1 ORDER BY qty DESC, location_id ASC",
                     )?;
-                    let rows = stmt
-                        .query_map(params![product_id], |row| {
-                            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-                        })?
-                        .collect::<Result<Vec<_>, _>>()?;
-                    rows
+                    stmt.query_map(params![product_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?
                 };
                 let reason = format!("stock count {}", count.count_number);
                 let mut remaining = delta;

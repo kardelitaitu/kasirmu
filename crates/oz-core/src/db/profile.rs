@@ -165,13 +165,13 @@ impl UserProfile {
         // against the unwrapped `national_id_type`, whose `is_none()` guard
         // above already returned early.
         let expected = if id_type == "ssn" { 9 } else { 16 };
-        if let Some(id) = self.national_id.as_deref() {
-            if id.len() != expected || !id.bytes().all(|b| b.is_ascii_digit()) {
-                return Err(validation(
-                    "national_id",
-                    format!("national id must be {expected} digits for {id_type}"),
-                ));
-            }
+        if let Some(id) = self.national_id.as_deref()
+            && (id.len() != expected || !id.bytes().all(|b| b.is_ascii_digit()))
+        {
+            return Err(validation(
+                "national_id",
+                format!("national id must be {expected} digits for {id_type}"),
+            ));
         }
 
         // 4. Email: local@domain.tld, no whitespace.
