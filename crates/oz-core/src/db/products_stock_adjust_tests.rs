@@ -202,9 +202,10 @@ fn transfer_paths_agree_with_reader() {
     assert_eq!(reader_stock_qty(&conn, &pid), 50);
 }
 
-/// The send precheck works per LOCATION, not against the aggregate: 7 @ loc-a
-/// + 3 @ loc-b is enough for a 10-unit aggregate but not for a 10-unit
-/// transfer from loc-a — and the failure leaves both surfaces untouched.
+/// The send precheck works per LOCATION, not against the aggregate: 7 units at
+/// loc-a plus 3 at loc-b is enough for a 10-unit aggregate but not for a
+/// 10-unit transfer from loc-a — and the failure leaves both surfaces
+/// untouched.
 #[test]
 fn transfer_precheck_matches_per_location_reader() {
     let conn = fresh();
@@ -236,8 +237,8 @@ fn transfer_precheck_matches_per_location_reader() {
         .unwrap();
     let err = s.send_transfer(&t.id).unwrap_err();
     assert!(
-        matches!(err, CoreError::Validation { ref field, ref message }
-            if *field == "qty"
+        matches!(err, CoreError::Validation { field, ref message }
+            if field == "qty"
                 && message.contains("have 7")
                 && message.contains("need 10")),
         "unexpected error: {err:?}"
@@ -608,7 +609,8 @@ fn scoped_rebuild_leaves_an_untouched_product_byte_identical() {
     let before_b = summary_snapshot(&conn, &pid_b);
     assert!(!before_b.is_empty(), "B must have summary rows to preserve");
 
-    s.rebuild_stock_summary_for(&[pid_a.clone()]).unwrap();
+    s.rebuild_stock_summary_for(std::slice::from_ref(&pid_a))
+        .unwrap();
 
     assert_eq!(
         summary_snapshot(&conn, &pid_b),
@@ -637,10 +639,12 @@ fn compensating_movement_is_idempotent_on_rerun() {
     )
     .unwrap();
 
-    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+    s.rebuild_stock_summary_for(std::slice::from_ref(&pid))
+        .unwrap();
     let first = backfill_rows(&conn);
     let qty_first = summary_rows(&conn, &pid);
-    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+    s.rebuild_stock_summary_for(std::slice::from_ref(&pid))
+        .unwrap();
     s.rebuild_stock_summary().unwrap();
 
     assert_eq!(
@@ -690,7 +694,8 @@ fn stale_inventory_aggregate_is_not_backfilled() {
     // so the 3-unit gap is a stale aggregate, not unbacked stock.
     assert_eq!(inventory_qty(&conn, &pid).0, 10);
 
-    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+    s.rebuild_stock_summary_for(std::slice::from_ref(&pid))
+        .unwrap();
 
     assert!(
         backfill_rows(&conn).is_empty(),
@@ -718,7 +723,8 @@ fn empty_product_set_rebuilds_nothing() {
         params![pid],
     )
     .unwrap();
-    s.rebuild_stock_summary_for(&[pid.clone()]).unwrap();
+    s.rebuild_stock_summary_for(std::slice::from_ref(&pid))
+        .unwrap();
     let before = summary_snapshot(&conn, &pid);
 
     let rebuilt = s.rebuild_stock_summary_for(&[]).unwrap();
@@ -747,6 +753,12 @@ fn empty_product_set_rebuilds_nothing() {
 /// rebuild must cross a chunk boundary, and it asserts that every product on
 /// BOTH sides of it was healed and rebuilt: the loop may neither skip a chunk
 /// nor let one chunk's filter bleed into another chunk's rows.
+// The chunk ceiling check below has constant operands by design: clippy's
+// suggested `const { assert!(…) }` form turns it into a build failure for
+// whoever edits the chunk size, not a test failure for whoever runs the suite.
+// The level sits on the function because, as a statement attribute on `assert!`
+// itself, rustc reports `unused_attribute`.
+#[allow(clippy::assertions_on_constants)]
 #[test]
 fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
     // The ceiling that binds is the HISTORICAL one: 999 was

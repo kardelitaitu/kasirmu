@@ -237,6 +237,11 @@ fn missing_hashes_survives_a_list_longer_than_the_chunk() {
 /// Mirrors the compile-time `const _: () = assert!(…)` in
 /// `image_refs.rs` so raising the chunk past the historical ceiling
 /// fails a test run too, not only a build.
+// The operands are constants by design; clippy's `const { assert!(..) }` form
+// would abort the build, which is the single signal this test duplicates. The
+// level has to sit on the function: as a statement attribute on `assert!`
+// itself rustc reports `unused_attribute`.
+#[allow(clippy::assertions_on_constants)]
 #[test]
 fn image_refs_in_chunk_stays_under_the_sqlite_ceiling() {
     // SQLITE_MAX_VARIABLE_NUMBER: 32 766 on the bundled 3.4x, 999 pre-3.32.

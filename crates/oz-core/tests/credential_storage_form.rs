@@ -194,6 +194,12 @@ fn delta_forms(conn: &Connection, key: &str) -> Vec<Form> {
 
 // -- The census table -------------------------------------------------------
 
+/// The shape of an ordinary typed setter for one census key: takes the
+/// connection and the value, returns the crate's own error type. Named so the
+/// `Spec` row below stays readable (and so `clippy::type_complexity` stops
+/// counting the nesting).
+type TypedSetter = fn(&Connection, &str) -> Result<(), oz_core::CoreError>;
+
 /// One row per key under census. `typed` is the ordinary public setter for
 /// that key in this crate where one exists; `None` means the key has no typed
 /// setter at all and the only ordinary setter is the generic `Settings::set`.
@@ -201,7 +207,7 @@ struct Spec {
     key: &'static str,
     /// One-line truth about the typed setter, echoed into the failure message.
     setter: &'static str,
-    typed: Option<fn(&Connection, &str) -> Result<(), oz_core::CoreError>>,
+    typed: Option<TypedSetter>,
     expected: Form,
 }
 

@@ -741,7 +741,7 @@ fn genuinely_empty_field_is_never_preserved_and_stays_writable() {
     profile.national_id = Some("123456789".into());
     store.update_user_profile(&user.id, &profile).unwrap();
     let (raw_id, raw_hash, _) = stored_seals(&conn, &user.id);
-    assert!(raw_id.as_deref().is_some_and(|v| v != ""));
+    assert!(raw_id.as_deref().is_some_and(|v| !v.is_empty()));
     assert_eq!(raw_hash.as_deref(), Some(sha256_hex("123456789").as_str()));
     assert_eq!(
         store
