@@ -8,7 +8,7 @@
 //! Charts use echarts (via echarts-for-react), matching the reports
 //! DashboardScreen so the analytics page shares the same chart stack.
 
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocalization } from '@fluent/react';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import * as echarts from 'echarts/core';
@@ -16,19 +16,12 @@ import { BarChart as EBar, LineChart as ELine, PieChart as EPie } from 'echarts/
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import { minorUnitExponent } from '@/types/domain';
-import { l10nErrorMessage } from '@/utils/app-error';
 import { readCSSVar } from '@/utils/color';
-import { useAnalyticsQuery } from './useAnalyticsQuery';
-import { cardQueryKey } from './analytics-cache';
 import type { MenuEngineeringRow } from '@/api/reports';
 import {
-  CARD_LOADERS,
-  CARD_PAYLOAD_VALIDATORS,
   alignPrevBuckets,
   alignPrevHourly,
   periodDelta,
-  previousRange,
   seriesDelta,
   turnDelta,
   type AnalyticsQuery,
@@ -51,7 +44,16 @@ import type {
 } from './analytics-data';
 import type { StaffAnalyticsRow, TableOccupancy } from './analytics-data';
 import type { Granularity, WorkspaceView } from './AnalyticsScreen';
-import { PAYMENT_NAMES } from './cards/shared/constants';
+import { PAYMENT_NAMES, largestRemainderPcts, NO_BUCKETS, NO_HOURLY, NO_NUMBERS, CRITICAL_STOCK_LEVEL } from './cards/shared/constants';
+import { useMoney } from './cards/shared/useMoney';
+import { Visual } from './cards/shared/Visual';
+import { CardLoading, CardError, CardEmpty } from './cards/shared/CardStates';
+import { Kpi } from './cards/shared/Kpi';
+import { DeltaChip } from './cards/shared/DeltaChip';
+import { activeBuckets } from './cards/shared/buckets';
+import { RankedList } from './cards/shared/RankedList';
+import { Legend } from './cards/shared/Legend';
+import { useCardData, useCardDataCompare, rowDeltas } from './cards/shared/useCardData';
 import {
   exportCategoryCsv,
   exportCustomersCsv,
@@ -67,34 +69,6 @@ import {
 } from './utils/analyticsCardCsv';
 
 echarts.use([EBar, ELine, EPie, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
-
-// ── Money formatting (mirrors reports DashboardScreen) ───────────────
-
-function useMoney() {
-  const { currency } = useCurrency();
-  const { l10n } = useLocalization();
-  const exp = minorUnitExponent(currency);
-  // Number formatting follows the active Fluent locale (en-US / id) so
-  // currency strings match the rest of the localized UI — never a
-  // hardcoded English locale.
-  const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
-  const fmt = (minor: number) =>
-    new Intl.NumberFormat(numLocale, { style: 'currency', currency, maximumFractionDigits: exp }).format(minor / 10 ** exp);
-  // REP-06: report rows carry their own currency — format in it, same locale.
-  const fmtIn = (minor: number, code: string) => {
-    const e = minorUnitExponent(code);
-    return new Intl.NumberFormat(numLocale, { style: 'currency', currency: code, maximumFractionDigits: e }).format(minor / 10 ** e);
-  };
-  const short = (minor: number) =>
-    new Intl.NumberFormat(numLocale, {
-      style: 'currency',
-      currency,
-      notation: 'compact',
-      maximumFractionDigits: 1,
-    }).format(minor / 10 ** exp);
-  const count = (n: number) => new Intl.NumberFormat(numLocale).format(n);
-  return { fmt, fmtIn, short, count };
-}
 
 /**
  * Resolve one chart colour from its theme token with a hex fallback.
@@ -146,27 +120,6 @@ const DONUT_BORDER = '#fff';
 /** Axis text — theme-neutral grey, matching the pre-token value. */
 const CHART_TEXT = chartColor('--color-fg-muted', '#94a3b8');
 
-/** Stable empty bucket list — the AOV card's `data?.buckets` fallback so a
- *  fresh `[]` literal isn't recreated every render (a referential-stability
- *  fix for the chart's `useMemo` dependency array). */
-const NO_BUCKETS: Bucket[] = [];
-
-/** Stable empty hourly occupancy curve — the occupancy card's `hourly` fallback
- *  so a fresh `[]` literal isn't recreated every render (same referential-
- *  stability fix as {@link NO_BUCKETS}). */
-const NO_HOURLY: { hour: number; table_orders: number; pct: number; level: number }[] = [];
-
-/** Stable empty number list — the occupancy card's `prevPct` fallback (same
- *  referential-stability fix as {@link NO_BUCKETS}). */
-const NO_NUMBERS: number[] = [];
-
-/**
- * Stock at or below this many units is flagged "critical" (vs merely
- * "low") in the low-stock card — the red severity tier that precedes a
- * full out-of-stock.
- */
-const CRITICAL_STOCK_LEVEL = 5;
-
 /**
  * Chart height per card, collapsed vs expanded (px). Kept in one place so
  * the layout proportions are tunable without hunting literals across every
@@ -191,67 +144,8 @@ function chartHeight(cardKey: string, expanded?: boolean | undefined): number {
 }
 
 // ── Shared building blocks ──────────────────────────────────────────
-
-/**
- * Wrapper that hosts the card content. Every card runs on real backend
- * data — there is no demo-data path left.
- */
-function Visual({ className, children }: { className?: string; children: ReactNode }) {
-  return (
-    <div className={`analytics-card-visual${className ? ` ${className}` : ''}`}>
-      {children}
-    </div>
-  );
-}
-
-/** Shown while a real-data card's IPC query is still in flight. */
-function CardLoading() {
-  return (
-    <div className="analytics-card-skeleton">
-      <div className="skeleton-bar skeleton-bar--sm" />
-      <div className="skeleton-bar skeleton-bar--lg" />
-      <div className="skeleton-bar skeleton-bar--md" />
-    </div>
-  );
-}
-
-/**
- * Shown when a card's IPC query failed.
- *
- * The query layer records the failure and does NOT re-invoke the fetcher
- * on re-render, so this is a stable state — the screen's refresh action
- * clears the recorded failure and retries. Only the localized user-safe
- * copy is rendered (ERR-05), never the raw backend message.
- */
-function CardError({ error }: { error: unknown }) {
-  const { l10n } = useLocalization();
-  const message = l10nErrorMessage(error, l10n, 'analytics-card-error-load');
-  return (
-    <div className="analytics-card-error" role="alert">
-      <span className="analytics-card-error-icon" aria-hidden="true">⚠</span>
-      <span className="analytics-card-error-text">{message}</span>
-    </div>
-  );
-}
-
-/** Muted "no data" placeholder for a card whose query returned zero rows. */
-function CardEmpty({ message }: { message: string }) {
-  return (
-    <div className="analytics-card-empty" role="status">
-      {message}
-    </div>
-  );
-}
-
-/** Big KPI number with a small caption underneath. */
-function Kpi({ value, label, tone }: { value: string; label: string; tone?: 'good' | 'bad' }) {
-  return (
-    <div className="analytics-kpi">
-      <span className={`analytics-kpi-value${tone ? ` analytics-kpi-value--${tone}` : ''}`}>{value}</span>
-      <span className="analytics-kpi-label">{label}</span>
-    </div>
-  );
-}
+// (primitives now live in cards/shared/**; the export button stays exported
+//  from this file because its consumers import it from here)
 
 /** Small CSV export action — aria label describes what the card exports. */
 export function ExportCsvButton({ onClick, ariaLabel }: { onClick: () => void; ariaLabel: string }) {
@@ -274,147 +168,7 @@ export function ExportCsvButton({ onClick, ariaLabel }: { onClick: () => void; a
   );
 }
 
-/** Column labels for the staff-performance CSV (localized). */
-function DeltaChip({ value, tone, compare }: { value: number; tone?: 'good' | 'bad'; compare?: boolean }) {
-  const { l10n } = useLocalization();
-  const up = value >= 0;
-  // For metrics where up is bad (voids, refunds, restock cost, turn time)
-  // the pill's colour follows the *semantic* direction, not the sign.
-  const good = tone === 'bad' ? !up : up;
-  return (
-    <span className={`analytics-delta${good ? ' analytics-delta--up' : ' analytics-delta--down'}`}>
-      {up ? '▲' : '▼'} {Math.abs(value).toFixed(1)}%{compare ? ` ${l10n.getString('analytics-card-vs-prev')}` : ''}
-    </span>
-  );
-}
-
-/**
- * Buckets with real activity. Zero-filled gaps mean "no data that
- * day" (no sales / no table orders), not a 0-value reading — rate
- * metrics (AOV, turn minutes) must average and trend over the active
- * buckets only. Sum metrics (revenue) keep the zeros: $0 is a real day.
- */
-function activeBuckets(buckets: Bucket[]): Bucket[] {
-  return buckets.filter((b) => b.value > 0);
-}
-
-/** Compact ranked list with proportional bars — no chart lib needed. */
-function RankedList({ rows, ariaLabel, limit }: { rows: RankRow[]; ariaLabel: string; limit?: number | undefined }) {
-  const { l10n } = useLocalization();
-  const shown = limit !== undefined ? rows.slice(0, limit) : rows;
-  const max = Math.max(...shown.map((r) => r.value), 1);
-  return (
-    <ul className="analytics-rank-list" aria-label={ariaLabel}>
-      {shown.map((r, i) => (
-        <li
-          key={`${r.name}-${i}`}
-          className="analytics-rank-row"
-          aria-label={r.delta !== undefined
-            ? l10n.getString('analytics-rank-delta-aria', {
-                name: r.name,
-                value: r.display,
-                dir: l10n.getString(r.delta >= 0 ? 'analytics-rank-up' : 'analytics-rank-down'),
-                pct: Math.abs(r.delta).toFixed(1),
-              })
-            : undefined}
-        >
-          <span className="analytics-rank-index">{i + 1}</span>
-          <span className="analytics-rank-name">{r.name}</span>
-          <span className="analytics-rank-bar-track">
-            <span className="analytics-rank-bar" style={{ width: `${(r.value / max) * 100}%` }} />
-          </span>
-          {r.delta !== undefined && (
-            <span
-              className={`analytics-rank-delta${r.delta >= 0 ? ' analytics-rank-delta--up' : ' analytics-rank-delta--down'}`}
-              aria-hidden="true"
-            >
-              {r.delta >= 0 ? '▲' : '▼'} {Math.abs(r.delta).toFixed(1)}%
-            </span>
-          )}
-          <span className="analytics-rank-value">{r.display}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** Color dot + name + value legend (used beside donuts and stacked bars). */
-function Legend({ items }: { items: { name: string; value: string; color: string }[] }) {
-  return (
-    <ul className="analytics-legend">
-      {items.map((it) => (
-        <li key={it.name} className="analytics-legend-item">
-          <span className="analytics-legend-dot" style={{ background: it.color }} />
-          <span className="analytics-legend-name">{it.name}</span>
-          <span className="analytics-legend-value">{it.value}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 // ── Per-card layouts ────────────────────────────────────────────────
-
-/**
- * Per-card cached query — keyed by (card, workspace, granularity, range)
- * so an identical query revisits the TTL cache instead of refetching.
- * Every card loads through `CARD_LOADERS` (real backend data).
- * Returns `null` while an async query is in flight.
- *
- * `enabled=false` (the comparison baseline while compare mode is off)
- * never fetches and always yields `data: null`.
- */
-function useCardData<T>(
-  cardKey: string,
-  q: AnalyticsQuery,
-  enabled = true,
-): { data: T | null; error: unknown } {
-  const result = useAnalyticsQuery(
-    cardQueryKey(cardKey, q.workspace, q.granularity, q.from, q.to),
-    () => {
-      const loader = CARD_LOADERS[cardKey] as ((query: AnalyticsQuery) => Promise<T>) | undefined;
-      if (!loader) return null as T;
-      return loader(q);
-    },
-    enabled,
-    CARD_PAYLOAD_VALIDATORS[cardKey],
-  );
-  return { data: result.data as T | null, error: result.error };
-}
-
-/**
- * Period-over-period variant: the current query plus the previous
- * equal-length window, both through the shared TTL cache. The baseline
- * only fetches while `compare` is on, so compare mode costs nothing when
- * it is off; a failing baseline just yields `prev: null` (no chip).
- */
-function useCardDataCompare<T>(
-  cardKey: string,
-  q: AnalyticsQuery,
-  compare: boolean,
-): { data: T | null; prev: T | null; error: unknown } {
-  const cur = useCardData<T>(cardKey, q);
-  const prevQ = useMemo(
-    () => previousRange(q),
-    [q],
-  );
-  const prev = useCardData<T>(cardKey, prevQ, compare);
-  return { data: cur.data, prev: prev.data, error: cur.error };
-}
-
-/**
- * Attach per-row deltas to a ranked list by matching row names against
- * the previous period. Rows absent from the baseline keep no chip.
- */
-function rowDeltas(cur: RankRow[], prev: RankRow[] | null | undefined): RankRow[] {
-  if (!prev) return cur;
-  const prevByName = new Map(prev.map((r) => [r.name, r.value]));
-  return cur.map((r) => {
-    const pv = prevByName.get(r.name);
-    const d = pv !== undefined ? periodDelta(r.value, pv) : null;
-    return d !== null ? { ...r, delta: d } : r;
-  });
-}
 
 function RevenueCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
   const { l10n } = useLocalization();
@@ -604,22 +358,6 @@ function CustomersCard({ q, title, expanded, compare }: { q: AnalyticsQuery; tit
       </p>
     </Visual>
   );
-}
-
-function largestRemainderPcts(values: number[], total: number): number[] {
-  if (total <= 0 || values.length === 0) return values.map(() => 0);
-  const shares = values.map((v) => (v / total) * 100);
-  const pcts = shares.map((s) => Math.floor(s));
-  let remainder = 100 - pcts.reduce((sum, p) => sum + p, 0);
-  const byFraction = shares
-    .map((s, i) => ({ i, fraction: s - Math.floor(s) }))
-    .sort((a, b) => b.fraction - a.fraction);
-  for (const { i } of byFraction) {
-    if (remainder <= 0) break;
-    pcts[i] = (pcts[i] ?? 0) + 1;
-    remainder -= 1;
-  }
-  return pcts;
 }
 
 function PaymentsCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
