@@ -748,10 +748,11 @@ before being written, nothing outside this file touched. Owner named by file:
 - **Scope:** the hand-off swept 21 gates, each run as its own HEAD blob in a fresh temp
   directory with the data files it names copied beside it, and found **five that return a false
   green; the other 16 fail loudly, with the missing path in the message.** All five were re-run
-  here at exit 0 in the temp tree at 13:0x +07; the standing count is **three open, two closed**,
+  here at exit 0 in the temp tree at 13:0x +07; the standing count is **two open, three closed**,
   and a register still saying five would hide finished work the way it hid the defect. Closed —
-  `verify-flaky-quarantine` at `ae7f19c03` (106 insertions / 8 deletions) and
-  `verify-no-hardcoded-money-format` at `1f7c2311c` (129 / 9), both re-measured by this lane in a
+  `verify-flaky-quarantine` at `ae7f19c03` (106 insertions / 8 deletions),
+  `verify-no-hardcoded-money-format` at `1f7c2311c` (129 / 9) and
+  `verify-migration-column-types` at `c1fa2d0f9` (111 / 13), all re-measured by this lane in a
   throwaway root at 13:3x +07: the quarantine blob beside its own manifest now exits **1** on
   `FAIL: REFUSED -- the manifest at this root has no test corpus behind it` and its real-tree PASS
   names the root plus `1134 candidate .rs file(s) found`; the money-format blob exits **2** on
@@ -760,9 +761,26 @@ before being written, nothing outside this file touched. Owner named by file:
   `verify-scoped-reads` (re-run 13:3x +07: still exit 0, still the one indistinguishable line);
   `verify-ftl-orphans` — `nothing staged under ui/src; nothing to verify.` against
   `ftl orphans: OK` in the real tree, arguably a different class because it is legitimately
-  index-bound; and `verify-migration-column-types`, which printed nothing (`if not files: return
-  0`, `:151-152`) against `(59 files scanned, 12 float hits all exempt)` here at 13:0x — its own
-  repair is in flight in another lane, so its outcome is deliberately not recorded.
+  index-bound; and `verify-migration-column-types`, which printed nothing here at 13:0x
+  (`if not files: return 0`, old `:151-152`) against `(59 files scanned, 12 float hits all
+  exempt)` — its blob in a migration-less root now exits **2** on `REFUSED — a gate that scanned no
+  migration files must not print clean`, and its real-tree line names the root and the count.
+- **One flag, three behaviours** (measured at `a89f1f12d`, 13:5x +07): `--self-test` on
+  `verify-migration-column-types` → **exit 0**, its ordinary `ok: … (59 migration file(s) scanned
+  under …)`; on `verify-flaky-quarantine` → **exit 0**, its ordinary `PASS: quarantine manifest
+  valid …`; on `verify-no-hardcoded-money-format` → **exit 2**, `error: unrecognized arguments:
+  --self-test` — the only one of the three that parses argv rather than testing membership in it
+  (`:219`, `:105`). Two of three answer a request they cannot satisfy with a green about a
+  different thing; the class is **a permissive parser turns a typo into evidence**, and the defense
+  is strict unknown-argument handling, which another lane is adding to those two files right now —
+  its outcome is deliberately not recorded here. On their own axis the three closures are unpinned:
+  `self.?test` (case-insensitive) occurs **zero** times in each of the three HEAD blobs, and
+  `git grep -n REFUSED` over `.github`, `scripts/check.sh`, `scripts/run-pre-push.py`,
+  `.githooks` and `scripts/gates.json` returns nothing (exit 1), so each closure is one file with
+  no case that plants an empty corpus and asserts the refusal — the next lane to edit root
+  resolution can restore the false green without turning anything red.
+- **The shared shape, in one line:** same asymmetry as `RI-1` one section below — a case nobody
+  runs and a flag nobody rejects are both greens that mean less than they print.
 - **The closed instance** is `scripts/verify-agents-mirrors.py` at `6809719a91`, 149 insertions
   / 5 deletions, which additionally prints a `files walked` tally whenever the walk is not
   whole (`:896-905`), git answering the root with script-relative kept only as the recorded
