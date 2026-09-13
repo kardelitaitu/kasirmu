@@ -992,3 +992,165 @@ async fn sqlite_unstamped_payload_is_skipped_not_flagged() {
             .is_empty()
     );
 }
+
+/// Conflict detection on PostgreSQL — the production backend, and the only
+/// one where Row-Level Security applies.
+///
+/// Every path here touches a table with `tenant_isolation` enabled
+/// (`USING`/`WITH CHECK` on `current_setting('oz.tenant_id')`). A missing GUC
+/// does NOT raise: reads match nothing and the UPDATE affects zero rows, so
+/// the failure mode is a permanently clean review queue, not a 500. SQLite
+/// cannot catch any of this — it has no RLS.
+#[tokio::test]
+async fn pg_integration_conflict_detection_end_to_end() {
+    let Some((pool, db_name)) = throwaway_pool().await else {
+        eprintln!("PG conflict detection test skipped: cannot create throwaway DB");
+        return;
+    };
+    let tenant = format!("pg-conflict-{}", uuid::Uuid::now_v7());
+    let store = SyncStore::postgres(pool.clone());
+
+    let first = platform_sync::crdt::stamp_payload(&money_body("gc-1", 5_000), "t1", 1);
+    let second = platform_sync::crdt::stamp_payload(&money_body("gc-1", 7_500), "t2", 1);
+
+    let id_a = format!("pgc-a-{}", uuid::Uuid::now_v7());
+    let id_b = format!("pgc-b-{}", uuid::Uuid::now_v7());
+    store
+        .push_batch(
+            &[detection_item(&id_a, "gift_card.redeem", &first)],
+            &tenant,
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item(&id_b, "gift_card.redeem", &second)],
+            &tenant,
+        )
+        .await
+        .unwrap();
+
+    let conflicts = store.list_conflicts(&tenant, None, None).await.unwrap();
+    assert_eq!(
+        conflicts.len(),
+        1,
+        "concurrent money writes must be flagged on PG too"
+    );
+    let row = &conflicts[0];
+    assert_eq!(row.entity_id, "gc-1");
+    assert_eq!(row.severity, "high");
+    assert_eq!(row.status, "open");
+    // The stored side is attributed to the terminal that wrote it.
+    assert_eq!(row.local_terminal_id, "t1");
+    assert_eq!(row.local_vector, r#"{"t1":1}"#);
+    assert_eq!(row.remote_vector, r#"{"t2":1}"#);
+
+    // resolve_conflict must actually reach the row: with RLS and no GUC it
+    // updates zero rows and reports false for every id.
+    assert!(
+        store
+            .resolve_conflict(&tenant, &row.id, "keep_local", "tester")
+            .await
+            .unwrap(),
+        "resolve must reach the row under RLS"
+    );
+    assert!(
+        store
+            .list_conflicts(&tenant, Some("open"), None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        store
+            .list_conflicts(&tenant, Some("resolved"), None)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Another tenant sees nothing.
+    assert!(
+        store
+            .list_conflicts("pg-other-tenant", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    drop(pool);
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).unwrap();
+    let mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let admin = deadpool_postgres::Pool::builder(mgr)
+        .max_size(1)
+        .build()
+        .unwrap();
+    let client = admin.get().await.unwrap();
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}
+
+/// A causally ordered chain must NOT flag on PG either.
+///
+/// This is the counterpart that proves the stored vector is actually being
+/// persisted and read back: if `sync_entity_vectors` were unreadable under
+/// RLS, every push would look like the first and nothing would ever be
+/// concurrent — which is the same "no conflicts" result, reached wrongly.
+#[tokio::test]
+async fn pg_integration_causally_ordered_pushes_never_flag() {
+    let Some((pool, db_name)) = throwaway_pool().await else {
+        eprintln!("PG ordered-push test skipped: cannot create throwaway DB");
+        return;
+    };
+    let tenant = format!("pg-ordered-{}", uuid::Uuid::now_v7());
+    let store = SyncStore::postgres(pool.clone());
+
+    let sequence = [
+        serde_json::json!({ "t1": 1 }),
+        serde_json::json!({ "t1": 1, "t2": 1 }),
+        serde_json::json!({ "t1": 2, "t2": 1 }),
+    ];
+    for vector in sequence {
+        let payload = serde_json::json!({
+            "entity_id": "gc-2",
+            "amount_minor": 1_000,
+            "_terminal": "t1",
+            "_vector": vector,
+        })
+        .to_string();
+        let id = format!("pgc-o-{}", uuid::Uuid::now_v7());
+        store
+            .push_batch(
+                &[detection_item(&id, "gift_card.redeem", &payload)],
+                &tenant,
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(
+        store
+            .list_conflicts(&tenant, None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    drop(pool);
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).unwrap();
+    let mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let admin = deadpool_postgres::Pool::builder(mgr)
+        .max_size(1)
+        .build()
+        .unwrap();
+    let client = admin.get().await.unwrap();
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}

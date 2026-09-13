@@ -1367,8 +1367,15 @@ impl SyncStore {
                     .map_err(|e| e.to_string())
             }
             Self::Postgres(pool) => {
-                let client = pool.get().await.map_err(|e| e.to_string())?;
-                let stmt = client
+                // RLS on sync_conflicts: without the GUC this returns an
+                // empty list, so a reviewer would see a permanently clean
+                // queue no matter how many conflicts were recorded.
+                let mut client = pool.get().await.map_err(|e| e.to_string())?;
+                let tx = client.transaction().await.map_err(|e| e.to_string())?;
+                tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let stmt = tx
                     .prepare_cached(
                         "SELECT id, tenant_id, entity_type, entity_id, local_terminal_id,
                             local_vector, remote_vector, local_payload, remote_payload,
@@ -1381,7 +1388,7 @@ impl SyncStore {
                     )
                     .await
                     .map_err(|e| e.to_string())?;
-                let rows = client
+                let rows = tx
                     .query(&stmt, &[&tenant_id, &status, &severity])
                     .await
                     .map_err(|e| e.to_string())?;
@@ -1417,8 +1424,16 @@ impl SyncStore {
                 Ok(changed > 0)
             }
             Self::Postgres(pool) => {
-                let client = pool.get().await.map_err(|e| e.to_string())?;
-                let stmt = client
+                // RLS hides every row without the GUC, so this UPDATE would
+                // match nothing and resolve_conflict would report `false`
+                // ("unknown or already closed") for every id — the review UI
+                // would appear broken rather than unauthorised.
+                let mut client = pool.get().await.map_err(|e| e.to_string())?;
+                let tx = client.transaction().await.map_err(|e| e.to_string())?;
+                tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let stmt = tx
                     .prepare_cached(
                         "UPDATE sync_conflicts
                             SET status = 'resolved', resolution = $3, resolved_by = $4,
@@ -1428,10 +1443,11 @@ impl SyncStore {
                     )
                     .await
                     .map_err(|e| e.to_string())?;
-                let changed = client
+                let changed = tx
                     .execute(&stmt, &[&id, &tenant_id, &resolution, &resolved_by])
                     .await
                     .map_err(|e| e.to_string())?;
+                tx.commit().await.map_err(|e| e.to_string())?;
                 Ok(changed > 0)
             }
         }
@@ -1547,15 +1563,24 @@ impl SyncStore {
                 Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
             }
             Self::Postgres(pool) => {
-                let client = pool.get().await.map_err(|e| e.to_string())?;
-                let stmt = client
+                // RLS is enabled on sync_entity_vectors, so without the
+                // tenant GUC this read matches NOTHING — and fails silently,
+                // which is indistinguishable from "no vector stored yet".
+                // That reads as "first push" forever, so nothing is ever
+                // concurrent and no conflict is ever raised.
+                let mut client = pool.get().await.map_err(|e| e.to_string())?;
+                let tx = client.transaction().await.map_err(|e| e.to_string())?;
+                tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let stmt = tx
                     .prepare_cached(
                         "SELECT vector FROM sync_entity_vectors
                       WHERE tenant_id = $1 AND entity_type = $2 AND entity_id = $3",
                     )
                     .await
                     .map_err(|e| e.to_string())?;
-                let rows = client
+                let rows = tx
                     .query(
                         &stmt,
                         &[
@@ -1592,15 +1617,22 @@ impl SyncStore {
                     .unwrap_or(None))
             }
             Self::Postgres(pool) => {
-                let client = pool.get().await.map_err(|e| e.to_string())?;
-                let stmt = client
+                // Same RLS requirement as load_entity_vector: an unset GUC
+                // makes the stored body invisible, and a missing body makes
+                // the field-wise policy fail closed and flag.
+                let mut client = pool.get().await.map_err(|e| e.to_string())?;
+                let tx = client.transaction().await.map_err(|e| e.to_string())?;
+                tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let stmt = tx
                     .prepare_cached(
                         "SELECT last_payload FROM sync_entity_vectors
                       WHERE tenant_id = $1 AND entity_type = $2 AND entity_id = $3",
                     )
                     .await
                     .map_err(|e| e.to_string())?;
-                let rows = client
+                let rows = tx
                     .query(
                         &stmt,
                         &[
@@ -1643,27 +1675,34 @@ impl SyncStore {
                 .map_err(|e| e.to_string())
             }
             Self::Postgres(pool) => {
-                let client = pool.get().await.map_err(|e| e.to_string())?;
-                client
-                    .execute(
-                        "INSERT INTO sync_entity_vectors
+                // RLS WITH CHECK: without the GUC this INSERT is rejected
+                // outright ("new row violates row-level security policy"),
+                // so the stored vector never advances and every push looks
+                // like the first one.
+                let mut client = pool.get().await.map_err(|e| e.to_string())?;
+                let tx = client.transaction().await.map_err(|e| e.to_string())?;
+                tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "INSERT INTO sync_entity_vectors
                         (tenant_id, entity_type, entity_id, vector, last_payload)
                      VALUES ($1, $2, $3, $4, $5)
                      ON CONFLICT (tenant_id, entity_type, entity_id)
                      DO UPDATE SET vector = excluded.vector,
                                    last_payload = excluded.last_payload,
                                    updated_at = now()",
-                        &[
-                            &tenant_id.to_string(),
-                            &entity_type.to_string(),
-                            &entity_id.to_string(),
-                            &json,
-                            &payload.to_string(),
-                        ],
-                    )
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
+                    &[
+                        &tenant_id.to_string(),
+                        &entity_type.to_string(),
+                        &entity_id.to_string(),
+                        &json,
+                        &payload.to_string(),
+                    ],
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                tx.commit().await.map_err(|e| e.to_string())
             }
         }
     }
