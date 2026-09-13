@@ -11,6 +11,15 @@ Validates scripts/flaky-quarantine.json:
 Usage:
   python3 scripts/verify-flaky-quarantine.py            # fail on any violation
   python3 scripts/verify-flaky-quarantine.py --report   # print count, still gate
+  python3 scripts/verify-flaky-quarantine.py --anything-else  # REFUSED, exit 2, names the flag
+
+STRICT ARGUMENTS
+================
+
+A dashed argument this gate does not read is refused, not ignored. It used to be ignored, so
+`--self-test` fell through to the normal manifest check and printed its usual PASS at exit 0 --
+the caller asked for a self test, nothing self-tested, and the green named a different surface
+than the one that was requested. The whole-tree check still runs, unchanged, on a bare call.
 
 ROOT RESOLUTION
 ===============
@@ -25,7 +34,8 @@ in the output said the walk was empty. Now the root is chosen by finding the man
 data, the corpus under it is counted, and a corpus of zero is a failure rather than a
 verdict -- so a gate that read nothing cannot print clean.
 
-Exit code is 1 on any violation, including a refused empty walk; 0 otherwise.
+Exit code is 1 on any violation, including a refused empty walk; 2 on a dashed argument this
+gate does not implement (a refused command line, not a failed check); 0 otherwise.
 """
 
 import datetime
@@ -101,8 +111,46 @@ def corpus_count(root: Path) -> int:
     return total
 
 
+# The complete set of dashed arguments this script implements. `main` below is its only
+# reader; keep the two together when a flag is added. Anything else that starts with a dash
+# asks this gate for a surface it does not have, so it is refused -- an ignored flag used to
+# print the ordinary verdict for a check nobody ran.
+KNOWN_FLAGS = ("--report",)
+
+
+def unknown_flag(argv: list[str]) -> str | None:
+    """The first dashed argument missing from KNOWN_FLAGS, or None when all of them are known.
+
+    Only dashed arguments are judged; a positional has never been read here and still is not.
+    """
+    for arg in argv:
+        if arg.startswith("-") and arg not in KNOWN_FLAGS:
+            return arg
+    return None
+
+
+def reject_unknown_flag(flag: str) -> int:
+    """Name the flag this gate does not implement, list the ones it does, and stop.
+
+    stdout, not stderr: scripts/run-pre-push.py surfaces only a child's stdout. No PASS and no
+    FAIL prints on this path -- the manifest was not judged, so the only honest output left is
+    the usage line.
+    """
+    print(f"verify-flaky-quarantine: REFUSED -- unrecognised argument {flag}. This gate "
+          "implements no such flag; validating the manifest is not the surface that was asked "
+          "for, and exiting 0 over it is a green for a check nobody ran.")
+    print("  usage : python3 scripts/verify-flaky-quarantine.py"
+          + "".join(f" [{f}]" for f in KNOWN_FLAGS))
+    print(f"  flags this script implements: {', '.join(KNOWN_FLAGS)}")
+    return 2
+
+
 def main() -> int:
-    report_only = "--report" in sys.argv[1:]
+    argv = sys.argv[1:]
+    flag = unknown_flag(argv)
+    if flag is not None:
+        return reject_unknown_flag(flag)
+    report_only = "--report" in argv
 
     root, root_source, probed = resolve_root()
     if root is None:
