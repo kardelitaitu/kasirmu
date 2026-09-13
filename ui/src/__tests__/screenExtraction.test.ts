@@ -250,6 +250,11 @@ const SCREENS: ScreenEntry[] = [
       'kds/KdsScreenFooter.tsx',
     ],
   },
+  {
+    name: 'ExpoScreen',
+    tsx: 'kds/ExpoScreen.tsx',
+    css: ['kds/ExpoScreen.css'],
+  },
 
   // ── Loyalty ───────────────────────────────────────────
   {

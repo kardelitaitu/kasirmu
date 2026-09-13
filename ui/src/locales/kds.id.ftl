@@ -283,3 +283,27 @@ kds-cols-auto = Otomatis
 kds-color-picker-aria = Pemilih warna { $name }
 
 # ── Kiosk (remaining) ──
+
+# ── Expo (Expediter) screen — todo-kds-agents-3 ──
+nav-kds-expo = Ekspo
+kds-expo-title = Ekspo
+kds-expo-screen-aria = Layanan ekspedisi
+kds-expo-board-aria = Pesanan per stasiun
+kds-expo-no-station = Tanpa stasiun
+kds-expo-ready-banner =
+    { $count ->
+        [one]  1 pesanan siap disajikan
+       *[other] { $count } pesanan siap disajikan
+    }
+kds-expo-ready-ratio-aria = { $ready } dari { $total } pesanan naik di stasiun ini
+kds-expo-recall = Tarik Ulang
+kds-expo-recall-aria = Buka riwayat penarikan
+kds-expo-recall-count-aria = Buka riwayat penarikan, { $count } pesanan dapat ditarik ulang
+kds-expo-recall-title = Baru disajikan
+kds-expo-recall-hint = Pesanan yang disajikan dalam { $minutes } menit terakhir dapat dikembalikan ke meja saji.
+kds-expo-recall-empty = Belum ada pesanan yang baru disajikan
+kds-expo-recall-restore = Kembalikan
+kds-expo-recall-restore-aria = Kembalikan pesanan { $number } ke status siap
+kds-expo-recall-close-aria = Tutup dialog penarikan
+kds-expo-recall-failed = Gagal menarik kembali pesanan — coba lagi
+kds-expo-load-failed = Gagal memuat pesanan ekspo

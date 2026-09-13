@@ -301,3 +301,27 @@ kds-cols-auto = Auto
 # plus this suffix. The previous code interpolated the raw key id, so a screen
 # reader announced "kds-settings-color-dinein colour picker".
 kds-color-picker-aria = { $name } colour picker
+
+# ── Expo (Expediter) screen — todo-kds-agents-3 ──
+nav-kds-expo = Expo
+kds-expo-title = Expo
+kds-expo-screen-aria = Expediter display
+kds-expo-board-aria = Tickets by station
+kds-expo-no-station = No station
+kds-expo-ready-banner =
+    { $count ->
+        [one]  1 ticket ready to serve
+       *[other] { $count } tickets ready to serve
+    }
+kds-expo-ready-ratio-aria = { $ready } of { $total } tickets up at this station
+kds-expo-recall = Recall
+kds-expo-recall-aria = Open recall history
+kds-expo-recall-count-aria = Open recall history, { $count } tickets can be recalled
+kds-expo-recall-title = Recently served
+kds-expo-recall-hint = Tickets served in the last { $minutes } minutes can be brought back to the pass.
+kds-expo-recall-empty = No tickets served recently
+kds-expo-recall-restore = Bring back
+kds-expo-recall-restore-aria = Return order { $number } to ready
+kds-expo-recall-close-aria = Close recall dialog
+kds-expo-recall-failed = Could not recall the ticket — try again
+kds-expo-load-failed = Failed to load expo orders

@@ -1,0 +1,409 @@
+/* ui/src/features/kds/ExpoScreen.css
+ *
+ * Expediter (Expo) screen — todo-kds-agents-3, Phase 3.2.
+ * Registered as its own screenExtraction.test.ts entry (ExpoScreen).
+ * Ticket cards themselves are styled by KdsScreen.css (imported by the
+ * screen); everything named kds-expo-* lives here. Tokens from
+ * ui/src/frontend/themes/tokens.css only.
+ */
+
+.kds-expo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 100%;
+  padding: var(--space-4);
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+/* ── Header ──────────────────────────────────────────────────────── */
+
+.kds-expo-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.kds-expo-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  cursor: pointer;
+}
+
+.kds-expo-back svg {
+  width: 16px;
+  height: 16px;
+}
+
+.kds-expo-back:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-bg-hover);
+}
+
+.kds-expo-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.01em;
+}
+
+.kds-expo-recall-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  height: 34px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.kds-expo-recall-btn:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-bg-hover);
+}
+
+/* Count badge on the recall trigger — danger because a pending recall
+   means something was bumped that may not have left the pass. */
+.kds-expo-recall-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 var(--space-1_5);
+  border-radius: var(--radius-full);
+  background: var(--color-danger);
+  color: var(--color-danger-fg);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-bold);
+}
+
+/* ── Ready-to-serve strip (stat-card pattern: 8–10% bg, 20% border) ─ */
+
+.kds-expo-ready-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-lg);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* ── Error banner ─────────────────────────────────────────────────── */
+
+.kds-expo-error-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.kds-expo-error-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.kds-expo-error-retry {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.kds-expo-error-retry:hover {
+  background: var(--color-danger-bg);
+}
+
+/* ── Station columns ──────────────────────────────────────────────── */
+
+.kds-expo-stations {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(320px, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: var(--space-2);
+}
+
+.kds-expo-station {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.kds-expo-station-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.kds-expo-station-name {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-fg);
+}
+
+.kds-expo-station-meta {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+/* "n/m up" pass-completeness pill — success tone, glyph-free because the
+   fraction itself is the non-color signal. */
+.kds-expo-station-ready {
+  margin-left: auto;
+  padding: var(--space-0_5) var(--space-2);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-full);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
+}
+
+/* Ticket slot — the ready-to-serve highlight wraps the whole card so the
+   kitchen card chrome stays untouched. */
+.kds-expo-ticket-slot {
+  border-radius: var(--radius-lg);
+  transition: box-shadow var(--duration-200) var(--ease-out);
+}
+
+.kds-expo-ticket-slot--ready {
+  box-shadow: 0 0 0 2px var(--color-success), var(--shadow-md);
+}
+
+.kds-expo-empty {
+  margin: var(--space-8) 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+.kds-expo-loading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Recall dialog ────────────────────────────────────────────────── */
+
+.kds-expo-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-bg-overlay);
+}
+
+.kds-expo-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(520px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-fg);
+}
+
+.kds-expo-modal-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.kds-expo-modal-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.kds-expo-recall-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-height: 0;
+}
+
+.kds-expo-recall-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.kds-expo-recall-row-main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.kds-expo-recall-order {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.kds-expo-recall-table {
+  padding: 0 var(--space-1_5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-secondary);
+}
+
+.kds-expo-recall-station {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+}
+
+.kds-expo-recall-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.kds-expo-recall-ago {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+/* Restore is a recovery action, not a destroy action: secondary emphasis,
+   success hover — never the danger tone, the ticket was not wrong. */
+.kds-expo-recall-restore {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-success);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.kds-expo-recall-restore:hover:not(:disabled) {
+  background: var(--color-success-bg);
+}
+
+.kds-expo-recall-restore:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.kds-expo-recall-empty {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+.kds-expo-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.kds-expo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-text-on-color);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.kds-expo-btn--muted {
+  background: transparent;
+  color: var(--color-fg);
+}
+
+.kds-expo-btn--muted:hover {
+  background: var(--color-bg-hover);
+}
