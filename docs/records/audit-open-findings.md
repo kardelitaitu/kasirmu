@@ -853,7 +853,7 @@ both outside this session’s authority, recorded here rather than done.
 
 **Still open after this correction:** `verify-scoped-reads.py` F-2 (a copy prints
 `0 production file(s) graded against … clean for desktop.` at exit 0) and
-`verify-ftl-orphans.py --staged-only` (`staged_diff()` has no `check=True`, swallows git 129,
+`verify-ftl-orphans.py --staged-only` (`staged_diff()` has no `check=True`, swallows git 129, measured 16:30, note, the 62 bytes are the caller's own vacuous-clean verdict, git contributes 0 bytes,
 and emits a 62-byte line identical to a real run — index-bound, a different class).
 
 
