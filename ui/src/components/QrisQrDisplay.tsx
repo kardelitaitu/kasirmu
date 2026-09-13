@@ -68,7 +68,6 @@ export default function QrisQrDisplay({
   onReissue,
 }: QrisQrDisplayProps) {
   const { l10n } = useLocalization();
-  const [pollCount, setPollCount] = useState(0);
   const [status, setStatus] = useState<'waiting' | 'confirmed' | 'expired'>('waiting');
   const [remainingSecs, setRemainingSecs] = useState<number | null>(null);
   const autoMode = pollSettled !== undefined;
@@ -77,26 +76,18 @@ export default function QrisQrDisplay({
   const onExpiredRef = useRef(onExpired);
   onExpiredRef.current = onExpired;
 
-  // ── Demo polling (manual mode only) — unchanged behavior ─────────
+  // ── Manual mode: the cashier asserts, nothing confirms on a timer ──
+  // The pre-3.2 demo flipped this dialog to "Payment confirmed!" after
+  // 8 s of fake polling and the modal built a REAL completed sale behind
+  // it — money that never arrived. The assert is now explicit: manual
+  // QRIS has no settlement feed (that is the whole difference from Auto),
+  // so the only honest surface is the cashier saying they saw it, and
+  // `handleQrConfirmed` records that assertion under their session.
+  // Closing while open (or before asserting) resets to waiting, so a
+  // re-opened dialog can never inherit a stale confirmed state.
   useEffect(() => {
-    if (!isOpen || autoMode) {
-      setPollCount(0);
-      if (!isOpen) setStatus('waiting');
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setPollCount((prev) => prev + 1);
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [isOpen, autoMode]);
-
-  useEffect(() => {
-    if (pollCount >= 4 && status === 'waiting') {
-      setStatus('confirmed');
-    }
-  }, [pollCount, status]);
+    if (!isOpen) setStatus('waiting');
+  }, [isOpen]);
 
   // ── Real settlement polling (auto mode) ──────────────────────────
   // Changing `reference` (a re-issued order id) restarts the loop fresh.
@@ -305,6 +296,21 @@ export default function QrisQrDisplay({
               <span>Waiting for payment...</span>
             </Localized>
           </div>
+        )}
+
+        {/* Manual mode only: with no settlement feed, the cashier is the
+            oracle. Auto mode has no button — its poll is the truth. */}
+        {status === 'waiting' && !autoMode && (
+          <button
+            type="button"
+            className="qris-manual-confirm-btn"
+            onClick={() => setStatus('confirmed')}
+            aria-label={requiredLocalized(l10n, 'payment-qris-manual-confirm')}
+          >
+            <Localized id="payment-qris-manual-confirm">
+              <span>I received the payment</span>
+            </Localized>
+          </button>
         )}
 
         {status === 'confirmed' && (

@@ -227,6 +227,27 @@
   }
 }
 
+/* Manual-mode cashier assertion — the only way a static QR (no settlement
+   feed) reaches 'confirmed'. Full-width, prominent: it is a deliberate
+   money statement, not a dismiss. */
+.qris-manual-confirm-btn {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-fg);
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background-color var(--duration-150) var(--ease-out);
+}
+
+.qris-manual-confirm-btn:hover {
+  background: var(--color-accent-hover);
+}
+
 /* ── QRIS Auto (dynamic charge) mode ─────────────────────────────── */
 
 /* The real payload renders as a scannable SVG on a theme-invariant paper

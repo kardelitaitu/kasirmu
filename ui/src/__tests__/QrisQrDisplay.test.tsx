@@ -195,25 +195,26 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     expect(document.querySelector('.qris-status--success')).toBeNull();
   });
 
-  it('transitions to confirmed status after polling completes', () => {
+  it('manual mode never confirms on its own — the cashier is the only oracle', () => {
     const hostRef = makeHostRef();
     render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
 
-    // Initial: waiting
+    // Initial: waiting, with the explicit assertion affordance.
     expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    ).toBeInTheDocument();
 
-    // Advance by 4 polls (4 × 2000ms = 8000ms) to trigger confirmation
+    // The retired demo auto-confirmed at 8 s (4 fake polls). No timer,
+    // however long it runs, may now mint a confirmed payment.
     act(() => {
-      vi.advanceTimersByTime(8000);
+      vi.advanceTimersByTime(60_000);
     });
-
-    // Status should transition to confirmed
-    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
-    expect(document.querySelector('.qris-status--success')).toBeInTheDocument();
-    expect(document.querySelector('.qris-spinner')).toBeNull();
+    expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeNull();
   });
 
-  it('calls onPaymentConfirmed after confirmation + delay', () => {
+  it('the cashier assert confirms, and the parent is called after the 1200ms handoff', () => {
     const onPaymentConfirmed = vi.fn();
     const hostRef = makeHostRef();
     render(
@@ -226,12 +227,13 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
       ),
     );
 
-    // Advance polls to trigger confirmation
-    act(() => {
-      vi.advanceTimersByTime(8000);
-    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    );
 
-    // After confirmation, there's a 1200ms delay before calling onPaymentConfirmed
+    // Confirmed state renders; the settle callback rides the delay.
+    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeInTheDocument();
     expect(onPaymentConfirmed).not.toHaveBeenCalled();
 
     act(() => {
@@ -245,33 +247,29 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     expect(onPaymentConfirmed).toHaveBeenCalledTimes(1);
   });
 
-  it('resets poll state when isOpen changes', () => {
+  it('closing without the handoff resets: a re-opened dialog cannot inherit a stale confirmed state', () => {
     const hostRef = makeHostRef();
     render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
 
-    // Advance partially through polls
-    act(() => {
-      vi.advanceTimersByTime(4000);
-    });
+    // Assert, then close DURING the 1200ms handoff (parent never called).
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    );
+    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
 
-    // Close
     act(() => { hostRef.setOpen(false); });
     act(() => { vi.advanceTimersByTime(200); }); // Exit animation clears DOM
     expect(document.querySelector('.qris-overlay')).toBeNull();
 
-    // Reopen via state setter
+    // Reopen: back to waiting with the assert available again — the
+    // stale-confirmed hazard the old reset-on-close covered is pinned
+    // here without the fake poller that used to force it.
     act(() => { hostRef.setOpen(true); });
     act(() => { vi.advanceTimersByTime(50); });
-
-    // Should be back to waiting (poll state reset on isOpen change)
     expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
-    expect(document.querySelector('.qris-spinner')).toBeInTheDocument();
-
-    // Advance by 8000ms again to confirm
-    act(() => {
-      vi.advanceTimersByTime(8000);
-    });
-    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    ).toBeInTheDocument();
   });
 });
 
