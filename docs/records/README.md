@@ -14,7 +14,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 2 | module-system | [ADR #2: Event Bus Design](../decisions/2026-02-01-event-bus-design.md) | Implemented (2026-07-15) |
 | 3 | ui | [ADR #3: Frontend Restructure](../decisions/2026-03-01-frontend-restructure.md) | Implemented (2026-07-15) |
 | 4 | architecture | [ADR #4: Store-First Tenancy & Workspace Type/Instance Architecture](../decisions/2026-07-10-workspace-type-instance-design.md) | Implemented (2026-07-10) |
-| 5 | subscription | [ADR #5: Subscription Tier & Entitlement Architecture](../decisions/archived/2026-07-10-subscription-tier-entitlement.md) | Archived — Superseded (2026-07-10) — tier lineup & quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17) |
+| 5 | subscription | [ADR #5: Subscription Tier & Entitlement Architecture](../decisions/archived/2026-07-10-subscription-tier-entitlement.md) | Archived — Superseded (2026-07-10) — tier lineup & quotas superseded by subscription-tiers.md (FINAL, approved 2026-08-17) |
 | 6 | sync | [ADR #6: CRDT Delta Ledger & Offline Sync](../decisions/2026-07-10-crdt-delta-ledger-offline-sync.md) | Implemented (2026-07-15) |
 | 7 | architecture | [ADR #7: Data Scope Guard & Query Enforcement](../decisions/2026-07-10-data-scope-guard.md) | Implemented (2026-07-10) |
 | 8 | module-system | [ADR #8: Scoped Real-Time Event Bus](../decisions/2026-07-10-scoped-event-bus.md) | Implemented (2026-07-10) |
@@ -41,9 +41,9 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 36 | products | [ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](../decisions/2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | products | [ADR #37: Product Popularity Index — Weighted Activity Score for Retail Sorting](../decisions/2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | products | [ADR #38: Retail POS Row Context Menu — View Product Images in Browser](../decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/todo.md` C3.1; Phase C complete (C0-C4.3 shipped) |
+| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — docs/plans/todo.md C3.1; Phase C complete (C0-C4.3 shipped) |
 | 40 | topology | [ADR #40: Multi-Terminal Peer Model](../decisions/2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
-| 41 | topology | [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBAC)](../decisions/2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
+| 41 | topology | [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBA…](../decisions/2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | website | [ADR #42: Website Admin Dashboard & User Dashboard (Subdomain Architecture)](../decisions/2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented — subdomain routing + auth gate + password rotation + dashboard/admin SPAs complete (2026-08-28); invoice history and webhook delivery log remain future work (see §5 Open Questions) |
 | 43 | ui | [ADR #43 – React‑only UI decision](../decisions/2026-07-24-react-only-decision.md) | Accepted (2026-07-24) |
 | 43 | cloud | [ADR #43: Cloud Sync Performance & Scale-Out Roadmap](../decisions/2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02) |
@@ -95,6 +95,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | Area | Title | Status |
 | --- | --- | --- |
 | sync | [Sync settings ingest admits and the redirect that carries them](2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
+| general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
@@ -128,7 +129,7 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 | Area | Title | Status |
 | --- | --- | --- |
 | observability | [Error Handling Audit — 0.0.14](../observability/error-handling-2026-07-20.md) | — |
-| observability | [Structured Logging & Observability — 0.0.14](../observability/logging-2026-07-20.md) | ✅ `tracing` already integrated. JSON output + correlation IDs available. File rotation via `tracing-appender` configured. |
+| observability | [Structured Logging & Observability — 0.0.14](../observability/logging-2026-07-20.md) | ✅ tracing already integrated. JSON output + correlation IDs available. File rotation via tracing-appender configured. |
 
 ## Conventions
 
