@@ -944,6 +944,34 @@ fine and dies 30 lines later on `UnicodeEncodeError: 'charmap' codec can't encod
 carry a partial report. Fixing it needs an output-side decision outside the brief, so it is
 recorded here. Every path in this repo's real cargo-llvm-cov exports is ASCII.
 
+### New verified finding (2026-09-13, 19:45) — `.ftl` reads race live writers, and the crash impersonates a verdict
+
+`scripts/verify-ftl-orphans.py` dies with a `Traceback` at **exit 1** when a locale file is being
+written underneath it. Reported by the closing worker at 19:39 from a run it made at 19:29:
+the *real tree*, not a temp copy — a `PermissionError` reading `ui/src/locales/kds.ftl` while
+another session was writing it, exit 1, one traceback. Same shape as the hollow-root crash fixed
+by `683eb1eac` (12/0, 19:38), and **`hollow_root_reason()` cannot see it**: the directory exists,
+the bundles exist, the read simply fails this instant. It hits `--census` identically.
+
+**Why exit 1 is the damage.** In this file exit 1 means *the gate reached a verdict and the verdict
+was bad* — `FAIL: N orphan problem(s)`. So a transient lock collision on a machine where sessions
+commit every few minutes reports as an orphan finding, and nobody goes looking for the file that
+was mid-write. Mechanism 4 (reading a mutable surface) arriving not as a wrong belief but as a
+wrong **exit code**.
+
+**Precedent already in-repo, cite it rather than inventing a third shape.**
+`verify-scoped-reads.py` (`AllowlistUndecodable`, `dd4888194`) encodes the guard-ordering law:
+`exists` and `isdir` checked *before* the retry loop, `PermissionError`/`JSONDecodeError`/decode
+*inside* it, and **only denial retries**. `coverage_top.py` (`dfb3e10e9`) is the report-only
+variant: one `UNREADABLE: <path>` line naming the file, and the verdict still runs over what was
+read. Which of the two applies to `--census` is an enforcement question, not a code question.
+
+**Verification note, mine, same class.** `kds.ftl` was clean again by 19:44 — this finding cannot
+be reproduced on demand, it needs a concurrent writer, so any future fix must be proven by
+forcing the race (hold the file open, or point the parser at a path that denies sharing) rather
+than by an absence of crashes in a quiet tree. A green here proves nothing; mechanism 9 with the
+receipt inverted.
+
 ### Dated correction (2026-09-13, 19:28) — the hollow-root census finding is closed by `ef2058f28`
 
 `ef2058f28` (38/1, one file) adds a `hollow_root_reason()` gate on the `LOCALES` surface. Proven by
