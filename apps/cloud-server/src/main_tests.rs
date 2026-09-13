@@ -81,6 +81,8 @@ fn test_config() -> config::CloudServerConfig {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
         api_secret: None,
         redis_url: None,
     }
@@ -101,6 +103,8 @@ fn test_app() -> Router {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let config = test_config();
     build_router(
@@ -353,6 +357,8 @@ async fn cloud_health_reports_queue_depth() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let app = build_router(
         state.clone(),
@@ -396,6 +402,8 @@ async fn cloud_health_reports_last_sync_at() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let app = build_router(
         state.clone(),
@@ -485,6 +493,8 @@ async fn sync_push_and_pull_roundtrip() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -575,6 +585,8 @@ async fn multi_tenant_tenant_a_push_invisible_to_tenant_b() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -625,6 +637,8 @@ async fn multi_tenant_bidirectional_isolation() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -682,6 +696,8 @@ async fn multi_tenant_status_scoped_per_tenant() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -737,6 +753,8 @@ async fn multi_tenant_default_tenant_isolation() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -786,6 +804,8 @@ async fn lifecycle_free_tenant_upgraded_via_webhook_can_sync() {
         stripe_webhook_secret: Some(secret.to_string()),
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let mut config = test_config();
     config.enforce_plans = true;
@@ -911,6 +931,8 @@ async fn pg_integration_health_fails_fast_when_pool_exhausted() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let app = build_router(
         state,

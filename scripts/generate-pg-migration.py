@@ -403,6 +403,7 @@ RLS_TABLES = [
     "memo_locations",
     "memo_recipients",
     "memos",
+    "midtrans_transactions",
     "offline_queue",
     "payment_gateways",
     "payment_settlements",

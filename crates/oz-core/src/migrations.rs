@@ -298,6 +298,16 @@ pub const ALL: &[Migration] = &[
         id: "20261003_sync_entity_vectors.sql",
         sql: include_str!("../migrations/20261003_sync_entity_vectors.sql"),
     },
+    // Cloud-side Midtrans QRIS issue ledger: resolves order_id ->
+    // (tenant, sale) at webhook time WITHOUT depending on the device having
+    // synced its sale — the race the existing gateway_reference JOIN-based
+    // resolver cannot cross. No FK on sale_id for the same claim-before-sale
+    // reason 20261001_sale_idempotency records. Date 20261004 sorts last and
+    // only creates a new table.
+    Migration {
+        id: "20261004_midtrans_transactions.sql",
+        sql: include_str!("../migrations/20261004_midtrans_transactions.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

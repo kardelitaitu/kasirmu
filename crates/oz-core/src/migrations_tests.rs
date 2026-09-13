@@ -401,14 +401,16 @@ fn init_sql_creates_complete_schema_surface() {
     // and 20261003_sync_entity_vectors.sql are the 120th and 121st. The
     // sync-crdt lane shipped both tables without re-measuring this pin —
     // nothing saw it because dev-ci runs only on pull_request while work
-    // lands directly on `0.0.37`. Count measured, not guessed: the whole
+    // lands directly on `0.0.37` (re-pinned by 25dfa46596). This lane's own
+    // 20261004_midtrans_transactions.sql is the 122nd. Count measured, not
+    // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        121,
+        122,
         "table surface drifted"
     );
     assert_eq!(
@@ -454,8 +456,10 @@ fn init_sql_creates_complete_schema_surface() {
         // `idx_sale_idempotency_sale` — +2. Then the sync-crdt lane added
         // three more without re-measuring (20261002_sync_conflicts.sql and
         // 20261003_sync_entity_vectors.sql — red unobserved because CI runs
-        // only on PRs). Count measured by replaying the registry, as ever.
-        180,
+        // only on PRs), and 20261004_midtrans_transactions.sql adds the
+        // tenant-lookup index `idx_midtrans_transactions_tenant`. Count
+        // measured by replaying the registry, as ever.
+        181,
         "index surface drifted"
     );
     assert_eq!(
@@ -612,6 +616,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20261001_sale_idempotency.sql".to_string(),
             "20261002_sync_conflicts.sql".to_string(),
             "20261003_sync_entity_vectors.sql".to_string(),
+            "20261004_midtrans_transactions.sql".to_string(),
         ]
     );
 
@@ -634,19 +639,20 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run (121 tables: the
+    // Schema surface is unchanged after the no-op re-run (122 tables: the
     // 111 pinned before 20260918, plus payables and payable_payments from
     // 20260918, plus over_quota_markers from 20260922, plus fiscal_schemes
     // and document_number_sequences from 20260923, plus
     // local_payment_methods from 20260924, plus sale_idempotency from
     // 20261001, plus sync_conflicts from 20261002, plus sync_entity_vectors
-    // from 20261003 — each recorded once, idempotently).
+    // from 20261003, plus midtrans_transactions from 20261004 — each
+    // recorded once, idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        121,
+        122,
         "table surface must be unchanged after upgrade"
     );
 }

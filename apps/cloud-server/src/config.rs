@@ -97,6 +97,21 @@ pub struct CloudServerConfig {
     /// Public Square webhook URL (used for webhook registration).
     pub square_webhook_url: Option<String>,
 
+    /// Midtrans Core-API server key (`MIDTRANS_SERVER_KEY`). Doubles as the
+    /// charge credential for `POST /api/payment/midtrans/qris` and the
+    /// recomputation secret for `POST /api/webhooks/midtrans` signature
+    /// verification. One platform-wide key — the same model Stripe and
+    /// Square already use here; tenant attribution happens at webhook time
+    /// via the `midtrans_transactions` ledger, not at key time
+    /// (agents-1 D1 decision, 2026-09-13).
+    pub midtrans_server_key: Option<String>,
+
+    /// When `true` (`MIDTRANS_SANDBOX=1`), QRIS charges go to the Midtrans
+    /// sandbox API. Verification is environment-agnostic (same SHA512
+    /// algorithm — the key differs per environment), so this flag only
+    /// steers the charge endpoint.
+    pub midtrans_sandbox: bool,
+
     /// JWT signing secret for `POST /api/v1/tokens`.
     /// Falls back to a hard-coded dev secret when unset.
     pub api_secret: Option<String>,
@@ -186,6 +201,10 @@ impl CloudServerConfig {
             stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").ok(),
             square_webhook_signature_key: std::env::var("SQUARE_WEBHOOK_SIGNATURE_KEY").ok(),
             square_webhook_url: std::env::var("SQUARE_WEBHOOK_URL").ok(),
+            midtrans_server_key: std::env::var("MIDTRANS_SERVER_KEY")
+                .ok()
+                .filter(|k| !k.is_empty()),
+            midtrans_sandbox: env_bool("MIDTRANS_SANDBOX"),
             production,
             api_secret,
             redis_url: std::env::var("OZ_REDIS_URL").ok().filter(|s| !s.is_empty()),

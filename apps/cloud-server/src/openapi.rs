@@ -552,6 +552,59 @@ fn build_cloud_paths() -> Value {
                 }
             }
         },
+        "/api/webhooks/midtrans": {
+            "post": {
+                "tags": ["Webhooks"],
+                "summary": "Midtrans QRIS transaction notification receiver",
+                "description": "Receives Midtrans Core-API notifications for QRIS charges issued via this server. Unauthenticated — the notification is verified as SHA512(order_id + transaction_status_code + gross_amount + MIDTRANS_SERVER_KEY) against the `signature_key` field, in constant time. Settlement routing goes through the `midtrans_transactions` ledger written at QR-issue time, so a payment that completes before the device's sync push still resolves to its sale. Signature failures answer 401 (delivery stops); verified notifications for orders never issued here answer 200 `ignored`. A settlement whose signed amount differs from the issued amount is journaled as `amount_mismatch` and NOT finalized (fail closed).",
+                "operationId": "midtransWebhook",
+                "requestBody": {
+                    "content": { "application/json": { "schema": { "type": "object", "description": "Raw Midtrans transaction notification" } } }
+                },
+                "responses": {
+                    "200": { "description": "Processed (finalization_queued | recorded | already_processed | ignored)" },
+                    "400": { "description": "Malformed notification body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "401": { "description": "Missing or invalid signature_key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "500": { "description": "Ledger or queue write failed — Midtrans will retry", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "MIDTRANS_SERVER_KEY not configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+        "/api/payment/midtrans/qris": {
+            "post": {
+                "tags": ["Payments"],
+                "summary": "Issue a Midtrans QRIS charge for a sale",
+                "description": "Raises a dynamic QR through the Midtrans Core-API (sandbox with MIDTRANS_SANDBOX=1) and records the issuance in the server-side ledger keyed by the returned `order_id`. TENANT COMES FROM THE JWT, never the body; a token without a tenant scope is rejected. HONEST TWO-PHASE CONTRACT: HTTP 200 means the QR was ISSUED, not paid — settlement arrives asynchronously via `POST /api/webhooks/midtrans` (QR validity is Midtrans-side, 300 s). Retrying with the same `idempotency_key` re-uses the same live QR (order_id is derived from the key) instead of minting a second one.",
+                "operationId": "midtransQrisCharge",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["sale_id", "amount_minor"],
+                                "properties": {
+                                    "sale_id": { "type": "string", "description": "Device-side sale this QR will settle (no cloud-side FK: the ledger row is written before the sale syncs)" },
+                                    "amount_minor": { "type": "integer", "format": "int64", "description": "IDR minor units — for IDR the minor unit IS the Rupiah (exp-0, PAY-1 convention); must be positive" },
+                                    "currency": { "type": "string", "description": "Only IDR accepted (case-insensitive); absent implies IDR" },
+                                    "idempotency_key": { "type": ["string", "null"], "description": "Optional caller key; reusing it re-uses the same order_id/live QR" },
+                                    "description": { "type": ["string", "null"], "description": "Optional description forwarded to Midtrans" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "QR issued (status: qr_issued — NOT settled)", "content": { "application/json": { "schema": { "type": "object", "properties": { "order_id": { "type": "string" }, "qr_string": { "type": ["string", "null"] }, "status": { "type": "string", "const": "qr_issued" }, "amount_minor": { "type": "integer", "format": "int64" }, "currency": { "type": "string", "const": "IDR" }, "sale_id": { "type": "string" } } } } } },
+                    "400": { "description": "Validation failed (amount ≤ 0, missing sale_id, non-IDR currency)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "401": { "description": "Missing/invalid JWT, or token not tenant-scoped", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "429": { "description": "Per-tenant rate limit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "500": { "description": "Charge succeeded at Midtrans but the ledger write failed — body names the order_id; reconcile manually", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "502": { "description": "Midtrans refused or unreachable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "MIDTRANS_SERVER_KEY not configured; charging disabled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
         "/api/webhooks": {
             "get": {
                 "tags": ["Webhooks"],

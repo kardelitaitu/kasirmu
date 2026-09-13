@@ -4425,6 +4425,7 @@ dependencies = [
  "console-subscriber",
  "deadpool-postgres",
  "embed-resource",
+ "foundation",
  "hex",
  "hmac 0.12.1",
  "http-body-util",
@@ -4432,6 +4433,7 @@ dependencies = [
  "oz-api",
  "oz-core",
  "oz-logging",
+ "oz-payment",
  "platform-sync",
  "prometheus",
  "redis",
@@ -4452,6 +4454,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]
@@ -4730,6 +4733,7 @@ dependencies = [
  "modules-staff",
  "modules-tax",
  "modules-terminal",
+ "oz-bridge",
  "oz-core",
  "oz-hal",
  "oz-logging",

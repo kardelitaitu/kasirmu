@@ -330,6 +330,8 @@ fn test_full_router() -> axum::Router {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let config = crate::config::CloudServerConfig {
         db_path: ":memory:".into(),
@@ -347,6 +349,8 @@ fn test_full_router() -> axum::Router {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
         api_secret: Some("test-secret".into()),
         redis_url: None,
     };
@@ -445,6 +449,7 @@ fn source_registered_routes() -> BTreeMap<String, BTreeSet<String>> {
         include_str!("sync_api.rs"),
         include_str!("webhooks.rs"),
         include_str!("outbound_webhooks.rs"),
+        include_str!("payment_api.rs"),
     ];
     let mut routes: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for &src in sources {
@@ -687,7 +692,8 @@ fn security_coverage_walk_every_operation() {
 /// Every operation in the merged document must carry `x-oz-scope`, and
 /// the scope must match the path family: the shared `/api/v1/*` surface
 /// and the self-documenting `/api/openapi.json` are `"both"`; host
-/// health/metrics, sync, webhooks, and the docs UI pages are `"cloud"`.
+/// health/metrics, sync, payments, webhooks, and the docs UI pages are
+/// `"cloud"`.
 /// This is the contract scripts use to decide whether an endpoint
 /// exists on their desktop local API.
 #[test]
@@ -697,6 +703,7 @@ fn every_operation_carries_correct_scope() {
 
     fn expected_scope(path: &str) -> &'static str {
         if path.starts_with("/api/sync/")
+            || path.starts_with("/api/payment/")
             || path == "/api/webhooks"
             || path.starts_with("/api/webhooks/")
             || path == "/health"

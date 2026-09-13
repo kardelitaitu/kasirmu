@@ -74,7 +74,7 @@ DECLARE
     t text;
 BEGIN
     FOREACH t IN ARRAY ARRAY['bundle_items','memo_locations','memo_recipients',
-                            'memos','offline_queue','product_activity',
+                            'memos','midtrans_transactions','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
                             'sync_conflicts','sync_entity_vectors',
@@ -130,7 +130,7 @@ BEGIN
     END IF;
 END $$;
 GRANT USAGE ON SCHEMA public TO oz_webhook_resolver;
-GRANT SELECT ON stripe_customers, sales, payments TO oz_webhook_resolver;
+GRANT SELECT ON stripe_customers, sales, payments, midtrans_transactions TO oz_webhook_resolver;
 GRANT oz_webhook_resolver TO oz_app;
 
 -- 2d. Cross-tenant discovery role. Three pre-tenant consumers share it:
@@ -181,7 +181,7 @@ DECLARE
     t text;
 BEGIN
     FOREACH t IN ARRAY ARRAY['bundle_items','memo_locations','memo_recipients',
-                            'memos','offline_queue','product_activity',
+                            'memos','midtrans_transactions','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
                             'sync_conflicts','sync_entity_vectors',

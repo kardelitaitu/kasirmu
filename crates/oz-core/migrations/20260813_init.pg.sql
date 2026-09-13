@@ -589,6 +589,17 @@ CREATE TABLE IF NOT EXISTS sync_entity_vectors (
     PRIMARY KEY (tenant_id, entity_type, entity_id)
 );
 
+CREATE TABLE IF NOT EXISTS midtrans_transactions (
+    order_id     TEXT PRIMARY KEY,
+    tenant_id    TEXT NOT NULL,
+    sale_id      TEXT NOT NULL,
+    amount_minor BIGINT NOT NULL,
+    currency     TEXT NOT NULL DEFAULT 'IDR',
+    status       TEXT NOT NULL DEFAULT 'issued',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -1826,6 +1837,9 @@ CREATE INDEX IF NOT EXISTS idx_memos_expiry ON memos(expires_at) WHERE status = 
 
 CREATE INDEX IF NOT EXISTS idx_memos_tenant_status ON memos(tenant_id, status);
 
+CREATE INDEX IF NOT EXISTS idx_midtrans_transactions_tenant
+    ON midtrans_transactions(tenant_id);
+
 CREATE INDEX IF NOT EXISTS idx_modifiers_group_id ON modifiers(group_id);
 
 CREATE INDEX IF NOT EXISTS idx_offline_queue_status ON offline_queue(status);
@@ -2206,10 +2220,11 @@ DECLARE
     t text;
 BEGIN
     FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'locations', 'media_assets', 'media_thumbnails', 'memo_locations',
-                            'memo_recipients', 'memos', 'offline_queue', 'payment_gateways', 'payment_settlements', 'product_activity',
-                            'product_bundles', 'product_taxes', 'product_variants', 'products', 'refunds', 'sale_idempotency',
-                            'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors',
-                            'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
+                            'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue', 'payment_gateways', 'payment_settlements',
+                            'product_activity', 'product_bundles', 'product_taxes', 'product_variants', 'products', 'refunds',
+                            'sale_idempotency', 'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts',
+                            'sync_entity_vectors', 'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access',
+                            'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (

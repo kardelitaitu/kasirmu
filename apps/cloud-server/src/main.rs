@@ -34,9 +34,11 @@ mod email;
 mod email_pg;
 mod image_gc;
 mod metrics;
+mod midtrans_ledger;
 mod openapi;
 mod outbound_webhooks;
 mod outbox;
+mod payment_api;
 mod prune;
 mod rate_limit;
 mod redirect;
@@ -109,6 +111,11 @@ pub struct CloudServerState {
     pub square_webhook_signature_key: Option<String>,
     /// P5-3: Public Square webhook URL (loaded from `SQUARE_WEBHOOK_URL` env var).
     pub square_webhook_url: Option<String>,
+    /// agents-1: Midtrans server key (loaded from `MIDTRANS_SERVER_KEY` env
+    /// var). Platform-wide; doubles as the webhook recomputation secret.
+    pub midtrans_server_key: Option<String>,
+    /// agents-1: `MIDTRANS_SANDBOX` flag — steers only the charge endpoint.
+    pub midtrans_sandbox: bool,
 }
 
 /// Read the Tokio worker-thread count from `OZ_WORKER_THREADS`.
@@ -290,6 +297,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 stripe_webhook_secret: config.stripe_webhook_secret.clone(),
                 square_webhook_signature_key: config.square_webhook_signature_key.clone(),
                 square_webhook_url: config.square_webhook_url.clone(),
+                midtrans_server_key: config.midtrans_server_key.clone(),
+                midtrans_sandbox: config.midtrans_sandbox,
             };
             // Start the background prune loop (ADR #6 Q4 / P-1 Ledger Retention).
             prune::start_prune_loop(conn.clone());
@@ -343,6 +352,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 stripe_webhook_secret: config.stripe_webhook_secret.clone(),
                 square_webhook_signature_key: config.square_webhook_signature_key.clone(),
                 square_webhook_url: config.square_webhook_url.clone(),
+                midtrans_server_key: config.midtrans_server_key.clone(),
+                midtrans_sandbox: config.midtrans_sandbox,
             };
 
             // P8-1: Per-tenant rate limiter state + background cleanup.
@@ -672,6 +683,10 @@ pub fn build_router(
     // Build the webhook router (unauthenticated — HMAC signature verification).
     let webhook_router = webhooks::webhooks_router(state.clone());
 
+    // agents-1: Midtrans QRIS charge endpoint (JWT + per-tenant rate limit).
+    // Built from a clone before any later consumer moves the state.
+    let payment_router = payment_api::payment_router(payment_api::PaymentState::from(state.clone()));
+
     // Outbound webhook endpoint registry (admin-key gated). Built from a
     // clone BEFORE SyncState::from consumes the state.
     let outbound_router = outbound_webhooks::outbound_router(outbound_webhooks::OutboundState {
@@ -712,6 +727,7 @@ pub fn build_router(
         .merge(api_router)
         .merge(sync_router)
         .merge(webhook_router)
+        .merge(payment_router)
         .merge(outbound_router)
         .layer(axum::middleware::from_fn_with_state(
             config.sync_redirect_url.clone(),
