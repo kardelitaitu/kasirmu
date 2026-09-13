@@ -1000,6 +1000,47 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated corrections (2026-09-14, 00:10) — gates ten, eleven and twelve, and a premise of mine corrected by the lane holding the fence
+
+**Gate 10, `a6998faef0`** (316/4), `scripts/verify-migration-column-types.py`. Verified by me 23:57: a typo
+in a bare positional root, `crates/oz-core/migratios`, went exit 0 printing a clean full scan of 59
+migrations; it now exits 2 with no count line and no Traceback. Plain run byte-identical at 152 B exit 0.
+The file had no `--self-test` at all; the lane added one, eight cases, and pinned a red self-test at exit
+2 so a broken test cannot impersonate a float-column finding.
+
+**Gate 11, `84425ba057`** (193/23), `scripts/scan-unwrap-panic.py`. Verified by me 00:06: `--roots crates
+nope` went exit 0 reporting 96 calls as if it were the world; now exit 2, 0 stdout, 0 count-bearing
+lines. A deliberate narrow scan (`--roots crates`) still exits 0 and scans, which is the distinction that
+makes this usable rather than annoying. Equation intact: total 136, invariant_annotated 136, recoverable
+0, tolerance 0. **The pair that ends this family:** a genuinely empty root printed
+`# total: 0 production unwrap/expect calls`, and that same line printed for the empty root plus one typo,
+two runs byte-indistinguishable, one honest and one starved. Now only the honest one speaks.
+
+**Gate 12, `8b3f52c8db`** (238/25), `scripts/verify-ipc-parity.py`. Verified by me 00:09: default grade
+still byte-identical at exit 1, 3379 B stdout, 628 B stderr; self-test 0 (22 cases, 102 assertions);
+mirrors 0; zero scratch; allowlist `e5663346ef` in worktree and HEAD, never written, though this is the
+gate that writes it. Write-path refusals (drift, busy rename, and a previously-uncought OSError arm that
+escaped as a traceback, i.e. exit 1) now go to `error:` plus exit 2, while an entry-level shape finding
+keeps exit 1. This closes the residual registered at `6b405857d`, including the sharpest form of it, a
+lock collision wearing the verdict code.
+
+**My premise was wrong and the fence-holder corrected it.** I briefed gate 10 against
+`verify-migration-column-types.py` on the strength of a measurement saying `--roots crates nope` exited 0
+there. That file never had a `--roots` flag, it died at the unknown-flag guard. The symptom I described
+reproduces in `scan-unwrap-panic.py`, and that lane closed it as gate 11 rather than assuming my brief was
+right. A lane that disproves its own brief in the same turn has done more than a lane that completes it.
+
+**One thing I nearly got wrong in the other direction:** I measured 2 hits for `allowlist write problem`
+in the gate-12 file where the lane reported none, suspected a stale claim, and read them, both are
+past-tense docstring prose, "Until now all three came back ... printed as" and "used to print". Checking
+resolved it in the lane favour. Grep counts are not findings; the lines are.
+
+**Left open on purpose:** the new write refusal prints to stderr while the older nothing-resolves refusal
+prints to stdout, because `run-pre-push` merges them, same exit 2, same no-count rule, different streams,
+deliberately not churned mid-session, a one-line follow-up. And gate 10 note stands, `--self-test` is a
+developer tool in both files, named by neither `gates.json` nor `dev-ci.yml`, so the new tests enforce
+nothing until someone wires them.
+
 ### Dated retraction (2026-09-13, 23:45) — two false claims I made about CI, both now measured
 
 A lane dispatched to *fix* one of them checked instead, and found the opposite. Both were mine, both
