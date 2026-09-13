@@ -26,12 +26,35 @@ Rules:
 Usage:
     python3 scripts/verify-migration-column-types.py                # full scan
     python3 scripts/verify-migration-column-types.py --staged-only  # only staged migration files
+    python3 scripts/verify-migration-column-types.py --self-test    # pin every refusal below
     python3 scripts/verify-migration-column-types.py --anything-else # REFUSED, exit 2, names the flag
 
 An argument this script does not read is refused rather than ignored. Before that, `--self-test`
 fell through to the whole-tree scan and exited 0: the caller asked for a self test, got a green,
 and nothing self-tested. A flag is a request for a surface, so a flag that has no surface cannot
-be answered with the verdict for another one.
+be answered with the verdict for another one. `--self-test` is now implemented rather
+than refused: it runs every refusal below as a child of this same file and prints a
+CAUGHT/CLEAN tally, so a root guard that stops firing cannot go unnoticed.
+
+A ROOT ON THE COMMAND LINE IS REFUSED WHERE IT RESOLVES, BEFORE THE WALK
+========================================================================
+
+This gate has no root argument — the corpus is `crates/oz-core/migrations`, derived from
+`__file__` — but its siblings (`scan-unwrap-panic.py`, `verify-no-hardcoded-money-format.py`)
+do take `--roots`, so a caller typing a root list here is asking for a scoped scan. Nothing
+used to read a positional, so:
+
+    python3 scripts/verify-migration-column-types.py nope                 # exit 0, whole-tree verdict
+
+one mistyped token, and the run walked all 59 migrations and printed a clean verdict for a
+corpus nobody asked about. A typo in a root must never be able to produce a pass, so every
+non-dashed token is now resolved against the repo root BEFORE the walk and refused (exit 2,
+`error:` on stderr, naming the bad token and every path it looked at) when it is not a
+directory — and also when it is one, because a scan this gate cannot scope is not the scan
+that was requested. `--roots` keeps its unrecognised-flag refusal and gains the same root
+diagnosis, so the message names `nope` and not merely `--roots`. A root list that resolves to
+nothing — `--roots` with no values, or a blank one — refuses too: an empty set never
+silently means "all", and "scan nothing" and "scan everything" are different requests.
 
 THE EMPTY CORPUS
 ================
@@ -58,7 +81,13 @@ EXIT CODES
   * 2  a whole-tree scan whose migration root yielded 0 files, or a --staged-only run that
        could not read the git index -- either way the verdict had no corpus, so this
        script refuses to print one rather than printing a hollow one. Also 2 on a dashed
-       argument this script does not implement: a refused command line, not a failed check.
+       argument this script does not implement, and 2 on a root argument it cannot resolve
+       (a path that is not a directory, a root list that resolves to nothing, or any path
+       handed to a gate with no root argument): a refused command line, not a failed check.
+
+Exit 1 is reserved for a verdict: a 1 here means a real scan of a real corpus found a float
+column or a stale exemption. So a crash, a mistyped root, or a half-resolved root list must
+never cost that code -- a refused run prints 2 and prints no count at all.
 """
 
 from __future__ import annotations
@@ -179,6 +208,98 @@ def refuse(mode: str, scanned: int, corpus: int, *, index_unreadable: bool = Fal
           "set is the correct answer and the gate exits 0.")
 
 
+# -- root arguments ---------------------------------------------------------------
+#
+# This gate has one corpus: `crates/oz-core/migrations`, resolved from __file__ above. It
+# implements no root argument, so anything on the command line that looks like a root — a
+# `--roots` list, or a bare path — is a request to scope this scan to paths it cannot honour.
+# Sibling gates (`scan-unwrap-panic.py`, `verify-no-hardcoded-money-format.py`) DO take root
+# lists, which is why typing one here is a likely mistake rather than an impossible one.
+#
+# Before this section a root-shaped token was simply never read, and never read is not the same
+# as refused: `verify-migration-column-types.py crates/oz-core/migratios` — one letter off —
+# printed the ordinary whole-tree `ok:` line at exit 0. A PASS manufactured by a typo, about a
+# corpus the caller did not name. So a root is now resolved where it resolves, BEFORE any walk,
+# and an unresolvable one refuses at 2.
+
+def named_roots(argv: list[str]) -> tuple[bool, list[str]]:
+    """(a root argument was handed, the path tokens on the command line).
+
+    Every non-dashed token counts, flagged or not: this gate has no other use for a path, so a
+    bare positional is a root by the caller's intent even though no flag names it.
+    """
+    return "--roots" in argv, [a for a in argv if not a.startswith("-")]
+
+
+def classify_roots(values: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """(directories, blanks, not-directories), resolved against ROOT before the walk.
+
+    Three buckets because the three causes read differently to whoever typed them. A blank is
+    NOT read as the current directory: Path("") is Path("."), so a blank value would widen a
+    request to scan nothing into a scan of everything under wherever the gate happened to be
+    launched — the opposite of what a root list is for. So a blank refuses, and never wildcards.
+    """
+    dirs: list[str] = []
+    blanks: list[str] = []
+    missing: list[str] = []
+    for value in values:
+        if not value.strip():
+            blanks.append(value)
+        elif (ROOT / value).is_dir():
+            dirs.append(value)
+        else:
+            missing.append(value)
+    return dirs, blanks, missing
+
+
+def refuse_roots(flag: str | None, values: list[str]) -> int:
+    """Name every root token this command line cannot honour, say where it looked, stop at 2.
+
+    The voice is the `error:` line this file already uses for everything that is not a verdict
+    — `staged_migration_paths` prints its unreadable-index failure that way, on stderr.
+
+    Exit 2 and NEVER 1. In this family a 1 is a finding about somebody's migration file; a
+    command line with no corpus behind it is not a failed check and must not impersonate one.
+    No scan count prints on this path at all, so a refusal cannot be mistaken for a verdict —
+    and nothing has been walked to produce it.
+    """
+    dirs, blanks, missing = classify_roots(values)
+    source = flag or "a path argument with no flag in front of it"
+    if not values:
+        why = ("was handed no value at all, so the root list resolves to the empty set — and "
+               "an empty set is never answered by scanning every root.")
+    elif missing:
+        why = "named no directory this gate can read, so there is no corpus behind it."
+    elif blanks:
+        why = ("named only blank value(s); a blank resolves to no root and is never read as "
+               "the current directory.")
+    else:
+        why = ("named root(s) that all resolve, but this gate reads no root argument: its "
+               "corpus is the migration root below, and a whole-tree verdict is not the answer "
+               "to a scoped request.")
+    print(f"error: {source} {why} A typo in a root must never be able to produce a pass, so "
+          "this run refuses before walking anything.", file=sys.stderr)
+    print(f"  command line            : {' '.join(([flag] if flag else []) + values)}",
+          file=sys.stderr)
+    if missing:
+        print(f"  named but not a directory : {', '.join(repr(m) for m in missing)}",
+              file=sys.stderr)
+        for miss in missing:
+            print(f"    it looked at         : {ROOT / miss}  (not a directory)",
+                  file=sys.stderr)
+    if blanks:
+        print(f"  named but blank           : {len(blanks)} value(s)", file=sys.stderr)
+    print(f"  named and a directory     : {', '.join(repr(d) for d in dirs) if dirs else '(none)'}",
+          file=sys.stderr)
+    print(f"  repo root resolved from   : {ROOT}  (parent of this script's directory, never a "
+          "hardcoded checkout)", file=sys.stderr)
+    print(f"  the only root this gate scans: {MIGRATIONS}", file=sys.stderr)
+    print("  note: the whole-tree scan this command line would otherwise have printed is the "
+          "verdict for a corpus nobody asked about; refusing it costs a run, not a schema.",
+          file=sys.stderr)
+    return 2
+
+
 def scan_file(path: Path) -> list[Hit]:
     text = strip_comments(path.read_text(encoding="utf-8"))
     hits: list[Hit] = []
@@ -226,7 +347,7 @@ def staged_migration_paths() -> set[str] | None:
 # reader, and it reads this one; keep the two together when a flag is added. Anything else
 # that starts with a dash is a request for a surface this gate does not have, so it is
 # refused rather than ignored -- an ignored flag used to print the whole-tree verdict.
-KNOWN_FLAGS = ("--staged-only",)
+KNOWN_FLAGS = ("--staged-only", "--self-test")
 
 
 def unknown_flag(argv: list[str]) -> str | None:
@@ -256,10 +377,201 @@ def reject_unknown_flag(flag: str) -> int:
     return 2
 
 
+# -- self-test ----------------------------------------------------------------------
+#
+# Every case runs THIS file as a child, from the repo root, with the two streams kept apart:
+# a refusal that lands on stdout would not be caught by an assertion about stderr, and the
+# difference is the whole point of the `error:` voice. Each case names the mutation that
+# reddens it; a case with no such pair is not kept.
+
+_SCANNED_RE = re.compile(r"(\d+) (?:of \d+ )?(?:staged )?migration file\(s\)")
+
+
+def _verdict_printed(text: str) -> bool:
+    """True when a run reported a count or an ok line — i.e. when it actually reached a verdict.
+
+    The refusals must print neither. A gate that explains why it cannot answer and then prints
+    `59 migration file(s) scanned` has answered, and the reader cannot tell which run to trust.
+    """
+    folded = text.replace("\\", "/")
+    return bool(_SCANNED_RE.search(folded)) or "ok: no unwhitelisted float columns" in folded
+
+
+def _run_gate(args: list[str]) -> tuple[int, str, str]:
+    """(exit, stdout, stderr) for this file run as a child with `args`, from the repo root.
+
+    A child, not a call into main(): the exit code and the stream a message lands on are
+    properties of the command line, and a mutated copy of this file then tests itself.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), *args],
+        cwd=str(ROOT), capture_output=True, text=True, errors="replace", timeout=180,
+    )
+    return proc.returncode, proc.stdout or "", proc.stderr or ""
+
+
+def self_test() -> int:
+    """Pin every refusal this gate owes its caller, and the one scan it owes the schema.
+
+    CAUGHT = the gate refused, or reported, what it must. CLEAN = a real invocation still works.
+    A red run exits 2, NEVER 1: a broken self-test is not a verdict about anyone's migration, and
+    spending the verdict code here would be the same confusion this file exists to prevent.
+    """
+    caught = clean = red = 0
+
+    def verdict(ok: bool, kind: str, desc: str, expected: str, seen: str) -> None:
+        nonlocal caught, clean, red
+        if ok:
+            if kind == "CAUGHT":
+                caught += 1
+            else:
+                clean += 1
+            print(f"  {kind}  {desc}")
+            return
+        red += 1
+        print(f"  MISSED  {desc}")
+        print(f"          expected {expected}")
+        print(f"          saw      {seen}")
+
+    # (1) A mistyped root inside a --roots list.
+    #     Mutation: drop the refuse_roots() call in main()'s unknown-flag arm. The exit code
+    #     alone does NOT redden it — the flag refusal already exits 2 — so what this case pins is
+    #     the token: the pre-fix message named only `--roots` and never the value that was wrong.
+    rc, out, err = _run_gate(["--roots", "crates", "nope"])
+    verdict(
+        rc == 2 and "nope" in err and "not a directory" in err and not _verdict_printed(out + err)
+        and "Traceback" not in out + err,
+        "CAUGHT",
+        "--roots crates nope: exit 2, the bad token and the path tried, no verdict line",
+        "exit 2, stderr naming 'nope' and 'not a directory', no count and no ok line",
+        f"exit {rc}, token named={'nope' in err}, verdict printed={_verdict_printed(out + err)}",
+    )
+
+    # (2) A --roots list whose every value really is a directory.
+    #     Mutation: narrow the guard to `missing or blanks` only. The gate then answers a scoped
+    #     request with the flag refusal and no root diagnosis, which is the half-answer (1)
+    #     already covers — this case is what makes the "it reads no root argument" sentence load
+    #     bearing, since a root list cannot be honoured here whether it resolves or not.
+    rc, out, err = _run_gate(["--roots", "crates", "crates/oz-core/migrations"])
+    verdict(
+        rc == 2 and "reads no root argument" in err and not _verdict_printed(out + err),
+        "CAUGHT",
+        "--roots crates crates/oz-core/migrations: refused, and says this gate scopes to nothing",
+        "exit 2 plus the 'reads no root argument' refusal, still no verdict line",
+        f"exit {rc}, reason printed={'reads no root argument' in err}",
+    )
+
+    # (3) A root list that resolves to the empty set.
+    #     Mutation: let an empty list fall through to the default. That is the "empty silently
+    #     means all" failure: the caller asked for nothing and the gate answers with 59 files.
+    rc, out, err = _run_gate(["--roots"])
+    verdict(
+        rc == 2 and "empty set" in err and "every root" in err and not _verdict_printed(out + err),
+        "CAUGHT",
+        "--roots with no values: exit 2, and the refusal says an empty set never means all",
+        "exit 2 plus 'empty set'/'never … every root', no count line",
+        f"exit {rc}, empty-named={'empty set' in err}, verdict printed={_verdict_printed(out + err)}",
+    )
+
+    # (4) A blank root.
+    #     Mutation: read Path("") as Path("."). The scan would then run over wherever this was
+    #     launched from — widened to everything by the narrowest possible argument.
+    rc, out, err = _run_gate([""])
+    verdict(
+        rc == 2 and "blank" in err and not _verdict_printed(out + err),
+        "CAUGHT",
+        "a blank root: exit 2, named as blank, never widened to the current directory",
+        "exit 2 plus the blank-value refusal, no count line",
+        f"exit {rc}, blank named={'blank' in err}",
+    )
+
+    # (5) A mistyped root handed with no flag in front of it — the pass this file used to print.
+    #     Mutation: delete the positional arm of main(). The run then falls through to the
+    #     whole-tree scan and exits 0 with its ordinary ok line, which is the defect: one letter
+    #     off in a path, and the gate certifies a corpus the caller did not name.
+    rc, out, err = _run_gate(["crates/oz-core/migratios"])
+    verdict(
+        rc == 2 and "migratios" in err and not _verdict_printed(out + err),
+        "CAUGHT",
+        "a typo'd root as a bare argument: exit 2, the token named, no verdict line",
+        "exit 2 with the mistyped path in the message, and no 'ok:' line at all",
+        f"exit {rc}, token named={'migratios' in err}, verdict printed={_verdict_printed(out + err)}",
+    )
+
+    # (6) Control: an unknown dashed argument is still refused as an unknown flag.
+    #     Mutation: make the root guard swallow every refusal, or restore the pre-7b4c2bc5a
+    #     fall-through. This is the earlier defect, kept pinned beside the new one.
+    rc, out, err = _run_gate(["--report"])
+    verdict(
+        rc == 2 and "unrecognised argument --report" in out + err
+        and not _verdict_printed(out + err),
+        "CAUGHT",
+        "--report (a flag this gate never had): still exit 2, still no verdict",
+        "exit 2 naming the flag as unrecognised, no count line",
+        f"exit {rc}",
+    )
+
+    # (7) The default root set still scans. CLEAN by design, and the case that proves the guard
+    #     above is additive: no root argument, so the whole corpus must be walked and counted.
+    #     Mutation: make the positional guard fire on an empty argv.
+    rc, out, err = _run_gate([])
+    folded = (out + err).replace("\\", "/")
+    m = _SCANNED_RE.search(folded)
+    scanned = int(m.group(1)) if m else -1
+    default_ok = MIGRATIONS.is_dir()
+    verdict(
+        rc in (0, 1) and scanned > 0 and default_ok and "REFUSED" not in folded,
+        "CLEAN",
+        f"no root argument: the default root still scans ({scanned} migration file(s)) and "
+        f"reaches a verdict (exit {rc})",
+        "exit 0 or 1, a scanned count above zero, no refusal block",
+        f"exit {rc}, scanned={scanned}",
+    )
+
+    # (8) The hook's own invocation is still a scope, not a refusal.
+    #     Mutation: treat --staged-only as a root argument, or refuse an empty staged set; either
+    #     one turns pre-commit step 4 red on every commit in the repository.
+    rc, out, err = _run_gate(["--staged-only"])
+    folded = (out + err).replace("\\", "/")
+    staged_count = _SCANNED_RE.search(folded)
+    verdict(
+        rc in (0, 1) and "staged migration file(s)" in folded and staged_count is not None,
+        "CLEAN",
+        "--staged-only still reports its staged scope (exit "
+        f"{rc}, {staged_count.group(1) if staged_count else '?'} file(s) in scope)",
+        "exit 0 or 1 and a staged count line — never the exit 2 refusal",
+        f"exit {rc}",
+    )
+
+    rc_out = 0 if red == 0 else 2
+    print(f"  tally: {caught + clean} green = {caught} CAUGHT + {clean} CLEAN; {red} red; "
+          f"exit {rc_out}")
+    print("  LIMIT: nothing calls this flag. scripts/gates.json and dev-ci.yml sit outside this "
+          "file, so a green tally is a developer tool, not enforcement — and cases (7) and (8) "
+          "read the live tree, so their counts move with every migration by design.")
+    if red:
+        print("  a case slipped through: the behaviour it pins is no longer pinned (exit 2, not "
+              "1 — a broken self-test must not impersonate a float-column finding)")
+    return rc_out
+
+
 def main(argv: list[str]) -> int:
+    if "--self-test" in argv:
+        return self_test()
     flag = unknown_flag(argv)
+    roots_flag, root_values = named_roots(argv)
     if flag is not None:
-        return reject_unknown_flag(flag)
+        rc = reject_unknown_flag(flag)
+        # The flag refusal says "no such flag". When the flag was a root list it must also say
+        # WHICH of its values is not a directory, so `--roots crates nope` names `nope` and the
+        # path it was tried at. Still before the walk, still exit 2 — this only diagnoses.
+        if roots_flag or root_values:
+            refuse_roots(flag, root_values)
+        return rc
+    if root_values:
+        # A path with no flag in front of it. This is the case that used to print a PASS: a
+        # mistyped root was ignored and the whole-tree verdict came back clean.
+        return refuse_roots(None, root_values)
     staged_only = "--staged-only" in argv
     mode = "--staged-only" if staged_only else "whole-tree (no --staged-only)"
     corpus = sorted(MIGRATIONS.glob("*.sql"))
