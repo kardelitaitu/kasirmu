@@ -1000,6 +1000,40 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated correction (2026-09-14, 00:53) — the guard classifier errs in BOTH directions, and I briefed the wrong one
+
+A researcher I had to interrupt at 30 minutes came back in 12 with the load-bearing measurement, and my framing was inverted. I had
+briefed the `??` bug as producing FALSE POSITIVES: `sessionToken ?? null` read as a token test, so guarded-looking code gets cleared...
+wait. That framing was the right pattern and the wrong direction.
+
+**`GUARD_RE`, `scripts/verify-scoped-reads.py:486-487`, verified by me against the source at 00:52:**
+
+```
+r"(?:sessionToken|token)\s*\?|\?\s*(?:await\s+)?\w+Scoped\s*\("
+```
+
+The first arm matches `sessionToken` plus optional whitespace plus a `?`, so it matches the **first `?` of `??`**. On a window containing
+`const token = sessionToken ?? null;` and one bare `await getSale(id);`, `_window_is_guarded` returns **true**: the second arm needs a
+`…Scoped(` and gets `null`, yet the site is still certified compliant. **A call that passes a null token by default is a guarded call.**
+
+**So the bug suppresses; it never invents.** That reverses what I expected on two counts at once:
+1. **None of the 17 newly-visible sites is a false positive of it.** All 17 had `guard_re=false`, verdict **GENUINE** on all 17. I had
+   framed the sweep as "find the noise"; the sweep found none, and I should not have expected it to.
+2. **Tightening the classifier makes the count go UP, not down.** Measured on the real tree by blinding `??` and re-running the gate's own
+   `_window_is_guarded`: **`FAIL: 129` → `134`**, five sites suppressed by nothing else — `StockAlertPanel.tsx:51`,
+   `ProductManagementScreen.tsx:125`, and `setSettingsScoped(sessionToken ?? null, …)` at
+   `Workspace-{Inventory,Kds,RestaurantPos}Settings.tsx:97/136/114`.
+
+**The other direction, same classifier, also wrong.** A window of `if (!sessionToken) { return; }` followed by a scoped call returns
+**false**. The repo's dominant bail idiom — **54 files** carry `if (!sessionToken` — is not recognised as a guard, so a genuinely
+guarded site can only ever be *nagged*, never cleared, by this rule. One regex, two opposite failures: it forgives a null default and
+it distrusts an early return.
+
+**Verdict, and it is the sentence that decides sequencing:** tighten `GUARD_RE` **before** anyone edits call sites. Code shaped to
+satisfy a classifier that accepts a nullish default as a token check is compliance theatre, and the honest `+5` is debt that was hidden
+all night, not new damage. Filed as the fourteenth item; the 17 are queued behind it as product work, in `ui/`, where a lane must prove
+the finding still exists before it "fixes" it.
+
 ### Dated correction (2026-09-14, 00:16) — gate thirteen: the pattern was the whole gap, and 17 real findings were hiding behind it
 
 `73afbf0b65` (163/8), `scripts/verify-scoped-reads.py`, verified by me at 00:15: default now prints
