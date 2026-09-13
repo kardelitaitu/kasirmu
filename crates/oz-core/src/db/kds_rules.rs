@@ -18,7 +18,7 @@
 
 use crate::db::Store;
 use crate::error::CoreError;
-use crate::kds::{KdsRuleMatcher, KdsRoutingRule, KdsRoutingRuleInput};
+use crate::kds::{KdsRoutingRule, KdsRoutingRuleInput, KdsRuleMatcher};
 use rusqlite::params;
 
 impl Store<'_> {

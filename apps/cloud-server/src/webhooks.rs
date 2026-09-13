@@ -866,8 +866,12 @@ async fn midtrans_webhook_handler(
         "MIDTRANS_SERVER_KEY not configured".into(),
     ))?;
 
-    let event: MidtransNotification = serde_json::from_slice(&body_bytes)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid notification body: {e}")))?;
+    let event: MidtransNotification = serde_json::from_slice(&body_bytes).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid notification body: {e}"),
+        )
+    })?;
 
     if let Some(t) = &event.signature_type
         && !t.eq_ignore_ascii_case("sha512")
@@ -877,20 +881,14 @@ async fn midtrans_webhook_handler(
             format!("unsupported signature_type '{t}'"),
         ));
     }
-    let provided = event.signature_key.as_deref().ok_or((
-        StatusCode::UNAUTHORIZED,
-        "missing signature_key".into(),
-    ))?;
+    let provided = event
+        .signature_key
+        .as_deref()
+        .ok_or((StatusCode::UNAUTHORIZED, "missing signature_key".into()))?;
 
     let status_code = event.transaction_status_code.as_deref().unwrap_or("");
     let gross = event.gross_amount.as_deref().unwrap_or("");
-    if !verify_midtrans_signature(
-        &event.order_id,
-        status_code,
-        gross,
-        server_key,
-        provided,
-    ) {
+    if !verify_midtrans_signature(&event.order_id, status_code, gross, server_key, provided) {
         tracing::warn!(
             order_id = %event.order_id,
             transaction_status = %event.transaction_status,
@@ -947,7 +945,10 @@ async fn midtrans_webhook_handler(
                 "status": "recorded", "reason": "amount_mismatch",
             })));
         }
-        if entry.status == "settlement" || entry.status == "capture" || entry.status == "amount_mismatch" {
+        if entry.status == "settlement"
+            || entry.status == "capture"
+            || entry.status == "amount_mismatch"
+        {
             // Sequential duplicate (the common redelivery) — the ledger
             // status is the idempotency gate. Fully concurrent duplicates
             // (both reads before either write) may double-enqueue; the

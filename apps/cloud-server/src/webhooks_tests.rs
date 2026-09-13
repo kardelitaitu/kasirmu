@@ -1205,8 +1205,14 @@ async fn midtrans_settlement_enqueues_finalize() {
         serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(json["status"], "finalization_queued");
     assert_eq!(queue_depth(&state).await, 1);
-    let l = LedgerDb { db: state.db.clone(), pg: None };
-    assert_eq!(l.lookup("QRIS-w1").await.unwrap().unwrap().status, "settlement");
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
+    assert_eq!(
+        l.lookup("QRIS-w1").await.unwrap().unwrap().status,
+        "settlement"
+    );
 }
 
 #[tokio::test]
@@ -1220,17 +1226,32 @@ async fn midtrans_duplicate_notification_is_idempotent() {
     let json2: serde_json::Value =
         serde_json::from_slice(&resp2.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(json2["status"], "already_processed");
-    assert_eq!(queue_depth(&state).await, 1, "duplicate must not double-enqueue");
+    assert_eq!(
+        queue_depth(&state).await,
+        1,
+        "duplicate must not double-enqueue"
+    );
 }
 
 #[tokio::test]
 async fn midtrans_bad_signature_is_401_and_records_nothing() {
     let state = midtrans_state();
     issue_order(&state, "QRIS-w3", 10000).await;
-    let resp = notify(state.clone(), settlement_body("QRIS-w3", "10000.00", &midtrans_sig("QRIS-w3", "200", "10000.00", "WRONG-KEY"))).await;
+    let resp = notify(
+        state.clone(),
+        settlement_body(
+            "QRIS-w3",
+            "10000.00",
+            &midtrans_sig("QRIS-w3", "200", "10000.00", "WRONG-KEY"),
+        ),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(queue_depth(&state).await, 0);
-    let l = LedgerDb { db: state.db.clone(), pg: None };
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
     assert_eq!(l.lookup("QRIS-w3").await.unwrap().unwrap().status, "issued");
 }
 
@@ -1247,15 +1268,25 @@ async fn midtrans_amount_mismatch_never_finalizes() {
         serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(json["reason"], "amount_mismatch");
     assert_eq!(queue_depth(&state).await, 0);
-    let l = LedgerDb { db: state.db.clone(), pg: None };
-    assert_eq!(l.lookup("QRIS-w4").await.unwrap().unwrap().status, "amount_mismatch");
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
+    assert_eq!(
+        l.lookup("QRIS-w4").await.unwrap().unwrap().status,
+        "amount_mismatch"
+    );
 }
 
 #[tokio::test]
 async fn midtrans_unknown_order_is_ignored_with_200() {
     let state = midtrans_state();
     let sig = midtrans_sig("QRIS-ghost", "200", "5000.00", MID_KEY);
-    let resp = notify(state.clone(), settlement_body("QRIS-ghost", "5000.00", &sig)).await;
+    let resp = notify(
+        state.clone(),
+        settlement_body("QRIS-ghost", "5000.00", &sig),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let json: serde_json::Value =
         serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
@@ -1282,7 +1313,10 @@ async fn midtrans_expire_records_but_never_finalizes() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(queue_depth(&state).await, 0);
-    let l = LedgerDb { db: state.db.clone(), pg: None };
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
     assert_eq!(l.lookup("QRIS-w5").await.unwrap().unwrap().status, "expire");
 }
 

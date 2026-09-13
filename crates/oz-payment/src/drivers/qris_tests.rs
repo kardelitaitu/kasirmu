@@ -214,10 +214,11 @@ fn qris_parse_charge_response_qr_string_alias() {
         "qr_string": "0002010212154354112093600002AGWID20103UMI5144001646346777669208ID.CO.QRIS.WWW63041C96"
     }"#;
     let resp: QrisChargeResponse = serde_json::from_str(json).unwrap();
-    assert!(resp
-        .qr_code_url
-        .unwrap()
-        .starts_with("0002010212154354112093600002AGWID20103UMI"));
+    assert!(
+        resp.qr_code_url
+            .unwrap()
+            .starts_with("0002010212154354112093600002AGWID20103UMI")
+    );
 }
 
 #[test]

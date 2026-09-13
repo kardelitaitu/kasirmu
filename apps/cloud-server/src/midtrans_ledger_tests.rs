@@ -36,9 +36,11 @@ async fn duplicate_order_id_is_rejected_not_merged() {
         .await
         .unwrap();
     // A collision means a retry that must not silently re-point the ledger.
-    assert!(l.record_issue("QRIS-dup", "tenant-B", "sale-2", 9999, "IDR")
-        .await
-        .is_err());
+    assert!(
+        l.record_issue("QRIS-dup", "tenant-B", "sale-2", 9999, "IDR")
+            .await
+            .is_err()
+    );
     let e = l.lookup("QRIS-dup").await.unwrap().unwrap();
     assert_eq!(e.tenant_id, "tenant-A");
 }
@@ -49,7 +51,9 @@ async fn mark_status_records_non_terminal() {
     l.record_issue("QRIS-o2", "tenant-A", "sale-2", 2000, "IDR")
         .await
         .unwrap();
-    l.mark_status("QRIS-o2", "tenant-A", "expire").await.unwrap();
+    l.mark_status("QRIS-o2", "tenant-A", "expire")
+        .await
+        .unwrap();
     assert_eq!(l.lookup("QRIS-o2").await.unwrap().unwrap().status, "expire");
 }
 
@@ -61,8 +65,12 @@ async fn settled_row_never_downgrades() {
     l.record_issue("QRIS-o3", "tenant-A", "sale-3", 3000, "IDR")
         .await
         .unwrap();
-    l.mark_status("QRIS-o3", "tenant-A", "settlement").await.unwrap();
-    l.mark_status("QRIS-o3", "tenant-A", "expire").await.unwrap();
+    l.mark_status("QRIS-o3", "tenant-A", "settlement")
+        .await
+        .unwrap();
+    l.mark_status("QRIS-o3", "tenant-A", "expire")
+        .await
+        .unwrap();
     assert_eq!(
         l.lookup("QRIS-o3").await.unwrap().unwrap().status,
         "settlement"
@@ -72,8 +80,14 @@ async fn settled_row_never_downgrades() {
 #[tokio::test]
 async fn mark_status_scoped_by_order_id_only() {
     let l = ledger();
-    l.record_issue("QRIS-x", "tenant-A", "sale-x", 10, "IDR").await.unwrap();
-    l.record_issue("QRIS-y", "tenant-B", "sale-y", 20, "IDR").await.unwrap();
-    l.mark_status("QRIS-x", "tenant-A", "capture").await.unwrap();
+    l.record_issue("QRIS-x", "tenant-A", "sale-x", 10, "IDR")
+        .await
+        .unwrap();
+    l.record_issue("QRIS-y", "tenant-B", "sale-y", 20, "IDR")
+        .await
+        .unwrap();
+    l.mark_status("QRIS-x", "tenant-A", "capture")
+        .await
+        .unwrap();
     assert_eq!(l.lookup("QRIS-y").await.unwrap().unwrap().status, "issued");
 }

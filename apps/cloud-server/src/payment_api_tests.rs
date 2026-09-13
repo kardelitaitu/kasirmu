@@ -52,7 +52,8 @@ async fn midtrans_mock() -> MockServer {
 }
 
 fn state_for(mock_uri: &str) -> PaymentState {
-    let processor = QrisPaymentProcessor::new_with_endpoint("sk-test", &format!("{mock_uri}/v2"), true);
+    let processor =
+        QrisPaymentProcessor::new_with_endpoint("sk-test", &format!("{mock_uri}/v2"), true);
     PaymentState {
         db: Arc::new(Mutex::new(fresh_db())),
         pg: None,
@@ -95,10 +96,12 @@ async fn charge_returns_qr_and_journals_issuance() {
     assert_eq!(json["order_id"], "QRIS-FIXED-ORDER");
     assert_eq!(json["sale_id"], "sale-99");
     assert_eq!(json["expires_in_secs"], 300);
-    assert!(json["qr_string"]
-        .as_str()
-        .unwrap()
-        .starts_with("000201021215"));
+    assert!(
+        json["qr_string"]
+            .as_str()
+            .unwrap()
+            .starts_with("000201021215")
+    );
 
     // The ledger row must exist BEFORE any response reaches the caller —
     // this is what makes an early settlement webhook resolvable.
@@ -121,7 +124,9 @@ async fn charge_requires_bearer_token() {
         .method("POST")
         .uri("/api/payment/midtrans/qris")
         .header("Content-Type", "application/json")
-        .body(Body::from(r#"{"sale_id":"s","amount_minor":1}"#.to_string()))
+        .body(Body::from(
+            r#"{"sale_id":"s","amount_minor":1}"#.to_string(),
+        ))
         .unwrap();
     assert_eq!(
         router.oneshot(req).await.unwrap().status(),
@@ -237,7 +242,10 @@ async fn status_reports_issued_then_settled() {
     let state = state_disabled(); // status is ledger-only; no gateway needed
     seed_order(&state, "QRIS-s1", "tenant-A").await;
     let resp = payment_router(state.clone())
-        .oneshot(authed_get("/api/payment/midtrans/QRIS-s1/status", Some("tenant-A")))
+        .oneshot(authed_get(
+            "/api/payment/midtrans/QRIS-s1/status",
+            Some("tenant-A"),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -245,12 +253,18 @@ async fn status_reports_issued_then_settled() {
     assert_eq!(json["status"], "issued");
     assert_eq!(json["settled"], false);
 
-    LedgerDb { db: state.db.clone(), pg: None }
-        .mark_status("QRIS-s1", "tenant-A", "settlement")
-        .await
-        .unwrap();
+    LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    }
+    .mark_status("QRIS-s1", "tenant-A", "settlement")
+    .await
+    .unwrap();
     let resp = payment_router(state)
-        .oneshot(authed_get("/api/payment/midtrans/QRIS-s1/status", Some("tenant-A")))
+        .oneshot(authed_get(
+            "/api/payment/midtrans/QRIS-s1/status",
+            Some("tenant-A"),
+        ))
         .await
         .unwrap();
     let json = body_json(resp).await;
@@ -267,11 +281,17 @@ async fn status_uniform_404_for_foreign_and_unknown() {
     // are the handler tuple's plain text, not JSON — body_json is for
     // success shapes only.)
     let foreign = payment_router(state.clone())
-        .oneshot(authed_get("/api/payment/midtrans/QRIS-s2/status", Some("tenant-B")))
+        .oneshot(authed_get(
+            "/api/payment/midtrans/QRIS-s2/status",
+            Some("tenant-B"),
+        ))
         .await
         .unwrap();
     let ghost = payment_router(state)
-        .oneshot(authed_get("/api/payment/midtrans/QRIS-nope/status", Some("tenant-B")))
+        .oneshot(authed_get(
+            "/api/payment/midtrans/QRIS-nope/status",
+            Some("tenant-B"),
+        ))
         .await
         .unwrap();
     assert_eq!(foreign.status(), StatusCode::NOT_FOUND);
@@ -279,9 +299,7 @@ async fn status_uniform_404_for_foreign_and_unknown() {
     let fb = axum::body::to_bytes(foreign.into_body(), 1024)
         .await
         .unwrap();
-    let gb = axum::body::to_bytes(ghost.into_body(), 1024)
-        .await
-        .unwrap();
+    let gb = axum::body::to_bytes(ghost.into_body(), 1024).await.unwrap();
     assert_eq!(fb, gb);
     assert!(
         !String::from_utf8_lossy(&fb).contains("QRIS-s2"),

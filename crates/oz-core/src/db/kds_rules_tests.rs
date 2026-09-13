@@ -75,12 +75,7 @@ fn save_and_list_roundtrip_perserves_every_field() {
     let saved = store
         .save_kds_routing_rules(
             "resto-1",
-            &[input(
-                1,
-                KdsRuleMatcher::Sku,
-                "BURGER",
-                "station-grill",
-            )],
+            &[input(1, KdsRuleMatcher::Sku, "BURGER", "station-grill")],
         )
         .unwrap();
     assert_eq!(saved.len(), 1);
@@ -225,7 +220,13 @@ fn save_rejects_blank_matcher_value() {
     let bad = input(1, KdsRuleMatcher::Sku, "  ", "s");
     let err = store.save_kds_routing_rules("resto-1", &[bad]).unwrap_err();
     assert!(
-        matches!(err, CoreError::Validation { field: "matcher_value", .. }),
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "matcher_value",
+                ..
+            }
+        ),
         "got {err:?}"
     );
     // And the rejection is atomic: a prior set stays intact.
@@ -243,7 +244,10 @@ fn save_rejects_blank_matcher_value() {
         .unwrap_err();
     let listed = store.list_kds_routing_rules("resto-1").unwrap();
     assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].matcher_value, "KEEP", "failed save must roll back the delete");
+    assert_eq!(
+        listed[0].matcher_value, "KEEP",
+        "failed save must roll back the delete"
+    );
 }
 
 #[test]
@@ -253,7 +257,13 @@ fn save_rejects_blank_target_station() {
     let bad = input(1, KdsRuleMatcher::Sku, "BURGER", " ");
     let err = store.save_kds_routing_rules("resto-1", &[bad]).unwrap_err();
     assert!(
-        matches!(err, CoreError::Validation { field: "target_station", .. }),
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "target_station",
+                ..
+            }
+        ),
         "got {err:?}"
     );
 }
@@ -266,7 +276,13 @@ fn save_rejects_blank_restaurant_scope() {
         .save_kds_routing_rules("", &[input(1, KdsRuleMatcher::Sku, "X", "s")])
         .unwrap_err();
     assert!(
-        matches!(err, CoreError::Validation { field: "restaurant_pos_id", .. }),
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "restaurant_pos_id",
+                ..
+            }
+        ),
         "got {err:?}"
     );
 }

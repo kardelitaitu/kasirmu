@@ -685,7 +685,8 @@ pub fn build_router(
 
     // agents-1: Midtrans QRIS charge endpoint (JWT + per-tenant rate limit).
     // Built from a clone before any later consumer moves the state.
-    let payment_router = payment_api::payment_router(payment_api::PaymentState::from(state.clone()));
+    let payment_router =
+        payment_api::payment_router(payment_api::PaymentState::from(state.clone()));
 
     // Outbound webhook endpoint registry (admin-key gated). Built from a
     // clone BEFORE SyncState::from consumes the state.

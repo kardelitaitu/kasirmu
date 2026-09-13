@@ -84,12 +84,9 @@ impl LedgerDb {
                 .map_err(|e| format!("ledger tx: {e}"))?;
             // RLS: scope the write to the issuing tenant (LOCAL, resets on
             // commit) — same discipline as `enqueue_finalize_sale`.
-            tx.execute(
-                "SELECT set_config('oz.tenant_id', $1, true)",
-                &[&tenant_id],
-            )
-            .await
-            .map_err(|e| format!("ledger tenant scope: {e}"))?;
+            tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+                .await
+                .map_err(|e| format!("ledger tenant scope: {e}"))?;
             tx.execute(
                 "INSERT INTO midtrans_transactions
                     (order_id, tenant_id, sale_id, amount_minor, currency, status, created_at, updated_at)
@@ -98,7 +95,9 @@ impl LedgerDb {
             )
             .await
             .map_err(|e| format!("ledger insert: {e}"))?;
-            tx.commit().await.map_err(|e| format!("ledger commit: {e}"))?;
+            tx.commit()
+                .await
+                .map_err(|e| format!("ledger commit: {e}"))?;
             return Ok(());
         }
         let conn = self.db.lock().await;
@@ -193,8 +192,7 @@ impl LedgerDb {
         status: &str,
     ) -> Result<(), String> {
         let now = now_ms();
-        let sql =
-            "UPDATE midtrans_transactions SET status = $2, updated_at = $3
+        let sql = "UPDATE midtrans_transactions SET status = $2, updated_at = $3
              WHERE order_id = $1 AND status NOT IN ('settlement', 'capture')";
         if let Some(pool) = &self.pg {
             let mut client = pool
@@ -211,12 +209,13 @@ impl LedgerDb {
             tx.execute(sql, &[&order_id, &status, &now])
                 .await
                 .map_err(|e| format!("ledger mark: {e}"))?;
-            tx.commit().await.map_err(|e| format!("ledger commit: {e}"))?;
+            tx.commit()
+                .await
+                .map_err(|e| format!("ledger commit: {e}"))?;
             return Ok(());
         }
         let conn = self.db.lock().await;
-        let sql3 =
-            "UPDATE midtrans_transactions SET status = ?2, updated_at = ?3
+        let sql3 = "UPDATE midtrans_transactions SET status = ?2, updated_at = ?3
              WHERE order_id = ?1 AND status NOT IN ('settlement', 'capture')";
         conn.execute(sql3, params![order_id, status, now])
             .map_err(|e| format!("ledger mark: {e}"))?;

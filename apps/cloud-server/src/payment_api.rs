@@ -198,10 +198,12 @@ async fn qris_charge_handler(
 
     // `sale` is the honest two-phase entry point: it charges and returns as
     // soon as the QR exists; it does NOT poll for settlement (PAY-6).
-    let result = processor
-        .sale(&request)
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("midtrans charge failed: {e}")))?;
+    let result = processor.sale(&request).await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("midtrans charge failed: {e}"),
+        )
+    })?;
 
     if !result.success {
         return Err((
