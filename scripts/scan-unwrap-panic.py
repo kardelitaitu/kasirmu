@@ -20,9 +20,11 @@ tolerance, which is 0 unless an operator raises it with --allow-recoverable N.
 Exit code 1 = the recoverable set went past that tolerance (ADR #33: it stays at
 zero). THIS IS THE DEFAULT -- the scan is strict unless told otherwise.
 Exit code 2 = a REFUSED command line, not a failed check: the `--roots` list resolved
-to no directory to scan so there was no inventory to report, or
-`--allow-recoverable` was handed a negative N, which forgives nothing and would fail
-a clean tree.
+to no directory to scan so there was no inventory to report; or it resolved only
+PARTIALLY, one named root missing or blank, which would otherwise report a starved
+corpus as though it were the whole surface; or `--allow-recoverable` was handed a
+negative N, which forgives nothing and would fail a clean tree. A refusal prints no
+call count on any stream, because a count is what a clean scan looks like.
 
 STRICT IS THE DEFAULT, NOT A FLAG
 =================================
@@ -41,7 +43,7 @@ THE EMPTY ROOT LIST IS NOT A CLEAN RESULT
 =========================================
 
 `--roots` with no values is an EMPTY list, not the default roots, and a named root
-that is not a directory is skipped. Both used to exit 0 printing `# total: 0
+that is not a directory is NOT scanned. Both used to exit 0 printing `# total: 0
 production unwrap/expect calls` -- the same line a real scan of a clean tree prints,
 so a hollow verdict was byte-for-byte indistinguishable from a measured one. This
 gate now REFUSES instead (exit 2) and never falls back to scanning everything: a
@@ -52,13 +54,32 @@ which happens to find no unwrap/expect call, is a real measurement and still exi
 printing `# total: 0 production unwrap/expect calls`. Refusal zeroes mean
 "nothing was scanned"; exit-0 zeroes mean "everything was scanned and clean".
 
+A PARTIALLY STARVED ROOT SET IS NOT A CLEAN RESULT EITHER
+=========================================================
+
+Refusing only when NOTHING resolved left the more dangerous middle case: `--roots
+crates nope` resolved `crates`, skipped `nope`, and exited 0 having reported 96 of this
+tree's 136 production calls. The count it printed was internally consistent and the exit
+code said clean, so a verdict over three quarters of the surface wore the shape of a
+full pass. A typo is not the only route there and is not even the likely one: a crate
+renamed, a root dropped from a wrapper's argument list, `--roots $list` expanding short.
+The rule is now ALL NAMED ROOTS RESOLVE OR NOTHING IS SCANNED. Any token that fails to
+resolve refuses the run at exit 2, naming the bad token, the path tried, and the roots
+that DID resolve, and it prints no count of any kind.
+
+That rule covers the four defaults as squarely as a typed list: on a checkout where say
+`modules/` is absent, a bare run REFUSES rather than report three quarters of the crate
+tree as if it were all of it. That is a deliberate cost, paid because the alternative is
+a gate whose coverage depends on which directories happen to be present, which is the
+hollow-verdict class this file has now refused four different ways.
+
 Usage:
     python scripts/scan-unwrap-panic.py                             # default roots, STRICT
     python scripts/scan-unwrap-panic.py --json                      # JSON summary (also strict)
     python scripts/scan-unwrap-panic.py --allow-recoverable 3       # opt-out: forgive up to 3
     python scripts/scan-unwrap-panic.py --fail-on-recoverable       # no-op alias (CI gate, unchanged)
     python scripts/scan-unwrap-panic.py --self-test                 # pin the default strictness
-    python scripts/scan-unwrap-panic.py --roots crates apps         # named roots (REFUSED if none resolves)
+    python scripts/scan-unwrap-panic.py --roots crates apps         # named roots (REFUSED unless ALL resolve)
 """
 
 from __future__ import annotations
@@ -397,6 +418,110 @@ def refuse_nothing_to_scan(
     return 2
 
 
+def tried_path_for(token: str) -> str:
+    """Where a named root was actually looked for, so a refusal can print it.
+
+    An absolute token is used as given; a relative one is resolved against the working
+    directory, which is what Path(root).is_dir() just did. resolve() runs on a path that
+    does NOT exist -- that is the whole subject -- so it is decoration only and a failure
+    there must not swallow the refusal, hence the fallback.
+    """
+    path = Path(token)
+    try:
+        return str(path if path.is_absolute() else (Path.cwd() / path).resolve())
+    except OSError:
+        return str(path)
+
+
+def root_set_is_starved(
+    usable: list[str], blank: list[str], missing: list[str]
+) -> bool:
+    """True when SOME named roots resolved and some did not: the partial case.
+
+    The all-failed case is a different refusal with its own message, so this predicate is
+    only the middle one -- the case that used to exit 0. Blank and missing are the two
+    ways a token fails to resolve; either one holes the corpus, and a corpus with a hole
+    in it is a sample, not a corpus.
+    """
+    return bool(usable) and bool(blank or missing)
+
+
+def starved_root_report(
+    named: list[str], usable: list[str], blank: list[str], missing: list[str]
+) -> list[str]:
+    """The refusal's lines, built as data so `--self-test` can assert on the text.
+
+    It carries no call count by construction: it names ROOTS, never findings. A refusal
+    that printed a number would be readable as a scan that came back clean, which is the
+    exact failure being refused.
+    """
+    lines = [
+        "scan-unwrap-panic: REFUSED - the root list resolved only PARTIALLY, so this run",
+        "would report a sample as a verdict. All named roots resolve or nothing is",
+        "scanned.",
+        f"  --roots as passed           : {' '.join(named) if named else '(none)'}",
+    ]
+    for token in missing:
+        lines.append(f"  refused, not a directory   : {token!r}")
+        lines.append(f"  path tried for it          : {tried_path_for(token)}")
+    for token in blank:
+        lines.append(f"  refused, named no directory: {token!r}")
+        lines.append(
+            "  path tried for it          : none on purpose. A blank is never read as the "
+            "working directory, because that would WIDEN the scan a root list is meant to "
+            "narrow"
+        )
+    lines.append(f"  roots that DID resolve      : {', '.join(usable)}")
+    lines.append(f"  working directory           : {Path.cwd()}")
+    lines.append(
+        "  why exit 2 and not 1        : 1 is this gate's FINDING voice, a real scan of a "
+        "real corpus that found an undocumented panic. This run scanned no corpus at all."
+    )
+    lines.append(
+        "  how to get a verdict        : correct the refused token, or name only roots "
+        "that are here. A scan of a subset is honest exactly when it does not claim to be "
+        "the whole surface."
+    )
+    return lines
+
+
+def refuse_starved_roots(
+    named: list[str], usable: list[str], blank: list[str], missing: list[str]
+) -> int:
+    """Refuse a partially starved root set on stderr, and scan nothing. Exit 2.
+
+    stderr because this is an operator-facing error about a command line, and the refusal
+    that the empty list gets goes to stdout only for the reason documented there.
+    """
+    for line in starved_root_report(named, usable, blank, missing):
+        print(line, file=sys.stderr)
+    return 2
+
+
+def collect_findings(roots: list[str]) -> list[dict]:
+    """Every production finding under `roots`: the walk, with no verdict in it.
+
+    Split out of main() so `--self-test` can prove that a root set which really resolves
+    really scans -- over a temp tree -- without going through the gate's exit code.
+    """
+    findings: list[dict] = []
+    for root in roots:
+        root_path = Path(root)
+        for path in sorted(root_path.rglob("*.rs")):
+            if "tests" in path.parts:
+                continue
+            if any(tok in str(path).replace("\\", "/") for tok in DEV_ONLY_PATHS):
+                continue
+            # Split test modules (`#[cfg(test)] mod foo_tests;` in the parent)
+            # carry the `*_tests.rs` / `*_test.rs` filename convention; the
+            # parent's cfg-gate is invisible to this per-file scan, so treat
+            # those filenames as test code (ADR #33: test code is exempt).
+            if re.search(r"_test(s)?\.rs$", path.name):
+                continue
+            findings.extend(scan_file(path))
+    return findings
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The command line, in one place, so `--self-test` parses the real flags."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -423,8 +548,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--roots",
         nargs="*",
         default=ROOTS,
-        help="roots to scan; when the list resolves to no directory at all this gate "
-        "REFUSES with exit 2 rather than print an inventory over nothing",
+        help="roots to scan; this gate REFUSES with exit 2 unless EVERY named root "
+        "resolves. No root resolving means no inventory over nothing; some roots "
+        "resolving means a holed corpus reported as a full pass, which is worse.",
     )
     parser.add_argument(
         "--self-test",
@@ -573,6 +699,55 @@ def self_test() -> int:
             over_tolerance(found, strictness_tolerance(opted.allow_recoverable)) == [],
         )
 
+    # ROOT RESOLUTION: a set that fully resolves still scans; a set with one hole does
+    # not scan at all. Both halves matter -- refusing everything would be safe and useless.
+    with tempfile.TemporaryDirectory(prefix="unwrap-rootselftest-") as tmp:
+        base = Path(tmp)
+        (base / "crate_a").mkdir()
+        (base / "crate_b").mkdir()
+        (base / "crate_a" / "a.rs").write_text(
+            "fn main() {\n    let a: Option<u8> = None;\n    a.unwrap();\n}\n",
+            encoding="utf-8",
+        )
+        complete = [str(base / "crate_a"), str(base / "crate_b")]
+        usable, blank, missing = resolve_roots(complete)
+        check(
+            "a root set where every named root is a directory is NOT starved",
+            usable == complete and not root_set_is_starved(usable, blank, missing),
+        )
+        check(
+            "...and it still scans: the one call under it is found",
+            len(collect_findings(complete)) == 1,
+        )
+
+        holey = [str(base / "crate_a"), "nope_not_here", " "]
+        usable_h, blank_h, missing_h = resolve_roots(holey)
+        check(
+            "one missing plus one blank among valid roots IS starved, so it must refuse",
+            bool(usable_h)
+            and root_set_is_starved(usable_h, blank_h, missing_h),
+        )
+        report = starved_root_report(holey, usable_h, blank_h, missing_h)
+        text = "\n".join(report)
+        check(
+            "the refusal names the bad token, the path tried, AND what did resolve",
+            "nope_not_here" in text
+            and tried_path_for("nope_not_here") in text
+            and repr(" ") in text
+            and str(base / "crate_a") in text,
+        )
+        check(
+            "a refusal prints no count and borrows no shape of the report line",
+            not any("production unwrap/expect calls" in line for line in report)
+            and re.search(r"total\s*:\s*\d", text) is None,
+        )
+
+        usable_n, blank_n, missing_n = resolve_roots(["nope_not_here"])
+        check(
+            "nothing resolving at all stays the OTHER refusal, so the two messages do not collide",
+            not usable_n and not root_set_is_starved(usable_n, blank_n, missing_n),
+        )
+
     failed = [name for name, ok in cases if not ok]
     for name, ok in cases:
         print(f"  {'ok' if ok else 'FAIL'}  {name}")
@@ -581,7 +756,8 @@ def self_test() -> int:
         return 1
     print(
         f"\nself-test: all {len(cases)} case(s) passed -- strict by default, "
-        "--allow-recoverable N raises the ceiling, --fail-on-recoverable is inert"
+        "--allow-recoverable N raises the ceiling, --fail-on-recoverable is inert, and a "
+        "partially starved root set refuses while a complete one still scans"
     )
     return 0
 
@@ -604,22 +780,16 @@ def main() -> int:
     roots_to_scan, blank_roots, missing_roots = resolve_roots(args.roots)
     if not roots_to_scan:
         return refuse_nothing_to_scan(args.roots, blank_roots, missing_roots)
+    # The case that refusal never covered: SOME roots resolved and some did not. Scanning
+    # the survivors and exiting 0 printed a count over a holed corpus -- measured at 96 of
+    # 136 production calls for `--roots crates nope` -- and a number that looks complete is
+    # exactly what a clean scan looks like. Refuse before the walk, as above.
+    if root_set_is_starved(roots_to_scan, blank_roots, missing_roots):
+        return refuse_starved_roots(
+            args.roots, roots_to_scan, blank_roots, missing_roots
+        )
 
-    all_findings: list[dict] = []
-    for root in roots_to_scan:
-        root_path = Path(root)
-        for path in sorted(root_path.rglob("*.rs")):
-            if "tests" in path.parts:
-                continue
-            if any(tok in str(path).replace("\\", "/") for tok in DEV_ONLY_PATHS):
-                continue
-            # Split test modules (`#[cfg(test)] mod foo_tests;` in the parent)
-            # carry the `*_tests.rs` / `*_test.rs` filename convention; the
-            # parent's cfg-gate is invisible to this per-file scan, so treat
-            # those filenames as test code (ADR #33: test code is exempt).
-            if re.search(r"_test(s)?\.rs$", path.name):
-                continue
-            all_findings.extend(scan_file(path))
+    all_findings: list[dict] = collect_findings(roots_to_scan)
 
     recoverable = [f for f in all_findings if not f["invariant"]]
     offending = over_tolerance(all_findings, tolerance)
