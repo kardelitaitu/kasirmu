@@ -41,9 +41,9 @@ oz-pos/
 │   │   │   ├── refund.rs    # Refund domain type
 │   │   │   ├── settings.rs  # Settings persistence layer
 │   │   │   ├── features.rs  # Feature enum (39 flags), registry, presets
-│   │   │   ├── migrations.rs# Embedded SQL migration runner (44 migrations)
+│   │   │   ├── migrations.rs# Embedded SQL migration runner (59 .sql files as measured 2026-09-13; ls crates/oz-core/migrations/*.sql | wc -l)
 │   │   │   └── error.rs     # CoreError enum
-│   │   └── migrations/      # Date-stamped SQL migration files (19, 2026-08-13 → 2026-08-27)
+│   │   └── migrations/      # Date-stamped SQL migration files (59, 2026-08-13 → 2026-10-05)
 │   ├─ oz-hal/               # Hardware Abstraction Layer
 │   │   ├─ Cargo.toml
 │   │   └─ src/
@@ -163,8 +163,9 @@ oz-pos/
   - `Product`, `Category`, `Inventory`, `Sku` — domain types with serde.
   - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/oz-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (keys in `ui/src/locales/settings.ftl`, array in `ui/src/features/setup/SetupWizard.tsx:70`). This line said 5 until 08-09-26, the same stale count corrected in `docs/guides/admin-guide.md` the same day.
   - `Store<'a>` — typed CRUD facade over `&Connection`. All writes inside transactions.
-- **Migrations**: 44 SQLite `.sql` files in `crates/oz-core/migrations/`, embedded by the
-  `include_str!` list in `crates/oz-core/src/migrations.rs` (45 entries: the 44 plus the
+- **Migrations**: 58 SQLite `.sql` files plus the generated PG file, 59 in all as measured
+  2026-09-13 (`ls crates/oz-core/migrations/*.sql | wc -l`), embedded by the
+  `include_str!` list in `crates/oz-core/src/migrations.rs` (59 entries: the 58 SQLite plus the
   generated `20260813_init.pg.sql`). The 131-file history was squashed into
   `20260813_init.sql` — not `init.sql`. `oz_core::migrations::run(conn)` is invoked at
   **application-state construction**, not by a platform subsystem:
@@ -284,6 +285,8 @@ all 49 path references in this file resolve against the tree, and the migration 
 the layout block was corrected from 19 to 44 (the same fact is stated in
 `docs/README.md`-adjacent files; `AGENTS.md` said 28 and `README.md` said 19, so three
 documents carried three different answers).
+
+> Count note (2026-09-13): the 09-08 stamp recorded 44 and that sentence stands; the measured count today is 59 (`ls crates/oz-core/migrations/*.sql | wc -l`), of which 58 are SQLite and one is the generated PG file. The layout block and §Migrations now carry 59.
 
 > last audited 08-09-26 by docs-auditor
 
