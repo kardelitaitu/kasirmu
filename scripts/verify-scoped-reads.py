@@ -43,6 +43,8 @@ comment written by the fix that missed the real site.
 usage:
     python scripts/verify-scoped-reads.py                # check the tree
     python scripts/verify-scoped-reads.py --self-test    # classifier + entry-shape reader
+    python scripts/verify-scoped-reads.py --allowlist PATH  # grade PATH instead of the
+                                                       # checkout copy (F-1 seam)
 """
 import argparse
 import io
@@ -50,6 +52,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 
 # F-2, STILL OPEN IN THIS FILE, stamped with the reproduction so the next reader does not
@@ -65,7 +68,9 @@ import time
 # A gate whose default on an empty corpus is clean will report a repository it is not
 # looking at. The closure is being taken in scripts/verify-agents-mirrors.py -- git first,
 # script-relative only when git cannot answer, and a refusal when the walk yields nothing.
-# This file has the same anchor and is not part of that change.
+# This file has the same anchor and is not part of that change. main() now prints the
+# corpus size and the allowlist it graded on every run, so a zero walk is at least visible
+# in the log; what is still missing is the refusal that turns a visible zero into a red.
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWLIST = os.path.join(REPO, "scripts", "ipc-parity-allowlist.json")
@@ -246,7 +251,7 @@ def _is_call_site(text, start):
     return not DECL_BEFORE_RE.search(text[max(0, start - 24):start])
 
 
-def allowlist_names(payload, section, problems):
+def allowlist_names(payload, section, problems, source=ALLOWLIST):
     """The command names in one allowlist section, plus a sentence per member not read.
 
     Two shapes are in circulation in the file: a bare command name -- the shape every
@@ -261,7 +266,9 @@ def allowlist_names(payload, section, problems):
     about. Never raises: an unreadable member is a sentence naming the section, the 1-based
     index the file holds it at, and the value that was found.
     """
-    filename = os.path.basename(ALLOWLIST)
+    # Named from the file actually being graded, so an aimed run refuses the probe it
+    # read and not the checkout copy it never touched.
+    filename = os.path.basename(source)
     members = payload.get(section)
     if members is None:
         return []
@@ -325,15 +332,21 @@ def allowlist_names(payload, section, problems):
     return names
 
 
-def audit(shells, repo=REPO):
-    """Return (violations, shape_problems).
+def audit(shells, repo=REPO, allowlist=ALLOWLIST):
+    """Return (violations, shape_problems, production_files_scanned).
 
     violations is [(shell, command, file, line, snippet), ...]; shape_problems is one
     sentence per allowlist member this gate could not turn into a command name. Both have to
     be empty for the gate to pass: an entry that was neither read nor refused is how a
-    policy line stops enforcing while the output still says clean.
+    policy line stops enforcing while the output still says clean. The third value is how
+    many production files the verdict was drawn from, printed by main() because a zero is a
+    number a reader has to be able to see (F-2).
+
+    The allowlist argument is the seam F-1 asked for: which file to grade. It defaults to
+    ALLOWLIST, so a bare run grades the checkout copy exactly as it did before the option
+    existed.
     """
-    allow = read_allowlist(ALLOWLIST)
+    allow = read_allowlist(allowlist)
     ui_dir = os.path.join(repo, "ui", "src")
     cmd_to_wrapper = find_wrappers(os.path.join(ui_dir, "api"))
     files = production_files(ui_dir)
@@ -348,7 +361,7 @@ def audit(shells, repo=REPO):
     for shell in shells:
         # Read through allowlist_names so an entry in the object form contributes its
         # command name here instead of reaching the lookup below as a dict.
-        for cmd in allowlist_names(allow, shell, shape_problems):
+        for cmd in allowlist_names(allow, shell, shape_problems, allowlist):
             for wrapper in cmd_to_wrapper.get(cmd, ()):
                 pat = re.compile(r"\b" + re.escape(wrapper) + r"\s*\(")
                 for path, text in texts.items():
@@ -362,7 +375,60 @@ def audit(shells, repo=REPO):
                         line = text.split("\n")[upto].strip()
                         rel = os.path.relpath(path, repo).replace("\\", "/")
                         violations.append((shell, cmd, rel, upto + 1, line[:88]))
-    return violations, shape_problems
+    return violations, shape_problems, len(files)
+
+
+# F-1, CLOSED. Until this option existed, the only way to show anybody a hazard in
+# scripts/ipc-parity-allowlist.json was to import this file as a module and rebind its
+# ALLOWLIST global -- the trick every reproduction of the two hazards in this reader used,
+# including the one that found F-2. An operator holding a candidate allowlist with a bad
+# member had no way to ask this gate about it, which is why a hazard could be described in
+# three scripts and survive: describing it was never the hard part, demonstrating it was.
+# One flag is the fix, and the default is untouched, so the bare runs at dev-ci.yml:596 and
+# scripts/check.sh:72 grade what they graded yesterday.
+def build_argparser():
+    """The parser, in a function so --self-test can assert its defaults through it.
+
+    Asserting against the real parser is the point: a case that rebuilt the argument list
+    would keep passing after somebody renamed the flag or moved its default.
+    """
+    ap = argparse.ArgumentParser(
+        description="Fail on unguarded ambient IPC calls made by a shell that does not "
+                    "register the command.")
+    ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--shell", default="desktop",
+                    help="comma-separated shells to audit (default: desktop)")
+    ap.add_argument("--allowlist", default=None, metavar="PATH",
+                    help="grade PATH instead of the checkout copy at scripts/ipc-parity-"
+                         "allowlist.json. The file is only read, never written, and the "
+                         "default is unchanged.")
+    return ap
+
+
+def resolve_allowlist(path=None):
+    """(the file to grade, how it was chosen) -- the flag or the module default.
+
+    A pair, so the sentence main() prints cannot drift from the value main() hands audit():
+    one call, two uses, one source. An empty string counts as absent rather than opening a
+    directory. A relative PATH resolves against the caller cwd, which is ordinary for a
+    file argument and is exactly why the resolved answer is printed: the line names the file
+    that was graded, so the ambiguity is not left for the reader to guess.
+    """
+    if not path:
+        return ALLOWLIST, "module default"
+    return os.path.abspath(path), "--allowlist"
+
+
+def describe_surfaces(scanned, allowlist, how):
+    """One line naming both surfaces a verdict is drawn from: the corpus and the file.
+
+    Printed before any verdict, clean or not. The count is what makes an empty walk visible
+    instead of clean-looking; the path is what makes an aimed run self-describing. A report
+    that says clean without saying which allowlist it read is a claim about a file nobody
+    has identified.
+    """
+    return (f"verify-scoped-reads: {scanned} production file(s) graded against "
+            f"{allowlist} ({how}).")
 
 
 # ── self-test ────────────────────────────────────────────────────────
@@ -607,6 +673,96 @@ def _read_retry_self_test():
                 print(f"           sentence is missing: {needle}")
         failures += 1
     return failures
+def _aim_self_test():
+    """F-1: prove --allowlist moves the read, and that passing no flag leaves the default.
+
+    Case 1 goes through the real main() with argv, not through audit(), because the claim
+    under test is the wiring: an option that parses correctly and is then ignored by the one
+    caller that matters is exactly the bug this case has to catch. The probe carries a member
+    the checkout copy does not, so a run that ignored the flag has nothing to complain about
+    and exits 0. Case 1 costs one full walk of the tree, about 1.6s, which is the price of
+    testing the pipeline instead of a copy of it.
+    """
+    print("  verify-scoped-reads self-test / aiming the read")
+    failures = 0
+    real = read_allowlist(ALLOWLIST)
+    planted = {"name": "zz_planted_only_in_probe", "reason": "an object in desktop is refused"}
+
+    with tempfile.TemporaryDirectory(prefix="oz-scoped-aim-") as tmp:
+        probe = os.path.join(tmp, "probe-aim-allowlist.json")
+        payload = json.loads(json.dumps(real))
+        payload.setdefault("desktop", []).append(planted)
+        with io.open(probe, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+
+        # A two-directional premise: the planted member must be absent from the file the bare
+        # runners read, or case 1 proves nothing about which file was graded.
+        premise = not any(isinstance(m, dict) and m.get("name") == planted["name"]
+                          for m in real.get("desktop", []))
+        if not premise:
+            print("    FAIL premise  the planted member is already in the checkout allowlist")
+            failures += 1
+
+        captured = io.StringIO()
+        saved, sys.stdout = sys.stdout, captured
+        try:
+            rc = main(["--allowlist", probe])
+        except BaseException as exc:
+            rc = f"bare {type(exc).__name__}: {exc}"
+        finally:
+            sys.stdout = saved
+        out = captured.getvalue()
+
+        # An object refused in a strict section is reported by its KEYS, not by the name
+        # inside it, so what proves provenance is the entry index: the checkout copy holds 27
+        # desktop members today, so entry #28 cannot have come from that file. Spelled as
+        # len(default) + 1 rather than as a literal 28, or this case rots the first time the
+        # allowlist gains an entry for an unrelated reason.
+        default_count = len(real.get("desktop", []))
+        only_index = f"entry #{default_count + 1}"
+        named = (os.path.basename(probe) in out and only_index in out
+                 and "ipc-parity-allowlist.json" not in out)
+        if rc == 1 and named:
+            print(f"    ok   case 1  the aimed probe was the file read -- it refused "
+                  f"{only_index} of desktop, an entry the {default_count}-member checkout "
+                  "copy cannot hold")
+        else:
+            print(f"    FAIL case 1  rc={rc!r}, probe named={os.path.basename(probe) in out}, "
+                  f"{only_index} in output={only_index in out}, default blamed="
+                  f"{'ipc-parity-allowlist.json' in out}")
+            for line in out.splitlines()[:4]:
+                print(f"           | {line}")
+            failures += 1
+
+    # Case 2. No flag is what dev-ci.yml:596 and scripts/check.sh:72 pass, so the default has
+    # to be the same file, chosen the same way, and named as the default in the line that
+    # reports it. Checked against the real parser and the real helpers rather than a restated
+    # pair of literals, and without a second 1.6s walk: case 1 already drove main(), and what
+    # is under test here is which file main() would have opened.
+    no_flag = build_argparser().parse_args([])
+    default_path, default_how = resolve_allowlist(no_flag.allowlist)
+    # A truthful count, not a placeholder: production_files() only lists paths, so this is
+    # milliseconds, and the line case 2 prints is the line a bare run prints.
+    scanned = len(production_files(os.path.join(REPO, "ui", "src")))
+    line = describe_surfaces(scanned, default_path, default_how)
+    same_bytes = read_allowlist(default_path) == real
+    unchanged = (no_flag.allowlist is None and default_path == ALLOWLIST
+                 and default_how == "module default" and "ipc-parity-allowlist.json" in line
+                 and "module default" in line and same_bytes)
+    if unchanged:
+        print("    ok   case 2  no flag still grades the checkout copy, named as the module "
+              "default")
+        print(f"           {line}")
+    else:
+        print("    FAIL case 2  the bare run no longer grades the default file")
+        print(f"           flag default={no_flag.allowlist!r} resolved={default_path!r} "
+              f"how={default_how!r} same_bytes={same_bytes}")
+        print(f"           {line}")
+        failures += 1
+    return failures
+
+
+
 def self_test():
     print("  verify-scoped-reads self-test")
     failures = 0
@@ -639,34 +795,36 @@ def self_test():
         print("    ok   classifier can report a violation (not vacuous)")
     failures += _shape_self_test()
     failures += _read_retry_self_test()
+    failures += _aim_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--self-test", action="store_true")
-    ap.add_argument("--shell", default="desktop",
-                    help="comma-separated shells to audit (default: desktop)")
-    args = ap.parse_args()
+def main(argv=None):
+    # argv is a parameter, not only sys.argv, so --self-test can drive the real main() over
+    # a probe allowlist and prove the wiring rather than prove a copy of the logic.
+    ap = build_argparser()
+    args = ap.parse_args(argv)
 
     if args.self_test:
         return self_test()
 
     shells = [s.strip() for s in args.shell.split(",") if s.strip()]
+    allowlist, how = resolve_allowlist(args.allowlist)
     try:
-        violations, shape_problems = audit(shells)
+        violations, shape_problems, scanned = audit(shells, allowlist=allowlist)
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
         # in a sentence is the whole difference between a red run someone can act on and a
         # traceback that blames the wrong gate.
         print(f"FAIL: {exc}")
         return 1
+    print(describe_surfaces(scanned, allowlist, how))
     if shape_problems:
         # Ahead of the violations, because a member this gate could not read makes every
         # number it then prints -- including a reassuring zero -- a guess about a file it
         # has not actually parsed.
-        print(f"FAIL: {len(shape_problems)} member(s) of {os.path.basename(ALLOWLIST)} "
+        print(f"FAIL: {len(shape_problems)} member(s) of {os.path.basename(allowlist)} "
               "this gate could not read:")
         for problem in shape_problems:
             print(f"  {problem}")
