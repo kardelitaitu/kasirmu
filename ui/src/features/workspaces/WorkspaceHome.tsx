@@ -11,6 +11,8 @@ import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { tierSatisfies } from '@/utils/tierLevel';
 import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
+import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
+import type { ToolLockReason } from './components/ToolCard';
 import './WorkspaceHome.css';
 
 // ── Per-workspace accent color classes ────────────────────────────
@@ -91,8 +93,6 @@ const WS_ORDER: Record<string, number> = {
 //      honor the §B admin gate, which locks the moment the
 //      subscription leaves `active` (grace never re-opens admin
 //      features).
-
-type ToolLockReason = 'tier' | 'subscription' | 'role';
 
 const ROLE_HIERARCHY: Record<string, number> = {
   owner: 5,
@@ -419,13 +419,17 @@ export default function WorkspaceHome() {
       id: groupId as ToolGroupId,
       tools: TOOLS.filter((t) => t.group === groupId)
         .map((tool) => ({ tool, lock: toolLock(tool) }))
-        .filter((entry) => entry.lock !== 'hidden'),
+        // Type predicate, not a plain boolean: it must NARROW the element
+        // type to the union ToolsCategoryGrid accepts — with a boolean
+        // filter 'hidden' lingers in the type and the prop never checks.
+        .filter(
+          (entry): entry is { tool: ToolItem; lock: ToolLockReason | 'none' } =>
+            entry.lock !== 'hidden',
+        ),
     })).filter((group) => group.tools.length > 0);
   }, [canSeeTools, toolLock]);
-  const visibleTools = useMemo(
-    () => toolGroups.flatMap((g) => g.tools),
-    [toolGroups],
-  );
+  // (The old `visibleTools` flat-memo existed only to guard the inline
+  // Tools block; ToolsCategoryGrid null-guards on empty groups itself.)
 
   // ── Shortcut navigation to tools (switches to admin workspace) ──
   const handleShortcutNav = useCallback(
@@ -869,89 +873,12 @@ export default function WorkspaceHome() {
               </div>
 
               {/* ── Section 2: Tools (grouped, role/tier-gated) ───── */}
-              {visibleTools.length > 0 && (
-                <div className="workspace-section">
-                  <div className="workspace-section-header">
-                    <h2 className="workspace-section-title">
-                      <Localized id="workspace-home-tools-section"><span>Tools</span></Localized>
-                    </h2>
-                  </div>
-                  {toolGroups.map((group) => (
-                    <div key={group.id} className="workspace-tools-group">
-                      <h3 className="workspace-tools-group-title">
-                        <Localized id={`workspace-home-tools-group-${group.id}`}>
-                          <span>{group.id === 'operations' ? 'Operations' : group.id === 'insights' ? 'Insights' : 'Configuration'}</span>
-                        </Localized>
-                      </h3>
-                      <div className="workspace-tools-grid">
-                        {group.tools.map(({ tool, lock }) =>
-                          lock === 'none' ? (
-                            <button
-                              key={tool.id}
-                              type="button"
-                              className="workspace-tool-card"
-                              data-testid="workspace-tool-card"
-                              onClick={() => handleShortcutNav(tool.route)}
-                              aria-label={l10n.getString(tool.labelKey)}
-                            >
-                              <div className="workspace-tool-icon">
-                                {tool.icon}
-                              </div>
-                              <div className="workspace-tool-body">
-                                <h3 className="workspace-tool-name">
-                                  <Localized id={tool.labelKey}><span>{tool.id}</span></Localized>
-                                </h3>
-                                <p className="workspace-tool-desc">
-                                  <Localized id={tool.descKey}><span></span></Localized>
-                                </p>
-                              </div>
-                            </button>
-                          ) : (
-                            <div
-                              key={tool.id}
-                              className="workspace-tool-card workspace-tool-card--locked"
-                              data-testid="workspace-tool-card-locked"
-                              aria-disabled="true"
-                            >
-                              <div className="workspace-tool-icon">
-                                {tool.icon}
-                              </div>
-                              <div className="workspace-tool-body">
-                                <h3 className="workspace-tool-name">
-                                  <Localized id={tool.labelKey}><span>{tool.id}</span></Localized>
-                                </h3>
-                                <p className="workspace-tool-desc">
-                                  <Localized id={tool.descKey}><span></span></Localized>
-                                </p>
-                                <span className="workspace-tool-lock-badge">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="11" height="11" aria-hidden="true">
-                                    <rect x="3" y="11" width="18" height="11" rx="2" />
-                                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                                  </svg>
-                                  {lock === 'tier' && (
-                                    <Localized id={`workspace-home-tools-requires-tier-${tool.access.minimumTier}`}>
-                                      <span>Requires {tool.access.minimumTier} plan</span>
-                                    </Localized>
-                                  )}
-                                  {lock === 'subscription' && (
-                                    <Localized id="workspace-home-tools-subscription-inactive">
-                                      <span>Subscription inactive</span>
-                                    </Localized>
-                                  )}
-                                  {lock === 'role' && (
-                                    <Localized id="workspace-home-tools-requires-role">
-                                      <span>Admin access required</span>
-                                    </Localized>
-                                  )}
-                                </span>
-                              </div>
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {toolGroups.length > 0 && (
+                <ToolsCategoryGrid
+                  groups={toolGroups}
+                  onNavigate={handleShortcutNav}
+                  getAriaLabel={(key) => l10n.getString(key)}
+                />
               )}
             </div>
           )}
