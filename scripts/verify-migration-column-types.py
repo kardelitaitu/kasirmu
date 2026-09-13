@@ -26,6 +26,32 @@ Rules:
 Usage:
     python3 scripts/verify-migration-column-types.py                # full scan
     python3 scripts/verify-migration-column-types.py --staged-only  # only staged migration files
+
+THE EMPTY CORPUS
+================
+
+Every path -- clean, violating, and refused -- prints how many migration files it
+scanned and the root it scanned. A count that appears only when it is non-zero is the
+defect shape: a copy of this script in a throwaway directory used to find no .sql file,
+print nothing, and exit 0, a clean verdict byte-for-byte indistinguishable from the real
+thing (the same hollow-verdict class as verify-no-hardcoded-money-format.py at 1f7c2311c
+and verify-flaky-quarantine.py at ae7f19c03).
+
+A WHOLE-TREE scan that finds zero migration files therefore REFUSES with exit 2 -- there
+is no corpus to be clean about. --staged-only does NOT refuse on zero: pre-commit step 4
+triggers on a staged migration, but any commit that reaches this gate with a non-migration
+staged set legitimately has an empty scope, and zero is the correct answer there. Failing
+that run would fail every commit in the repository, so the refusal is conditional on the
+mode and the message names the mode it refused.
+
+EXIT CODES
+==========
+
+  * 0  no unwhitelisted float columns over the corpus this run scanned.
+  * 1  at least one violation or stale whitelist entry (the CI / check.sh / hook gate).
+  * 2  a whole-tree scan whose migration root yielded 0 files, or a --staged-only run that
+       could not read the git index -- either way the verdict had no corpus, so this
+       script refuses to print one rather than printing a hollow one.
 """
 
 from __future__ import annotations
@@ -114,6 +140,38 @@ def strip_comments(sql: str) -> str:
     return re.sub(r"--[^\n]*", "", sql)
 
 
+def refuse(mode: str, scanned: int, corpus: int, *, index_unreadable: bool = False) -> None:
+    """Say what was looked for, where, and what came back.
+
+    stdout, not stderr: scripts/run-pre-push.py surfaces only a child's stdout, and this
+    is the sentence an operator most needs to see when a verdict goes missing.
+    """
+    head = (
+        "verify-migration-column-types: REFUSED — the git index could not be read, so "
+        "the --staged-only scope is unknown, and an unknown scope is not an empty one."
+        if index_unreadable else
+        "verify-migration-column-types: REFUSED — a gate that scanned no migration "
+        f"files must not print clean, and in {mode} mode it scanned {scanned}."
+    )
+    print(head)
+    print(f"  mode                     : {mode}")
+    print(f"  migration root           : {MIGRATIONS}"
+          + ("" if MIGRATIONS.is_dir() else "  (directory absent)"))
+    print(f"  looked for               : *.sql directly under that root — "
+          f"{corpus} file(s) found")
+    print(f"  repo root resolved from  : {ROOT}  (parent of this script's directory, "
+          "never a hardcoded checkout)")
+    if index_unreadable:
+        print("  reason                   : the git index could not be read, so the "
+              "--staged-only scope is unknown — unknown is not empty.")
+    else:
+        print("  a copy of this script outside a checkout reaches this line instead of "
+              "reporting a clean schema; run it from a tree that holds "
+              "crates/oz-core/migrations/.")
+    print("  note: --staged-only with nothing staged is NOT a refusal — there the empty "
+          "set is the correct answer and the gate exits 0.")
+
+
 def scan_file(path: Path) -> list[Hit]:
     text = strip_comments(path.read_text(encoding="utf-8"))
     hits: list[Hit] = []
@@ -136,20 +194,48 @@ def scan_file(path: Path) -> list[Hit]:
     return hits
 
 
+def staged_migration_paths() -> set[str] | None:
+    """Repo-relative staged migration paths, or None when the index cannot be read.
+
+    None is a REFUSAL condition, not an empty set: an unreadable index and an index with
+    no migration staged both yield zero files, and only one of them is a correct answer.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--",
+             "crates/oz-core/migrations/"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        )
+    except Exception as exc:  # no repo, no git, non-zero exit
+        print(
+            f"error: cannot read the git index (git diff --cached) for {ROOT}: {exc}",
+            file=sys.stderr,
+        )
+        return None
+    return {p for p in proc.stdout.split("\0") if p}
+
+
 def main(argv: list[str]) -> int:
     staged_only = "--staged-only" in argv
-    files = sorted(MIGRATIONS.glob("*.sql"))
+    mode = "--staged-only" if staged_only else "whole-tree (no --staged-only)"
+    corpus = sorted(MIGRATIONS.glob("*.sql"))
+    files = corpus
     if staged_only:
-        staged = set(
-            subprocess.run(
-                ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--",
-                 "crates/oz-core/migrations/"],
-                cwd=ROOT, capture_output=True, text=True, check=True,
-            ).stdout.split("\0")
-        )
-        files = [f for f in files if str(f.relative_to(ROOT)).replace("\\", "/") in staged]
-    if not files:
-        return 0
+        staged = staged_migration_paths()
+        if staged is None:
+            refuse(mode, 0, len(corpus), index_unreadable=True)
+            return 2
+        files = [f for f in corpus if str(f.relative_to(ROOT)).replace("\\", "/") in staged]
+
+    scanned = len(files)
+    # An empty WHOLE-TREE walk is not a clean schema, it is a gate that read nothing --
+    # typically a copy of this file outside a checkout, whose script-relative root holds
+    # no migrations at all. Refuse it. An empty STAGED set is a correct answer (pre-commit
+    # step 4 can reach this gate from a commit that staged no migration), so it is exempt:
+    # failing it would fail every commit in the repository.
+    if scanned == 0 and not staged_only:
+        refuse(mode, scanned, len(corpus))
+        return 2
 
     hits: list[Hit] = []
     for f in files:
@@ -181,9 +267,21 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         rc = 1
+    # The corpus size prints on EVERY path, including zero, so a reader who sees a
+    # verdict can see the number of files it was computed over and the root they came from.
+    scope = (
+        f"{scanned} of {len(corpus)} staged migration file(s)"
+        if staged_only else f"{scanned} migration file(s)"
+    )
+    scanned_line = (
+        f"verify-migration-column-types: scanned {scope} under {MIGRATIONS} "
+        f"({len(hits)} float-typed column(s) found)"
+    )
     if rc == 0:
-        scope = "staged" if staged_only else f"{len(files)} files"
-        print(f"ok: no unwhitelisted float columns ({scope} scanned, {len(hits)} float hits all exempt)")
+        print(f"ok: no unwhitelisted float columns ({scope} scanned under {MIGRATIONS}, "
+              f"{len(hits)} float hits all exempt)")
+    else:
+        print(scanned_line)
     return rc
 
 
