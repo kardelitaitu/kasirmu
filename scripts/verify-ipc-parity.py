@@ -1167,6 +1167,53 @@ def self_test() -> int:
          len(shell_lines) == 1 and "allowlisted)" in shell_lines[0]
          and "2 allowlisted" in shell_lines[0], )
 
+    # 13: a number printed as what it is not. info[scoped-orphans] used to print
+    # len(all_orphans) -- orphans found in the tree this run -- under the word "allowlisted",
+    # which is the size of a section of a file. On the real tree the two are 27 and 25, and
+    # the line read as proof that someone had edited the json under us. Each claim below is
+    # checked against the printed line's TEXT, from a probe whose allowlist size I control,
+    # so it cannot be satisfied by the tree's number.
+    ghost_scoped = "ghost_orphan_that_no_shell_registers_scoped"
+    probe_orphan_allow = [ghost_scoped, "get_active_cart_scoped", "list_active_carts_scoped"]
+    with tempfile.TemporaryDirectory() as tmp5:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe5 = Path(tmp5) / "allowlist.json"
+        labelled = ""
+        try:
+            globals()["ALLOWLIST_PATH"] = probe5
+            sys.argv = ["probe"]
+            write_allowlist_payload({
+                "_comment": "probe file, never the real allowlist",
+                "dev_mock": [], "desktop": ["desktop_gap_scoped"],
+                "tablet": ["tablet_gap_scoped"], "scoped_orphans": probe_orphan_allow,
+            })
+            out5, err5 = io.StringIO(), io.StringIO()
+            with redirect_stdout(out5), redirect_stderr(err5):
+                main()
+            labelled = out5.getvalue() + err5.getvalue()
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    scoped_lines = [ln for ln in labelled.splitlines()
+                    if ln.startswith("info[scoped-orphans]:")]
+    case("case 13  the allowlist figure says entries and reports the size of the section",
+         len(scoped_lines) == 1 and "3 entries allowlisted" in scoped_lines[0], )
+    tree_figure = [
+        int(part.split()[0]) for part in scoped_lines[0].split(", ")
+        if " orphans measured in the tree" in part
+    ] if scoped_lines else []
+    case("case 13  and the tree figure carries its own label and its own, different number",
+         len(tree_figure) == 1 and tree_figure[0] != 3
+         and ghost_scoped not in scoped_lines[0], )
+
+    desktop_line = [ln for ln in labelled.splitlines()
+                    if ln.startswith("info[desktop]:")]
+    case("case 13  the shell line keeps its two populations apart, each with its unit named",
+         len(desktop_line) == 1 and "unregistered UI command names" in desktop_line[0]
+         and "unregistered tauri command fns" in desktop_line[0]
+         and desktop_line[0].count("unregistered") == 2, )
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -1347,12 +1394,19 @@ def main() -> int:
         # catches an entry that DID become registered, and --write-allowlist deleted the
         # rest without a word. The writer is additive now, so this line is the only thing
         # that shows them, which is why it is information-only and cannot fail the gate.
+        # The two "unregistered" figures on the line below are NOT the same measurement in
+        # different clothes: missing[shell] is UI command NAMES the interface invokes and
+        # this shell does not register (direction: ui -> shell), unregistered is Rust
+        # #[tauri::command] FUNCTIONS defined under this shell's commands/ and absent from
+        # its generate_handler (direction: shell -> registration). Different populations,
+        # different units, and the tree proves it apart: tablet reports 153 of the former
+        # and 0 of the latter, which one quantity printed twice cannot do.
         unreachable = sorted(allowed_names - missing[shell] - set(handlers[shell]))
         print(
             f"info[{shell}]: {len(ui_commands)} UI command strings, "
             f"{len(handlers[shell])} registered, "
-            f"{len(missing[shell])} unregistered references "
-            f"({len(unregistered)} unregistered command fns - F-006 tracker) "
+            f"{len(missing[shell])} unregistered UI command names "
+            f"({len(unregistered)} unregistered tauri command fns - F-006 tracker) "
             f"({len(allowed_names)} allowlisted)"
         )
         print(
@@ -1401,12 +1455,21 @@ def main() -> int:
     # Triage summary for the allowlisted orphans. Printed even when green, because an
     # allowlist that reports nothing is an allowlist nobody re-reads: the gated ones are
     # the entries that deserve attention, and without this line all 25 look identical.
+    #
+    # This line used to print len(all_orphans) -- the number of orphans found in the tree
+    # this run -- under the word "allowlisted", which is the size of a section of a file.
+    # Two quantities, one label, and the damage is not cosmetic: on a tree where the file
+    # holds 25 and the sweep finds 27, the line reads as evidence that somebody edited the
+    # json, and it sent a reader off to re-verify a blob hash that had not moved. The
+    # figures now name their own source: "entries allowlisted" is a count of file members,
+    # "orphans measured in the tree" is a count of registrations with no caller.
     gated = [c for c in all_orphans if orphan_permission(c)]
     if all_orphans:
         detail = ", ".join(
             f"{c}={orphan_permission(c)}" for c in sorted(gated)) or "none"
         print(
-            f"info[scoped-orphans]: {len(all_orphans)} allowlisted, "
+            f"info[scoped-orphans]: {len(orphan_allow)} entries allowlisted, "
+            f"{len(all_orphans)} orphans measured in the tree, "
             f"{len(all_orphans) - len(gated)} redundant twins (no check), "
             f"{len(gated)} GATED DEAD SURFACE -> {detail}"
         )
