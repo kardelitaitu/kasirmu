@@ -216,8 +216,45 @@ def id_only_keys() -> set[str]:
     return bundle_keys("id") - bundle_keys("en")
 
 
+def hollow_root_reason() -> str | None:
+    """Say why ROOT is not a checkout of this project, or None when it plainly is.
+
+    `--census` derives every number it prints from `Path.glob`, which yields nothing rather than
+    raising when the directory it points at does not exist: `declared_keys()`, `bundle_keys()` and
+    `intra_bundle_refs()` all glob `LOCALES`, and `ui_blob()` globs `ROOT/ui/src`. Under a ROOT that
+    resolves outside any checkout -- this file copied two levels under a temp dir, or a working
+    directory that is not a repository -- all four returned empty, every set subtracted from every
+    other set cleanly, and the gate printed `info[census]: 0 declared en keys, 0 referenced, 0
+    candidates` at exit 0: a clean-looking orphan sheet over nothing.
+
+    A zero key count is NOT the signal. A repository where every declared key is genuinely
+    referenced legitimately reports 0 candidates, and refusing on that would reject a real result.
+    The load-bearing shape is the one `staged_diff()` already uses: a named path this gate REQUIRES
+    is missing. In a checkout of this project `ui/src/locales` is a directory holding the `.ftl`
+    bundles, so a tree without that surface is not this project and holds no orphan verdict either
+    way. Same reasoning `verify-no-hardcoded-money-format.py` recorded at 13:51, where `scanned ==
+    0` in its starve check is an unobservable disjunct: a census that declared zero files is not a
+    census of zero orphans.
+    """
+    if not LOCALES.is_dir():
+        return "the required directory `ui/src/locales` is missing"
+    if not any(LOCALES.glob("*.ftl")):
+        return "`ui/src/locales` holds no `.ftl` bundle"
+    return None
+
+
 def census() -> int:
-    """Report whole-tree orphan candidates without blocking."""
+    """Report whole-tree orphan candidates without blocking.
+
+    Refuses BEFORE counting when the locale surface cannot be found at all; see
+    `hollow_root_reason()`. Exit 2, not 1 -- in this file 1 means a verdict was reached about
+    someone else's keys, and a tree with no bundles in it has produced no verdict.
+    """
+    hollow = hollow_root_reason()
+    if hollow:
+        print(f"error: cannot run --census here: {hollow} (looked under ROOT={ROOT}); nothing was "
+              f"counted, so this refusal is not an orphan verdict.", file=sys.stderr)
+        return 2
     names = set(declared_keys())
     owner = declared_keys()
     live = referenced(names)
