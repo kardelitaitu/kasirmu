@@ -111,12 +111,22 @@
   ```
 
 ### Phase 4.4: Extract Locations & System Mocks
-- [ ] Move location, legal-entity, regional-config, and memo command surface to `handlers/locations.ts`.
+- [x] Move memo, legal-entity, and cart-deduction command surface to `handlers/locations.ts`.
+  - Done as commit `de174f09b`. **10** literal entries extracted; memo state (`mockMemos`,
+    `MEMO_CADENCE`, etc.) and legal-entity state (`mockLegalEntities`) moved.
+  - Reassignment mutations converted to in-place updates to avoid ES-module import
+    immutability issues. `acknowledgeMockMemo` required a type cast (`as MockActiveMemo`).
+  - **Location profiles and regional config left in router**: `mockStores` is shared with
+    receipt/workspace mocks (Agent 3 fence) and cannot be moved without coordination.
+  - Three entries were misclassified by the keyword heuristic:
+    - `list_legal_entities_scoped` → unclassified
+    - `acknowledge_memo_scoped` → agent3_topology
+    - `list_authored_memos_scoped` → agent3_staff
 - [ ] Move session, feature, branding, org, hardware, backup, audit, and system command surface to `handlers/system.ts`.
-- [ ] Verify: `npm run typecheck`.
-- [ ] **Commit Milestone:**
+- [x] Verify: `npm run typecheck` — clean (only pre-existing `WorkspaceHome.tsx` errors).
+- [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(devmock-services): extract locations and system mock handlers"
+  git commit -m "refactor(dev-mock): extract memo and legal-entity handlers to locations.ts"
   ```
 
 ### Phase 4.5: Final Cleanup
@@ -130,10 +140,10 @@
   ```
 
 > **Arithmetic check.**
-> Original literal: 501 entries. Current literal: **194** entries.
-> Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) + KDS (–17) + analytics (–22) = 307 removed.
-> Remaining: agent 3 (–100) + agent 2 leftovers (–14) + locations (~–19) + system (~–59) = 192.
-> The 2-entry gap (194 vs 192) is the unclassified tail. After all extractions and cleanup,
-> < 200 lines is reachable.
+> Original literal: 501 entries. Current literal: **185** entries.
+> Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) + KDS (–17) + analytics (–22) + locations (–9) = 316 removed.
+> Remaining: agent 3 (–100) + agent 2 leftovers (–14) + system (~–59) + location profiles left in router (~–7) = 180.
+> The 5-entry gap (185 vs 180) is the unclassified tail + misclassifications. After all
+> extractions and cleanup, < 200 lines is reachable.
 >
-> `tauri-api.ts` currently **2,660** lines (was 3,905).
+> `tauri-api.ts` currently **2,375** lines (was 3,905).
