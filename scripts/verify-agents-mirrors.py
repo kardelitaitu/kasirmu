@@ -92,7 +92,41 @@ from pathlib import Path
 if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")  # type: ignore[attr-defined]
 
-DEFAULT_ROOT = Path(__file__).resolve().parent.parent
+# The root used when no path is given on the command line. Resolved through git FIRST:
+# the old constant was script-relative (Path(__file__).parent.parent), which is the
+# directory holding scripts/ -- right in a normal checkout and quietly WRONG in a worktree,
+# a copied script, or an installed copy, where it points at a tree that is not the repo at
+# all. A worker hit exactly that at 11:20 and had to pass repo_root explicitly to get a
+# meaningful run, which is the anchor defect: the default resolved to somewhere else and
+# the walk then came back empty. So git's own answer wins, and the script-relative path
+# survives only as the documented fallback for a machine where git cannot answer, with the
+# reason recorded in ROOT_SOURCE so no reader has to guess which root was walked.
+def _git_toplevel(cwd: Path) -> str | None:
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(cwd),
+                              capture_output=True, text=True, errors="replace", timeout=20)
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    return out or None
+
+
+def resolve_root(start: Path | None = None) -> tuple[Path, str]:
+    """(root, how it was chosen) -- git first, script-relative only when git is unavailable.
+
+    start defaults to this script's own directory, so the answer describes the tree the
+    checker was copied into, not whoever happens to have run it.
+    """
+    here = (start if start is not None else Path(__file__).resolve().parent)
+    top = _git_toplevel(here)
+    if top:
+        return Path(top), "git rev-parse --show-toplevel"
+    return here.parent, "script-relative fallback, git could not answer"
+
+
+DEFAULT_ROOT, ROOT_SOURCE = resolve_root()
 
 MIRRORS = ["AGENTS.md", ".agents/AGENTS.md"]
 
@@ -829,6 +863,24 @@ def scan(root: Path, head_hook_text: str | None = None,
     return problems
 
 
+ALWAYS_READ = ("Cargo.toml", HOOK_REL, ".githooks/commit-msg", *MIRRORS)
+
+
+def walk_counts(root: Path) -> dict:
+    """What this gate actually found to read under ROOT, as counts and named absences.
+
+    The point is a zero walk: read the wrong directory and every check returns nothing,
+    which is the same degeneracy the enumeration count exists to expose. Numbers with
+    their unit, and the missing paths spelled out, so nothing has to be inferred.
+    """
+    missing = [rel for rel in ALWAYS_READ if not (root / rel).is_file()]
+    wfs = len(list((root / ".github" / "workflows").glob("*.yml")))
+    skills = len(list((root / ".agents" / "skills").glob("*/SKILL.md")))
+    found = len(ALWAYS_READ) - len(missing)
+    return {"missing": missing, "total": len(ALWAYS_READ), "found": found,
+            "workflows": wfs, "skills": skills, "walked": found + wfs + skills}
+
+
 def report(root: Path) -> int:
     version = current_version(root)
     steps = hook_steps(root)
@@ -840,7 +892,19 @@ def report(root: Path) -> int:
         print(f"      step {ordinal:<2} {name}")
     print(f"    live workflows            : {', '.join(wfs) or '(none)'}")
     print(f"    commit types accepted     : {sorted(accepted_commit_types(root))}")
+    wc = walk_counts(root)
+    # Printed only when the walk is NOT whole, which is what makes a zero walk unable to
+    # read as clean. Today every policed path exists and both globs are non-empty, so this
+    # adds no byte to the output case 12 pinned; the moment the root is wrong -- the exact
+    # failure git-based resolution exists to prevent -- the number appears next to the
+    # missing paths and the reason this root was chosen.
+    if wc["missing"] or not wc["workflows"] or not wc["skills"]:
+        print(f"    files walked              : {wc['walked']} read, "
+              f"{len(wc['missing'])} of {wc['total']} policed paths missing "
+              f"[{', '.join(wc['missing']) or '-'}], workflows {wc['workflows']}, "
+              f"skills {wc['skills']}; root from {ROOT_SOURCE}")
     print()
+
     # Notices are the diverging-ground-truth channel: printed, never counted. A lane
     # mid-edit on the hook must not put a permanent red across the repo -- this file
     # already documents why an un-actionable red is worse than no red (dev-ci's advisory
@@ -994,11 +1058,25 @@ def self_test() -> int:
         rc = _self_test_cases()
     text = buf.getvalue()
     sys.stdout.write(text)
-    caught = text.count("CAUGHT ")
-    clean = text.count("CLEAN ")
-    red = text.count("MISSED ") + text.count("WRONG ")
+    # Counted per VERDICT LINE, by its leading word, not by substring occurrence. Substring
+    # counting is the attribution bug: "CAUGHT " and "CLEAN " also appear inside verdict
+    # MESSAGES (a MISSED line quoting the CLEAN expectation it never got would be counted
+    # green as well as red), and a count that can double-tally one print can just as easily
+    # lose one, which is how a tally of 28 met a suite of 29 in someone's terminal. Prefix
+    # matching makes the number the number of lines a reader can point at.
+    caught = clean = red = 0
+    for line in text.splitlines():
+        if line.startswith("  CAUGHT"):
+            caught += 1
+        elif line.startswith("  CLEAN"):
+            clean += 1
+        elif line.startswith("  MISSED") or line.startswith("  WRONG"):
+            red += 1
+    # The cases keep their own exit code; if the two ever disagree, the tally says so
+    # rather than quietly reporting a green that the suite did not compute.
+    disagree = "" if (red > 0) == (rc != 0) else f" (DISAGREES with rc {rc})"
     print(f"  count line: {caught + clean} green = {caught} CAUGHT + {clean} CLEAN; "
-          f"{red} red; exit {rc}")
+          f"{red} red; exit {rc}{disagree}")
     return rc
 
 
@@ -1480,6 +1558,72 @@ def _self_test_cases() -> int:
                       f"{expect_lines} notice line(s) reached stdout, "
                       f"{len(labelled)} labelled, rc {rc13}; "
                       f"lines={[l.strip()[:56] for l in noted[:2]]}")
+                bad += 1
+
+    # (14) HOW THE ROOT IS CHOSEN. The default used to be Path(__file__).parent.parent,
+    # which is the directory holding scripts/ -- right in a normal checkout and wrong in a
+    # worktree, a copied script, or an installed one, where the walk then reads a tree that
+    # is not the repo. git rev-parse --show-toplevel now decides, and the script-relative
+    # path survives only as a named fallback. The fixture makes the two answers DIFFER, so
+    # the case cannot pass by both paths happening to coincide.
+    with tempfile.TemporaryDirectory() as td:
+        nested = Path(td) / "repo" / "sub" / "scripts"
+        nested.mkdir(parents=True)
+        gitdir = Path(td) / "repo"
+        init = subprocess.run(["git", "init", "-q", str(gitdir)],
+                              capture_output=True, text=True)
+        top = _git_toplevel(nested)
+        # What the OLD constant would have answered for a script living here: one level up
+        # from the script's own directory. Deliberately NOT the git toplevel, so the case
+        # cannot pass by both answers coinciding.
+        script_answer = nested.parent
+        if init.returncode != 0 or top is None:
+            print("  WRONG git resolution: cannot build a throwaway repo to test against -- "
+                  "the case controls nothing")
+            bad += 1
+        else:
+            via_git, how = resolve_root(nested)
+            if via_git == Path(top) and "rev-parse" in how and via_git != script_answer:
+                print(f"  CAUGHT  {MIRRORS[0]:20s} git toplevel wins over script-relative "
+                      f"({script_answer.relative_to(gitdir)} != "
+                      f"{via_git.relative_to(gitdir) if str(via_git).startswith(str(gitdir)) else via_git.name})")
+            else:
+                print(f"  MISSED  {MIRRORS[0]:20s} root did not come from git: {via_git} "
+                      f"via {how}; script-relative would be {script_answer}")
+                bad += 1
+
+    # (15) A ZERO WALK CANNOT READ AS CLEAN. walk_counts names what it could not find, and
+    # report prints the tally whenever the walk is not whole. Both sides: a root missing its
+    # policed paths says so with numbers, an intact one stays silent so the pinned output
+    # stays pinned.
+    for desc, break_root, expect_line in (
+        ("three policed paths deleted", True, True),
+        ("intact fixture", False, False),
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            make_fixture(src, tmp)
+            if break_root:
+                for rel in (HOOK_REL, MIRRORS[0], MIRRORS[1]):
+                    (tmp / rel).unlink(missing_ok=True)
+            wc15 = walk_counts(tmp)
+            out15 = io.StringIO()
+            with contextlib.redirect_stdout(out15):
+                report(tmp)
+            got = [l for l in out15.getvalue().splitlines() if "files walked" in l]
+            counted = expect_line and wc15["missing"] and wc15["walked"] > 0
+            if bool(got) == expect_line and (not expect_line or counted):
+                if expect_line:
+                    print(f"  CAUGHT  {MIRRORS[0]:20s} {desc} -- {len(wc15['missing'])} of "
+                          f"{wc15['total']} policed paths named missing, {wc15['walked']} "
+                          f"read, printed on stdout")
+                else:
+                    print(f"  CLEAN   {MIRRORS[0]:20s} {desc} -- no walk line, output "
+                          "unchanged")
+            else:
+                print(f"  MISSED  {MIRRORS[0]:20s} {desc} -- walk line present={bool(got)} "
+                      f"expected={expect_line}, missing={wc15['missing']}, "
+                      f"walked={wc15['walked']}, lines={[l.strip()[:56] for l in got]}")
                 bad += 1
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
