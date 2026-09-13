@@ -10587,3 +10587,47 @@ other lanes' (restaurant's tooltip drift x2; devmock's version test
 grepping a line its own split relocated). Nothing was pushed - standing
 rule.
 
+
+## 2026-09-14 - payment agents-5: the checkout finally reads its own config (R1+R2+R3)
+
+Five commits closed the ranked remainder of the payment epic's
+absorption inventory: `09eec83868` (manual QRIS confirms only when a
+cashier asserts it - the 8-second setTimeout that minted real sales
+behind fake confirmation is gone), `eadffb4e0c` (the 43-box master
+backlog decomposed against HEAD, R1-R6 ranked), `bffcbda97a` (R1:
+`useLocalPaymentRails` gates the QRIS tab and EDC button on the
+slice-6 rail store, fail-open by contract), `903b30a718` (R2: the
+441-cell pseudo-QR deleted, merchant static EMVCo payload lives in the
+qris rail's parameters, editable in settings, rendered by the real
+encoder; unconfigured says so plainly), `3d50b3ac5a` + `95ed37afae`
+(R3: the private substring scan replaced by delegation to the shared
+boundary classifier).
+
+Three premise corrections, each recorded where the wrong claim stands
+rather than edited away: the master doc's `payment:qris-manual/:midtrans/:edc`
+feature keys never existed in code (the rail store is the real surface);
+"online-capable" from the visibleMethods formula is unimplementable
+today because no online signal exists in the UI (measured - left open,
+named); R3's own inventory text *understated* the plumbing - both
+clients already reject typed `{kind, subKind, message}`, the tested
+shared classifier simply had zero screen consumers while the checkout
+kept a worse private answer to the same question.
+
+Two tests died on their own premises before shipping and both are worth
+remembering: the rails hook trusted IPC to return arrays (a test default
+answered `{}`, `rails.find` exploded - response validation made
+fail-open real), and a real-QR assertion was written inside the file
+that MOCKS the component (rewritten to what that harness can actually
+observe - the payload reaching props). And one deletion note: 'try again'
+was deliberately NOT migrated into the shared retry vocabulary - it
+appears in this module's own non-retryable user copy, so the old scanner
+once offered Retry on the strength of its own fallback text.
+
+Gates at close: payment battery 100/100, app-error 19/19, compliance
+quartet 202/202 (storage pins green again - the lane that broke them
+fixed them), typecheck clean beyond the devmock lane's live files,
+eslint 0, bundle parity 0 missing (2 new keys both-sided). Remaining
+ranked boxes are all blocked on external facts, not on code: R4 wants a
+second real terminal, R5 wants a design doc first, R6 wants sandbox
+credentials. Branch 0.0.37 is 15+ commits ahead of origin. Nothing was
+pushed - standing rule.
