@@ -61,6 +61,7 @@ settings-nav-security-account = Keamanan & Akun
 settings-nav-data-sync = Data & Sinkronisasi
 settings-nav-data-management = Manajemen Data
 settings-nav-sync-status = Status Sinkronisasi
+settings-nav-sync-conflicts = Konflik Sinkronisasi
 settings-nav-offline-queue = Antrean Offline
 settings-nav-tax-configuration = Konfigurasi Pajak
 settings-nav-exchange-rates = Kurs Valuta Asing

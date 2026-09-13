@@ -9,6 +9,13 @@ sync-conflicts-show-resolved = Show resolved history
 sync-conflicts-loading = Loading…
 sync-conflicts-empty = No conflicts to review.
 
+# Operational copy for failure paths. These keys reach the bundle via
+# `l10nErrorMessage(…, 'sync-conflicts-error-*')` and `getString`, never as a
+# <Localized id>, so the orphan gate matches them on their string literal.
+sync-conflicts-error-load = Failed to load conflicts.
+sync-conflicts-error-resolve = Failed to record the resolution.
+sync-conflicts-resolved-elsewhere = This conflict was already resolved elsewhere. Refreshing.
+
 # Severity filter tabs. The vocabulary mirrors the `severity` CHECK constraint
 # on `sync_conflicts`; renaming one here without renaming the column value
 # would leave a tab that filters to nothing.

@@ -10,8 +10,13 @@ import {
   type SyncConflictDto,
 } from '@/api/syncConflicts';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { l10nErrorMessage } from '@/utils/app-error';
 
 import { ConflictDiffViewer } from './components/ConflictDiffViewer';
+
+// Shared hub scaffold styling — the screen mounts inside the settings
+// placeholder section like every other page in the flat IA.
+import '@/features/settings/screens/screens-placeholder.css';
 
 // ── Sync conflict review ──────────────────────────────────────────
 //
@@ -58,12 +63,12 @@ export function SyncConflictReviewScreen() {
       const rows = await listSyncConflictsScoped(sessionToken, args);
       setConflicts(rows ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(l10nErrorMessage(e, l10n, 'sync-conflicts-error-load'));
       setConflicts([]);
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, severity, showResolved]);
+  }, [l10n, sessionToken, severity, showResolved]);
 
   useEffect(() => {
     void load();
@@ -89,16 +94,20 @@ export function SyncConflictReviewScreen() {
           // Not an error to retry blindly: another terminal may have resolved
           // the same row first.
           setError(
-            'This conflict was already resolved elsewhere. Refreshing.',
+            l10n.getString(
+              'sync-conflicts-resolved-elsewhere',
+              null,
+              'This conflict was already resolved elsewhere. Refreshing.',
+            ),
           );
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(l10nErrorMessage(e, l10n, 'sync-conflicts-error-resolve'));
       } finally {
         setBusyId(null);
       }
     },
-    [load, sessionToken],
+    [l10n, load, sessionToken],
   );
 
   const rows = useMemo(
@@ -107,31 +116,36 @@ export function SyncConflictReviewScreen() {
   );
 
   return (
-    <div className="sync-conflict-review" data-testid="sync-conflict-review">
-      <header className="sync-conflict-review__head">
-        <Localized id="sync-conflicts-title">
-          <h2>Sync Conflicts</h2>
-        </Localized>
-        {/* Localized must wrap the text node, not the <label>: with a plain
-            string translation @fluent/react replaces ALL of the wrapped
-            element's children, which silently unmounted the checkbox and
-            made the audit-trail view unreachable. */}
-        <label
-          className="sync-conflict-review__toggle"
-          htmlFor="sync-conflicts-show-resolved-toggle"
-        >
-          <input
-            id="sync-conflicts-show-resolved-toggle"
-            type="checkbox"
-            checked={showResolved}
-            onChange={(e) => setShowResolved(e.target.checked)}
-            aria-label={l10n.getString('sync-conflicts-show-resolved')}
-          />
-          <Localized id="sync-conflicts-show-resolved">
-            <span>Show resolved history</span>
-          </Localized>
-        </label>
-      </header>
+    // The Settings hub's IA sweep (SettingsPage.test.tsx) requires every
+    // section body to mount inside the shared placeholder scaffold with an
+    // h1 titled by its `settings-nav-*` label — the same shape a migrated
+    // screen like BusinessDefaultsScreen uses. Review content sits inside it.
+    <section className="settings-screen-placeholder">
+      <h1 className="settings-screen-placeholder-title">
+        <Localized id="settings-nav-sync-conflicts">Sync Conflicts</Localized>
+      </h1>
+      <div className="sync-conflict-review" data-testid="sync-conflict-review">
+        <header className="sync-conflict-review__head">
+          {/* Localized must wrap the text node, not the <label>: with a plain
+              string translation @fluent/react replaces ALL of the wrapped
+              element's children, which silently unmounted the checkbox and
+              made the audit-trail view unreachable. */}
+          <label
+            className="sync-conflict-review__toggle"
+            htmlFor="sync-conflicts-show-resolved-toggle"
+          >
+            <input
+              id="sync-conflicts-show-resolved-toggle"
+              type="checkbox"
+              checked={showResolved}
+              onChange={(e) => setShowResolved(e.target.checked)}
+              aria-label={l10n.getString('sync-conflicts-show-resolved')}
+            />
+            <Localized id="sync-conflicts-show-resolved">
+              <span>Show resolved history</span>
+            </Localized>
+          </label>
+        </header>
 
       {/* `div`, not `nav`: jsx-a11y rejects an interactive role on a
           landmark element, and the tablist needs an accessible name. */}
@@ -180,7 +194,13 @@ export function SyncConflictReviewScreen() {
           </li>
         ))}
       </ul>
-    </div>
+      </div>
+      <p className="settings-screen-placeholder-note">
+        <Localized id="settings-screen-migrating">
+          Existing settings content will move here selectively.
+        </Localized>
+      </p>
+    </section>
   );
 }
 

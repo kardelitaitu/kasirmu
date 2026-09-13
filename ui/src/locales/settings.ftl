@@ -252,6 +252,7 @@ settings-nav-security-account = Security & Account
 settings-nav-data-sync = Data & Sync
 settings-nav-data-management = Data Management
 settings-nav-sync-status = Sync Status
+settings-nav-sync-conflicts = Sync Conflicts
 settings-nav-offline-queue = Offline Queue
 settings-nav-tax-configuration = Tax Configuration
 settings-nav-exchange-rates = Exchange Rates

@@ -10,6 +10,10 @@ sync-conflicts-show-resolved = Tampilkan riwayat yang sudah diselesaikan
 sync-conflicts-loading = Memuat…
 sync-conflicts-empty = Tidak ada konflik untuk ditinjau.
 
+sync-conflicts-error-load = Gagal memuat konflik.
+sync-conflicts-error-resolve = Gagal mencatat keputusan resolusi.
+sync-conflicts-resolved-elsewhere = Konflik ini sudah diselesaikan di terminal lain. Memuat ulang.
+
 # Tab filter tingkat keparahan. Kosakatanya mengikuti constraint CHECK
 # `severity` pada tabel `sync_conflicts`; mengubah salah satunya di sini tanpa
 # mengubah nilai kolomnya akan menghasilkan tab yang selalu kosong.

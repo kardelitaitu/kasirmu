@@ -202,6 +202,7 @@ const NAV_L10N_KEYS: Record<string, string> = {
   'data-sync': 'settings-nav-data-sync',
   'data-management': 'settings-nav-data-management',
   'sync-status': 'settings-nav-sync-status',
+  'sync-conflicts': 'settings-nav-sync-conflicts',
   'offline-queue': 'settings-nav-offline-queue',
   'tax-configuration': 'settings-nav-tax-configuration',
   'exchange-rates': 'settings-nav-exchange-rates',
