@@ -111,14 +111,13 @@ async fn receipts(ctx: &Ctx) -> Vec<(String, Option<String>)> {
     let mut stmt = db
         .prepare("SELECT sale_id, key FROM sale_idempotency ORDER BY sale_id")
         .unwrap();
-    let rows = stmt
-        .query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
-        })
-        .unwrap()
-        .collect::<Result<Vec<_>, rusqlite::Error>>()
-        .unwrap();
-    rows
+
+    stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+    })
+    .unwrap()
+    .collect::<Result<Vec<_>, rusqlite::Error>>()
+    .unwrap()
 }
 
 // ────────────────────── The matrix ──────────────────────

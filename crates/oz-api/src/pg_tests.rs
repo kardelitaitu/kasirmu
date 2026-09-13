@@ -1971,6 +1971,12 @@ fn validate_tax_rate_write_rounding_mode_boundaries() {
 /// the two chunked sites actually run — placeholder numbering, parameters bound
 /// per statement, and the total — rather than by a fixture that cannot execute
 /// here.
+// The chunk/ceiling comparison below has constant operands on purpose:
+// `clippy::assertions_on_constants` would rather see `const { assert!(..) }`,
+// but the compile-time guard already lives in `pg.rs` and this line exists so a
+// *test run* fails too. The level sits on the function because, as a statement
+// attribute on `assert!` itself, rustc reports `unused_attribute`.
+#[allow(clippy::assertions_on_constants)]
 #[test]
 fn pg_in_chunking_survives_a_list_longer_than_the_chunk() {
     // THE INVARIANT, pinned directly: raising `PG_IN_CHUNK` past the ceiling fails
