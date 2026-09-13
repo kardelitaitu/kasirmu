@@ -290,6 +290,14 @@ pub const ALL: &[Migration] = &[
         id: "20261002_sync_conflicts.sql",
         sql: include_str!("../migrations/20261002_sync_conflicts.sql"),
     },
+    // Server-side version vector per entity: the "what have we already seen"
+    // half of a concurrency comparison. Concurrency is a property of a pair of
+    // mutations, so it cannot be decided from the pushed item alone. Date
+    // 20261003 sorts last and only creates a new table.
+    Migration {
+        id: "20261003_sync_entity_vectors.sql",
+        sql: include_str!("../migrations/20261003_sync_entity_vectors.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

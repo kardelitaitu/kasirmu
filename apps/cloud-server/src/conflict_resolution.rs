@@ -269,6 +269,83 @@ pub fn fields_are_disjoint(local: &Value, remote: &Value) -> bool {
     overlapping_fields(local, remote).is_empty()
 }
 
+/// Payload field carrying the sender's version vector.
+pub const VECTOR_FIELD: &str = "_vector";
+
+/// Payload field carrying the sending terminal's id.
+pub const TERMINAL_FIELD: &str = "_terminal";
+
+/// Read the version vector a peer attached to a pushed payload.
+///
+/// Absent means the peer predates vector support; that is a skip, not an
+/// error, and deliberately cannot be faked into a vector — inventing one
+/// would fabricate a causal history we cannot justify.
+pub fn extract_vector(payload: &str) -> Option<VersionVector> {
+    let value: Value = serde_json::from_str(payload).ok()?;
+    serde_json::from_value(value.get(VECTOR_FIELD)?.clone()).ok()
+}
+
+/// Read the sending terminal id from a pushed payload.
+pub fn extract_terminal(payload: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(payload).ok()?;
+    value.get(TERMINAL_FIELD)?.as_str().map(str::to_string)
+}
+
+/// The entity a payload refers to.
+///
+/// Checks `entity_id`, then `id`, then falls back to the queue item's own id.
+/// A payload with neither field still has to be comparable, and the item id is
+/// the only stable thing left — it is wrong to conflate two different
+/// entities, but worse to silently skip detection for one.
+pub fn entity_id_of(payload: &str, fallback: &str) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(payload) else {
+        return fallback.to_string();
+    };
+    value
+        .get("entity_id")
+        .or_else(|| value.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+/// Build the conflict row to persist for a flagged divergence.
+///
+/// `local_*` is the stored side and `remote_*` the incoming one, matching the
+/// column names in `sync_conflicts`. The payloads are stored verbatim and
+/// never interpreted — in particular never summed — because a conflict on a
+/// money entity is exactly the case where combining the two sides would
+/// invent value that neither write authorised.
+pub fn build_conflict_row(
+    id: &str,
+    tenant_id: &str,
+    entity_type: &str,
+    entity_id: &str,
+    local_terminal_id: &str,
+    local_vector: &VersionVector,
+    remote_vector: &VersionVector,
+    local_payload: &str,
+    remote_payload: &str,
+) -> SyncConflictRow {
+    SyncConflictRow {
+        id: id.to_string(),
+        tenant_id: tenant_id.to_string(),
+        entity_type: entity_type.to_string(),
+        entity_id: entity_id.to_string(),
+        local_terminal_id: local_terminal_id.to_string(),
+        local_vector: serde_json::to_string(local_vector).unwrap_or_else(|_| "{}".to_string()),
+        remote_vector: serde_json::to_string(remote_vector).unwrap_or_else(|_| "{}".to_string()),
+        local_payload: local_payload.to_string(),
+        remote_payload: remote_payload.to_string(),
+        severity: severity_for(entity_type).as_str().to_string(),
+        status: "open".to_string(),
+        resolution: None,
+        resolved_by: None,
+        resolved_at: None,
+        created_at: String::new(),
+    }
+}
+
 /// A total, symmetric order over two concurrent vectors.
 ///
 /// Concurrency means neither dominates, so a last-writer-wins policy needs an

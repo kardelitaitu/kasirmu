@@ -418,6 +418,7 @@ RLS_TABLES = [
     "sent_reports",
     "stripe_customers",
     "sync_conflicts",
+    "sync_entity_vectors",
     "sync_terminals",
     "tax_rates",
     "tenant_plans",

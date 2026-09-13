@@ -4,8 +4,8 @@ use platform_sync::crdt::VersionVector;
 use serde_json::{Value, json};
 
 use super::{
-    ConflictCandidate, Decision, MergePolicy, Severity, classify, fields_are_disjoint,
-    overlapping_fields, policy_for, severity_for, tie_break,
+    ConflictCandidate, Decision, MergePolicy, Severity, classify, entity_id_of, extract_terminal,
+    extract_vector, fields_are_disjoint, overlapping_fields, policy_for, severity_for, tie_break,
 };
 
 /// Build a vector from `(terminal, counter)` pairs.
@@ -266,6 +266,48 @@ fn a_customer_conflict_without_payloads_is_flagged_not_merged() {
             severity: Severity::Medium
         }
     );
+}
+
+#[test]
+fn a_vector_is_extracted_from_a_peer_payload() {
+    let mut v = VersionVector::new();
+    v.tick("t1");
+    let payload = json!({"sku": "SKU-A", "_vector": v, "_terminal": "t1"});
+
+    assert_eq!(extract_vector(&payload.to_string()), Some(v));
+    assert_eq!(
+        extract_terminal(&payload.to_string()).as_deref(),
+        Some("t1")
+    );
+}
+
+#[test]
+fn a_payload_without_a_vector_yields_none_rather_than_a_guess() {
+    // An older peer omits the field. Fabricating a vector would invent a
+    // causal history, so detection must skip the item instead.
+    let payload = json!({"sku": "SKU-A"});
+    assert_eq!(extract_vector(&payload.to_string()), None);
+    assert_eq!(extract_terminal(&payload.to_string()), None);
+
+    assert_eq!(extract_vector("not json at all"), None);
+    assert_eq!(extract_vector("{}"), None);
+}
+
+#[test]
+fn entity_id_prefers_entity_id_then_id_then_fallback() {
+    assert_eq!(
+        entity_id_of(
+            &json!({"entity_id": "e1", "id": "i1"}).to_string(),
+            "fallback"
+        ),
+        "e1"
+    );
+    assert_eq!(
+        entity_id_of(&json!({"id": "i1"}).to_string(), "fallback"),
+        "i1"
+    );
+    assert_eq!(entity_id_of(&json!({}).to_string(), "fallback"), "fallback");
+    assert_eq!(entity_id_of("not json", "fallback"), "fallback");
 }
 
 #[test]

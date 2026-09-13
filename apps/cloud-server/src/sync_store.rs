@@ -37,10 +37,14 @@ use deadpool_postgres::Pool;
 use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
-use crate::conflict_resolution::SyncConflictRow;
+use crate::conflict_resolution::{
+    ConflictCandidate, Decision, SyncConflictRow, build_conflict_row, classify, entity_id_of,
+    extract_terminal, extract_vector,
+};
 
 use oz_core::TenantPlan;
 use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
+use platform_sync::crdt::VersionVector;
 use platform_sync::transport::PushOutcome;
 
 /// Maximum rows per multi-row INSERT statement.
@@ -184,6 +188,44 @@ impl SyncStore {
         if items.is_empty() {
             return Ok(Vec::new());
         }
+
+        // Conflict detection runs BEFORE the insert, and its failures are
+        // logged and swallowed: detection is best-effort metadata work, and a
+        // detection error must never cost the tenant their pushed data. Items
+        // without a vector (peers that predate vector support) are skipped
+        // rather than guessed at.
+        for item in items {
+            let Some(vector) = extract_vector(&item.payload) else {
+                continue;
+            };
+            let entity_id = entity_id_of(&item.payload, &item.id);
+            let terminal = extract_terminal(&item.payload).unwrap_or_else(|| "unknown".to_string());
+            match self
+                .detect_conflict(
+                    tenant_id,
+                    &item.action,
+                    &entity_id,
+                    &vector,
+                    &item.payload,
+                    &terminal,
+                )
+                .await
+            {
+                Ok(Some(Decision::Flag { severity })) => {
+                    tracing::warn!(
+                        action = %item.action,
+                        entity_id = %entity_id,
+                        severity = severity.as_str(),
+                        "concurrent sync mutation flagged for review"
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("conflict detection failed for {}: {e}", item.id);
+                }
+            }
+        }
+
         match self {
             Self::Sqlite(conn) => {
                 let conn = conn.lock().await;
@@ -1399,6 +1441,229 @@ impl SyncStore {
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(changed > 0)
+            }
+        }
+    }
+}
+
+impl SyncStore {
+    /// Compare an incoming mutation against the stored vector for its entity and
+    /// act on the result.
+    ///
+    /// This is the call that makes conflict detection real: without it the
+    /// classification policy is never exercised and `sync_conflicts` stays empty.
+    ///
+    /// Returns `None` when the item carries no vector. That is a deliberate skip,
+    /// not an error — a peer that predates vector support pushes items without
+    /// one, and inventing a vector for it would fabricate a history we cannot
+    /// justify. Such items apply as they always have.
+    ///
+    /// On [`Decision::Flag`] the row is persisted. On every decision except
+    /// [`Decision::Stale`] the stored vector is advanced to the pointwise maximum
+    /// of both, so the next comparison sees everything observed so far. A stale
+    /// item is dropped without touching stored state, because it adds nothing.
+    pub async fn detect_conflict(
+        &self,
+        tenant_id: &str,
+        entity_type: &str,
+        entity_id: &str,
+        incoming: &VersionVector,
+        incoming_payload: &str,
+        local_terminal_id: &str,
+    ) -> Result<Option<Decision>, String> {
+        let stored = self
+            .load_entity_vector(tenant_id, entity_type, entity_id)
+            .await?;
+        let stored_payload = self
+            .load_entity_payload(tenant_id, entity_type, entity_id)
+            .await?;
+
+        let empty = VersionVector::new();
+        let stored_vector = stored.as_ref().unwrap_or(&empty);
+
+        // Parse both bodies. An unparseable body is treated as absent rather than
+        // as an empty object: the field-wise policy then fails closed and flags,
+        // instead of concluding "no fields overlap" from a body it could not read.
+        let stored_value: Option<serde_json::Value> = stored_payload
+            .as_deref()
+            .and_then(|raw| serde_json::from_str(raw).ok());
+        let incoming_value: Option<serde_json::Value> = serde_json::from_str(incoming_payload).ok();
+
+        let decision = classify(&ConflictCandidate {
+            entity_type,
+            stored: stored_vector,
+            incoming,
+            stored_payload: stored_value.as_ref(),
+            incoming_payload: incoming_value.as_ref(),
+        });
+
+        match decision {
+            Decision::Flag { .. } => {
+                let row = build_conflict_row(
+                    &uuid::Uuid::now_v7().to_string(),
+                    tenant_id,
+                    entity_type,
+                    entity_id,
+                    local_terminal_id,
+                    stored_vector,
+                    incoming,
+                    stored_payload.as_deref().unwrap_or(""),
+                    incoming_payload,
+                );
+                self.insert_conflict(&row).await?;
+            }
+            Decision::Stale => return Ok(Some(decision)),
+            _ => {}
+        }
+
+        if !matches!(decision, Decision::Stale) {
+            let mut merged = stored_vector.clone();
+            merged.observe(incoming);
+            self.save_entity_vector(tenant_id, entity_type, entity_id, &merged, incoming_payload)
+                .await?;
+        }
+
+        Ok(Some(decision))
+    }
+
+    /// Load the stored version vector for an entity (`None` if unseen).
+    async fn load_entity_vector(
+        &self,
+        tenant_id: &str,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Option<VersionVector>, String> {
+        match self {
+            Self::Sqlite(conn) => {
+                let conn = conn.lock().await;
+                let json: Option<String> = conn
+                    .query_row(
+                        "SELECT vector FROM sync_entity_vectors
+                      WHERE tenant_id = ?1 AND entity_type = ?2 AND entity_id = ?3",
+                        params![tenant_id, entity_type, entity_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(None);
+                Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
+            }
+            Self::Postgres(pool) => {
+                let client = pool.get().await.map_err(|e| e.to_string())?;
+                let stmt = client
+                    .prepare_cached(
+                        "SELECT vector FROM sync_entity_vectors
+                      WHERE tenant_id = $1 AND entity_type = $2 AND entity_id = $3",
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let rows = client
+                    .query(
+                        &stmt,
+                        &[
+                            &tenant_id.to_string(),
+                            &entity_type.to_string(),
+                            &entity_id.to_string(),
+                        ],
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let json: Option<String> = rows.first().map(|r| r.get(0));
+                Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
+            }
+        }
+    }
+
+    /// Load the last payload seen for an entity (`None` if unseen).
+    async fn load_entity_payload(
+        &self,
+        tenant_id: &str,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Option<String>, String> {
+        match self {
+            Self::Sqlite(conn) => {
+                let conn = conn.lock().await;
+                Ok(conn
+                    .query_row(
+                        "SELECT last_payload FROM sync_entity_vectors
+                      WHERE tenant_id = ?1 AND entity_type = ?2 AND entity_id = ?3",
+                        params![tenant_id, entity_type, entity_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(None))
+            }
+            Self::Postgres(pool) => {
+                let client = pool.get().await.map_err(|e| e.to_string())?;
+                let stmt = client
+                    .prepare_cached(
+                        "SELECT last_payload FROM sync_entity_vectors
+                      WHERE tenant_id = $1 AND entity_type = $2 AND entity_id = $3",
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let rows = client
+                    .query(
+                        &stmt,
+                        &[
+                            &tenant_id.to_string(),
+                            &entity_type.to_string(),
+                            &entity_id.to_string(),
+                        ],
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(rows.first().map(|r| r.get(0)))
+            }
+        }
+    }
+
+    /// Upsert the merged vector and latest payload for an entity.
+    async fn save_entity_vector(
+        &self,
+        tenant_id: &str,
+        entity_type: &str,
+        entity_id: &str,
+        vector: &VersionVector,
+        payload: &str,
+    ) -> Result<(), String> {
+        let json = serde_json::to_string(vector).unwrap_or_else(|_| "{}".to_string());
+        match self {
+            Self::Sqlite(conn) => {
+                let conn = conn.lock().await;
+                conn.execute(
+                    "INSERT INTO sync_entity_vectors
+                    (tenant_id, entity_type, entity_id, vector, last_payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (tenant_id, entity_type, entity_id)
+                 DO UPDATE SET vector = excluded.vector,
+                               last_payload = excluded.last_payload,
+                               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+                    params![tenant_id, entity_type, entity_id, json, payload],
+                )
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+            }
+            Self::Postgres(pool) => {
+                let client = pool.get().await.map_err(|e| e.to_string())?;
+                client
+                    .execute(
+                        "INSERT INTO sync_entity_vectors
+                        (tenant_id, entity_type, entity_id, vector, last_payload)
+                     VALUES ($1, $2, $3, $4, $5)
+                     ON CONFLICT (tenant_id, entity_type, entity_id)
+                     DO UPDATE SET vector = excluded.vector,
+                                   last_payload = excluded.last_payload,
+                                   updated_at = now()",
+                        &[
+                            &tenant_id.to_string(),
+                            &entity_type.to_string(),
+                            &entity_id.to_string(),
+                            &json,
+                            &payload.to_string(),
+                        ],
+                    )
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
             }
         }
     }

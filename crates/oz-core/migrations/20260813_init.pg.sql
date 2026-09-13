@@ -574,6 +574,21 @@ CREATE TABLE IF NOT EXISTS sync_conflicts (
     created_at        TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 );
 
+CREATE TABLE IF NOT EXISTS sync_entity_vectors (
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    entity_type TEXT NOT NULL,
+    entity_id   TEXT NOT NULL,
+    vector      TEXT NOT NULL,
+    -- Last body seen for this entity. Kept so the field-wise merge policy can
+    -- tell whether two concurrent customer edits touched the same fields;
+    -- without it every such comparison would have to be answered "overlap"
+    -- and every profile conflict would need a human. Not a payload store of
+    -- record: `offline_queue` remains that.
+    last_payload TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (tenant_id, entity_type, entity_id)
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -2193,8 +2208,8 @@ BEGIN
     FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'locations', 'media_assets', 'media_thumbnails', 'memo_locations',
                             'memo_recipients', 'memos', 'offline_queue', 'payment_gateways', 'payment_settlements', 'product_activity',
                             'product_bundles', 'product_taxes', 'product_variants', 'products', 'refunds', 'sale_idempotency',
-                            'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_terminals',
-                            'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
+                            'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors',
+                            'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (
