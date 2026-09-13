@@ -42,8 +42,10 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import re
 import sys
+import time
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -315,6 +317,22 @@ def load_allowlist() -> dict:
     return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
 
 
+class AllowlistBusyError(RuntimeError):
+    """The target would not accept the rename, so nothing was written."""
+
+
+# Every reader of this file is bare: .github/workflows/dev-ci.yml:590, scripts/check.sh:56
+# and scripts/run-pre-push.py:107, that last one sitting in every agent's push path. A
+# reader needs no cooperation from those scripts -- it only needs the file to never be
+# half-there, which is what the rename below buys.
+ALLOWLIST_READER_CALL_SITES = (".github/workflows/dev-ci.yml:590", "scripts/check.sh:56",
+                               "scripts/run-pre-push.py:107")
+
+# Rename retries: 200 tries at 10 ms is about two seconds of patience with a reader.
+REPLACE_ATTEMPTS = 200
+REPLACE_RETRY_SECONDS = 0.01
+
+
 def write_allowlist_payload(payload: dict) -> None:
     """The ONE way this gate writes the allowlist file: LF endings, UTF-8, no escapes.
 
@@ -337,12 +355,58 @@ def write_allowlist_payload(payload: dict) -> None:
     dumping without it, so --write-allowlist and --write-scoped-orphans each re-emitted
     those comments as \u2014 escapes: a real text change dressed up as a reseed. One
     helper, one shape, so a fourth writer cannot pick the wrong pair of arguments.
+
+    Third job of this helper, and the reason it renames rather than writes: the file must
+    never be observable half-built. write_text is open, truncate, write -- three steps with a
+    window in the middle -- and three bare readers poll this path (.github/workflows/
+    dev-ci.yml:590, scripts/check.sh:56, scripts/run-pre-push.py:107, the last one in every
+    agent's push path). Measured with a writer loop in one process and a json.loads reader in
+    another, against a copy of the real payload: 1,227 of 5,607 reads failed under
+    write_text (21.9 percent), every failure a JSONDecodeError rather than a sharing
+    violation, dying in load_allowlist long before the validator could name anything. Same
+    harness and the rename below: no failed reads at all -- but only after a second Windows
+    detail was handled. A reader holding the file open makes os.replace fail with
+    PermissionError [WinError 5], measured on the first attempt at this change: the writer
+    died with a traceback while the reader stayed clean, which trades a torn read for a lost
+    write. Renaming onto a busy target is retried for a couple of seconds, and a reader holds
+    the file for microseconds, so in practice the retry costs one sleep. If the target is busy
+    past the ceiling the temp is removed, AllowlistBusyError is raised with a sentence in it,
+    and the writer turns that into a refusal -- the previous file stays exactly as it was,
+    which is the property that made the rename worth having: a failed write cannot leave
+    anything half-built, and cannot corrupt what was already there.
     """
-    ALLOWLIST_PATH.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", newline="\n", delete=False,
+        dir=str(ALLOWLIST_PATH.parent), prefix=ALLOWLIST_PATH.name + ".", suffix=".tmp")
+    tmp_path = Path(tmp.name)
+    try:
+        with tmp:
+            tmp.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        for attempt in range(REPLACE_ATTEMPTS):
+            try:
+                os.replace(tmp_path, ALLOWLIST_PATH)
+                return
+            except PermissionError:
+                # Windows denies a rename onto a file another process has open. Retry: the
+                # open is a read of a 15 KB file, so it clears in microseconds, and the
+                # alternative -- write_text -- is the window that started this.
+                if attempt + 1 == REPLACE_ATTEMPTS:
+                    raise
+                time.sleep(REPLACE_RETRY_SECONDS)
+    except BaseException:
+        # A half-written sibling in the same directory as the file is its own small hazard.
+        tmp_path.unlink(missing_ok=True)
+        if isinstance(sys.exc_info()[1], PermissionError):
+            raise AllowlistBusyError(
+                f"{ALLOWLIST_PATH.name} is held open by another process and would not accept "
+                f"the rename after {REPLACE_ATTEMPTS} tries; nothing was written and the file "
+                f"on disk is unchanged. Readers of this path: "
+                + ", ".join(ALLOWLIST_READER_CALL_SITES)
+            ) from None
+        raise
 
 
 # An entry written as an object instead of a bare name. Named once so every message this
@@ -355,6 +419,9 @@ EXTERNALLY_READ_SECTIONS = ("desktop", "tablet")
 
 # Sections this gate is willing to read in either shape.
 OBJECT_ALLOWED_SECTIONS = ("dev_mock", "scoped_orphans")
+
+# Everything this file enforces, in the order the messages should list it.
+KNOWN_SECTIONS = (*EXTERNALLY_READ_SECTIONS, *OBJECT_ALLOWED_SECTIONS)
 
 
 def allowlist_shape_problems(payload: dict, path) -> list[str]:
@@ -387,6 +454,29 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
     """
     problems: list[str] = []
     name = getattr(path, "name", str(path))
+
+    # A top-level list is the one shape that used to make this function itself raise
+    # AttributeError -- the crash it exists to replace -- and an unknown section is quieter
+    # and worse: it is written back verbatim by every writer and enforces nothing, so a
+    # section typed "dev-mock" with a hyphen is a silent no-op allowlist that looks like a
+    # list of exemptions to anyone reading the file.
+    if not isinstance(payload, dict):
+        return [
+            f"{name} holds a {type(payload).__name__} at the top level, not an object with "
+            f"named sections. This gate reads "
+            f"{', '.join(chr(34) + s + chr(34) for s in KNOWN_SECTIONS)} and cannot point at "
+            f"an entry inside a {type(payload).__name__}."
+        ]
+    for key in payload:
+        if key in KNOWN_SECTIONS or str(key).startswith("_"):
+            continue
+        problems.append(
+            f'{name} has a top-level section "{key}" that this gate does not read, so every '
+            f"entry inside it enforces nothing. The only enforced sections are "
+            f"{', '.join(chr(34) + s + chr(34) for s in KNOWN_SECTIONS)}; a name differing "
+            f"from one of those by a hyphen or an underscore is a typo that silently allows "
+            f"everything it appears to allow."
+        )
 
     def why(section: str) -> str:
         if section in EXTERNALLY_READ_SECTIONS:
@@ -529,21 +619,79 @@ def merge_section_entries(raw_section, gaps, allow_objects: bool = True) -> list
     return [merged[name] for name in sorted(merged)]
 
 
-def write_dev_mock_gaps(gaps: list[str]) -> None:
+def update_allowlist(mutate, validated, label: str) -> list[str]:
+    """The ONE place the write path opens this file: read, compare, mutate, replace.
+
+    Returns sentences explaining why nothing was written; an empty list means it wrote.
+
+    Two failures are closed here. The first is ordering: main() validates the payload, runs a
+    sweep of roughly a third of a second, and then handed each writer a bare flag -- so every
+    writer re-read the file and serialised a payload nobody had ever validated. Measured: with
+    a clean file validated, a desktop object planted on disk during the sweep, and
+    --write-scoped-orphans run, the writer dutifully wrote the object section back out, and
+    the file came to rest in a shape this gate itself refuses, redding the next bare run in
+    whichever lane hit it. That is the class of bug this whole session has been closing,
+    arriving from the writer side.
+
+    The second is the reviewer's last-writer-wins demo: writer B lands an entry, writer A
+    overwrites it from an older snapshot, and nothing catches either one. Comparing what the
+    writer just read against what the run validated catches exactly that, which is why there
+    is no lock and no merge protocol here -- a refusal that names the race is enough, and it
+    is honest about being a refusal. A collision is rare and cheap to redo; a sealed-over edit
+    is invisible.
+    """
+    current = load_allowlist()
+    if validated is not None and current != validated:
+        return [
+            f"{label} did not write {ALLOWLIST_PATH.name}: the file changed after this run "
+            f"read and validated it, during the sweep between the two. Writing now would seal "
+            f"an edit nobody validated and possibly overwrite one somebody did. Re-run the "
+            f"command; if both edits are meant to exist, make them one edit."
+        ]
+    problems = allowlist_shape_problems(current, ALLOWLIST_PATH)
+    if problems:
+        return [
+            f"{label} did not write {ALLOWLIST_PATH.name}: what it just read is not a shape "
+            f"this gate accepts, and writing it back would make the problem permanent.",
+            *problems,
+        ]
+    payload = dict(current)
+    summary = mutate(payload)
+    try:
+        write_allowlist_payload(payload)
+    except AllowlistBusyError as busy:
+        return [f"{label} did not write {ALLOWLIST_PATH.name}: {busy}"]
+    if summary:
+        print(summary)
+    return []
+
+
+def report_write_refusals(refusals: list[str]) -> int:
+    """Print refusals in the gate's own convention, and say what to return."""
+    if not refusals:
+        return 0
+    print(f"\nFAIL: {len(refusals)} allowlist write problem(s):", file=sys.stderr)
+    for line in refusals:
+        print(f"  - {line}", file=sys.stderr)
+    return 1
+
+
+def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None) -> list[str]:
     """Seed/extend "dev_mock" from the current gaps, preserving reasons and other sections."""
-    payload = dict(load_allowlist())
-    before = allowlist_section(payload, "dev_mock")
-    payload["dev_mock"] = merge_section_entries(payload.get("dev_mock"), gaps,
-                                                allow_objects=True)
-    after = allowlist_section(payload, "dev_mock")
-    write_allowlist_payload(payload)
-    print(
-        f"dev_mock seeded: {len(after)} entries (+{len(after) - len(before)} new, "
-        f"{sum(1 for _, reason in after if reason)} carrying a reason)"
-    )
+    def mutate(payload: dict) -> str:
+        before = allowlist_section(payload, "dev_mock")
+        payload["dev_mock"] = merge_section_entries(
+            payload.get("dev_mock"), gaps, allow_objects=True)
+        after = allowlist_section(payload, "dev_mock")
+        return (
+            f"dev_mock seeded: {len(after)} entries (+{len(after) - len(before)} new, "
+            f"{sum(1 for _, reason in after if reason)} carrying a reason)"
+        )
+
+    return update_allowlist(mutate, validated, "--write-dev-mock-gaps")
 
 
-def write_allowlist(missing: dict[str, set[str]]) -> None:
+def write_allowlist(missing: dict[str, set[str]], validated: dict | None = None) -> list[str]:
     """Seed/extend the two shell sections, additively, preserving every other section.
 
     This used to REPLACE both lists with sorted(measured gaps), which did two damaging
@@ -558,32 +706,34 @@ def write_allowlist(missing: dict[str, set[str]]) -> None:
     # Preserve any section this function does not own. It used to rebuild the whole
     # payload, which meant running --write-allowlist silently deleted "scoped_orphans"
     # and un-masked 22 commands as failures on an unrelated reseed.
-    payload = dict(load_allowlist())
-    payload.setdefault(
-        "_comment",
-        "Known IPC registration gaps at gate introduction (F-008/F-050). "
-        "Entries are UI command strings not yet registered in that shell; "
-        "they shrink to zero as F-006 removes the dead surface. Stale "
-        "entries (command now registered) fail the gate.",
-    )
-    for shell in SHELLS:
-        payload[shell] = merge_section_entries(
-            payload.get(shell), missing.get(shell, set()), allow_objects=False)
-    write_allowlist_payload(payload)
-    kept = {
-        shell: len(section_names(payload, shell) - missing.get(shell, set()))
-        for shell in SHELLS
-    }
-    print(
-        f"allowlist written: {ALLOWLIST_PATH} ("
-        + ", ".join(f"{shell} {len(section_names(payload, shell))} entries, "
-                    f"{kept[shell]} carried over that this run did not reproduce"
-                    for shell in SHELLS)
-        + ")"
-    );
+    def mutate(payload: dict) -> str:
+        payload.setdefault(
+            "_comment",
+            "Known IPC registration gaps at gate introduction (F-008/F-050). "
+            "Entries are UI command strings not yet registered in that shell; "
+            "they shrink to zero as F-006 removes the dead surface. Stale "
+            "entries (command now registered) fail the gate.",
+        )
+        for shell in SHELLS:
+            payload[shell] = merge_section_entries(
+                payload.get(shell), missing.get(shell, set()), allow_objects=False)
+        kept = {
+            shell: len(section_names(payload, shell) - missing.get(shell, set()))
+            for shell in SHELLS
+        }
+        return (
+            f"allowlist written: {ALLOWLIST_PATH.name} ("
+            + ", ".join(
+                f"{shell} {len(section_names(payload, shell))} command names, "
+                f"{kept[shell]} carried over that this run did not reproduce"
+                for shell in SHELLS)
+            + ")"
+        )
+
+    return update_allowlist(mutate, validated, "--write-allowlist")
 
 
-def write_scoped_orphans(orphans: set[str]) -> None:
+def write_scoped_orphans(orphans: set[str], validated: dict | None = None) -> list[str]:
     """Seed/extend the scoped_orphans section, preserving everything else.
 
     Read through section_names and written back through merge_section_entries, so an entry
@@ -593,22 +743,26 @@ def write_scoped_orphans(orphans: set[str]) -> None:
     accepted in scoped_orphans would have been right until they ran the flag, and then wrong
     with no diagnostic. A docstring is not a defence against that sequence.
     """
-    payload = dict(load_allowlist())
-    existing = section_names(payload, "scoped_orphans")
-    payload["scoped_orphans"] = merge_section_entries(
-        payload.get("scoped_orphans"), orphans, allow_objects=True)
-    payload.setdefault(
-        "_scoped_orphans_comment",
-        "Scoped commands registered in a shell's generate_handler! that no client "
-        "invokes, accepted as host-only. Each entry is a permission check that "
-        "currently guards nothing, so this list is a work queue, not a clean bill of "
-        "health. An entry that gains a caller fails the gate as stale -- and so does an "
-        "entry whose command disappears from every shell, which is the opposite event; "
-        "the failure line says which of the two was observed, because the fix for one is "
-        "deleting the entry and the fix for the other is deleting the command.",
-    )
-    write_allowlist_payload(payload)
-    print(f"scoped_orphans seeded: {len(payload['scoped_orphans'])} entries")
+    def mutate(payload: dict) -> str:
+        payload["scoped_orphans"] = merge_section_entries(
+            payload.get("scoped_orphans"), orphans, allow_objects=True)
+        payload.setdefault(
+            "_scoped_orphans_comment",
+            "Scoped commands registered in a shell's generate_handler! that no client "
+            "invokes, accepted as host-only. Each entry is a permission check that "
+            "currently guards nothing, so this list is a work queue, not a clean bill of "
+            "health. An entry that gains a caller fails the gate as stale -- and so does an "
+            "entry whose command disappears from every shell, which is the opposite event; "
+            "the failure line says which of the two was observed, because the fix for one is "
+            "deleting the entry and the fix for the other is deleting the command.",
+        )
+        written = allowlist_section(payload, "scoped_orphans")
+        return (
+            f"scoped_orphans seeded: {len(written)} command names "
+            f"({sum(1 for _, reason in written if reason)} carrying a reason)"
+        )
+
+    return update_allowlist(mutate, validated, "--write-scoped-orphans")
 
 
 def orphan_scoped(handlers: list[str], ui_commands: dict[str, dict]) -> list[str]:
@@ -1214,6 +1368,183 @@ def self_test() -> int:
          and "unregistered tauri command fns" in desktop_line[0]
          and desktop_line[0].count("unregistered") == 2, )
 
+    # 14: how the file is replaced. The claim is that a reader can never observe a partial
+    # file, so every assertion here inspects bytes or the arguments of the rename itself. The
+    # two-process torn-read measurement that motivated it is reported outside the suite (a
+    # writer loop plus a json.loads reader against a copy): 1,227 of 5,607 reads failed under
+    # write_text, zero under this. These four cases are the deterministic half of that proof.
+    rename_args: list[dict] = []
+    real_replace = os.replace
+    real_write_text = Path.write_text
+
+    def spy_replace(src, dst, *args, **kwargs):
+        src_path = Path(src)
+        rename_args.append({
+            "same_dir": src_path.parent == Path(dst).parent,
+            "dst_name": Path(dst).name,
+            "src_prefix": src_path.name.startswith(Path(dst).name + "."),
+            "bytes_at_rename": src_path.read_bytes(),
+        })
+        return real_replace(src, dst, *args, **kwargs)
+
+    def spy_write_text(self, *args, **kwargs):
+        rename_args.append({"write_text_on": str(self)})
+        return real_write_text(self, *args, **kwargs)
+
+    sample_payload = {"dev_mock": ["first_scoped"], "desktop": [], "tablet": [],
+                      "scoped_orphans": []}
+    with tempfile.TemporaryDirectory() as tmp7:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        probe7 = Path(tmp7) / "allowlist.json"
+        first_bytes = b""
+        after_retry = b""
+        busy_error = ""
+        after_busy = b""
+        listing_busy: list[str] = []
+        try:
+            globals()["ALLOWLIST_PATH"] = probe7
+            globals()["os"].replace = spy_replace
+            Path.write_text = spy_write_text
+            try:
+                write_allowlist_payload(sample_payload)
+                first_bytes = probe7.read_bytes()
+                # A rename that fails once, the ordinary WinError 5 against a reader that is
+                # mid-open, must still land.
+                attempts = {"n": 0}
+                def flaky(src, dst, *args, **kwargs):
+                    attempts["n"] += 1
+                    if attempts["n"] == 1:
+                        raise PermissionError(5, "simulated reader holding the file")
+                    return real_replace(src, dst, *args, **kwargs)
+                globals()["os"].replace = flaky
+                write_allowlist_payload({"dev_mock": ["second_scoped"], "desktop": [],
+                                         "tablet": [], "scoped_orphans": []})
+                after_retry = probe7.read_bytes()
+                # A target busy past the ceiling must refuse in words and change nothing.
+                globals()["os"].replace = lambda src, dst, *a, **k: (_ for _ in ()).throw(
+                    PermissionError(5, "simulated permanent contention"))
+                before_busy = probe7.read_bytes()
+                try:
+                    write_allowlist_payload({"dev_mock": ["third_scoped"], "desktop": [],
+                                             "tablet": [], "scoped_orphans": []})
+                except AllowlistBusyError as busy:
+                    busy_error = str(busy)
+                after_busy = probe7.read_bytes()
+                listing_busy = sorted(entry.name for entry in Path(tmp7).iterdir())
+            finally:
+                globals()["os"].replace = real_replace
+                Path.write_text = real_write_text
+        finally:
+            # Both restores are deliberate: the inner one covers the ordinary path, this one
+            # covers a case that raised before reaching it. A self-test that leaves the
+            # process-wide os.replace patched would poison every later case in the run.
+            globals()["ALLOWLIST_PATH"] = saved_path
+            globals()["os"].replace = real_replace
+            Path.write_text = real_write_text
+    renames = [r for r in rename_args if "write_text_on" not in r]
+    # One recorded rename, not three: after the first write the spy is replaced by the
+    # flaky and then the permanently-denying stubs, which are the point of those two cases.
+    # The expectation of three here was wrong, not the code -- the case failed on its first
+    # run, which is the only reason I know.
+    case("case 14  the file arrives by rename from a sibling temp, never by truncation",
+         len(renames) == 1 and renames[0]["same_dir"] and renames[0]["src_prefix"]
+         and renames[0]["dst_name"] == "allowlist.json"
+         and not [r for r in rename_args if "write_text_on" in r], )
+    case("case 14  and what the rename publishes is the whole file, byte for byte",
+         renames and renames[0]["bytes_at_rename"] == first_bytes, )
+    case("case 14  a rename denied once still lands the new content",
+         b"second_scoped" in after_retry and b"first_scoped" not in after_retry, )
+    case("case 14  a rename denied forever leaves the previous bytes untouched and says so",
+         busy_error != "" and after_busy == after_retry
+         and "would not accept the rename" in busy_error and "nothing was written" in busy_error, )
+    case("case 14  and it leaves no half-written sibling behind",
+         listing_busy == ["allowlist.json"], )
+
+    # 15: a writer may only serialise what this run looked at.
+    drift_planted = {"name": "sneaked_scoped", "reason": "typed by a hand elsewhere"}
+    with tempfile.TemporaryDirectory() as tmp8:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe8 = Path(tmp8) / "allowlist.json"
+        refusals: dict[str, object] = {}
+        try:
+            globals()["ALLOWLIST_PATH"] = probe8
+            sys.argv = ["probe"]
+            clean = {"_comment": "probe file, never the real allowlist", "dev_mock": [],
+                     "desktop": [], "tablet": [], "scoped_orphans": []}
+            write_allowlist_payload(clean)
+            validated_copy = load_allowlist()
+            moved = dict(validated_copy)
+            moved["desktop"] = [drift_planted]
+            write_allowlist_payload(moved)
+            refusals["drift"] = write_scoped_orphans({"new_orphan_scoped"}, validated_copy)
+            refusals["drift_bytes"] = probe8.read_bytes()
+            write_allowlist_payload(clean)
+            quiet = io.StringIO()
+            with redirect_stdout(quiet):
+                refusals["clean"] = write_scoped_orphans({"new_orphan_scoped"},
+                                                         load_allowlist())
+            refusals["clean_bytes"] = probe8.read_bytes()
+            write_allowlist_payload(moved)
+            refusals["unvalidated"] = write_dev_mock_gaps(["mock_gap_scoped"])
+            refusals["unvalidated_bytes"] = probe8.read_bytes()
+            # A target that never clears must reach the operator as a refusal line, not as a
+            # traceback out of a flag. Mutation MF found this assertion: without it, the
+            # busy-to-refusal wrap was decorative and the writer propagated. Restored to a
+            # clean file first, because the shape refusal would otherwise answer before the
+            # busy one is ever reached -- which is what this case did on its first run.
+            write_allowlist_payload(clean)
+            real_rep = os.replace
+            os.replace = lambda src, dst, *a, **k: (_ for _ in ()).throw(
+                PermissionError(5, "simulated permanent contention"))
+            try:
+                refusals["before_busy"] = probe8.read_bytes()
+                refusals["busy"] = write_dev_mock_gaps(["busy_gap_scoped"], load_allowlist())
+                refusals["busy_bytes"] = probe8.read_bytes()
+            finally:
+                os.replace = real_rep
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    case("case 15  a file that moved after validation is refused in words, not written",
+         len(refusals["drift"]) == 1
+         and "--write-scoped-orphans did not write" in refusals["drift"][0]
+         and "changed after this run" in refusals["drift"][0]
+         and b"sneaked_scoped" in refusals["drift_bytes"]
+         and b"new_orphan_scoped" not in refusals["drift_bytes"], )
+    case("case 15  the same writer with the snapshot it validated does write",
+         refusals["clean"] == [] and b"new_orphan_scoped" in refusals["clean_bytes"], )
+    case("case 15  and an unvalidated read cannot seal the shape the gate refuses",
+         any("desktop" in line for line in refusals["unvalidated"])
+         and b"sneaked_scoped" in refusals["unvalidated_bytes"]
+         and b"mock_gap_scoped" not in refusals["unvalidated_bytes"], )
+    case("case 15  a permanently busy target is refused in words and writes nothing",
+         len(refusals["busy"]) == 1
+         and "--write-dev-mock-gaps did not write" in refusals["busy"][0]
+         and "nothing was written" in refusals["busy"][0]
+         and refusals["busy_bytes"] == refusals["before_busy"]
+         and b"busy_gap_scoped" not in refusals["busy_bytes"], )
+
+    # 16: the two ways the validator itself was wrong -- an unknown section it never looked
+    # at, and a payload shape that made it raise.
+    hyphen = allowlist_shape_problems({"dev-mock": ["get_customer_scoped"]}, probe_name)
+    prose_ok = allowlist_shape_problems(
+        {"_comment": "prose", "desktop": ["get_customer_scoped"],
+         "scoped_orphans": [{"name": "x_scoped", "reason": "host-only"}]}, probe_name)
+    list_outcome: object = "unset"
+    try:
+        list_outcome = allowlist_shape_problems(["desktop", "tablet"], probe_name)
+    except Exception as exc:
+        list_outcome = type(exc).__name__
+    case("case 16  a section this gate does not read is reported as enforcing nothing",
+         len(hyphen) == 1 and "dev-mock" in hyphen[0]
+         and "does not read" in hyphen[0] and "enforces nothing" in hyphen[0], )
+    case("case 16  prose keys and the four real sections stay problem-free",
+         prose_ok == [], )
+    case("case 16  and a top-level list is a sentence rather than an AttributeError",
+         isinstance(list_outcome, list) and len(list_outcome) == 1
+         and "list" in list_outcome[0] and "named sections" in list_outcome[0], )
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -1274,7 +1605,11 @@ def main() -> int:
     # Shape first, before the sweeps: a member this file cannot read has to say so in a
     # sentence naming the file, the section and the shape, not as a TypeError out of main()
     # 1.3 seconds into parsing the tree. Same FAIL convention as the findings below, exit 1.
-    shape_problems = allowlist_shape_problems(load_allowlist(), ALLOWLIST_PATH)
+    # The snapshot this run both validates and enforces. Writers are handed this object and
+    # refuse to write if the file on disk has moved away from it, so the thing that reaches
+    # disk is never something nobody looked at.
+    validated = load_allowlist()
+    shape_problems = allowlist_shape_problems(validated, ALLOWLIST_PATH)
     if shape_problems:
         print(
             f"\nFAIL: allowlist shape, {len(shape_problems)} problem(s):", file=sys.stderr
@@ -1299,10 +1634,9 @@ def main() -> int:
                 missing[shell].add(command)
 
     if args.write_allowlist:
-        write_allowlist(missing)
-        return 0
+        return report_write_refusals(write_allowlist(missing, validated))
 
-    allowlist = load_allowlist()
+    allowlist = validated
     failures: list[str] = []
 
     # Reverse direction: registered scoped commands with no caller.
@@ -1312,8 +1646,8 @@ def main() -> int:
         orphans[shell] = orphan_scoped(handlers[shell], ui_commands)
     all_orphans = sorted(set().union(*[set(v) for v in orphans.values()]))
     if args.write_scoped_orphans:
-        write_scoped_orphans(set(all_orphans))
-        return 0
+        return report_write_refusals(
+            write_scoped_orphans(set(all_orphans), validated))
 
     # Third direction: can the plain-browser dev-mock answer what the UI invokes?
     mock_registered, mock_aliasable, mock_per_file, mock_alias_file = (
@@ -1321,8 +1655,7 @@ def main() -> int:
     mock_answerable = mock_registered | mock_aliasable
     mock_gaps = sorted(c for c in ui_commands if c not in mock_answerable)
     if args.write_dev_mock_gaps:
-        write_dev_mock_gaps(mock_gaps)
-        return 0
+        return report_write_refusals(write_dev_mock_gaps(mock_gaps, validated))
 
     for command in sorted(set(all_orphans) - orphan_allow):
         shells = ", ".join(s for s in SHELLS if command in orphans[s])
