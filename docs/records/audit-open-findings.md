@@ -877,7 +877,7 @@ bare exit 0 still reporting `568 production file(s) graded`, `--self-test` PASS 
 the *writer* of the same shared file, so it can re-publish a shape nothing can read; a valid-
 JSON **UTF-16** file still escaping `read_allowlist` as an uncaught `UnicodeDecodeError` **[closed 14:57 by `dd4888194` — see the next section]**
 (it catches only `PermissionError` and `JSONDecodeError`, unchanged before and after this
-commit); and `--shell ''`, which exits 0 printing `clean for .` because with no section named
+commit); and `--shell ''`, which exits 0 printing `clean for .` because with no section named **[closed 15:18 by `4f841a673`]**
 there is no key to require. The last is the same class one level further in: a refusal needs a
 named section before the shape question exists.
 
@@ -902,6 +902,22 @@ catches `(OSError, UnicodeDecodeError)`. Two of the three still-open items above
 written, the wrong-shape hazard in `verify-ipc-parity.py` and `--shell ''`, and the second is
 the same class one level further in, a refusal needs a named section before a shape can be asked
 of it.
+### Dated correction (2026-09-13, 15:21) — `--shell` is closed too, so that three-item list is now two
+
+`4f841a673` (154/2, one file, `scripts/verify-scoped-reads.py` `1184 → 1336`) refuses a `--shell`
+value that names no shell, placed where the shell list resolves rather than inside the walk,
+because an empty shell list is a property of the argument and not of the read, and it refuses
+rather than defaulting to every shell, since guessing what an empty argument means is how a typo
+becomes evidence. Director-measured: `--shell ""` now exits **1** with one `FAIL: --shell
+received ""…` line and no `clean` anywhere in the output where HEAD exited **0** printing
+`clean for .` having graded nothing, self-test `    ok` lines **41 → 44**, bare still exit 0 at
+`568 production file(s) graded`, `--shell desktop` exit 0 and `--shell desktop --shell tablet`
+exit 1 on the pre-existing tablet violations, so neither path regressed.
+
+Two of the three named items remain genuinely open: the identical wrong-shape hazard in
+`verify-ipc-parity.py` (`:547 :592 :730 :765 :794`), which is also the *writer* of the shared
+allowlist and so can re-publish a shape nothing can read, and `scripts/coverage_top.py:40`
+opening JSON with no `encoding=`. Recorded as findings, not touched.
 
 ## How to close these
 
