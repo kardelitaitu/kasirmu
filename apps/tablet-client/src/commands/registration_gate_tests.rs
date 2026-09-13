@@ -29,6 +29,13 @@
 //! green run here means "no ungated name appeared and the ledger still adds up". It does
 //! not mean "this shell is gated", and it must not be read as that second sentence.
 //!
+//! (Measured 13-09-26, repair of the sync-conflict gate: the 20-of-318 above was the
+//! state when this ratchet landed. Since then the tablet shell gained local permission
+//! checks in most domains — 198 of the 320 wrapper bodies name one today, including the
+//! two sync-conflict commands this repair gates. That number is not the claim that
+//! matters; the three-way partition and the ledger are, and both still hold: those 198
+//! are Gated, absent from the ledger, and move no ceiling.)
+//!
 //! # The floor is what catches a parser that stopped matching
 //!
 //! This sweep reads one file embedded at compile time and walks directories at runtime.
@@ -46,7 +53,11 @@
 //! 70 entries on desktop and 126 on tablet as measured, emitted by the same predicate
 //! this file runs. It is generated because a hand-typed hundred-name list is where the
 //! drift lives: someone gates one command, edits one line by hand, mistypes one name,
-//! and the ratchet silently stops covering it.
+//! and the ratchet silently stops covering it. (Re-measured 13-09-26: the desktop
+//! ledger is 69 entries and this tablet ledger 125 — one desktop entry and one tablet
+//! entry were shed after this header was written. The ceilings in the generated files
+//! carry the live numbers; this sentence is context, not a measurement the ratchet
+//! enforces.)
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -829,6 +840,16 @@ fn drift_pin_no_computed_command_names_in_ui() {
     // Neither is a screen calling a command.
     let allowed = [
         "dev-mock/tauri-api.ts",
+        // MIRROR REPAIR 13-09-26: ce8666604 extracted the dev-mock core and left
+        // desktop's allowlist with a sixth entry that this tablet copy never got,
+        // so the tablet ratchet went red on a desktop-extracted file the moment it
+        // landed. The dispatcher declares `async invoke(cmd, ...)` and forwards the
+        // parameter it was handed, so it composes no command name — a FORWARDER,
+        // same ruling as the desktop entry (see the sibling comment in
+        // apps/desktop-client/src/commands/registration_gate_tests.rs). Tolerating
+        // it does not bless the handlers registry beside it: a name built there is
+        // still a computed name and still lands in the offender list.
+        "dev-mock/core/mockDispatcher.ts",
         "__tests__/dev-mock-scoped-aliases.test.ts",
         // FOUND TONIGHT, NOT PRE-AUTHORISED - FLAGGED FOR A RULING. A production
         // wrapper that takes the command name as a parameter and forwards it, so the

@@ -30,6 +30,13 @@
 //! green run here means "no ungated name appeared and the ledger still adds up". It does
 //! not mean "this shell is gated", and it must not be read as that second sentence.
 //!
+//! (Measured 13-09-26, repair of the sync-conflict gate: the ZERO above was the state
+//! when this header was written. Since then local bodies have named permissions in
+//! growing numbers — branding::pick_logo_file_scoped, the six local_api commands, the
+//! pg_sync pair, and now both sync-conflict commands — 11 of 449 today. The ZERO was
+//! never the claim that matters; the three-way partition and the ledger are, and both
+//! still hold: those 11 are Gated, absent from the ledger, and move no ceiling.)
+//!
 //! # The floor is what catches a parser that stopped matching
 //!
 //! This sweep reads one file embedded at compile time and walks directories at runtime.
@@ -56,7 +63,10 @@
 //! 69 entries on desktop and 126 on tablet as measured, emitted by the same predicate
 //! this file runs. It is generated because a hand-typed hundred-name list is where the
 //! drift lives: someone gates one command, edits one line by hand, mistypes one name,
-//! and the ratchet silently stops covering it.
+//! and the ratchet silently stops covering it. (Re-measured 13-09-26: the tablet
+//! ledger has since shed one entry and stands at 125; desktop is still 69. The ceilings
+//! in the generated files carry the live numbers — this sentence is context, not a
+//! measurement the ratchet enforces.)
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;

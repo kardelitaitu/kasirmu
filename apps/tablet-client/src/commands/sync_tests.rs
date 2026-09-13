@@ -114,6 +114,95 @@ fn pull_result_serialize_with_error() {
     assert_eq!(json["error"], "network unreachable");
 }
 
+// ── Sync conflict review DTOs (tablet port of 028056eaae) ─────────
+
+#[test]
+fn list_sync_conflicts_args_default_all_none() {
+    let args = ListSyncConflictsArgs::default();
+    assert!(args.status.is_none());
+    assert!(args.severity.is_none());
+}
+
+#[test]
+fn list_sync_conflicts_args_parse_filters() {
+    let args: ListSyncConflictsArgs =
+        serde_json::from_str(r#"{ "status": "open", "severity": "high" }"#).unwrap();
+    assert_eq!(args.status.as_deref(), Some("open"));
+    assert_eq!(args.severity.as_deref(), Some("high"));
+}
+
+#[test]
+fn resolve_sync_conflict_args_parse() {
+    let args: ResolveSyncConflictArgs =
+        serde_json::from_str(r#"{ "id": "c-17", "resolution": "remote" }"#).unwrap();
+    assert_eq!(args.id, "c-17");
+    assert_eq!(args.resolution, "remote");
+}
+
+#[test]
+fn resolve_sync_conflict_args_missing_resolution_rejected() {
+    let bad = serde_json::from_str::<ResolveSyncConflictArgs>(r#"{ "id": "c-17" }"#);
+    assert!(
+        bad.is_err(),
+        "resolution is required — it decides which side wins"
+    );
+}
+
+#[test]
+fn sync_conflict_dto_roundtrip_untouched_payloads() {
+    // The contract: local/remote payload and vector blobs are transported
+    // verbatim — never parsed, never reformatted client-side.
+    let raw = r#"{
+        "id": "c-42",
+        "entity_type": "stock.adjusted",
+        "entity_id": "sku-9",
+        "local_terminal_id": "tab-1",
+        "local_vector": "{\"tab-1\":3}",
+        "remote_vector": "{\"tab-2\":5}",
+        "local_payload": "{\"qty\":2}",
+        "remote_payload": "{\"qty\":3}",
+        "severity": "high",
+        "status": "open",
+        "resolution": null,
+        "resolved_by": null,
+        "resolved_at": null,
+        "created_at": "2026-09-13T06:00:00Z"
+    }"#;
+    let dto: SyncConflictDto = serde_json::from_str(raw).unwrap();
+    assert_eq!(dto.local_payload, "{\"qty\":2}");
+    assert_eq!(dto.remote_vector, "{\"tab-2\":5}");
+    assert!(dto.resolution.is_none());
+    // Round-trip: serialize back and re-parse — blobs must be byte-stable.
+    let back = serde_json::to_string(&dto).unwrap();
+    let again: SyncConflictDto = serde_json::from_str(&back).unwrap();
+    assert_eq!(again.remote_payload, "{\"qty\":3}");
+    assert_eq!(again.local_vector, dto.local_vector);
+}
+
+#[test]
+fn sync_conflict_dto_resolved_row_parses() {
+    let raw = r#"{
+        "id": "c-43",
+        "entity_type": "stock.adjusted",
+        "entity_id": "sku-10",
+        "local_terminal_id": "tab-1",
+        "local_vector": "{}",
+        "remote_vector": "{}",
+        "local_payload": "{}",
+        "remote_payload": "{}",
+        "severity": "low",
+        "status": "resolved",
+        "resolution": "local",
+        "resolved_by": "manager-a",
+        "resolved_at": "2026-09-13T07:30:00Z",
+        "created_at": "2026-09-13T06:00:00Z"
+    }"#;
+    let dto: SyncConflictDto = serde_json::from_str(raw).unwrap();
+    assert_eq!(dto.status, "resolved");
+    assert_eq!(dto.resolution.as_deref(), Some("local"));
+    assert_eq!(dto.resolved_by.as_deref(), Some("manager-a"));
+}
+
 // ── TDD Bug Hunt: non-atomic sync settings writes ────────────────
 //
 // update_sync_settings_data persists three settings (server_url,

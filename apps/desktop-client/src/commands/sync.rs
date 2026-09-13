@@ -431,7 +431,13 @@ pub async fn list_sync_conflicts_scoped(
     state: State<'_, AppState>,
     args: ListSyncConflictsArgs,
 ) -> Result<Vec<SyncConflictDto>, AppError> {
-    state.resolve_scope(&session_token)?;
+    // The conflict queue is a management surface: it carries both sides of a
+    // divergence the store has not yet accepted, so the read is gated like
+    // the resolve beside it. `028056eaae` shipped this without the gate and
+    // the registration-gate ratchet caught it on both shells (desktop 70 vs
+    // ceiling 69, tablet 126 vs 125) — this is the repair.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
 
     let Some((base, key)) = sync_server_credentials(&state).await? else {
         return Ok(Vec::new());
