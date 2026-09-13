@@ -6,6 +6,12 @@ Usage:
 
 If no path is given, scans coverage/rust/ for .json files and uses
 whichever is newest (typically coverage.json from cargo-llvm-cov).
+
+The input is read as UTF-8 and nothing else. Two ways this script stops and says so, in
+different voices because they mean different things: "MISSING: <path>" on stdout with exit 0
+(there is no report to make, which is not an error), and "UNREADABLE: <path> ..." on stdout
+with exit 1 (bytes arrived that this reader cannot decode, so no ranking exists and a zero
+would read as an empty one). Neither prints a traceback.
 """
 import json
 import os
@@ -37,8 +43,36 @@ if not os.path.exists(path):
     print(f"MISSING: {path}")
     sys.exit(0)
 
-with open(path) as f:
-    top = json.load(f)
+# THE READ, and what is asked of it. The path above was settled by asking the argument
+# what it is (exists, then not a directory); this is the first fact about the bytes, so it
+# belongs here and nowhere earlier. encoding= is named at the open rather than left to the
+# platform: an unnamed text read inherits the locale codec, which measures cp1252 on this
+# machine and UTF-8 on CI, so the same coverage file can rank rows, die in a
+# UnicodeDecodeError, or die one step later in a JSONDecodeError depending only on where the
+# script was run. A reporting script whose answer moves with the locale is not reporting.
+#
+# One arm, for one failure, caught by name. A decode error is NOT called a bad parse, because
+# it is not one: the bytes may be perfectly good JSON written in UTF-16 (an editor re-saving
+# a cargo-llvm-cov export does exactly that), and this script's job is to say plainly that it
+# could not read the file, not to transcode the world by guessing at another codec. So there
+# is no second open() below with a different encoding. UnicodeDecodeError is a ValueError and
+# so is JSONDecodeError; catching the broad one would swallow a decoder bug and would also
+# take over the malformed-JSON case, which is untouched here and still exits as it always did.
+#
+# The refusal reuses the voice just above it: one line on stdout naming the path, no
+# traceback, and its own token, because this file is not MISSING (it is there and readable as
+# bytes) and because a ranking that was never read cannot exit 0 the way a missing input does
+# -- 0 would tell the next caller the report is simply empty. Falling through instead would
+# print the header and die mid-loop, which reads as a partial ranking being the whole one.
+try:
+    with open(path, encoding="utf-8") as f:
+        top = json.load(f)
+except UnicodeDecodeError as exc:
+    print(f"UNREADABLE: {path} is not UTF-8, so no ranking was read from it: {exc}. "
+          f"This is a property of this reader, not a verdict on the file -- it may be valid JSON "
+          f"in an encoding this script will not guess. Re-export it as UTF-8 and pass that "
+          f"path.")
+    sys.exit(1)
 
 cwd = os.getcwd().replace("\\", "/")
 keys = ("gift_card", "stock_count", "stock_transfer", "supplier", "purchase_order")
