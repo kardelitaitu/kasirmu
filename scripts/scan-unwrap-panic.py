@@ -17,10 +17,29 @@ intentional setup panics from recoverable runtime panics.
 Exit code 0 = inventory generated; the output is the machine-readable list.
 Exit code 1 = `--fail-on-recoverable` set and at least one finding lacks a
 documented invariant comment (the recoverable set must stay at zero, ADR #33).
+Exit code 2 = the `--roots` list resolved to no directory to scan, so there was
+no inventory to report -- a REFUSED command line, not a failed check.
+
+THE EMPTY ROOT LIST IS NOT A CLEAN RESULT
+=========================================
+
+`--roots` with no values is an EMPTY list, not the default roots, and a named root
+that is not a directory is skipped. Both used to exit 0 printing `# total: 0
+production unwrap/expect calls` -- the same line a real scan of a clean tree prints,
+so a hollow verdict was byte-for-byte indistinguishable from a measured one. This
+gate now REFUSES instead (exit 2) and never falls back to scanning everything: a
+caller who wants the default roots passes no `--roots` at all.
+
+Distinguish that refusal from a TRUE GREEN: a run over roots that really resolved,
+which happens to find no unwrap/expect call, is a real measurement and still exits 0
+printing `# total: 0 production unwrap/expect calls`. Refusal zeroes mean
+"nothing was scanned"; exit-0 zeroes mean "everything was scanned and clean".
+
 Usage:
     python scripts/scan-unwrap-panic.py                             # default roots
     python scripts/scan-unwrap-panic.py --json                      # JSON summary
     python scripts/scan-unwrap-panic.py --fail-on-recoverable       # exit 1 on untagged findings (CI gate)
+    python scripts/scan-unwrap-panic.py --roots crates apps         # named roots (REFUSED if none resolves)
 """
 
 from __future__ import annotations
@@ -281,6 +300,80 @@ def scan_file(path: Path) -> list[dict]:
     return findings
 
 
+def resolve_roots(named: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """Split what --roots was handed into (usable, blank, missing) BEFORE the walk.
+
+    Three buckets because the three causes read differently to whoever typed them: a blank
+    value named no root, a name whose directory is absent names a root that is not here,
+    and --roots with no values at all named nothing to begin with. The refusal prints
+    which of the three it hit.
+
+    A blank string is deliberately NOT read as the current directory. Path("") is Path("."),
+    so an empty value would silently mean "scan everything under wherever this was run" —
+    measured against the pre-fix copy at 4361b5a49, `--roots ''` exited 0 having walked the
+    whole working tree and reported 146 calls where the four named default roots report 136.
+    A flag meant to narrow the scan widened it, which is the opposite of what a root list is
+    for. So a blank refuses; a blank never wildcards.
+    """
+    usable: list[str] = []
+    blank: list[str] = []
+    missing: list[str] = []
+    for root in named:
+        if not root.strip():
+            blank.append(root)
+        elif Path(root).is_dir():
+            usable.append(root)
+        else:
+            missing.append(root)
+    return usable, blank, missing
+
+
+def refuse_nothing_to_scan(
+    named: list[str], blank: list[str], missing: list[str]
+) -> int:
+    """No named root resolved to a directory, so there is no verdict to print. Exit 2.
+
+    NOT 1. A 1 from this gate is its FINDING voice — "a real scan of a real corpus found an
+    undocumented panic" — and a command line with nothing behind it is not a failed check.
+    2 is what the sibling gates already use for that distinction (verify-migration-column-
+    types.py and verify-no-hardcoded-money-format.py both refuse an empty corpus at 2), and
+    argparse itself exits 2 on a flag this script does not implement, so a refused invocation
+    can never be misread as an inventory.
+
+    On stdout: scripts/run-pre-push.py merges a child's stderr into its stdout, and this is
+    the sentence an operator most needs to see when a verdict goes missing.
+    """
+    if missing:
+        cause = f"none of the {len(named)} named root(s) is a directory here"
+    elif blank:
+        cause = f"the {len(blank)} value(s) passed were blank, so no root was named"
+    else:
+        cause = "--roots was passed with no values at all"
+    print(
+        "scan-unwrap-panic: REFUSED - the root list resolved to nothing to scan, so this "
+        "run holds no corpus and any count it printed would be a verdict about nothing."
+    )
+    print(f"  --roots as passed           : {' '.join(named) if named else '(none)'}")
+    print(f"  why there is nothing to do  : {cause}")
+    if missing:
+        print(f"  named but not a directory   : {', '.join(missing)}")
+    if blank:
+        print(f"  named but blank             : {len(blank)} value(s)")
+    print("  roots that resolved         : 0")
+    print(f"  working directory           : {Path.cwd()}")
+    print(
+        f"  default roots (NOT scanned) : {', '.join(ROOTS)} - to scan those, run without "
+        "--roots; a list that named no root is never answered by scanning everything."
+    )
+    print(
+        "  WHICH ZERO IS WHICH: this refusal (exit 2) means NOTHING WAS SCANNED. A run over "
+        "roots that really resolved, which happens to find no unwrap/expect call anywhere, "
+        "is a TRUE GREEN - it exits 0 printing `# total: 0 production unwrap/expect calls`. "
+        "That line is the clean verdict, this block is not, and no single run prints both."
+    )
+    return 2
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="emit JSON summary")
@@ -290,14 +383,26 @@ def main() -> int:
         help="exit 1 when any production unwrap/expect lacks a documented "
         "invariant comment (the recoverable set must stay at zero, ADR #33)",
     )
-    parser.add_argument("--roots", nargs="*", default=ROOTS, help="roots to scan")
+    parser.add_argument(
+        "--roots",
+        nargs="*",
+        default=ROOTS,
+        help="roots to scan; when the list resolves to no directory at all this gate "
+        "REFUSES with exit 2 rather than print an inventory over nothing",
+    )
     args = parser.parse_args()
 
+    # Refuse BEFORE the walk, not after the verdict: a root list that names no directory
+    # has no corpus, and a gate with no corpus must not print a count. Only the names that
+    # really are directories get scanned, and the default ROOTS is never reinstated as a
+    # fallback — "you asked for nothing" is not the same request as "scan everything".
+    roots_to_scan, blank_roots, missing_roots = resolve_roots(args.roots)
+    if not roots_to_scan:
+        return refuse_nothing_to_scan(args.roots, blank_roots, missing_roots)
+
     all_findings: list[dict] = []
-    for root in args.roots:
+    for root in roots_to_scan:
         root_path = Path(root)
-        if not root_path.is_dir():
-            continue
         for path in sorted(root_path.rglob("*.rs")):
             if "tests" in path.parts:
                 continue
