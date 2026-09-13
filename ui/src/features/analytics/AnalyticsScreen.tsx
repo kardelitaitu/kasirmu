@@ -18,7 +18,7 @@ import AdminLockedFeature from '@/components/AdminLockedFeature';
 import TierLockedFeature from '@/components/TierLockedFeature';
 import { minorUnitExponent } from '@/types/domain';
 import { AnalyticsCardContent, ExportCsvButton } from './AnalyticsCardContent';
-import { analyticsDataCache, clearAnalyticsCache, cardQueryKey } from './analytics-cache';
+import { clearAnalyticsCache, cardQueryKey } from './analytics-cache';
 import { useToastManager } from './useToastManager';
 import { useCardLayout } from './useCardLayout';
 import { useCommandPalette } from './useCommandPalette';
@@ -34,12 +34,13 @@ import {
   type HeatCell,
 } from './analytics-data';
 import { clearAnalyticsErrors, useAnalyticsQuery } from './useAnalyticsQuery';
-import { exportHeatmapCsv, shortCacheLabel } from './utils/analyticsExport';
+import { exportHeatmapCsv } from './utils/analyticsExport';
+import { CacheMetricsPanel } from './components/CacheMetricsPanel';
+import { NoWorkspacePrompt } from './components/NoWorkspacePrompt';
+import { SessionRecoveryBanner } from './components/SessionRecoveryBanner';
+import { ZoomControls } from './components/ZoomControls';
 import {
   GRANULARITIES,
-  ZOOM_MAX,
-  ZOOM_MIN,
-  ZOOM_STEP,
   cardGranularity,
   cardRange,
   nextExpandedKey,
@@ -54,15 +55,9 @@ import './AnalyticsScreen.css';
 // via analytics-data; this keeps the existing test import working).
 export { monthCalendarGrid } from './analytics-data';
 
-/** Keyboard shortcut metadata — drives both the handler and the help popover. */
-const SHORTCUTS: { keys: string; labelKey: string }[] = [
-  { keys: '1–4',    labelKey: 'analytics-shortcuts-granularity' },
-  { keys: 'R',      labelKey: 'analytics-shortcuts-refresh' },
-  { keys: '+ / −',  labelKey: 'analytics-shortcuts-zoom' },
-  { keys: '0',      labelKey: 'analytics-shortcuts-zoom-reset' },
-  { keys: 'C',      labelKey: 'analytics-shortcuts-collapse' },
-  { keys: 'Esc',    labelKey: 'analytics-shortcuts-close' },
-];
+// The keyboard-shortcut help list moved to components/ZoomControls with
+// its only renderer; the keydown handler below mirrors those keys in its
+// own branches.
 
 // ── Card definitions ─────────────────────────────────────────────────
 
@@ -757,98 +752,21 @@ export default function AnalyticsScreen() {
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
             </button>
-            <button
-              type="button"
-              className="analytics-action-btn"
-              onClick={zoomOut}
-              disabled={zoomLevel <= ZOOM_MIN}
-              aria-label={l10n.getString('analytics-action-zoom-out-aria')}
-              title={l10n.getString('analytics-action-zoom-out-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                <line x1="8" y1="11" x2="14" y2="11" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              ref={zoomBadgeRef}
-              className="analytics-zoom-badge"
-              onClick={() => setZoomPopover((o) => !o)}
-              aria-label={l10n.getString('analytics-zoom-slider-aria')}
-              title={l10n.getString('analytics-zoom-slider-aria')}
-            >
-              {Math.round(zoomLevel * 100)}%
-            </button>
-            {zoomPopover && (
-              <div ref={zoomPopoverRef} className="analytics-zoom-popover" role="dialog" aria-label={l10n.getString('analytics-zoom-slider-aria')}>
-                <input
-                  type="range"
-                  className="analytics-zoom-slider"
-                  min={ZOOM_MIN * 100}
-                  max={ZOOM_MAX * 100}
-                  step={ZOOM_STEP * 100}
-                  value={Math.round(zoomLevel * 100)}
-                  onChange={(e) => setZoomLevel(Number(e.target.value) / 100)}
-                  aria-label={l10n.getString('analytics-zoom-slider-aria')}
-                />
-                <span className="analytics-zoom-popover-value">{Math.round(zoomLevel * 100)}%</span>
-                <button
-                  type="button"
-                  className="analytics-zoom-reset-btn"
-                  onClick={zoomReset}
-                >
-                  {l10n.getString('analytics-action-zoom-reset-aria')}
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              className="analytics-action-btn"
-              onClick={zoomIn}
-              disabled={zoomLevel >= ZOOM_MAX}
-              aria-label={l10n.getString('analytics-action-zoom-in-aria')}
-              title={l10n.getString('analytics-action-zoom-in-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                <line x1="11" y1="8" x2="11" y2="14" />
-                <line x1="8" y1="11" x2="14" y2="11" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              ref={shortcutsButtonRef}
-              className="analytics-action-btn"
-              onClick={() => setShowShortcuts((s) => !s)}
-              aria-label={l10n.getString('analytics-shortcuts-aria')}
-              title={l10n.getString('analytics-shortcuts-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </button>
-
-            {showShortcuts && (
-              <div ref={shortcutsPopoverRef} className="analytics-shortcuts-popover" role="dialog" aria-label={l10n.getString('analytics-shortcuts-title')}>
-                <h3 className="analytics-shortcuts-title">{l10n.getString('analytics-shortcuts-title')}</h3>
-                <ul className="analytics-shortcuts-list">
-                  {SHORTCUTS.map((s) => (
-                    <li key={s.labelKey} className="analytics-shortcuts-item">
-                      <kbd className="analytics-shortcuts-keys">{s.keys}</kbd>
-                      <span>{l10n.getString(s.labelKey)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <ZoomControls
+              zoomLevel={zoomLevel}
+              onZoomOut={zoomOut}
+              onZoomIn={zoomIn}
+              onZoomReset={zoomReset}
+              onZoomLevelChange={setZoomLevel}
+              zoomPopoverOpen={zoomPopover}
+              onToggleZoomPopover={() => setZoomPopover((o) => !o)}
+              shortcutsOpen={showShortcuts}
+              onToggleShortcuts={() => setShowShortcuts((s) => !s)}
+              zoomBadgeRef={zoomBadgeRef}
+              zoomPopoverRef={zoomPopoverRef}
+              shortcutsButtonRef={shortcutsButtonRef}
+              shortcutsPopoverRef={shortcutsPopoverRef}
+            />
           </div>
         </div>
       </nav>
@@ -860,44 +778,7 @@ export default function AnalyticsScreen() {
       {/* Session-expired recovery banner — replaces the wall of per-card
           "session has expired" errors with one actionable notice. */}
       {showSessionBanner && (
-        <div
-          className="analytics-session-banner"
-          role="alert"
-          data-testid="analytics-session-banner"
-        >
-          <svg
-            className="analytics-session-banner-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <div className="analytics-session-banner-body">
-            <div className="analytics-session-banner-title">
-              <Localized id="analytics-session-expired-title"><span>Session expired</span></Localized>
-            </div>
-            <div className="analytics-session-banner-message">
-              <Localized id="analytics-session-expired-message"><span>Your session has expired. Sign in again.</span></Localized>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="analytics-session-banner-action"
-            onClick={goToWorkspacePicker}
-            aria-label={l10n.getString('analytics-sign-in-again')}
-          >
-            <Localized id="analytics-sign-in-again"><span>Sign in again</span></Localized>
-          </button>
-        </div>
+        <SessionRecoveryBanner onSignInAgain={goToWorkspacePicker} />
       )}
 
       {/* ══════════════════════════════════════════════════════════
@@ -910,36 +791,7 @@ export default function AnalyticsScreen() {
       >
         {/* No workspace selected — show actionable prompt */}
         {!sessionToken && (
-          <div className="analytics-no-workspace" role="status">
-            <svg
-              className="analytics-no-workspace-icon"
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-            <h2 className="analytics-no-workspace-title">
-              <Localized id="analytics-no-workspace-title"><span>No workspace selected</span></Localized>
-            </h2>
-            <p className="analytics-no-workspace-message">
-              <Localized id="analytics-no-workspace-message"><span>Select a workspace to view analytics</span></Localized>
-            </p>
-            <button
-              type="button"
-              className="analytics-no-workspace-action"
-              onClick={goToWorkspacePicker}
-            >
-              <Localized id="analytics-select-workspace"><span>Select workspace</span></Localized>
-            </button>
-          </div>
+          <NoWorkspacePrompt onSelectWorkspace={goToWorkspacePicker} />
         )}
 
         {/* View status — card count + workspace + time view */}
@@ -976,108 +828,17 @@ export default function AnalyticsScreen() {
           )}
 
           {/* Debug: TTL cache hit/miss/expiry readout per query key */}
-          <div className="analytics-cache-metrics">
-            <button
-              type="button"
-              ref={cacheChipRef}
-              className={`analytics-cache-chip${showCacheMetrics ? ' analytics-cache-chip--open' : ''}`}
-              onClick={() => setShowCacheMetrics((o) => !o)}
-              aria-expanded={showCacheMetrics}
-              aria-label={l10n.getString('analytics-cache-metrics-aria')}
-              title={l10n.getString('analytics-cache-metrics-aria')}
-            >
-              <span className="analytics-cache-chip-dot" aria-hidden="true" />
-              <Localized id="analytics-cache-chip"><span>cache</span></Localized>
-              <span className="analytics-cache-chip-rate">
-                {(() => {
-                  const { totals } = analyticsDataCache.metrics();
-                  return totals.hitRate === null ? '–' : `${Math.round(totals.hitRate * 100)}%`;
-                })()}
-              </span>
-            </button>
-            {showCacheMetrics && (
-              <div ref={cachePopoverRef} className="analytics-cache-popover" role="dialog" aria-label={l10n.getString('analytics-cache-metrics-aria')}>
-                <div className="analytics-cache-popover-head">
-                  <div className="analytics-cache-popover-meta">
-                    <h3 className="analytics-cache-popover-title">
-                      <Localized id="analytics-cache-popover-title"><span>Cache metrics</span></Localized>
-                    </h3>
-                    {(() => {
-                      const { totals } = analyticsDataCache.metrics();
-                      const rate = totals.hitRate === null ? '–' : `${Math.round(totals.hitRate * 100)}%`;
-                      return (
-                        <span className="analytics-cache-popover-summary">
-                          <Localized
-                            id="analytics-cache-summary"
-                            vars={{
-                              rate,
-                              hits: String(totals.hits),
-                              misses: String(totals.misses),
-                              expiries: String(totals.expiries),
-                            }}
-                          >
-                            <span>{rate} · {totals.hits} hits · {totals.misses} misses · {totals.expiries} expired</span>
-                          </Localized>
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <button
-                    type="button"
-                    className="analytics-cache-clear-btn"
-                    onClick={() => {
-                      clearAnalyticsCache();
-                      setMetricsTick((t) => t + 1);
-                      showToast(l10n.getString('analytics-toast-cache-cleared'));
-                    }}
-                    aria-label={l10n.getString('analytics-cache-clear-aria')}
-                    title={l10n.getString('analytics-cache-clear-aria')}
-                  >
-                    <Localized id="analytics-cache-clear"><span>Clear cache</span></Localized>
-                  </button>
-                </div>
-                <table className="analytics-cache-table">
-                  <thead>
-                    <tr>
-                      <th><Localized id="analytics-cache-col-key"><span>key</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-hits"><span>hits</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-misses"><span>misses</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-expiries"><span>expired</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-evictions"><span>evicted</span></Localized></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const { perKey } = analyticsDataCache.metrics();
-                      const rows = [...perKey.entries()].sort((a, b) => {
-                        const readsB = b[1].hits + b[1].misses + b[1].expiries;
-                        const readsA = a[1].hits + a[1].misses + a[1].expiries;
-                        return readsB - readsA;
-                      });
-                      if (rows.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={5} className="analytics-cache-empty">
-                              <Localized id="analytics-cache-empty"><span>No queries yet</span></Localized>
-                            </td>
-                          </tr>
-                        );
-                      }
-                      return rows.map(([key, m]) => (
-                        <tr key={key} title={key}>
-                          <td className="analytics-cache-key">{shortCacheLabel(key)}</td>
-                          <td>{m.hits}</td>
-                          <td>{m.misses}</td>
-                          <td>{m.expiries}</td>
-                          <td>{m.evictions}</td>
-                        </tr>
-                      ));
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <CacheMetricsPanel
+            open={showCacheMetrics}
+            onToggle={() => setShowCacheMetrics((o) => !o)}
+            onClear={() => {
+              clearAnalyticsCache();
+              setMetricsTick((t) => t + 1);
+              showToast(l10n.getString('analytics-toast-cache-cleared'));
+            }}
+            chipRef={cacheChipRef}
+            popoverRef={cachePopoverRef}
+          />
         </div>
         )}
 
