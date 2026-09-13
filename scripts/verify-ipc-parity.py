@@ -419,6 +419,14 @@ def load_allowlist() -> dict:
         text = read_allowlist_text()
     except AllowlistBusyError:
         raise
+    except UnicodeDecodeError as exc:
+        # A ValueError, not an OSError, so it needs its own arm: the bytes arrived and are
+        # not text. Uncaught, this escapes to main() as a traceback and spends the verdict
+        # code 1 on a file nobody could read -- the same confusion verify-ftl-orphans.py
+        # records for a locked bundle.
+        raise AllowlistUnusable(
+            f"{ALLOWLIST_PATH.name} is not UTF-8 text ({exc}); whatever those bytes are, "
+            f"they are not an allowlist.") from None
     except OSError as exc:
         raise AllowlistUnusable(
             f"{ALLOWLIST_PATH.name} would not open ({type(exc).__name__}: "
