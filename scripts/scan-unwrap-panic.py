@@ -369,10 +369,10 @@ def refuse_nothing_to_scan(
         "  WHICH ZERO IS WHICH: this refusal (exit 2) means NOTHING WAS SCANNED. A run over "
         "roots that really resolved, which happens to find no unwrap/expect call anywhere, "
         "is a TRUE GREEN: it exits 0 and prints the one-line inventory summary carrying its "
-        "own measured call count. That summary is the clean verdict, this block is not, and "
-        "no single run prints both -- and this refusal deliberately never prints the word "
-        "the clean run prints its count after, so a log grep for a verdict cannot match a "
-        "run that scanned nothing."
+        "own measured call count, and that summary line -- not this block -- is what a "
+        "reader or a CI log takes as the report. No single run emits both, and this refusal "
+        "borrows neither the shape nor the marker of that line, so grepping a log for the "
+        "report can never match a run that scanned nothing."
     )
     return 2
 
