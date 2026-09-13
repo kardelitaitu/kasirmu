@@ -483,8 +483,26 @@ WRAPPER_RE = re.compile(
     r"loggedInvoke(?:<[^>]*>)?\(\s*'(\w+)'", re.S)
 
 # An ADR #7 conditional: the scoped twin appears before this call, within a few lines.
+#
+# The '?' in the first arm is the ternary's '?' and nothing else. It used to be ANY '?', and the
+# two characters that look like one and are not are the two commonest null-handling idioms in
+# this front end: '??' (a nullish DEFAULT) and '?.' (an optional chain). \s*\? matched the FIRST
+# question mark of '??', so the window
+#
+#     const token = sessionToken ?? '';
+#     ...  await getActiveStockAlerts(token, ...)          // ProductManagementScreen.tsx:121-125
+#
+# was certified guarded by the very expression that supplies the token's ABSENCE as a value.
+# A null default is the opposite of a test: it guarantees the call happens, with '' or null, on
+# the shell that must not make it. Measured before this comment was written: the classifier
+# returned True for 'sessionToken ?? null' three times in the real tree, at
+# WorkspaceInventorySettings.tsx:97, WorkspaceKdsSettings.tsx:136 and
+# WorkspaceRestaurantPosSettings.tsx:114, and each of those calls is now reported. The same fix
+# in the other direction is the bail arm below, which is why both changes are in this one regex
+# group and NOT in one behaviour: a '?', a bail and a Scoped call are three different facts.
 GUARD_RE = re.compile(
-    r"(?:sessionToken|token)\s*\?|\?\s*(?:await\s+)?\w+Scoped\s*\(", re.S)
+    r"(?:sessionToken|token)\s*\?(?![?.])"      # a ternary on the token, not '??' or '?.'
+    r"|(?<![?.])\?\s*(?:await\s+)?\w+Scoped\s*\(", re.S)
 
 # The guard is not always a ternary. useTerminalHardware.ts writes it as a statement:
 #     if (sessionToken) { await setHardwareSettingsScoped(...) } else { await setHardwareSettings(...) }
@@ -498,12 +516,85 @@ GUARD_RE = re.compile(
 # alternative here is a real branch condition: an if-test, a ternary, or an explicit comparison.
 TOKEN_TEST_RE = re.compile(
     r"\bif\s*\(\s*(?:sessionToken|token)\s*\)"
-    r"|\b(?:sessionToken|token)\s*\?"
+    r"|\b(?:sessionToken|token)\s*\?(?![?.])"
     r"|\b(?:sessionToken|token)\s*(?:!==|!=|&&|\|\|)")
 SCOPED_CALL_RE = re.compile(r"\b\w+Scoped\s*\(")
 
 
+# The repo's other guard spelling, and the one this classifier used to get backwards. A negated
+# bail -- 'if (!sessionToken) { return; }', or the braceless 'if (!token) return;' -- means every
+# line after it runs ONLY with a truthy token, which is the same promise the ADR #7 ternary makes.
+# It is carried in 54 files here, and the classifier answered False for it: the token arm wanted a
+# '?' and the Scoped arm wanted a Scoped call, and a bail has neither. So the shape this front end
+# writes most often to say 'I checked' was the one shape the gate could not see, while '??', which
+# says the opposite, was seen. Both directions of one missing idea, and they stay two behaviours:
+# nullish/optional-chain no longer counts, a dominating bail does.
+#
+# 'Dominating' is the load-bearing word and it is computed rather than assumed: the bail counts only
+# if the block that contained it is still open at the call. That is what the depth walk decides.
+# If the depth ever drops below the bail's own depth between the bail and the call, the bail's
+# function or block ended and the call belongs to someone else -- which is precisely the case a
+# text search for 'return' would wave through, since a callback that bails on a null token does
+# nothing at all to protect an ambient call forty lines later in the enclosing component.
+# Depth is counted over comment-stripped source, so a brace inside a string literal can skew the
+# walk; skewing means the bail is NOT believed, which is the direction that reports rather than
+# hides.
+#
+# WHAT IT COST, measured on this tree the night it landed, because the cost is a claim about the
+# front end and not about this regex: the nullish/chain change alone moved the finding count UP
+# (130 to 135, five sites, the direction a widening should move in). The bail arm then cleared 28
+# of the 130 -- 54 files carry the idiom, and a dominating bail is the statement form of the same
+# ADR #7 promise -- so the two changes together reported 105. One of the 28 had become visible
+# only hours earlier (StaffDetailDrawer.tsx:354, bailed at 349-351), and 11 of them are windows
+# whose only Scoped call belongs to a DIFFERENT wrapper than the one being graded. Narrowing the
+# arm to 'a dominating bail AND a Scoped call in the window' measures 116 instead of 105, which
+# is why the two ideas stay two behaviours in two functions: that choice is ADR #7's owner's,
+# answerable by editing one line here, and is not something to be decided quietly by the file
+# that also prints the count.
+BAIL_RE = re.compile(
+    r"\bif\s*\(\s*!\s*(?:sessionToken|token)\b(?:\s*\|\|\s*[^)]*)?\)"
+    r"\s*\{?\s*(?:return|throw)\b", re.S)
+
+
+def _dominating_bail(window):
+    """True when a negated token bail is still in force at the end of the window.
+
+    The window's last line IS the graded call, so the only question is whether anything between
+    the bail and that line closed the block the bail sat in. Answered with a brace-depth walk, not
+    with a search: a bail inside a callback that has already returned to its caller guards nothing.
+    """
+    # The window's LAST line is the graded call, and depth at the call equals depth at the end of
+    # the line before it, so the walk stops there. Reading the whole string instead would let a
+    # trailing '}' -- the line that closes the function in every fixture, and in the tree -- look
+    # like the bail's own block had ended, and every bail in this repo sits inside a function that
+    # closes eventually. That mistake was caught by case 3 below, which stayed a violation.
+    head = window.rstrip()
+    cut = head.rfind("\n")
+    if cut > 0:
+        head = head[:cut + 1]
+    for m in BAIL_RE.finditer(head):
+        depth = 0
+        bail_depth = None
+        for i, ch in enumerate(head):
+            if i == m.start():
+                bail_depth = depth
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if bail_depth is not None and depth < bail_depth:
+                    break
+        if bail_depth is not None and depth >= bail_depth:
+            return True
+    return False
+
+
 def _window_is_guarded(window):
+    # Three independent facts make a window guarded, tested in the order that says the most first:
+    # a negated bail dominating the call, an ADR #7 ternary, or an explicit token test that
+    # reaches a Scoped call. None of them is 'the word token appeared nearby'.
+    if _dominating_bail(window):
+        return True
     return bool(GUARD_RE.search(window)) or bool(
         TOKEN_TEST_RE.search(window) and SCOPED_CALL_RE.search(window))
 
@@ -976,6 +1067,37 @@ FIXTURES = [
     ("ADR #7 conditional is accepted",
      "const x = async () => {\n  const s = sessionToken\n    ? await getSaleScoped(sessionToken, id)\n    : await getSale(id);\n};\n",
      False),
+    # '??' is a null DEFAULT, not a test of the token: this window guarantees the ambient call
+    # runs, passing an empty string, on the shell that cannot register the command. The classifier
+    # used to match the FIRST '?' of '??' and certify it guarded -- measured, three real sites
+    # (WorkspaceInventorySettings.tsx:97, WorkspaceKdsSettings.tsx:136 and
+    # WorkspaceRestaurantPosSettings.tsx:114) were being hidden by exactly this shape.
+    ("a nullish default is not a token test",
+     "const x = async () => {\n  const token = sessionToken ?? '';\n"
+     "  const s = await getSale(id);\n};\n",
+     True),
+    # Same idea one character over: '?.' is an optional CHAIN. It reads a token, it does not
+    # branch on one, so the call below it happens with or without a token.
+    ("an optional chain is not a token test",
+     "const x = async () => {\n  const label = sessionToken?.slice(0);\n"
+     "  const s = await getSale(id);\n};\n",
+     True),
+    # The repo's own bail idiom, carried in 54 files: 'if (!sessionToken) return;' makes every
+    # line under it a token-present line. The classifier answered False for it, because it wanted
+    # a '?' or a Scoped call and a bail has neither -- the wrong direction as loudly as '??' was,
+    # and the two are separate behaviours with separate cases rather than one clever regex.
+    ("a negated token bail dominating the window is a guard",
+     "const x = async () => {\n  if (!sessionToken) return;\n"
+     "  const s = await getSale(id);\n};\n",
+     False),
+    # ...but a bail guards its own function, not the file it lives in. This is the case the depth
+    # walk exists for: searching the window for 'if (!token) return' clears the second call too,
+    # nine words away, and that callback tests nothing at all.
+    ("a bail does not clear an ambient call in a different callback",
+     "const a = async () => {\n  if (!token) return;\n"
+     "  const s = await getSaleScoped(t);\n};\n"
+     "const b = async () => {\n  const s = await getSale(id);\n};\n",
+     True),
     # Proximity to a scoped call does NOT guard anything: these are two independent statements, so
     # the second runs ambient regardless of the first. The first draft of this case expected
     # "accepted" and the classifier correctly disagreed -- a screen that calls the scoped twin for
