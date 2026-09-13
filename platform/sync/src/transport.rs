@@ -265,9 +265,12 @@ pub struct SyncSnapshotResponse {
 ///
 /// This produces actionable diagnostics instead of the raw `reqwest` error string,
 /// helping operators understand *why* a sync failed (server down vs network issue).
-fn classify_transport_error(e: &reqwest::Error, url: &str) -> String {
+/// `timeout_secs` is the deadline the caller's client was actually configured
+/// with, so the timeout branch reports the time that really applied (30s for
+/// sync requests, 5s for health probes) rather than a hardcoded guess.
+fn classify_transport_error(e: &reqwest::Error, url: &str, timeout_secs: u64) -> String {
     if e.is_timeout() {
-        format!("request timed out after 30s to {url}")
+        format!("request timed out after {timeout_secs}s to {url}")
     } else if e.is_connect() {
         let msg = e.to_string().to_lowercase();
         if msg.contains("connection refused") {
@@ -414,7 +417,7 @@ impl SyncTransport {
             .json(body)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 30)))?;
 
         if !resp.status().is_success() {
             // Read the body once; 401/403 classification, the migration
@@ -454,9 +457,6 @@ impl SyncTransport {
 
     /// Pull updates from the server since the given timestamp.
     ///
-    /// Pass `None` to pull all available data (initial sync).
-    /// Pull updates from the server since the given timestamp.
-    ///
     /// Pass `None` for `since` to pull all available data (initial sync).
     /// Pass `cursor` for paginated subsequent pages (P-3).
     pub async fn pull_updates(
@@ -476,7 +476,7 @@ impl SyncTransport {
             .json(&request)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 30)))?;
 
         // P-1 retention: 410 Gone means the client's anchor has expired
         // (data older than the `since` timestamp has been pruned).
@@ -546,7 +546,7 @@ impl SyncTransport {
             .get(&url)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 5)))?;
 
         if resp.status().is_success() {
             Ok(())
@@ -571,7 +571,7 @@ impl SyncTransport {
             .get(&url)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 30)))?;
 
         if !resp.status().is_success() {
             // Read the body once; 401/403 classification, the migration

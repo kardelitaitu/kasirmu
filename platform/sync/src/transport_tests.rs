@@ -559,7 +559,7 @@ fn classify_transport_error_timeout() {
             .await
             .unwrap_err()
     });
-    let msg = super::classify_transport_error(&err, "http://example.com");
+    let msg = super::classify_transport_error(&err, "http://example.com", 30);
     assert!(
         msg.contains("timed out") || msg.contains("timeout"),
         "expected timeout message, got: {msg}"
@@ -584,7 +584,7 @@ fn classify_transport_error_connection_refused() {
             .await
             .unwrap_err()
     });
-    let msg = super::classify_transport_error(&err, "http://127.0.0.1:1");
+    let msg = super::classify_transport_error(&err, "http://127.0.0.1:1", 30);
     assert!(
         msg.contains("cloud server not running")
             || msg.contains("cannot connect")
@@ -608,7 +608,7 @@ fn classify_transport_error_includes_url() {
             .unwrap_err()
     });
     let url = "http://192.0.2.1:9999";
-    let msg = super::classify_transport_error(&err, url);
+    let msg = super::classify_transport_error(&err, url, 30);
     // The error message should either contain the URL or describe the issue.
     assert!(!msg.is_empty(), "error message should not be empty");
     assert!(
@@ -635,7 +635,7 @@ fn classify_transport_error_non_empty() {
             .await
             .unwrap_err()
     });
-    let msg = super::classify_transport_error(&err, "http://test.example.com");
+    let msg = super::classify_transport_error(&err, "http://test.example.com", 30);
     assert!(!msg.is_empty(), "classification should produce a message");
 }
 
@@ -848,6 +848,43 @@ async fn health_check_fails_when_server_returns_error() {
     assert!(
         err.contains("500") || err.contains("Internal Server Error"),
         "error should mention status code, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn health_check_timeout_reports_its_own_deadline_not_the_sync_one() {
+    use axum::{Router, routing::get};
+
+    // Regression pin (2026-09-13): the health probe runs on a 5-second
+    // client, but its timeout message used to hardcode the sync client's
+    // "30s" — a 6x misreport that sends whoever reads the log tuning the
+    // wrong knob. A server that accepts but never answers forces a
+    // genuine timeout (no connect-refused race), so the classified
+    // message can be asserted directly.
+    async fn hang() -> &'static str {
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        "late"
+    }
+
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route("/api/health", get(hang));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    let transport = SyncTransport::new(&format!("http://localhost:{port}"), None);
+    let err = transport
+        .health_check()
+        .await
+        .expect_err("a hanging server must time the health check out");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("after 5s"),
+        "health-check timeouts must report the 5s deadline that actually applied, got: {msg}"
+    );
+    assert!(
+        !msg.contains("30s"),
+        "the health probe's message must not claim the sync client's 30s deadline, got: {msg}"
     );
 }
 

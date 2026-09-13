@@ -1,4 +1,22 @@
 
+## 2026-09-13 — TDD: health-check timeout misreported the sync deadline (platform-sync)
+
+**Context & Identified Weakness:**
+`classify_transport_error` in `platform/sync/src/transport.rs` hardcoded `"request timed out after 30s"` in its timeout branch, but it is shared by two clients with different deadlines: the 30-second sync client (push/pull/snapshot) and the 5-second health-probe client built inside `health_check()`. When the server hung (as opposed to refusing), the health check reported a timeout "after 30s" that had actually fired at 5s — a 6x misreport aimed at whoever reads the log to decide which knob to tune. Found by inspection during a user-requested "repair" pass; no test pinned the health-check timeout message at all. A second, cosmetic defect: `pull_updates` carried its doc summary twice (a leftover edit).
+
+**Changes & Design:**
+1. `classify_transport_error` now takes a `timeout_secs: u64` parameter interpolated into the timeout message, so each caller reports the deadline its client was actually configured with.
+2. Call sites: push/pull/snapshot pass `30` (the sync client's configured timeout); `health_check` passes `5`. The values are kept adjacent to the client builders that own them.
+3. New regression test `health_check_timeout_reports_its_own_deadline_not_the_sync_one` in `transport_tests.rs`: an axum handler that accepts then sleeps 10s forces a genuine timeout (no connect-refused race), asserting the message contains "after 5s" and does NOT contain "30s".
+4. Deduplicated the `pull_updates` doc comment (kept the more complete variant).
+5. Deliberately NOT done: threading the actual `Duration` (instead of a `u64`) through, and extracting the two deadline constants — the message text is the observable contract here, and a larger refactor of an audited-SAFE file needs its own slice.
+
+**Verification:**
+- Verified RED phase: the new test failed with `got: transport error: request timed out after 30s to http://localhost:40035/api/health` (and the 5.03s runtime confirmed the 5s client genuinely fired).
+- Verified GREEN phase: 80 transport tests, full crate suite 386 passed / 0 failed (ignored ones need live servers/PG).
+- `cargo clippy -p platform-sync --all-targets --all-features -- -D warnings` clean (one round: `.err().expect(..)` → `expect_err(..)`).
+- `rustfmt --check` clean on both changed files. Note: workspace-wide `cargo fmt --check` reports diffs in `apps/cloud-server/src/email_pg/{analytics,popularity}.rs` — another agent's in-flight work, not touched.
+
 ## 2026-09-10 — TDD: Enforce read-only subscription lock on offline queue enqueue (core/offline)
 
 **Context & Identified Weakness:**
