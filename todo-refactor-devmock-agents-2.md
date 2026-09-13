@@ -5,6 +5,12 @@
 **Goal:** Extract sales, checkout, cart holding, inventory levels, stock adjustments, products, bundles, taxes, and shift command mocks from `ui/src/dev-mock/tauri-api.ts` into isolated domain handler modules.
 
 **Target File:** `ui/src/dev-mock/tauri-api.ts`  
+**Shared-file hazard:** all four plans edit this one file, so these lanes are serial on it,
+not parallel. Every commit named below carries an explicit pathspec (AGENTS.md, Git & Commit
+Policy §3), because a bare `git commit` in this shared checkout files whatever another
+session happened to stage under your subject. Immediately before each commit, confirm the
+router is clean against HEAD: `git --no-optional-locks status --porcelain -- ui/src/dev-mock/tauri-api.ts`.
+If it holds edits that are not yours, stop and report rather than committing them.  
 **Sibling Documents:**
 - [`todo-refactor-devmock-agents-1.md`](./todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
 - [`todo-refactor-devmock-agents-3.md`](./todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
@@ -27,10 +33,24 @@
 
 ## 📋 Task Checklist
 
+> **Coverage note (2026-09-13):** the "~196 entries have no owner" figure below was true when
+> phases 2.1 and 2.2 landed; [`todo-refactor-devmock-agents-4.md`](./todo-refactor-devmock-agents-4.md)
+> was opened for that tail and has since extracted most of it. The agent-2 leftovers this lane
+> still owns are **14** entries (12 bundle keys + `get_low_stock_alerts` + `open_cash_drawer`),
+> measured at HEAD on 2026-09-13, not the "~196" or agent 4's earlier "~12".
+
+> **Lane status (2026-09-13):** phases 2.1 and 2.2 are **done and committed** (`6105ce224`,
+> `efd766226`); the counts recorded under each match those commits. Only the unowned tail
+> noted at the foot of this file is open, and [`todo-refactor-devmock-agents-4.md`](./todo-refactor-devmock-agents-4.md)
+> now owns most of it — do not re-run 2.1 or 2.2.
+
 ### Phase 2.0: Baseline Audit
 - [x] Map all sales, inventory, and catalog command strings in `tauri-api.ts`.
-  - Literal spans lines 2626–4781 and holds **501 entries** (span-verified: the
-    entries tile the literal exactly, zero gap lines). Domain split: catalog 60,
+  - Literal holds **501 entries** (re-confirmed 2026-09-13 against `ce8666604`: `git show
+    ce8666604:ui/src/dev-mock/tauri-api.ts | grep -cE "^[[:space:]]+'[a-z_][a-z0-9_]*':"`
+    = 501). The span claimed here as "lines 2626–4781" is wrong for that same commit, which
+    measures **2633–4767**; the count was right and the line numbers were not. Re-measure a
+    span before quoting it — the same command with `grep -n`, first and last match. Domain split: catalog 60,
     sales/cart ~150, inventory ~30, shifts ~20; the remaining ~196 have no
     assigned owner yet (see the note under Phase 2.2).
 
@@ -40,7 +60,8 @@
     variants (10), categories (5), currency + exchange rates (15), tax (9).
     There is no `get_tax_rules` command in the mock — the tax domain is
     `list_tax_rates_scoped` + the four sibling tax-rate commands.
-  - `tauri-api.ts` 4,991 → 4,664 lines; the literal drops 501 → 441 entries.
+  - `tauri-api.ts` 4,991 → 4,664 lines; the literal drops 501 → 441 entries. (Verified
+    2026-09-13 against `ce8666604` and `6105ce224`, both line count and entry count.)
   - `MOCK_PRODUCTS`/`RAW_MOCK_PRODUCTS` moved in with their consumers, as
     `core/mockSeedData.ts` reserved them to do; `MOCK_PRODUCTS` is re-exported
     for the sales/analytics/seeder readers that remain in the router.
@@ -59,8 +80,11 @@
     (554 files / 9,477 passed / 0 failed).
 - [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(devmock-ops): extract catalog and tax mock handlers"
+  git add -- ui/src/dev-mock/handlers/catalog.ts && git commit -m "refactor(devmock-ops): extract catalog and tax mock handlers" -- ui/src/dev-mock/handlers/catalog.ts ui/src/dev-mock/tauri-api.ts
   ```
+  Landed as `6105ce224`. The `add` is needed only because `catalog.ts` was untracked: a
+  bare pathspec commit cannot introduce a new file and `--include` fails the same way (§3
+  rev 2).
 
 ### Phase 2.2: Extract Sales, Checkout & Inventory Mocks
 - [x] Move `start_sale`, `add_line`, `complete_sale`, `hold_cart`, `list_open_bills` mocks to `handlers/sales.ts`.
@@ -100,7 +124,7 @@
   - Full UI suite green: 554 files / 9,477 passed / 0 failed.
 - [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(devmock-ops): extract sales, shifts, and inventory mock handlers"
+  git add -- ui/src/dev-mock/handlers/sales.ts ui/src/dev-mock/handlers/inventory.ts ui/src/dev-mock/handlers/shifts.ts && git commit -m "refactor(devmock-ops): extract sales, shifts, and inventory mock handlers" -- ui/src/dev-mock/handlers/sales.ts ui/src/dev-mock/handlers/inventory.ts ui/src/dev-mock/handlers/shifts.ts ui/src/dev-mock/tauri-api.ts
   ```
   - `tauri-api.ts` 4,664 → **3,905** lines. `sales.ts` is a factory because
     `unwrapArgs`/`mockHandlerPayload` cannot be imported back (cycle), and

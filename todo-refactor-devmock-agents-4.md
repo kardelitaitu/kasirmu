@@ -5,6 +5,18 @@
 **Goal:** Extract KDS, loyalty / gift / promotion, payment, CRM, floorplan, analytics, locations, and system / platform mocks from `ui/src/dev-mock/tauri-api.ts` into isolated domain handler modules. Close the coverage gap so that `tauri-api.ts` can reach the < 200-line end-state once Agent 2 removes its remaining leftovers.
 
 **Target File:** `ui/src/dev-mock/tauri-api.ts`
+**Shared-file hazard:** all four plans edit this one file, so these lanes are serial on it,
+not parallel. Every commit named below carries an explicit pathspec (AGENTS.md, Git & Commit
+Policy §3), because a bare `git commit` in this shared checkout files whatever another
+session happened to stage under your subject. Immediately before each commit, confirm the
+router is clean against HEAD: `git --no-optional-locks status --porcelain -- ui/src/dev-mock/tauri-api.ts`.
+If it holds edits that are not yours, stop and report rather than committing them.
+**Area-name drift (measured 2026-09-13):** rule 2 above declares `refactor(devmock-services): ...`,
+but phases 4.1 and 4.2 landed as `refactor(dev-mock): ...` (`ba557c54a` KDS, `9f0b61043`
+analytics) while 4.3 and the payment half of 4.2 landed as `refactor(devmock-services): ...`
+(`2d2da4ba6`, `2d0e064c5`), and 4.4's first slice landed as `refactor(dev-mock): ...`
+(`de174f09b`). A grep for `refactor(devmock-services):` alone under-reports this lane's work
+and can make landed phases look missing. Grep both: `git log --oneline --grep="dev-mock"`.
 **Sibling Documents:**
 - [`todo-refactor-devmock-agents-1.md`](./todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
 - [`todo-refactor-devmock-agents-2.md`](./todo-refactor-devmock-agents-2.md) (Agent 2 — Operational Mocks: Sales, Inventory & Catalog)
@@ -39,7 +51,7 @@
      git log -n 50 --oneline --grep="refactor(devmock-ops):"
      git log -n 50 --oneline --grep="refactor(devmock-enterprise):"
      ```
-   - Agent 2 still has ~12 leftover entries in `tauri-api.ts` (bundle CRUD and a few inventory / shift stubs) that sit inside Agent 2's fence and were not extracted in phases 2.1–2.2. These MUST be extracted by Agent 2 before the < 200-line end-state is reachable. Agent 4 must NOT touch them.
+   - Agent 2 still has **14** leftover entries in `tauri-api.ts` (re-measured 2026-09-13 at HEAD; the "~12" here and in phase 4.0 counted the bundle family only and omitted `get_low_stock_alerts` and `open_cash_drawer`) (bundle CRUD and a few inventory / shift stubs) that sit inside Agent 2's fence and were not extracted in phases 2.1–2.2. These MUST be extracted by Agent 2 before the < 200-line end-state is reachable. Agent 4 must NOT touch them.
 
 ---
 
@@ -56,8 +68,12 @@
     - **Floorplan** — ~18 entries (`list_tables*`, `get_table*`, `create_table*`, `update_table*`, `delete_table*`, `update_table_status*`, `assign_table_order*`, `release_table*`, `list_sections*`)
     - **Locations & Administration** — ~23 entries (`list_locations*`, `get_location_profile*`, `get_primary_location*`, `create_location_profile*`, `update_location_profile*`, `set_primary_location*`, `delete_location_profile*`, `get_location_ticket_prefix*`, `set_location_ticket_prefix*`, `list_legal_entities*`, `get_legal_entity*`, `create_legal_entity*`, `update_legal_entity*`, `get_regional_config*`, `set_regional_config*`, `list_active_memos*`, `acknowledge_memo*`, `create_memo*`, `publish_memo*`, `stop_memo*`, `revise_memo*`, `get_cart_deduction_location`, `override_cart_deduction_location*`)
     - **System & Platform** — ~65 entries (sessions, features, branding, org, subscription, version, IP, document numbers, fiscal schemes, hardware, backup, export/import, audit, remote failures, deployment, setup, screen, bootstrap, machine fingerprint, offline queue)
-  - **Agent 2 leftovers** (~12 entries inside Agent 2's fence, NOT owned by Agent 4): bundle CRUD (`list_bundles*`, `get_bundle*`, `create_bundle*`, `update_bundle*`, `delete_bundle*`, `lookup_bundle_by_sku*`), low-stock alert, cash drawer. These MUST be extracted by Agent 2 in a follow-up phase.
-  - **Agent 3 scope** (~88 entries inside Agent 3's fence, NOT owned by Agent 4): staff / auth / roles (27), workspace (12), topology (6), settings (43).
+  - **Agent 2 leftovers** (**14** entries inside Agent 2's fence, NOT owned by Agent 4;
+    re-measured 2026-09-13 at HEAD — 12 bundle keys plus `get_low_stock_alerts` plus
+    `open_cash_drawer`, via `git show HEAD:ui/src/dev-mock/tauri-api.ts | grep -cE
+    "^  '(list_bundles|get_bundle|create_bundle|update_bundle|delete_bundle|lookup_bundle_by_sku|get_low_stock_alerts|open_cash_drawer)'`.
+    The "~12" here and in rule 5 counted the bundle family only and dropped the other two: bundle CRUD (`list_bundles*`, `get_bundle*`, `create_bundle*`, `update_bundle*`, `delete_bundle*`, `lookup_bundle_by_sku*`), low-stock alert, cash drawer. These MUST be extracted by Agent 2 in a follow-up phase.
+  - **Agent 3 scope** (~88 entries inside Agent 3's fence, NOT owned by Agent 4): staff / auth / roles (27), workspace (12), topology (6), settings (43). **Unreconciled:** the arithmetic check at the foot of this file subtracts **100** for the same fence, and a keyword sweep of the staff / workspace / topology / setting families at HEAD returns **46** literal entries. Three numbers for one fence, none from a per-entry classification. Agent 3's phase 3.0 audit owns settling it entry by entry; until then treat 88 as the 06:44 estimate against `efd766226` and 100 as a plug in that check, not as a measurement.
   - *Note:* the above counts are approximate because some command names cross domains (e.g. `print_sales_receipt` is settings, `list_role_holders_scoped` is staff). The baseline audit will reclassify each entry exactly before carving.
 
 ### Phase 4.1: Extract KDS & Loyalty Mocks
@@ -74,8 +90,12 @@
 - [x] Verify: `npm run typecheck` — clean (only pre-existing `WorkspaceHome.tsx` errors).
 - [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(dev-mock): extract KDS handlers to kds.ts"
+  git add -- ui/src/dev-mock/handlers/kds.ts && git commit -m "refactor(dev-mock): extract KDS handlers to kds.ts" -- ui/src/dev-mock/handlers/kds.ts ui/src/dev-mock/tauri-api.ts
   ```
+  Landed as `ba557c54a`. That commit also carried `.agents/devmock-kds-extract.py`, a scratch
+  helper nobody fenced — the pathspec above is what excludes it. `git add` appears only
+  because `kds.ts` was untracked; a bare pathspec commit cannot introduce a new file and
+  `--include` fails identically (§3 rev 2).
 
 ### Phase 4.2: Extract Payment & Analytics Mocks
 - [x] Move payment command surface to `handlers/payment.ts`.
@@ -94,8 +114,9 @@
 - [x] Verify: `npm run typecheck` — clean (only pre-existing `WorkspaceHome.tsx` errors).
 - [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(dev-mock): extract analytics handlers to analytics.ts"
+  git add -- ui/src/dev-mock/handlers/analytics.ts && git commit -m "refactor(dev-mock): extract analytics handlers to analytics.ts" -- ui/src/dev-mock/handlers/analytics.ts ui/src/dev-mock/tauri-api.ts
   ```
+  Landed as `9f0b61043`, which also carried the scratch `.agents/fix-analytics.py`.
 
 ### Phase 4.3: Extract CRM & Floorplan Mocks
 - [x] Move customer, supplier, and purchase-order command surface to `handlers/crm.ts`.
@@ -107,8 +128,10 @@
 - [ ] Verify: `npm run typecheck`.
 - [ ] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(devmock-services): extract crm and floorplan mock handlers"
+  git add -- ui/src/dev-mock/handlers/crm.ts ui/src/dev-mock/handlers/floorplan.ts && git commit -m "refactor(devmock-services): extract crm and floorplan mock handlers" -- ui/src/dev-mock/handlers/crm.ts ui/src/dev-mock/handlers/floorplan.ts ui/src/dev-mock/tauri-api.ts
   ```
+  Already landed as `2d2da4ba6` (with loyalty); the two boxes above are ticked, so this
+  milestone is recorded, not pending — do not re-cut it.
 
 ### Phase 4.4: Extract Locations & System Mocks
 - [x] Move memo, legal-entity, and cart-deduction command surface to `handlers/locations.ts`.
@@ -126,24 +149,43 @@
 - [x] Verify: `npm run typecheck` — clean (only pre-existing `WorkspaceHome.tsx` errors).
 - [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(dev-mock): extract memo and legal-entity handlers to locations.ts"
+  git add -- ui/src/dev-mock/handlers/locations.ts && git commit -m "refactor(dev-mock): extract memo and legal-entity handlers to locations.ts" -- ui/src/dev-mock/handlers/locations.ts ui/src/dev-mock/tauri-api.ts
+  ```
+  Landed as `de174f09b`. When the `system.ts` slice lands it is its own commit, and only
+  `system.ts` is new at that point:
+  ```bash
+  git add -- ui/src/dev-mock/handlers/system.ts && git commit -m "refactor(devmock-services): extract system handlers to system.ts" -- ui/src/dev-mock/handlers/system.ts ui/src/dev-mock/tauri-api.ts
   ```
 
-### Phase 4.5: Final Cleanup
-- [ ] *Wait Gate:* Verify Agent 2 has extracted its ~12 leftover entries and Agent 3 has committed `refactor(devmock-enterprise):`.
+### Phase 4.5: Final Cleanup — OWNS the router consolidation (supersedes agent 3's phase 3.3)
+> [`todo-refactor-devmock-agents-3.md`](./todo-refactor-devmock-agents-3.md) phase 3.3 claims
+> this same job. It is superseded by this phase; agent 3's remaining scope is 3.1 and 3.2 only.
+- [ ] *Wait Gate:* Verify Agent 2 has extracted its **14** leftover entries and Agent 3 has landed 3.1 and 3.2. Note both lanes are dormant as of 2026-09-13: agent 3's four handler files do not exist, and agent 3's commits carry the `refactor(devmock-enterprise):` subject this grep looks for but no such commit exists yet.
 - [ ] Reduce `ui/src/dev-mock/tauri-api.ts` to a clean entry router registering only the domain handler maps.
-- [ ] Target: literal entries < 40, total file < 200 lines.
+- [ ] **Target is a property, not a count: the router holds zero literal command entries.** Every command mock lives in a `handlers/*.ts` module and is merged through `mockDispatcher`. The old "literal entries < 40, total file < 200 lines" is withdrawn as unreachable and unsound: 181 entries sat in the router at HEAD on 2026-09-13 (`git show HEAD:ui/src/dev-mock/tauri-api.ts | grep -cE "^[[:space:]]+'[a-z_][a-z0-9_]*':"` = 181) and the extractions still fenced for this lane and agent 3's cover fewer than that, so "< 40" could only be met by relocating entries somewhere unowned — moving work out of a counted file instead of finishing it. A line target has the same defect: the 33 `handlers['x'] = …` assignment sites and the in-place patches are what remain, and they survive any line-count target.
 - [ ] Run full UI tests: `npm run test` and `npm run check:all`.
 - [ ] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(devmock-services): reduce tauri-api.ts to router root"
+  git commit -m "refactor(devmock-services): reduce tauri-api.ts to router root" -- ui/src/dev-mock/tauri-api.ts
   ```
+  Router only, already tracked, so no `add` and no staging step: a pathspec commit takes it
+  from the working tree. Run `git show --stat` afterwards and confirm the file list is
+  exactly the paths you named.
 
-> **Arithmetic check.**
-> Original literal: 501 entries. Current literal: **185** entries.
+> **Arithmetic check.** Both figures below are measurements with the commit they were taken
+> against, not estimates. Two sources disagreed on the current count, so both are named:
+> 194 at `9f0b61043` (and at HEAD `b818f09ee`), 181 at HEAD `c7bc3b1ef` — the drop is the
+> 4.4 slices landing while this file was being edited. Measure it with:
+> `git show HEAD:ui/src/dev-mock/tauri-api.ts | grep -cE "^[[:space:]]+'[a-z_][a-z0-9_]*':"`
+> (194 literal keys spanned lines 1416–2423 at `9f0b61043`, alongside 33 `handlers['x'] = …`
+> bracket assignment sites).
+> Original literal: 501 entries (measured at `ce8666604`). Current literal: **181** entries.
 > Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) + KDS (–17) + analytics (–22) + locations (–9) = 316 removed.
 > Remaining: agent 3 (–100) + agent 2 leftovers (–14) + system (~–59) + location profiles left in router (~–7) = 180.
-> The 5-entry gap (185 vs 180) is the unclassified tail + misclassifications. After all
-> extractions and cleanup, < 200 lines is reachable.
+> The 1-entry gap (181 vs 180) is the unclassified tail plus the three 4.4
+> misclassifications. This closes arithmetically; it does not prove the end-state, because
+> none of the subtractions is an owned, classified count — the agent-3 figure is a plug, and
+> 3.1/3.2 have not started. Completion is the phase 4.5 property (zero literal entries in the
+> router), not this sum and not a line count.
 >
 > `tauri-api.ts` currently **2,375** lines (was 3,905).
