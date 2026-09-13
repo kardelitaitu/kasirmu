@@ -1,4 +1,5 @@
 use super::*;
+use crate::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
 use crate::migrations;
 use rusqlite::Connection;
 
@@ -1080,7 +1081,14 @@ fn seed_item(conn: &Connection, sku: &str, stock: i64) {
     s.create_product(sku, sku, money(500), None, None, 0, Some("retail"))
         .unwrap();
     if stock > 0 {
-        s.adjust_stock(sku, stock).unwrap();
+        // adjust_stock is deprecated (single-column path); the canonical
+        // successor needs a tx + location, same shape as the products_tests
+        // shim. Seed data uses the canonical default location.
+        let tx = conn.unchecked_transaction().unwrap();
+        let loc = LocationId::from(CANONICAL_DEFAULT_LOCATION_UUID);
+        s.adjust_stock_at_location_with_reason(&tx, sku, stock, &loc, None, None, None, None)
+            .unwrap();
+        tx.commit().unwrap();
     }
 }
 

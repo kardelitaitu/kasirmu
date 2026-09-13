@@ -150,7 +150,12 @@ impl Store<'_> {
     /// - **Layer 1 (Rust)**: pre-check `current_qty + delta >= 0` before any
     ///   write, returning [`CoreError::InsufficientStockAtLocation`] with the
     ///   exact available qty if the deduction would underflow. This keeps
-    ///   `PartialStockResu    #[allow(clippy::too_many_arguments)]
+    ///   `PartialStockResult` aggregation O(1) without a SELECT-after-failure.
+    /// - **Layer 2 (SQLite)**: `SqliteFailure(extended_code=787)` on the
+    ///   `stock_summary` upsert is translated to the same variant (defence
+    ///   in depth against any Rust-side race in Layer 1).
+    ///
+    #[allow(clippy::too_many_arguments)]
     pub fn adjust_stock_at_location_with_reason(
         &self,
         tx: &rusqlite::Transaction<'_>,
