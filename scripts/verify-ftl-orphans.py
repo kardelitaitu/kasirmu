@@ -114,11 +114,33 @@ def referenced(names: set[str]) -> set[str]:
     return live
 
 
-def staged_diff() -> str:
-    return subprocess.run(
-        ["git", "diff", "--cached", "-U0", "--", "ui/src/locales", "ui/src"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=ROOT).stdout
+def staged_diff() -> str | None:
+    """The staged diff under ui/src, or None when git could not produce one.
+
+    None is a REFUSAL condition, not an empty set. `git diff --cached` reports a usage or
+    repository error on stderr and writes NOTHING to stdout, so returning `.stdout` alone --
+    the shape this function had, with no `check=` and `returncode` never read -- made "the
+    index could not be read" and "the index holds nothing under ui/src" byte-identical to the
+    caller, which then printed a clean verdict over the empty string. This is the law this repo
+    already states at scripts/verify-migration-column-types.py:204-222.
+    """
+    cmd = ["git", "diff", "--cached", "-U0", "--", "ui/src/locales", "ui/src"]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=ROOT, check=True)
+    except Exception as exc:  # no git on PATH, no repository at ROOT, or a non-zero exit
+        # The words below are git's own, quoted from its stderr -- a complaint about the
+        # command or the checkout, not this gate's verdict on anyone's keys.
+        print(f"error: cannot read the staged diff (`{' '.join(cmd)}` in {ROOT}): {exc}",
+              file=sys.stderr)
+        raw = getattr(exc, "stderr", "") or ""
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        for line in str(raw).splitlines()[:3]:
+            print(f"  git: {line}", file=sys.stderr)
+        return None
+    return proc.stdout
 
 
 def changes_from_diff(diff: str) -> tuple[set[str], set[str], set[str]]:
@@ -222,8 +244,20 @@ def census() -> int:
 
 
 def check_staged() -> int:
-    """The blocking check: what this commit adds and what it stops referencing."""
+    """The blocking check: what this commit adds and what it stops referencing.
+
+    Three exits, and only one of them is a verdict: 0 when the scope was read and held
+    nothing, 1 when it held a problem, 2 when the scope could not be read at all.
+    """
     diff = staged_diff()
+    if diff is None:
+        # An unreadable index is not an empty one, so this prints no verdict and does not
+        # exit 0. The hook treats it as the hard fail it already treats a FAIL as.
+        print("verify-ftl-orphans: REFUSED -- git could not produce the staged diff "
+              "(`git diff --cached -U0 -- ui/src/locales ui/src`), so the --staged-only "
+              "scope is unknown, and an unknown scope is not an empty one. Nothing was "
+              "checked here; git's own words, on stderr, name the command that failed.")
+        return 2
     if not diff.strip():
         print("staged-only: nothing staged under ui/src; nothing to verify.")
         return 0
