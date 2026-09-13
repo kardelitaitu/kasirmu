@@ -335,8 +335,14 @@ jobs:
       # which an unknown fraction are detection gaps rather than debt. Printing the number
       # makes the trend visible; the pre-commit hook is what blocks, and only on what a
       # commit actually adds or strands.
+      # continue-on-error is what makes "informational" true rather than aspirational:
+      # since ef2058f28 --census exits 2 when the root it walked holds no bundles at all,
+      # and since 4d1a85b15 a locale file that will not open makes the whole run refuse.
+      # Both are checkout problems, not orphan verdicts -- and until this line either one
+      # reddened a job that had labelled itself informational.
       - name: FTL orphan census (informational)
         run: python3 scripts/verify-ftl-orphans.py --census
+        continue-on-error: true
 
   # ── 6. CI docs / manifest truthfulness ─────────────────────────────────
   # gates.json calls itself "the single source of truth for CI/local-runner gate
