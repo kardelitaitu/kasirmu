@@ -109,3 +109,28 @@ carries the identical lint at the identical line and column — `:264`, the same
 `if want.contains(&name) { if let Some((sig, body)) = grab(&chars, j) {` — because this harness was
 copied across the two shells, so one line would clean both files at once; it was **not** touched, the
 tablet copy is not this lane's fence.
+
+## 6. the measurement that turned the reading into a fact (2026-09-13, 09:13 +07)
+
+appended 09:16 +07. nothing above is retracted; §2 and §3 are now reproduced rather than predicted.
+- `cargo test -p oz-pos-tablet registration_gate` → exit 101, `running 7 tests`, `6 passed; 1
+  failed`, `finished in 0.16s` on a warm target (cargo printed `Finished ... in 0.74s`, the whole
+  invocation 1.4s wall, 09:13:04 +07; the earlier 09:07 +07 run read 1.04s warm — same verdict).
+- the failure is `drift_pin_no_computed_command_names_in_ui`, panicking at
+  `apps/tablet-client/src/commands/registration_gate_tests.rs:871`: `PIN OF A KNOWN HAZARD, NOT AN
+  ENDORSEMENT: 100 of 103 invoke() sites in ui/src name the command as a literal and these 1 build
+  it at runtime`, and the named site is `ui/src/dev-mock/core/mockDispatcher.ts:108`. one offender,
+  exactly the one §2 describes; §3's `7 passed; 0 failed` after the row stays a prediction.
+- the desktop control, same minute: `cargo test -p oz-pos-app registration_gate` → exit 101, 8
+  tests, 6 passed; 2 failed — and its `drift_pin_no_computed_command_names_in_ui` is `ok`. it
+  passes that leg because its allowlist at `:883-904` carries a `dev-mock/core/mockDispatcher.ts`
+  row at `:894` while the tablet list at `:830-841` carries none (both arrays read 09:14 +07).
+- authorship: `ce8666604` at 05:46:39 landed the dispatcher (6 files). the desktop twin was amended
+  for it in `2355932310` at 06:15:34, subject "pin the guard vocabulary, allow mock forwarder". the
+  tablet twin was last touched at `3c793f8e34` 04:54:07 — 52 minutes before the thing it would need
+  to tolerate existed.
+- the desktop's two remaining failures are a different cause and belong to another lane:
+  `drift_pin_debt_ceilings_only_shrink` panicking at `:666` with 70 against a ceiling of 69, and
+  `drift_pin_three_way_partition_is_complete_and_sums` at `:603` naming
+  `sync::list_sync_conflicts_scoped` as new debt absent from the ledger. both trace to `028056eaa`
+  at 06:43:58, written up in `.agents/naked-read-sync-conflicts.md`.

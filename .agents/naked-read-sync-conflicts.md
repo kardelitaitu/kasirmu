@@ -48,3 +48,48 @@ And `449` is a regex over the `generate_handler! […]` bracket, not `registered
 Also untracked-dirty in the shared worktree at 00:34:44Z, i.e. your lane is still mid-flight: `ui/src/features/sync/SyncConflictReviewScreen.tsx`, `ui/src/dev-mock/tauri-api.ts`, `platform/sync/src/lib.rs` (staged **and** modified), `crates/oz-core/migrations/20260813_init.pg.sql`.
 
 Nothing in this note edits your files. The ratchet lane holds its pin as it stands.
+
+## the other half of the same feature, measured 09:07 +07
+
+appended 09:16 +07. the read above has no tablet counterpart, and its ui is reachable there anyway.
+- no conflict commands on tablet. the only two definitions in the repo are
+  `apps/desktop-client/src/commands/sync.rs:429` and `:474`; both names return 0 under
+  `apps/tablet-client/src` and 0 under `crates` (queries: tree-wide grep of
+  `fn list_sync_conflicts_scoped|fn resolve_sync_conflict_scoped` → 2, then the same two names
+  scoped to each of those dirs; all three at 09:11 +07). so there is nothing to register, and a
+  bare `generate_handler` line on tablet would be wrong — it names a command that crate lacks.
+- the calling ui is nevertheless reachable on tablet. `ui/src/features/settings/SettingsNavTree.tsx:134`
+  defines the `sync-conflicts` section, `SettingsPage.tsx:51` lazy-imports the screen, `:666`
+  renders it, `:76` admits the deep link. no platform, viewport or shell check anywhere in either
+  file (query 09:12 +07: grep `isTablet|isMobile|platform|viewport|matchMedia|tablet` → 0 in
+  `SettingsPage.tsx`, and its single hit in `SettingsNavTree.tsx` is `:4`, an import of
+  `@/frontend/shell/Tooltip` — a component, not a check).
+- the tablet shell uses the same shared page registry: `ui/src/main.tablet.tsx:15` and `:64` into
+  `ui/src/frontend/shell/tablet/TabletAppShell.tsx:8` and `:194-196`, and
+  `ui/src/features/settings/register.tsx:10-15` gates the route on `manager` plus
+  `settings:read` alone. so a manager holding settings:read on a tablet sees Sync Conflicts and
+  issues an invoke against a shell that cannot answer it.
+- the reason the suite never caught this: `ui/src/dev-mock/tauri-api.ts:2202-2203` stubs both
+  names returning `[]` and `false`, so browser and vitest see a working screen while the real
+  tablet shell fails at runtime — the exact residual class the parity checker names in its own
+  docstring at `scripts/verify-ipc-parity.py:8-10`.
+
+## sequencing — a recommendation for the owner, not a decision i made
+
+appended 09:16 +07. nothing below is chosen; it is the order the two findings fit in.
+- do not port the two commands onto tablet as written. the read leg is the unguarded half this
+  note exists to report, so porting it duplicates an ungated read onto a second shell.
+- the conservative interim is to gate the settings section per shell with a recorded reason rather
+  than leave a silent gap. the repo already has that pattern in a comment at
+  `ui/src/api/workspaces.ts:246` — "Desktop-only: not registered on tablet (recorded product
+  choice, the same precedent as memo authoring and payables)".
+- the full fix order: guard the desktop read at `sync.rs:429` the way `:482` guards the write, or
+  record why it needs no guard (the two ways out above, unchanged); only then port the guarded
+  shape onto tablet's own `resolve_scope` chain at `apps/tablet-client/src/state.rs:226` with
+  `SYNC_MANAGE` from `platform/core/src/rbac.rs:567` — tablet already uses that permission seven
+  times in its own `commands/sync.rs` (`:363, :383, :466, :486, :525, :556, :593`; query: grep
+  `SYNC_MANAGE` in that file → 7, 09:15 +07).
+- tablet does have the plumbing: 16 `#[command]` functions in that file, including the http
+  round-trip shapes at `:376`, `:517`, `:550` and `:584` (query: grep `^#\[command\]` → 16 lines,
+  09:15 +07; the work order said 18, the file says 16). it received everything except the conflict
+  slice.
