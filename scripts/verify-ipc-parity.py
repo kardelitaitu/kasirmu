@@ -35,6 +35,14 @@ Usage:
   python3 scripts/verify-ipc-parity.py              # enforce
   python3 scripts/verify-ipc-parity.py --write-allowlist  # seed/refresh
   python3 scripts/verify-ipc-parity.py --self-test  # prove the parsers can fail
+
+Three exit codes, and the gap between them is the contract, exactly as in
+scripts/verify-ftl-orphans.py: 0 is a clean verdict, 1 is a VERDICT that found something --
+`FAIL: N IPC parity violation(s)`, or a wrong ENTRY inside an allowlist this run could read --
+and 2 is a refusal that graded nothing: a shell lib missing, or a shared allowlist that did
+not arrive as an object stating every enforced section as a list. A crash must never spend 1,
+because 1 is the number a reader (and `apps/tablet-client/src/commands/sync.rs:639`) treats
+as evidence about real commands. See `AllowlistUnusable`.
 """
 
 from __future__ import annotations
@@ -317,7 +325,10 @@ def read_allowlist_text() -> str:
     os.replace is atomic for the reader, not invisible: while the swap happens Windows denies
     an open of the target, and load_allowlist has no handler for that, so the bare run in
     dev-ci.yml, check.sh and run-pre-push.py would still die -- with PermissionError instead of
-    JSONDecodeError, which is a better sentence and still a crash. Retrying a denial that is
+    JSONDecodeError, which is a better sentence and still a crash. (Both now reach the operator
+    as one `error:` line at exit 2: load_allowlist re-raises AllowlistBusyError, which is a
+    subclass of AllowlistUnusable, and a parse that cannot be completed raises the parent.
+    Neither spends the verdict code 1 any more.) Retrying a denial that is
     already over costs one sleep; the ceiling turns a genuine, persistent lock into an
     AllowlistBusyError with words in it rather than a traceback from json.
 
@@ -339,14 +350,118 @@ def read_allowlist_text() -> str:
     raise AssertionError("unreachable")  # every path above returns or raises
 
 
+class AllowlistUnusable(RuntimeError):
+    """The shared allowlist did not arrive as a value this gate may grade or write over.
+
+    Raised at the ONE place the file is opened and parsed, before any walk and before any
+    writer flag, for five distinct causes -- absent, would not open, not JSON, not an object,
+    and an object that does not carry every enforced section as a list. One class, one
+    handler (`refuse_unusable_allowlist`), one voice: a short `error: ...` line on stderr and
+    exit 2, never a traceback. This is the house shape, not an invention: `AllowlistUnreadable`
+    in scripts/verify-scoped-reads.py keeps one class and one handler for "the bytes would not
+    arrive", and the four refusals landed today in scripts/verify-ftl-orphans.py (cd2b55fa3,
+    ef2058f28, 683eb1eac, 4d1a85b15) print one `error:` line and exit 2.
+
+    Never exit 1, because 1 here is the VERDICT code -- main() ends on
+    `FAIL: N IPC parity violation(s)` and returns 1 -- and `apps/tablet-client/src/commands/
+    sync.rs:639` already cites "verify-ipc-parity.py exit 1" as evidence about real commands.
+    A file that never arrived cannot be evidence about anybody's IPC surface. 2 is already
+    this file's refusal code: main() returns it for a missing shell lib.
+
+    Why the guard sits at the parse rather than at each use. Every consumer reads a section
+    with `payload.get(section)` -- `allowlist_shape_problems` (:547 side), `allowlist_section`
+    (:592 side), and the three writers at :730 / :765 / :794 -- so a payload that is a JSON
+    array, a bare string, or an object with the section spelled wrong answers `None` or a
+    scalar, and `allowlist_section()` iterates whatever it is handed: a 4 becomes a TypeError
+    crash at exit 1, and `"abc"` becomes three bogus one-character exemptions. Either way the
+    run reports over an allowlist it never read -- and because this file also WRITES that
+    shared file, the same non-read can land back on disk as a truncated allowlist. A value
+    received is not a value verified, so verification happens where the value is made.
+    """
+
+
+def refuse_unusable_allowlist(unusable: AllowlistUnusable) -> int:
+    """The ONE handler for the ONE class: one `error:` line on stderr, exit 2, nothing written.
+
+    Reaching here means no allowlist was read at all, so the sentence names what did NOT
+    happen: nothing was walked, nothing was exempted, nothing was written. The number a reader
+    might infer from a short run is not zero, it is absent.
+    """
+    print(f"error: {unusable} (looked in {ALLOWLIST_PATH.parent}). Nothing was graded and "
+          f"nothing was written, so this refusal is not an IPC parity verdict.",
+          file=sys.stderr)
+    return 2
+
+
 def load_allowlist() -> dict:
+    """Read AND verify the shared allowlist, or refuse. It never hands back a guess.
+
+    The floor is the schema this file itself writes: an OBJECT carrying each of
+    `KNOWN_SECTIONS` (desktop, tablet, dev_mock, scoped_orphans) as a LIST. An empty list is a
+    section the file STATES as exempting nothing and is not a refusal -- `--write-allowlist`
+    emits `[]` for a shell with no gap, and a clean tree's allowlist is legitimately empty.
+    What is refused is emptiness the file never asserted, which is what `payload.get(section)`
+    manufactures: an absent path, a payload with no sections at all (`{}` parses fine and
+    enforces nothing), or a section key holding a scalar. Stated-empty is a claim; defaulted-
+    empty is this run's own invention, and the two are told apart by `section in payload`.
+
+    Before this, a missing file returned a fabricated `{"desktop": [], "tablet": []}` -- not
+    the empty shape either, since it invented two sections and silently dropped the other two
+    -- and anything else went through as raw `json.loads` output.
+    """
     if not ALLOWLIST_PATH.exists():
-        return {"desktop": [], "tablet": []}
-    return json.loads(read_allowlist_text())
+        raise AllowlistUnusable(
+            f"{ALLOWLIST_PATH.name} is not there, so this run has no allowlist -- an absent "
+            f"file is not an empty one. Three writer flags -- --write-allowlist, "
+            f"--write-scoped-orphans and --write-dev-mock-gaps -- would each rewrite it from "
+            f"what this run read, and a run that read nothing has nothing to preserve.")
+    try:
+        text = read_allowlist_text()
+    except AllowlistBusyError:
+        raise
+    except OSError as exc:
+        raise AllowlistUnusable(
+            f"{ALLOWLIST_PATH.name} would not open ({type(exc).__name__}: "
+            f"{exc.strerror or exc})") from None
+    try:
+        payload = json.loads(text)
+    except ValueError as exc:
+        raise AllowlistUnusable(
+            f"{ALLOWLIST_PATH.name} is {len(text.encode('utf-8'))} bytes that are not JSON "
+            f"({type(exc).__name__}: {exc}). A torn read is possible while a writer flag is "
+            f"renaming onto it, and a torn read is a retry, not a verdict.") from None
+    if not isinstance(payload, dict):
+        raise AllowlistUnusable(
+            f"{ALLOWLIST_PATH.name} parses to a {type(payload).__name__}, not an object with "
+            f"named sections, so every `payload.get(section)` below it resolves to nothing "
+            f"and the run would grade over an allowlist it never read.")
+    absent = [s for s in KNOWN_SECTIONS if s not in payload]
+    wrong_type = [
+        f'"{s}" is a {type(payload[s]).__name__}' for s in KNOWN_SECTIONS
+        if s in payload and not isinstance(payload[s], list)]
+    if absent or wrong_type:
+        halves = []
+        if wrong_type:
+            halves.append("section(s) that are not lists of entries: " + ", ".join(wrong_type))
+        if absent:
+            halves.append("section(s) the file never states: " + ", ".join(
+                chr(34) + s + chr(34) for s in absent) + " (a stated empty list is allowed, "
+                "a key that is simply absent is not -- `payload.get()` turns it into "
+                "exemptions nobody wrote)")
+        raise AllowlistUnusable(
+            f"{ALLOWLIST_PATH.name} is an object but not a usable allowlist: "
+            + "; ".join(halves) + ".")
+    return payload
 
 
-class AllowlistBusyError(RuntimeError):
-    """The target would not accept the rename, so nothing was written."""
+class AllowlistBusyError(AllowlistUnusable):
+    """The target would not accept the rename, so nothing was written.
+
+    A subclass of `AllowlistUnusable` so the read path keeps ONE handler while the name still
+    says which of the refusals a reader is looking at. Every existing
+    `except AllowlistBusyError` -- the two writer wraps and the self-test's busy cases -- still
+    catches exactly this class, and nothing about the retry or the message changes.
+    """
 
 
 # Every reader of this file opens it bare, and the list is who a busy-target refusal has to
@@ -720,6 +835,21 @@ def report_write_refusals(refusals: list[str]) -> int:
     for line in refusals:
         print(f"  - {line}", file=sys.stderr)
     return 1
+
+
+def write_or_refuse(run) -> int:
+    """Run one writer flag, and pay for a read-site refusal with the refusal code.
+
+    `report_write_refusals` keeps its 1 for the two things a writer can answer about its own
+    attempt -- the file moved after this run validated it, and the target would not accept
+    the rename. An allowlist that never arrived is not an answer about the write; it is the
+    same boundary main() refuses at, met on the writer's side of the sweep, and it must not
+    cost the verdict code either.
+    """
+    try:
+        return report_write_refusals(run())
+    except AllowlistUnusable as unusable:
+        return refuse_unusable_allowlist(unusable)
 
 
 def write_dev_mock_gaps(gaps: list[str], validated: dict | None = None) -> list[str]:
@@ -1808,6 +1938,101 @@ def self_test() -> int:
     # worse coupling than the one it closes. This case is a drift tripwire on the LIST, not a
     # proof about the four readers.
 
+    # 21: the five refusals at the read site. Each one is checked on the SENTENCE and on
+    # BYTES -- never on an exit code alone, which case 12 proved can pass with the guard
+    # deleted -- and each runs main() against a probe so the assertion covers the operator's
+    # actual experience: the whole-tree walk and all three writer flags must not happen over
+    # an input nobody read. The healthy shapes in this group are the other half of the claim:
+    # a section stated as an empty list is a decision the file made, and refusing it would
+    # make the gate unable to read its own output.
+    shape_sample = {"_comment": "probe file, never the real allowlist",
+                  **{s: [] for s in KNOWN_SECTIONS}}
+    refusal_shapes = {
+        "a top-level array": json.dumps([{"desktop": ["probe_zz_gap_scoped"]}]),
+        "a section holding a scalar": json.dumps({**shape_sample, "dev_mock": "abc"}),
+        "an object with none of the four sections": '{"primitives": 42}',
+    }
+    for label, planted in refusal_shapes.items():
+        with tempfile.TemporaryDirectory() as tmp12:
+            saved_path = globals()["ALLOWLIST_PATH"]
+            saved_argv = list(sys.argv)
+            probe12 = Path(tmp12) / "ipc-parity-allowlist.json"
+            seen: object = "no-run"
+            try:
+                globals()["ALLOWLIST_PATH"] = probe12
+                sys.argv = ["probe", "--write-dev-mock-gaps"]
+                probe12.write_text(planted, encoding="utf-8")
+                before12 = probe12.read_bytes()
+                out12, err12 = io.StringIO(), io.StringIO()
+                with redirect_stdout(out12), redirect_stderr(err12):
+                    seen = main()
+                # Read the bytes INSIDE the block: a TemporaryDirectory is gone once the
+                # with exits, and an assertion that stats a deleted path proves nothing.
+                seen = (seen, (out12.getvalue() + err12.getvalue()).strip(),
+                        probe12.read_bytes())
+            finally:
+                globals()["ALLOWLIST_PATH"] = saved_path
+                sys.argv = saved_argv
+            case(f"case 21  {label} is refused in words, at the read site",
+                 isinstance(seen, tuple) and seen[0] == 2
+                 and probe12.name in seen[1] and seen[1].startswith("error:"), )
+            case(f"case 21  {label} writes NOTHING back, so a non-read cannot truncate the file",
+                 isinstance(seen, tuple) and seen[2] == before12, )
+
+    # A file that is not there and a file that is not JSON are the two shapes a torn rename
+    # can produce, and the fabricated {"desktop": [], "tablet": []} this reader used to hand
+    # back for the first is exactly what a writer flag would then seal onto disk.
+    for label, seed in (("a missing allowlist", False), ("a torn non-JSON read", True)):
+        with tempfile.TemporaryDirectory() as tmp13:
+            saved_path = globals()["ALLOWLIST_PATH"]
+            saved_argv = list(sys.argv)
+            probe13 = Path(tmp13) / "ipc-parity-allowlist.json"
+            seen13: object = "no-run"
+            try:
+                globals()["ALLOWLIST_PATH"] = probe13
+                sys.argv = ["probe", "--write-scoped-orphans"]
+                if seed:
+                    probe13.write_text("{ torn", encoding="utf-8")
+                out13, err13 = io.StringIO(), io.StringIO()
+                with redirect_stdout(out13), redirect_stderr(err13):
+                    seen13 = main()
+                seen13 = (seen13, (out13.getvalue() + err13.getvalue()).strip(),
+                          probe13.read_bytes() if probe13.exists() else b"<ABSENT>")
+            finally:
+                globals()["ALLOWLIST_PATH"] = saved_path
+                sys.argv = saved_argv
+        case(f"case 21  {label} is refused with a sentence, not a traceback or a reseed",
+             isinstance(seen13, tuple) and seen13[0] == 2
+             and "not an IPC parity verdict" in seen13[1], )
+        case(f"case 21  {label} leaves no file where there was none, and the same bytes where "
+             f"there were",
+             isinstance(seen13, tuple)
+             and seen13[2] == (b"{ torn" if seed else b"<ABSENT>"), )
+    # The stated-empty allowlist is legal and must still grade: all four sections present,
+    # every one of them an empty list, which is what a clean tree's file looks like.
+    with tempfile.TemporaryDirectory() as tmp14:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe14 = Path(tmp14) / "ipc-parity-allowlist.json"
+        empty_ok: object = "no-run"
+        try:
+            globals()["ALLOWLIST_PATH"] = probe14
+            sys.argv = ["probe"]
+            write_allowlist_payload({s: [] for s in KNOWN_SECTIONS})
+            out14, err14 = io.StringIO(), io.StringIO()
+            with redirect_stdout(out14), redirect_stderr(err14):
+                empty_ok = main()
+            empty_ok = (empty_ok, out14.getvalue() + err14.getvalue())
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    case("case 21  a stated-empty allowlist is NOT a refusal -- it is a claim, and it walks",
+         isinstance(empty_ok, tuple) and empty_ok[0] in (0, 1)
+         and "inert]:" in empty_ok[1] and not empty_ok[1].startswith("error:")
+         and "\nerror: " not in empty_ok[1], )
+    case("case 21  (and the committed allowlist still clears that same read-site floor)",
+         isinstance(load_allowlist(), dict), )
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -1865,18 +2090,28 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    # Shape first, before the sweeps: a member this file cannot read has to say so in a
-    # sentence naming the file, the section and the shape, not as a TypeError out of main()
-    # 1.3 seconds into parsing the tree. Same FAIL convention as the findings below, exit 1.
+    # The shared input is verified where it is read, before this run walks a file or touches
+    # the writer. `load_allowlist` now refuses an absent path, a file that would not open, a
+    # parse that is not JSON, a top-level value that is not an object, and an object that does
+    # not state every enforced section as a list -- all five as one AllowlistUnusable, handled
+    # once here, exit 2. It used to answer a missing file with a fabricated two-section
+    # payload and everything else with raw `json.loads` output, so a wrong shape reaching
+    # `payload.get(section)` meant a verdict printed over an allowlist nobody had read, and the
+    # same non-read could then be written back as the new allowlist. A busy file is the same
+    # refusal (AllowlistBusyError is now the subclass), and 2 is what main() already returns
+    # for a missing shell lib -- 1 stays the verdict code, so a lock collision can never
+    # impersonate `FAIL: N IPC parity violation(s)`.
+    #
     # The snapshot this run both validates and enforces. Writers are handed this object and
     # refuse to write if the file on disk has moved away from it, so the thing that reaches
     # disk is never something nobody looked at.
     try:
         validated = load_allowlist()
-    except AllowlistBusyError as busy:
-        print(f"\nFAIL: allowlist unreadable, 1 problem(s):", file=sys.stderr)
-        print(f"  - {busy}", file=sys.stderr)
-        return 1
+    except AllowlistUnusable as unusable:
+        return refuse_unusable_allowlist(unusable)
+    # Entry-level shape: the payload IS a usable allowlist now, so what is left here is a
+    # wrong ENTRY inside a section this file can read -- a real finding about somebody's
+    # exemption, and it keeps the FAIL/1 verdict convention of the findings below.
     shape_problems = allowlist_shape_problems(validated, ALLOWLIST_PATH)
     if shape_problems:
         print(
@@ -1902,7 +2137,7 @@ def main() -> int:
                 missing[shell].add(command)
 
     if args.write_allowlist:
-        return report_write_refusals(write_allowlist(missing, validated))
+        return write_or_refuse(lambda: write_allowlist(missing, validated))
 
     allowlist = validated
     failures: list[str] = []
@@ -1914,8 +2149,8 @@ def main() -> int:
         orphans[shell] = orphan_scoped(handlers[shell], ui_commands)
     all_orphans = sorted(set().union(*[set(v) for v in orphans.values()]))
     if args.write_scoped_orphans:
-        return report_write_refusals(
-            write_scoped_orphans(set(all_orphans), validated))
+        return write_or_refuse(
+            lambda: write_scoped_orphans(set(all_orphans), validated))
 
     # Third direction: can the plain-browser dev-mock answer what the UI invokes?
     mock_registered, mock_aliasable, mock_per_file, mock_alias_file = (
@@ -1923,7 +2158,7 @@ def main() -> int:
     mock_answerable = mock_registered | mock_aliasable
     mock_gaps = sorted(c for c in ui_commands if c not in mock_answerable)
     if args.write_dev_mock_gaps:
-        return report_write_refusals(write_dev_mock_gaps(mock_gaps, validated))
+        return write_or_refuse(lambda: write_dev_mock_gaps(mock_gaps, validated))
 
     for command in sorted(set(all_orphans) - orphan_allow):
         shells = ", ".join(s for s in SHELLS if command in orphans[s])
