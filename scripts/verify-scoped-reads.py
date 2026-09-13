@@ -227,6 +227,22 @@ class EmptyWrapperSurface(AllowlistUnreadable):
     """
 
 
+class AllowlistSchemaMissing(AllowlistUnreadable):
+    """The shared schema validator itself could not be loaded, so document shape is UNKNOWN.
+
+    A refusal, at the gate's refusal code, and the only honest alternative to a silent skip:
+    require_allowlist_shape() now asks scripts/allowlist-schema.py whether the parsed document is
+    an allowlist at all, and if that file cannot be imported the answer is not 'yes' -- it is 'not
+    asked'. A gate that carried on in that state would grade a top-level JSON list exactly as
+    though two gates still disagreed about what a document is, which is the disagreement the
+    shared module exists to end.
+
+    It cannot happen in a checkout that has the committed file, which is exactly why it gets a
+    class and a case: 'cannot happen' is what a skipped check grows from, and the skip would be
+    invisible -- the run prints a verdict either way.
+    """
+
+
 class EmptyCorpus(AllowlistUnreadable):
     """The walk found nothing to walk, so there is no verdict to print -- clean or dirty.
 
@@ -352,6 +368,41 @@ def read_allowlist(path=ALLOWLIST, opener=None):
 SHELL_SECTIONS = ("desktop", "tablet")
 
 
+# The shared schema, loaded by path because 'allowlist-schema.py' has a hyphen and cannot be a
+# module name. importlib is the whole trick; the file is NOT renamed -- a rename would move the
+# path every other gate, its own docstring and its git history point at, for a reason this file
+# does not own. Resolved through REPO rather than sys.path, so a copy of this script run from
+# outside a checkout fails on the missing module (a refusal, below) instead of quietly grading a
+# tree nobody is standing in.
+SCHEMA_PATH = os.path.join(REPO, "scripts", "allowlist-schema.py")
+_schema = None
+
+
+def allowlist_schema():
+    """The shared validator module, imported once and cached.
+
+    A failure to import is not survivable as a skip, so it raises AllowlistSchemaMissing through
+    main()'s one handler rather than returning None and letting the caller decide what an
+    un-checked document means.
+    """
+    global _schema
+    if _schema is None:
+        import importlib.util
+        try:
+            spec = importlib.util.spec_from_file_location("allowlist_schema", SCHEMA_PATH)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            raise AllowlistSchemaMissing(
+                f"{SCHEMA_PATH} could not be loaded as the shared allowlist schema "
+                f"({type(exc).__name__}: {exc}), so this gate cannot say whether the document it "
+                f"read is an allowlist at all. That is a refusal, not a pass: the alternative is "
+                f"grading a top-level JSON list as though the two readers of this file had never "
+                f"disagreed about what a document is.")
+        _schema = module
+    return _schema
+
+
 def require_allowlist_shape(allow, shells, path=ALLOWLIST):
     """Refuse an allowlist that parses as JSON but is not shaped like one.
 
@@ -393,52 +444,30 @@ def require_allowlist_shape(allow, shells, path=ALLOWLIST):
     it never appends to a list and carries on, because the thing being refused here is a run
     that carries on.
     """
+    # WHAT IS ASKED is this reader's own policy and stays so: the required sections are the ones
+    # --shell named, never the writer's KNOWN_SECTIONS. A file that carries desktop and tablet and
+    # no dev_mock is complete for this gate, and asking it for a section it never reads would turn a
+    # graded exit 1 with FAIL: into an ungraded exit 2 -- a refusal invented by the schema, over a
+    # document this run can grade perfectly well.
     filename = os.path.basename(path)
-    wanted = [s for s in shells if s] or list(SHELL_SECTIONS)
-    want = " and ".join(f'"{s}"' for s in wanted)
-    if not isinstance(allow, dict):
-        got = type(allow).__name__
-        raise AllowlistWrongShape(
-            f'{filename} parses as JSON but its top level is a {got}, not an object, and a '
-            f'{got} has no .get for this gate to read a section with. It wanted an allowlist '
-            f'-- a JSON object keyed by {want}, the section{"s" if len(wanted) > 1 else ""} '
-            f'--shell names -- and got a {got}. Run python3 scripts/verify-ipc-parity.py to '
-            f'see that shape written by something that validates it.')
-    # Present-but-wrong-typed is refused HERE, not discovered in allowlist_names after the
-    # walk. Membership alone was not enough: a section holding a scalar cleared this guard,
-    # walked 612 production files, and only then reported a member it could not read --
-    # under the VERDICT exit code, sitting beside the findings. And allowlist_names iterates
-    # whatever it is handed, so a string section answers one bogus name per character. A
-    # section that is not a list holds nothing this run can grade, so it ends the run here.
-    # Stated-empty stays the claim case 8 protects: [] IS a list, and a zero-entry list is a
-    # shell recording no gap -- this gate checks that claim, it never refuses it.
-    Q = chr(34)
-    mistyped = [s for s in wanted if s in allow and not isinstance(allow[s], list)]
-    if mistyped:
-        raise AllowlistWrongShape(
-            filename + ' parses as JSON and carries the '
-            + ('sections' if len(mistyped) > 1 else 'section')
-            + ' this gate reads, but '
-            + ', '.join(Q + s + Q + ' is a ' + type(allow[s]).__name__
-                        for s in mistyped)
-            + ', not a list of command names. Nothing can be read out of that, so this run '
-              'refuses before walking the tree: a section that is not a list compares zero '
-              'command names and the run would still print a verdict. An allowlist is a JSON '
-              'object keyed by ' + want + ', each section a list -- an EMPTY list is allowed, '
-              'it is the claim that this shell records no gap.')
-    absent = [s for s in wanted if s not in allow]
-    if absent:
-        keys = sorted(str(k) for k in allow)
-        found = ("a " + str(len(keys)) + "-key object: "
-                 + ", ".join(f'"{k}"' for k in keys)) if keys else "an empty object"
-        missing = " and ".join(f'"{s}"' for s in absent)
-        raise AllowlistWrongShape(
-            f'{filename} parses as JSON but it is not an allowlist: it wanted {missing}, the '
-            f'section this gate reads for the '
-            f'{"shell" if len(shells) < 2 else str(len(shells)) + " shells"} named by '
-            f'--shell{"s" if len(shells) > 1 else ""}, and got {found}. With that section '
-            f'absent the walk compares zero command names and still prints a verdict, so this '
-            f'run refuses instead. An allowlist is a JSON object keyed by {want}.')
+    wanted = tuple(s for s in ([s for s in shells if s] or list(SHELL_SECTIONS)))
+    # WHAT IS ANSWERED is shared: one document, one schema, one set of words. Two gates reading
+    # the same file each decided for themselves what a valid allowlist is, and the repo therefore
+    # held two answers to one question -- the disagreement table in scripts/allowlist-schema.py
+    # records the rows. Adopting validate() removes the second definition without moving a verdict
+    # or a count here.
+    schema = allowlist_schema()
+    refusals = schema.validate(allow, wanted, filename)
+    # ONE sentence, raised, never two joined: primary() is the first refusal and validate() orders
+    # mistyped before absent, which is exactly what this function did by hand -- it raised on the
+    # mistyped section and never reached the absent check. Joining the list would keep the exit code
+    # and change the words, and a refusal's wording is the operator's diagnosis.
+    top = schema.primary(refusals)
+    if top is None:
+        return
+    # The classes are the shared module's; the exception is this gate's, so main()'s single
+    # AllowlistUnreadable handler, its error: voice and its exit 2 are untouched by the adoption.
+    raise AllowlistWrongShape(top.sentence)
 
 
 # A wrapper is an EXPORTED function whose body reaches loggedInvoke. Two idioms write that, and
@@ -1181,6 +1210,52 @@ SHAPE_CASES = [
      ["ok_scoped", "also_ok_scoped"], ["entry #3"]),
 ]
 
+
+def _schema_self_test():
+    """Cases 31-32: the ADOPTION, which is about who answers, not what the answer is.
+
+    Both cases exist because a shared validator can be adopted in a way that changes behaviour
+    while every refusal still looks right on the page. Case 31 is the adoption contract in one
+    line: this gate asks for the sections --shell named, not for every section the writer owns,
+    so a document carrying desktop and tablet and nothing else is a complete allowlist HERE and
+    must grade -- refuse it because dev_mock is absent and this run silently stops grading
+    anything. Case 32 is the drift pin: the sentence the operator reads is the shared module's
+    own primary() output for the same document, compared byte for byte, because the moment the
+    gate keeps a local copy of the wording the two definitions are back and the table in the
+    module is fiction.
+    """
+    print("  verify-scoped-reads self-test / the shared schema is the one answering")
+    failures = 0
+    schema = allowlist_schema()
+
+    only_shells = {"desktop": [], "tablet": []}
+    try:
+        require_allowlist_shape(only_shells, ("desktop",), ALLOWLIST)
+        print("    ok   case 31 a document stating desktop and tablet and no writer-only "
+              "section is complete for this reader and GRADES -- required comes from --shell, "
+              "never from KNOWN_SECTIONS")
+    except AllowlistWrongShape as exc:
+        print(f"    FAIL case 31  the required set was widened: {exc}")
+        failures += 1
+
+    for doc, label in (([], "a top-level list"), ({"entries": []}, "foreign keys"),
+                       ({"desktop": "abc"}, "a mistyped section")):
+        shared = schema.primary(schema.validate(doc, ("desktop",), "probe.json"))
+        try:
+            require_allowlist_shape(doc, ("desktop",), "/tmp/probe.json")
+            print(f"    FAIL case 32 {label} -- the gate accepted what the schema refuses")
+            failures += 1
+        except AllowlistWrongShape as exc:
+            if str(exc) == shared.sentence:
+                print(f"    ok   case 32 the refusal for {label} is the shared module's "
+                      "sentence, byte for byte -- no local copy to drift")
+            else:
+                print(f"    FAIL case 32 {label} wording diverged:\n"
+
+                      f"           gate:   {str(exc)[:120]}\n           shared: "
+                      f"{shared.sentence[:120]}")
+                failures += 1
+    return failures
 
 def _shape_self_test():
     """Run allowlist_names over both shapes and over every way a member can go wrong.
@@ -2241,6 +2316,7 @@ def self_test():
     failures += _wrapper_self_test()
     failures += _coverage_self_test()
     failures += _pattern_self_test()
+    failures += _schema_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
