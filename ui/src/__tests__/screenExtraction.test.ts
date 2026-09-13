@@ -100,6 +100,12 @@ const SCREENS: ScreenEntry[] = [
     name: 'StaffManagementScreen',
     tsx: 'staff/StaffManagementScreen.tsx',
     css: ['staff/StaffManagementScreen.css'],
+    // The Agent 3 extraction moved the table/drawer JSX into components/*.tsx;
+    // they share the screen's stylesheet (global classes).
+    additionalTsx: [
+      'staff/components/StaffListTable.tsx',
+      'staff/components/StaffDetailDrawer.tsx',
+    ],
   },
 
   // ── Setup ─────────────────────────────────────────────
