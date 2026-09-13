@@ -54,12 +54,22 @@ manual dialog's REAL-QR branch, and the unconfigured state says so
 plainly while keeping the cashier-assert path. The 441-cell pin retired
 with the grid it pinned.
 
-### R3 · Typed error classification (Resilience C)
-`classifyError` still string-matches English messages
-(`PaymentModal.tsx:201-203`) while the backend returns typed `kind`s.
-Delete-the-string-match has a precondition the doc missed: the bridge
-must surface `HalErrorKind`/`PaymentError` variants through to the UI
-error payload (partially true — `plainErrorMessage` flattens them today).
+### R3 · Typed error classification (Resilience C) — DONE (`3d50b3ac5a`)
+CLOSED 2026-09-14, and its recorded precondition was itself wrong: the
+claim that the bridge must "surface HalErrorKind through to the UI
+payload (partially true)" understated reality — BOTH clients already
+reject every command with the tagged `{kind, subKind, message}` union
+(desktop + tablet `error.rs`, camelCase DTO), and `parseAppError` already
+decodes it. What was missing was never plumbing: the shared boundary
+classifier (`classifyRetry`, ERR-06) had ZERO screen consumers while
+PaymentModal kept a private substring scan of the same question. The
+modal now delegates; the scan's genuinely-transport patterns and its
+terminal-wins-over-transport precedence migrated INTO the shared
+fallback; 'try again' was deliberately NOT migrated (it appears in this
+module's own NON-retryable user copy — scanning for it once made the
+checkout offer Retry on the strength of its own fallback text). Proof
+tests in both directions: hardware Timeout saying "declined" → Retry
+appears; internal saying "timeout" → Retry absent.
 
 ### R4 · Multi-terminal EDC
 Single implicit terminal ships; `db/edc_terminals.rs`'s own header says
