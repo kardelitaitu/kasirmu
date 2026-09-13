@@ -408,3 +408,7 @@ pub async fn try_auto_print_kds_chits(
     let sink = sink_for(app);
     oz_bridge::kds::try_auto_print_kds_chits(orders, registry, sink.as_ref()).await;
 }
+
+#[cfg(test)]
+#[path = "kds_lan_live_tests.rs"]
+mod kds_lan_live_tests;
