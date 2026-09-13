@@ -3,6 +3,8 @@
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (7 counts corrected, all measured not estimated) · every stale figure was replaced with a measurement taken against HEAD and the command to reproduce it is named in the line · migrations 19 -> 44 (the column-type checker prints "44 files scanned"; AGENTS.md said 28 and docs/guides/ARCHITECTURE.md said 19 for the same fact — three docs, three numbers, none current) · IPC 505 -> 450 distinct registered (425 desktop / 297 tablet / 272 both; see docs/guides/api-reference.md for the full reconciliation) · Rust tests 5,800+ -> 8,709 #[test] fns · frontend tests ~6,700 -> 8,056 cases in 516 files · Fluent 5,700+ IDs across 50 files -> 9,146 across 52 · "55+ audited screen components" -> 183 feature .tsx files, because the audit's unit is surfaces and key sites, not screens · structural claims verified accurate: all 13 crates, all 10 npm scripts, all 3 scripts/*, the 5 payment drivers, ui/e2e/README.md, the ui/README.md anchor, and every path in both architecture diagrams · SUPERSEDES the 2026-08-31 stamp, whose repairs are kept here: repointed 3 broken links docs/archived/{QUICKSTART,ROADMAP,MODULAR_APP_PLAN}.md -> docs/guides/, crate inventory 11 -> 13 (oz-crypto, oz-media), "future CRM module" -> CRM ships, diagram "Restaurant" -> "Promotions", HAL lists gained EDC terminals + weight scales (traits/edc.rs, drivers/scale.rs), oz-payment drivers gained Paddle, footer version 0.0.25 -> 0.0.33 · WHY IT IS REPLACED RATHER THAN KEPT BELOW: that audit recorded "migrations 19 re-confirmed" when the tree already held 23, and "IPC 505 unique (matches api-reference.md)" — the 505 was the count of entries on a page that itself was wrong, and matching a wrong number to a wrong number was treated as confirmation. Two of its structural claims were also still true, which is the point: only the counts rotted. · NOTE test-file and ID counts stay volatile (parallel sessions add tests continuously) -->
 
+<!-- Migration count note: 2026-09-13 · DSH · the 09-08 stamp above records migrations 19 -> 44 and is left exactly as it was written; the measured count today is 59 (`ls crates/oz-core/migrations/*.sql | wc -l`), and the two live claims in this file (Technology Stack, Status) now carry that number. -->
+
 # OZ-POS
 
 > **A modular, offline-first Point-of-Sale platform built with Rust and Tauri v2.**
@@ -136,7 +138,7 @@ oz-pos/
 | Backend | Rust | Domain logic, DB access, hardware control |
 | Desktop Shell | Tauri v2 | Native window, IPC bridge, updater |
 | Frontend | React 18 + TypeScript + Vite 6 | POS UI |
-| Database | SQLite (rusqlite) | On-device persistence, 44 migration files (the 131 pre-Aug-2026 ones squashed into `20260813_init.sql`) |
+| Database | SQLite (rusqlite) | On-device persistence, 59 migration files (2026-09-13: `ls crates/oz-core/migrations/*.sql \| wc -l` = 59, of which 58 are SQLite and one is the generated `20260813_init.pg.sql`; the 131 pre-Aug-2026 ones squashed into `20260813_init.sql`) |
 | Localization | @fluent/react | All UI strings in `.ftl` files |
 | Hardware | oz-hal traits | USB/TCP/BT/serial/mock drivers |
 | Money | `i64` minor units | Never `f32`/`f64` — `Currency`, `Money` structs |
@@ -205,7 +207,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Phase 4 (CRM, Restaurant, Accounting) in progress.** 44 migration files, 450 registered IPC commands (as measured 08-09-26 — 425 desktop / 297 tablet / 272 both), 183 feature `.tsx` files, 516 front-end test files, 8,709 Rust `#[test]` functions.
+**Phase 4 (CRM, Restaurant, Accounting) in progress.** 59 migration files (`ls crates/oz-core/migrations/*.sql | wc -l`, 2026-09-13), 450 registered IPC commands (as measured 08-09-26 — 425 desktop / 297 tablet / 272 both), 183 feature `.tsx` files, 516 front-end test files, 8,709 Rust `#[test]` functions.
 
 | Phase | Status | Focus |
 |---|---|---|
