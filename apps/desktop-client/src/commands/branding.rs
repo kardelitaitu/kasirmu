@@ -75,10 +75,10 @@ pub async fn set_brand_primary_colour(
 #[tauri::command]
 pub async fn set_brand_logo_path(path: String, state: State<'_, AppState>) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    let app_data = match &state.app {
-        Some(app_handle) => Some(app_handle.path().app_data_dir().map_err(|e| e.to_string())),
-        None => None,
-    };
+    let app_data = state
+        .app
+        .as_ref()
+        .map(|app_handle| app_handle.path().app_data_dir().map_err(|e| e.to_string()));
     oz_bridge::branding::set_brand_logo_path(&ctx, &path, app_data)
         .await
         .map_err(Into::into)
@@ -150,10 +150,10 @@ pub async fn set_brand_logo_path_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    let app_data = match &state.app {
-        Some(app_handle) => Some(app_handle.path().app_data_dir().map_err(|e| e.to_string())),
-        None => None,
-    };
+    let app_data = state
+        .app
+        .as_ref()
+        .map(|app_handle| app_handle.path().app_data_dir().map_err(|e| e.to_string()));
     oz_bridge::branding::set_brand_logo_path_scoped(&ctx, &path, &session_token, app_data)
         .await
         .map_err(Into::into)

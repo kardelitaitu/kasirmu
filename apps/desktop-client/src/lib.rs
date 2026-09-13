@@ -16,6 +16,7 @@ next: none | perf: N/A
 //! 2. Add it to the `invoke_handler!` macro below in the same order as the
 //!    `commands` module re-exports.
 //! 3. Document the command in the `tauri-ipc` skill.
+//!
 //! After the Wave E/F extraction, `oz-bridge` carries the command logic; this
 //! shell keeps the daemon-residue modules (local_api, pg_sync) and the 448-entry `tauri::generate_handler` list.
 

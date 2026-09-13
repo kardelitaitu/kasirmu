@@ -1051,11 +1051,15 @@ fn invoke_open_paren(lower: &str, at: usize) -> Option<usize> {
 fn first_arg(lines: &[&str], line_at: usize, col: usize) -> (char, String) {
     // Bounded look-ahead: three lines below the call is an argument, thirty lines below is
     // somebody else's code, and a token read from there would be a guess dressed as data.
-    for li in line_at..(line_at + 4).min(lines.len()) {
-        let raw = if li == line_at {
-            lines[li].get(col..).unwrap_or("")
+    let window_end = (line_at + 4).min(lines.len());
+    // `get()` rather than a slice index: an out-of-range `line_at` must yield an
+    // empty window (what the old open-ended range did), not a panic.
+    let window = lines.get(line_at..window_end).unwrap_or(&[]);
+    for (ahead, &text) in window.iter().enumerate() {
+        let raw = if ahead == 0 {
+            text.get(col..).unwrap_or("")
         } else {
-            lines[li]
+            text
         };
         let mut trimmed = raw.trim_start();
         // Step over the prose. A block comment may open and close inside one line, run to the
@@ -1957,8 +1961,8 @@ fn pin_a_comment_between_the_paren_and_the_argument_is_not_the_argument() {
         "  return loggedInvoke(\n    /**\n     * documented elsewhere\n     */\n    \"sync_pull\",\n  );\n",
     );
     assert_eq!(wide.len(), 1, "one invoke-shaped call site");
-    assert_eq!(
-        wide[0].2, false,
+    assert!(
+        !wide[0].2,
         "past the bound the site is scored computed, which is the bound doing its job"
     );
     assert_eq!(

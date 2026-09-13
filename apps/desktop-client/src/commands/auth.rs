@@ -49,12 +49,12 @@ pub use oz_bridge::auth::{
     SessionContextDto, SessionKeepaliveResult, StaffLoginArgs, StaffLoginResult,
 };
 
-/// The desktop's single security-event sink, now owned by the bridge.
-///
-/// Re-exported so `commands/staff.rs` keeps importing it from here: the
-/// per-client tier-promotion policy stays stated exactly once, and the
-/// auth paths and the staff-management paths keep routing through one
-/// definition. See `oz_bridge::auth::record_security_event`.
+// Where the desktop's security-event sink lives, kept as a plain comment.
+// The sink is `oz_bridge::auth::record_security_event` (backed by
+// `Store::record_security_event`). This module no longer re-exports it, and no
+// desktop command imports it from here. As a `///` block it attached to
+// whatever item followed, which is what clippy's
+// empty_line_after_outer_attr flagged on the blank line below.
 
 /// Check a username before the PIN step (STAFF-06).
 ///
