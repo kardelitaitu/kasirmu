@@ -93,6 +93,7 @@ function renderExpo() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   mockList.mockReset().mockResolvedValue([]);
   mockUpdateStatus.mockReset().mockResolvedValue(undefined);
   mockUpdateLineItem.mockReset().mockResolvedValue(undefined);
@@ -307,5 +308,30 @@ describe('ExpoScreen', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('filters the board to a chosen station via the selector and persists it', async () => {
+    mockList.mockResolvedValue([
+      makeOrder({ id: 'g1', display_number: 51, kitchen_zone: 'grill' }),
+      makeOrder({ id: 'f1', display_number: 52, kitchen_zone: 'fry' }),
+    ]);
+    await renderExpo();
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('kds-expo-station-grill')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('kds-expo-station-fry')).toBeInTheDocument();
+    expect(screen.getByTestId('kds-expo-station-open')).toHaveTextContent('All stations');
+
+    fireEvent.click(screen.getByTestId('kds-expo-station-open'));
+    fireEvent.click(await screen.findByTestId('kds-station-option-grill'));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId('kds-expo-station-fry')).toBeNull();
+    });
+    expect(screen.getByTestId('kds-expo-station-grill')).toBeInTheDocument();
+    expect(screen.getByTestId('kds-expo-station-open')).toHaveTextContent('grill');
+    // Per-user persistence (the modal closed after selection).
+    expect(localStorage.getItem('oz-kds-expo-station-user-1')).toBe('grill');
+    expect(screen.queryByTestId('kds-station-dialog')).toBeNull();
   });
 });

@@ -46,6 +46,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { listen } from '@/api/tauri';
+import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace, useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -61,7 +62,9 @@ import {
 } from '@/api/kds';
 import { nextKdsStatus } from '@/features/kds/kdsStatus';
 import { sameOrders } from '@/features/kds/KdsScreen';
+import { readExpoStation, writeExpoStation } from '@/features/kds/kdsStationPrefs';
 import { KdsTicketCard } from '@/features/kds/components/KdsTicketCard';
+import { StationSelectorModal, type StationOption } from '@/features/kds/components/StationSelectorModal';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
 import { KdsScreenFooter } from '@/features/kds/KdsScreenFooter';
 import './KdsScreen.css';
@@ -133,6 +136,8 @@ export default function ExpoScreen() {
   const workspaceScope = useWorkspaceScope();
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { speak } = useSound();
+  const { session } = useAuth();
+  const userId = session?.user_id ?? '';
 
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -140,6 +145,11 @@ export default function ExpoScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [recallOpen, setRecallOpen] = useState(false);
   const [recallBusy, setRecallBusy] = useState<Set<string>>(new Set());
+  // Station focus: '' = all stations (same sentinel as useKdsPreferences.kdsZone).
+  // Persisted per user (kdsStationPrefs) so a shared pass terminal remembers
+  // the last station it expedited across reloads.
+  const [station, setStation] = useState(() => readExpoStation(userId));
+  const [stationPickerOpen, setStationPickerOpen] = useState(false);
   // A clock tick, refreshed with every poll, so the recall countdown and the
   // 15-minute window expiry move without their own timer.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -221,7 +231,27 @@ export default function ExpoScreen() {
     () => recallCandidates(orders, nowMs, RECALL_WINDOW_MS),
     [orders, nowMs],
   );
-  const stations = useMemo(() => groupByStation(activeOrders), [activeOrders]);
+  // The selector always offers every zone present on the board, even while
+  // a station filter is active — otherwise choosing a station would make
+  // the other options vanish and the modal couldn't switch away from it.
+  const stationOptions = useMemo<StationOption[]>(
+    () =>
+      groupByStation(activeOrders)
+        .filter((c): c is { zone: string; orders: KdsOrder[] } => c.zone !== null)
+        .map((c) => ({ zone: c.zone, tickets: c.orders.length })),
+    [activeOrders],
+  );
+  // Station filter applied AFTER the active/served split (recall is global).
+  const visibleOrders = useMemo(
+    () => (station === '' ? activeOrders : activeOrders.filter((o) => o.kitchen_zone === station)),
+    [activeOrders, station],
+  );
+  const stations = useMemo(() => groupByStation(visibleOrders), [visibleOrders]);
+
+  const changeStation = useCallback((zone: string) => {
+    setStation(zone);
+    writeExpoStation(userId, zone);
+  }, [userId]);
 
   // ── Actions (expediter side of the shared ladder) ─────────────────
   const advanceStatus = useCallback(async (order: KdsOrder) => {
@@ -298,9 +328,13 @@ export default function ExpoScreen() {
       );
     }
     if (stations.length === 0) {
+      // EMPTY-04: a station filter that removed everything must not claim
+      // the board itself is empty.
       return (
         <p className="kds-expo-empty" role="status">
-          <Localized id="kds-no-orders"><span>No orders yet</span></Localized>
+          <Localized id={station === '' ? 'kds-no-orders' : 'kds-no-orders-filtered'}>
+            <span>{station === '' ? 'No orders yet' : 'No orders in this status'}</span>
+          </Localized>
         </p>
       );
     }
@@ -379,6 +413,22 @@ export default function ExpoScreen() {
           </h1>
           <button
             type="button"
+            className="kds-expo-station-btn"
+            onClick={() => setStationPickerOpen(true)}
+            aria-label={requiredLocalized(l10n, 'kds-expo-station-button-aria')}
+            data-testid="kds-expo-station-open"
+          >
+            <span className="kds-expo-station-btn-name">
+              {station === ''
+                ? <Localized id="kds-expo-station-all"><span>All stations</span></Localized>
+                : station}
+            </span>
+            <span className="kds-expo-station-btn-caret" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 9h12l-6 7z" /></svg>
+            </span>
+          </button>
+          <button
+            type="button"
             className="kds-expo-recall-btn"
             onClick={() => setRecallOpen(true)}
             aria-label={
@@ -426,6 +476,15 @@ export default function ExpoScreen() {
         )}
 
         {renderContent()}
+
+        {/* ── Station selector (dedicated station view entry point) ── */}
+        <StationSelectorModal
+          isOpen={stationPickerOpen}
+          options={stationOptions}
+          selected={station}
+          onSelect={changeStation}
+          onClose={() => setStationPickerOpen(false)}
+        />
 
         {/* ── Recall dialog ─────────────────────────────────────────── */}
         {recallOpen && (

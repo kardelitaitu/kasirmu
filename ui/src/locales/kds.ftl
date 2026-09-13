@@ -325,3 +325,14 @@ kds-expo-recall-restore-aria = Return order { $number } to ready
 kds-expo-recall-close-aria = Close recall dialog
 kds-expo-recall-failed = Could not recall the ticket — try again
 kds-expo-load-failed = Failed to load expo orders
+
+# ── Station selector modal (Expo) — todo-kds-agents-3 ──
+kds-expo-station-all = All stations
+kds-expo-station-button-aria = Choose station
+kds-station-title = Choose station
+kds-station-aria = Station selection
+kds-station-all-label = All stations
+kds-station-all-aria = Show tickets from all stations
+kds-station-option-aria = Show only tickets from station { $zone }
+kds-station-close-aria = Close station selector
+kds-station-empty = No stations on the board yet

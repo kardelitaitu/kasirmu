@@ -57,6 +57,40 @@
   letter-spacing: 0.01em;
 }
 
+/* Station focus chip (todo-kds-agents-3 M3) — current station of the board. */
+.kds-expo-station-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  height: 34px;
+  max-width: 240px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.kds-expo-station-btn:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-bg-hover);
+}
+
+.kds-expo-station-btn-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kds-expo-station-btn-caret svg {
+  width: 12px;
+  height: 12px;
+}
+
 .kds-expo-recall-btn {
   display: inline-flex;
   align-items: center;
@@ -406,4 +440,89 @@
 
 .kds-expo-btn--muted:hover {
   background: var(--color-bg-hover);
+}
+
+/* ── Station selector modal (StationSelectorModal.tsx) ────────────── */
+
+.kds-station-dialog {
+  width: min(420px, 100%);
+}
+
+.kds-station-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Radiogroup row. The dot ring (::before) is the non-color selected signal;
+   primary border/tint reinforces it. */
+.kds-station-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 42px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kds-station-option::before {
+  content: '';
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.kds-station-option:hover {
+  background: var(--color-bg-hover);
+}
+
+.kds-station-option:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.kds-station-option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-semibold);
+  text-transform: capitalize;
+}
+
+.kds-station-option-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+.kds-station-option--selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.kds-station-option--selected::before {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  box-shadow: inset 0 0 0 2px var(--color-bg-surface);
+}
+
+.kds-station-empty {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
 }

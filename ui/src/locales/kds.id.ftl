@@ -307,3 +307,14 @@ kds-expo-recall-restore-aria = Kembalikan pesanan { $number } ke status siap
 kds-expo-recall-close-aria = Tutup dialog penarikan
 kds-expo-recall-failed = Gagal menarik kembali pesanan — coba lagi
 kds-expo-load-failed = Gagal memuat pesanan ekspo
+
+# ── Station selector modal (Expo) — todo-kds-agents-3 ──
+kds-expo-station-all = Semua stasiun
+kds-expo-station-button-aria = Pilih stasiun
+kds-station-title = Pilih stasiun
+kds-station-aria = Pilihan stasiun
+kds-station-all-label = Semua stasiun
+kds-station-all-aria = Tampilkan pesanan dari semua stasiun
+kds-station-option-aria = Tampilkan hanya pesanan dari stasiun { $zone }
+kds-station-close-aria = Tutup pemilih stasiun
+kds-station-empty = Belum ada stasiun di papan

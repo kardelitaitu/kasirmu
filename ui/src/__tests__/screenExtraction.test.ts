@@ -254,6 +254,11 @@ const SCREENS: ScreenEntry[] = [
     name: 'ExpoScreen',
     tsx: 'kds/ExpoScreen.tsx',
     css: ['kds/ExpoScreen.css'],
+    // The station selector shares the Expo sheet (global classes), same
+    // arrangement the StaffManagementScreen/RestaurantMenu entries use.
+    additionalTsx: [
+      'kds/components/StationSelectorModal.tsx',
+    ],
   },
 
   // ── Loyalty ───────────────────────────────────────────
