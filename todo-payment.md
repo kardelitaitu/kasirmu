@@ -5,6 +5,18 @@
 > This doc captures the architecture decision and a phased backlog. Add detail
 > as design progresses.
 
+> **Status (2026-09-13):** the QRIS Auto / Midtrans **server path landed** via
+> `todo-payment-agents-1.md`: `POST /api/payment/midtrans/qris` (issue) and
+> `POST /api/webhooks/midtrans` (SHA512-verified settlement) over the existing
+> `crates/oz-payment` driver, with a cloud-side `midtrans_transactions` ledger
+> driving `finalize_sale` — commits `08adf9fe8d` (driver `qr_string` alias fix),
+> `9e143fc5ca` (endpoint + webhook + ledger). The :34 rule holds as designed:
+> the secret is a cloud-only platform `MIDTRANS_SERVER_KEY`, the device never
+> sees it. The **UI half stays open** in `todo-payment-agents-3.md` (QR render,
+> expiry countdown, status polling, EDC checkout flow). Row 4's HAL note is
+> also stale: the EDC protocol stack shipped in
+> `crates/oz-hal/src/drivers/edc/` (agents-2 stamped absorbed 08:38 today).
+
 ## Goal
 
 Model the supported payment types as **config-driven, terminal-scoped** methods
