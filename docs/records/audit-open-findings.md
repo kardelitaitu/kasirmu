@@ -535,6 +535,155 @@ this checkout — sibling sessions are writing into it continuously.
   written record of the deletion sat in a file the same command deletes. `git grep -n "xdf"` over
   tracked files returns nothing (exit 1, 11:15 +07), which is why it is filed here.
 
+## Six gate-integrity findings this lane measured and cannot repair (`GI-1`–`GI-6`, OPEN, added 2026-09-13 11:55 +07, tip `335dcc306`)
+
+**Status:** SIX OPEN findings, recorded as a register entry and a request, not as a repair — every one
+of them sits in a path another session owns, so the owner is named **by file** (no `CODEOWNERS` is
+tracked: `git ls-files -- CODEOWNERS .github/CODEOWNERS` returns nothing, 11:48 +07). Each figure
+carries the minute and the unit it was measured with, and the command that reproduces it. Nothing
+outside this file was written; the only gate run here was read-only (`python3
+scripts/verify-ipc-parity.py`, never with a writer flag), and `scripts/gates.json` was read through
+`git show HEAD:scripts/gates.json` rather than opened. Three figures handed to this lane did not
+reproduce; each correction is inline, in the bullet that carries it.
+
+- **GI-1 — `scripts/gates.json` answers one question two ways.** Measured 11:36–11:42 +07: three gate
+  records assert in their own note that they are local-only while the same record carries a `ci` key —
+  `scoped-coverage` note `:120` / `ci` `:121`; `topology-parity` note `:136` ("Local-only:
+  check.sh is its only runner.") / `ci` `:137`; `test-shadow-copies` note `:187` / `ci` `:188`.
+  The workflow settles which half is false: `.github/workflows/dev-ci.yml` runs
+  `verify-test-shadow-copies.py` at `:588`, `verify-topology-parity.py` at `:598` and
+  `verify-scoped-coverage.sh` at `:606` (all three, 11:42 +07), so the **notes** are the wrong half —
+  and `gates.json` is the file that calls itself the source of truth for gate coverage. A reader who
+  trusts the note and a reader who trusts the key get opposite answers about whether a gate exists in
+  CI, from inside one JSON object. **Correction to the hand-off:** it named `:128` (`ipc-parity`) as
+  one of the three; at 11:38 +07 that note is already self-corrected prose ("the note claiming it
+  local-only was itself stale and was corrected here"), so `ipc-parity` is a false positive of the
+  pattern search and `test-shadow-copies` is the instance the summary missed. Mechanically: 4 records
+  match `local[- ]only|no ci key` and carry a `ci` key; 3 still state the falsehood (11:36 +07).
+  Owner: `scripts/gates.json`.
+- **GI-2 — the same file's numbers are prose, and no code can refresh them.** `gates.json:128` quotes
+  "Measured on the current tree: 406 UI command strings; desktop 400 registered / 28 unregistered
+  references / 5 unregistered fns; tablet 283 registered / 142 unregistered references". The gate
+  printed at 11:37 and 11:48 +07 — in the words it used then, `info[desktop]: 453 UI command strings,
+  451 registered, 27 unregistered references (16 unregistered command fns)` and `info[tablet]: 453 UI
+  command strings, 320 registered, 153 unregistered references (0 unregistered command fns)`, the
+  same line reworded to "unregistered UI command names / tauri command fns" by 11:55 +07 as another
+  lane edited the reporter —
+  every one of the six quoted figures has moved (406→453 strings, +47; 400→451 desktop registered;
+  28→27 desktop unregistered names; 5→16 unregistered fns; 283→320 tablet registered; 142→153 tablet
+  unregistered names). Nothing can close that gap by itself: the checker's writer flag targets
+  `scripts/ipc-parity-allowlist.json` and never `scripts/gates.json`, and
+  `scripts/verify-ci-docs-drift.py`, whose declared subject is this manifest ("source of truth:
+  scripts/gates.json", `:24`), touches `_note` at exactly one place — `:264`, a non-empty test — so
+  it polices that a note exists and not that its numbers are true (11:48 +07). **A number written into
+  prose cannot be refreshed by the code it describes; it can only be re-typed, which is why it rots.**
+  Owner: `scripts/gates.json`.
+- **GI-3 — `--staged-only` is one flag name carrying three semantics, and only one of the three reads
+  what a commit will contain.** Measured 11:43 +07, on working copies clean at that minute.
+  `scripts/verify-ftl-orphans.py` builds its verdict from `staged_diff()` at `:117-121`, which shells
+  `git diff --cached -U0 -- ui/src/locales ui/src` → true index-vs-HEAD content.
+  `scripts/verify-migration-column-types.py` takes the file **names** from the index at `:145-146`
+  (`git diff --cached --name-only --diff-filter=ACM -z`) but the **bytes** off disk — `:141` globs the
+  migrations directory, `:150` filters that list down to the names, `:118` `path.read_text` reads the
+  working copy — so a migration staged half-way is judged on content no commit contains.
+  `scripts/verify-bundle-parity.py` documents its own third reading at `:114`: "`--staged-only PATH
+  …` reads the FULL post-stage file content (not the diff vs. HEAD)", the flag filtering paths only.
+  So the flag answers "which files" for one script and "what is committed" for another, and in two of
+  the three a green `--staged-only` is a statement about the mutable surface — which is exactly how a
+  working-tree claim gets read as a HEAD claim, by the next hook log or the next agent. Owner: the
+  three `scripts/verify-*.py` paths.
+- **GI-4 — five unwired checkers (seven files): verification that reads as coverage and enforces
+  nothing.** Census 11:41 +07 over the **30** tracked `scripts/verify-*`: 21 are named in
+  `.github/workflows/dev-ci.yml`, 23 in `scripts/check.sh` or `scripts/check-ui.mjs`, 3 in
+  `.githooks/pre-commit`, 8 in `scripts/gates.json` — and **7 in none of those**:
+  `verify-fluent-dynamic-families.py`, `verify-dockerfile-workspace.py`,
+  `verify-quota-coverage.sh`, `verify-flaky-quarantine.py`, `verify-docker-all.sh`,
+  `verify-docker-digests.sh`, `verify-docker-persistence.sh`. Per-name `git grep -n
+  --fixed-strings <name> -- .` (11:40 +07): fluent-dynamic-families → **0 hits repo-wide**, a tracked
+  checker with no reference of any kind; dockerfile-workspace → 9 hits whose only runner-shaped one is
+  the retired `.github/workflows/ci.yml.bak:668`, while `Dockerfile.server:87` states in a comment
+  that the file is validated "by scripts/verify-dockerfile-workspace.py in CI" — and the two live
+  workflows are `dev-ci.yml` and `release.yml` (11:46 +07), neither naming it; quota-coverage → 4
+  hits, three of them its own header and one a work-order's past tense; flaky-quarantine → 10 hits
+  including two retired `.bak` workflows, a `CONTRIBUTING.md:283` instruction to run it by hand, and
+  one live caller that is `scripts/diagnose-pr.py:31` — a diagnostic, not a gate; the docker-all
+  family → `verify-docker-all.sh` from `scripts/diagnose-pr.py:44` and two `docs/plans/notes.md`
+  lines, its two children only from `verify-docker-all.sh:57` and `:45` plus a `.bak` workflow each.
+  Note one of the seven is already documented as unwired — `docs/operations/ci-pipeline.md:68` records
+  `flaky-quarantine` as "❌ Runs nowhere" — so the hazard is not that nobody wrote it down, it is that
+  the file still exists and a grep for `verify-` finds it. **An unwired checker reads as coverage to
+  the reader who greps, and a `.bak` line makes a retired gate look wired to that same reader.**
+  Owner: `scripts/` for the files; `.github/workflows/dev-ci.yml` for any of them meant to be
+  enforced.
+- **GI-5 — two gate-integrity checkers have no backstop off a developer's own machine, and both
+  `ci` records claim one.** `verify-doc-uniqueness.py`: its only live runners are
+  `scripts/check.sh:376` and `:377` (11:40 +07); counting the string `uniqueness` per live workflow
+  returns **0** in `dev-ci.yml` and **0** in `release.yml` (11:46 +07) — yet `scripts/gates.json:455`
+  declares id `doc-uniqueness`, `status: required`, with `"ci": { "workflow": "dev-ci.yml",
+  "job": "static-gates" }` at `:458` and a note saying it was "Promoted to required with a ci block in
+  the same ruling" (`:459`). The manifest promises a job the workflow does not contain, and the drift
+  checker whose subject is this manifest does not see it. `verify-ftl-orphans.py`: the mode that can
+  block a commit is `--staged-only`, run in exactly one place, `.githooks/pre-commit:257` (11:40
+  +07); CI runs `--self-test` (`dev-ci.yml:332`) and `--census` (`:339`) and `check.sh` runs
+  `--self-test` (`:244-245`) — the `i18n` job cannot reproduce the staged check because CI has no
+  index, so the enforcing check has no backstop outside a developer's machine while its record's `ci`
+  block reads as though it does. **Correction to the hand-off:** "two of the eighteen count-or-set
+  gates" does not reproduce — `count-or-set` and `count or set` return 0 hits repo-wide (11:41 +07)
+  and no such class exists in the manifest. Measured denominators (11:47 +07): 70 gate records, 53
+  `required`, 47 carrying a `ci` key, 23 carrying none, and exactly 6 `required` without one
+  (`docker-dry-run`, `migration`, `bundle-budget`, `e2e`, `perf-smoke`, `updater-signature`).
+  Neither checker above is in that 6 — both carry a `ci` key, which is the defect. The defensible
+  denominator is the script census: of the 30 tracked `scripts/verify-*`, 9 are not named in
+  `dev-ci.yml` (11:41 +07). Owner: `scripts/gates.json` for the two `ci` claims;
+  `.github/workflows/dev-ci.yml` for the jobs they describe.
+- **GI-6 — the `scoped_orphans` staleness loop is keyed on a name ending in `_scoped`, so an entry
+  without that suffix is invisible in both directions and reports clean.** In
+  `scripts/verify-ipc-parity.py`: the reverse collector is `return sorted(c for c in handlers if
+  c.endswith("_scoped") and c not in called)` (`:647` at 11:55 +07; the same statement sat at
+  `:631` at 11:43 +07 while another lane edited this file — `git status` showed it `M` at 11:48 and
+  clean at 11:49 — so cite the statement, not the line number), and the self-clean is `for command in
+  sorted(orphan_allow - set(all_orphans)):` guarded on `if command.endswith("_scoped"):`
+  (`:1339-1340` at 11:55 +07, `:1284-1285` at 11:48 +07). A name lacking the suffix can never be
+  collected as an orphan and is never examined for staleness: never a violation, never stale,
+  permanently clean. **Measured state, this minute:** `scripts/ipc-parity-allowlist.json` holds **25**
+  entries in `scoped_orphans`, of which **0 of 25** lack the suffix (11:55 +07, JSON-parsed; the file
+  clean and byte-identical to HEAD at that minute) — so the hazard is prospective, not current, and it
+  is a statement about the data **right now** rather than about the code, which is why it is filed here
+  instead of as a code comment. One adjacent inaccuracy was measured and then repaired underneath this
+  bullet: at 11:48 +07 the gate's summary printed "27 allowlisted" while the allowlist held 25, because
+  that line counted the *detected* orphans (`all_orphans`, `:1309`/`:1313`) under the word
+  "allowlisted"; by 11:55 +07 the same line printed "25 entries allowlisted, 27 orphans measured in the
+  tree" (`:1471`). It is recorded anyway, because it is the same failure mode as GI-2 — a number a
+  reader would quote that was not the number in the file. Owner: `scripts/verify-ipc-parity.py`.
+
+- **NOT A FINDING — one item the hand-off listed as open was closed by another session during this
+  measurement pass, recorded with its commit and minute so nobody re-parks it.** The tablet
+  sync-conflict review route, parked twice today waiting on its owner, was resolved from outside at
+  **11:24:12 +07** by `ded4686776` `fix(tablet): register and gate sync-conflict review commands for
+  IPC parity`: **317 insertions / 3 deletions across 6 files** (`git show --numstat
+  --date=iso-strict ded4686776`, 11:38 +07) — `apps/tablet-client/src/commands/sync.rs` 186/0 (the 186
+  lines of real tablet commands), `apps/tablet-client/src/commands/sync_tests.rs` 89/0,
+  `apps/tablet-client/src/lib.rs` 2/0 (the two registrations,
+  `commands::sync::list_sync_conflicts_scoped` and `resolve_sync_conflict_scoped`),
+  `apps/tablet-client/src/commands/registration_gate_tests.rs` 22/1,
+  `apps/desktop-client/src/commands/sync.rs` 7/1,
+  `apps/desktop-client/src/commands/registration_gate_tests.rs` 11/1. It was fixed by **registering**,
+  not by allowlisting: both names are present in `apps/tablet-client/src/lib.rs` at HEAD and neither
+  `sync_conflict` string appears in `scripts/ipc-parity-allowlist.json` (11:49 +07), so the
+  crate-owning lane took the port option and the inert stubs are gone at the source. **Two figures in
+  the hand-off are corrected by this record, and neither correction is a criticism of the repair.**
+  (a) The commit was quoted as `ded468676`, which is not a valid object — `git cat-file -t ded468676`
+  → "fatal: Not a valid object name" (11:38 +07); the forms that resolve are `ded4686776` and
+  `ded468677`. (b) It was quoted as leaving `python3 scripts/verify-ipc-parity.py` printing IPC
+  parity OK, and that did not reproduce at any minute measured here: the command **exits 1** at 11:37
+  +07 (tip `9c6a30099`), at 11:48 +07 (tip `81e4589c1`) and at 11:55 +07 (tip `25dfa4659`), each time
+  with 2 violations — now `get_kds_routing_rules_scoped` and `save_kds_routing_rules_scoped`, desktop
+  registrations present in `apps/desktop-client/src/lib.rs` and absent from the allowlist (11:48 +07).
+  What the repair demonstrably closed is the class it named: no `sync_conflict` name appears anywhere
+  in the gate's output at 11:55 +07. The parity verdict on this checkout changed state under three
+  different tips inside twenty minutes because the tree is shared and moving, so cite it only with its
+  minute and its tip. This belongs to `apps/tablet-client`, not to this lane.
+
 ---
 
 ## How to close these
