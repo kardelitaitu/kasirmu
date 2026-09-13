@@ -36,6 +36,7 @@ import { clearAnalyticsErrors, useAnalyticsQuery } from './useAnalyticsQuery';
 import { exportHeatmapCsv } from './utils/analyticsExport';
 import { CacheMetricsPanel } from './components/CacheMetricsPanel';
 import { AnalyticsCardFrame } from './components/AnalyticsCardFrame';
+import { AnalyticsToolbar } from './components/AnalyticsToolbar';
 import { CommandPalette } from './components/CommandPalette';
 import { NoWorkspacePrompt } from './components/NoWorkspacePrompt';
 import { SessionRecoveryBanner } from './components/SessionRecoveryBanner';
@@ -587,172 +588,42 @@ export default function AnalyticsScreen() {
           AREA 2 — Menu: workspace selector + granularity buttons
           ══════════════════════════════════════════════════════════ */}
       <nav className="analytics-menu">
-        {/* Row 1 — workspace selector */}
-        <div className="analytics-menu-row">
-          <select
-            className="analytics-workspace-select-input"
-            value={workspaceView}
-            onChange={(e) => {
-              setWorkspaceView(e.target.value as WorkspaceView);
-              setGranularity('weekly');
-              setExpandedKey(null);
-            }}
-            aria-label={l10n.getString('analytics-workspace-select-aria')}
-          >
-            <option value="retail">{workspaceLabel('retail')}</option>
-            <option value="restaurant">{workspaceLabel('restaurant')}</option>
-          </select>
-        </div>
-
-        {/* Row 2 — granularity pill buttons + custom date range inline */}
-        <div className="analytics-menu-row">
-          <div
-            className="analytics-granularity"
-            role="radiogroup"
-            aria-label={l10n.getString('analytics-granularity-aria')}
-          >
-            {GRANULARITIES.map((g) => (
-              <button
-                key={g}
-                type="button"
-                className={`analytics-granularity-btn${granularity === g ? ' analytics-granularity-btn--active' : ''}`}
-                onClick={() => setGranularity(g)}
-                role="radio"
-                aria-checked={granularity === g}
-                title={`${l10n.getString(`analytics-granularity-${g}`)} (${GRANULARITIES.indexOf(g) + 1})`}
-              >
-                <Localized id={`analytics-granularity-${g}`}>
-                  <span>{g}</span>
-                </Localized>
-              </button>
-            ))}
-          </div>
-
-          {granularity === 'custom' && (
-            <>
-              <div className="analytics-custom-range">
-                <label className="analytics-custom-field">
-                  <Localized id="analytics-custom-from">
-                    <span className="analytics-custom-label">From</span>
-                  </Localized>
-                  <input
-                    type="date"
-                    className="analytics-custom-input"
-                    value={customFrom}
-                    max={customTo}
-                    onChange={(e) => {
-                  customTouched.current = true;
-                  setCustomFrom(e.target.value);
-                }}
-                    aria-label={l10n.getString('analytics-custom-from')}
-                  />
-                </label>
-                <span className="analytics-custom-sep">—</span>
-                <label className="analytics-custom-field">
-                  <Localized id="analytics-custom-to">
-                    <span className="analytics-custom-label">To</span>
-                  </Localized>
-                  <input
-                    type="date"
-                    className="analytics-custom-input"
-                    value={customTo}
-                    min={customFrom}
-                    onChange={(e) => {
-                      customTouched.current = true;
-                      setCustomTo(e.target.value);
-                    }}
-                    aria-label={l10n.getString('analytics-custom-to')}
-                  />
-                </label>
-              </div>
-              <div className="analytics-custom-presets" role="group" aria-label={l10n.getString('analytics-range-presets-aria')}>
-                {[7, 30, 90, 365].map((days) => (
-                  <button
-                    key={days}
-                    type="button"
-                    className="analytics-preset-chip"
-                    onClick={() => applyRangePreset(days)}
-                    aria-label={l10n.getString(`analytics-range-preset-${days}d`)}
-                  >
-                    {l10n.getString(`analytics-range-preset-${days}d`)}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Action buttons — collapse, refresh, zoom out, zoom in */}
-          <div className="analytics-actions">
-            <button
-              type="button"
-              className={`analytics-action-btn${compare ? ' analytics-action-btn--active' : ''}`}
-              onClick={() => {
-                const next = !compare;
-                setCompare(next);
-                showToast(l10n.getString(next ? 'analytics-toast-compare-on' : 'analytics-toast-compare-off'));
-              }}
-              aria-pressed={compare}
-              aria-label={l10n.getString(compare ? 'analytics-compare-off-aria' : 'analytics-compare-on-aria')}
-              title={l10n.getString(compare ? 'analytics-compare-off-aria' : 'analytics-compare-on-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <path d="M3 7h13" />
-                <path d="M3 12h9" />
-                <path d="M3 17h5" />
-                <polyline points="18 4 22 8 18 12" />
-                <polyline points="14 12 18 16 14 20" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={`analytics-action-btn${allCollapsed ? ' analytics-action-btn--active' : ''}`}
-              onClick={() => {
-                const next = !allCollapsed;
-                setAllCollapsed(next);
-                showToast(l10n.getString(next ? 'analytics-toast-collapsed' : 'analytics-toast-expanded'));
-                // Collapsing all while a card is expanded would otherwise
-                // leave the grid showing only that card — restore the grid
-                // so the toggle visibly does what its label promises.
-                if (next) setExpandedKey(null);
-              }}
-              aria-label={l10n.getString(allCollapsed ? 'analytics-action-expand-all-aria' : 'analytics-action-collapse-all-aria')}
-              title={l10n.getString(allCollapsed ? 'analytics-action-expand-all-aria' : 'analytics-action-collapse-all-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                {allCollapsed ? (
-                  <>
-                    <path d="M4 14h16" />
-                    <path d="M4 18h16" />
-                    <path d="M4 6l4 4 4-4" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M4 6h16" />
-                    <path d="M4 10h16" />
-                    <path d="M4 14l4 4 4-4" />
-                  </>
-                )}
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="analytics-action-btn"
-              onClick={() => {
-                startRecalculating.current?.(true);
-                showToast(l10n.getString('analytics-toast-refreshing'));
-              }}
-              aria-label={l10n.getString('analytics-action-refresh-aria')}
-              title={l10n.getString('analytics-action-refresh-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <polyline points="23 4 23 10 17 10" />
-                <polyline points="1 20 1 14 7 14" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-            </button>
+        <AnalyticsToolbar
+          workspaceView={workspaceView}
+          workspaceLabel={workspaceLabel}
+          onSelectWorkspace={(view) => {
+            setWorkspaceView(view);
+            setGranularity('weekly');
+            setExpandedKey(null);
+          }}
+          granularity={granularity}
+          onSelectGranularity={setGranularity}
+          customFrom={customFrom}
+          customTo={customTo}
+          onCustomFrom={(v) => { customTouched.current = true; setCustomFrom(v); }}
+          onCustomTo={(v) => { customTouched.current = true; setCustomTo(v); }}
+          onApplyPreset={applyRangePreset}
+          compare={compare}
+          onToggleCompare={() => {
+            const next = !compare;
+            setCompare(next);
+            showToast(l10n.getString(next ? 'analytics-toast-compare-on' : 'analytics-toast-compare-off'));
+          }}
+          allCollapsed={allCollapsed}
+          onToggleAllCollapsed={() => {
+            const next = !allCollapsed;
+            setAllCollapsed(next);
+            showToast(l10n.getString(next ? 'analytics-toast-collapsed' : 'analytics-toast-expanded'));
+            // Collapsing all while a card is expanded would otherwise
+            // leave the grid showing only that card — restore the grid
+            // so the toggle visibly does what its label promises.
+            if (next) setExpandedKey(null);
+          }}
+          onRefresh={() => {
+            startRecalculating.current?.(true);
+            showToast(l10n.getString('analytics-toast-refreshing'));
+          }}
+          zoomSlot={
             <ZoomControls
               zoomLevel={zoomLevel}
               onZoomOut={zoomOut}
@@ -768,8 +639,8 @@ export default function AnalyticsScreen() {
               shortcutsButtonRef={shortcutsButtonRef}
               shortcutsPopoverRef={shortcutsPopoverRef}
             />
-          </div>
-        </div>
+          }
+        />
       </nav>
 
       {/* Scroll progress — flush against the menu's bottom edge, tracks
