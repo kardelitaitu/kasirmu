@@ -124,5 +124,57 @@ LANDED (backend only, this session), one commit per milestone:
   *(superseded — actual landings are per-milestone `feat(kds-routing):` commits listed in the backend stamp / final report)*
 
 ### Phase 1.2: Rule config UI + dev-mock (DEFERRED — out of backend dispatch)
-- [ ] UI rule editor over `get/save_kds_routing_rules_scoped` (ui/** — live sessions own).
+- [x] UI rule editor over `get/save_kds_routing_rules_scoped` (ui/** — live sessions own). *(landed 2026-09-13 — see UI stamp below)*
 - [ ] `ui/src/dev-mock/` handlers for both names (mid-extraction by another session — live sessions own).
+
+## UI follow-up landed
+
+<!-- UI stamp: 2026-09-13 · DSH · rule-config UI (Phase 1.2, first checkbox)
+LANDED: `9f6fcd828` feat(kds-ui): add routing-rules editor section to the KDS
+settings panel — one commit, 8 paths, all gates green at commit:
+  - `ui/src/features/kds/components/KdsRoutingRulesEditor.tsx` + `.css` —
+    collapsible panel section (heading + editor; session wiring via
+    useWorkspace mounts ONLY when expanded) over the priority-ordered table
+    (position = priority rank), matcher select + value + target station +
+    active switch per row, add/remove/move-up/down (integer reorder, no
+    drag library), whole-set Save with ✓-status success feedback, Clear-all
+    = save([]) behind an inline alertdialog confirm. Errors through
+    l10nErrorMessage only (ERR-10 pinned by test).
+  - `ui/src/features/kds/kdsRoutingRulesModel.ts` — pure draft-row helpers;
+    save payload renumbers priority 1..n by position (whole-set replace
+    contract: ids/timestamps are server-assigned).
+  - Mounted by `KdsHamburgerPanel.tsx` (the live settings surface).
+    DEVIATION STAMPED: the dispatch named `KdsSettingsPanel.tsx` as the
+    surface, but that component is rendered nowhere in production (only
+    `KdsHamburgerPanel` and type/DEFAULT imports reference the file);
+    adding a section to the live panel keeps the edit additive (7 lines)
+    while making the feature reachable. `KdsSettingsPanel.tsx` untouched.
+  - API layer `ui/src/api/kds.ts` was ALREADY shipped by `bac53b849`
+    (wrappers + snake_case mirror types + `api-kds-routing-contract.test.ts`
+    — 4 green) — no changes needed; none made.
+  - STRINGS: 41 keys added to BOTH kds.ftl and kds.id.ftl (symmetric; FTL
+    dedupe + orphan gates green at commit; bundle-parity 0 missing — the
+    first commit attempt died on this gate for a dropped `kds-routing-
+    clear-all` key and re-ran whole-chain after the fix).
+  - TESTS: `ui/src/__tests__/KdsRoutingRulesEditor.test.tsx` — 17 tests via
+    the boundary-mock convention (vi.hoisted `@/utils/logged-invoke`),
+    covering load-renders-rows, whole-set save payload (exact args), []
+    clears only after confirm (+ decline sends nothing), reorder →
+    renumbered payload, localized error banner with no raw backend text,
+    incomplete-row client guard, tag hint, section collapse, model units.
+    NO dev-mock used. screenExtraction entry registered in the SAME commit
+    (184→187 tests; KdsSettingsPanel/errorPolicyCompliance unchanged).
+  - TAG-MATCHER DECISION: `tag` STAYS in the picker and every tag row shows
+    "Tags are not modeled in the catalog yet — this rule is stored but
+    never routes a line". Reason: save is WHOLE-SET REPLACE, so hiding the
+    kind would turn an already-stored tag rule into silent delete-by-edit;
+    the hint states the never-matches reality at the row that carries it.
+STILL DEFERRED (out of this UI dispatch):
+  - dev-mock handlers for `get/save_kds_routing_rules_scoped` (zone DIRTY
+    with another session's extraction — untouched, boundary mocks made it
+    unnecessary for the UI tests);
+  - the tag "not yet effective" hint can retire once a tags-by-sku fact
+    source + match arm land (backend stamp's follow-up recipe);
+  - gate_audit.rs census pin (backend stamp left it to its owner).
+-->
+
