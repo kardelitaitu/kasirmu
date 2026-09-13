@@ -6,7 +6,7 @@
 
 **Target Crates:** `crates/oz-lan/` (or `desktop-client/src/lan_server.rs`), `platform-sync`  
 **Sibling Documents:**
-- [`done-todo-kds-agents-1.md`](./done-done-todo-kds-agents-1.md) (Agent 1 — Multi-Station KDS Routing Engine)
+- [`done-todo-kds-agents-1.md`](./done-todo-kds-agents-1.md) (Agent 1 — Multi-Station KDS Routing Engine)
 - [`todo-kds-agents-3.md`](./todo-kds-agents-3.md) (Agent 3 — Station UI, Modifier Badges & Expo Screen)
 
 ---

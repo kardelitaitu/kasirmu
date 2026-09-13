@@ -1,5 +1,31 @@
 # Payment Types — Plan & TODO
 
+<!-- Audit stamp: 2026-09-14 · docs-auditor (DSH) · status: FULL AUDIT,
+repaired. Method: the surviving status overlay was re-verified claim by
+claim against HEAD — the three API routes exist as literal registrations
+(webhooks.rs:71-73, openapi.rs:555/:573), the TerminalFeatureOverride
+mechanism is live (table terminal_feature_overrides in both migrations,
+db/terminal_overrides.rs CRUD, the "…not accept card payments" quote
+resolved at terminal_override.rs:4-6 wrapped across lines), the three
+terminals.rs IPC commands exist, caps.supportsQris still gates, the
+registry field shapes and DEFAULT_TERMINAL_ID claims resolve, the
+driver's API-match claim holds (Basic auth /v2 charge status refund
+cancel all present), and oz-payment webhook.rs is STILL a fail-closed
+stub as the study says. MAJOR finding: the EDC thread's "landed" is
+true of the wiring and false of the hardware — every real driver
+(wired/wireless/all three protocol codecs) fails closed with
+Unsupported; only the dev mock completes a sale. Surfaced here and in
+the inventory as R7; the status block now qualifies itself.
+MINOR repairs applied: 7→8 PaymentError variants (its own list says 8);
+modal size ~2,030→2,436 measured; /api/webhooks/{gateway} shorthand →
+per-gateway literal routes; the Node reference line :46→:45 (gopay is
+at 45, the PHP citation was right); a done-done link artifact from the
+rename sweep corrected. Structural gates: check-orphans clean,
+check-dead-refs clean (master additionally scanned via
+--include-historical: its 3 record-class refs are dated research text).
+The 43 boxes remain physically untouched by policy — the inventory maps
+them row by row. -->
+
 > Working plan for how payment types/methods are modeled, configured, and
 > rendered in the POS. The modal lives at `ui/src/features/sales/PaymentModal.tsx`.
 > This doc captures the architecture decision and a phased backlog. Add detail
@@ -17,23 +43,34 @@
 > shipped `edc_*` commands — scoped pre-flight, tap/insert/swipe overlay,
 > capture-then-complete with the terminal's transaction fields on the
 > payment split, declined/cancelled returning to selection (`26ffd89c1c`).
-> `done-done-todo-payment-agents-3.md` is COMPLETE (3.0–3.2); what remains in this
+> `done-todo-payment-agents-3.md` is COMPLETE (3.0–3.2); what remains in this
 > master doc is its non-blocking backlog (per-row notes), not an open work
 > order. Row 4's stale HAL note: the EDC protocol stack shipped in
 > `crates/oz-hal/src/drivers/edc/` (agents-2 stamped absorbed 08:38 today).
+> **Qualification added by the 09-14 follow-up audit:** "landed" means
+> wired end to end against the HAL — but the HAL's real drivers
+> (`drivers/edc/{wired,wireless}.rs`, `protocol/{pax,ingenico,verifone}.rs`)
+> are fail-closed PLANNED stubs; only the dev-mock terminal can complete a
+> sale today, so no physical card-present payment works until the protocol
+> handler lands. Tracked as R7 in the inventory below.
 
 > **Absorption inventory (2026-09-14, `todo-payment-agents-4.md`):** every
 > open box in this doc was re-measured against HEAD. Roughly half have
 > since shipped (often under different commits than the plan that owned
-> them) or were superseded by wire decisions; the genuine remainder is
-> six ranked items R1–R6 there — R1 the modal not consuming the rails it
-> owns, R2 the manual QRIS static-QR string (still a demo grid), R3
-> typed errors replacing the UI's string-match `classifyError`. The
-> boxes below are left physically untouched (this doc's own rulings are
-> its record); the inventory is the triage, and its execution proposal
-> stands: agents-5 = R1+R2 on request. `09eec83868` also landed since:
-> manual QRIS now confirms only on the cashier's explicit assertion —
-> the 8-second demo auto-confirm no longer exists.
+> them) or were superseded by wire decisions; the genuine remainder was
+> ranked R1–R6 there. **Status after agents-5 (same day): R1 (rails
+> consumed — `bffcbda97a`), R2 (real static QR, demo grid deleted —
+> `903b30a718`) and R3 (typed errors, string-match `classifyError` deleted
+> — `3d50b3ac5a`) are CLOSED; R4–R6 stay open** — and a follow-up audit
+> added **R7: no real EDC hardware driver exists** (the shipped wired/
+> wireless/protocol drivers are fail-closed stubs; only the dev mock
+> answers). Where the body below still asserts a superseded present tense
+> (the `payment:*` keys, the hardcoded method list, "stubs", "hidden when
+> offline", the string-match classifier), the inventory's absorbed table
+> is the row-by-row mapping; boxes stay physically untouched by design.
+> `09eec83868` also landed since: manual QRIS now confirms only on the
+> cashier's explicit assertion — the 8-second demo auto-confirm no longer
+> exists.
 
 ## Goal
 
@@ -241,7 +278,9 @@ graph TD
         `crates/oz-payment/src/webhook.rs` stub should follow it (or verify
         `signature_key` = SHA512(order_id + status_code + gross_amount +
         serverKey)). The route home is `apps/cloud-server/src/webhooks.rs`
-        (`/api/webhooks/{gateway}` + HMAC verifiers + `processed_webhooks`
+        (`/api/webhooks/` — one literal route per gateway: stripe, square,
+        and since agents-1 midtrans, `webhooks.rs:71-73` — + HMAC verifiers +
+        `processed_webhooks`
         idempotency), which already handles Stripe/Square.
 
 
@@ -256,7 +295,7 @@ LinkAja instead of a generic QRIS code.
     `qris.acquirer` in the `POST /charge` body.
   - SnapBi API (the only style the vendored examples show): `additionalInfo.acquirer`.
     The proven value in both vendored clients is `"gopay"`
-    (`references/midtrans-nodejs-client/examples/SnapBi/SnapBiQrisPayment.js:46`,
+    (`references/midtrans-nodejs-client/examples/SnapBi/SnapBiQrisPayment.js:45`,
     `references/midtrans-php/examples/snap-bi/snap-bi-qris-payment.php:45`).
 - **Valid `acquirer` values** (per Midtrans docs; `gopay` is the only one
   confirmed by the vendored code - confirm the rest in a sandbox):
@@ -477,7 +516,7 @@ abstraction should contain the failure and offer a fallback path.
 - `PaymentProcessor` trait (`crates/oz-payment/src/processor.rs`):
   `authorize / capture / sale / refund / void / receipt / device_info`; default
   `sale()` = authorize -> capture.
-- Typed `PaymentError` (`error.rs`): 7 variants, `#[non_exhaustive]`
+- Typed `PaymentError` (`error.rs`): 8 variants, `#[non_exhaustive]`
   (`Declined, Timeout, Network, InvalidResponse, InvalidCard, Expired,
   Duplicate, Unsupported`).
 - `PaymentProcessorRegistry` (`registry.rs`): a name -> processor map, but
@@ -653,7 +692,8 @@ checks) remain in `## Open questions`.
       (`amount: null` = full, minor units = partial).
 
 ## References
-- `ui/src/features/sales/PaymentModal.tsx` (modal; ~2030 lines)
+- `ui/src/features/sales/PaymentModal.tsx` (modal; 2,436 lines at 2026-09-14,
+  grown from the study's ~2,030 by three feature rounds' real wiring)
 - `ui/src/features/sales/PaymentModal.css`
 - `ui/src/__tests__/PaymentModal.test.tsx`, `PaymentModalEdgeCases.test.tsx`,
   `PaymentModalSaleFlow.test.tsx`
@@ -669,3 +709,5 @@ checks) remain in `## Open questions`.
 - Midtrans Node.js client - local vendored copy: `references/midtrans-nodejs-client/` (gitignored research reference; not a dependency).
 - Midtrans official PHP client: https://github.com/Midtrans/midtrans-php
 - Midtrans PHP client - local vendored copy: `references/midtrans-php/` (gitignored research reference; not a dependency). Cross-verified the auth (HTTP Basic `base64(serverKey + ":")`) and base URLs against this client - see Phase 3 reference-copy bullet.
+
+> last audited 14-09-26 by docs-auditor

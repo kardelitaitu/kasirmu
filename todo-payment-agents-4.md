@@ -14,7 +14,22 @@ still lists "PAY-1 HIGH parse_amount unwrap_or(0)" — an almost-claimed
 live money bug. It is HISTORY: parse_amount now returns
 `Result<i64, PaymentError>` (qris.rs:321, the zeroing quoted at :317 is
 the comment describing the OLD defect). The header is a stale ledger,
-not a triage queue. Claim-first-measure twice. -->
+not a triage queue. Claim-first-measure twice.
+
+FOLLOW-UP AUDIT (same day, after agents-5 closed R1-R3): this doc's own
+anchors were re-measured — 11/11 cited SHAs exist; qris.rs:321/:317,
+registry.rs:57-67, local_payment.rs:41/:29 and the :200/:146 lib.rs
+wiring all resolve exactly as cited (the qris.rs line survives its own
+path move to src/drivers/). Two findings: (1) the RESULT paragraph still
+said "R3-R6 stay open" after R3 closed — fixed; (2) MAJOR — the Pass-1
+claim "the genuine remainder is small enough to name exactly" was wrong
+in the direction that matters: no EDC driver is REAL (wired, wireless
+and all three protocol codecs are fail-closed PLANNED stubs; only
+drivers/mock.rs can complete a sale), which the Phase-4 absorbed row
+glossed and R4 assumed away. Added as R7; the absorbed row now carries
+the qualification. A box-by-box audit of claims catches lies; it does
+not catch true-but-misleading summaries — R7 was visible only by
+reading the stub's own doc comment, which no checkbox asked for. -->
 
 ## Absorbed — do not re-open
 
@@ -27,7 +42,7 @@ not a triage queue. Claim-first-measure twice. -->
 | Phase 3 charge/status/webhook/ledger | The whole agents-1 + agents-3 chain: `9e143fc5ca` ledger, `1f6a162a3` status, `fb9ef9042a` egress, `289be3959a` UI. Secrets cloud-side as decided (:34 rule). |
 | "QR field qr_string vs qr_code_url" | Practically resolved: the driver field is `qr_code_url` with `#[serde(alias = "qr_string")]` (`08adf9fe8d`) — it ingests both. Sandbox confirmation remains as evidence debt, not code debt. |
 | PAY-1/PAY-2/PAY-3/PAY-7/PAY-8 + COR-31 | Fixed per the driver's own stamps (2026-07-25, 2026-09-09). |
-| Phase 4 registry/trait/lifecycle boxes | agents-2 shipped the driver tree; agents-3's `1a0277548f` moved bodies to `oz-bridge`; the modal wired it (`26ffd89c1c`). The doc's illustrative `edc_sale(terminal_id, Money)` snippet is STALE — the shipped wire is `edc_sale(session_token, amount_minor, currency)` single-default-terminal. |
+| Phase 4 registry/trait/lifecycle boxes | agents-2 shipped the driver tree; agents-3's `1a0277548f` moved bodies to `oz-bridge`; the modal wired it (`26ffd89c1c`). The doc's illustrative `edc_sale(terminal_id, Money)` snippet is STALE — the shipped wire is `edc_sale(session_token, amount_minor, currency)` single-default-terminal. **Qualification added by the 09-14 follow-up audit: "the driver tree landed" means the SKELETON landed — `drivers/edc/{wired,wireless}.rs` and `protocol/{pax,ingenico,verifone}.rs` are all fail-closed PLANNED stubs (`HalError::Unsupported`; measured wired.rs:4/:12-14, wireless.rs:4/:7, pax.rs:4/:7), and the boot factory (`platform/startup/src/hardware.rs:213`) faithfully registers stubs. The only terminal that can answer a sale today is the dev MOCK. No real card-present sale is possible until the protocol handler lands — that item was NOT named here at first; it is R7 below.** |
 | Phase 5 flows + tests | cash / QRIS manual / QRIS Auto / EDC terminal all have sections now; the modal test suites exist and are green. |
 | webhook strategy, default acquirer, server-key env, poll-vs-webhook | RULED 2026-09-07 and/or already implemented per the ruling (re-fetch webhook landed with agents-1). |
 
@@ -76,6 +91,24 @@ Single implicit terminal ships; `db/edc_terminals.rs`'s own header says
 "commands should take a terminal_id once more than one terminal is
 configured". Wire it + dropdown + per-sale routing WHEN a second
 terminal is real; until then R1's flag is the honest gate.
+(Priority note from the 09-14 follow-up audit: "real" is doing quiet
+work in that sentence — see R7; no terminal of ANY count is real yet.)
+
+### R7 · No real EDC hardware driver — the first-pass inventory's blind spot
+FOUND BY THE 2026-09-14 follow-up audit, not by the box-by-box pass this
+doc records. Every layer of the EDC chain shipped except the one that
+touches money-holding hardware: the protocol handlers behind
+`drivers/edc/wired.rs`, `wireless.rs` and `protocol/{pax,ingenico,
+verifone}.rs` are all documented PLANNED stubs failing closed with
+`HalError::Unsupported`, so `edc_sale` on real hardware returns
+Unsupported — only `drivers/mock.rs` (fails closed until `set_success`,
+dev builds only) can complete a sale. The wiring, IPC, UI, ledger shape
+and rail gating are all done and correct; the socket protocol is not.
+`wired.rs`'s own next-line names it: "serial/USB protocol handler".
+This is bigger than R4 (which assumes a first real terminal exists) and
+smaller than the epic's "landed" headline admits. Status: OPEN — needs
+real hardware or vendor protocol documentation to implement against;
+the stubs failing closed is the honest placeholder until then.
 
 ### R5 · Resilience cluster (fallback chain, breaker, reconciliation job)
 `registry.rs::build_from_config` remains a documented PLANNED stub
@@ -101,5 +134,11 @@ a merchant account, not code.
 
 Proposed: agents-5 = R1+R2. **Executed** 2026-09-14 (`bffcbda97a` +
 `903b30a718`), both boxes ticked above with their premise corrections
-recorded where the claims were made. R3-R6 stay open as written; R5
-still requires its own design doc before any boxes.
+recorded where the claims were made. R3 was then closed by the same
+order (`3d50b3ac5a`). **R4-R7 stay open** as written; R5 still requires
+its own design doc before any boxes; R7 (the real EDC protocol handler,
+found by the follow-up audit that also corrected the stale "R3-R6"
+count in this paragraph) needs hardware or vendor protocol docs before
+ANY code can honestly be written for it.
+
+> last audited 14-09-26 by docs-auditor
