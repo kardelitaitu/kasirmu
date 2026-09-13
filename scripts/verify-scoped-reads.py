@@ -36,6 +36,13 @@ refuses an object in a shell section and names this script as its reason; the tw
 agree about what the file may contain. A member that cannot become a command name fails this
 gate with a sentence naming the section, the entry's position and the value found -- never a
 traceback, and never a quiet skip.
+
+Above the entries sits the file itself, and that needed a guard of its own: a body that
+parses as JSON but is not a dict keyed by shell -- "{}", or {"entries": []} -- used to read
+as an allowlist with nothing in it, so the gate walked the whole tree, compared zero command
+names and exited 0, while a top-level list died in an uncaught AttributeError. Require the
+dict and the section --shell names, and refuse what is left, is now the first thing done to
+a parsed allowlist.
 Comments are stripped before matching. Without that, prose mentioning `getSale()` reads as a call
 site -- which is exactly the false positive this script's own first draft produced against a
 comment written by the fix that missed the real site.
@@ -120,6 +127,17 @@ class AllowlistUnreadable(RuntimeError):
     """The allowlist would not open, so there is no verdict to report -- clean or dirty."""
 
 
+class AllowlistWrongShape(AllowlistUnreadable):
+    """The bytes opened and parsed as JSON; the JSON is not an allowlist.
+
+    A subclass on purpose: main() keeps ONE handler, so the gate keeps ONE voice --
+    `FAIL: <sentence>`, exit 1 -- while a reader can still tell "the bytes would not
+    arrive" from "the bytes are not an allowlist". Nothing about the busy-file arm
+    changes and no except clause widens: a denial still raises the parent, and this
+    class is raised only where a parsed object is already in hand.
+    """
+
+
 def _read_json(path):
     with io.open(path, encoding="utf-8") as fh:
         return json.load(fh)
@@ -181,6 +199,74 @@ def read_allowlist(path=ALLOWLIST, opener=None):
                 f"os.replace, which is atomic, so a half-written file is not what this "
                 f"is.") from None
     raise AssertionError("unreachable")  # every path above returns or raises
+
+
+# The two sections a wrong-shape file has to be measured against, named here rather than
+# written twice: they are the shells -- and so the top-level keys -- this gate is ever run
+# against, "desktop" by build_argparser's default and "tablet" by anyone passing --shell.
+# The file carries "_"-prefixed comment keys beside them ("_comment", "_dev_mock_comment",
+# "_scoped_orphans_comment"), which is why the guard below cannot census the whole object
+# and asks only for the key the loader reaches for.
+SHELL_SECTIONS = ("desktop", "tablet")
+
+
+def require_allowlist_shape(allow, shells, path=ALLOWLIST):
+    """Refuse an allowlist that parses as JSON but is not shaped like one.
+
+    WHY THIS EXISTS -- four bodies aimed at this gate with --allowlist, measured at tip
+    226d7268f0 against a HEAD copy in a temp directory (so the walk found 0 files and every
+    number below is the whole of what was graded):
+
+        {}              -> exit 0, "clean for desktop", 0 names compared
+        {"entries": []} -> exit 0, "clean for desktop", 0 names compared
+        not json        -> exit 1, refused by the JSONDecodeError arm above (a89f1f12d)
+        [{"a": 1}]      -> exit 1, uncaught AttributeError: 'list' object has no attribute
+                           'get', escaping sys.exit(main())
+
+    The last two are loud, and loud is survivable: a traceback is ugly but nobody reads it
+    as a pass. The first two are the hazard. `allowlist_names` reads a section with
+    `payload.get(section)` and returns [] when the key is missing -- a correct answer for
+    "this shell has no gaps recorded" and an indistinguishable one for "this is not an
+    allowlist at all" -- so a dict of foreign keys walks 568 production files, compares zero
+    commands, and prints a verdict. That is the empty-corpus class closed in the sibling
+    gates tonight, c1fa2d0f9 and 1f7c2311c: a gate that graded nothing has no verdict, and
+    the refusal has to cost the operator something.
+
+    WHAT IT ASKS FOR is read off the live loader rather than guessed: a top-level dict, plus
+    the key `allowlist_names` actually reaches for, which is the section named by --shell
+    ("desktop" unless told otherwise). A section that is present but empty stays legal --
+    "no gap is recorded for this shell" is a claim the gate can check, and it is what a
+    fully migrated shell looks like; "this key is absent" is a type error in the input. So
+    the guard checks membership, never length, and never the "_"-prefixed comment keys.
+
+    Raises AllowlistWrongShape (an AllowlistUnreadable, so main()'s one refusal prints it);
+    it never appends to a list and carries on, because the thing being refused here is a run
+    that carries on.
+    """
+    filename = os.path.basename(path)
+    wanted = [s for s in shells if s] or list(SHELL_SECTIONS)
+    want = " and ".join(f'"{s}"' for s in wanted)
+    if not isinstance(allow, dict):
+        got = type(allow).__name__
+        raise AllowlistWrongShape(
+            f'{filename} parses as JSON but its top level is a {got}, not an object, and a '
+            f'{got} has no .get for this gate to read a section with. It wanted an allowlist '
+            f'-- a JSON object keyed by {want}, the section{"s" if len(wanted) > 1 else ""} '
+            f'--shell names -- and got a {got}. Run python3 scripts/verify-ipc-parity.py to '
+            f'see that shape written by something that validates it.')
+    absent = [s for s in wanted if s not in allow]
+    if absent:
+        keys = sorted(str(k) for k in allow)
+        found = ("a " + str(len(keys)) + "-key object: "
+                 + ", ".join(f'"{k}"' for k in keys)) if keys else "an empty object"
+        missing = " and ".join(f'"{s}"' for s in absent)
+        raise AllowlistWrongShape(
+            f'{filename} parses as JSON but it is not an allowlist: it wanted {missing}, the '
+            f'section this gate reads for the '
+            f'{"shell" if len(shells) < 2 else str(len(shells)) + " shells"} named by '
+            f'--shell{"s" if len(shells) > 1 else ""}, and got {found}. With that section '
+            f'absent the walk compares zero command names and still prints a verdict, so this '
+            f'run refuses instead. An allowlist is a JSON object keyed by {want}.')
 
 
 # Wrappers are `export const name = (args): Ret => loggedInvoke<T>('cmd', {...});`. The body is an
@@ -376,8 +462,14 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     The allowlist argument is the seam F-1 asked for: which file to grade. It defaults to
     ALLOWLIST, so a bare run grades the checkout copy exactly as it did before the option
     existed.
+
+    allow is put through require_allowlist_shape the moment it exists and before anything
+    calls .get on it, so a file that parses as JSON but is not shaped like an allowlist ends
+    the run there -- before the walk, before any verdict, and in a sentence rather than in a
+    traceback out of allowlist_names.
     """
     allow = read_allowlist(allowlist)
+    require_allowlist_shape(allow, shells, allowlist)
     ui_dir = os.path.join(repo, "ui", "src")
     cmd_to_wrapper = find_wrappers(os.path.join(ui_dir, "api"))
     files = production_files(ui_dir)
@@ -796,15 +888,23 @@ def _aim_self_test():
 
 
 def _guard_self_test():
-    """The four ways an aimed --allowlist path can fail to be a gradeable file.
+    """The seven ways an aimed --allowlist path can fail to be a gradeable file.
 
     One case per input, each asserting the exact reason word, because the finding this
     closes is a MISDIAGNOSIS: a directory used to reach the busy-file handler and print
     that another process was holding it, sending an operator off to look for a process
     that does not exist. The busy sentence is not wrong, it was just being used for three
     failures that are not busy. Each case runs the real main() so the wiring, not just the
-    helper, is under test; all four short-circuit before the tree walk, so they are
+    helper, is under test; all of them short-circuit before the tree walk, so they are
     milliseconds.
+
+    Cases 1-3 are the path, case 4 is the open, and cases 5-7 are the SHAPE of a file that
+    both exists and parses -- the trio that sat unguarded until 226d7268f0, where two of
+    them exited 0 having compared zero command names and the third exited 1 through an
+    uncaught AttributeError. The shape cells therefore forbid more than the wrong reason:
+    they forbid the verdict line, because a refusal that still printed a verdict would be
+    the same hazard wearing a red exit code. Case 8 is the control that keeps the guard
+    from being satisfied only by fixtures.
     """
     print("  verify-scoped-reads self-test / why a path could not be graded")
     failures = 0
@@ -831,6 +931,17 @@ def _guard_self_test():
         realfile = os.path.join(tmp, "exists-but-denied.json")
         with io.open(realfile, "w", encoding="utf-8") as fh:
             json.dump({"desktop": []}, fh)
+        # Cases 5-7: files that EXIST and PARSE. Each was run against a HEAD copy at
+        # 226d7268f0 and the first two exited 0 with a verdict line after comparing zero
+        # command names; the third exited 1 with a traceback out of allowlist_names.
+        shapes = {}
+        for stem, body in (("empty-object", "{}"),
+                           ("wrong-key", '{"entries": []}'),
+                           ("top-level-list", '[{"a": 1}]'),
+                           ("top-level-string", '"getSale"')):
+            shapes[stem] = os.path.join(tmp, f"shape-{stem}.json")
+            with io.open(shapes[stem], "w", encoding="utf-8") as fh:
+                fh.write(body)
 
         cases = [
             ("case 1  a path that is not there", [missing], "does not exist",
@@ -839,6 +950,21 @@ def _guard_self_test():
              ["would not open after", "another process is holding it"]),
             ("case 3  a file that is not valid JSON", [bad], "is not valid JSON",
              ["would not open after", "another process is holding it"]),
+            # The shape cells forbid the VERDICT line as well as the wrong reason: these
+            # three used to be silent (or a traceback), and a refusal that still printed a
+            # verdict would be the same hazard with a red exit code bolted on.
+            ("case 5  an allowlist that is an empty JSON object", [shapes["empty-object"]],
+             "and got an empty object",
+             ["clean", "is not valid JSON", "would not open after", "entry #"]),
+            ("case 6  a JSON object keyed by something else", [shapes["wrong-key"]],
+             '1-key object: "entries"',
+             ["clean", "is not valid JSON", "would not open after", "entry #"]),
+            ("case 7  a JSON array at the top level", [shapes["top-level-list"]],
+             "has no .get",
+             ["clean", "is not valid JSON", "would not open after", "AttributeError"]),
+            ("case 7b  a JSON string at the top level", [shapes["top-level-string"]],
+             "has no .get",
+             ["clean", "is not valid JSON", "would not open after", "AttributeError"]),
         ]
         for label, extra, reason, forbidden in cases:
             rc, out = run(["--allowlist"] + extra)
@@ -875,6 +1001,33 @@ def _guard_self_test():
                   f"after {READ_ATTEMPTS} tries")
         else:
             print(f"    FAIL case 4  the busy path changed: {outcome[:160]}")
+            failures += 1
+
+        # Case 8, the control that stops the guard above from being a check that is only
+        # ever satisfied by fixtures: the file every bare run actually grades has to clear
+        # it, and so has a well-shaped allowlist that records no gap for either shell. The
+        # second half is the load-bearing one -- a section that is PRESENT and EMPTY is a
+        # claim this gate can check, and refusing it would turn a fully migrated shell into
+        # a red build, which is how a guard gets routed around instead of obeyed. Asking
+        # for both shells is deliberate too: the run the review recommended, --shell
+        # desktop,tablet, must clear the same door.
+        refusals = []
+        try:
+            require_allowlist_shape(read_allowlist(ALLOWLIST), list(SHELL_SECTIONS),
+                                    ALLOWLIST)
+        except AllowlistUnreadable as exc:
+            refusals.append(f"checkout copy refused: {exc}")
+        try:
+            require_allowlist_shape({"desktop": [], "tablet": []}, list(SHELL_SECTIONS),
+                                    "well-shaped-empty.json")
+        except AllowlistUnreadable as exc:
+            refusals.append(f"present-but-empty sections refused: {exc}")
+        if not refusals:
+            print("    ok   case 8  the checkout copy and a well-shaped empty allowlist "
+                  "both clear the shape guard")
+        else:
+            for refusal in refusals:
+                print(f"    FAIL case 8  {refusal}")
             failures += 1
     return failures
 
@@ -934,7 +1087,9 @@ def main(argv=None):
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
         # in a sentence is the whole difference between a red run someone can act on and a
-        # traceback that blames the wrong gate.
+        # traceback that blames the wrong gate. AllowlistWrongShape -- parsed, but not an
+        # allowlist -- arrives through this same handler on purpose: one voice, one exit
+        # code, and no second except clause for a file that is simply the wrong shape.
         print(f"FAIL: {exc}")
         return 1
     print(describe_surfaces(scanned, allowlist, how))
