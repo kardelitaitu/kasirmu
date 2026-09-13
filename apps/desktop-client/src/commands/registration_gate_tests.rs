@@ -3,9 +3,10 @@
 //! # What this is
 //!
 //! A ratchet over the CLASS, not the instances. The tauri::generate_handler! macro in
-//! ../lib.rs is the whole renderer-reachable surface of this shell: 447 registered
-//! names as measured 13-09-26, one fewer than yesterday because
-//! `security::rotate_encryption_key` was deregistered rather than scoped. Every registered name is parsed out of this crate's own
+//! ../lib.rs is the whole renderer-reachable surface of this shell: 449 registered
+//! names as measured 13-09-26, two more than the 447 this floor was last written
+//! against, because `028056eaaeb` registered `sync::list_sync_conflicts_scoped` and
+//! `sync::resolve_sync_conflict_scoped`. Every registered name is parsed out of this crate's own
 //! source at test time and placed in exactly one of three states:
 //!
 //! 1. gated — the wrapper resolves a session AND a permission is named on the path the
@@ -21,8 +22,8 @@
 //!
 //! A desktop command wrapper is a SHIM. Wave A-E lifted the command bodies into
 //! crates/oz-bridge/src; the shell file builds a BridgeCtx, forwards, and maps the error
-//! back. Measured: ZERO of the 447 wrapper bodies in this crate name a permission. So
-//! judging "is this gated" from the shims alone reports 447 ungated commands and proves
+//! back. Measured: ZERO of the 449 wrapper bodies in this crate name a permission. So
+//! judging "is this gated" from the shims alone reports 449 ungated commands and proves
 //! nothing about authorization. The predicate therefore follows the call one crate over
 //! and merges by module stem, which is the same move
 //! apps/desktop-client/tests/gate_audit.rs:22-30 already makes for the same reason. A
@@ -41,6 +42,15 @@
 //! one-level glob drops ten names as "source not found" and the sweep passes while
 //! checking nothing.
 //!
+//! The same leg is also the ONLY one that sees a GROWN surface. The partition-sum leg and
+//! the ceilings leg both fire on names that arrive UNGATED; a command that arrives
+//! already guarded moves neither, so the cheapest way to widen the IPC surface quietly
+//! was to write the permission check first. REGISTERED_FLOOR used to be checked against
+//! the generated ledger's total — one hand-kept constant compared with another — which is
+//! the same measurement restated and so could not fail. It is now an equality against
+//! `registered_names(LIB_RS)`, i.e. against the tree, so every registered name has to be
+//! written down here by the person who registers it.
+//!
 //! # The ledger is generated, not typed
 //!
 //! 69 entries on desktop and 126 on tablet as measured, emitted by the same predicate
@@ -55,12 +65,15 @@ use std::path::{Path, PathBuf};
 #[path = "registration_gate_debt.generated.rs"]
 mod debt;
 
-/// The registered surface of this shell, measured 12-09-26. A moved include_str path
-/// must not be able to pass by finding nothing.
-const REGISTERED_FLOOR: usize = 447;
-/// How far the parsed count may rise without regenerating: names are added by ordinary
-/// feature work, so the floor is a lower bound plus slack and never an equality.
-/// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
+/// The registered surface of this shell, measured from `../lib.rs` as 449 names on
+/// 13-09-26. This is an EQUALITY and the leg below checks it against the tree, so a
+/// moved include_str path cannot pass by finding nothing and a registered name cannot
+/// pass by being gated. Raising this number records what landed; it does not approve it.
+const REGISTERED_FLOOR: usize = 449;
+/// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
+/// regeneration. It is not slack on this floor — the floor is measured, not padded — and
+/// the hard pin on the ledger's own rows is
+/// `drift_pin_three_way_partition_is_complete_and_sums`.
 const REGISTERED_SLACK: usize = 24;
 
 /// This shell's own registration list, embedded at compile time.
@@ -487,33 +500,44 @@ pub struct ByDesignEntry {
 /// one yet.
 pub const BY_DESIGN_UNGATED: &[ByDesignEntry] = &[];
 
-/// Leg 1 — the floor. A glob that stopped matching must not pass by finding nothing.
+/// Leg 1 — the floor, measured from the TREE. Two hazards, and the second is why this leg
+/// stopped reading the ledger: a glob or include_str path that stopped matching must not
+/// pass by finding nothing, and a surface that GREW must not pass by staying inside a
+/// padding allowance. The count is `registered_names(LIB_RS)` — the same
+/// generate_handler! inventory `run_sweep` walks for the partition leg — deliberately not
+/// a fresh regex over the bracket (a nested bracket makes the two disagree by a name or
+/// two) and no longer the generated ledger's total (one hand-kept constant compared with
+/// another is the same measurement restated, so it cannot fail).
 #[test]
 fn drift_pin_registration_floor_is_met() {
-    let pairs = registered_names(LIB_RS);
+    // The harness's own parse: bracket-balanced, comment-stripped, counted the way leg 2
+    // counts it.
+    let measured = registered_names(LIB_RS).len();
     assert!(
-        pairs.len() >= REGISTERED_FLOOR,
-        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: the sweep parsed only {} registered \
-         commands out of lib.rs, below the measured floor of {REGISTERED_FLOOR}. A moved \
-         include_str path, a renamed macro or a relocated commands directory each look \
-         exactly like this, and every other leg in this file silently checks nothing when \
-         it happens. Fix the sweep before reading anything else here.",
-        pairs.len()
+        measured >= REGISTERED_FLOOR,
+        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: the sweep parsed only {measured} \
+         registered commands out of lib.rs, below the measured floor of {REGISTERED_FLOOR}. \
+         A moved include_str path, a renamed macro or a relocated commands directory each \
+         look exactly like this, and every other leg in this file silently checks nothing \
+         when it happens. Fix the sweep before reading anything else here."
     );
     assert_eq!(
-        REGISTERED_FLOOR,
-        debt::REGISTERED_TOTAL,
-        "this file's hand-written floor of {REGISTERED_FLOOR} disagrees with the ledger's \
-         measured total of {}: the ledger was regenerated without the floor, so the floor \
-         is now guarding a number nobody measured",
-        debt::REGISTERED_TOTAL,
+        REGISTERED_FLOOR, measured,
+        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: lib.rs registers {measured} commands \
+         and this floor says {REGISTERED_FLOOR}. The floor reads the tree on purpose, so the \
+         only way to be red here is that names were registered — and a command that arrives \
+         ALREADY GATED moves no ceiling and no ledger row, which makes this leg the only \
+         thing in the file able to see it. Raise the floor to {measured} in the same \
+         deliberate pass that names each addition in docs/records/JOURNAL.md; raising it \
+         records what landed, it does not approve it.",
     );
     assert!(
-        pairs.len() <= REGISTERED_FLOOR + REGISTERED_SLACK,
-        "the sweep parsed {} registered commands, more than {REGISTERED_SLACK} above the \
-         measured floor of {REGISTERED_FLOOR}: names were registered, and the ledger, the \
-         ceilings and this floor all need regenerating together in one deliberate pass.",
-        pairs.len()
+        measured.abs_diff(debt::REGISTERED_TOTAL) <= REGISTERED_SLACK,
+        "the generated ledger counts {} registered names while the tree counts {measured} — \
+         more than {REGISTERED_SLACK} apart, so the ledger and this file are guarding \
+         separate measurements. The ledger, the ceilings and this floor all need \
+         regenerating together in one deliberate pass.",
+        debt::REGISTERED_TOTAL,
     );
 }
 
