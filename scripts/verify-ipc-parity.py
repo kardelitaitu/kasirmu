@@ -22,10 +22,14 @@ Extraction rules (mirrors the ADR #7 command layout):
   `apps/<shell>-client/src/lib.rs`; entries are `commands::mod::fn`
   paths or bare `fn` names; the last path segment is the command name.
 - Dev-mock side: every `.ts`/`.tsx` file under `ui/src/dev-mock/`, read
-  recursively, because that surface is a tree now and not a file. The
-  router (`tauri-api.ts`) holds 214 of the 536 registered names; the rest
-  live in `handlers/<domain>.ts` and the `_scoped` aliasing pass lives in
-  `core/mockDispatcher.ts`. See `extract_dev_mock_answerable`.
+  recursively, because that surface is a tree now and not a file -- the
+  gate walks the whole tree as of cb0175ce26, and read only the router
+  before it. The router (`tauri-api.ts`) holds 214 of the 536 registered
+  names; the rest live in `handlers/<domain>.ts` and the `_scoped`
+  aliasing pass lives in `core/mockDispatcher.ts`. The matching
+  `"dev_mock"` section of the allowlist is a flat list of command names
+  with no reason field, for the reason recorded on
+  `extract_dev_mock_answerable`.
 
 Usage:
   python3 scripts/verify-ipc-parity.py              # enforce
@@ -274,6 +278,21 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str
     that re-derives the thing it is supposed to be checking checks nothing; it just agrees
     with itself. So this still reads the code, and --self-test asserts that the present and
     absent answers differ.
+
+    What the allowlist cannot tell you, which every number printed from here depends on you
+    knowing: the "dev_mock" section is a flat list of command names with no reason field,
+    and it can only ever be that. load_allowlist parses the file with json.loads and no
+    schema, and every consumer coerces its section through set(), so a dict member does not
+    degrade to a lost annotation -- it raises TypeError: unhashable type and the gate dies.
+    A name on the list therefore reads identically whether a slice asked for a browser
+    exemption and somebody agreed, or whether nobody has looked at it since it was written.
+    The presence side is honest at least: an entry whose handler lands turns the gate RED as
+    stale, so the list cannot rot into a lie in that direction. What is lopsided is the
+    editing. --write-dev-mock-gaps unions today's gaps in, alphabetised and additive only,
+    so widening this allowlist is one command line in any session while shrinking it is a
+    manual edit a human has to remember to make. That asymmetry is a toolchain decision for
+    whoever owns the flags, not for this gate to invent an answer to, so it is recorded here
+    rather than fixed.
     """
     per_file, alias_file = parse_dev_mock(read_dev_mock_sources())
     registered, aliasable = answerable_sets(per_file, alias_file)
@@ -470,7 +489,10 @@ def self_test() -> int:
     fixture. The five cases are the ones that would each have caught a different way this
     gate can lie -- a key in the router, a key in an extracted module (the moved-code
     bug), the handlers[...] = patch form, the alias pass present, and the alias pass
-    absent (the collapse the mutation test already proved load-bearing).
+    absent (the collapse the mutation test already proved load-bearing). Case 2 is the
+    regression itself: as of cb0175ce26 the gate walks the whole ui/src/dev-mock tree, and
+    a parser that goes back to reading only the router fails here, not in CI six weeks
+    later with a fabricated number attached.
     """
     router = DEV_MOCK_ROUTER_REL
     module = DEV_MOCK_DIR_REL + "/handlers/probe.ts"
@@ -588,7 +610,9 @@ def main() -> int:
         "--write-dev-mock-gaps",
         action="store_true",
         help="add current UI-invoked commands the dev-mock cannot answer to "
-             "\"dev_mock\" in the allowlist, preserving other sections, and exit",
+             "\"dev_mock\" in the allowlist, preserving other sections, and exit "
+             "(additive only -- it never removes an entry, so shrinking the list is a "
+             "manual edit)",
     )
     args = parser.parse_args()
 
@@ -677,9 +701,12 @@ def main() -> int:
     for command in sorted(set(mock_gaps) - mock_allow):
         refs = ", ".join(sorted(set(ui_commands[command]))[:3])
         failures.append(
-            f"dev-mock: UI invokes '{command}' but no handler under {DEV_MOCK_DIR_REL} "
-            f"registers it (no handler, and no unscoped twin to alias) -- invoke() returns null and "
-            f"the caller silently renders its failure path (e.g. {refs})"
+            f"dev-mock: UI invokes '{command}' but no handler anywhere under "
+            f"{DEV_MOCK_DIR_REL} registers it (the router and every extracted module "
+            f"under it were read, and no unscoped twin exists for the alias rule to "
+            f"reach) -- invoke() returns null and the caller silently renders its "
+            f"failure path (e.g. {refs}). An allowlist entry is a bare name with no "
+            f"reason attached; see the dev_mock section comment."
         )
     for command in sorted(mock_allow - set(mock_gaps)):
         failures.append(
