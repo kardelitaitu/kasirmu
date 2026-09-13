@@ -14,10 +14,12 @@ not reasoned out about them.
 
 A shared validator that forced either gate to change an exit code or a count would be the
 wrong module, so the graded decision stays with the caller: the required-section set is
-SUPPLIED, never baked in here. REQUIRED_FOR_SHELL_READER and REQUIRED_FOR_WRITER are
-exported as the two sets the gates use today, and validate() takes whichever the caller
-names. Adoption therefore changes no verdict: each gate keeps asking for exactly what it
-asks for now, and stops deciding on its own what a section is allowed to be.
+SUPPLIED, never baked in here. REQUIRED_FOR_SHELL_READER and REQUIRED_FOR_WRITER record the
+two sets, and validate() takes whichever the caller names -- which is what both callers do
+now that both have adopted, verify-scoped-reads.py passing wanted and verify-ipc-parity.py
+passing its own KNOWN_SECTIONS, each gate's self-test pinning its tuple equal to the one
+here. Adoption moves no verdict because neither call site narrowed or widened its ask; each
+stopped deciding on its own what a section is allowed to be.
 
 EXIT CONTRACT, mirrored from both gates rather than invented here, because a module that
 invents a third code is how a refusal starts looking like a verdict:
@@ -37,8 +39,11 @@ load-bearing line in this file. {"desktop": []} means the file STATES that this 
 nothing -- a claim a gate can check, and the shape a fully migrated shell's allowlist
 legitimately has -- while {} means the file never said anything, and payload.get(section)
 turns that silence into exemptions nobody wrote. So this schema tests MEMBERSHIP
-(section in payload) and TYPE (isinstance of list) and NEVER length. stated_empty() is the
-predicate, exposed so both gates mean the same thing by it.
+(section in payload) and TYPE (isinstance of list) and NEVER length. validate() applies
+that test to the set it is handed. stated_empty() and defaulted_empty() name the same two
+states for a reader of this file and are exercised by --self-test; NEITHER is called by
+either gate, both of which decide the question by passing a required set instead. They are
+exported for the day a caller wants the words, not documented as in use tonight.
 
 NOT COVERED, on purpose: what may sit INSIDE a section. Whether an entry may take the object
 form {"name": ..., "reason": ...} is decided per section by allowlist_shape_problems() in
@@ -131,8 +136,11 @@ class Read:
 
     The gates own their open() -- verify-scoped-reads.py retries a PermissionError 50 times
     at 1 ms and verify-ipc-parity.py has its own ceiling plus the writer's rename window --
-    and neither retry rule belongs here. What DOES belong here is the shape of the sentence
-    each failure ends in, so the same unreadable file refuses in the same words twice.
+    and neither retry rule belongs here. The SENTENCES for a failed read are written here so
+    that a future adoption could share them, and no gate takes them today: both kept their
+    own read wording when they adopted validate(), because each gate's read refusal carries
+    detail this module cannot know (the retry ceiling, the window, the reader that runs bare
+    at HEAD). The shared layer is the DOCUMENT layer only.
     """
 
     __slots__ = ("kind", "detail")
@@ -271,9 +279,9 @@ def validate(document, required, filename=ALLOWLIST_NAME):
               how a shared module quietly starts grading one gate's files.
 
     Returns a LIST of Refusal, empty when the document is legal. A list, not a bool, because
-    a caller that wants to refuse has to print WHY, and a caller that has two reasons should
-    see both (verify-ipc-parity.py today reports absent and mistyped in one sentence -- it
-    may keep doing that; it owns the voice, this owns the answer).
+    a caller that wants to refuse has to print WHY, and one document can break two rules at
+    once. What a caller prints FROM the list is its own voice -- the two gates in this repo
+    do it two different ways and both are correct; see primary().
     """
     if isinstance(document, Read):
         return [read_refusal(document.kind, filename, document.detail)]
@@ -296,15 +304,34 @@ def validate(document, required, filename=ALLOWLIST_NAME):
 
 
 def primary(refusals):
-    """The ONE refusal a caller should raise, or None when the document is legal.
+    """The lead refusal, or None when the document is legal: for a caller that prints ONE.
 
-    This is the accessor both gates adopt, and it exists because of an ordering fact rather
-    than taste: verify-scoped-reads.py raises on the first mistyped section and never reaches
-    its absent-section check, so today an absent section is never reported beside a mistyped
-    one. validate() returns both, mistyped first, so primary() is byte-identical to the
-    sentence that gate prints now. A caller that joined the whole list into one message would
-    keep its exit code and change its words -- a verdict-shaped change to a refusal -- so this
-    is the accessor to adopt, not the list.
+    TWO FORMS ARE ADOPTED, deliberately, and both are right. The schema answers with a LIST
+    because one document can break two rules at once; what a caller prints from that list is
+    its own voice, and each gate's voice was set before this module existed.
+
+    scripts/verify-scoped-reads.py, require_allowlist_shape()  --  takes primary(). It asks
+    with `wanted`, the sections named by --shell, and raises one
+    AllowlistWrongShape(top.sentence). That function always raised on the first mistyped
+    section and never reached its absent check, so primary() holds its words byte for byte
+    (adopted in 85101c0c5).
+
+    scripts/verify-ipc-parity.py, load_allowlist()  --  takes the joined list. It asks with
+    KNOWN_SECTIONS, all four, and raises ONE AllowlistUnusable built by
+    `" ".join(refusal.sentence for refusal in refusals)`. Its sentence has always named every
+    reason at once, so primary() there would let a missing dev_mock complaint hide behind a
+    mistyped scoped_orphans one (adopted in 32173bfd95; the merged line it can produce is
+    long, and that cost is recorded rather than hidden).
+
+    THE RULE THAT ADMITS BOTH: merging refusals is verdict-neutral precisely because the
+    joined text crosses no count and branches no exit code. Both callers still raise their
+    own exception type into their own single handler, print `error:` on stderr and exit 2.
+    If a change of form ever moved a count or a code, it would not be a merge of refusals at
+    all -- it would be a new verdict, and this module invents none.
+
+    So this is ONE rule with two satisfied shapes, not two rules. A future caller asks
+    itself which it is: a voice that already prints every reason joins; a voice that prints
+    one takes primary(). Neither choice is taste.
     """
     return refusals[0] if refusals else None
 
