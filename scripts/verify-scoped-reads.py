@@ -673,6 +673,39 @@ def find_wrappers(api_dir):
     return cmd_to_wrapper
 
 
+def walk_root_is_excluded(root, ui_dir):
+    """Whether a directory os.walk handed back is OUT of the graded corpus. Pure string work.
+
+    Two terms decide it, and neither may touch the filesystem or ask the OS what a
+    separator is: "__tests__" anywhere in the walked path, or the walked path being the
+    api layer of the ui_dir this walk was given. The api test is why this is a function
+    at all.
+
+    Case 28 asks the real tree for the OUTCOME -- did any api file reach the corpus --
+    and keeps asking it, because a corpus check is the only thing that notices an empty
+    corpus. But an outcome check cannot pin a mechanism whose bug is behaviourally
+    correct on one platform: with the old line restored, a Linux walk yields
+    forward-slash roots, os.path.join builds the needle "ui/api", the haystack contains
+    it, the guard fires, and case 28 prints ok. Linux is where CI runs. So a revert of
+    the fix would be invisible to every automated enforcer in this repository and would
+    redden only on the OS where a person has to notice it. That gap is the whole reason
+    the decision is reachable by name: the assertions in
+    _exclusion_predicate_self_test() feed this function hand-written roots and ui_dirs
+    spelled with BOTH separators and never touch a disk, so the same case set runs
+    identically on the Linux runner and on Windows, and it constrains the comparison
+    rather than the directory listing.
+
+    One source of truth: production_files() walks and asks this function, so the
+    literals below are asserted against the code that grades the tree, not against a
+    copy of it kept for testing.
+    """
+    if "__tests__" in root:
+        return True
+    api_root = os.path.join(ui_dir, "api").replace("\\", "/").rstrip("/")
+    walked = root.replace("\\", "/").rstrip("/")
+    return walked == api_root or walked.startswith(api_root + "/")
+
+
 def production_files(ui_dir):
     """The graded corpus: every .ts/.tsx under ui/src except tests and the api layer.
 
@@ -693,13 +726,16 @@ def production_files(ui_dir):
     ui_dir rather than hardcoded to the word ui, so an aimed run against a fixture tree
     excludes its own api layer too. No separator is written into the comparison, so the
     same line is correct on both platforms.
+
+    The decision itself now lives in walk_root_is_excluded(); this function only walks,
+    filters by extension and joins. Behaviour is unchanged -- the same 550 files in the
+    same order -- and moving the test is what lets the mechanism be pinned with literals
+    on a platform where the outcome of the old bug and the outcome of the fix are
+    indistinguishable.
     """
-    api_root = os.path.join(ui_dir, "api").replace("\\", "/").rstrip("/")
     files = []
     for root, _dirs, fnames in os.walk(ui_dir):
-        walked = root.replace("\\", "/").rstrip("/")
-        if "__tests__" in root or walked == api_root \
-                or walked.startswith(api_root + "/"):
+        if walk_root_is_excluded(root, ui_dir):
             continue
         for fn in fnames:
             if fn.endswith(".ts") or fn.endswith(".tsx"):
@@ -2370,6 +2406,111 @@ def _api_exclusion_self_test():
     return failures
 
 
+def _exclusion_predicate_self_test():
+    """Cases 33-37: the exclusion MECHANISM, asserted with literals and no filesystem.
+
+    These run the decided answers of walk_root_is_excluded(), which production_files()
+    itself calls, on paths written out by hand in both spellings. Nothing here can be
+    answered by the operating system: os.walk is never called, no temporary tree exists,
+    and no assertion reads the real checkout -- so the same five cases are evaluated on
+    the Linux runner exactly as they are here, which is the point. Case 28 above stays as
+    it was: it is the outcome half, the only thing in this file that notices a corpus that
+    went empty, and a mechanism test would not catch that.
+
+    Each case says which partial fix it exists to catch, because "green on both platforms"
+    is a claim about the assertion, not about the code, and the reader cannot check it by
+    running one OS.
+    """
+    print("  verify-scoped-reads self-test / the exclusion mechanism, by literals")
+    print("                 (no os.walk, no temp tree, no real checkout: Linux CI and")
+    print("                 Windows evaluate this same assertion set identically)")
+    failures = 0
+
+    def group(label, why, assertions):
+        nonlocal failures
+        bad = [(r, u, w) for (r, u, w, _d) in assertions
+               if walk_root_is_excluded(r, u) is not w]
+        if not bad:
+            print(f"    ok   {label} -- {len(assertions)} assertions over paths that "
+                  "exist only as strings")
+            print(f"                 pins: {why}")
+            return
+        print(f"    FAIL {label}  {len(bad)} of {len(assertions)} assertions disagreed; "
+              f"why: {why}")
+        for r, u, w in bad:
+            print(f"                 want excluded={w}  root={r!r}  ui_dir={u!r}")
+        failures += 1
+
+    # Case 33: the forward-slash spelling, which is what a Linux walk yields and what
+    # every path argument in this repository is written as. Catches nothing on Linux by
+    # itself (a correct-looking guard answers these the same way) -- it is here so the
+    # pair of spellings is complete and a future edit cannot fix one separator and forget
+    # the other.
+    group("case 33 slash-spelled roots",
+          "a guard that only understands backslashes dies here",
+          [("/repo/ui/src", "/repo/ui/src", False, "the walked root itself"),
+           ("/repo/ui/src/api", "/repo/ui/src", True, "the api layer"),
+           ("/repo/ui/src/api/domain", "/repo/ui/src", True, "inside the api layer"),
+           ("/repo/ui/src/features", "/repo/ui/src", False, "ordinary production")])
+
+    # Case 34: the backslash spelling, which is what a Windows walk yields. Under the old
+    # line this group is RED here and is never even evaluated on the platform that runs
+    # CI, which is exactly the coverage hole case 33 and 34 close together.
+    group("case 34 backslash-spelled roots",
+          "the dead-on-Windows form of the old comparison dies here",
+          [("C:\\repo\\ui\\src", "C:\\repo\\ui\\src", False, "the walked root itself"),
+           ("C:\\repo\\ui\\src\\api", "C:\\repo\\ui\\src", True, "the api layer"),
+           ("C:\\repo\\ui\\src\\api\\domain", "C:\\repo\\ui\\src", True, "inside it"),
+           ("C:\\repo\\ui\\src\\features", "C:\\repo\\ui\\src", False, "ordinary production")])
+
+    # Case 35: anchored to the walked ui_dir, not a substring of it. This is the ONLY
+    # group that reddens a revert of the fix ON LINUX, where the old comparison otherwise
+    # behaved: "ui/api" occurs inside "/repo/ui/src/features/x/ui/api" and inside
+    # "/repo/ui/apiary", so a substring guard excludes files that are not the api layer.
+    # It also promotes a real choice to spec -- af89fee21 narrowed the test from substring
+    # to anchor; the narrowing is invisible in the current tree (no such directory exists,
+    # measured at 64 files exactly) and this is where it stops being invisible.
+    group("case 35 an api-named directory that is not THE api layer stays in the corpus",
+          "a substring guard over-excludes and dies here on either platform",
+          [("/repo/ui/src/features/x/ui/api", "/repo/ui/src", False, "nested lookalike"),
+           ("/repo/ui/apiary", "/repo/ui/src", False, "prefix lookalike"),
+           ("/repo/ui/src/api", "/repo/ui/src", True, "the real one, still excluded"),
+           ("C:\\repo\\ui\\src\\features\\x\\ui\\api", "C:\\repo\\ui\\src", False,
+            "nested lookalike, backslashed")])
+
+    # Case 36: the realistic partial fix -- an editor normalises the walked root and not
+    # the api root derived from ui_dir (or the other way round). The two directions are
+    # NOT symmetric and the asymmetry is the finding: a backslash reaching the ui_dir side
+    # is caught on both platforms, because os.path.join appends "api" with the native
+    # separator and a half-fix leaves it there; a backslash reaching only the root side is
+    # caught here and answered correctly on Linux, where the join never inserts one.
+    group("case 36 mixed spellings between root and ui_dir",
+          "the one-side-only normalisation dies here, in both directions",
+          [("C:/repo/ui/src\\api", "C:\\repo\\ui\\src", True,
+            "backslash in ui_dir, slash in root: caught on either OS"),
+           ("C:\\repo\\ui\\src\\api", "C:/repo/ui/src", True,
+            "what os.walk yields here when ui_dir is written with slashes"),
+           ("C:/repo/ui/src\\features", "C:\\repo\\ui\\src", False,
+            "the same mismatch on a kept directory"),
+           ("/repo/ui/src/api", "C:\\repo\\ui\\src", False,
+            "different paths: no cross-spelling matching, and no substring leakage")])
+
+    # Case 37: the other term of the same return, plus trailing separators. Pinned with
+    # the api tests because both terms live in one function now -- if a future edit moves
+    # the api comparison back into production_files and leaves __tests__ here, or drops
+    # the rstrip so an ui_dir passed with a trailing slash stops matching, this is the
+    # case that says so.
+    group("case 37 the __tests__ term and trailing separators",
+          "the second term and the rstrip are pinned in the same breath",
+          [("/repo/ui/src/__tests__", "/repo/ui/src", True, "test dir"),
+           ("C:\\repo\\ui\\src\\features\\__tests__", "C:\\repo\\ui\\src", True,
+            "test dir, backslashed"),
+           ("/repo/ui/src/api/", "/repo/ui/src/", True, "trailing slash on both sides"),
+           ("/repo/ui/src/api", "/repo/ui/src/", True, "trailing slash on ui_dir only"),
+           ("/repo/ui/src/features/", "/repo/ui/src", False, "trailing slash on a kept dir")])
+
+    return failures
+
 
 def self_test():
     print("  verify-scoped-reads self-test")
@@ -2411,6 +2552,7 @@ def self_test():
     failures += _coverage_self_test()
     failures += _pattern_self_test()
     failures += _api_exclusion_self_test()
+    failures += _exclusion_predicate_self_test()
     failures += _schema_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
