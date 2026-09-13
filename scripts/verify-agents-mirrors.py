@@ -1424,6 +1424,64 @@ def _self_test_cases() -> int:
                   f"lines={[l.strip()[:52] for l in lines12[:2]]}")
             bad += 1
 
+    # (13) THE NOTICES BLOCK, ON STDOUT, THROUGH THE CHANNEL THAT PRINTS IT. Case 12 fixed
+    # the count line being asserted only through scan()'s return value; the notices were the
+    # same gap one step away, so report() could stop printing them and every case would stay
+    # green. This runs the gate on a mirror that satisfies the pair predicate -- it still
+    # states a step count, and now presents no policed enumeration -- and asserts the notice
+    # reaches stdout, one line per mirror, carrying its "reported, not failed" label, with
+    # report() still returning 0; the companion asserts a clean mirror produces no such line.
+    # About the print and the channel, not about the wording.
+    def drop_enumeration(text):
+        return "\n".join(l for l in text.splitlines()
+                         if not (ENUM_ITEM_RE.match(l) and BOLD_RE.search(l)))
+
+    for desc, mutate13, expect_lines in (
+        ("mirror states a count, enumerates nothing", drop_enumeration, len(MIRRORS)),
+        ("untouched mirror, enumeration intact", lambda t: t, 0),
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            make_fixture(src, tmp)
+            short = 0
+            for rel in MIRRORS:
+                base13 = read(tmp, rel)
+                mut13 = mutate13(base13)
+                lost = len(base13.splitlines()) - len(mut13.splitlines())
+                if mut13 == base13 and expect_lines:
+                    print(f"  WRONG {rel}: case (13) anchored on nothing -- no numbered "
+                          "bold items to drop")
+                    short += 1
+                elif expect_lines and lost != 7:
+                    print(f"  WRONG {rel}: case (13) dropped {lost} line(s), expected the "
+                          "7-step enumeration -- the predicate would be accidental")
+                    short += 1
+                io.open(tmp / rel, "w", encoding="utf-8",
+                        newline="\n").write(mut13)
+            if short:
+                bad += 1
+                continue
+            out13 = io.StringIO()
+            with contextlib.redirect_stdout(out13):
+                rc13 = report(tmp)
+            noted = [l for l in out13.getvalue().splitlines()
+                     if "presents no checkable step enumeration" in l]
+            labelled = [l for l in noted if "reported, not failed" in l]
+            if len(noted) == expect_lines and len(labelled) == expect_lines and rc13 == 0:
+                if expect_lines:
+                    print(f"  CAUGHT  {MIRRORS[0]:20s} {desc} -- {len(noted)} notice "
+                          f"line(s) on stdout, each labelled reported-not-failed, gate "
+                          f"rc {rc13}")
+                else:
+                    print(f"  CLEAN   {MIRRORS[0]:20s} {desc} -- no notice line on "
+                          "stdout, gate rc 0")
+            else:
+                print(f"  MISSED  {MIRRORS[0]:20s} {desc} -- {len(noted)} of "
+                      f"{expect_lines} notice line(s) reached stdout, "
+                      f"{len(labelled)} labelled, rc {rc13}; "
+                      f"lines={[l.strip()[:56] for l in noted[:2]]}")
+                bad += 1
+
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0
 
