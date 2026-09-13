@@ -1028,6 +1028,8 @@ the only witness, and nothing branches on it, so **the owner should drop one nam
 **The next idiom is the same bug.** `export default function`, a wrapper built in a loop, a re-export —
 each would silently drop the ratio again and every command it loses becomes unfindable. The ratio line is
 
+now the canary; it is informational by contract, so a human has to read line 2.
+
 ### Dated correction (2026-09-14, 02:23) — the 105 are a shell gap
 
 **The premise under the entry above is false, and two lanes disproved it.** That entry counted `17`
