@@ -28,9 +28,9 @@
 > drift — but only because the row names a workflow that genuinely exists only as
 > `.bak`. Claiming a LIVE workflow you don't actually contain is still an error.
 >
-> Four rows were repointed in this release because CI coverage was added for
-> them: `rust-fmt`, `rust-clippy`, `ui-lint` and `ui-typecheck` are **steps**
-> inside live `dev-ci.yml` jobs rather than jobs of their own.
+> Three rows were repointed in this release because CI coverage was added for
+> them: `rust-fmt`, `ui-lint` and `ui-typecheck` are **steps**
+> inside live `dev-ci.yml` jobs rather than jobs of their own (`rust-clippy` is local-only).
 
 | Job ID | Blocks Merge | Workflow | Notes |
 |--------|--------------|----------|-------|
@@ -41,7 +41,7 @@
 | `changes` | ✅ Required | dev-ci.yml | Path-based change detection for PR filtering. `changes` is the FIRST job in dev-ci.yml's own job list — the `ci.yml` attribution was never ambiguous, just stale |
 | `static-gates` | ✅ Required | dev-ci.yml | `python3 scripts/verify-no-hardcoded-money-format.py`, step "No hardcoded money formatting". **No gates.json record** — see the blind-spot note below |
 | `static-gates` | ✅ Required | dev-ci.yml | Static boundary enforcement, step "Architecture boundaries" |
-| `cargo-check` | ✅ Required | dev-ci.yml | step `cargo clippy --all-targets --all-features -- -D warnings` (was job `rust-clippy`) |
+| `rust-clippy` | Local only | ci.yml | Clippy is skipped in CI and run locally via `check.sh` / `cargo clippy` (was job `rust-clippy` in `ci.yml`) |
 | `rust-test-fast` | Superseded | ci.yml | The sharded crate-group layout is gone; `dev-ci.yml#cargo-nextest` covers the same ground in one unsharded `--workspace --all-features` run |
 | `sync-slow-tests` | ❌ Runs nowhere | ci.yml | Platform-sync integration suite. gates.json: **retired**, no runner — "advisory" still implied it executed somewhere |
 | `cargo-nextest` | ✅ Required | dev-ci.yml | gates.json maps this gate to `dev-ci.yml/cargo-nextest`, which runs `cargo nextest run --workspace --all-features` on every PR — not push-only |

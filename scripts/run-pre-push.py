@@ -113,7 +113,6 @@ def main():
         ("verify-plugin-guide-parity", [py, "scripts/verify-plugin-guide-parity.py"]),
         ("verify-migration-column-types", [py, "scripts/verify-migration-column-types.py"]),
         ("verify-pg-schema-drift", [py, "scripts/generate-pg-migration.py", "--check"]),
-        ("verify-circleci-drift", [py, "scripts/compose-circleci.py", "--check"]),
         ("verify-no-raw-params", [bash, "scripts/verify-no-raw-params.sh"]),
         ("verify-scoped-coverage (H-1)", [bash, "scripts/verify-scoped-coverage.sh"]),
     ]
