@@ -18,10 +18,12 @@
 //! store DB + session + routing rows (owned by a live sibling session),
 //! so they stay un-invoked — stamped in `todo-kds-agents-4.md`.
 //!
-//! One genuine `oz-lan` defect was found and NOT fixed (fence): the
-//! Phase-0 hello reader over-reads and can swallow a following discover
-//! line. The green proofs pace their writes client-side; the red-by-
-//! construction `kds_lan_live_bugdemo_...` test documents the bug.
+//! One genuine `oz-lan` defect was found here: the Phase-0 hello reader
+//! over-read and swallowed a following discover line. FIXED in
+//! `crates/oz-lan` (13-09-26, one connection-level `BufReader`); the
+//! former red-by-construction `kds_lan_live_bugdemo_...` test below is
+//! now the active unpaced regression proof. The other tests still pace
+//! their writes (harmless; kept per the validation work order).
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -607,7 +609,7 @@ async fn kds_lan_live_reconnect_snapshot_serves_seeded_queue_cache() {
     assert!(!resp.contains("active_queue"));
 }
 
-// ── Crate-bug demonstration (kept #[ignore]d: fails by design) ────────
+// ── Regression proof: Phase-0 over-read (bug found here, fixed 355d651a5f) ──
 
 /// **oz-lan regression test (active):** `handle_peer`'s Phase-0
 /// (legacy-psk-v1 hello) used to read the hello line through a
