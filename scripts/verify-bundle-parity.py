@@ -75,7 +75,9 @@ the existing pre-commit contract is unchanged:
   --include-nav-keys    `registerNavItem({ i18nKey: 'k' })` plus every
                         string value in `SECTION_LABELS`
   --scan-dirs A,B,...   comma-separated dirs under `ui/src`
-                        (default: `features`)
+                        (default: `features`; a value that names no
+                        directory is refused with exit 2 rather than
+                        silently widened back to the default)
   --full-census         implies all of the above over
                         features, components, frontend, contexts,
                         hooks, platform
@@ -106,7 +108,10 @@ EXIT CODES
         fail-closed against missing-translation bugs. The same exit
         semantics hold for every gate (full repo vs. --staged-only)
         once the scan produced at least one extractable site.
-  * 2  a runtime error occurred (locales/feature dirs missing).
+  * 2  a runtime error occurred (locales/feature dirs missing, or an
+         explicitly-passed --scan-dirs value that names no directory —
+         refused before the walk, because a scan of nothing must not
+         print a verdict).
 
 LIMITATIONS
 ===========
@@ -512,6 +517,63 @@ def _is_descendant(path: Path, directory: Path) -> bool:
     return True
 
 
+class BlankScanDirs(ValueError):
+    """--scan-dirs was passed, but its value resolves to zero directories.
+
+    A ValueError subclass on purpose: main() catches it in ONE handler and
+    prints it in this gate's existing argument voice — the one-line
+    `error: <sentence>` on stderr with exit 2 that the "scan dir not found"
+    check already uses for a *named* directory that does not exist. One
+    voice, one exit code, no new handler; exit 1 stays reserved here for a
+    scan that found missing keys, so a refusal can never be read as one.
+
+    The empty-corpus class this refuses was measured at tip 4f841a673 and
+    recorded in docs/records/audit-open-findings.md at 15:19: a single
+    space as the value split-and-stripped to an empty tuple, the walk then
+    iterated over nothing, and the run printed `scanned 0 file(s) in []`
+    followed by `0 missing key(s)` and exit 0 — a passing verdict over
+    nothing. The same class is already refused for --shell in
+    scripts/verify-scoped-reads.py (NoShellsNamed + resolve_shells).
+    """
+
+
+def resolve_scan_dirs(raw: str | None) -> tuple[str, ...]:
+    """The dirs to walk, split off one --scan-dirs value — or a refusal.
+
+    The refusal happens before the walk. An absent flag (`raw is None`)
+    keeps its documented default. A value that was PASSED and names nothing
+    is refused rather than defaulted:
+    whether there is anything to scan is a property of the ARGUMENT, not of
+    the read, so the check sits here where the string becomes a list — the
+    verdict below cannot tell "the tree is clean" from "this run looked at
+    nothing" once the list is empty, it only prints a number.
+
+    An empty value, a blank value, and a value of nothing but separators
+    and blanks all land in the same arm, because all three name zero
+    directories. None of them is read as "scan everything": a caller who
+    wants the default omits the flag, and a caller who wants the whole
+    surface names it (or passes --full-census). Guessing what a blank
+    argument meant is how a typo becomes evidence.
+    """
+    if raw is None:
+        return DEFAULT_SCAN_DIRS
+    names = tuple(d.strip() for d in raw.split(",") if d.strip())
+    if not names:
+        raise BlankScanDirs(
+            f'--scan-dirs received "{raw}", which names no directory to scan: '
+            f"the value is a comma-separated list of subdirectories of ui/src "
+            f"(default: {','.join(DEFAULT_SCAN_DIRS)}; every directory this gate "
+            f"knows is {','.join(CENSUS_SCAN_DIRS)}), and a run that names none of "
+            f"them walks zero files, yet a run that walks nothing still "
+            f"exits as if the bundle were clean. It is refused instead of "
+            f"counted as a pass: an empty list is a property of this argument, "
+            f"not of the tree. Omit the flag for the default, or name the "
+            f"directories you mean; guessing what a blank argument meant is "
+            f"how a typo becomes evidence."
+        )
+    return names
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
@@ -587,7 +649,8 @@ def main() -> int:
         "--scan-dirs",
         default=None,
         help="Comma-separated directories under ui/src to walk "
-             f"(default: {','.join(DEFAULT_SCAN_DIRS)}).",
+             f"(default: {','.join(DEFAULT_SCAN_DIRS)}). A value that names no "
+             "directory is refused (exit 2), never read as 'walk everything'.",
     )
     parser.add_argument(
         "--full-census",
@@ -626,11 +689,18 @@ def main() -> int:
     if args.include_id_maps:
         kinds |= {"idmap"}
 
-    dir_names = (
-        DEFAULT_SCAN_DIRS
-        if not args.scan_dirs
-        else tuple(d.strip() for d in args.scan_dirs.split(",") if d.strip())
-    )
+    try:
+        # Resolved here, ahead of the walk and ahead of the verdict: a value
+        # that names no directory leaves nothing to scan, and that is a
+        # property of the argument, which is why it is refused now rather
+        # than discovered as "0 missing key(s)" three dozen lines later.
+        # BlankScanDirs is a ValueError, so this is the gate's ONE argument
+        # voice and exit code — the same pair the "scan dir not found"
+        # refusal below prints. No new handler, no second voice.
+        dir_names = resolve_scan_dirs(args.scan_dirs)
+    except BlankScanDirs as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     scan_dirs: list[Path] = []
     for name in dir_names:
         candidate = UI_SRC_DIR / name
