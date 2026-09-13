@@ -47,8 +47,9 @@ def get_bash():
     return shutil.which("bash") or "bash"
 
 def get_cargo():
-    if shutil.which("cargo"):
-        return "cargo"
+    found = shutil.which("cargo")
+    if found:
+        return found
     cargo_home = Path(os.environ.get("USERPROFILE", "")) / ".cargo" / "bin" / "cargo.exe"
     if cargo_home.exists():
         return str(cargo_home)

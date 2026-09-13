@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import date
@@ -79,11 +81,27 @@ def load_json(path: Path, label: str) -> Any:
         raise ValueError(f"malformed {label}: {path}: {exc}") from exc
 
 
+def resolve_cargo() -> str:
+    found = shutil.which("cargo")
+    if found:
+        return found
+    cargo_home = Path(os.environ.get("USERPROFILE", "")) / ".cargo" / "bin" / "cargo.exe"
+    if cargo_home.exists():
+        return str(cargo_home)
+    return "cargo"
+
+
 def metadata_from_cargo(root: Path) -> dict[str, Any]:
+    cargo_cmd = resolve_cargo()
+    cmd = [cargo_cmd, "metadata", "--no-deps", "--format-version", "1"]
+    cwd_str = str(root.resolve())
     try:
-        result = subprocess.run(["cargo", "metadata", "--no-deps", "--format-version", "1"], cwd=root, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    except OSError as exc:
-        raise ValueError(f"could not execute cargo metadata: {exc}") from exc
+        result = subprocess.run(cmd, cwd=cwd_str, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    except OSError:
+        try:
+            result = subprocess.run(cmd, cwd=cwd_str, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace", shell=True)
+        except OSError as exc:
+            raise ValueError(f"could not execute cargo metadata: {exc}") from exc
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         raise ValueError(f"cargo metadata failed ({result.returncode}): {detail}")
