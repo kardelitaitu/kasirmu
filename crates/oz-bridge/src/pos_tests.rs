@@ -1453,3 +1453,37 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
     store.compute_sale_tax(&mut forgot, &[], mode).unwrap();
     assert_eq!(forgot.tax_total.minor_units, 70);
 }
+
+#[test]
+fn complete_sale_scoped_args_reject_unknown_keys_loudly() {
+    // The hardening ported from the tablet shell (Phase 3.3 T4): the
+    // shipped UI once sent `attemptId` and the DTO silently dropped it,
+    // which made checkout look guarded while it was not. With
+    // `deny_unknown_fields`, an unknown key fails deserialization instead
+    // of vanishing — on every shell, since the DTO is shared.
+    let json = r#"{"cartId":"00000000-0000-0000-0000-000000000001","paymentMethod":"cash","tenderedMinor":100,"typoField":1}"#;
+    let err = serde_json::from_str::<CompleteSaleScopedArgs>(json).unwrap_err();
+    assert!(
+        err.to_string().contains("unknown field"),
+        "expected unknown-field rejection, got: {err}"
+    );
+}
+
+#[test]
+fn complete_sale_scoped_args_accept_the_ui_wire() {
+    // Positive pin: the exact key set PaymentModal sends (camelCase,
+    // 15 fields) deserializes cleanly.
+    let json = r#"{"cartId":"00000000-0000-0000-0000-000000000001","paymentMethod":"cash","tenderedMinor":100,
+        "customerId":null,"paymentSplits":null,"customerName":null,
+        "serialNumbers":null,"baseCurrency":null,"baseTotalMinor":null,
+        "tenderRateMillionths":null,"tipMinor":null,"serviceChargeMinor":null,
+        "promotionIds":null,"attemptId":"att-1","taxEstimated":false}"#;
+    let args: CompleteSaleScopedArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        args.cart_id.to_string(),
+        "00000000-0000-0000-0000-000000000001"
+    );
+    assert_eq!(args.payment_method, "cash");
+    assert_eq!(args.attempt_id.as_deref(), Some("att-1"));
+    assert_eq!(args.tax_estimated, Some(false));
+}

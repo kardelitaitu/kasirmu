@@ -21,7 +21,6 @@ next: none | perf: N/A
 //! rules are copied from `crates/oz-bridge/src/pos.rs`, which this forked
 //! command layer cannot import — keep the two in step.
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use foundation::Percentage;
@@ -29,11 +28,32 @@ use oz_core::db::Store;
 use oz_core::events::{SaleCompleted, SaleCompletedLine};
 use oz_core::location_resolver;
 use oz_core::session::SessionContext;
-use oz_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, SaleStatus, Sku};
+use oz_core::{Cart, CartId, CartLine, Currency, Money, PaymentSplitArg, SaleStatus, Sku};
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
+
+// Phase 3.3 T4: the wire DTOs below moved to the shared `oz_bridge::pos`
+// module (Agent 2's Wave D extraction) and are re-exported here, same as
+// the desktop shell — one wire definition across both shells, ending the
+// "keep the two in step" fork burden this header used to carry. The
+// CompleteSale pair inherits the tablet's `deny_unknown_fields` hardening
+// (now ported INTO the bridge DTOs so every shell fails loudly on an
+// unknown key instead of silently dropping it — the incident that let
+// `attemptId` vanish). The unscoped `CompleteSaleArgs` gains the two
+// fields its fork had lost (`payment_splits`, `promotion_ids`); the
+// unscoped command is not registered on this shell, so the wire is
+// unwitnessed either way. The command bodies stay tablet-native (no
+// BridgeCtx yet — see the T2 seam notes in void.rs).
+pub use oz_bridge::pos::{
+    AddLineArgs, AddLineResult, CartLineData, CompleteSaleArgs, CompleteSaleResult,
+    CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs, DeductionLocationInfo,
+    HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs,
+    PreviewLineArgs, PreviewPromotedTotalArgs, PreviewPromotedTotalFromLinesArgs,
+    PreviewPromotedTotalResult, PreviewPromotionDiscount, SerialNumberArg, SetCartDiscountArgs,
+    SetCartDiscountScopedArgs, StartSaleArgs, StartSaleResult,
+};
 
 /// The tax scope for a sale rung up at `location_id` right now.
 ///
@@ -62,20 +82,6 @@ fn tax_scope_now(store: &Store, location_id: &str) -> oz_core::TaxSaleScope {
 }
 
 // ── Discount ─────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Setcartdiscountargs.
-pub struct SetCartDiscountArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Discount percentage (0-100). Pass 0 to clear.
-    pub percent: i64,
-    /// Optional human-readable label (e.g. "Senior 10%").
-    pub label: Option<String>,
-    /// ID of the user setting the discount (for authz).
-    pub user_id: String,
-}
 
 /// Set or clear a cart-level percentage discount.
 ///
@@ -109,18 +115,6 @@ pub async fn set_cart_discount(
     drop(db);
     tracing::info!(cart_id = %args.cart_id, percent = %args.percent, "cart discount set");
     Ok(())
-}
-
-/// Args for `set_cart_discount_scoped` — without `user_id`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetCartDiscountScopedArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Percent.
-    pub percent: i64,
-    /// Label.
-    pub label: Option<String>,
 }
 
 /// Set a cart discount within the session scope. ADR #7 / ADR-19.
@@ -160,24 +154,6 @@ pub async fn set_cart_discount_scoped(
 }
 
 // ── Start Sale ───────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Startsaleargs.
-pub struct StartSaleArgs {
-    /// ISO-4217 currency code for the new cart.
-    #[serde(default)]
-    pub currency: String,
-}
-
-#[derive(Debug, Serialize)]
-/// Startsaleresult.
-pub struct StartSaleResult {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// ADR-19 §5.1: the deduction location locked at cart-start time.
-    pub deduction_location_id: Option<String>,
-}
 
 #[command]
 /// Start sale.
@@ -330,34 +306,6 @@ pub async fn get_active_cart_scoped(
 
 // ── Add Line ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Addlineargs.
-pub struct AddLineArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Stock-keeping unit identifier.
-    pub sku: Sku,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit Price Minor.
-    pub unit_price_minor: i64,
-    /// FRONTEND-03: ISO-4217 code of the currency the line is priced in.
-    /// When present the command builds the line in this currency and
-    /// `Cart::add_line` enforces it matches the cart's currency; when
-    /// absent (legacy callers) the cart currency is stamped as before.
-    pub unit_price_currency: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Addlineresult.
-pub struct AddLineResult {
-    /// ID of the associated line.
-    pub line_id: LineId,
-    /// Line Total.
-    pub line_total: Option<Money>,
-}
-
 /// Resolve the unit price for an `add_line` request (FRONTEND-03).
 ///
 /// The line's own currency crosses the IPC boundary so a cross-currency
@@ -463,20 +411,6 @@ fn run_add_line_scoped(
 
 // ── Override Line Price ──────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Overridelinepriceargs.
-pub struct OverrideLinePriceArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// ID of the associated line.
-    pub line_id: LineId,
-    /// The new unit price in minor units (e.g. cents).
-    pub new_price_minor: i64,
-    /// ID of the manager authorising the override.
-    pub user_id: String,
-}
-
 /// Override the unit price of a cart line, authorised by a manager PIN.
 #[command]
 pub async fn override_line_price(
@@ -517,18 +451,6 @@ pub async fn override_line_price(
 
     tracing::info!(cart_id = %args.cart_id, line_id = %args.line_id, new_price_minor = args.new_price_minor, "line price overridden");
     Ok(())
-}
-
-/// Args for `override_line_price_scoped` — without `user_id`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OverrideLinePriceScopedArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// ID of the associated line.
-    pub line_id: LineId,
-    /// New Price Minor.
-    pub new_price_minor: i64,
 }
 
 /// Override a line price within the session scope. ADR #7.
@@ -574,18 +496,6 @@ pub async fn override_line_price_scoped(
 }
 
 // ── Get Cart Deduction Location ───────────────────────────────────────
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Info about the deduction location locked on an active cart. ADR-19 §17.
-pub struct DeductionLocationInfo {
-    /// The location UUID.
-    pub location_id: String,
-    /// Human-readable location name.
-    pub location_name: String,
-    /// ISO-8601 timestamp of the last manager override, or `None`.
-    pub overridden_at: Option<String>,
-}
 
 /// Return the deduction location info for an active cart.
 #[command]
@@ -695,58 +605,6 @@ pub async fn override_cart_deduction_location_scoped(
 }
 
 // ── Complete Sale ────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Serialnumberarg.
-pub struct SerialNumberArg {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Serial.
-    pub serial: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Completesaleargs.
-pub struct CompleteSaleArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Payment Method.
-    pub payment_method: String,
-    /// Tendered Minor.
-    pub tendered_minor: Option<i64>,
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Optional customer id to link this sale to a customer
-    /// for loyalty tracking and purchase history.
-    pub customer_id: Option<String>,
-    /// Optional customer name (for credit sales).
-    pub customer_name: Option<String>,
-    /// Optional serial numbers captured at checkout for track_serial products.
-    pub serial_numbers: Option<Vec<SerialNumberArg>>,
-    /// CUR-02: original sale currency when multi-currency checkout is used.
-    pub base_currency: Option<String>,
-    /// CUR-02: original sale total in `base_currency` minor units.
-    pub base_total_minor: Option<i64>,
-    /// CUR-02: fixed-point rate (millionths) `base_currency → sale currency`.
-    pub tender_rate_millionths: Option<i64>,
-    /// Tip amount in minor units collected at checkout (default 0).
-    pub tip_minor: Option<i64>,
-    /// Service-charge amount in minor units collected at checkout (default 0).
-    pub service_charge_minor: Option<i64>,
-}
-
-#[derive(Debug, Serialize)]
-/// Completesaleresult.
-pub struct CompleteSaleResult {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// Total amount in minor currency units.
-    pub total: Option<Money>,
-    /// Line Count.
-    pub line_count: usize,
-}
 
 // ── COR-7: per-attempt checkout idempotency (tablet port) ───────────
 //
@@ -1028,100 +886,6 @@ pub async fn complete_sale(
     })
 }
 
-/// Args for `complete_sale_scoped` — without `user_id`.
-///
-/// `deny_unknown_fields` is deliberate: the absence of it is what let the
-/// shipped UI's `attemptId` vanish silently on the tablet while looking
-/// guarded. Every field the wire can carry is listed here, field-for-field
-/// against `ui/src/api/sales.ts::CompleteSaleScopedArgs` (15 fields) and
-/// both senders in `ui/src/features/sales/PaymentModal.tsx` (the main path
-/// and the QRIS path, whose extra spread is `tenderSnapshot` — tip, service
-/// charge and the three CUR-02 fields, all present below). An unknown key
-/// now fails loudly instead of being dropped.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CompleteSaleScopedArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Payment Method.
-    pub payment_method: String,
-    /// Tendered Minor.
-    pub tendered_minor: Option<i64>,
-    /// Customer ID.
-    pub customer_id: Option<String>,
-    /// Payment Splits.
-    pub payment_splits: Option<Vec<PaymentSplitArg>>,
-    /// Customer Name.
-    pub customer_name: Option<String>,
-    /// Serial Numbers.
-    pub serial_numbers: Option<Vec<SerialNumberArg>>,
-    /// CUR-02: original sale currency when multi-currency checkout is used.
-    pub base_currency: Option<String>,
-    /// CUR-02: original sale total in `base_currency` minor units.
-    pub base_total_minor: Option<i64>,
-    /// CUR-02: fixed-point rate (millionths) `base_currency → sale currency`.
-    pub tender_rate_millionths: Option<i64>,
-    /// Tip amount in minor units collected at checkout (default 0).
-    pub tip_minor: Option<i64>,
-    /// Service-charge amount in minor units collected at checkout (default 0).
-    pub service_charge_minor: Option<i64>,
-    /// PROMO-3 checkout integration: promotions to engine-apply against
-    /// the post-tax sale. Each reduces the payable total (stacking) and
-    /// the application rows persist inside the checkout transaction;
-    /// payment splits are validated against the reduced total.
-    pub promotion_ids: Option<Vec<String>>,
-    /// COR-7: identifies one checkout attempt. Every submission of the same
-    /// attempt (first tap, shortfall retry, re-tap after a lost response)
-    /// carries the same value, so a replay returns the receipt that already
-    /// exists instead of ringing up a second sale. Absent, empty or
-    /// whitespace-only means no guard.
-    ///
-    /// The shipped UI already sends this (`ui/src/features/sales/PaymentModal.tsx`,
-    /// `attemptId`); before this field existed the tablet DTO silently dropped it,
-    /// which made the tablet look guarded and left it unprotected.
-    pub attempt_id: Option<String>,
-    /// F2-6: the client's claim that the displayed tax was an ESTIMATE (tax
-    /// cache stale/unknown at checkout). Core verifies by computing the tax
-    /// itself and stamps claim + computed tax into `sales.tax_estimate_note`
-    /// (D61 ruling 4: flag for recompute, never silent). Absent/false is
-    /// the zero-change default: no stamp.
-    pub tax_estimated: Option<bool>,
-}
-
-/// Arguments for previewing the promotion-reduced payable of a cart.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotedTotalArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Promotions to preview, in application order (they stack).
-    pub promotion_ids: Vec<String>,
-}
-
-/// One promotion's discount in the preview result.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotionDiscount {
-    /// Promotion that was applied.
-    pub promotion_id: String,
-    /// Discount in minor units.
-    pub discount_minor: i64,
-    /// Human-readable description (name + amount).
-    pub description: String,
-}
-
-/// Result of previewing the promotion-reduced payable.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotedTotalResult {
-    /// Cart total after cart discount + tax, before promotions.
-    pub base_total_minor: i64,
-    /// Final payable after promotions — what payment splits must cover.
-    pub total_minor: i64,
-    /// Per-promotion discounts in application order.
-    pub discounts: Vec<PreviewPromotionDiscount>,
-}
-
 /// Preview the promotion-reduced payable for a cart without mutating it.
 ///
 /// PROMO-3 checkout integration: the client needs the promoted total
@@ -1190,32 +954,6 @@ pub async fn preview_promoted_total_scoped(
         total_minor: sale.total.minor_units,
         discounts,
     })
-}
-
-/// One cart line for the lines-based promotion preview.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewLineArgs {
-    /// Product SKU.
-    pub sku: String,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit price in minor units.
-    pub unit_price_minor: i64,
-    /// ISO-4217 code of the unit price currency.
-    pub unit_price_currency: String,
-}
-
-/// Arguments for previewing the promotion-reduced payable from raw lines.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotedTotalFromLinesArgs {
-    /// Cart lines, in cart order (already in cart currency).
-    pub lines: Vec<PreviewLineArgs>,
-    /// Cart discount percent already applied client-side (0-100).
-    pub discount_percent: i64,
-    /// Promotions to preview, in application order (they stack).
-    pub promotion_ids: Vec<String>,
 }
 
 /// Build an in-memory cart mirroring the client's displayed cart for the
@@ -1592,23 +1330,6 @@ pub async fn compute_cart_tax_scoped(
 
 // ── Complete Sale With Resolved Shortfalls ───────────────────────────
 
-/// A single cart line reconstructed by the frontend for the second command.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CartLineData {
-    /// SKU identifier.
-    pub sku: String,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit price in minor units.
-    pub unit_price_minor: i64,
-    /// FRONTEND-03 follow-up: ISO-4217 code the line is priced in. When
-    /// present the reconstruction builds the line in this currency and
-    /// `Cart::add_line` enforces it matches the sale currency; absent
-    /// (legacy callers) falls back to the sale currency as before.
-    pub unit_price_currency: Option<String>,
-}
-
 /// Resolve the unit price for a reconstructed shortfall line
 /// (FRONTEND-03 follow-up). Mirrors [`line_unit_price`]: the line's own
 /// currency crosses the IPC boundary so a mismatch is rejected instead of
@@ -1627,61 +1348,6 @@ fn shortfall_line_unit_price(
         minor_units: line_data.unit_price_minor,
         currency,
     })
-}
-
-/// Arguments for completing a sale with resolved shortfalls (split fulfillment).
-///
-/// `deny_unknown_fields` for the same reason as [`CompleteSaleScopedArgs`]:
-/// enumerated field-for-field against
-/// `ui/src/api/sales.ts::CompleteSaleWithResolvedShortfallsArgs` (20 fields),
-/// whose only sender is `ui/src/features/sales/StockShortfallDialog.tsx`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CompleteSaleWithResolvedShortfallsArgs {
-    /// ID of the original cart (informational).
-    pub cart_id: CartId,
-    /// Payment method label.
-    pub payment_method: String,
-    /// Tendered amount in minor units.
-    pub tendered_minor: Option<i64>,
-    /// Optional customer id.
-    pub customer_id: Option<String>,
-    /// Optional payment splits.
-    pub payment_splits: Option<Vec<PaymentSplitArg>>,
-    /// Customer name (for credit sales).
-    pub customer_name: Option<String>,
-    /// Optional serial numbers.
-    pub serial_numbers: Option<Vec<SerialNumberArg>>,
-    /// Cart line data reconstructed by the frontend.
-    pub lines: Vec<CartLineData>,
-    /// Total sale amount in minor units.
-    pub total_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// Discount percentage (0-100).
-    pub discount_percent: i64,
-    /// Optional discount label.
-    pub discount_label: Option<String>,
-    /// Cashier-resolved shortfalls: per-SKU allocation to specific locations.
-    pub resolutions: Vec<oz_core::sale_deduction::ResolvedShortfall>,
-    /// CUR-02: original sale currency when multi-currency checkout is used.
-    pub base_currency: Option<String>,
-    /// CUR-02: original sale total in `base_currency` minor units.
-    pub base_total_minor: Option<i64>,
-    /// CUR-02: fixed-point rate (millionths) `base_currency → sale currency`.
-    pub tender_rate_millionths: Option<i64>,
-    /// Tip amount in minor units collected at checkout (default 0).
-    pub tip_minor: Option<i64>,
-    /// Service-charge amount in minor units collected at checkout (default 0).
-    pub service_charge_minor: Option<i64>,
-    /// PROMO-3 checkout integration: promotions to engine-apply against
-    /// the post-tax sale (see `CompleteSaleScopedArgs::promotion_ids`).
-    pub promotion_ids: Option<Vec<String>>,
-    /// COR-7: the SAME attempt id the original `complete_sale_scoped`
-    /// submission carried, so this second command of the two-command flow
-    /// settles under the same keys and a retry of it replays instead of
-    /// re-selling. Absent, empty or whitespace-only means no guard.
-    pub attempt_id: Option<String>,
 }
 
 /// The write half of `complete_sale_with_resolved_shortfalls_scoped`:
@@ -1965,42 +1631,6 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 }
 
 // ── Hold Orders ──────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Holdcartargs.
-pub struct HoldCartArgs {
-    /// Label.
-    pub label: String,
-    /// Cart Data.
-    pub cart_data: String,
-    /// Item Count.
-    pub item_count: i64,
-    /// Total amount in minor currency units.
-    pub total_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    #[serde(default = "default_bill_type")]
-    /// Bill Type.
-    pub bill_type: String,
-    /// Customer Name.
-    pub customer_name: Option<String>,
-    /// ADR-19 §6.3: deduction location UUID locked at cart-start time.
-    /// When restoring a held cart, the caller should pass the same
-    /// `deduction_location_id` that was stored when the cart was held.
-    pub deduction_location_id: Option<String>,
-}
-
-fn default_bill_type() -> String {
-    "hold".to_string()
-}
-
-#[derive(Debug, Serialize)]
-/// Holdcartresult.
-pub struct HoldCartResult {
-    /// Unique identifier.
-    pub id: String,
-}
 
 /// Park the current sale as a held order.
 #[command]
