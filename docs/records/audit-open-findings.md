@@ -869,18 +869,39 @@ with a sentence naming what was wanted and what was got; `[{"a":1}]` no longer e
 uncaught `AttributeError` at `allowlist_names:303`; `not json` is unchanged. Four cells, all
 refuse, no tracebacks, no `clean` line. Re-verified by the director, not only by the lane:
 bare exit 0 still reporting `568 production file(s) graded`, `--self-test` PASS through case 8
-(~40 ok lines, was 34), `verify-agents-mirrors` exit 0.
+(the director's own count of "~40 ok lines, was 34" was a mis-prefixed grep; the `    ok` line counts measured by the lane are **34 → 39**, later **39 → 41**), `verify-agents-mirrors` exit 0.
 
 **Still open, three of them, all named, none touched:** the identical wrong-shape hazard in
 `verify-ipc-parity.py`, whose `load_allowlist()` hands raw `json.loads` output to
 `payload.get(section)` at `:547 :592 :730 :765 :794` with no top-level check — and that gate is
 the *writer* of the same shared file, so it can re-publish a shape nothing can read; a valid-
-JSON **UTF-16** file still escaping `read_allowlist` as an uncaught `UnicodeDecodeError`
+JSON **UTF-16** file still escaping `read_allowlist` as an uncaught `UnicodeDecodeError` **[closed 14:57 by `dd4888194` — see the next section]**
 (it catches only `PermissionError` and `JSONDecodeError`, unchanged before and after this
 commit); and `--shell ''`, which exits 0 printing `clean for .` because with no section named
 there is no key to require. The last is the same class one level further in: a refusal needs a
 named section before the shape question exists.
 
+### Dated correction (2026-09-13, 15:00) — the UTF-16 cell above is closed, and my own count corrected
+
+`dd4888194` (58/2, one file) added `AllowlistUndecodable` as a subclass of the existing
+`AllowlistUnreadable` with one `except UnicodeDecodeError` arm placed *after* `JSONDecodeError`
+inside the retry loop, so the guard order stayed `exists → isdir → denial-retries → decode`,
+properties of the argument before properties of the read and only a denial retrying. Director-run
+repro against the committed blob (`git show HEAD:` into a temp dir, a real `encoding="utf-16"`
+allowlist) at 15:00 — exit **1**, stdout **1** line, `grep -c Traceback` **0**, where before the
+same input produced a 19-line traceback ending `UnicodeDecodeError: … byte 0xff in position 0`.
+The sentence says the gate cannot decode rather than calling the file invalid JSON, *it may be
+valid JSON in an encoding this reader will not guess*, and both new cells forbid the busy
+sentence, keeping the misdiagnosis class closed. Self-test PASS, ok lines **39 → 41** (cases 9
+and 10); bare still exit 0 at `568 production file(s) graded` with byte-identical stdout.
+
+Reported, not fixed — `scripts/coverage_top.py:40` opens a JSON file with no `encoding=`, so it
+inherits the locale codec and takes the same uncaught error; `extract-updater-seed.py:167` and
+`verify-exhaustive-deps.py:49` do name `encoding="utf-8"`, and `verify-ipc-parity.py:101` already
+catches `(OSError, UnicodeDecodeError)`. Two of the three still-open items above remain as
+written, the wrong-shape hazard in `verify-ipc-parity.py` and `--shell ''`, and the second is
+the same class one level further in, a refusal needs a named section before a shape can be asked
+of it.
 
 ## How to close these
 
