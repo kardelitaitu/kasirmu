@@ -333,7 +333,10 @@ def write_scoped_orphans(orphans: set[str]) -> None:
         "Scoped commands registered in a shell's generate_handler! that no client "
         "invokes, accepted as host-only. Each entry is a permission check that "
         "currently guards nothing, so this list is a work queue, not a clean bill of "
-        "health. An entry that gains a caller fails the gate as stale.",
+        "health. An entry that gains a caller fails the gate as stale -- and so does an "
+        "entry whose command disappears from every shell, which is the opposite event; "
+        "the failure line says which of the two was observed, because the fix for one is "
+        "deleting the entry and the fix for the other is deleting the command.",
     )
     ALLOWLIST_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"scoped_orphans seeded: {len(payload['scoped_orphans'])} entries")
@@ -362,9 +365,46 @@ def orphan_scoped(handlers: list[str], ui_commands: dict[str, dict]) -> list[str
     this reports through the same dated-allowlist mechanism as the forward direction,
     with the same stale-entry self-clean. The gate's job is to force the decision, not
     to make it.
+
+    What the self-clean cannot see on its own: allowlist minus live orphans is true for two
+    opposite reasons. A scoped command that gained a caller stops being an orphan and stays
+    registered -- that entry is stale, delete it. A scoped command deleted from every shell
+    also stops being an orphan, and no caller appeared anywhere. Both land in the same
+    loop, so the message has to test the per-shell inventories and say which one it found
+    (stale_orphan_message); the single-clause version of that sentence, in this file and in
+    the allowlist comment it seeds, described only the first.
     """
     called = set(ui_commands)
     return sorted(c for c in handlers if c.endswith("_scoped") and c not in called)
+
+
+def stale_orphan_message(
+    command: str, registered_in: list[str], allowlist_name: str
+) -> str:
+    """The failure line for an allowlisted scoped orphan that stopped being an orphan.
+
+    Two opposite causes produce that one set difference and they want opposite fixes, so
+    the line says which one the data shows. registered_in comes from the same per-shell
+    generate_handler! inventories the orphan sweep runs on. Non-empty means the command is
+    still wired up and something new is calling it -- the case every piece of prose about
+    this gate has always described, and the entry should simply go. Empty means the
+    command is registered in no shell any more: it was deleted. Nothing gained a caller,
+    and the only action that would make the old sentence true is restoring dead code, so
+    the line names the decision and leaves it to a human instead of implying an accident.
+    """
+    if registered_in:
+        return (
+            f"stale scoped_orphans entry '{command}' -- it is still registered in "
+            f"{', '.join(registered_in)} and now has a caller; remove it from "
+            f"{allowlist_name}"
+        )
+    return (
+        f"scoped_orphans entry '{command}' names a command registered in no shell any "
+        f"more -- it did not gain a caller, it was deleted from every generate_handler!, "
+        f"so the entry did not go stale on its own. Remove it if deleting the command was "
+        f"the point, or restore the command deliberately if it was not. {allowlist_name} "
+        f"holds bare names and records neither choice."
+    )
 
 
 def orphan_permission(command: str) -> str | None:
@@ -562,6 +602,17 @@ def self_test() -> int:
                                                 (dispatcher, _SELFTEST_NO_LOOP)])
     case("guard   removed alias pass is not counted present", loop_removed is None)
 
+    # 6: the two causes of a stale scoped_orphans entry, told apart. A registered name
+    # gained a caller; a name in no shell at all was deleted, and "it now has a caller"
+    # is a lie that sends a reader to restore the dead command. Differential on purpose:
+    # before stale_orphan_message both cases printed the same sentence.
+    gained = stale_orphan_message("probe_orphan_scoped", ["tablet"], "probe-allowlist.json")
+    vanished = stale_orphan_message("probe_orphan_scoped", [], "probe-allowlist.json")
+    case("case 6  a deleted command is not reported as a gained caller",
+         "now has a caller" in gained and "no shell" not in gained
+         and "now has a caller" not in vanished and "no shell" in vanished
+         and bool(gained) and bool(vanished) and gained != vanished)
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -677,10 +728,12 @@ def main() -> int:
         )
     for command in sorted(orphan_allow - set(all_orphans)):
         if command.endswith("_scoped"):
-            failures.append(
-                f"stale scoped_orphans entry '{command}' -- it now has a caller; "
-                f"remove it from {ALLOWLIST_PATH.name}"
-            )
+            # One set difference, two causes: name the one the inventories support.
+            failures.append(stale_orphan_message(
+                command,
+                [s for s in SHELLS if command in handlers[s]],
+                ALLOWLIST_PATH.name,
+            ))
 
     for shell in SHELLS:
         allowed = set(allowlist.get(shell, []))
