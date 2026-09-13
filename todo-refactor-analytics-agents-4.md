@@ -12,7 +12,8 @@ order retired that miss (1,409 -> 1,170 ln, now under the <=1,200 goal). -->
 - Parent order: [`todo-refactor-analytics-agents-1.md`](./todo-refactor-analytics-agents-1.md)
   (:145 follow-up stamp — do not restate its phases here).
 - Target file: `ui/src/features/analytics/AnalyticsScreen.tsx` — **1,170 ln**
-  (component `:110`, main `return (` at `:553`, component end `:1170`).
+  at this order's opening (component `:110`, main `return (` at `:553`,
+  component end `:1170`); 1,139 after slice 2.
 - Regression net: `ui/src/__tests__/AnalyticsScreen.test.tsx` (106 tests —
   passed untouched through slice 1's four extractions), plus
   `nativeTooltipCompliance` (ratchet moves with moved `title=` attrs —
@@ -36,15 +37,10 @@ order retired that miss (1,409 -> 1,170 ln, now under the <=1,200 goal). -->
 - [x] Screen ≤ 1,200: **1,170**. agents-1's miss retired (its stamp
   updated; its text not rewritten).
 
-## Open — slice 2: command palette surface (~45 ln JSX, `:1124–1168`)
+## Done — slice 2 (`d5e3aba339`): command palette shell
 
-- [ ] `components/CommandPalette.tsx` — state already lives in
-  `useCommandPalette` (paletteOpen/Query/Index, inputRef, filteredItemsRef,
-  runItemRef); the screen's `paletteItems` memo (`~:420–495`) is data.
-  Props: the hook bundle + items + the two refs. Low coupling, real win:
-  it also makes the palette testable without mounting the whole screen.
-- [ ] Ratchet sweep: palette has zero `title=` attrs (measured) — expect
-  no baseline movement; confirm, don't assume.
+- [x] `components/CommandPalette.tsx` — the hook (`useCommandPalette`) already owned state and keys; the component is the thinnest possible presentation seam, generic in the item shape (the union stays the screen's). Screen: 1,170 → **1,139 ln**.
+- [x] Ratchet sweep: confirmed zero `title=` in the palette (measured, as predicted) — baseline untouched; the suite's two reds stay restaurant-only.
 
 ## Open — slice 3: the coupled core (grid `:845–~1110` + toolbar rows
 `:589–772`) — LAST, and only with its own plan pass
