@@ -339,7 +339,7 @@ async fn list_sales_scoped_requires_sales_view() {
     // Allow: the same door, same data, one role apart.
     let allowed = list_sales_scoped(GRANTED_TOKEN.into(), app.state()).await;
     assert!(
-        matches!(allowed, Ok(_)),
+        allowed.is_ok(),
         "list_sales_scoped must still open for a session holding sales:view: {allowed:?}"
     );
 }
@@ -361,7 +361,7 @@ async fn get_sale_scoped_requires_sales_view() {
     // Allow: the same door, same data, one role apart.
     let allowed = get_sale_scoped(GRANTED_TOKEN.into(), HIST_SALE.into(), app.state()).await;
     assert!(
-        matches!(allowed, Ok(_)),
+        allowed.is_ok(),
         "get_sale_scoped must still open for a session holding sales:view: {allowed:?}"
     );
 }
@@ -385,7 +385,7 @@ async fn export_daily_summary_scoped_requires_reports_export() {
     // Allow: the same door, same data, one role apart.
     let allowed = export_daily_summary_scoped(GRANTED_TOKEN.into(), app.state()).await;
     assert!(
-        matches!(allowed, Ok(_)),
+        allowed.is_ok(),
         "export_daily_summary_scoped must still open for a session holding reports:export: {allowed:?}"
     );
 }
@@ -409,7 +409,7 @@ async fn export_sales_by_hour_scoped_requires_reports_export() {
     // Allow: the same door, same data, one role apart.
     let allowed = export_sales_by_hour_scoped(GRANTED_TOKEN.into(), app.state()).await;
     assert!(
-        matches!(allowed, Ok(_)),
+        allowed.is_ok(),
         "export_sales_by_hour_scoped must still open for a session holding reports:export: {allowed:?}"
     );
 }
@@ -431,7 +431,7 @@ async fn export_eod_report_scoped_requires_reports_export() {
     // Allow: the same door, same data, one role apart.
     let allowed = export_eod_report_scoped(GRANTED_TOKEN.into(), app.state()).await;
     assert!(
-        matches!(allowed, Ok(_)),
+        allowed.is_ok(),
         "export_eod_report_scoped must still open for a session holding reports:export: {allowed:?}"
     );
 }

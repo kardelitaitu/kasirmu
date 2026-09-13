@@ -80,7 +80,10 @@ pub async fn get_regional_config_scoped(
 /// ISO-3166 country shape, inside the same transaction that writes the row;
 /// this command adds no validation of its own and never touches a column
 /// directly. The payload reuses core serde names verbatim, mirroring the
-/// read command.
+/// read command: field names are the axis names in `locations`/
+/// `legal_entities` (snake_case on the wire), and an empty string on any axis
+/// means "clear it, inherit from the scope above". The type itself lives in
+/// the shared bridge module (`oz_bridge::regional::SetRegionalConfig`).
 ///
 /// Returns the freshly resolved effective config (read-after-write on the
 /// same connection) so the card can re-render provenance without a second
@@ -107,12 +110,6 @@ pub async fn set_regional_config_scoped(
     )?;
     Ok(config)
 }
-
-/// The write payload for `set_regional_config_scoped` moved to the shared
-/// bridge module (`oz_bridge::regional::SetRegionalConfig`, re-exported
-/// above): field names match the axis names in `locations`/`legal_entities`
-/// (snake_case on the wire, like the read model); "" means "clear, inherit
-/// from the scope above".
 
 #[cfg(test)]
 #[path = "regional_tests.rs"]

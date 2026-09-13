@@ -643,12 +643,8 @@ fn double_submit_with_one_attempt_id_creates_one_sale() {
     let cart_id = seed_cart_with_line(&conn, "REPLAY-COFFEE", 2, 350);
     let session = replay_session();
 
-    let first = run_complete_sale_scoped(
-        &conn,
-        &session,
-        &scoped_args(cart_id.clone(), Some("att-1")),
-    )
-    .expect("first settlement must succeed");
+    let first = run_complete_sale_scoped(&conn, &session, &scoped_args(cart_id, Some("att-1")))
+        .expect("first settlement must succeed");
     let second = run_complete_sale_scoped(&conn, &session, &scoped_args(cart_id, Some("att-1")))
         .expect("a replay answers with a receipt, not an error");
 
@@ -730,11 +726,7 @@ fn one_attempt_id_reused_on_a_second_live_cart_is_refused_as_a_collision() {
     run_complete_sale_scoped(&conn, &session, &scoped_args(cart_a, Some("att-x"))).unwrap();
 
     let cart_b = seed_cart_with_line(&conn, "REPLAY-BAGEL", 1, 450);
-    let err = match run_complete_sale_scoped(
-        &conn,
-        &session,
-        &scoped_args(cart_b.clone(), Some("att-x")),
-    ) {
+    let err = match run_complete_sale_scoped(&conn, &session, &scoped_args(cart_b, Some("att-x"))) {
         Ok(_) => panic!("a base-key match while the request cart exists must be refused"),
         Err(e) => e,
     };
@@ -872,7 +864,7 @@ fn shortfall_collision_on_one_attempt_returns_first_sale_id() {
     seed_stock(&conn, "SF-COLLIDE");
     let session = replay_session();
     let args = shortfall_args("SF-COLLIDE", Some("att-c"));
-    let cart_id = args.cart_id.clone();
+    let cart_id = args.cart_id;
 
     let pre = replay_verdict(&Store::new(&conn), Some("att-c"), Some(&cart_id)).unwrap();
     assert!(

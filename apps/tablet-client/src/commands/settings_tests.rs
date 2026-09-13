@@ -1206,8 +1206,8 @@ fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
     let (head, tail) = sentence
         .split_once(marker)
         .expect("the producer puts the owner name inside the sentence");
-    let head_words: Vec<&str> = head[probe.len()..].trim().split_whitespace().collect();
-    let tail_words: Vec<&str> = tail.trim().split_whitespace().collect();
+    let head_words: Vec<&str> = head[probe.len()..].split_whitespace().collect();
+    let tail_words: Vec<&str> = tail.split_whitespace().collect();
     let frame = head_words.len() + tail_words.len();
     assert!(
         head_words.len() >= 3 && tail_words.len() >= 3 && frame >= 6,

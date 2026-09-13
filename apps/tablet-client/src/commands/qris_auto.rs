@@ -56,7 +56,7 @@ pub async fn qris_auto_charge_scoped(
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let db = &*db_guard;
-        let store = Store::new(&db);
+        let store = Store::new(db);
         SyncConfig::from_settings(&store)?
     };
     let Some(config) = config else {
@@ -90,7 +90,7 @@ pub async fn qris_auto_status_scoped(
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let db = &*db_guard;
-        let store = Store::new(&db);
+        let store = Store::new(db);
         SyncConfig::from_settings(&store)?
     };
     let Some(config) = config else {

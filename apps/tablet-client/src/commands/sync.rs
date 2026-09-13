@@ -713,8 +713,8 @@ async fn sync_server_credentials(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
-    let url = Settings::get_sync_server_url(&db)?;
-    let key = Settings::get_sync_api_key(&db)?;
+    let url = Settings::get_sync_server_url(db)?;
+    let key = Settings::get_sync_api_key(db)?;
     drop(db_guard);
 
     let url = url.unwrap_or_default().trim_end_matches('/').to_string();
