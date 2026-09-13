@@ -914,6 +914,42 @@ received ""…` line and no `clean` anywhere in the output where HEAD exited **0
 `568 production file(s) graded`, `--shell desktop` exit 0 and `--shell desktop --shell tablet`
 exit 1 on the pre-existing tablet violations, so neither path regressed.
 
+### Dated correction (2026-09-13, 16:15) — `coverage_top.py` is closed, and the worker corrected *my* diagnosis of it
+
+`dfb3e10e9` (36/2, one file) names `encoding="utf-8"` at the open and refuses with one `UNREADABLE:`
+line. Director-measured on the committed blob at 16:12: a real UTF-16 JSON file now exits **1** with
+**0** `Traceback` where the pre-fix blob exits **1** with **1**, ending
+`JSONDecodeError: Expecting value: line 1 column 1`.
+
+**My brief was wrong about the symptom and the worker said so.** I told it the failure was an
+uncaught `UnicodeDecodeError`; on this box the locale codec is **cp1252** (measured
+`locale.getpreferredencoding`, Python 3.14.5), which happily *decodes* UTF-16 bytes into mojibake
+that then fails to **parse**, so the real exception was `JSONDecodeError`. Under `PYTHONUTF8=1` the
+same pre-fix run does raise `UnicodeDecodeError`, so my finding described only one of two platform
+states. The worker kept its narrow `except UnicodeDecodeError` arm and defended it: **because the
+encoding is asserted at the open, the mojibake path stops existing** — the bytes become
+undecodable rather than decodable-and-wrong, so both symptoms converge on one refusal. Widening
+the catch to `JSONDecodeError` would let one sentence claim "not UTF-8" about a file that *is*
+UTF-8 and merely malformed, the very mislabel `dd4888194` argues against.
+
+**Verified separately by me:** the identical input fed to the pre-fix and post-fix copies both die
+later with `AttributeError: 'list' object has no attribute 'get'` — **pre-existing**, my fixture
+shape, not the change; the two tracebacks differ only in the filename line. An object-shaped valid
+UTF-8 file exits **0** and prints `NO MATCHES: scanned 0 files`, proving the guard does not
+over-refuse.
+
+**Reported, not fixed, output side:** a *valid UTF-8* file containing a non-ASCII path now reads
+fine and dies 30 lines later on `UnicodeEncodeError: 'charmap' codec can't encode character
+'\u1f8d'` — the **print** codec, not the read. No partial ranking can exit 0, but stdout does
+carry a partial report. Fixing it needs an output-side decision outside the brief, so it is
+recorded here. Every path in this repo's real cargo-llvm-cov exports is ASCII.
+
+**Class sweep, measured:** across all 50 `scripts/*.py` and all 60 tracked `.py` files, **0**
+remaining text-mode `open()` feeding a `json.load` without an `encoding=`. The 9 bare-`open(` hits
+are 7 `urllib.request.urlopen`, one `open(path, "rb")` PEM read, and one prose string in a doc.
+`coverage_top.py` had no invokers at all — the only `git grep` hit is its own usage line at `:5`,
+so no caller inherits a new exit code.
+
 Two of the three named items remain genuinely open: the identical wrong-shape hazard in
 `verify-ipc-parity.py` (`:547 :592 :730 :765 :794`), which is also the *writer* of the shared
 allowlist and so can re-publish a shape nothing can read, and `scripts/coverage_top.py:40`
