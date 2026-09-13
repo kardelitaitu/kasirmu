@@ -360,7 +360,19 @@ def self_test() -> int:
 
     A gate nobody has seen go red is indistinguishable from a gate that cannot go red --
     the lesson behind every liveness case in this repo's gates.
+
+    Refuses BEFORE parsing when the locale surface cannot be found at all, exactly as
+    `census()` does; see `hollow_root_reason()`. Exit 2, not 1 -- in this mode 1 means the
+    directions ran and at least one found something broken, and a ROOT with no bundles in it
+    ran none of them. Unguarded, direction 2 indexed `real[0]` out of an empty declared-key
+    list and died with an IndexError traceback at exit 1, which is what made a hollow
+    invocation look like a self-test that had found a defect.
     """
+    hollow = hollow_root_reason()
+    if hollow:
+        print(f"error: cannot run --self-test here: {hollow} (looked under ROOT={ROOT}); nothing "
+              f"was exercised, so this refusal is not a self-test failure.", file=sys.stderr)
+        return 2
     failures = 0
 
     # Direction 1: an added key with no reference anywhere must be reported.
