@@ -944,6 +944,20 @@ fine and dies 30 lines later on `UnicodeEncodeError: 'charmap' codec can't encod
 carry a partial report. Fixing it needs an output-side decision outside the brief, so it is
 recorded here. Every path in this repo's real cargo-llvm-cov exports is ASCII.
 
+### Dated correction (2026-09-13, 16:57) — the staged-diff swallow is closed by `cd2b55fa3`
+
+`cd2b55fa3` (40/6, one file) makes `verify-ftl-orphans.py` **refuse** when its staged diff cannot be
+obtained. Proven both directions on the committed blob at 16:56: run from outside any repository it
+exits **2** with one `error: cannot read the staged diff (\`git diff --cached -U0\`…)` line, **0**
+tracebacks and **0** occurrences of the phrase `nothing staged`; inside the real repo with nothing
+staged under `ui/src` it still prints `staged-only: nothing staged under ui/src; nothing to verify.`
+at exit **0** — the honest empty verdict is untouched, which is the case a refusal-shaped fix
+most often breaks. The voice follows the house decision from `409d09334`: `error:` on **stderr**,
+exit **2**, because in this file **exit 1 already means a verdict was reached about someone
+else's keys**, and a refusal must not be able to read as one. Enforcement note for the owner:
+this gate is called at `.githooks/pre-commit:257` and the hook aborts on nonzero, so the refusal
+now blocks a commit instead of green-lighting it.
+
 **Class sweep, measured:** across all 50 `scripts/*.py` and all 60 tracked `.py` files, **0**
 remaining text-mode `open()` feeding a `json.load` without an `encoding=`. The 9 bare-`open(` hits
 are 7 `urllib.request.urlopen`, one `open(path, "rb")` PEM read, and one prose string in a doc.
