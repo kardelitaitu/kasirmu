@@ -373,6 +373,17 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
     check.sh, in a file its owner is not working in. "dev_mock" and "scoped_orphans" have no
     reader outside this script, so they can take the object form as soon as the reads here
     normalise both shapes, which allowlist_section and section_names now do.
+
+    COUPLING, written where the rule lives rather than in a commit message from a lane that
+    no longer exists: the two tuples this reads -- EXTERNALLY_READ_SECTIONS ("desktop",
+    "tablet") and OBJECT_ALLOWED_SECTIONS ("dev_mock", "scoped_orphans") -- are this file's
+    belief about scripts/verify-scoped-reads.py, whose "for cmd in allow.get(shell, [])"
+    loop feeds each member straight into a dict lookup, and which runs bare at
+    .github/workflows/dev-ci.yml:596 and scripts/check.sh:72 (its --shell default is
+    desktop, so tablet is the same hazard one flag away). That script is not owned from
+    here. If it ever learns the object form, move desktop and tablet into the allowed tuple
+    in the same change; the case 11 text assertions are written to fail loudly if the
+    tuples and that reader drift apart.
     """
     problems: list[str] = []
     name = getattr(path, "name", str(path))
@@ -464,18 +475,31 @@ def section_names(payload: dict, key: str) -> set[str]:
     return {name for name, _ in allowlist_section(payload, key)}
 
 
-def merge_dev_mock_entries(raw_section, gaps) -> list:
-    """Union new gaps into the dev_mock section, additively, keeping every reason.
+def m_allowlist_section(section: list) -> list[tuple[str, str]]:
+    """allowlist_section over a bare list rather than a payload -- for the self-test."""
+    return allowlist_section({"section": section}, "section")
 
-    Additive only, as it always was: no entry is ever removed, so shrinking the list stays
-    a human edit. What this function exists to prevent is the other way to lose a decision
-    -- a writer that eats a reason the operator typed. A known entry keeps the shape it was
-    written in, so reseeding a list that has not moved produces a zero-line diff rather
-    than converting 16 bare names into objects; a known object keeps its reason and its
-    extra keys. A name present twice keeps whichever entry holds the reason, because that
-    is the one carrying information. A genuinely new entry arrives as
-    {"name": ..., "reason": ""} so that the reason field is discoverable in the file
-    itself, not only in this docstring.
+
+def merge_section_entries(raw_section, gaps, allow_objects: bool = True) -> list:
+    """Union new entries into ANY allowlist section, additively, keeping every reason.
+
+    Additive only, for every section: an entry the measurement no longer reproduces stays
+    in the file, because a writer flag is not a decision about that entry -- deleting one
+    because today's sweep did not happen to re-derive it is how --write-allowlist came to
+    delete the tablet ghost silently. Whether the entry is still owed is a question for the
+    reader, which is why the gate now prints an unreachable line per section instead of
+    quietly discarding the evidence.
+
+    What this function exists to prevent is the other way to lose a decision -- a writer
+    that eats a reason the operator typed. A known entry keeps the shape it was written in,
+    so reseeding a list that has not moved produces a zero-byte diff rather than converting
+    bare names into objects; a known object keeps its reason and its extra keys even when
+    allow_objects is False, because downgrading it here would "repair" a file the validator
+    is trying to make visible. A name present twice keeps whichever entry holds the reason.
+    allow_objects only decides the shape of a GENUINELY NEW entry: sections that take the
+    object form (dev_mock, scoped_orphans) get {"name": ..., "reason": ""} so the field is
+    discoverable in the file; the shell sections (desktop, tablet) get a bare name, because
+    writing the object shape there would produce a file this very gate refuses to read.
     """
     merged: dict[str, object] = {}
 
@@ -501,7 +525,7 @@ def merge_dev_mock_entries(raw_section, gaps) -> list:
     for gap in gaps or []:
         name = str(gap).strip()
         if name:
-            merged.setdefault(name, {"name": name, "reason": ""})
+            merged.setdefault(name, {"name": name, "reason": ""} if allow_objects else name)
     return [merged[name] for name in sorted(merged)]
 
 
@@ -509,7 +533,8 @@ def write_dev_mock_gaps(gaps: list[str]) -> None:
     """Seed/extend "dev_mock" from the current gaps, preserving reasons and other sections."""
     payload = dict(load_allowlist())
     before = allowlist_section(payload, "dev_mock")
-    payload["dev_mock"] = merge_dev_mock_entries(payload.get("dev_mock"), gaps)
+    payload["dev_mock"] = merge_section_entries(payload.get("dev_mock"), gaps,
+                                                allow_objects=True)
     after = allowlist_section(payload, "dev_mock")
     write_allowlist_payload(payload)
     print(
@@ -519,6 +544,17 @@ def write_dev_mock_gaps(gaps: list[str]) -> None:
 
 
 def write_allowlist(missing: dict[str, set[str]]) -> None:
+    """Seed/extend the two shell sections, additively, preserving every other section.
+
+    This used to REPLACE both lists with sorted(measured gaps), which did two damaging
+    things: it deleted an entry the current sweep did not reproduce -- an operator's
+    hand-written exemption, or the tablet ghost that is neither a UI string nor registered
+    anywhere -- and it did so with no diagnostic, no diff line anyone read, and no
+    connection to why anyone would have run the flag. It is now a merge like the other two
+    writer flags. Note that the file's own "_comment" still claims entries "shrink to zero
+    as F-006 removes the dead surface": that was never the flag's job to enforce, and the
+    unreachable info line is where a shrinking list is now evidenced.
+    """
     # Preserve any section this function does not own. It used to rebuild the whole
     # payload, which meant running --write-allowlist silently deleted "scoped_orphans"
     # and un-masked 22 commands as failures on an unrelated reseed.
@@ -531,23 +567,36 @@ def write_allowlist(missing: dict[str, set[str]]) -> None:
         "entries (command now registered) fail the gate.",
     )
     for shell in SHELLS:
-        payload[shell] = sorted(missing.get(shell, set()))
+        payload[shell] = merge_section_entries(
+            payload.get(shell), missing.get(shell, set()), allow_objects=False)
     write_allowlist_payload(payload)
-    print(f"allowlist written: {ALLOWLIST_PATH}")
+    kept = {
+        shell: len(section_names(payload, shell) - missing.get(shell, set()))
+        for shell in SHELLS
+    }
+    print(
+        f"allowlist written: {ALLOWLIST_PATH} ("
+        + ", ".join(f"{shell} {len(section_names(payload, shell))} entries, "
+                    f"{kept[shell]} carried over that this run did not reproduce"
+                    for shell in SHELLS)
+        + ")"
+    );
 
 
 def write_scoped_orphans(orphans: set[str]) -> None:
     """Seed/extend the scoped_orphans section, preserving everything else.
 
-    Read through section_names, so an entry in the object form does not kill the flag -- but
-    note what the flag writes back: this section is rebuilt as sorted bare names, so a
-    "reason" written on a scoped_orphans entry does not survive --write-scoped-orphans. The
-    reader accepts the shape; the writer still rebuilds it. Fixing that is a separate
-    decision about merge versus rebuild semantics, not this change.
+    Read through section_names and written back through merge_section_entries, so an entry
+    in the object form neither kills the flag nor loses its reason on the way out. The
+    asymmetry that used to live here -- reader tolerant, writer a rebuild -- was the same
+    defect the dev_mock section had already closed: an operator who was told objects are
+    accepted in scoped_orphans would have been right until they ran the flag, and then wrong
+    with no diagnostic. A docstring is not a defence against that sequence.
     """
     payload = dict(load_allowlist())
     existing = section_names(payload, "scoped_orphans")
-    payload["scoped_orphans"] = sorted(existing | orphans)
+    payload["scoped_orphans"] = merge_section_entries(
+        payload.get("scoped_orphans"), orphans, allow_objects=True)
     payload.setdefault(
         "_scoped_orphans_comment",
         "Scoped commands registered in a shell's generate_handler! that no client "
@@ -861,25 +910,25 @@ def self_test() -> int:
 
     # 8: the writer keeps what a human wrote. A writer that eats a reason is worse than no
     # writer, because the operator's edit then looks saved while the decision is gone.
-    reseeded = merge_dev_mock_entries(
+    reseeded = merge_section_entries(
         mixed_section, ["list_security_events_scoped", "a_brand_new_scoped"])
     case("case 8  a hand-written reason survives a reseed",
          {"name": "list_role_holders_scoped", "reason": "browser preview; recorded debt"}
          in reseeded)
     case("case 8  a known bare entry stays bare, so an unmoved list is a zero-line diff",
-         merge_dev_mock_entries(["a_scoped", "b_scoped"], ["a_scoped"])
+         merge_section_entries(["a_scoped", "b_scoped"], ["a_scoped"])
          == ["a_scoped", "b_scoped"])
     case("case 8  a new entry arrives with an empty reason so the shape is discoverable",
          {"name": "a_brand_new_scoped", "reason": ""} in reseeded)
     case("case 8  reseeding an already-seeded section changes nothing",
-         merge_dev_mock_entries(
+         merge_section_entries(
              reseeded, ["list_security_events_scoped", "a_brand_new_scoped"]) == reseeded)
     case("case 8  the same name written twice keeps the entry holding the reason",
-         merge_dev_mock_entries(
+         merge_section_entries(
              ["dup_scoped", {"name": "dup_scoped", "reason": "why"}], [])
          == [{"name": "dup_scoped", "reason": "why"}])
     case("case 8  an entry's extra keys survive the writer",
-         merge_dev_mock_entries(
+         merge_section_entries(
              [{"name": "k_scoped", "reason": "r", "owner": "licensing"}], [])
          == [{"name": "k_scoped", "reason": "r", "owner": "licensing"}])
 
@@ -964,7 +1013,10 @@ def self_test() -> int:
             outcome: object = "raised"
             with redirect_stdout(io.StringIO()):
                 write_scoped_orphans({"c_scoped"})
-            outcome = json.loads(probe.read_text(encoding="utf-8"))["scoped_orphans"]
+            written = json.loads(probe.read_text(encoding="utf-8"))["scoped_orphans"]
+            # Names, not raw members: this case is about the READ surviving both shapes.
+            # That the writer now keeps each entry's own shape is case 12's claim.
+            outcome = sorted(name for name, _ in m_allowlist_section(written))
         except TypeError as exc:
             outcome = f"TypeError: {exc}"
         finally:
@@ -1034,6 +1086,86 @@ def self_test() -> int:
     case("case 11  and what it printed is the sentence, not a stack trace",
          "FAIL: allowlist shape" in printed and '"desktop"' in printed
          and "verify-scoped-reads" in printed and "Traceback" not in printed)
+
+    # 12: what a writer leaves behind. A rebuild deletes a decision nobody made; the three
+    # writer flags used to rebuild their sections from the current measurement, so an entry
+    # the measurement no longer reproduces -- the ghost a dead wrapper left in "tablet", a
+    # reason an operator typed into "scoped_orphans" -- vanished on the next reseed with no
+    # diagnostic at all. Each case below checks BYTES or TEXT, never an exit code: mutation B
+    # in this file proved an exit-code assertion passes happily while its guard is gone.
+    ghost_tablet = "rotate_encryption_key"
+    typed_reason = {"name": "get_active_cart_scoped", "reason": "host-only, kept on purpose"}
+    writer_sample = {
+        "_comment": "probe file, never the real allowlist",
+        "desktop": ["desktop_gap_scoped"],
+        "tablet": [ghost_tablet, "tablet_gap_scoped"],
+        "scoped_orphans": [typed_reason],
+        "dev_mock": ["mock_gap_scoped"],
+    }
+    with tempfile.TemporaryDirectory() as tmp4:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe4 = Path(tmp4) / "allowlist.json"
+        try:
+            globals()["ALLOWLIST_PATH"] = probe4
+            sys.argv = ["probe"]
+            quiet = io.StringIO()
+            write_allowlist_payload(dict(writer_sample))
+            seeded_once = probe4.read_bytes()
+            with redirect_stdout(quiet):
+                write_allowlist({"desktop": {"desktop_gap_scoped"},
+                                 "tablet": {"tablet_gap_scoped"}})
+            after_shell_merge = json.loads(probe4.read_bytes().decode("utf-8"))
+            with redirect_stdout(quiet):
+                write_scoped_orphans({"get_active_cart_scoped"})
+            after_orphan_merge = json.loads(probe4.read_bytes().decode("utf-8"))
+            before_stable = probe4.read_bytes()
+            with redirect_stdout(quiet):
+                write_scoped_orphans({"get_active_cart_scoped"})
+            stable_bytes = probe4.read_bytes()
+            with redirect_stdout(quiet):
+                write_allowlist({"desktop": {"desktop_gap_scoped", "brand_new_gap_scoped"},
+                                 "tablet": {"tablet_gap_scoped"}})
+            shell_text = probe4.read_bytes().decode("utf-8")
+            written_back = json.loads(probe4.read_bytes().decode("utf-8"))
+            err = io.StringIO()
+            out = io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                main()
+            report = out.getvalue() + err.getvalue()
+            payload_for_unreachable = json.loads(probe4.read_bytes().decode("utf-8"))
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    case("case 12  a desktop/tablet entry the measurement no longer reproduces survives",
+         ghost_tablet in after_shell_merge["tablet"]
+         and "tablet_gap_scoped" in after_shell_merge["tablet"], )
+    case("case 12  and a reason written by hand survives --write-scoped-orphans",
+         after_orphan_merge["scoped_orphans"] == [typed_reason], )
+    case("case 12  an unmoved section reseeds to a zero-byte diff",
+         stable_bytes == before_stable, )
+    case("case 12  a new shell gap arrives as a bare name, never the shape the reader refuses",
+         "brand_new_gap_scoped" in written_back["desktop"]
+         and all(isinstance(e, str) for e in written_back["desktop"])
+         and allowlist_shape_problems(written_back, Path("probe-allowlist.json")) == [])
+    # Pinned to the unreachable line itself. The first version asked only whether the ghost
+    # name appeared anywhere in the run, and mutation M3 -- deleting the computation -- still
+    # passed it, because a gate this noisy mentions a command string for other reasons. An
+    # assertion that reads someone else's output is the same failure as an exit-code check.
+    unreach_lines = [ln for ln in report.splitlines() if "-unreachable]:" in ln]
+    case("case 12  the unreachable check names a ghost that is neither gap nor handler",
+         len(unreach_lines) == 2
+         and any(ln.startswith("info[tablet-unreachable]: 2 of 2")
+                 and "rotate_encryption_key" in ln for ln in unreach_lines)
+         and all("neither" in ln for ln in unreach_lines), )
+    # Pinned to the SHELL line on purpose. The first version of this case asked whether the
+    # run printed "(1 allowlisted)" anywhere, and it passed before the repair existed: the
+    # dev_mock line already says that, so the assertion was reading a different section's
+    # report. Same trap, caught by looking for the case that passes anyway.
+    shell_lines = [ln for ln in report.splitlines() if ln.startswith("info[desktop]:")]
+    case("case 12  and each shell's own line says how many entries it is allowlisting",
+         len(shell_lines) == 1 and "allowlisted)" in shell_lines[0]
+         and "2 allowlisted" in shell_lines[0], )
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
@@ -1206,11 +1338,31 @@ def main() -> int:
         unregistered = extract_unregistered(
             shell, REPO_ROOT / SHELLS[shell], set(handlers[shell])
         )
+        allowed_names = section_names(allowlist, shell)
+        # Surfaced, never enforced. An allowlisted name that is neither a gap this run
+        # reproduces nor a command the shell registers has nothing on either side of it
+        # asking for the exemption -- the tablet ghost that is not a UI string, not
+        # registered in either shell, and still answers from a dev-mock handler is the
+        # shape. It used to be invisible in both directions: the staleness check only
+        # catches an entry that DID become registered, and --write-allowlist deleted the
+        # rest without a word. The writer is additive now, so this line is the only thing
+        # that shows them, which is why it is information-only and cannot fail the gate.
+        unreachable = sorted(allowed_names - missing[shell] - set(handlers[shell]))
         print(
             f"info[{shell}]: {len(ui_commands)} UI command strings, "
             f"{len(handlers[shell])} registered, "
             f"{len(missing[shell])} unregistered references "
-            f"({len(unregistered)} unregistered command fns - F-006 tracker)"
+            f"({len(unregistered)} unregistered command fns - F-006 tracker) "
+            f"({len(allowed_names)} allowlisted)"
+        )
+        print(
+            f"info[{shell}-unreachable]: {len(unreachable)} of {len(allowed_names)} "
+            f"allowlisted entries for this shell are reachable by neither direction -- not "
+            f"a gap this run measured and not registered in the shell's generate_handler, "
+            f"so nothing on either side still asks for the exemption"
+            + (f": {', '.join(unreachable)}" if unreachable else "")
+            + ". Informational: those entries are dropped by a human edit, not by the "
+            "writer flag."
         )
 
     # Router vs extracted modules, because "215 handlers registered" is the number the
