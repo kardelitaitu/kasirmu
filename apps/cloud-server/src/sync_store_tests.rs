@@ -1165,3 +1165,130 @@ async fn pg_integration_causally_ordered_pushes_never_flag() {
         .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await;
 }
+
+/// The conflict tables must actually enforce tenant isolation under RLS.
+///
+/// The other PG tests connect as `postgres`, and a superuser bypasses RLS
+/// even with FORCE, so they are structurally unable to see this — including
+/// the end-to-end detection test above. This one deliberately drops to a
+/// NON-superuser role and measures the same three facts directly: with no
+/// `oz.tenant_id` the write is rejected, with it the row is visible only to
+/// its own tenant, and another tenant cannot read or update it.
+///
+/// That is what makes the GUC in the store's PG arms load-bearing, and this
+/// is the regression guard for the two lists that must stay in sync:
+/// `RLS_TABLES` in scripts/generate-pg-migration.py and the table lists in
+/// scripts/rls-cutover.sql. Drift in either is completely silent — the
+/// tables just stop being protected, or stop being reachable by `oz_app`,
+/// with no compile error and no failing test anywhere else.
+#[tokio::test]
+async fn pg_integration_conflict_tables_enforce_tenant_isolation() {
+    let Some((pool, db_name)) = throwaway_pool().await else {
+        eprintln!("PG tenant-isolation test skipped: cannot create throwaway DB");
+        return;
+    };
+
+    // Roles are cluster-wide, not per-database, so the name must be unique
+    // and the role must be dropped explicitly at the end.
+    let role = format!("oz_rls_conflict_{}", uuid::Uuid::now_v7().simple());
+    let client = pool.get().await.unwrap();
+    client
+        .batch_execute(&format!(
+            "CREATE ROLE {role};
+             GRANT USAGE ON SCHEMA public TO {role};
+             GRANT SELECT, INSERT, UPDATE, DELETE ON sync_entity_vectors, sync_conflicts TO {role};
+             ALTER TABLE sync_entity_vectors FORCE ROW LEVEL SECURITY;
+             ALTER TABLE sync_conflicts FORCE ROW LEVEL SECURITY;"
+        ))
+        .await
+        .unwrap();
+
+    // A non-owner role is subject to RLS without any FORCE; the FORCE above
+    // mirrors what scripts/rls-cutover.sql applies in production.
+    client
+        .batch_execute(&format!("SET ROLE {role}"))
+        .await
+        .unwrap();
+
+    // 1. No GUC — the write is rejected outright rather than silently landing.
+    client.batch_execute("BEGIN").await.unwrap();
+    let rejected = client
+        .execute(
+            "INSERT INTO sync_entity_vectors (tenant_id, entity_type, entity_id, vector, last_payload)
+             VALUES ('tenant-A','stock.adjusted','sku-1','{}','{}')",
+            &[],
+        )
+        .await;
+    assert!(
+        rejected.is_err(),
+        "a write with no tenant GUC must be rejected by RLS, got {rejected:?}"
+    );
+    client.batch_execute("ROLLBACK").await.unwrap();
+
+    // 2. GUC set inside the transaction — the write lands and is visible.
+    client.batch_execute("BEGIN").await.unwrap();
+    client
+        .execute("SELECT set_config('oz.tenant_id',$1,true)", &[&"tenant-A"])
+        .await
+        .unwrap();
+    client
+        .execute(
+            "INSERT INTO sync_entity_vectors (tenant_id, entity_type, entity_id, vector, last_payload)
+             VALUES ('tenant-A','stock.adjusted','sku-1','{}','{}')",
+            &[],
+        )
+        .await
+        .unwrap();
+    let own: i64 = client
+        .query_one("SELECT count(*) FROM sync_entity_vectors", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(own, 1, "the row must be visible to its own tenant");
+    client.batch_execute("COMMIT").await.unwrap();
+
+    // 3. Another tenant sees nothing and cannot modify it.
+    client.batch_execute("BEGIN").await.unwrap();
+    client
+        .execute("SELECT set_config('oz.tenant_id',$1,true)", &[&"tenant-B"])
+        .await
+        .unwrap();
+    let other: i64 = client
+        .query_one("SELECT count(*) FROM sync_entity_vectors", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(other, 0, "another tenant must not see the row");
+    let changed = client
+        .execute("UPDATE sync_entity_vectors SET vector = '{}'", &[])
+        .await
+        .unwrap();
+    assert_eq!(changed, 0, "another tenant must not be able to update it");
+    client.batch_execute("ROLLBACK").await.unwrap();
+
+    // Restore the login role before the connection returns to the pool,
+    // or the next borrower inherits the restricted role.
+    client.batch_execute("RESET ROLE").await.unwrap();
+    drop(client);
+
+    let admin = pool.get().await.unwrap();
+    admin
+        .batch_execute(&format!("DROP OWNED BY {role}; DROP ROLE {role};"))
+        .await
+        .unwrap();
+    drop(admin);
+
+    drop(pool);
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).unwrap();
+    let mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let cleanup = deadpool_postgres::Pool::builder(mgr)
+        .max_size(1)
+        .build()
+        .unwrap();
+    let client = cleanup.get().await.unwrap();
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}
