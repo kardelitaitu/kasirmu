@@ -674,9 +674,32 @@ def find_wrappers(api_dir):
 
 
 def production_files(ui_dir):
+    """The graded corpus: every .ts/.tsx under ui/src except tests and the api layer.
+
+    The api exclusion has to be decided from the SAME path the walk was given, compared
+    the same way on both sides. It used to read
+
+        os.path.join("ui", "api") in root.replace("\\", "/")
+
+    which is unsatisfiable on Windows by construction: the needle is built with the native
+    separator so it is ui\\api, and the haystack has just had every backslash turned into a
+    slash, so no root can ever contain the needle. The guard fired on the Linux CI runner
+    and never here, which is the worst pairing available -- the platform where the gate is
+    developed is the one where its own exclusion is dead. Measured before the fix: 64 of
+    the 614 files the header claimed as production were ui/src/api, and every count quoted
+    from this gate tonight included them.
+
+    Both sides are normalised to forward slashes now, and the api root is derived from
+    ui_dir rather than hardcoded to the word ui, so an aimed run against a fixture tree
+    excludes its own api layer too. No separator is written into the comparison, so the
+    same line is correct on both platforms.
+    """
+    api_root = os.path.join(ui_dir, "api").replace("\\", "/").rstrip("/")
     files = []
     for root, _dirs, fnames in os.walk(ui_dir):
-        if "__tests__" in root or os.path.join("ui", "api") in root.replace("\\", "/"):
+        walked = root.replace("\\", "/").rstrip("/")
+        if "__tests__" in root or walked == api_root \
+                or walked.startswith(api_root + "/"):
             continue
         for fn in fnames:
             if fn.endswith(".ts") or fn.endswith(".tsx"):
@@ -1893,8 +1916,11 @@ def _pattern_self_test():
         print(f"    FAIL case 29  map={ {k: sorted(v) for k, v in got.items()} }")
         failures += 1
 
-    # Case 30: and a wrapper declaration is not a call to the wrapper. The api layer IS walked
-    # as production source here (see the ui/src/api exclusion note in production_files), so an
+    # Case 30: and a wrapper declaration is not a call to the wrapper. The api layer is now
+    # excluded from the corpus on both platforms, so the declaration below would be dropped
+    # by the walk; the case keeps its teeth because features/Blank.tsx is the graded file and
+    # the wrapper must still be COUNTED, so a regression in the exclusion or in the classifier
+    # both show up here. An
     # unguarded-looking 'export async function name(...)' sits in a graded file and would be
     # reported as a violation of its own definition if _is_call_site did not reject a leading
     # 'function'/'async' token. A tree whose ONLY occurrence of the name is the declaration must
@@ -1973,6 +1999,14 @@ def _coverage_self_test():
                      "loggedInvoke<any>('" + cmd + "', { t });\n")
         with io.open(os.path.join(src, "api", "probe.ts"), "w", encoding="utf-8") as fh:
             fh.write(body)
+        # An inert PRODUCTION file, always. This fixture used to put its only non-test
+        # source inside ui/src/api and rely on the walk picking it up -- which was true on
+        # Windows, where the exclusion could not fire, and false on the Linux runner, where
+        # it always could, so the whole group was green here and red there on the same
+        # bytes. The corpus has to be a corpus, not a side effect of the bug under test.
+        with io.open(os.path.join(src, "features", "Blank.tsx"), "w",
+                     encoding="utf-8") as fh:
+            fh.write("export const Blank = () => null;\\n")
         if unguarded:
             with io.open(os.path.join(src, "features", "Uses.tsx"), "w",
                          encoding="utf-8") as fh:
@@ -2166,10 +2200,10 @@ def _corpus_self_test():
     finally:
         import shutil
         shutil.rmtree(root, ignore_errors=True)
-    # The count is PARSED, never asserted as a literal: this fixture's api file also lands in
-    # the walk (the ui/src/api exclusion compares an unnormalized join against a normalized
-    # root, so it does not fire on Windows), and a case that demanded exactly 1 would fail on
-    # a number that is not the claim. The claim is nonzero -- a populated corpus grades.
+    # The count is PARSED, never asserted as a literal, and it stayed parsed after the api
+    # exclusion began firing on both platforms: what this fixture grades is its features file
+    # plus whatever the api layer contributes, and the number is not the claim. The claim is
+    # nonzero -- a populated corpus grades.
     marker = " production file(s) graded"
     at = out.find(marker)
     head = out[:at].rsplit(': ', 1)[-1] if at > 0 else ""
@@ -2277,6 +2311,66 @@ def _shell_self_test():
 
 
 
+def _api_exclusion_self_test():
+    """The api-layer exclusion must actually exclude, on whatever separator this runs on.
+
+    Case 28. production_files() drops the ui/src/api layer from the graded corpus, because
+    that layer is the lookup table every command resolves THROUGH -- find_wrappers() walks it
+    to build the map, and requiring an api wrapper to be called from behind a session token is
+    a category error. The exclusion is a string comparison, and a string comparison between a
+    join-built needle and a slash-normalised haystack has an answer that depends on the
+    operating system: on Windows the needle is ui\api and the haystack cannot contain a
+    backslash, so the test is unsatisfiable and the guard has never fired here while firing
+    correctly on the Linux CI runner.
+
+    Built the way production_files() builds it -- os.path.join for the path, then component
+    comparison for the verdict, never a literal separator on either side -- so on this OS the
+    case goes RED while the bug is live and GREEN once it is fixed, and on Linux it is green
+    both ways rather than silently agreeing with a broken Windows run. The corpus is the real
+    tree: a fixture I wrote would be a fixture I chose, and the tracked files under
+    ui/src/api are the reason the count in the header has been wrong all night.
+    """
+    print("  verify-scoped-reads self-test / the api layer must be excluded from the walk")
+    failures = 0
+    ui_dir = os.path.join(REPO, "ui", "src")
+    api_dir = os.path.join(ui_dir, "api")
+
+    def under_api(path):
+        # Compare COMPONENTS, not substrings: a substring test on separators is the exact
+        # mistake this case exists to catch.
+        parts = os.path.normcase(os.path.abspath(path)).split(os.sep)
+        tail = os.path.normcase(os.path.abspath(api_dir)).split(os.sep)
+        return parts[:len(tail)] == tail
+
+    present = [fn for fn in (os.listdir(api_dir) if os.path.isdir(api_dir) else [])
+               if fn.endswith((".ts", ".tsx"))]
+    if not present:
+        print(f"    FAIL premise  {api_dir} holds no .ts file, so an empty exclusion proves "
+              "nothing")
+        return failures + 1
+
+    files = production_files(ui_dir)
+    leaked = sorted(p for p in files if under_api(p))
+    if not leaked:
+        print(f"    ok   case 28  the exclusion fired -- {len(files)} graded file(s), none "
+              f"inside api,")
+        print(f"                 {len(present)} api file(s) excluded on os.sep={os.sep!r} "
+              "(needle would be ui/api)")
+    else:
+        print(f"    FAIL case 28  the exclusion did not fire: {len(leaked)} of {len(files)} "
+              "graded file(s)")
+        print(f"                 live inside {api_dir}")
+        print(f"                 needle=os.path.join('ui','api')={os.path.join('ui', 'api')!r} "
+              "against a haystack")
+        print("                 normalised to forward slashes -- unsatisfiable on this OS. "
+              "First leaks:")
+        for p in leaked[:4]:
+            print("                 " + os.path.relpath(p, REPO).replace(chr(92), "/"))
+        failures += 1
+    return failures
+
+
+
 def self_test():
     print("  verify-scoped-reads self-test")
     failures = 0
@@ -2316,6 +2410,7 @@ def self_test():
     failures += _wrapper_self_test()
     failures += _coverage_self_test()
     failures += _pattern_self_test()
+    failures += _api_exclusion_self_test()
     failures += _schema_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
