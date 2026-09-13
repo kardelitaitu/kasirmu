@@ -257,8 +257,8 @@ manager-journal.md
 # salvage/registration_gate_tests.rs are the only surviving copies of git
 # objects unreachable from any ref (git rev-list --objects --all misses them).
 /.agents/salvage/
-/.agents/devmock-phase*
-/.agents/tauri-api.pre-phase*.ts
+/.agents/devmock-*
+/.agents/tauri-api.pre-*.ts
 /.agents/gate-cont*.sh
 /.agents/gate-continuation.sh
 /.agents/gate-wave-12.sh
