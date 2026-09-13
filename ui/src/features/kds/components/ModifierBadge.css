@@ -1,0 +1,61 @@
+/* ui/src/features/kds/components/ModifierBadge.css
+ *
+ * Status-pill badges for KDS ticket modifiers (todo-kds-agents-3, Phase 3.1).
+ * Registered under the KdsScreen entry in screenExtraction.test.ts together
+ * with components/ModifierBadge.tsx. Token names from
+ * ui/src/frontend/themes/tokens.css only — no raw hex.
+ *
+ * Tone semantics follow the design language: Danger = destroy (removal
+ * requests, e.g. "NO ONIONS"), Success = confirm/addition ("EXTRA CHEESE"),
+ * neutral = everything else. Color is never the only signal — the glyph
+ * (− / + / •) carries the same meaning.
+ */
+
+.kds-modifier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  max-width: 100%;
+  padding: var(--space-0_5) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kds-modifier-badge-glyph {
+  flex-shrink: 0;
+  font-weight: var(--font-weight-bold);
+}
+
+.kds-modifier-badge-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Removal request — the "act now / caution" surface: red subtle wash + border. */
+.kds-modifier-badge--removal {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+}
+
+/* Addition request — green subtle wash + border. */
+.kds-modifier-badge--addition {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+/* Anything the classifier could not confidently read as add/omit. */
+.kds-modifier-badge--neutral {
+  background: var(--color-bg-input);
+  border-color: var(--color-border);
+  color: var(--color-fg-secondary);
+}

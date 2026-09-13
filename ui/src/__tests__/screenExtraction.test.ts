@@ -178,7 +178,7 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'KdsScreen',
     tsx: 'kds/KdsScreen.tsx',
-    css: ['kds/KdsScreen.css', 'kds/KdsCompletedView.css'],
+    css: ['kds/KdsScreen.css', 'kds/KdsCompletedView.css', 'kds/components/ModifierBadge.css'],
     dynamicClassPrefixes: [
       // Static array of complete names in KdsLayoutMasonry.tsx:70.
       'kds-column--',
@@ -233,10 +233,18 @@ const SCREENS: ScreenEntry[] = [
       // Global screen-reader-only utility (frontend/themes/components.css),
       // outside this screen's scanned stylesheet list.
       'sr-only',
+      // Ternary COMPARISON values inside ModifierBadge.tsx's className
+      // template (`tone === 'removal' ? ' kds-modifier-badge--removal' : …`).
+      // The parser fishes every quoted string out of a className template,
+      // so the bare tone names read as class names. Same category as the
+      // 'dinein'/'takeaway' entries above: data, not selectors.
+      'removal',
+      'addition',
     ],
     additionalTsx: [
       'kds/KdsLayoutMasonry.tsx',
       'kds/components/KdsTicketCard.tsx',
+      'kds/components/ModifierBadge.tsx',
       'kds/KdsCompletedView.tsx',
       'kds/KdsHamburgerPanel.tsx',
       'kds/KdsScreenFooter.tsx',

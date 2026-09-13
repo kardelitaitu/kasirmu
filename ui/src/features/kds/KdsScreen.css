@@ -1604,19 +1604,9 @@
   gap: var(--space-0_5);
 }
 
-.kds-ticket-modifier-row {
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-normal);
-  color: var(--kds-subtle);
-  padding-left: var(--space-4);
-  line-height: 1.4;
-  letter-spacing: 0.01em;
-}
-
-.kds-ticket-modifier-row::before {
-  content: '• ';
-  color: var(--kds-dim);
-}
+/* .kds-ticket-modifier-row + its ::before bullet were removed together with
+   the raw-text rendering in KdsTicketCard: modifiers now render through
+   <ModifierBadge /> (components/ModifierBadge.css), which owns the pill. */
 
 .kds-ticket-notes {
   font-size: var(--text-sm);

@@ -6,6 +6,7 @@ import { requiredLocalized } from '@/frontend/shared';
 import { getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem } from '@/api/kds';
 import { createCooldownWrapper } from '@/features/kds/hooks/useActionCooldown';
 import { contrastText } from '@/features/kds/kdsCardColors';
+import { ModifierBadge } from '@/features/kds/components/ModifierBadge';
 import { canAdvanceKdsStatus } from '@/features/kds/kdsStatus';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 
@@ -435,7 +436,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                             {item.modifiers.length > 0 && (
                               <span className="kds-ticket-modifiers">
                                 {item.modifiers.map((mod, mi) => (
-                                  <span key={mi} className="kds-ticket-modifier-row">{mod.choice}</span>
+                                  <ModifierBadge key={mi} modifier={mod} />
                                 ))}
                               </span>
                             )}
