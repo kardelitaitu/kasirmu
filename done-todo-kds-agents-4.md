@@ -1,6 +1,6 @@
 # Orchestrator Agent 4: Dual-Terminal Live Validation of LAN KDS Sync
 
-**Document:** `todo-kds-agents-4.md`
+**Document:** `done-todo-kds-agents-4.md` (opened as `todo-kds-agents-4.md`)
 **Role:** Orchestrator Agent 4 (Multi-Terminal Proof Architect)
 **Goal:** Prove the kds-agents-2 feature works as *running code*, not just compiled wiring: a simulated station tablet and a simulated Expo tablet connected to a live `LanEventForwarder`, receiving correctly filtered `kds.*` events and a valid reconnect snapshot.
 
@@ -37,7 +37,7 @@
 ## ✅ Results stamp — 2026-09-13 (Orchestrator Agent 4)
 
 **Code commit:** `0302039258` — `test(kds-lan): dual-terminal live validation - filtered broadcast, buffer replay, reconnect snapshot`
-New `apps/desktop-client/src/commands/kds_lan_live_tests.rs` (657 lines, 5 tests) + 4-line `#[cfg(test)] #[path=...] mod` append to `commands/kds.rs`. No `#[tauri::command]` added — the command surface and the 449 floor are untouched (`drift_pin_registration_floor_is_met` stayed green).
+New `apps/desktop-client/src/commands/kds_lan_live_tests.rs` (657 lines, 5 tests) + 4-line `#[cfg(test)] #[path=...] mod` append to `commands/kds.rs`. No `#[tauri::command]` added — this commit touches no registration surface at all (for the live state of the 449 floor in a multi-session tree, see the verification note below).
 
 ### 0. Phase 4.0 — deepest layer actually reached
 
@@ -80,7 +80,7 @@ $ cargo test -p oz-pos-app kds_lan_live   # x5 consecutive: 5/5 identical result
 $ cargo test -p oz-pos-app --lib state    # 13/13 green (unchanged)
 ```
 
-`--lib registration`: all 10 baseline tests green. Two ADDITIONAL tests (`pin_a_comment_between_the_paren_and_the_argument_is_not_the_argument`, `pin_the_offender_predicate_refuses_a_path_outside_the_sweep_root`) appeared in `registration_gate_tests.rs` as uncommitted working-copy edits of the concurrent rules session (not in any HEAD blob at check time) and were red at 11:35 for UI invoke-surface classifier reasons — unrelated to this file, which touches no TS, no `ui/**` and no command surface. This file owns neither that red nor its fix.
+`--lib registration`: the original 10 baseline tests were green at every check through the code commit (11:28 baseline and 11:35–11:38 rechecks). A post-commit recheck at 11:41 found two reds, BOTH owned by the concurrent sessions and neither reachable by this commit: (a) `drift_pin_registration_floor_is_met` — the sibling's in-flight `lib.rs`/`kds_routing.rs` work now registers **451** commands against the file's still-449 floor; this commit adds ZERO `#[tauri::command]` (proven by `git show --stat 0302039258`: one test file + a `#[path]` mod append), so the ratchet belongs to whoever raises the floor in their own JOURNAL'd pass; (b) `pin_a_comment_between_the_paren_and_the_argument_is_not_the_argument` — one of two new pins that appeared in `registration_gate_tests.rs` as working-copy-only edits of the rules session (absent from every HEAD blob at check time); its companion `pin_the_offender_predicate_...` went green minutes later as that session progressed, confirming in-flight authorship. This file touches no TS, no `ui/**`, no command surface — it owns none of these reds and none of their fixes.
 
 rustfmt `--edition 2024` applied to exactly the two touched files. `create mode` in the commit: exactly `kds_lan_live_tests.rs`.
 
