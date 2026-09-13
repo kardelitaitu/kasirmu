@@ -20,8 +20,7 @@ async fn serve_once(
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let server_url = format!("http://{}", listener.local_addr().unwrap());
-    let captured: Arc<tokio::sync::Mutex<Option<String>>> =
-        Arc::new(tokio::sync::Mutex::new(None));
+    let captured: Arc<tokio::sync::Mutex<Option<String>>> = Arc::new(tokio::sync::Mutex::new(None));
     let captured_server = captured.clone();
     tokio::spawn(async move {
         let Ok((mut socket, _)) = listener.accept().await else {
@@ -31,7 +30,9 @@ async fn serve_once(
         let mut buf = vec![0_u8; 16 * 1024];
         // Until headers terminate and the declared body has fully arrived.
         for _ in 0..8 {
-            let Ok(n) = socket.read(&mut buf).await else { break };
+            let Ok(n) = socket.read(&mut buf).await else {
+                break;
+            };
             if n == 0 {
                 break;
             }
@@ -45,7 +46,8 @@ async fn serve_once(
                 .lines()
                 .find_map(|l| {
                     let (k, v) = l.split_once(':')?;
-                    k.trim().eq_ignore_ascii_case("content-length")
+                    k.trim()
+                        .eq_ignore_ascii_case("content-length")
                         .then(|| v.trim().parse().ok())
                         .flatten()
                 })
@@ -89,10 +91,15 @@ async fn qris_charge_posts_order_shape_with_bearer() {
         "wrong path: {request}"
     );
     assert!(
-        request.to_ascii_lowercase().contains("authorization: bearer jwt-abc"),
+        request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer jwt-abc"),
         "charge did not carry the sync bearer token: {request}"
     );
-    assert!(request.contains("idempotency_key"), "body lost the key: {request}");
+    assert!(
+        request.contains("idempotency_key"),
+        "body lost the key: {request}"
+    );
 }
 
 #[tokio::test]
