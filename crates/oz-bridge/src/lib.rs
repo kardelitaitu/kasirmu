@@ -60,6 +60,10 @@ pub mod staff;
 pub mod edc;
 /// Gift-card command bodies (Wave D). Not yet extracted.
 pub mod gift_cards;
+/// QRIS Auto dynamic Midtrans charge + settlement-poll command bodies
+/// (agents-3 3.1b — born on the bridge, delegated by the desktop; the
+/// tablet still inlines it pending its own `BridgeCtx` plumbing).
+pub mod qris_auto;
 /// HAL hardware control command bodies (Wave D). Not yet extracted.
 pub mod hardware;
 /// Inventory CRUD and stock-adjustment command bodies (Wave C). Not yet extracted.

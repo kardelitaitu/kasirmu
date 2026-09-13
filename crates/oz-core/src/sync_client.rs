@@ -820,6 +820,172 @@ pub async fn fetch_active_memos_from_server(
     ))
 }
 
+// ── QRIS Auto (dynamic Midtrans charge via the cloud) ───────────────
+
+/// Result of a dynamic QRIS charge (`POST /api/payment/midtrans/qris`).
+/// Mirrors the cloud's `ChargeResponse` verbatim — note `status` is
+/// `qr_issued`: the QR exists, nobody has paid yet (PAY-6 two-phase
+/// contract; the settlement signal arrives via `qris_status_from_server`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QrisChargeResult {
+    /// Midtrans order id — the cloud ledger key and the status-poll handle.
+    pub order_id: String,
+    /// The QR payload to render. Omitted (null) on channels that return a
+    /// hosted payment page URL instead of an inline string.
+    pub qr_string: Option<String>,
+    /// `qr_issued` at issuance time.
+    pub status: String,
+    /// Echo of the requested amount, minor units (IDR exponent 0).
+    pub amount_minor: i64,
+    /// Echo of the currency (`IDR`).
+    pub currency: String,
+    /// Echo of the local sale this issuance is bound to.
+    pub sale_id: String,
+    /// QR validity window in seconds — the UI countdown's single source.
+    pub expires_in_secs: u32,
+}
+
+/// Result of a settlement poll (`GET /api/payment/midtrans/{order_id}/status`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QrisStatusResult {
+    /// Echo of the queried order id.
+    pub order_id: String,
+    /// Verbatim cloud ledger status (`issued`, `pending`, `settlement`,
+    /// `capture`, `expire`, `cancel`, `amount_mismatch`, ...).
+    pub status: String,
+    /// True iff the ledger recorded `settlement`/`capture` — the poll exit.
+    pub settled: bool,
+}
+
+/// Wire body for the charge request. Private: the caller passes the parts.
+#[cfg(feature = "sync-http")]
+#[derive(Debug, serde::Serialize)]
+struct QrisChargeBody {
+    sale_id: String,
+    amount_minor: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    idempotency_key: Option<String>,
+}
+
+/// Issue a dynamic QRIS charge through the cloud (async). The bearer token
+/// is the stored sync API key — the same credential the push and pull paths
+/// use, and the ONLY tenant authority: the cloud attributes the ledger row
+/// to the token's tenant, never to anything in the body. An idempotency key
+/// that has already been charged returns the SAME live QR (PAY-2), so a
+/// retry after a dropped response is safe.
+#[cfg(feature = "sync-http")]
+pub async fn qris_charge_on_server(
+    config: &SyncConfig,
+    sale_id: &str,
+    amount_minor: i64,
+    idempotency_key: Option<&str>,
+) -> Result<QrisChargeResult, SyncHttpError> {
+    let url = format!(
+        "{}/api/payment/midtrans/qris",
+        config.server_url.trim_end_matches('/')
+    );
+
+    let mut request = reqwest::Client::builder()
+        // The cloud waits on Midtrans inside this request; the gateway's
+        // own budget is smaller than 30 s, so this ceiling only fires on
+        // genuinely stuck connections. Same client ceiling as the memo read.
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .post(&url)
+        .json(&QrisChargeBody {
+            sale_id: sale_id.to_owned(),
+            amount_minor,
+            idempotency_key: idempotency_key.map(str::to_owned),
+        });
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<QrisChargeResult>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub when `sync-http` is off — QRIS Auto is definitionally a cloud
+/// feature, so there is no honest local success to fake.
+#[cfg(not(feature = "sync-http"))]
+pub async fn qris_charge_on_server(
+    _config: &SyncConfig,
+    _sale_id: &str,
+    _amount_minor: i64,
+    _idempotency_key: Option<&str>,
+) -> Result<QrisChargeResult, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
+/// Poll one QRIS charge's settlement status from the cloud (async). A 404
+/// surfaces as `SyncHttpError::Server { status: 404, .. }` — the cloud
+/// answers the same 404 for unknown orders and other tenants' orders
+/// (uniform miss), so callers must treat 404 as "not visible to us", never
+/// as an authorization bug to refresh around.
+#[cfg(feature = "sync-http")]
+pub async fn qris_status_from_server(
+    config: &SyncConfig,
+    order_id: &str,
+) -> Result<QrisStatusResult, SyncHttpError> {
+    let url = format!(
+        "{}/api/payment/midtrans/{}/status",
+        config.server_url.trim_end_matches('/'),
+        order_id
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .get(&url);
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<QrisStatusResult>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub used when `sync-http` feature is disabled.
+#[cfg(not(feature = "sync-http"))]
+pub async fn qris_status_from_server(
+    _config: &SyncConfig,
+    _order_id: &str,
+) -> Result<QrisStatusResult, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
 #[cfg(test)]
 #[path = "sync_client_tests.rs"]
 mod tests;

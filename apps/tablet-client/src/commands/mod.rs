@@ -65,6 +65,8 @@ pub mod products;
 pub mod promotions;
 /// Purchasing / supplier / purchase-order commands.
 pub mod purchasing;
+/// QRIS Auto dynamic charge & settlement-poll IPC (cloud Midtrans).
+pub mod qris_auto;
 /// Receipt format commands (receipt-format axis).
 pub mod receipt_format;
 /// Refund commands.

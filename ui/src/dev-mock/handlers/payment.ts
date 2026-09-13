@@ -94,6 +94,16 @@ function setMockLocalPaymentMethods(unwrapArgs: UnwrapArgs, args: unknown): Arra
   return getMockLocalPaymentMethods(unwrapArgs, args);
 }
 
+// ── QRIS Auto (cloud dynamic charge mock) ───────────────────────────
+// Scripted so the browser build can walk the WHOLE checkout story: the
+// charge issues a fake payload, and the order flips to `settlement` on the
+// THIRD status poll — mirroring the real race where the settlement webhook
+// lands while the UI is still polling. A never-polled order simply stays
+// unsettled, like a real abandoned QR.
+let mockQrisSeq = 0;
+/** orderId → remaining polls before it settles. */
+const mockQrisPollsLeft = new Map<string, number>();
+
 export function createPaymentHandlers(deps: PaymentDeps): Record<string, MockHandler> {
   const { unwrapArgs } = deps;
   return {
@@ -133,6 +143,37 @@ export function createPaymentHandlers(deps: PaymentDeps): Record<string, MockHan
   // Local payment methods (regional slice 6) — same parity rule.
   'get_local_payment_methods_scoped': (args) => getMockLocalPaymentMethods(unwrapArgs, args),
   'set_local_payment_methods_scoped': (args) => setMockLocalPaymentMethods(unwrapArgs, args),
+
+  // ── QRIS Auto dynamic charge + status poll ─────────────────────────
+  'qris_auto_charge_scoped': (args) => {
+    const a = unwrapArgs<{ saleId?: string; amountMinor?: number }>(args);
+    mockQrisSeq += 1;
+    const orderId = `QRIS-DEV-${mockQrisSeq}`;
+    mockQrisPollsLeft.set(orderId, 2);
+    return {
+      orderId,
+      // Real payloads are EMVCo TLV strings; a marker string renders fine
+      // through the QR component and is unmistakable in screenshots.
+      qrString: `DEVQRIS|${orderId}`,
+      status: 'qr_issued',
+      amountMinor: a.amountMinor ?? 0,
+      currency: 'IDR',
+      saleId: a.saleId ?? 'sale-dev',
+      expiresInSecs: 300,
+    };
+  },
+  'qris_auto_status_scoped': (args) => {
+    const { orderId } = unwrapArgs<{ orderId?: string }>(args);
+    const id = orderId ?? '';
+    const left = mockQrisPollsLeft.get(id);
+    if (left === undefined) return { orderId: id, status: 'issued', settled: false };
+    if (left <= 1) {
+      mockQrisPollsLeft.delete(id);
+      return { orderId: id, status: 'settlement', settled: true };
+    }
+    mockQrisPollsLeft.set(id, left - 1);
+    return { orderId: id, status: 'issued', settled: false };
+  },
 
   // ═══════════════════════════════════════════════════════════════
   // TERMINALS

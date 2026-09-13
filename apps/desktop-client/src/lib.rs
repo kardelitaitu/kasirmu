@@ -1321,6 +1321,8 @@ pub fn run() {
             commands::sync::sync_run_scoped,
             commands::sync::sync_pull_scoped,
             commands::sync::settings_changed_sink_scoped,
+            commands::qris_auto::qris_auto_charge_scoped,
+            commands::qris_auto::qris_auto_status_scoped,
             commands::settings::get_hardware_settings_scoped,
             commands::purchasing::list_suppliers_scoped,
             commands::purchasing::get_supplier_scoped,

@@ -761,6 +761,8 @@ pub fn run() {
                 commands::sync::sync_run_scoped,
                 commands::sync::test_sync_connection_scoped,
                 commands::sync::update_sync_settings_scoped,
+                commands::qris_auto::qris_auto_charge_scoped,
+                commands::qris_auto::qris_auto_status_scoped,
                 commands::tables::assign_table_order_scoped,
                 commands::tables::create_table_scoped,
                 commands::tables::delete_table_scoped,
