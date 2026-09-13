@@ -261,10 +261,10 @@ fn fn_sources(dir: &Path, want: &BTreeSet<String>) -> BTreeMap<String, Vec<Strin
             }
             let name: String = chars[i + 2..j].iter().collect();
             let name = name.trim().to_string();
-            if want.contains(&name) {
-                if let Some((sig, body)) = grab(&chars, j) {
-                    map.entry(name.clone()).or_default().push(sig + &body);
-                }
+            if want.contains(&name)
+                && let Some((sig, body)) = grab(&chars, j)
+            {
+                map.entry(name.clone()).or_default().push(sig + &body);
             }
             i = j + 1;
         }
