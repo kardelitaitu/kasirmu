@@ -1,101 +1,101 @@
 # todo-font-system.md — cross-OS typography
 
-Goal: every named font face resolves **on a counter terminal with no egress**, on all three shipped OS targets, and a gate proves it. Nothing here is pushed. Measured 03:53, corrected 04:25, reformatted 04:30. Re-derive any number before acting, this tree drifts by the minute.
+**REVISION 3, 04:47. Two independent reviews, then my own re-measurement of both.** Revision 2 was written on a claim set that a fact-checker widened and partly corrected again; five counts drifted and two claims of mine were still false. **Owner: the D2 re-ruling request in Phase 3 still stands, and it is now better informed.**
 
-Owner rulings: **URGENT** not cosmetic (03:50) · approach **D2, recommendation (c)** — bundle both faces, keep the fallback tails, remove the network dependency, and a gate that proves no face needs the network.
-
----
-
-## Phase 0 — close the last unknowns (read-only, no code)
-
-- [ ] Does any chosen mono face carry **Rp (U+20A5 RUPEE SIGN)** on screen — inspect the candidate faces, not the docs
-- [ ] Does the **kiosk** surface need a different size or weight from the counter UI — a designer decides, a measurement cannot
-- [ ] Is an **OFL notice file** acceptable to add to a proprietary deb — one file, normally a formality, owner sign-off
-- [ ] Confirm `--font-sans`/`--font-mono` are defined on `:root` and never redefined in a `[data-theme]` block — the first two looked true, re-run it, the last check of this plan nearly shipped a false negative
-
-**Confirmation** — four one-line answers, each citing a file and a line, and a written call on whether Phase 2 is urgent or cosmetic for the *on-screen* surfaces. **No file edited in this phase.**
+Goal: state honestly what is broken, fix the part that is a real defect at **zero bytes**, and separate that from the part that is a **visual change** needing design sign-off.
 
 ---
 
-## Phase 1 — the gate. Ships **before** the fix, always
+## What is actually true (each re-measured)
 
-- [ ] `scripts/font-system.expect.json` — stack-neutral contract: ideal faces, required generic tails, system-face allowlist, no-network rule, `required_scripts`
-- [ ] `scripts/verify-font-ports.py` — the gate, with a per-stack adapter, `css_adapter` being the only file that knows what CSS looks like
-- [ ] It **FAILS on today’s tree**, naming `tokens.css:148` and `index.html:99` — a fix landing first leaves no proof the check can fail
-- [ ] `--self-test` **blocking**, `--census` **informational** in CI (the `verify-ftl-orphans` shape)
-- [ ] Wire into `dev-ci.yml#static-gates` and `scripts/check.sh` — census step only
-- [ ] Owner adds the `scripts/gates.json` record — `verify-ci-docs-drift` is **blocking**, so a step without a record looks unenforced
+- **Correction to the above, from review.** Revision 2 said **0 font files**, and that is true only of *tracked* files, which the line did not say. On disk there are **12 woff/woff2 files in `website/dist/_astro/`** (gitignored build output, `.gitignore:17`) and **~129 in `node_modules`**. Both faces are therefore already vendored, built and shipped **for the website**. That strengthens the plan, the mechanism is proven in-house, and it weakens my phrasing.
+- **Correction, second one.** Revision 2 said one stylesheet, **no second family**. Wrong at repo scope — **JetBrains Mono is CDN-hotlinked in 4 HTML files**: `dev/design-language.html:9`, `dev/kds-prototype.html:11`, `website/public/admin/login.html:10`, `website/public/admin/index.html:10`. True within `ui/`, false in the repo. My grep was scoped to one directory and reported as if it were global.
+- **The pre-existing gate nobody counted.** `ui/src/__tests__/themeTokenCompliance.test.ts` asserts font-family values already, baseline 0, blocking, in `dev-ci.yml#ui-test`. So **CI steps mentioning `font` = 0 is literally true and materially misleading**, the check exists, it is just a test rather than a step. Both critics and I said tonight proved nothing watches fonts. **Something does.** My claim is retired.
+- **Count drift between my two measurements, same hour:** bare `var(--font-mono)` **120 to 117** (total 129, not 132) · HAL receipt files **29 to 31** · `.id.ftl` **26 to 27** (54 `.ftl` total, README's 52 stale too) · CSS files mentioning `font-family` **84 to 86** · kiosk is **1** `.ftl` pair, not 6 · the CDN `link` **element** opens at `index.html:98`, `:99` is its `href` · `oz-pos.desktop` is at `packaging/linux/`, not under `deb/` · hardcoded `C:` in `.rs` is **3 lines in 3 files, all tests**, plus 17 with forward-slash form, so "1, in a test" understates it
 
-**Confirmation** — `--self-test` exit **0** and PASS; the gate exit **1** on today’s tree with a count **and its unit**; refusal cases exit **2**, `error:` on stderr, **0 bytes stdout, no count printed**; five forced mutations each redden it — print deleted · tail removed · a new bare family added · a network-only face · **an empty `adapters` section in the contract**; healthy path byte-identical to a baseline placed inside `scripts/`; **0 findings** on a synthetic tree where every face is bundled.
-
----
-
-## Phase 2 — bundle the faces (blocked on the Phase 0 notice answer)
-
-- [ ] Inter woff2 subset to `latin` + `latin-ext` under `ui/src/assets/fonts/`
-- [ ] A mono face carrying **`Rp`** and box-drawing
-- [ ] `@font-face` block — `ui/src` currently has **0**
-- [ ] **Remove** the CDN `<link>` at `ui/index.html:99` and its two `preconnect` hints at `:96`/`:97`
-- [ ] Add the OFL text + third-party notice, placed beside `packaging/linux/deb/`
-- [ ] `tokens.css:146`/`:148` fallback tails stay **byte-identical** — they are correct and they are the safety net
-- [ ] One pathspec commit, `feat(ui)`
-
-**Confirmation** — bundled font files **> 0** · `@font-face` count **> 0** · `grep -c googleapis ui/index.html` → **0** · census findings move by **exactly the number of faces bundled** · **the app renders identically with the network disabled** — the assertion this whole plan exists to make true · `dev-ci.yml` census still exit **1** only if a real gap remains.
+- **CSP already kills every remote face in the shipped app.** Both apps/desktop-client/tauri.conf.json and apps/tablet-client/tauri.conf.json set font-src to self plus data:, and fonts.googleapis.com / fonts.gstatic.com appear in **neither**. In every packaged artifact on all three targets, **Inter has never loaded and the app has never touched the network for fonts**.
+- **So the offline-first promise is NOT broken in shipped builds.** It is broken in **dev/prod fidelity** — bare-browser vite dev has no such CSP, so designers and E2E see **Inter** while customers have only ever seen **system-ui**. Smaller and different defect.
+- **ui/index.html:99 is dead code in production and live code in development** — the most misleading shape an asset reference can take. The link plus its two preconnect hints have never done anything in what we ship.
+- **The repo already solves this, in the other app.** website/src/styles/global.css carries @import of @fontsource-variable/inter and @fontsource-variable/jetbrains-mono under the comment Self-hosted variable fonts (fontsource). **ui/package.json has 0 fontsource deps.** Both faces, already vendored, already used, and the precedent is merged.
+- **0 font files are tracked in git** (git ls-files *.woff2 *.woff *.ttf -> 0). The fontsource files live in node_modules and are pulled at build, so licensing is **not** an open question, the npm packages carry their own licences.
+- Fleet scale for context: **23** tracked scripts/verify-*.py gates. A new one is **#24**, not a rounding error.
 
 ---
 
-## Phase 3 — promote census → blocking
+## Claims retired — mine, three of them, all falsified by measurement
 
-- [ ] **Two consecutive green census waves** first
-- [ ] Narrow **hard** check: the two token tails end in a generic keyword
-- [ ] Wide check stays **census**: every named face resolves
+- **D5, URGENT as an offline-first violation.** False as stated. Nothing remote loads in production. The urgency came from believing a link tag was an actual fetch, and I ran no CSP check before writing the verdict.
+- **mono lands on Courier New.** Overstated to the point of wrong. tokens.css:148 orders ui-monospace **before** monospace (verified, the literal string ui-monospace, monospace is present), so the generic keyword is not first in line. *What ui-monospace resolves to inside WebView2 / WKWebView / WebKitGTK is an external fact I cannot measure from this repo* — the critic asserts Consolas/Cascadia and DejaVu Sans Mono, plausibly, unverified here.
+- **the mono face must carry Rp (U+20A5).** Invented from a wrong codepoint. U+20A5 occurrences in ui/src -> **0**. U+20B9 -> **0**. **IDR renders as the ASCII bigram Rp, 27 occurrences.** I conflated a two-letter string with a currency glyph, then built a Phase 0 step and a Phase 2 selection constraint on it. For the record, U+20A5 is KIP SIGN and RUPEE SIGN is U+20B9. I had both wrong.
+- **Also still standing from revision 1:** the original claim Inter is missing from the repo was *closer* to the shipped truth than my correction away from it. And revision 1 prose cites styles/tokens.css; the real path is ui/src/frontend/themes/tokens.css.
 
-**Confirmation** — `dev-ci.yml` step exit **0** blocking · the `docs/records/audit-open-findings.md` entry closed by a **code** commit, not a docs one — *a sha in a docs commit proves a sentence was filed, not a defect removed.*
+**The lesson, which is why revision 1 was confident: the check that inverts the answer is the one you did not think to run.** I verified the link existed. I never verified it could fire.
 
 ---
 
-## Phase 4 — optional hardening, decide after Phase 3
+## Phase 1 — the red test (real defect, ~60 lines, existing idiomatic mechanism)
 
-- [ ] Give the **120 bare `var(--font-mono)`** call sites a fallback value, or accept them, measured 12 of 132 carry one
-- [ ] Add a real `fc-match monospace` run to a Linux CI job — Linux **is** a shipped target, see notes
+- [ ] **Add to the existing ui/src/__tests__/themeTokenCompliance.test.ts, do NOT create a new file** — on review, a new fontTokenCompliance.test.ts would duplicate a live gate, :313 already fails any font-family lacking var(--font- with KNOWN_VIOLATIONS_BASELINE = 0 at :35, inside dev-ci.yml#ui-test. A second compliance test in a second file is the mirror-churn mistake of the cancelled gate, at smaller scale
+- [ ] Rule 1, no http:// or https:// font reference in ui/index.html
+- [ ] Rule 2, both --font-* tokens end in a generic keyword — **already true, verified**, this is regression cover only. Not the same check as the existing one, themeTokenCompliance.test.ts:313 asserts a declaration must use a var(--font-*) token, not that the token value ends generic, and its list at :101-103 holds sans-serif, monospace and ui-monospace for a different validation
+- [ ] Rule 3, every @font-face url() is **relative** — **downgraded on review, this is near-vacuous today**, 0 @font-face and 0 remote url() exist, so it is cheap future insurance and must not be sold as the finding
+- [ ] It **fails today**, naming ui/index.html:99
 
-**Confirmation** — either the call sites changed with the census count moving accordingly, or the decision to leave them is written here with its reason. Silence is not a decision.
+**Confirmation** — cd ui && npx vitest run src/__tests__/fontTokenCompliance.test.ts -> **exit 1** on todays tree, then **exit 0** after Phase 2. It runs inside the existing dev-ci.yml#ui-test job, so **no new CI step, no gates.json record, no check.sh edit, no mirror churn.** Precedent is established, not invented, themeTokenCompliance.test.ts already parses all CSS via readFileSync with drift baselines, and autofillCompliance.test.ts **already parses ui/index.html** (3 refs).
+
+---
+
+## Phase 2 — the zero-byte fix (correctness only, changes nothing a customer sees)
+
+- [ ] Delete the dead CDN link and its two preconnect hints from ui/index.html
+- [ ] Re-read the splash/loading fallback in ui/index.html (around :88, offset **unverified**, I hit a truncated print there and will not cite a line I could not read) and remove Inter from any first position production cannot satisfy
+- [ ] One pathspec commit, chore(ui)
+
+**Confirmation** — Phase 1 test (now an added case in the existing file) **exit 0** · grep -c googleapis ui/index.html -> **0** · **zero pixels change in the packaged app**, which is the point, this deletes code that never executed · ui/dist builds clean.
+
+---
+
+## Phase 3 — the visual change (owner re-ruling required; NOT a bug fix)
+
+**Nobody has ever seen this app in Inter on a POS terminal.** Bundling it is a **design change** that shifts line metrics across **84 CSS files** under ui/src that mention font-family (measured, the critic said 61). Buttons, columns and dense tables reflow. That is the only real regression surface in this plan and it deserves screenshots and sign-off, not a fix message.
+
+- [ ] **Owner, re-rule:** do we want the app to *look like* the design token claims, or to *be* honest that it renders in system-ui? Both are defensible. Revision 1 assumed the first because I mis-measured the second.
+- [ ] If bundling, follow the **website precedent**, @fontsource-variable/inter and @fontsource-variable/jetbrains-mono into ui/package.json (no postinstall script, so no install-approval hurdle), a new ui/src/frontend/themes/fonts.css with the @font-face rules, imported beside tokens.css
+- [ ] tokens.css:146 and :148 fallback tails stay **byte-identical** — they are correct and they are the safety net
+- [ ] No CSP change needed, bundled assets are same-origin self. **Verify the face actually renders after bundling** — that verification is the exact link I skipped tonight
+- [ ] Separate commit, feat(ui), with before and after screenshots, and the bundle-budget check
+
+**Confirmation** — a real visual review, not a green exit code. If Phase 3 is declined, Phase 1 + 2 still stand on their own and this file becomes dev/prod fidelity fixed.
+
+---
+
+## Cancelled from revision 1, with the reason, so nobody resurrects it
+
+- **scripts/verify-font-ports.py (gate #24) plus font-system.expect.json contract plus per-stack adapters.** Cancelled. It builds a Python parser and an abstraction with one implementer to prove a production defect that **does not exist**, at 500 to 900 LOC across a new gate, its gates.json record, a dev-ci step, a check.sh step and doc mirrors policed by a blocking drift gate. **The same proof lives in ~60 lines of an established test shape.** Keep the design law below as a sentence, not as code.
+- **mono face must carry Rp plus box-drawing.** Cancelled, wrong codepoint, see retired claims.
+- **120 bare var(--font-mono) sites need a fallback.** Deferred, not urgent, the tokens are defined on :root and never redefined in any data-theme block, so those sites resolve today.
+- **Not cancelled, still genuinely open:** is kiosk size and weight a design question. That is a designers answer, not a measurement.
 
 ---
 
 ## Notes
 
-**The finding, in one line.** `README.md` promises *"Operates without internet connectivity"*; `ui/index.html:99` fetches `fonts.googleapis.com/css2?family=Inter:wght@10…` — **the only stylesheet, one family, no second.** An offline-first POS with a network-fetched UI font is not offline-first in the sense anyone means. **Mono is worse than sans: it has no source at all**, bundled *or* CDN, so four absent faces fall through the generic keyword to **Courier New on Windows — narrower than characters**, on the platform we ship. Cost of fixing, roughly **60–120 KB** subset Inter + **40–80 KB** subset mono, against an installer already shipping **53 asset files** plus a webview runtime. **The CDN was never chosen for size; it was convenience, and convenience is exactly what a POS cannot buy.**
+**Review accounting, mine too.** The design critic asserted 12 woff2 subsets measured in-tree and 0 font files, both true of git, neither true of disk, its own figure came from node_modules. Its 61 CSS files measured **86**. Its 44 tabular-nums sites measured **42**. Its 70 gates.json records I could not reproduce, my python attempt died on shell quoting, and **a broken pipeline is not a zero**. Its 23 verify-py gates reproduced exactly. **Every one of my five reviewers corrected at least one of my numbers and every one of them was itself corrected on at least one.**
 
-**Measured state, 03:53.** font files in repo **0** (`woff woff2 ttf otf`) · `@font-face` in `ui/src` **0** · remote `url()` font in any CSS **0** · `font-family` declarations under `ui` **267**, 11 distinct, `var(--font-mono)` 120 / `var(--font-sans)` 68 / `inherit` 64 · hardcoded OS paths in `.rs` **1**, in a test · `dirs`/`directories` in any `Cargo.toml` **0** · CI steps mentioning `font` in `dev-ci.yml` **0** · second UI stack **0** `.slint`, **0** `pubspec.yaml`.
+> **The rule this file is written under:** a value received is not a value verified, in **either direction**. The unit of a number is the set it counts, and the set must be named every time.
 
-```css
-/* tokens.css:146 */ --font-sans: Inter, -apple-system, BlinkMacSystemFont, SF Pro Display, Segoe UI, system-ui, sans-serif;
-/* tokens.css:148 */ --font-mono: JetBrains Mono, SF Mono, Cascadia Code, Fira Code, ui-monospace, monospace;
-```
+**Design law, kept as prose, deliberately not as code.** The *rule* is stack-neutral, ideal face first, generic keyword last, every named face resolves **through every layer between declaration and pixels**. The *parse* is per stack. Today there is **one** UI implementation and two shells, so the smallest stack-neutral thing that permits a future stack is this sentence, not a css_adapter. Corollary for the 23 existing gates, **the rules worth keeping are the ones statable without naming a file format.**
 
-**Blueprint rules, assessed.** 1 ideal-face-first **FAIL** (mono has no source whatsoever) · 2 Apple tokens second **PASS** · 3 Microsoft target **PASS on sans / PARTIAL on mono** (no Segoe UI Mono, no Consolas; `Cascadia Code` ships only with VS 2022+) · 4 Roboto/Noto tail **WEAK by construction** (fontconfig aliases generic keywords to installed fonts — no CSS tail guarantees anything on a foreign distro) · 5 generic net last **PASS** (both present).
+**The layering lesson, which generalises past fonts.** Asset resolution is a chain, named in a token, declared as @font-face or a bundled file, served on a protocol the webview allows, **permitted by CSP**, rendered. Revision 1 checked links 1, 2 and 5 and skipped 3 and 4. A link tag in HTML is not evidence of a fetch, **the CSP is the authority, and it sat in a config file I had already opened once for targets all.** I read that file for one key and reported it as a font fact.
 
-**Linux is real.** `release.yml` matrix — `:110 desktop-linux`, `:118 desktop-windows`, `:126 desktop-macos` — plus `packaging/linux/deb/{postinst,prerm}` and `oz-pos.desktop`. So **3 of the blueprint’s 5 rows apply**; iOS/Android do not (`packaging/mobile/` is a README; `android.yml.bak`/`ios.yml.bak` retired). Earlier "evidence" here was a 3-occurrence word count, **not proof of a build target** — replaced by the matrix lines.
+- receipts printing goes through an ESC/POS driver we own (crates/oz-hal/src/drivers/escpos.rs exists, 1 tracked) and 31 hal files mention receipts. I asserted **no webfont can affect printed output** and that claim is **inference, not measurement**: the function I cited, default_print_raw_handles_utf8_lossy, is **a test**, not production (traits/printer_tests.rs), and grep for codepage, cp437 or iconv in crates/oz-hal returns **0**, so how the printer resolves glyphs is unknown to me. The conclusion is probably right, ESC/POS text commands do not carry a webfont, but it is now labelled a hypothesis rather than a fact, and the out-of-scope call belongs to whoever owns oz-hal.
 
-**Printer is out of scope.** `crates/oz-hal` has a function named `default_print_raw_handles_*` and 29 HAL files touch receipts → the printer is fed **raw bytes**; ESC/POS firmware renders with its **own codepage fonts**. **No webfont can affect printed output**, and a webfont cannot fix a codepage. Whether an attached printer needs an `Rp` codepage mapping belongs to whoever owns `oz-hal`.
+**A finding outside this plan fence, for whoever owns the updater.** The same CSP sets connect-src to self plus https://github.com plus https://license.ozpos.my.id, and objects.githubusercontent.com appears **nowhere** in it, while the updater endpoint is https://github.com/kardelitaitu/oz-pos/releases. GitHub release downloads **302 to objects.githubusercontent.com**, and a browser evaluates the **final** URL of a redirect against connect-src. **IF** the Tauri updater downloads through a webview fetch, auto-update fails in the packaged app, the same rhyme as the font case, a shipped feature whose network path the CSP does not permit. **I have NOT verified webview vs reqwest, if it is Rust this evaporates.** Unpin that before acting.
 
-**Kiosk carries the same exposure.** `ui/src/features/kiosk` exists with 6 `.ftl` pairs; `apps/tablet-client` registers **0** license commands (no `license.rs` at all) — the same tablet-license decision parked elsewhere in this repo.
+**Numbers I could not verify and therefore do not assert:** the critics 70 gates.json records, my python3 -c attempt died on a shell-quoting NameError and a broken pipeline is not a zero · the exact resolved face of ui-monospace per engine · whether the splash really names Inter at :88.
 
-**Licensing.** `grep -icE "ofl|open font|font" LICENSE` → **0**: our licence is **silent** on fonts, so nothing we wrote blocks OFL embedding. SIL OFL 1.1 permits embedding in proprietary closed-source software without relicensing your code — ship the notice, don’t sell the font standalone. Inter and JetBrains Mono are both OFL 1.1, which is why Slack, Notion, Figma and VS Code ship Inter. Hotlinking trades a licence-clean embed for a **service dependency you neither control nor pay for**.
+---
 
-### Design law — for a future we do not have yet
-The **rule** is stack-neutral (ideal face first · generic keyword last · every named face resolves **without the network** · glyph coverage covers the scripts we ship — `26 .id.ftl` Indonesian bundles and `Rp` are a **coverage requirement, not taste**). The **parse** is per-stack. Hence *contract + adapters*, never a CSS linter — fusing them today costs nothing, and a rewrite after the second stack lands does. Corollary for tonight’s 14 gates: **the rules worth keeping are the ones statable without naming a file format.**
+## Housekeeping
 
-### Claims I retired, so nobody re-buys them
-- *"Inter is missing from the repo"* — **false.** It is CDN-fetched; a network dependency, not an absent asset. Different fix, different risk.
-- *"Rule 5 fails"* / *"Segoe UI is absent"* — **false.** Both were a **90-char output cut** hiding a wrapped line. The tails were there all along.
-- *"0 other `--font-*` definitions"* — **VOID.** Two broken `git grep` invocations (`Invalid preceding regular expression`, `option -e must come before non-option arguments`). **A broken pipeline is not a zero.**
-- *"17 files need the reword"* — **false,** 17 of 20 were `__pycache__`. Same lesson, twice in one day.
-- *"all nine probes present"* — my own regex-from-string check (`new RegExp("Font\\s+x")`) is **not** equivalent to the shell’s `s`. A regex hit is a hypothesis; the printed line is the evidence.
-
-### Not in scope
-No Slint/Flutter/native code (designed for, not built — 0 files exist) · no mobile · no typography redesign or token renames (`--text-2xs` upward untouched; generated files reference them) · no printer codepage work · **no `cargo fmt` on the workspace** — check-only and off the commit path since 2026-09-13.
-
-### Housekeeping
-This file is **untracked**. To version it, the sanctioned §3 new-file chain, ONE line: `git add -- todo-font-system.md && git commit -m "docs(agents): add cross-os font portability plan" -- todo-font-system.md`, then `git show --stat` to prove the `create mode` entries are exactly this file. Never `git add` as a separate step, never `-a`/`--amend`/`stash`/`reset`/`push` — the index is shared and racing in this checkout. **Never `git clean -xdf`**.
+Untracked. To version it, the sanctioned AGENTS.md section 3 new-file chain, ONE line, git add -- todo-font-system.md && git commit -m docs(agents): add cross-os font portability plan -- todo-font-system.md, then git show --stat to prove the create mode entries are exactly this file. Never git add as a separate step, never -a / amend / stash / reset / push. **Never git clean -xdf** — this checkout holds uncommitted work that cannot be reproduced.
