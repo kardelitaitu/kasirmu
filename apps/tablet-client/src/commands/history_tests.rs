@@ -569,3 +569,178 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
         report.total_revenue - paid
     );
 }
+
+// ── The EOD report is assembled from TWO day boundaries ────
+
+/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT.
+/// INVERT OR DELETE WHEN THE DAY BOUNDARY IS FIXED.
+///
+/// One `EodReport` is built from two different answers to “what day is it”.
+/// The header half applies the store's offset — `Store::export_daily_summary
+/// ()` at crates/oz-core/src/db/sales.rs:268 and `export_sales_by_hour` at :290,
+/// both `DATE(created_at, tz) = DATE(now, tz)` — while every money sub-query
+/// in the SAME struct is bare `date(created_at) = date('now')`: this door at
+/// apps/tablet-client/src/commands/history.rs:216, :237, :248; the scoped door
+/// at :437, :458, :469; the desktop's `build_eod_report` at
+/// crates/oz-bridge/src/history.rs:291, :312, :323. Nine bare clauses, three
+/// gated reads, one struct.
+///
+/// For a +07:00 store the boundaries sit seven hours apart, so a row can be
+/// today to `total_revenue` and yesterday to the payment breakdown that is
+/// meant to explain it. Generalised: header revenue and payment breakdown are
+/// not comparable for ANY non-UTC store, not merely in an evening window.
+/// The desktop's three clauses are named and deliberately untested — one lane
+/// pinned, the class visible; copying the pin to a second lane makes two tests
+/// to keep in step instead of one defect with one name.
+///
+/// Why nothing has ever caught it. The pin above this one
+/// (`known_hazard_daily_totals_count_voided_sales_as_revenue`) seeds both rows
+/// at `chrono::Utc::now()`, and a now-created row satisfies the offset
+/// predicate and the bare predicate at once because both sides of each shift
+/// together: structurally blind, in whichever door runs it. The second
+/// blindness is `tz_modifier` (crates/oz-core/src/db/reports.rs:420 to :432),
+/// which reads the offset from the `locations` table of whichever database it
+/// is handed and falls back to `+00:00` for anything unparseable, IANA names
+/// included — exactly what the bare clauses already do, so a misconfigured
+/// store makes the two halves AGREE instead of flagging itself. The anti-vacuity
+/// block below exists so a failed timezone seed fails loudly instead of passing.
+///
+/// What a fix has to DECIDE, an owner question and not a bug: either the money
+/// sub-queries gain the store modifier, which changes every historical EOD sheet
+/// a merchant has printed, or the header drops it, which changes the day a
+/// multi-store operator reads off the tile. That is an eight-in-the-morning
+/// decision, not a five-in-the-morning commit.
+#[tokio::test]
+async fn known_hazard_eod_header_and_payment_breakdown_use_different_day_boundaries() {
+    const OFFSET_HOURS: i64 = 7;
+    let (mut state, _dir) = history_state();
+
+    // Derived from `now`, not hardcoded: a fixed instant sits in the
+    // disagreeing band only while the clock allows it, so a hardcoded pin
+    // passes today and rots silently. The time-invariant thing is the CLASS — a
+    // row on today's store-local date whose UTC date is not today's UTC date.
+    // The control row agrees with both halves, so this cannot pass empty.
+    let now = chrono::Utc::now();
+    let shift = chrono::Duration::hours(OFFSET_HOURS);
+    let local_date = (now + shift).date_naive();
+    let mut boundary: Option<chrono::DateTime<chrono::Utc>> = None;
+    let mut control: Option<chrono::DateTime<chrono::Utc>> = None;
+    for hour in 0..24 {
+        let local = local_date
+            .and_hms_opt(hour, 30, 0)
+            .expect("fixture hour")
+            .and_utc();
+        let utc = local - shift;
+        if (utc + shift).date_naive() != local_date {
+            continue;
+        }
+        if utc.date_naive() != now.date_naive() {
+            boundary.get_or_insert(utc);
+        } else {
+            control.get_or_insert(utc);
+        }
+    }
+    let (boundary_at, control_at) = match (boundary, control) {
+        (Some(b), Some(c)) => (b, c),
+        _ => panic!("no disagreeing row constructible for +{OFFSET_HOURS}:00"),
+    };
+    let boundary_local = boundary_at + shift;
+    let ts =
+        |t: chrono::DateTime<chrono::Utc>| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let boundary_minor: i64 = 3_300;
+    let control_minor: i64 = 1_100;
+
+    {
+        let db = state.db.lock().await;
+        // tz_modifier reads locations.is_primary = 1 from THIS database and
+        // nothing else here creates that row: a missed seed means +00:00, which
+        // makes both halves agree and turns this pin green having measured
+        // nothing. Asserted before it is trusted.
+        db.execute(
+            "INSERT INTO locations (id, name, timezone, is_primary) VALUES ('loc-tz-pin', 'TZ Pin', '+07:00', 1)",
+            [],
+        )
+        .expect("seed the primary location with a fixed numeric offset");
+        db.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method, user_id, created_at) VALUES ('s-tz-boundary', ?1, 'USD', 1, 'completed', 'cash', 'user-full', ?2)",
+            rusqlite::params![boundary_minor, ts(boundary_at)],
+        )
+        .expect("seed the boundary row");
+        db.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method, user_id, created_at) VALUES ('s-tz-control', ?1, 'USD', 1, 'completed', 'card', 'user-full', ?2)",
+            rusqlite::params![control_minor, ts(control_at)],
+        )
+        .expect("seed the control row");
+
+        // Anti-vacuity, all three before any verdict is asserted.
+        let seeded_tz: String = db
+            .query_row(
+                "SELECT timezone FROM locations WHERE is_primary = 1 LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|e| panic!("no primary location row seeded: {e}"));
+        assert_eq!(
+            seeded_tz, "+07:00",
+            "a +00:00 fallback would make the two boundaries agree and this pass empty"
+        );
+        let rows: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM sales WHERE id IN ('s-tz-boundary','s-tz-control')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            rows, 2,
+            "both rows must exist before judging which day they land in"
+        );
+        let in_header_day: bool = db
+            .query_row(
+                "SELECT DATE(?1, '+07:00') = DATE('now', '+07:00')",
+                rusqlite::params![ts(boundary_at)],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let in_body_day: bool = db
+            .query_row(
+                "SELECT DATE(?1) = DATE('now')",
+                rusqlite::params![ts(boundary_at)],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            in_header_day && !in_body_day,
+            "boundary row {boundary_local} local must be today for the header and not today ",
+        );
+    }
+
+    let app = mock_app(state);
+    let report = export_eod_report(app.state()).await.expect("eod report");
+
+    // 1. The offset-aware header counts the boundary row.
+    assert_eq!(report.total_sales, 2, "the header must see both rows");
+    assert_eq!(
+        report.total_revenue,
+        boundary_minor + control_minor,
+        "total_revenue comes from the store-local day, so it includes the boundary row"
+    );
+    // 2. The payment breakdown, three lines later in the same struct, does not.
+    let breakdown_total: i64 = report.payment_breakdown.iter().map(|row| row.total).sum();
+    assert_eq!(
+        breakdown_total,
+        control_minor,
+        "the bare-clause breakdown drops the boundary row at {} UTC",
+        ts(boundary_at)
+    );
+    // 3. The naive reconciliation a merchant does on the sheet does not close.
+    assert_ne!(
+        breakdown_total, report.total_revenue,
+        "sum(payment_breakdown) can equal total_revenue only if both halves share a day ",
+    );
+    assert_eq!(
+        report.total_revenue - breakdown_total,
+        boundary_minor,
+        "the two halves disagree by exactly the boundary row, {OFFSET_HOURS} hours of offset"
+    );
+}
