@@ -990,7 +990,7 @@ exits **2** on a hollow root, and after `4d1a85b15` (20:28) a refusal path exist
 will not open. So a runner whose checkout is partial, or whose locale surface is being written,
 turns an "informational" report red — a label promising one thing while the job does another.
 
-**Not mine to pull.** `.github/**` is outside my authority and `scripts/gates.json` holds a stale
+**Not mine to pull.** `.github/**` is outside my authority and *(both claims in this paragraph were retracted at 23:45, see the dated retraction below — `gates.json` holds no such number, and `--fail-on-recoverable` is wired)* and `scripts/gates.json` holds a stale
 `130 / 0` for this same scanner. The owner chooses one of: add `continue-on-error: true` to honour
 the label, rename the step to admit it gates, or make census report-only for the hollow case too.
 Any of the three is consistent; a blocking step called informational is the only one that is not.
@@ -1000,6 +1000,39 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated retraction (2026-09-13, 23:45) — two false claims I made about CI, both now measured
+
+A lane dispatched to *fix* one of them checked instead, and found the opposite. Both were mine, both
+were stated as facts in reports to the human, and one of them became a recommendation with a cost
+estimate attached.
+
+1. **"Nothing runs `scan-unwrap-panic.py --fail-on-recoverable`, so its green is a property of a
+    command nobody invokes."** **False.** It is wired at `dev-ci.yml:489`, step "Panic inventory
+(ADR #33)", and `scripts/gates.json` lists `panic-inventory` with `"status": "required"` mapped to
+`dev-ci.yml#static-gates`. Measured 23:41.
+2. **"`scripts/gates.json` holds a stale `130 / 0` for this scanner."** **False.** `grep -c 130
+    scripts/gates.json` → **0**. No `130` anywhere in the file, and the file has no expectation
+    fields at all — an entry is `{id, label, status, runners, _note, ci}`. The "130/0" was a
+    scanner-output pair I had detached from its source and re-attached to a file that does not
+    contain it.
+
+**The shape of the failure is worth naming, because it is not a typo.** Claim 1 is about a real line I
+had *not* grepped; claim 2 was the same sentence about a different surface, built by attaching a number
+I had genuinely measured once (some earlier total/expected pair) to a filename I had genuinely inspected
+(its shape). Both halves real, the glue invented. It propagated into `cc0c9d277` and `6b405857d` and
+then into an authorization request — the human lifted a prohibition for a fix that turned out not to
+exist, which is the most expensive form of a wrong belief: it buys permission.
+
+**What changed as a result.** The `gates.json` fix is **cancelled**, not deferred. The live CI work is
+exactly one item, `5C`, and it landed as `eb5e57d452`: `continue-on-error: true` on the
+"FTL orphan census (informational)" step, the blocking `--self-test` step untouched — which finally makes
+the AGENTS.md promise "in CI, non-blocking" true rather than aspirational. Remaining, and correctly
+withheld by that lane: repointing `:489` at the bare strict default once `scan-unwrap-panic.py` settles,
+since the flag is today an inert alias.
+
+**Standing rule, restated where it will hurt:** before asserting a file contains a value, grep the file
+in the same breath as writing the sentence. Two of my four retracted numbers tonight were about
+*structure* I had looked at and *values* I had not.
 ### Dated correction (2026-09-13, 22:55) — the ninth gate: an api layer that resolves to nothing no longer grades clean
 
 `2fabafb78b` (252/9), `scripts/verify-scoped-reads.py` only — the residual the eighth gate named, closed
@@ -1043,7 +1076,7 @@ mineasured. The worker that landed `3cf078aad` corrected itself (`grep -o 'FAIL:
 `FAIL: 112 unguarded ambient IPC call(s)`), and I reproduced **112** myself at 22:31. The byte-identity
 claims were never at risk: the 20473-byte CI-form output is identical on both sides and carries 112 on both
 sides. A wrong adjective on a right verdict is still wrong, and this repo has now twice seen a number
-invent itself a life in prose (see the `130 / 0` still sitting in `scripts/gates.json`).
+invent itself a life in prose (the `130 / 0` I cited there does not exist, see the 23:45 retraction, it was my second invented number in an hour, in `scripts/gates.json`).
 
 **Two. My "the guard already refuses a genuinely missing root" (in `6b405857d`) was my own broken path.**
 At 22:02 I built a temp tree, put the allowlist at `<root>/ipc-parity-allowlist.json`, and watched the gate
