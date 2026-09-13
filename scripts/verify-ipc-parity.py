@@ -320,6 +320,10 @@ def read_allowlist_text() -> str:
     JSONDecodeError, which is a better sentence and still a crash. Retrying a denial that is
     already over costs one sleep; the ceiling turns a genuine, persistent lock into an
     AllowlistBusyError with words in it rather than a traceback from json.
+
+    This waits out denials for the readers that come through HERE. It reaches none of the
+    script-next-door readers, and one of them is in the refusal text precisely because it is
+    not protected: see ALLOWLIST_READER_CALL_SITES.
     """
     for attempt in range(READ_ATTEMPTS):
         try:
@@ -345,12 +349,21 @@ class AllowlistBusyError(RuntimeError):
     """The target would not accept the rename, so nothing was written."""
 
 
-# Every reader of this file is bare: .github/workflows/dev-ci.yml:590, scripts/check.sh:56
-# and scripts/run-pre-push.py:107, that last one sitting in every agent's push path. A
-# reader needs no cooperation from those scripts -- it only needs the file to never be
-# half-there, which is what the rename below buys.
+# Every reader of this file opens it bare, and the list is who a busy-target refusal has to
+# name: .github/workflows/dev-ci.yml:590, scripts/check.sh:56 and scripts/run-pre-push.py:107
+# are this gate's own readers, reached through load_allowlist, so the retry below covers them.
+# The fourth is a DIFFERENT gate, scripts/verify-scoped-reads.py:266, the io.open at the top of
+# its audit(); it was omitted until 2026-09-13 12:36 because this file only ever thought of
+# itself as the reader's owner. It matters twice over. It can hold the target open long enough
+# to deny my rename, so it belongs in the diagnosis a refusal prints. And it is bare in a way
+# the first three are not: read_allowlist_text cannot reach it, so the 252 PermissionError
+# denials in 30,461 reads measured against this writer at 12:36 land in that script's own
+# traceback, which no code here can catch -- only its owner can, and that file is out of this
+# fence and is being edited by another lane right now. Line numbers here are as true as the
+# minute they were read; the function is audit(), which is what survives the drift.
 ALLOWLIST_READER_CALL_SITES = (".github/workflows/dev-ci.yml:590", "scripts/check.sh:56",
-                               "scripts/run-pre-push.py:107")
+                               "scripts/run-pre-push.py:107",
+                               "scripts/verify-scoped-reads.py:266")
 
 # Rename retries: 200 tries at 10 ms is about two seconds of patience with a reader.
 REPLACE_ATTEMPTS = 200
@@ -391,9 +404,9 @@ def write_allowlist_payload(payload: dict) -> None:
 
     Third job of this helper, and the reason it renames rather than writes: the file must
     never be observable half-built. write_text is open, truncate, write -- three steps with a
-    window in the middle -- and three bare readers poll this path (.github/workflows/
-    dev-ci.yml:590, scripts/check.sh:56, scripts/run-pre-push.py:107, the last one in every
-    agent's push path). Measured with a writer loop in one process and a json.loads reader in
+    window in the middle -- and four bare readers poll this path (.github/workflows/
+    dev-ci.yml:590, scripts/check.sh:56, scripts/run-pre-push.py:107, that last one in every
+    agent's push path, and scripts/verify-scoped-reads.py:266 in the gate next door). Measured with a writer loop in one process and a json.loads reader in
     another, against a copy of the real payload: 1,227 of 5,607 reads failed under
     write_text (21.9 percent), every failure a JSONDecodeError rather than a sharing
     violation, dying in load_allowlist long before the validator could name anything. Same
@@ -1662,6 +1675,77 @@ def self_test() -> int:
     case("case 18  controls, invoked is called and a name with no caller is an orphan",
          control == [[], ["x_scoped"]], )
 
+    # 19: the inertness line for every section, on a fixture whose numerals are mine. Invented
+    # names cannot appear in an api file, so "0 of 1" is deterministic without reading the tree
+    # -- the coupling that took case 13's numeral out.
+    with tempfile.TemporaryDirectory() as tmp10:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe10 = Path(tmp10) / "allowlist.json"
+        inert_out = ""
+        try:
+            globals()["ALLOWLIST_PATH"] = probe10
+            sys.argv = ["probe"]
+            write_allowlist_payload({
+                "_comment": "probe file, never the real allowlist",
+                "desktop": ["probe_zz_uninvoked_a"], "tablet": ["probe_zz_uninvoked_b"],
+                "dev_mock": ["probe_zz_uninvoked_c"],
+                "scoped_orphans": ["probe_zz_uninvoked_d"],
+            })
+            out10, err10 = io.StringIO(), io.StringIO()
+            with redirect_stdout(out10), redirect_stderr(err10):
+                main()
+            inert_out = out10.getvalue() + err10.getvalue()
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    inert_lines = [ln for ln in inert_out.splitlines() if "-uninvoked]:" in ln]
+    case("case 19  all four sections report how many accepted names match nothing they walked",
+         len(inert_lines) == 4
+         and [ln.split("]")[0][5:] for ln in inert_lines]
+         == ["desktop-uninvoked", "tablet-uninvoked", "dev_mock-uninvoked",
+             "scoped_orphans-uninvoked"], )
+    case("case 19  the figure carries both sides of its own fraction, on names I invented",
+         all("0 of 1 allowlisted names" in ln and "1 match no invoke site" in ln
+             and "enforce nothing" in ln and "Informational" in ln for ln in inert_lines), )
+    case("case 19  and it names the corpus it counted instead of borrowing another gate's word",
+         all("UI command strings this run walked" in ln
+             and "wrapper" not in ln for ln in inert_lines), )
+
+    # 20: the busy refusal has to name every reader that can be hit, which is the only reason
+    # the tuple exists. Asserted twice on purpose. The printed sentence is BUILT from the
+    # tuple, so a text-only check is tautological -- delete an element and it still passes,
+    # which is exactly how the fourth reader stayed off the list. The literal expectation is
+    # the half that reddens when a runner is forgotten; the text half only proves the message
+    # joins what it claims to join.
+    real_rep20 = os.replace
+    with tempfile.TemporaryDirectory() as tmp11:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        probe11 = Path(tmp11) / "allowlist.json"
+        busy_text = ""
+        try:
+            globals()["ALLOWLIST_PATH"] = probe11
+            write_allowlist_payload({"dev_mock": [], "desktop": [], "tablet": [],
+                                     "scoped_orphans": []})
+            os.replace = lambda src, dst, *a, **k: (_ for _ in ()).throw(
+                PermissionError(5, "simulated permanent contention"))
+            try:
+                write_allowlist_payload({"dev_mock": ["x_scoped"], "desktop": [], "tablet": [],
+                                         "scoped_orphans": []})
+            except AllowlistBusyError as busy:
+                busy_text = str(busy)
+            finally:
+                os.replace = real_rep20
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+    case("case 20  the list of bare readers names all four, including the neighbouring gate",
+         set(ALLOWLIST_READER_CALL_SITES) == {
+             ".github/workflows/dev-ci.yml:590", "scripts/check.sh:56",
+             "scripts/run-pre-push.py:107", "scripts/verify-scoped-reads.py:266"}, )
+    case("case 20  and the refusal prints every one of them to the operator",
+         len(ALLOWLIST_READER_CALL_SITES) == 4
+         and all(site in busy_text for site in ALLOWLIST_READER_CALL_SITES), )
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -1872,6 +1956,35 @@ def main() -> int:
             + (f": {', '.join(unreachable)}" if unreachable else "")
             + ". Informational: those entries are dropped by a human edit, not by the "
             "writer flag."
+        )
+
+    # The inertness no shape repair touched: an accepted name that matches nothing the run
+    # walks enforces nothing, and prints clean. One line per section, because a single
+    # whole-file figure would hide that the four sections are inert for four different reasons
+    # -- a scoped orphan is inert BY DEFINITION (no caller is what makes it an orphan), a shell
+    # gap inert means the UI stopped invoking it, and a dev_mock entry inert means the mock
+    # never had to answer it. Informational, not a failure: 25 of those names belong to no one
+    # in particular and reding the tree for all of them at once would train people to ignore
+    # the gate, which is the outcome this whole file exists to avoid.
+    #
+    # The predicate is invoke-site presence in the UI corpus this run walked, NOT wrapper
+    # presence. An audit at 12:36 reported 25 of 25 scoped names, 30 of 154 tablet, 1 of 27
+    # desktop and 1 of 16 dev_mock resolving to zero api wrappers out of 407 wrapper keys. The
+    # scoped figure agrees with what this line prints and for the same reason; the shell
+    # figures do not, because a wrapper and an invoke site are different quantities and
+    # verify-scoped-reads.py owns the wrapper notion. This line says which of the two it
+    # counted rather than borrowing the other gate's word for it.
+    for section in (*EXTERNALLY_READ_SECTIONS, *OBJECT_ALLOWED_SECTIONS):
+        section_names_this_run = section_names(allowlist, section)
+        uninvoked = sorted(section_names_this_run - set(ui_commands))
+        print(
+            f"info[{section}-uninvoked]: {len(section_names_this_run) - len(uninvoked)} of "
+            f"{len(section_names_this_run)} allowlisted names in \"{section}\" appear among "
+            f"the {len(ui_commands)} UI command strings this run walked; {len(uninvoked)} "
+            f"match no invoke site at all and therefore enforce nothing"
+            + (f" -- {', '.join(uninvoked[:3])}"
+               + (", ..." if len(uninvoked) > 3 else "") if uninvoked else "")
+            + ". Informational."
         )
 
     # Router vs extracted modules, because "215 handlers registered" is the number the
