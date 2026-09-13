@@ -972,6 +972,34 @@ forcing the race (hold the file open, or point the parser at a path that denies 
 than by an absence of crashes in a quiet tree. A green here proves nothing; mechanism 9 with the
 receipt inverted.
 
+### New finding (2026-09-13, 20:47) — the census step is labelled informational and is not
+
+`.github/workflows/dev-ci.yml:338-339` (read at 20:46):
+
+```yaml
+      - name: FTL orphan census (informational)
+        run: python3 scripts/verify-ftl-orphans.py --census
+```
+
+There is no `continue-on-error`, so this step blocks `static-gates` on any nonzero exit, while the
+prose around it calls the census "reported and never blocking". Reported by the closing worker of
+`4d1a85b15` as adjacent to its fence and outside it; confirmed by me reading the lines at 20:46.
+
+**Why it changed state today.** Before `ef2058f28` (19:22) `--census` could exit only 0 or 1. It now
+exits **2** on a hollow root, and after `4d1a85b15` (20:28) a refusal path exists for bundles that
+will not open. So a runner whose checkout is partial, or whose locale surface is being written,
+turns an "informational" report red — a label promising one thing while the job does another.
+
+**Not mine to pull.** `.github/**` is outside my authority and `scripts/gates.json` holds a stale
+`130 / 0` for this same scanner. The owner chooses one of: add `continue-on-error: true` to honour
+the label, rename the step to admit it gates, or make census report-only for the hollow case too.
+Any of the three is consistent; a blocking step called informational is the only one that is not.
+
+**Second residual, same family, deliberately not fixed by `4d1a85b15`:** a malformed but *readable*
+`scripts/ftl-orphan-allowlist.json` still dies inside `json.loads` at exit 1 with a traceback — the
+`AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
+as left-on-purpose: a committed defect is a different animal from a transient race.
+
 ### Dated corrections (2026-09-13, 20:30) — the live-writer race, and the same class in a fifth gate
 
 **The 19:45 finding is closed by `4d1a85b15`** (20:28, `scripts/verify-ftl-orphans.py`, 186/7 — one
