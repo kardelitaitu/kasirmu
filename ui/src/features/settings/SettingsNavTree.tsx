@@ -131,6 +131,19 @@ const NAV_ITEMS: SettingsNavItem[] = [
     ),
   },
   {
+    key: 'sync-conflicts',
+    label: 'Sync Conflicts',
+    subpage: true,
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M8 6h8" />
+        <path d="M8 12h8" />
+        <path d="M8 18h5" />
+        <circle cx="19" cy="18" r="2.5" />
+      </svg>
+    ),
+  },
+  {
     key: 'offline-queue',
     label: 'Offline Queue',
     subpage: true,

@@ -48,6 +48,7 @@ const DataSyncScreen = lazy(() => import('./screens/DataSyncScreen').then((m) =>
 const DataManagementScreen = lazy(() => import('./screens/DataManagementScreen').then((m) => ({ default: m.DataManagementScreen })));
 const SyncStatusScreen = lazy(() => import('./screens/SyncStatusScreen').then((m) => ({ default: m.SyncStatusScreen })));
 const OfflineQueueScreen = lazy(() => import('./screens/OfflineQueueScreen').then((m) => ({ default: m.OfflineQueueScreen })));
+const SyncConflictReviewScreen = lazy(() => import('../sync/SyncConflictReviewScreen').then((m) => ({ default: m.SyncConflictReviewScreen })));
 const TaxConfigurationScreen = lazy(() => import('./screens/TaxConfigurationScreen').then((m) => ({ default: m.TaxConfigurationScreen })));
 const ExchangeRatesScreen = lazy(() => import('./screens/ExchangeRatesScreen').then((m) => ({ default: m.ExchangeRatesScreen })));
 const SystemDiagnosticsScreen = lazy(() => import('./screens/SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen })));
@@ -662,6 +663,8 @@ function SettingsPageContent() {
         return <SyncStatusScreen />;
       case 'offline-queue':
         return <OfflineQueueScreen />;
+      case 'sync-conflicts':
+        return <SyncConflictReviewScreen />;
       case 'tax-configuration':
         return <TaxConfigurationScreen />;
       case 'exchange-rates':
