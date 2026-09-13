@@ -197,7 +197,7 @@ pub fn sync_router_with_plan_enforcement(state: SyncState, enforce_plans: bool) 
         .route("/api/sync/snapshot", get(snapshot_handler))
         .route("/api/sync/conflicts", get(list_conflicts_handler))
         .route(
-            "/api/sync/conflicts/:id/resolve",
+            "/api/sync/conflicts/{id}/resolve",
             post(resolve_conflict_handler),
         )
         .with_state(state)

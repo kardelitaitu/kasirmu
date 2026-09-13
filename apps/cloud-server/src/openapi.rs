@@ -470,6 +470,56 @@ fn build_cloud_paths() -> Value {
                 }
             }
         },
+        "/api/sync/conflicts": {
+            "get": {
+                "tags": ["Sync"],
+                "summary": "List this tenant's flagged sync conflicts",
+                "description": "Returns the conflicts flagged by server-side version-vector detection (a push concurrent with what the tenant's stored vector has already observed), newest first. Tenant scoping comes from the JWT, never the query string. Both filters are optional; an unrecognised value simply matches nothing.",
+                "operationId": "syncConflictList",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "status", "in": "query", "required": false, "schema": { "type": "string", "enum": ["open", "resolved", "dismissed"] }, "description": "Filter by conflict status" },
+                    { "name": "severity", "in": "query", "required": false, "schema": { "type": "string", "enum": ["high", "medium", "low"] }, "description": "Filter by conflict severity" }
+                ],
+                "responses": {
+                    "200": { "description": "Matching conflicts with a count", "content": { "application/json": { "schema": { "type": "object", "properties": { "conflicts": { "type": "array", "description": "SyncConflictRow objects: id, entity_type, entity_id, severity, status, both vectors and both payloads verbatim, resolution fields null while open", "items": { "type": "object" } }, "count": { "type": "integer", "description": "Number of rows returned" } } } } } },
+                    "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "500": { "description": "Conflict store query failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+        "/api/sync/conflicts/{id}/resolve": {
+            "post": {
+                "tags": ["Sync"],
+                "summary": "Record a manager's decision on a flagged conflict",
+                "description": "Stores the chosen side or custom merge on the conflict row (the payload is recorded verbatim; the server never sums or merges money bodies). 404 when the id does not exist, belongs to another tenant, or is already closed — a second resolve must not overwrite the first decision, because the row is the audit trail.",
+                "operationId": "syncConflictResolve",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Conflict row id (UUIDv7)" }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "resolution": { "type": "string", "description": "The chosen side or a custom merge, recorded verbatim on the row" }
+                                },
+                                "required": ["resolution"]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Decision recorded", "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "status": { "type": "string", "description": "\"resolved\"" }, "resolution": { "type": "string" } } } } } },
+                    "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "404": { "description": "Unknown id, foreign tenant, or already closed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "500": { "description": "Conflict store write failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
 
         // ── Webhooks ────────────────────────────────────────────────
         "/api/webhooks/stripe": {
