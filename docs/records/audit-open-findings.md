@@ -1000,6 +1000,27 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated correction (2026-09-13, 22:32) — the eighth gate: an empty corpus no longer grades as clean
+
+`3cf078aad` (211/3), `scripts/verify-scoped-reads.py` only — the residual the seventh gate left open,
+closed inside the same fence. Verified by me at 22:29, and this time against **my own** baselines taken
+30 minutes earlier at 22:02: bare default **180 B exit 0** and `--shell desktop,tablet` **20473 B at
+exit 1** both reproduced exactly, the 1 still carrying the tree's 14 unguarded-call verdict (a
+*regression* if it had moved), `--self-test` exit 0, allowlist still `e5663346ef`, zero scratch.
+
+**The two-sided proof, run in isolation.** With a *valid* stated-empty allowlist in place, so only the
+corpus could trip it: `ui/src` present and empty → exit **2**, 0 stdout, no Traceback, no verdict line,
+`error: …\ui\src exists an…`; add **one** production file → exit **0** and `1 production file(s)
+graded … clean for desktop.` Same guard, opposite outcomes, which is the only pair of results that
+shows it discriminates rather than simply failing.
+
+**A methodological confession worth the page.** My first attempt at that cell put the allowlist at
+`<root>/ipc-parity-allowlist.json`; the gate reads `REPO/scripts/ipc-parity-allowlist.json` (line 110).
+So the run exited 2 for the *wrong reason* — the allowlist guard, not the corpus guard — and the exit
+code looked like success. An exit 2 that names nothing is no evidence at all; I only caught it by
+reading the `error:` text instead of the status. A refusal must be identified by the sentence it
+prints, not by the code it returns.
+
 ### Dated correction (2026-09-13, 22:05) — the seventh gate, and a residual that turned out smaller than reported
 
 `551f2a38eb` (111/29), `scripts/verify-scoped-reads.py` only — the *other* reader of the same shared
