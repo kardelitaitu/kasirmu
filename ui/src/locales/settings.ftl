@@ -1017,6 +1017,7 @@ settings-localpay-add = Add rail
 settings-localpay-save = Save payment methods
 settings-localpay-saving = Saving…
 settings-localpay-saved = Payment methods saved.
+settings-localpay-static-qr-label = Static QR payload (EMVCo string)
 settings-localpay-error-save = Could not save the payment methods.
 settings-localpay-error-load = Could not load the payment methods.
 settings-localpay-no-location = No location to configure yet.

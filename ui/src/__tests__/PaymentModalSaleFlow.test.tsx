@@ -1162,4 +1162,55 @@ describe('PaymentModal — local payment rails gating', () => {
       view.unmount();
     }
   });
+
+  it('a configured static payload reaches the QR display (R2 handoff)', async () => {
+    // This file MOCKS QrisQrDisplay — its stub branches on `qrString`,
+    // which makes the handoff observable without the real component
+    // (real-QR rendering is pinned in QrisQrDisplay.test). A configured
+    // payload must arrive on the manual dialog's props; none must not.
+    const payload = '00020101021226580012ID.CO.QRIS.WWW5204581253033605802ID6304ABCD';
+    const { view, restore } = await mountWithRails([
+      {
+        rail_code: 'qris',
+        label: 'QRIS',
+        is_enabled: true,
+        scope: 'location',
+        parameters: JSON.stringify({ static_qr_payload: payload }),
+      },
+    ]);
+    try {
+      await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /pay with qr/i }));
+      // The stub's qrString branch renders this trigger:
+      await screen.findByRole('button', { name: /qris-auto-confirm/i });
+    } finally {
+      restore();
+      view.unmount();
+    }
+    // Without a payload the same flow gets no qrString prop.
+    const plain = await mountWithRails([rail(true)]);
+    try {
+      await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /pay with qr/i }));
+      await screen.findByRole('button', { name: /qris-poll-double-confirm/i });
+    } finally {
+      plain.restore();
+      plain.view.unmount();
+    }
+  });
+
+  it('payload helpers: read tolerates junk, write preserves siblings and stays honest on malformed bags', async () => {
+    const { readStaticQrPayload, writeStaticQrPayload } = await import('@/api/local-payment');
+    expect(readStaticQrPayload('{}')).toBeNull();
+    expect(readStaticQrPayload('not json')).toBeNull();
+    expect(readStaticQrPayload('[1,2]')).toBeNull();
+    expect(readStaticQrPayload(JSON.stringify({ static_qr_payload: 'X' }))).toBe('X');
+    // Write preserves other metadata keys...
+    const bag = writeStaticQrPayload(JSON.stringify({ banner: 'hello' }), 'PAY');
+    expect(JSON.parse(bag)).toEqual({ banner: 'hello', static_qr_payload: 'PAY' });
+    // ...removes on empty...
+    expect(JSON.parse(writeStaticQrPayload(bag, ''))).toEqual({ banner: 'hello' });
+    // ...and refuses to launder a malformed bag into fresh JSON.
+    expect(writeStaticQrPayload('{oops', 'PAY')).toBe('{oops');
+  });
 });

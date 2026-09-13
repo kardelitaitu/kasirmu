@@ -95,6 +95,7 @@ payment-processing = Memproses…
 payment-qris-scan = Pindai dengan aplikasi QRIS
 payment-qris-waiting = Menunggu konfirmasi pembayaran…
 payment-qris-manual-confirm = Saya sudah menerima pembayaran
+payment-qris-not-configured = QR statis merchant belum dikonfigurasi — atur di Pengaturan › Metode pembayaran lokal.
 payment-qris-dialog-aria = Pembayaran QR QRIS
 payment-qris-close-aria = Tutup pembayaran QR
 payment-qris-qr-aria = Kode QR

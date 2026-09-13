@@ -34,6 +34,30 @@ function mockRailScopeKey(scopeType: string, scopeId: string): string {
   return `${scopeType}:${scopeId}`;
 }
 
+// Seed the market default with the two rails checkout now reads
+// (agents-5): `qris` carrying a demo merchant static-QR payload so the
+// manual dialog renders a real EMVCo QR instead of the retired fake
+// grid, and `edc` to keep the card-terminal button visible in dev. A
+// demo EMVCo string only — it scans to nothing real, exactly like the
+// grid it replaced, but it exercises the render path honestly. The
+// settings card starts from this and its writes override at the
+// location scope.
+mockLocalPaymentRails.set(
+  mockRailScopeKey('legal_entity', 'default:default-legal-entity'),
+  [
+    {
+      rail_code: 'qris',
+      label: 'QRIS',
+      is_enabled: true,
+      parameters: JSON.stringify({
+        static_qr_payload:
+          '00020101021226690012ID.CO.QRIS.WWW0215ID20230123456780303UME52045812530336054051000000000000000000000000000000005802ID5910OZ POS DEMO6007JAKARTA6304ABCD',
+      }),
+    },
+    { rail_code: 'edc', label: 'EDC (card)', is_enabled: true, parameters: '{}' },
+  ],
+);
+
 /** The effective rail read: entity rows as market defaults, location rows
  *  overriding per rail — including an explicit disable ("not offered at
  *  this site" is a fact). Mirrors the core

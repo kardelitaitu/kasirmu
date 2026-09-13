@@ -65,3 +65,46 @@ export const setLocalPaymentMethodsScoped = (
     locationId,
     rails,
   });
+
+// ── The qris rail's static-QR payload (agents-5 R2) ─────────────────
+//
+// Key inside the per-rail `parameters` bag carrying the merchant's
+// static EMVCo QRIS string. It is market metadata — the same code the
+// printed counter poster encodes, scannable by anyone — never a
+// credential, which is the distinction the backend's
+// FORBIDDEN_PARAMETER_FRAGMENTS guard enforces on this exact bag.
+
+export const STATIC_QR_PARAM = 'static_qr_payload';
+
+/** Read the payload from a rail's parameters JSON; malformed or absent
+ *  reads as null ("not configured") — the fail-open truth. */
+export function readStaticQrPayload(parameters: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(parameters);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const value = (parsed as Record<string, unknown>)[STATIC_QR_PARAM];
+      return typeof value === 'string' && value.length > 0 ? value : null;
+    }
+  } catch {
+    /* malformed bag */
+  }
+  return null;
+}
+
+/** Write the payload into a parameters bag, preserving every other key
+ *  (an empty value removes the key). A malformed incoming bag is NOT
+ *  silently replaced — the backend rejects malformed bags too, so the
+ *  first honest save must be a deliberate repair. */
+export function writeStaticQrPayload(parameters: string, value: string): string {
+  let parsed: Record<string, unknown>;
+  try {
+    const raw: unknown = JSON.parse(parameters);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return parameters;
+    parsed = raw as Record<string, unknown>;
+  } catch {
+    return parameters;
+  }
+  if (value.length === 0) delete parsed[STATIC_QR_PARAM];
+  else parsed[STATIC_QR_PARAM] = value;
+  return JSON.stringify(parsed);
+}

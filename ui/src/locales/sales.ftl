@@ -104,6 +104,7 @@ payment-edc-dismiss = Back to payment
 payment-qris-scan = Scan with your payment app
 payment-qris-waiting = Waiting for payment...
 payment-qris-manual-confirm = I received the payment
+payment-qris-not-configured = Merchant static QR not configured — set it under Settings › Local payment methods.
 payment-qris-dialog-aria = QRIS QR payment
 payment-qris-close-aria = Close QR payment
 payment-qris-qr-aria = QR code

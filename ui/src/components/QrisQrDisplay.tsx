@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/frontend/shared';
@@ -34,14 +34,6 @@ interface QrisQrDisplayProps {
   onExpired?: () => void;
   /** Auto mode: cashier chose to mint a fresh charge for the same sale. */
   onReissue?: () => void;
-}
-
-function simpleHash(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash) + str.charCodeAt(i);
-  }
-  return hash >>> 0;
 }
 
 /** Poll-backoff progression, seconds: 2, 3, 5, 8, then capped at 10. */
@@ -150,21 +142,6 @@ export default function QrisQrDisplay({
     return () => clearTimeout(timer);
   }, [status, onPaymentConfirmed]);
 
-  const qrCells = useMemo(() => {
-    const seed = simpleHash(reference || `${Date.now()}`);
-    const cells: boolean[][] = [];
-    let rng = seed;
-    for (let i = 0; i < 21; i++) {
-      const row: boolean[] = [];
-      for (let j = 0; j < 21; j++) {
-        rng = (rng * 1103515245 + 12345) & 0x7fffffff;
-        row.push((rng & 0x1) === 1);
-      }
-      cells.push(row);
-    }
-    return cells;
-  }, [reference]);
-
   // Layered exit to mirror the entry (added in this PR). Mirrors
   // the PosScreen cousin-modals pattern (commit 1408992): the
   // overlay and container each get their own `--exiting` class so
@@ -216,18 +193,18 @@ export default function QrisQrDisplay({
               <QRCodeSVG value={qrString} size={224} level="M" marginSize={2} />
             </div>
           ) : (
-          <div className="qris-qr-placeholder" aria-label={requiredLocalized(l10n, 'payment-qris-qr-aria')}>
-            <div className="qris-qr-grid">
-              {qrCells.map((row, i) =>
-                row.map((cell, j) => (
-                  <div
-                    key={`${i}-${j}`}
-                    className={`qris-qr-cell ${cell ? 'qris-qr-cell--filled' : ''}`}
-                  />
-                )),
-              )}
+            // The pre-3.2 demo drew a 21×21 hash-seeded pseudo-QR here —
+            // 441 cells of pure theater that scanned to nothing. A
+            // customer-facing money surface never gets to pretend; with
+            // no merchant static payload configured (agents-5 R2) the
+            // dialog says so and names where the fix lives. The
+            // cashier-assert path below still works for the physical
+            // counter-poster scenario.
+            <div className="qris-qr-not-configured" role="note">
+              <Localized id="payment-qris-not-configured">
+                <span>Merchant static QR not configured — set it under Settings › Local payment methods.</span>
+              </Localized>
             </div>
-          </div>
           )}
         </div>
 

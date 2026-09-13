@@ -161,15 +161,21 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     vi.useRealTimers();
   });
 
-  it('renders 21×21 QR grid (441 cells)', () => {
+  it('renders the honest not-configured note — the 441-cell demo grid is retired', () => {
     const hostRef = makeHostRef();
     render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
-    const cells = document.querySelectorAll('.qris-qr-cell');
-    expect(cells.length).toBe(441);
-    // Some cells should be filled (deterministic from reference hash)
-    const filled = document.querySelectorAll('.qris-qr-cell--filled');
-    expect(filled.length).toBeGreaterThan(0);
-    expect(filled.length).toBeLessThan(441);
+    // The pre-R2 demo drew a 21×21 hash-seeded pseudo-QR that scanned
+    // to nothing. With no merchant static payload the dialog must SAY
+    // so, not pretend.
+    expect(document.querySelectorAll('.qris-qr-cell').length).toBe(0);
+    expect(document.querySelector('.qris-qr-grid')).toBeNull();
+    expect(
+      screen.getByText(/Merchant static QR not configured/i),
+    ).toBeInTheDocument();
+    // The cashier-assert path survives for the physical counter poster.
+    expect(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    ).toBeInTheDocument();
   });
 
   it('displays amount and reference correctly', () => {

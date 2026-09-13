@@ -1000,6 +1000,7 @@ settings-localpay-add = Tambah jalur
 settings-localpay-save = Simpan metode pembayaran
 settings-localpay-saving = Menyimpan…
 settings-localpay-saved = Metode pembayaran tersimpan.
+settings-localpay-static-qr-label = Muatan QR statis (string EMVCo)
 settings-localpay-error-save = Tidak dapat menyimpan metode pembayaran.
 settings-localpay-error-load = Tidak dapat memuat metode pembayaran.
 settings-localpay-no-location = Belum ada lokasi untuk dikonfigurasi.

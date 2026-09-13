@@ -27,7 +27,7 @@ import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAcc
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 import { qrisAutoChargeScoped, qrisAutoStatusScoped } from '@/api/qris-auto';
 import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
-import { railOffered, useLocalPaymentRails } from './useLocalPaymentRails';
+import { railOffered, staticQrisPayload, useLocalPaymentRails } from './useLocalPaymentRails';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -123,6 +123,9 @@ export default function PaymentModal({
   const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
   const qrisOffered = railOffered(paymentRails, 'qris');
   const edcOffered = railOffered(paymentRails, 'edc');
+  // Manual QRIS shows the merchant's real static QR when the rail
+  // carries one (agents-5 R2); the dialog itself says so when not.
+  const manualQrString = staticQrisPayload(paymentRails);
   const locale = useContext(LocaleContext)?.locale ?? 'en';
   const { addToast } = useToast();
   const [method, setMethod] = useState<PaymentMethod>('cash');
@@ -1469,6 +1472,7 @@ export default function PaymentModal({
         isOpen={showQr}
         onClose={() => setShowQr(false)}
         onPaymentConfirmed={handleQrConfirmed}
+        {...(manualQrString ? { qrString: manualQrString } : {})}
       />
 
       {autoQr && (

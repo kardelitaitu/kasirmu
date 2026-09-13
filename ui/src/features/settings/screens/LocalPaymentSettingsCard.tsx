@@ -20,6 +20,8 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
   getLocalPaymentMethodsScoped,
   setLocalPaymentMethodsScoped,
+  readStaticQrPayload,
+  writeStaticQrPayload,
   type LocalPaymentRailArgs,
   type PaymentRailScope,
 } from '@/api/local-payment';
@@ -190,6 +192,30 @@ export function LocalPaymentSettingsCard() {
             <span className="localpay-provenance">
               <Localized id={provenanceKey(draft.scope)}>{draft.scope}</Localized>
             </span>
+            {draft.rail_code === 'qris' && (
+              // agents-5 R2: the manual QRIS dialog shows this real
+              // EMVCo string as a scannable QR (the retired demo grid
+              // drew fake cells). Market metadata, not a credential —
+              // the same public code a counter poster prints.
+              <label className="localpay-static-qr">
+                <Localized id="settings-localpay-static-qr-label">
+                  <span className="localpay-static-qr-label">Static QR payload</span>
+                </Localized>
+                <textarea
+                  className="localpay-static-qr-input"
+                  value={readStaticQrPayload(draft.parameters) ?? ''}
+                  onChange={(e) => {
+                    const next = [...drafts];
+                    next[index] = { ...draft, parameters: writeStaticQrPayload(draft.parameters, e.target.value) };
+                    setDrafts(next);
+                    setSaved(false);
+                  }}
+                  aria-label={l10n.getString('settings-localpay-static-qr-label')}
+                  rows={3}
+                  spellCheck={false}
+                />
+              </label>
+            )}
           </div>
         ))}
         {drafts.length === 0 && (

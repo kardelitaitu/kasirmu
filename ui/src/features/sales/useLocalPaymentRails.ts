@@ -17,7 +17,7 @@
 //! answer, and then the flag governs.
 
 import { useCallback, useEffect, useState } from 'react';
-import { getLocalPaymentMethodsScoped, type LocalPaymentRail } from '@/api/local-payment';
+import { getLocalPaymentMethodsScoped, readStaticQrPayload, type LocalPaymentRail } from '@/api/local-payment';
 import { getPrimaryLocationScoped } from '@/api/locations';
 
 export interface LocalPaymentRails {
@@ -35,6 +35,16 @@ export function railOffered(rails: LocalPaymentRail[] | null, railCode: string):
   if (rails === null || rails.length === 0) return true;
   const rail = rails.find((r) => r.rail_code === railCode);
   return rail ? rail.is_enabled : false;
+}
+
+/**
+ * The merchant static-QR payload for manual QRIS, or null when no
+ * non-empty string is configured. Parse/serialize semantics live with
+ * the wire model (`api/local-payment`); this is the checkout's view.
+ */
+export function staticQrisPayload(rails: LocalPaymentRail[] | null): string | null {
+  const rail = rails?.find((r) => r.rail_code === 'qris');
+  return rail ? readStaticQrPayload(rail.parameters) : null;
 }
 
 /** Load the primary location's effective rails for a session. Pass an
