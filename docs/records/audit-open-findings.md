@@ -684,6 +684,42 @@ reproduce; each correction is inline, in the bullet that carries it.
   different tips inside twenty minutes because the tree is shared and moving, so cite it only with its
   minute and its tip. This belongs to `apps/tablet-client`, not to this lane.
 
+## GI-4 scope — this register is itself an enumeration mirror, outside MIRRORS (`GI-4-SCOPE`, OPEN, added 2026-09-13 12:12 +07, tip `222839216`)
+
+**Status:** ONE finding, filed from another worker's pass and kept verbatim below. The measured
+  half and the not-confirmed half are held apart rather than merged into the more interesting
+  number: the scope claim is measured, the numeric pairing is explicitly not confirmed, and that
+  distinction is the entry's content. Owner named by file, as the rest of this register does it:
+  `scripts/verify-agents-mirrors.py`.
+
+- **The mirror exists and nothing polices it.** docs/records/audit-open-findings.md is an enumeration mirror outside MIRRORS, 695 lines,
+  tracked, clean in status, holding step and command counts in the same shape the policed
+  mirrors do, :568 quotes 451 registered, 27 unregistered references, 16 unregistered command
+  fns and info[tablet] 453 UI, and it is invisible to scripts/verify-agents-mirrors.py, git grep
+  for its path in that checker returns nothing, the gate exits 0 around it, measured at 12:0x
+  +0700 with tip 620824fdfe.
+- **Where it sits in this register's own taxonomy.** same class as GI-2, new instance, a scope hole rather than a numeric one.
+- **What was NOT confirmed, filed as not confirmed.** the 14-stated-against-16-real pairing reported by an earlier pass was NOT confirmed, two greps
+  found no such claim in the file and its 14 hits are other subjects, the files own 16
+  references agree with .agents/parity-unanswerable-16.md, so the confirmed defect is the scope
+  and not the number.
+- **Why it is left open rather than fixed here.** widening MIRRORS is a design change with its own noise cost and this pass learned that the hard
+  way.
+- **Ledger-owner re-check at 12:12 +07 on tip 222839216 — this lane's own numbers, added so the
+  verbatim text above is attributable and not so it is restated. `python3
+  scripts/verify-agents-mirrors.py` exits 0 and prints "all 2 mirrors agree with the repo";
+  `MIRRORS` is the two-entry list at `scripts/verify-agents-mirrors.py:97` (`AGENTS.md`,
+  `.agents/AGENTS.md`) and nothing else; `git grep -n docs/records/audit-open-findings --
+  scripts/verify-agents-mirrors.py` returns no hits; **this file was** 695 **lines at 12:11 +07**
+  (tracked, and clean in status at that minute), **and it is 731 lines with this entry in it (731 after the line below is fixed), so the
+  count quoted in the verbatim text above is already one entry behind — which is the finding, not an
+  error in it**; the quoted figures are reproduced at `docs/records/audit-open-findings.md:568`;
+  `.agents/parity-unanswerable-16.md` exists, 17,614 bytes, and carries the 16. The
+  non-confirmation holds on this lane's re-grep too: the only two lines pairing 14 against 16 in
+  this file are `:249` (`BridgeCtx` public fields) and `:513` (salvaged-blob and scratch counts
+  under `GH-CLEAN-01`) — both other subjects. So the scope half is measured and the numeric half
+  stays unconfirmed, and that is how it is filed above.
+
 ---
 
 ## How to close these
