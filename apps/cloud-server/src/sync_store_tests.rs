@@ -711,3 +711,284 @@ async fn sqlite_push_batch_commits_atomically_and_rejects_dups() {
     ids.sort_unstable();
     assert_eq!(ids, vec!["cs3-a", "cs3-b", "cs3-c", "cs3-d", "cs3-e"]);
 }
+
+// ---------------------------------------------------------------------------
+// End-to-end conflict detection (sync-conflict work order)
+//
+// `conflict_resolution_tests.rs` proves the classifier in isolation. These
+// drive the real production entry point — `push_batch` — with payloads
+// stamped by `platform_sync::crdt::stamp_payload`, so a regression that
+// leaves the classifier correct but unwired still fails here. That gap is
+// not hypothetical: `classify` existed for a pass and was never called.
+// ---------------------------------------------------------------------------
+
+/// A queue item carrying an arbitrary action and payload.
+///
+/// Only `action` and `payload` differ from [`sample_item`]; everything else
+/// is queue bookkeeping the detector never reads.
+fn detection_item(id: &str, action: &str, payload: &str) -> OfflineQueueItem {
+    OfflineQueueItem {
+        id: id.to_owned(),
+        action: action.to_owned(),
+        payload: payload.to_owned(),
+        ..sample_item(id)
+    }
+}
+
+/// A money body, in `i64` minor units — never a float.
+fn money_body(entity_id: &str, amount_minor: i64) -> String {
+    serde_json::json!({ "entity_id": entity_id, "amount_minor": amount_minor }).to_string()
+}
+
+/// Two offline terminals redeeming the same gift card must produce a review
+/// row, not a silently chosen winner.
+///
+/// Each terminal advanced only its own counter, so `{t1:1}` and `{t2:1}` are
+/// concurrent. Gift cards are [`MergePolicy::NeverAutoMerge`]: redemption is
+/// guarded by an atomic conditional UPDATE plus `uq_gift_card_redeem_sale`,
+/// and an automatic merge would defeat both.
+#[tokio::test]
+async fn sqlite_concurrent_gift_card_redemption_is_flagged_end_to_end() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Stamped by the sender-side helper, so both halves of the seam are
+    // exercised: what the daemon puts on the wire is what is classified.
+    let first = platform_sync::crdt::stamp_payload(&money_body("gc-1", 5_000), "t1", 1);
+    let second = platform_sync::crdt::stamp_payload(&money_body("gc-1", 7_500), "t2", 1);
+
+    store
+        .push_batch(
+            &[detection_item("gc-a", "gift_card.redeem", &first)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("gc-b", "gift_card.redeem", &second)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    let conflicts = store.list_conflicts("tenant-a", None, None).await.unwrap();
+    assert_eq!(
+        conflicts.len(),
+        1,
+        "concurrent money writes must be flagged for review"
+    );
+
+    let row = &conflicts[0];
+    assert_eq!(row.entity_type, "gift_card.redeem");
+    assert_eq!(row.entity_id, "gc-1");
+    assert_eq!(row.severity, "high");
+    assert_eq!(row.status, "open");
+
+    // The stored side is attributed to the terminal that actually wrote it,
+    // not to the peer arriving second.
+    assert_eq!(row.local_terminal_id, "t1");
+    assert_eq!(row.local_vector, r#"{"t1":1}"#);
+    assert_eq!(row.remote_vector, r#"{"t2":1}"#);
+
+    // Both bodies are preserved verbatim. They are never summed: combining
+    // two redemptions would invent value neither write authorised.
+    assert!(row.local_payload.contains("5000"));
+    assert!(row.remote_payload.contains("7500"));
+
+    // Tenant scoping survives the whole path.
+    assert!(
+        store
+            .list_conflicts("tenant-b", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Causally ordered writes are not conflicts, however many terminals take
+/// part: each writer here has observed everything before it.
+#[tokio::test]
+async fn sqlite_causally_ordered_pushes_never_flag() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let sequence = [
+        ("o-1", serde_json::json!({ "t1": 1 })),
+        ("o-2", serde_json::json!({ "t1": 1, "t2": 1 })),
+        ("o-3", serde_json::json!({ "t1": 2, "t2": 1 })),
+        ("o-4", serde_json::json!({ "t1": 2, "t2": 3 })),
+    ];
+
+    for (id, vector) in sequence {
+        let payload = serde_json::json!({
+            "entity_id": "gc-2",
+            "amount_minor": 1_000,
+            "_terminal": "t1",
+            "_vector": vector,
+        })
+        .to_string();
+        store
+            .push_batch(
+                &[detection_item(id, "gift_card.redeem", &payload)],
+                "tenant-a",
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a dominated-by chain is ordered, not concurrent"
+    );
+}
+
+/// A push older than what is stored is dropped without a review row: it adds
+/// nothing the server did not already know.
+#[tokio::test]
+async fn sqlite_stale_push_is_dropped_without_flagging() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let newer = serde_json::json!({ "_terminal": "t1", "_vector": { "t1": 5, "t2": 3 }, "entity_id": "gc-3" }).to_string();
+    let older =
+        serde_json::json!({ "_terminal": "t1", "_vector": { "t1": 2 }, "entity_id": "gc-3" })
+            .to_string();
+
+    store
+        .push_batch(
+            &[detection_item("s-1", "gift_card.redeem", &newer)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("s-2", "gift_card.redeem", &older)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Concurrent stock movements auto-merge and need no human: quantities are
+/// additive deltas, already reconciled by `resolve_stock_crdt`.
+///
+/// This pins the policy table from the production path — without it, a
+/// classifier hard-wired to flag everything would still pass the gift-card
+/// test above.
+#[tokio::test]
+async fn sqlite_concurrent_stock_movement_auto_merges_without_review_row() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let a = platform_sync::crdt::stamp_payload(r#"{"entity_id":"sku-1","quantity":2}"#, "t1", 1);
+    let b = platform_sync::crdt::stamp_payload(r#"{"entity_id":"sku-1","quantity":3}"#, "t2", 1);
+
+    store
+        .push_batch(&[detection_item("st-a", "stock.adjusted", &a)], "tenant-a")
+        .await
+        .unwrap();
+    store
+        .push_batch(&[detection_item("st-b", "stock.adjusted", &b)], "tenant-a")
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "additive stock deltas must not page a human"
+    );
+}
+
+/// Customer profiles merge only when the two sides touched different fields.
+///
+/// The stamp fields are metadata, not chosen fields: counting them would put
+/// `_vector` and `_terminal` in every intersection and make every customer
+/// push a conflict regardless of what the writers actually edited.
+#[tokio::test]
+async fn sqlite_customer_fields_decide_merge_versus_flag() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let disjoint_a =
+        serde_json::json!({ "entity_id": "c-1", "email": "a@x.com", "_terminal": "t1", "_vector": { "t1": 1 } })
+            .to_string();
+    let disjoint_b =
+        serde_json::json!({ "entity_id": "c-1", "phone": "555", "_terminal": "t2", "_vector": { "t2": 1 } })
+            .to_string();
+    let overlap_a =
+        serde_json::json!({ "entity_id": "c-2", "email": "a@x.com", "_terminal": "t1", "_vector": { "t1": 1 } })
+            .to_string();
+    let overlap_b =
+        serde_json::json!({ "entity_id": "c-2", "email": "b@x.com", "_terminal": "t2", "_vector": { "t2": 1 } })
+            .to_string();
+
+    for (id, payload) in [
+        ("cu-1", &disjoint_a),
+        ("cu-2", &disjoint_b),
+        ("cu-3", &overlap_a),
+        ("cu-4", &overlap_b),
+    ] {
+        store
+            .push_batch(
+                &[detection_item(id, "customer.updated", payload)],
+                "tenant-a",
+            )
+            .await
+            .unwrap();
+    }
+
+    let conflicts = store.list_conflicts("tenant-a", None, None).await.unwrap();
+    assert_eq!(conflicts.len(), 1, "only the overlapping pair is ambiguous");
+    assert_eq!(conflicts[0].entity_id, "c-2");
+    assert_eq!(conflicts[0].severity, "medium");
+}
+
+/// A peer that predates vector support is skipped, not guessed at.
+#[tokio::test]
+async fn sqlite_unstamped_payload_is_skipped_not_flagged() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let legacy = r#"{"entity_id":"gc-4","amount_minor":100}"#;
+    let legacy2 = r#"{"entity_id":"gc-4","amount_minor":900}"#;
+
+    store
+        .push_batch(
+            &[detection_item("lg-1", "gift_card.redeem", legacy)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("lg-2", "gift_card.redeem", legacy2)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

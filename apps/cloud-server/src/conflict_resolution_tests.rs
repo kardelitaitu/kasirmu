@@ -1,6 +1,6 @@
 //! Tests for the conflict classification policy.
 
-use platform_sync::crdt::VersionVector;
+use platform_sync::crdt::{CausalOrder, VersionVector};
 use serde_json::{Value, json};
 
 use super::{
@@ -317,4 +317,102 @@ fn severity_strings_match_the_check_constraint() {
     assert_eq!(Severity::High.as_str(), "high");
     assert_eq!(Severity::Medium.as_str(), "medium");
     assert_eq!(Severity::Low.as_str(), "low");
+}
+
+#[test]
+fn disjoint_fields_ignores_transport_and_identity_metadata() {
+    // Two writers who edited different aspects of the same customer must
+    // merge. They share `_vector`, `_terminal` and `entity_id` by
+    // construction — those say which record this is and who sent it, not
+    // what was edited. Counting any of them would make EVERY pair
+    // non-disjoint, and MergeDisjointFields would degrade into a flag on
+    // every customer push.
+    let local = json!({
+        "entity_id": "c-1",
+        "email": "a@x.com",
+        "_terminal": "t1",
+        "_vector": { "t1": 1 },
+    });
+    let remote = json!({
+        "entity_id": "c-1",
+        "phone": "555",
+        "_terminal": "t2",
+        "_vector": { "t2": 1 },
+    });
+
+    assert!(fields_are_disjoint(&local, &remote));
+    assert!(overlapping_fields(&local, &remote).is_empty());
+
+    // A genuinely contested field is still detected.
+    let contested = json!({
+        "entity_id": "c-1",
+        "email": "b@x.com",
+        "_terminal": "t2",
+        "_vector": { "t2": 1 },
+    });
+    assert!(!fields_are_disjoint(&local, &contested));
+    assert_eq!(overlapping_fields(&local, &contested), vec!["email"]);
+}
+
+#[test]
+fn disjoint_payloads_merge_and_contested_payloads_flag() {
+    let mut stored = VersionVector::new();
+    stored.record("t1", 1);
+    let mut incoming = VersionVector::new();
+    incoming.record("t2", 1);
+    assert_eq!(stored.compare(&incoming), CausalOrder::Concurrent);
+
+    let mergeable = json!({ "entity_id": "c-1", "email": "a@x.com" });
+    let other = json!({ "entity_id": "c-1", "phone": "555" });
+    let contested = json!({ "entity_id": "c-1", "email": "b@x.com" });
+
+    let base = ConflictCandidate {
+        entity_type: "customer.updated",
+        stored: &stored,
+        incoming: &incoming,
+        stored_payload: Some(&mergeable),
+        incoming_payload: Some(&other),
+    };
+    assert!(matches!(
+        classify(&base),
+        Decision::AutoMerge {
+            severity: Severity::Medium
+        }
+    ));
+
+    let clash = ConflictCandidate {
+        incoming_payload: Some(&contested),
+        ..base
+    };
+    assert!(matches!(
+        classify(&clash),
+        Decision::Flag {
+            severity: Severity::Medium
+        }
+    ));
+}
+
+#[test]
+fn missing_payload_fails_closed_on_the_field_wise_policy() {
+    // Without both bodies we cannot prove nothing was lost, so the
+    // conservative answer is to flag rather than to assume disjoint.
+    let mut stored = VersionVector::new();
+    stored.record("t1", 1);
+    let mut incoming = VersionVector::new();
+    incoming.record("t2", 1);
+
+    let body = json!({ "entity_id": "c-1", "email": "a@x.com" });
+    let candidate = ConflictCandidate {
+        entity_type: "customer.updated",
+        stored: &stored,
+        incoming: &incoming,
+        stored_payload: Some(&body),
+        incoming_payload: None,
+    };
+    assert!(matches!(
+        classify(&candidate),
+        Decision::Flag {
+            severity: Severity::Medium
+        }
+    ));
 }
