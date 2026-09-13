@@ -86,7 +86,7 @@ fn same_clock_ties_break_on_movement_id() {
     let a = delta("aaa", "SKU-A", 1, 5, "t1");
     let b = delta("bbb", "SKU-A", 1, 5, "t2");
 
-    let outcome = merge_deltas(&[b.clone()], &[a.clone()]);
+    let outcome = merge_deltas(&[b], &[a]);
     let ids: Vec<&str> = outcome
         .applied
         .iter()

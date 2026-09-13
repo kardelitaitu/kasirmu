@@ -533,20 +533,15 @@ impl SyncQueue {
                     &payload.key,
                     &payload.value,
                     IngestPolicy::RemoteSync,
-                )? {
-                    if let Err(e) = Settings::write_delta(
-                        tx,
-                        &payload.key,
-                        &payload.value,
-                        &payload.terminal_id,
-                    ) {
-                        tracing::warn!(
-                            key = %payload.key,
-                            terminal_id = %payload.terminal_id,
-                            error = %e,
-                            "sync settings delta write failed (non-fatal)"
-                        );
-                    }
+                )? && let Err(e) =
+                    Settings::write_delta(tx, &payload.key, &payload.value, &payload.terminal_id)
+                {
+                    tracing::warn!(
+                        key = %payload.key,
+                        terminal_id = %payload.terminal_id,
+                        error = %e,
+                        "sync settings delta write failed (non-fatal)"
+                    );
                 }
             }
             // A sale completed on the CLOUD (payment captured via the

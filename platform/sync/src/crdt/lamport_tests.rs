@@ -60,7 +60,7 @@ fn tie_break_is_deterministic_across_argument_order() {
 
 #[test]
 fn ordering_is_transitive_over_a_scrambled_set() {
-    let mut clocks = vec![
+    let mut clocks = [
         LamportClock::with_counter(3, "c"),
         LamportClock::with_counter(1, "z"),
         LamportClock::with_counter(3, "a"),

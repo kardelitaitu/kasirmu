@@ -188,7 +188,7 @@ fn run_consumer_one(c: &Case) -> Observed {
     let local = enqueue_local(&store, c);
     let result = apply_sync_outcomes(
         &store,
-        &[local.clone()],
+        std::slice::from_ref(&local),
         &[PushOutcome::Conflict(server_item(c))],
     )
     .unwrap();
@@ -443,7 +443,7 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
 
     let result = apply_sync_outcomes(
         &store,
-        &[local.clone()],
+        std::slice::from_ref(&local),
         &[PushOutcome::Rejected {
             reason: reason.clone(),
         }],
