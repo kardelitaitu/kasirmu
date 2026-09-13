@@ -726,16 +726,16 @@ async fn handle_peer(
     if let ReplayKey::Device(device_id) = &replay_key {
         let device_drain = offline_buffer.drain(&replay_key).await;
         if !device_drain.events.is_empty() {
-            if let Some(source) = device_drain.source_addr.as_deref() {
-                if source != peer_addr {
-                    tracing::info!(
-                        device = %device_id,
-                        buffered_at = %source,
-                        reconnected_at = %peer_addr,
-                        count = device_drain.events.len(),
-                        "offline replay buffer handed off to a new peer address"
-                    );
-                }
+            if let Some(source) = device_drain.source_addr.as_deref()
+                && source != peer_addr
+            {
+                tracing::info!(
+                    device = %device_id,
+                    buffered_at = %source,
+                    reconnected_at = %peer_addr,
+                    count = device_drain.events.len(),
+                    "offline replay buffer handed off to a new peer address"
+                );
             }
             pending.extend(
                 device_drain
