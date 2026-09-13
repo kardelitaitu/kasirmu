@@ -81,6 +81,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import io
 import re
 import subprocess
@@ -660,7 +661,23 @@ def scan(root: Path, head_hook_text: str | None = None,
         # decide "presents" (too short, historical by the existing marker notion, or about
         # something else entirely), so a file that never claimed to enumerate is not
         # shouted at.
-        for run in step_enumerations(text, hook_step_names):
+        # (1c) A CLAIM WITH NOTHING BEHIND IT. Built on the precise pair, not on a
+        # hardcoded list of files that "must" enumerate: it fires only where the numeral
+        # check found a step claim in this file AND the membership check found no run to
+        # police. A mirror that moves its list into a table, un-bolds the labels, or folds
+        # it into prose keeps saying "seven steps" while the name rule goes inert, and until
+        # now that output was indistinguishable from a mirror whose enumeration is correct.
+        # Informational by construction: appended to notices only, never to problems, so it
+        # cannot move the exit code.
+        runs = step_enumerations(text, hook_step_names)
+        if claimed is not None and not runs and notices is not None:
+            notices.append(
+                f"{rel}: presents no checkable step enumeration -- {len(runs)} "
+                f"enumerations policed, while it does claim {claimed} pre-commit steps, "
+                f"so the membership rule is inert for this file and only its numeral is "
+                f"being checked; reported, not failed. The policed form is one numbered "
+                f"item per step, like: 1. **name** ...")
+        for run in runs:
             missing = [(o, nm, hl) for o, nm, hl in hook_step_index
                        if not any(step_names_match(nm, inm) for _, inm, _ in run)]
             extra = [(n, nm, ln) for n, nm, ln in run
@@ -942,6 +959,27 @@ def make_fixture(src: Path, dst: Path) -> None:
 
 
 def self_test() -> int:
+    """Run the cases, then print the tally the report used to have to remember.
+
+    Every numeric slip in this file's commit messages tonight was this number, quoted
+    from memory across a commit boundary by a worker that had already run something else
+    since. It is now recomputed from the text the cases actually printed, so a case that
+    stops printing stops being counted rather than being remembered.
+    """
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = _self_test_cases()
+    text = buf.getvalue()
+    sys.stdout.write(text)
+    caught = text.count("CAUGHT ")
+    clean = text.count("CLEAN ")
+    red = text.count("MISSED ") + text.count("WRONG ")
+    print(f"  count line: {caught + clean} green = {caught} CAUGHT + {clean} CLEAN; "
+          f"{red} red; exit {rc}")
+    return rc
+
+
+def _self_test_cases() -> int:
     import shutil
     import tempfile
 
@@ -1262,6 +1300,70 @@ def self_test() -> int:
                       f"run -- {len(probs10)} problem(s): "
                       f"{[p[:62] for p in probs10[:2]]}")
                 bad += 1
+
+    # (11) A CLAIM WITH NOTHING BEHIND IT. The hole was measured, not assumed: the same
+    # seven steps rendered as a markdown table leaves both mirrors claiming a count while
+    # the membership rule has no run to police, and printed nothing at all -- a file with
+    # no checkable claim was indistinguishable from a file whose claim is true. This case
+    # renders that table, plants the invented "i18n lint" label inside it, and asserts the
+    # per-file notice fires with its count; the companion asserts the notice does NOT fire
+    # on an untouched mirror, which is what keeps it from becoming permanent noise.
+    def table_with_wrong_label(text):
+        lines = text.splitlines()
+        starts = [i for i, l in enumerate(lines) if ENUM_ITEM_RE.match(l)
+                  and BOLD_RE.search(l)]
+        if len(starts) < MIN_ENUM_ITEMS:
+            return text
+        first, last = starts[0], starts[-1]
+        labels = [BOLD_RE.search(lines[i]).group(1).replace("`", "").strip()
+                  for i in starts]
+        labels[5] = "i18n lint"
+        body = ["", "| step | gate |", "|---|---|"]
+        body += ["| %d | %s |" % (i + 1, lab) for i, lab in enumerate(labels)]
+        return "\n".join(lines[:first] + body + lines[last + 1:])
+
+    for desc, mutate11, want_notice in (
+        ("steps rendered as a table, invented label inside", table_with_wrong_label, True),
+        ("untouched mirror, enumeration policed as normal", lambda t: t, False),
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            make_fixture(src, tmp)
+            anchored = True
+            for rel in MIRRORS:
+                base11 = read(tmp, rel)
+                mut11 = mutate11(base11)
+                if mut11 == base11 and want_notice:
+                    anchored = False
+                    continue
+                io.open(tmp / rel, "w", encoding="utf-8",
+                        newline="\n").write(mut11)
+            if not anchored:
+                print(f"  WRONG {MIRRORS[0]}: case (11) cannot render the table -- no "
+                      "numbered bold items found to convert")
+                bad += 1
+                continue
+            notes11: list[str] = []
+            probs11 = scan(tmp, notices=notes11)
+            fired = [s for s in notes11 if "enumerations policed" in s]
+            failed_hard = [p for p in probs11 if "enumeration" in p]
+            if want_notice:
+                if len(fired) == len(MIRRORS) and "0 enumerations policed" in fired[0] \
+                        and not failed_hard:
+                    print(f"  CAUGHT  {MIRRORS[0]:20s} {desc} -- one notice per mirror, "
+                          "with its count, and it did not fail the run")
+                else:
+                    print(f"  MISSED  {MIRRORS[0]:20s} {desc} -- {len(fired)} of "
+                          f"{len(MIRRORS)} mirror(s) announced; count printed: "
+                          f"{'0 enumerations policed' in (fired[0] if fired else '')}; "
+                          f"problems: {[p[:56] for p in failed_hard]}")
+                    bad += 1
+            elif fired or failed_hard:
+                print(f"  MISSED  {MIRRORS[0]:20s} {desc} -- the notice fires on a file "
+                      f"whose enumeration IS policed: {[s[:60] for s in fired]}")
+                bad += 1
+            else:
+                print(f"  CLEAN   {MIRRORS[0]:20s} {desc}")
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0
