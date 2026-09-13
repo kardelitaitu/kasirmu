@@ -734,7 +734,10 @@ before being written, nothing outside this file touched. Owner named by file:
   repository, so a reader cannot tell the two runs apart from the output. `REPO` is two
   `dirname`s off `__file__` (`:70`), so it resolves to the temp directory; `ui/src` absent, 0
   production files walked (**569** in the real tree), 0 violations, counted through an
-  `importlib` probe because the gate prints no tally of its own.
+  `importlib` probe because the gate prints no tally of its own — and the `REPO -> … ; files walked:
+  0 ; violations: 0` line that script's own F-2 stamp quotes at `:64` is emitted by nothing in it (the
+  only live printer of that phrase is `verify-agents-mirrors.py:902`), so the tally the stamp shows a
+  reader is one the gate cannot produce.
 - **F ONE, as its sub-bullet:** `ALLOWLIST` is script-relative (`:71`) with no path argument —
   `--self-test` and `--shell` are the only flags, and `--allowlist` appears nowhere in the file
   — so a bad allowlist member cannot be demonstrated by an operator without reaching into the
