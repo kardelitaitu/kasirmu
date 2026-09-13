@@ -455,6 +455,34 @@ impl SyncEngine {
         }
     }
 
+    /// Stamp outgoing pushes with this terminal's causality metadata.
+    ///
+    /// [`SyncEngine::new`] cannot do this itself: it takes only a
+    /// [`SyncConfig`] and has no database handle, and the counter must be read
+    /// from the persisted clock — see
+    /// [`SyncTransport::with_vector_stamping`] for why seeding from zero is
+    /// wrong. Callers that hold a store should read
+    /// [`crate::crdt::CLOCK_KEY`] and the configured terminal id, then call
+    /// this, and persist [`SyncTransport::last_stamped_counter`] afterwards.
+    ///
+    /// Without it the immediate-sync path pushes unstamped payloads, and the
+    /// server skips conflict detection for them.
+    pub fn with_vector_stamping(mut self, terminal_id: &str, initial_counter: u64) -> Self {
+        self.transport = self
+            .transport
+            .with_vector_stamping(terminal_id, initial_counter);
+        self
+    }
+
+    /// Highest counter stamped so far, or `None` when stamping is disabled.
+    ///
+    /// Persist this after a successful sync cycle; otherwise the next process
+    /// restarts from the old value and the server classifies every push as
+    /// stale.
+    pub fn last_stamped_counter(&self) -> Option<u64> {
+        self.transport.last_stamped_counter()
+    }
+
     /// Run a full sync cycle: push pending items in batches, then pull remote updates.
     ///
     /// Items are split into ≤ 64 KB batches (P-1 batching) and sent sequentially.
