@@ -52,6 +52,21 @@ import re
 import sys
 import time
 
+# F-2, STILL OPEN IN THIS FILE, stamped with the reproduction so the next reader does not
+# have to rebuild the temp directory. The root below comes from __file__, and that is NOT
+# a reasoned refusal of git rev-parse --show-toplevel: nothing in this script argues for
+# the script-relative anchor, so do not read the assignment below as a decision. It is the
+# default this file shipped with, and the default fails in a direction nobody can notice.
+# Measured 12:46, against a HEAD-identical copy of this script sitting in a temp directory
+# beside a copy of the allowlist, run with nothing rebound and no fixture at all:
+#   python3 $TMP/oz-headcopy/scripts/verify-scoped-reads.py    -> exit 0
+#   verify-scoped-reads: clean for desktop.
+#   REPO -> $TMP/oz-headcopy ; ui/src exists? False ; files walked: 0 ; violations: 0
+# A gate whose default on an empty corpus is clean will report a repository it is not
+# looking at. The closure is being taken in scripts/verify-agents-mirrors.py -- git first,
+# script-relative only when git cannot answer, and a refusal when the walk yields nothing.
+# This file has the same anchor and is not part of that change.
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWLIST = os.path.join(REPO, "scripts", "ipc-parity-allowlist.json")
 
