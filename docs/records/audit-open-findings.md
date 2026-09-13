@@ -1000,6 +1000,38 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated correction (2026-09-13, 22:05) — the seventh gate, and a residual that turned out smaller than reported
+
+`551f2a38eb` (111/29), `scripts/verify-scoped-reads.py` only — the *other* reader of the same shared
+`scripts/ipc-parity-allowlist.json`, which the `e931220d9a` guard did not cover. Verified by me at
+22:02 on the committed tree: numstat one file; default run **byte-identical 180 B exit 0** against a
+baseline copy placed inside `scripts/`; CI form `--shell desktop,tablet` **byte-identical 20473 B at
+exit 1**, that 1 being the tree's own pre-existing verdict (14 unguarded calls) which the lane
+correctly did *not* silence; `--self-test` exit 0; mirrors from the repository root exit 0; allowlist
+still `e5663346ef` in worktree and HEAD; zero scratch.
+
+**The hole it closed was timing, not presence.** The old shape guard asked only for *membership*, so
+`{"desktop": "abc"}` cleared it, **walked 612 production files**, and only then reported a member
+problem under the verdict code — a refusal one second late and one door too far. Membership plus
+`isinstance(..., list)` now refuses before the walk, and refusals moved off exit 1 (three real
+verdicts spend it here) onto 2, with `error:` on stderr. Note this file's own header and three class
+docstrings *declared* the old behaviour as the design, "ONE voice, `FAIL: <sentence>`, exit 1" — a
+comment documenting a bug as intent is still a bug.
+
+**A residual I shrank by testing it rather than repeating it.** The lane reported (1): a copy with
+`ui/src` present but holding nothing exits **0** printing `0 production file(s) graded`. True. I
+tried the stricter case, `ui/` absent entirely, and it exits **2** with **0 stdout bytes** — the
+guard already refuses a genuinely missing root. So the live gap is only *present-but-empty*, which
+is narrower than "nothing refuses it" and should be written down that way.
+
+**Two residuals to carry, both real:** (2) exit 1 still means two different things in this file,
+"the tree has unguarded calls" and "one of your allowlist entries is malformed", separated only by
+wording; (3) the two gates now hold **near-but-not-identical schemas for one shared file** — this
+one requires only the sections `--shell` names (right for a two-of-four reader), `verify-ipc-parity.py
+refuses unless all four are stated lists — so a `{desktop, tablet}` file is *graded* by one and
+*refused* by the other. Honest per role, but nothing outside either file polices that they keep
+agreeing; the next edit to that allowlist format needs both gates open in front of whoever makes it.
+
 ### Dated correction (2026-09-13, 21:35) — the sixth gate: ipc-parity refused a malformed allowlist, and did not rewrite it
 
 `e931220d9a` (253/18) + `21da42e70f` (8/0), `scripts/verify-ipc-parity.py` only, both one file. This was
