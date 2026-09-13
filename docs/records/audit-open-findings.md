@@ -1000,6 +1000,45 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated correction (2026-09-13, 21:35) — the sixth gate: ipc-parity refused a malformed allowlist, and did not rewrite it
+
+`e931220d9a` (253/18) + `21da42e70f` (8/0), `scripts/verify-ipc-parity.py` only, both one file. This was
+the highest-blast file left because it *writes* `scripts/ipc-parity-allowlist.json`: an unreadable or
+wrong-shaped read was treated as an empty allowlist, the gate printed its verdict, and `--write-*`
+flags could persist that emptiness — the `{}` case wrote 1227 bytes where the probe held 2. Now a
+read-site refusal (`AllowlistUnusable` → `error:` + exit **2**, the same voice as the ftl-orphans
+refusals) and all three writer flags route through `write_or_refuse`, so a refusal writes nothing.
+
+**Verified by me at 21:32, on the committed tree, sibling runs at one instant:** the default grade
+is **byte-identical** before/after (exit 1, stdout 3379 B, stderr 628 B, `cmp` clean on both) so the
+refusal is purely additive on the failure path; `--self-test` exit **0** "self-test: OK";
+`verify-agents-mirrors.py` **from the repository root** exit **0**; and
+`git hash-object scripts/ipc-parity-allowlist.json` = `e5663346ef` in the worktree **and** at HEAD —
+the frozen baseline I took at 20:50 *before* briefing the worker, so the destructive case is proven
+not to have touched the shared file. Zero scratch (`tmp-ipc*`/`tmp-ab*`) left in `scripts/`.
+
+**The distinction that makes this correct, not just quiet:** "stated-empty is a claim,
+defaulted-empty is this run's own invention." `{"dev_mock": []}` — key present, value a list, zero
+entries — is a claim the file makes, so it grades (and `--write-allowlist` legitimately emits it on
+a clean tree). An absent file, a non-object, `{}`, or a section holding a scalar is a value never
+received, and `payload.get(section)` was *manufacturing* the emptiness. Told apart by
+`section in payload and isinstance(..., list)`, before any walk.
+
+**A worker fixing its own refusal is the tell worth reading.** Its first commit's decode arm called
+`.strerror` on a `UnicodeDecodeError`, which has none, so the refusal itself raised AttributeError —
+"a refusal that crashes is worse than one that does not", and per §3 it went in as a second one-file
+commit rather than an amend, with every check re-run on the final bytes. That is the behaviour.
+
+**Residuals the worker named, which I am escalating rather than burying.** (1)
+`scripts/verify-scoped-reads.py:266` still opens the *same* shared allowlist under its own rules — my
+guard is this gate only, not that path. (2) Four sections each stated `[]` is legal and grades clean,
+so a truncate-the-entries-but-keep-the-keys edit still passes on `(0 allowlisted)` reporting alone.
+(3) Entry-level shape findings and every *write-side* refusal still spend verdict code 1 — including
+a busy-rename lock collision, the exact case the ftl file says must never leave a 1. (4)
+`extract_ui_commands`/`read_dev_mock_sources` answer an unreadable source with `warn:` + `continue`,
+so a hole in the walked corpus is a shorter walk, not a refusal. Each is real; (1) is the cheapest to
+follow next because it is a small file that already has an `AllowlistUndecodable` precedent.
+
 ### Dated corrections (2026-09-13, 20:30) — the live-writer race, and the same class in a fifth gate
 
 **The 19:45 finding is closed by `4d1a85b15`** (20:28, `scripts/verify-ftl-orphans.py`, 186/7 — one
