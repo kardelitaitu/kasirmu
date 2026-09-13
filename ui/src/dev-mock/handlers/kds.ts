@@ -12,6 +12,7 @@
  */
 
 import type { MockHandler } from '../core/mockDispatcher';
+import type { KdsRoutingRule, KdsRoutingRuleInput } from '../../api/kds';
 import { emit } from '../tauri-event';
 import { MOCK_KDS_KEY, readSlice, writeSlice } from '../core/mockDatabase';
 
@@ -502,6 +503,15 @@ function startKdsAutoProgress(): void {
 
 startKdsAutoProgress();
 
+/** Seed routing rules for the session's restaurant, highest priority first,
+ *  matching the real read path. The rows are the answer the rules editor
+ *  renders in the browser preview instead of its empty state; `is_active: false`
+ *  on the second one is there so the toggle has something to show. */
+const KDS_MOCK_ROUTING_RULES: KdsRoutingRule[] = [
+  { id: 'kds-rule-1', restaurant_pos_id: 'resto-1', priority: 1, matcher: 'sku', matcher_value: 'SATE-AYAM', target_station: 'grill', is_active: true, created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' },
+  { id: 'kds-rule-2', restaurant_pos_id: 'resto-1', priority: 2, matcher: 'sku', matcher_value: 'GADO-GADO', target_station: 'fry', is_active: false, created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' },
+];
+
 /** Push a new KDS order derived from cart lines into the mock queue. */
 
 export const kdsHandlers: Record<string, MockHandler> = {
@@ -596,6 +606,31 @@ export const kdsHandlers: Record<string, MockHandler> = {
   },
   'ack_kds_order_scoped': () => true,
   'resolve_kds_targets_scoped': () => [] as string[],
+  // Routing rules for the rules editor. The mock keeps no rules table and
+  // `resolve_kds_targets_scoped` above never consults one, so the save cannot
+  // meaningfully persist: it echoes the submitted rows back with the
+  // server-assigned fields filled in, which is what the real command returns.
+  'get_kds_routing_rules_scoped': () => KDS_MOCK_ROUTING_RULES,
+  'save_kds_routing_rules_scoped': (args: unknown) => {
+    let submitted: KdsRoutingRuleInput[] | undefined;
+    if (Array.isArray(args)) {
+      [, submitted] = args as [string, KdsRoutingRuleInput[] | undefined];
+    } else {
+      submitted = (args as { rules?: KdsRoutingRuleInput[] } | undefined)?.rules;
+    }
+    const now = new Date().toISOString();
+    return (submitted ?? []).map((rule, index): KdsRoutingRule => ({
+      id: `kds-rule-mock-${index + 1}`,
+      restaurant_pos_id: 'resto-1',
+      priority: rule.priority,
+      matcher: rule.matcher,
+      matcher_value: rule.matcher_value,
+      target_station: rule.target_station,
+      is_active: rule.is_active ?? true,
+      created_at: now,
+      updated_at: now,
+    }));
+  },
   'print_kds_chit_scoped': () => true,
   'update_kds_order_items_scoped': (args) => {
     const raw = (args ?? {}) as { id?: string; args?: { id?: string } };
