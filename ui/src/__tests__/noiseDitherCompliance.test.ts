@@ -25,8 +25,9 @@ const COMPONENTS_CSS = resolve(UI_SRC, 'frontend/themes/components.css');
 // When a new shadow-using component is added, its CSS class selector
 // must be added to the ::after list in components.css AND to this set.
 //
-// Current count: 121 selectors (3 added for the org selector / org switcher
-// surfaces). The original "6 core + 1 utility + 35 feature-specific" split
+// Current count: 125 selectors (4 added for the 0.0.37 KDS expo / routing
+// surfaces, on top of the org selector / org switcher trio). The original
+// "6 core + 1 utility + 35 feature-specific" split
 // stopped matching the list long ago — the inline group comments are the
 // authoritative breakdown.
 // Increment when adding new selectors; decrement when cleaning up legacy.
@@ -173,6 +174,16 @@ const KNOWN_NOISE_SELECTORS = [
   '.org-selector-list',
   '.org-switcher-list',
   '.org-switcher-modal',
+  // 0.0.37 KDS wave: the Expo screen's station header, ready-slot card and
+  // recall dialog (687d87bb2) + the routing-rules editor's clear-confirm card
+  // (9f6fcd828). None is absolutely positioned, so each anchors the overlay
+  // with position:relative in its own component CSS (.kds-picker-modal
+  // pattern) and is wired to ::after in components.css main list + both
+  // @media parity blocks.
+  '.kds-expo-station-header',
+  '.kds-expo-ticket-slot--ready',
+  '.kds-expo-modal',
+  '.kds-routing-confirm',
 ];
 
 /** CSS selectors that are exempt from noise-dither even though they use --shadow-* */

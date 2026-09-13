@@ -212,6 +212,8 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg-surface);
+  /* Anchors the noise-dither ::after overlay (position:absolute; inset:0) to the panel. */
+  position: relative;
   box-shadow: var(--shadow-sm);
 }
 
@@ -255,6 +257,8 @@
 }
 
 .kds-expo-ticket-slot--ready {
+  /* Anchors the noise-dither ::after overlay registered for this state. */
+  position: relative;
   box-shadow: 0 0 0 2px var(--color-success), var(--shadow-md);
 }
 
@@ -296,6 +300,8 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg-surface);
+  /* Anchors the noise-dither ::after overlay (position:absolute; inset:0) to the panel. */
+  position: relative;
   box-shadow: var(--shadow-lg);
   color: var(--color-fg);
 }

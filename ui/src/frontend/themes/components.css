@@ -432,6 +432,15 @@
   .org-selector-list::after,
   .org-switcher-list::after,
   .org-switcher-modal::after,
+  /* 0.0.37 KDS wave: the Expo screen's station header, ready-slot card and
+     recall dialog (687d87bb2) + the routing-rules editor's clear-confirm
+     card (9f6fcd828). Plain panels — none is absolutely positioned — so
+     they anchor the overlay by setting position:relative in their own
+     component CSS, the .kds-picker-modal pattern. */
+  .kds-expo-station-header::after,
+  .kds-expo-ticket-slot--ready::after,
+  .kds-expo-modal::after,
+  .kds-routing-confirm::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -571,6 +580,10 @@
   .org-selector-list::after,
   .org-switcher-list::after,
   .org-switcher-modal::after,
+  .kds-expo-station-header::after,
+  .kds-expo-ticket-slot--ready::after,
+  .kds-expo-modal::after,
+  .kds-routing-confirm::after,
   :global(.dark) .panel::after { display: none; }
 }
 
@@ -697,6 +710,10 @@
 .org-selector-list::after,
 .org-switcher-list::after,
 .org-switcher-modal::after,
+.kds-expo-station-header::after,
+.kds-expo-ticket-slot--ready::after,
+.kds-expo-modal::after,
+.kds-routing-confirm::after,
 :global(.dark) .panel::after { display: none; }
 }
 

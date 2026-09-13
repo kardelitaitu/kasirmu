@@ -419,6 +419,8 @@
   background: var(--color-bg-popover);
   border: 1px solid var(--color-danger);
   border-radius: var(--radius-lg);
+  /* Anchors the noise-dither ::after overlay (position:absolute; inset:0) to the panel. */
+  position: relative;
   box-shadow: var(--shadow-sm);
 }
 
