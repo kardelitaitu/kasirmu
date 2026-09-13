@@ -10542,3 +10542,25 @@ reader looked at `stock_summary` — repaired through the real writer, never aro
 it, `86ca2e73f6`; one of those tests had been green for the WRONG REASON, rejecting
 a phantom `have 0` instead of a real shortfall — now it proves `have 5, need 20`).
 
+
+## 2026-09-13 — payment epic closed; analytics size-miss retired the honest way
+
+`todo-payment-agents-3.md` is COMPLETE: 3.2 landed as `00f5c3fda6` (re-audit —
+the wire had moved under the plan four commits mid-session; every checklist
+premise re-measured, both deferred decisions made explicitly) + `26ffd89c1c`
+(the card flow: scoped pre-flight, deliberately uncancellable tap/insert/swipe
+overlay, capture-first ordering as the mirror of QRIS-Auto's pending-first,
+txn fields riding the payment split) + `47ade21484`. The two QRIS/EDC money
+paths now share one build/settle tail (buildGatewaySale/settleGatewaySale).
+
+Analytics agents-1's measured miss (1,409 ln vs ≤1,200) was retired NOT by
+editing the target but by opening the JSX-shell order its own stamp named:
+`411e6dccfb` moved four verbatim renderings to `components/` (1,170 ln —
+under goal, 106/106 screen tests untouched), `todo-refactor-analytics-agents-4.md`
+(`c8ee3fb3da`) records the remaining slices with their traps measured —
+command palette next, the coupled grid core last and only after a state-
+ownership decision. One fabrication caught mid-work and corrected before it
+shipped: a drafted SHORTCUTS list that did not match the file; the verbatim
+pass replaced it. The native-tooltip ratchet moved with its code (15 -> 8+4+3,
+sum pinned 82); its two remaining reds are restaurant-lane drift, named.
+
