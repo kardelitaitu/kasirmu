@@ -125,3 +125,47 @@ fn empty_vectors_are_equal() {
     );
     assert!(VersionVector::new().is_empty());
 }
+
+/// The wire shape is `{"terminal": counter}` — a bare map, not a wrapped
+/// `{"counters": {...}}` object.
+///
+/// This is a cross-crate contract, and it was once broken: `stamp_payload`
+/// wrote a bare map while `VersionVector` serialized wrapped, so the server's
+/// `extract_vector` returned `None` for every payload the daemon sent and the
+/// detector skipped everything. Both sides' unit tests passed, because each
+/// only ever exercised its own shape. Pin both directions here.
+#[test]
+fn serializes_as_a_bare_terminal_to_counter_map() {
+    let v = vector(&[("t1", 3), ("t2", 7)]);
+    let json = serde_json::to_string(&v).unwrap();
+    assert_eq!(json, r#"{"t1":3,"t2":7}"#);
+
+    let back: VersionVector = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, v);
+    assert_eq!(back.get("t1"), 3);
+    assert_eq!(back.get("t2"), 7);
+}
+
+/// An empty vector is `{}`, and still round-trips.
+#[test]
+fn empty_vector_serializes_as_an_empty_object() {
+    let v = VersionVector::new();
+    assert_eq!(serde_json::to_string(&v).unwrap(), "{}");
+    let back: VersionVector = serde_json::from_str("{}").unwrap();
+    assert_eq!(back, v);
+}
+
+/// Round-trip through the exact shape `stamp_payload` puts on the wire.
+///
+/// This is the seam, end to end within the crate: stamp, then read back with
+/// the same deserializer the server uses.
+#[test]
+fn round_trips_through_the_stamp_shape() {
+    let stamped = super::super::push_stamp::stamp_payload(r#"{"x":1}"#, "t9", 4);
+    let value: serde_json::Value = serde_json::from_str(&stamped).unwrap();
+    let raw = value.get("_vector").unwrap().clone();
+
+    let v: VersionVector = serde_json::from_value(raw).unwrap();
+    assert_eq!(v.get("t9"), 4);
+    assert_eq!(v.len(), 1);
+}

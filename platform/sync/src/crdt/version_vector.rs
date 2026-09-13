@@ -44,8 +44,18 @@ pub enum CausalOrder {
 /// A terminal that has never been observed is absent from the map and reads as
 /// counter `0`; this keeps the representation compact without changing any
 /// comparison result.
+///
+/// The map is `flatten`ed, so the wire shape is a bare `{terminal: counter}`
+/// object — NOT `{"counters": {...}}`. That shape is load-bearing across a
+/// crate boundary: `push_stamp::stamp_payload` writes `_vector` as a bare map,
+/// and the server's `extract_vector` deserializes it straight into this type.
+/// When the two disagreed, every stamped payload parsed as `None`, the
+/// detector skipped every item, and the whole feature silently detected
+/// nothing — a failure no unit test could see, because each side's tests used
+/// its own shape.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionVector {
+    #[serde(flatten)]
     counters: BTreeMap<String, Counter>,
 }
 
