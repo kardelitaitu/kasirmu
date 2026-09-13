@@ -10493,3 +10493,52 @@ Reported in the doc rather than retargeted; the JSX-split order (`AnalyticsToolb
 Gates: typecheck clean beyond the devmock lane's live file; 16/16 + 106/106 analytics suites
 at every commit; whole-ui 9,568/9,597 with the 5 failures pre-existing and attributed
 (restaurant tooltip baseline ×2, kds expo selectors + storage key, devmock session-lock).
+
+## 2026-09-13 — the KDS five-agent chain: what "tested" still owed after being tested
+
+The routing/LAN/display KDS campaign shipped in five ordered slices (agents 1–5),
+each closed with gates — and the chain still produced the day's most instructive
+gap: agent-2's feature compiled, passed 62 crate tests, passed 12 registration +
+13 state pins, and the desktop wiring landed as three reviewed commits... and NO
+BODY had ever published an event over a live socket. The honest close for that
+slice was "wired, not lived" — which is why agent-4 existed at all.
+
+What the live validation found, none of it visible from any unit layer:
+
+- **Phase-0 over-read** (found `0302039258`, fixed `355d651a5f`): `handle_peer`'s
+  legacy-hello branch read through a transient `BufReader`; a tablet that wrote
+  `hello\n{"op":"discover"}` in one TCP segment had its discover line silently
+  discarded when the reader dropped. Sixty-two tests missed it because every one
+  of them paced its writes. A red-by-construction demo became the permanent
+  unpaced regression: `kds_lan_live_bugdemo_discovery_lost_when_sent_with_hello`.
+- **Ephemeral-port replay was dead code in production**: the offline buffer keyed
+  by peer ip:port, so a reconnecting tablet — which always gets a new port — never
+  found its queue. Agent-4's own replay test could only prove it by rebinding the
+  exact local port, a thing real tablets cannot do. Agent-5 (`212078e554`) keyed by
+  `device_id` (already on the wire, finally consumed), kept addr-keying as the
+  legacy path with a disjoint-namespace test, and made replay-on-reconnect true
+  for the first time.
+
+The rules lane (agent-1) landed `kds_routing_rules` through a migration window that
+went phantom → real → cleared mid-session, kept `resolve_kds_targets` byte-equivalent
+under `rules=[]` at both the pure and bridge layers, and raised the desktop
+registration floor **449 → 451** (the pin's own comment carries the naming this
+entry owes it). Two honest non-changes it stamped instead of faking: `tag` stays in
+the CHECK constraint but NEVER matches (no catalog tags model), and the UI editor +
+dev-mock handlers were deferred to live-session fences rather than raced.
+
+The compliance tail was its own lesson: agent-3's suites ran 942/942 green under
+two separate hands, and the WHOLE-ui run still found two unpinned new surfaces —
+`storageKeyPins` (unregistered `oz-kds-expo-station-`, `1ae8494160`) and
+`noiseDitherCompliance` (four shadow surfaces that needed real `::after` wiring,
+not just registration, `a34172f8e7`). Scoped filters green is not a gate; the
+ratchet files only move when the full sweep sees them. A third — nativeTooltip's
+9 new sites — was proven foreign (7 in the analytics lane's in-flight components,
+2 carried by the morning's MenuItemTile extraction) and correctly left to its owners.
+
+Also closed as campaign tail-debt: `stock_transfer_integration`'s five stale-seed
+reds (fixtures seeded the legacy global `inventory` while the canonical per-location
+reader looked at `stock_summary` — repaired through the real writer, never around
+it, `86ca2e73f6`; one of those tests had been green for the WRONG REASON, rejecting
+a phantom `have 0` instead of a real shortfall — now it proves `have 5, need 20`).
+
