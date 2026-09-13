@@ -28,6 +28,25 @@ status: Implemented (2026-08-03)
 > `--roots ''` to a whole-directory scan, 146 calls, and `--roots crates ''` to a
 > double-counted 242, now exit 2 and a correct 96.
 
+> **Closed (2026-09-13, 19:06) — the contractual zero holds again, and the check that proves it
+> is the exit code, not the figure.** All four calls were annotated by `2accc5513` (2 files,
+> `crates/oz-bridge/src/testing.rs` +15, `crates/oz-cli/src/commands/credential_deltas.rs` +7).
+> Re-measured on the committed tree at 19:05: `python3 scripts/scan-unwrap-panic.py
+> --fail-on-recoverable` exits **0** where it exited **1** at 18:40, and the bare run still exits
+> **0**, so `dev-ci.yml#static-gates` is green here for the first time in this session.
+> **The invariant is an equation, not a count.** `--json` now reports `total 136 /
+> invariant_annotated 136 / recoverable 0`; the block above wrote the middle figure as
+> `annotated 132`, which is the number I read but not the key the tool emits — a reader
+> greping `--json` output for `"annotated"` finds nothing and may conclude the field was
+> removed. The load-bearing form is `invariant_annotated == total` (and equivalently
+> `recoverable == 0`), which is machine-checkable and cannot be satisfied by an unannotated
+> call drifting in, because either side moving breaks the equality. The `total` staying at 136
+> while `recoverable` fell 4 to 0 is also the evidence that these were annotations and not new
+> suppression: no call was deleted, reclassified, or added.
+> What this record still cannot do is *keep* the invariant: nothing runs
+> `--fail-on-recoverable` in `scripts/gates.json` or the pre-commit hook, so the green above is
+> a property of a command nobody invokes automatically. That wiring remains owner territory.
+
 **Date:** 2026-08-03
 **Author:** Architecture Team & OZ-POS Contributors
 **Tags:** reliability, panic, unwrap, expect, error-handling, RUST-07, enforcement
