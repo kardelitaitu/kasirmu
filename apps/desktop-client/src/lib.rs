@@ -1028,6 +1028,8 @@ pub fn run() {
             commands::kds_device::deactivate_kds_device_scoped,
             commands::kds_device::ack_kds_order_scoped,
             commands::kds_routing::resolve_kds_targets_scoped,
+            commands::kds_routing::get_kds_routing_rules_scoped,
+            commands::kds_routing::save_kds_routing_rules_scoped,
             commands::history::list_sales_scoped,
             commands::history::get_sale_scoped,
             commands::history::export_daily_summary_scoped,

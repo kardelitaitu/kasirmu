@@ -1,26 +1,31 @@
-//! KDS routing resolution command.
+//! KDS routing commands: order-target resolution and routing-rule CRUD.
 //!
 //! Resolves which KDS devices should receive an order based on line items,
-//! topology station assignments, and device station bindings.
+//! topology station assignments, per-restaurant routing rules, and device
+//! station bindings; `get`/`save` manage the rule set of the session's
+//! restaurant.
 //!
-//! Wave D / D2b: the body lives in `oz_bridge::kds_routing`; this command is a
-//! thin adapter that maps `BridgeError` onto `AppError`.
+//! Wave D / D2b: every body lives in `oz_bridge::kds_routing`; each command
+//! here is a thin adapter that maps `BridgeError` onto `AppError`.
 
 use tauri::State;
+
+use oz_core::kds::{KdsRoutingRule, KdsRoutingRuleInput};
 
 use crate::error::AppError;
 use crate::state::AppState;
 
 /// Resolve which KDS device IDs should receive an order based on its
-/// line items and the registered device station bindings.
+/// line items, the restaurant's routing rules, and the registered device
+/// station bindings.
 ///
 /// Returns a list of device IDs. The caller is responsible for
 /// filtering or pushing events to those devices.
 ///
-/// Uses the 3-phase algorithm from `oz_core::kds::resolve_kds_targets`:
-/// 1. Station-based targeting — match line item SKU → topology station → device
-/// 2. Broadcast fallback — devices with empty station_ids get everything
-/// 3. Catch-all — if any station has no claiming device, broadcast to all
+/// Rules compose over the frozen 3-phase algorithm of
+/// `oz_core::kds::resolve_kds_targets` (station targeting per line,
+/// broadcast fallback, unclaimed-station catch-all); an empty rule set
+/// routes exactly as before.
 #[tauri::command]
 pub async fn resolve_kds_targets_scoped(
     session_token: String,
@@ -29,6 +34,35 @@ pub async fn resolve_kds_targets_scoped(
 ) -> Result<Vec<String>, AppError> {
     let ctx = state.bridge_ctx();
     oz_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// List the KDS routing rules of the session's restaurant, highest
+/// priority first (lower number = higher priority).
+#[tauri::command]
+pub async fn get_kds_routing_rules_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<KdsRoutingRule>, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_routing::get_kds_routing_rules(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Replace the complete KDS routing rule set of the session's restaurant.
+///
+/// The submitted list is the new truth (an empty list clears the scope);
+/// ids and timestamps are server-assigned. Returns the persisted rules.
+#[tauri::command]
+pub async fn save_kds_routing_rules_scoped(
+    session_token: String,
+    rules: Vec<KdsRoutingRuleInput>,
+    state: State<'_, AppState>,
+) -> Result<Vec<KdsRoutingRule>, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_routing::save_kds_routing_rules(&ctx, &session_token, rules)
         .await
         .map_err(Into::into)
 }

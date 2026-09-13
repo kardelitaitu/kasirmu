@@ -79,7 +79,7 @@ mod debt;
 /// 13-09-26. This is an EQUALITY and the leg below checks it against the tree, so a
 /// moved include_str path cannot pass by finding nothing and a registered name cannot
 /// pass by being gated. Raising this number records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 449;
+const REGISTERED_FLOOR: usize = 451;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
