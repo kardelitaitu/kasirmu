@@ -1000,6 +1000,38 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated correction (2026-09-13, 22:55) — the ninth gate: an api layer that resolves to nothing no longer grades clean
+
+`2fabafb78b` (252/9), `scripts/verify-scoped-reads.py` only — the residual the eighth gate named, closed
+in the same fence. Verified by me at 22:52: numstat **one file**; allowlist still `e5663346ef`; default
+**180 B exit 0**; CI form **20473 B exit 1** still reading `FAIL: 112 unguarded`, unmoved and unquieted;
+`--self-test` exit 0; mirrors from the repository root exit 0; zero scratch.
+
+**The acceptance test was the sentence, not the code — and that test is my own fault for existing.** In a
+temp tree with `ui/src` populated and `ui/src/api` absent, I measured exit **2**, **0 stdout**, **no**
+`graded` line, **no** verdict line, no Traceback, and the stderr beginning
+`error: the wrapper surface this gate grades is not there:` — naming the **wrapper** arm and *not* the
+corpus arm. Because at 22:02 an unexplained exit 2 was a broken allowlist path wearing the wrong guard\u0027s
+face, a bare status is no longer admissible evidence in this family, and the brief said so.
+
+**What it closes:** an absent api layer produced an empty command-to-wrapper map, so every allowlisted
+command resolved to zero wrappers, zero call sites, and the gate printed `clean for desktop.` at exit 0 on
+a **3-file** corpus — the eighth guard passed happily because the corpus was non-empty. Same zero, one
+level deeper: the walk is not the surface.
+
+**A platform divergence it surfaced, deliberately left alone:** `production_files()`\x27s `ui/src/api`
+exclusion builds `os.path.join("ui","api")` unnormalized and compares it against a normalized root, so on
+**Windows it never fires** and api files are graded as production source too (fixture counts moved 3 → 4).
+The lane declined to touch it because changing it would move the 612 and the 20473 mid-audit — the right
+call, but the consequence is that *the set of files this gate grades differs by operating system*. That
+deserves its own change with its own before/after counts, not a ride-along.
+
+**The residual this one cannot close, and correctly refused to invent:** `if cmd_to_wrapper:` tests
+*emptiness*, not *coverage*. An api layer holding one wrapper for an unrelated command makes the map
+non-empty, so a real command resolving to nothing still grades clean (the lane\x27s own case 19 is the
+reproduction). Closing it needs a threshold — per shell? per name? which names must have wrappers at all?
+— and that is the allowlist contract owner\x27s policy, not a number to guess. Recorded as **PARKED** below.
+
 ### Dated correction (2026-09-13, 22:35) — a number I invented, and an inference of mine that was a harness artifact
 
 Two of my own errors, both surfaced by a worker *measuring* rather than by me checking. Written here because
