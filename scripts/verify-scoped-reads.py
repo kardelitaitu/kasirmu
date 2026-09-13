@@ -138,10 +138,15 @@ class AllowlistWrongShape(AllowlistUnreadable):
     """The bytes opened and parsed as JSON; the JSON is not an allowlist.
 
     A subclass on purpose: main() keeps ONE handler, so the gate keeps ONE voice --
-    `FAIL: <sentence>`, exit 1 -- while a reader can still tell "the bytes would not
-    arrive" from "the bytes are not an allowlist". Nothing about the busy-file arm
-    changes and no except clause widens: a denial still raises the parent, and this
+    `error: <sentence>` on stderr, exit 2 -- while a reader can still tell "the bytes
+    would not arrive" from "the bytes are not an allowlist". Nothing about the busy-file
+    arm changes and no except clause widens: a denial still raises the parent, and this
     class is raised only where a parsed object is already in hand.
+
+    Exit 2 and not 1, because 1 is this gate's VERDICT code -- the two FAIL lines at the
+    end of main() -- and a shape this gate never read is not a claim about anybody's
+    call sites. That is the same split the writer gate keeps for this file at its
+    AllowlistUnusable, landed here at e931220d9a.
     """
 
 
@@ -149,8 +154,9 @@ class AllowlistUndecodable(AllowlistUnreadable):
     """The bytes arrived; this reader's decoder cannot turn them into text.
 
     A subclass on purpose, exactly as AllowlistWrongShape is one: main() keeps ONE handler,
-    so the gate keeps ONE voice -- `FAIL: <sentence>`, exit 1 -- and no traceback escapes
-    `sys.exit(main())` over a file this script happens not to decode. The name says which
+    so the gate keeps ONE voice -- `error: <sentence>` on stderr at exit 2, never the
+    verdict code 1 -- and no traceback escapes `sys.exit(main())` over a file this script
+    happens not to decode. The name says which
     of the two a reader is looking at: AllowlistUnreadable means the bytes would not
     arrive, this means they arrived and are not UTF-8. Nothing widens an except clause and
     nothing here is retried -- a decode failure is a property of the bytes on disk, like a
@@ -162,8 +168,10 @@ class NoShellsNamed(AllowlistUnreadable):
     """--shell resolved to an empty list, so there is nothing here for this gate to grade.
 
     A subclass on purpose, exactly as AllowlistWrongShape and AllowlistUndecodable are one:
-    main() keeps ONE handler, so the gate keeps ONE voice -- `FAIL: <sentence>`, exit 1 --
-    and no except clause widens and no second handler is invented. The name says which of
+    main() keeps ONE handler, so the gate keeps ONE voice -- `error: <sentence>` on stderr
+    at exit 2 -- and no except clause widens and no second handler is invented. This is a
+    refusal by the same law as the others: a run that names no shell graded nothing, and
+    nothing is not the verdict 1. The name says which of
     the refusals a reader is looking at: nothing about the file on disk went wrong here, the
     ARGUMENT asked for no shell.
 
@@ -271,9 +279,17 @@ def require_allowlist_shape(allow, shells, path=ALLOWLIST):
 
         {}              -> exit 0, "clean for desktop", 0 names compared
         {"entries": []} -> exit 0, "clean for desktop", 0 names compared
-        not json        -> exit 1, refused by the JSONDecodeError arm above (a89f1f12d)
-        [{"a": 1}]      -> exit 1, uncaught AttributeError: 'list' object has no attribute
-                           'get', escaping sys.exit(main())
+        not json        -> refused by the JSONDecodeError arm above (a89f1f12d)
+        [{"a": 1}]      -> uncaught AttributeError: 'list' object has no attribute 'get',
+                           escaping sys.exit(main())
+    (measured before those arms existed, when every one of them left at exit 1; a refusal
+    now leaves at 2, so none of these four is a verdict code any more). And the fifth row
+    is the one membership could not catch, measured here before this change and refused at
+    the read site after it:
+
+        {"desktop": "abc"} -> cleared require_allowlist_shape, walked 612 files, THEN
+                              reported one unreadable member at exit 1 -- a refusal
+                              printed as a finding, one second late and one door too far
 
     The last two are loud, and loud is survivable: a traceback is ugly but nobody reads it
     as a pass. The first two are the hazard. `allowlist_names` reads a section with
@@ -306,6 +322,28 @@ def require_allowlist_shape(allow, shells, path=ALLOWLIST):
             f'-- a JSON object keyed by {want}, the section{"s" if len(wanted) > 1 else ""} '
             f'--shell names -- and got a {got}. Run python3 scripts/verify-ipc-parity.py to '
             f'see that shape written by something that validates it.')
+    # Present-but-wrong-typed is refused HERE, not discovered in allowlist_names after the
+    # walk. Membership alone was not enough: a section holding a scalar cleared this guard,
+    # walked 612 production files, and only then reported a member it could not read --
+    # under the VERDICT exit code, sitting beside the findings. And allowlist_names iterates
+    # whatever it is handed, so a string section answers one bogus name per character. A
+    # section that is not a list holds nothing this run can grade, so it ends the run here.
+    # Stated-empty stays the claim case 8 protects: [] IS a list, and a zero-entry list is a
+    # shell recording no gap -- this gate checks that claim, it never refuses it.
+    Q = chr(34)
+    mistyped = [s for s in wanted if s in allow and not isinstance(allow[s], list)]
+    if mistyped:
+        raise AllowlistWrongShape(
+            filename + ' parses as JSON and carries the '
+            + ('sections' if len(mistyped) > 1 else 'section')
+            + ' this gate reads, but '
+            + ', '.join(Q + s + Q + ' is a ' + type(allow[s]).__name__
+                        for s in mistyped)
+            + ', not a list of command names. Nothing can be read out of that, so this run '
+              'refuses before walking the tree: a section that is not a list compares zero '
+              'command names and the run would still print a verdict. An allowlist is a JSON '
+              'object keyed by ' + want + ', each section a list -- an EMPTY list is allowed, '
+              'it is the claim that this shell records no gap.')
     absent = [s for s in wanted if s not in allow]
     if absent:
         keys = sorted(str(k) for k in allow)
@@ -1004,15 +1042,19 @@ def _guard_self_test():
     failures = 0
 
     def run(argv):
-        buf = io.StringIO()
-        saved, sys.stdout = sys.stdout, buf
+        # Both streams, because a refusal now leaves on stderr: a case that captured only
+        # stdout would read the absence of a verdict as the absence of a refusal, and pass on
+        # a run that printed nothing at all in either place.
+        buf, ebuf = io.StringIO(), io.StringIO()
+        saved, saved_err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = buf, ebuf
         try:
             rc = main(argv)
         except BaseException as exc:
             rc = f"bare {type(exc).__name__}: {exc}"
         finally:
-            sys.stdout = saved
-        return rc, buf.getvalue()
+            sys.stdout, sys.stderr = saved, saved_err
+        return rc, buf.getvalue() + ebuf.getvalue()
 
     with tempfile.TemporaryDirectory(prefix="oz-scoped-guard-") as tmp:
         missing = os.path.join(tmp, "no-such-allowlist.json")
@@ -1032,7 +1074,16 @@ def _guard_self_test():
         for stem, body in (("empty-object", "{}"),
                            ("wrong-key", '{"entries": []}'),
                            ("top-level-list", '[{"a": 1}]'),
-                           ("top-level-string", '"getSale"')):
+                           ("top-level-string", '"getSale"'),
+                           # Cases 5-7 prove the guard on a MISSING section. These two prove it
+                           # on a section that is PRESENT AND WRONGLY TYPED -- the half that
+                           # membership alone could not catch: the file cleared the guard, the
+                           # 612-file walk ran, and the sentence arrived afterwards under the
+                           # verdict code, filed beside a real finding. The forbidden word in
+                           # their cells is the surfaces line, whose absence is the proof the
+                           # refusal came BEFORE the walk -- something no exit code shows.
+                           ("section-is-a-string", '{"desktop": "abc", "tablet": []}'),
+                           ("section-is-a-number", '{"desktop": 42, "tablet": []}')):
             shapes[stem] = os.path.join(tmp, f"shape-{stem}.json")
             with io.open(shapes[stem], "w", encoding="utf-8") as fh:
                 fh.write(body)
@@ -1072,6 +1123,14 @@ def _guard_self_test():
             ("case 7b  a JSON string at the top level", [shapes["top-level-string"]],
              "has no .get",
              ["clean", "is not valid JSON", "would not open after", "AttributeError"]),
+            ("case 7c a section holding a string", [shapes["section-is-a-string"]],
+             "is a str, not a list of command names",
+             ["clean", "production file(s) graded", "entry #", "is not valid JSON",
+              "would not open after"]),
+            ("case 7d a section holding a number", [shapes["section-is-a-number"]],
+             "is a int, not a list of command names",
+             ["clean", "production file(s) graded", "entry #", "is not valid JSON",
+              "would not open after"]),
             # The decode cells: same refusal for both, because the bytes are given
             # up on before anything is parsed -- and both forbid the busy sentence,
             # which would send an operator off to hunt a process that is not
@@ -1091,7 +1150,12 @@ def _guard_self_test():
             rc, out = run(["--allowlist"] + extra)
             named = os.path.basename(extra[0].rstrip(os.sep)) in out or extra[0] in out
             bad_words = [w for w in forbidden if w in out]
-            if rc == 1 and reason in out and named and "Traceback" not in out and not bad_words:
+            # rc 2, and the refusal must be the ONLY line and must carry the error: prefix --
+            # 1 is this gate's verdict code and a refusal wearing it is the hazard this split
+            # exists to close, so an rc check is load-bearing here rather than lazy.
+            if (rc == 2 and out.startswith("error: ") and reason in out and named
+                    and "Traceback" not in out and "FAIL:" not in out
+                    and not bad_words):
                 print(f"    ok   {label} -- says {reason!r} and names the path it was given")
             else:
                 print(f"    FAIL {label}  rc={rc!r}, says {reason!r}={reason in out}, "
@@ -1172,15 +1236,18 @@ def _shell_self_test():
     failures = 0
 
     def run(argv):
-        buf = io.StringIO()
-        saved, sys.stdout = sys.stdout, buf
+        # Both streams: the refusal this case exists to prove now leaves on stderr, and a
+        # capture that watched only stdout would see an empty run and call it quiet.
+        buf, ebuf = io.StringIO(), io.StringIO()
+        saved, saved_err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = buf, ebuf
         try:
             rc = main(argv)
         except BaseException as exc:
             rc = f"bare {type(exc).__name__}: {exc}"
         finally:
-            sys.stdout = saved
-        return rc, buf.getvalue()
+            sys.stdout, sys.stderr = saved, saved_err
+        return rc, buf.getvalue() + ebuf.getvalue()
 
     empty_runs = [
         ("case 11 an empty --shell value", "",
@@ -1191,13 +1258,17 @@ def _shell_self_test():
     for label, value, hazard in empty_runs:
         rc, out = run(["--shell", value])
         lines = [ln for ln in out.splitlines() if ln.strip()]
-        refused = (rc == 1 and len(lines) == 1 and lines[0].startswith("FAIL: ")
-                   and "nothing to grade" in out and "desktop" in out and "tablet" in out)
+        # rc 2 with the error: voice: this is the refusal that graded nothing, and 1 is the
+        # verdict code. One line, on stderr, and no FAIL: anywhere -- a run that refused must
+        # not also report.
+        refused = (rc == 2 and len(lines) == 1 and lines[0].startswith("error: ")
+                   and "nothing to grade" in out and "desktop" in out and "tablet" in out
+                   and "FAIL:" not in out)
         quiet = (not any(w in out for w in
                          ("clean", "production file(s) graded", "Traceback")))
         if refused and quiet:
-            print(f"    ok   {label} -- one FAIL line, refused before the walk, "
-                  f"no verdict printed")
+            print(f"    ok   {label} -- one error: line on stderr at exit 2, refused before "
+                  f"the walk, no verdict printed")
         else:
             print(f"    FAIL {label}  rc={rc!r} refused={refused} quiet={quiet} "
                   f"-- {hazard}")
@@ -1289,17 +1360,28 @@ def main(argv=None):
         # names no shell has nothing to grade, and that is a property of the argument, which
         # is why it is refused here rather than discovered in the verdict below. NoShellsNamed
         # is an AllowlistUnreadable, so it leaves through the handler under this one -- the
-        # gate's existing one-line FAIL voice and exit 1, no new handler.
+        # gate's one-line error: voice and its refusal code, no new handler.
         shells = resolve_shells(args.shell)
         violations, shape_problems, scanned = audit(shells, allowlist=allowlist)
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
         # in a sentence is the whole difference between a red run someone can act on and a
         # traceback that blames the wrong gate. AllowlistWrongShape -- parsed, but not an
-        # allowlist -- arrives through this same handler on purpose: one voice, one exit
-        # code, and no second except clause for a file that is simply the wrong shape.
-        print(f"FAIL: {exc}")
-        return 1
+        # allowlist --, AllowlistUndecodable -- the bytes arrived and are not UTF-8 -- and
+        # NoShellsNamed -- the argument named nothing to grade -- all arrive through THIS
+        # handler on purpose: one handler, one voice, no second except clause.
+        #
+        # The voice is 'error:' on stderr and the code is 2, never 1. Two paths below here
+        # spend 1 on a VERDICT -- 'FAIL: N member(s) ... this gate could not read' and
+        # 'FAIL: N unguarded ambient IPC call(s)' -- so a refusal that also returned 1 was
+        # indistinguishable from a finding to anything that reads the number: CI's step,
+        # scripts/check.sh:72 and every log grep see one red code for 'the tree is broken'
+        # and for 'nobody read a file'. 2 says this run graded nothing, which is the split
+        # verify-ftl-orphans.py keeps at its _refusal() and verify-ipc-parity.py keeps at
+        # its AllowlistUnusable, both for this same shared allowlist. It also goes to
+        # stderr, because a refusal is not part of the report a bare run prints.
+        print('error: ' + str(exc), file=sys.stderr)
+        return 2
     print(describe_surfaces(scanned, allowlist, how))
     if shape_problems:
         # Ahead of the violations, because a member this gate could not read makes every
