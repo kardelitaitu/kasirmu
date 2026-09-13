@@ -27,9 +27,9 @@ Extraction rules (mirrors the ADR #7 command layout):
   before it. The router (`tauri-api.ts`) holds 214 of the 536 registered
   names; the rest live in `handlers/<domain>.ts` and the `_scoped`
   aliasing pass lives in `core/mockDispatcher.ts`. The matching
-  `"dev_mock"` section of the allowlist is a flat list of command names
-  with no reason field, for the reason recorded on
-  `extract_dev_mock_answerable`.
+  `"dev_mock"` section of the allowlist carries one entry per gap, either a bare
+  command name or a {"name", "reason"} object -- see `allowlist_section` -- and the
+  reason state of that section is printed on every run, green or red.
 
 Usage:
   python3 scripts/verify-ipc-parity.py              # enforce
@@ -279,13 +279,20 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str
     with itself. So this still reads the code, and --self-test asserts that the present and
     absent answers differ.
 
-    What the allowlist cannot tell you, which every number printed from here depends on you
-    knowing: the "dev_mock" section is a flat list of command names with no reason field,
-    and it can only ever be that. load_allowlist parses the file with json.loads and no
-    schema, and every consumer coerces its section through set(), so a dict member does not
-    degrade to a lost annotation -- it raises TypeError: unhashable type and the gate dies.
-    A name on the list therefore reads identically whether a slice asked for a browser
-    exemption and somebody agreed, or whether nobody has looked at it since it was written.
+    What the allowlist could not tell you, which every number printed from here depends on
+    you knowing: the "dev_mock" section was a flat list of command names with no reason
+    field, and for as long as load_allowlist handed back raw json.loads output and each
+    consumer passed the section straight through set(), it could only ever be that. An
+    operator who wrote down WHY a gap was allowlisted did not lose the annotation -- the
+    gate died on TypeError: unhashable type, measured against a copy of the real file
+    before the schema existed. allowlist_section now reads both shapes and section_names is
+    the only view the enforcement code sees, so the accepted shape is a name plus an
+    optional reason while membership and every count are computed exactly as before. A
+    bare name still reads identically whether a slice asked for a browser exemption and
+    somebody agreed, or nobody has looked at it since it was written; that is what the
+    "carry no reason" line the gate prints on every run is now able to say with a number.
+    The other sections have NOT been given the schema: scoped_orphans, desktop and tablet
+    are still read through bare set() calls, so a dict in one of those still dies.
     The presence side is honest at least: an entry whose handler lands turns the gate RED as
     stale, so the list cannot rot into a lie in that direction. What is lopsided is the
     editing. --write-dev-mock-gaps unions today's gaps in, alphabetised and additive only,
@@ -303,6 +310,95 @@ def load_allowlist() -> dict:
     if not ALLOWLIST_PATH.exists():
         return {"desktop": [], "tablet": []}
     return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
+
+
+def allowlist_section(payload: dict, key: str) -> list[tuple[str, str]]:
+    """One allowlist section as (name, reason) pairs, in the order the file holds them.
+
+    A member is either a bare command name -- the shape every section has always used, and
+    still the shape all 16 dev_mock entries are written in -- or an object carrying "name"
+    and "reason". Both forms normalise to the same name; only the object form can carry a
+    reason, and an empty, whitespace, or missing reason counts as no reason rather than as
+    a reason that says nothing. Unknown keys on an object are ignored here and preserved by
+    merge_dev_mock_entries, so an entry that later grows an "owner" or "expires" field loses
+    nothing. A member with no name is dropped instead of entering a set as the empty string.
+    """
+    entries: list[tuple[str, str]] = []
+    for raw in payload.get(key) or []:
+        if isinstance(raw, dict):
+            name = str(raw.get("name", "")).strip()
+            reason = str(raw.get("reason", "") or "").strip()
+        else:
+            name, reason = str(raw).strip(), ""
+        if name:
+            entries.append((name, reason))
+    return entries
+
+
+def section_names(payload: dict, key: str) -> set[str]:
+    """The membership view of a section: names only, reasons irrelevant.
+
+    Every set operation this gate performs on an allowlist section goes through here, which
+    is what makes the two-shape schema behaviour-free: a dict member and a string member
+    take identical paths through gap-minus-allowlist, allowlist-minus-gap, and the counts
+    printed alongside them.
+    """
+    return {name for name, _ in allowlist_section(payload, key)}
+
+
+def merge_dev_mock_entries(raw_section, gaps) -> list:
+    """Union new gaps into the dev_mock section, additively, keeping every reason.
+
+    Additive only, as it always was: no entry is ever removed, so shrinking the list stays
+    a human edit. What this function exists to prevent is the other way to lose a decision
+    -- a writer that eats a reason the operator typed. A known entry keeps the shape it was
+    written in, so reseeding a list that has not moved produces a zero-line diff rather
+    than converting 16 bare names into objects; a known object keeps its reason and its
+    extra keys. A name present twice keeps whichever entry holds the reason, because that
+    is the one carrying information. A genuinely new entry arrives as
+    {"name": ..., "reason": ""} so that the reason field is discoverable in the file
+    itself, not only in this docstring.
+    """
+    merged: dict[str, object] = {}
+
+    def reason_of(entry) -> str:
+        return str(entry.get("reason", "") or "") if isinstance(entry, dict) else ""
+
+    def add(name: str, entry) -> None:
+        if name not in merged:
+            merged[name] = entry
+        elif not reason_of(merged[name]) and reason_of(entry):
+            merged[name] = entry
+
+    for raw in raw_section or []:
+        if isinstance(raw, dict):
+            name = str(raw.get("name", "")).strip()
+            if not name:
+                continue
+            add(name, {**raw, "name": name, **{"reason": str(raw.get("reason", "") or "")}})
+        else:
+            name = str(raw).strip()
+            if name:
+                add(name, name)
+    for gap in gaps or []:
+        name = str(gap).strip()
+        if name:
+            merged.setdefault(name, {"name": name, "reason": ""})
+    return [merged[name] for name in sorted(merged)]
+
+
+def write_dev_mock_gaps(gaps: list[str]) -> None:
+    """Seed/extend "dev_mock" from the current gaps, preserving reasons and other sections."""
+    payload = dict(load_allowlist())
+    before = allowlist_section(payload, "dev_mock")
+    payload["dev_mock"] = merge_dev_mock_entries(payload.get("dev_mock"), gaps)
+    after = allowlist_section(payload, "dev_mock")
+    ALLOWLIST_PATH.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(
+        f"dev_mock seeded: {len(after)} entries (+{len(after) - len(before)} new, "
+        f"{sum(1 for _, reason in after if reason)} carrying a reason)"
+    )
 
 
 def write_allowlist(missing: dict[str, set[str]]) -> None:
@@ -613,6 +709,56 @@ def self_test() -> int:
          and "now has a caller" not in vanished and "no shell" in vanished
          and bool(gained) and bool(vanished) and gained != vanished)
 
+    # 7: the allowlist schema itself, which used to be an impossibility. Enforcement only
+    # ever sees names, so both shapes must normalise to the same membership; and a dict
+    # member has to be READABLE, which it was not -- the old coercion passed the section
+    # straight into set() and died with "TypeError: cannot use 'dict' as a set element
+    # (unhashable type: 'dict')", measured against a copy of the real allowlist before
+    # allowlist_section existed. That is the assertion this change is judged on.
+    mixed_section = [
+        "list_security_events_scoped",
+        {"name": "list_role_holders_scoped", "reason": "browser preview; recorded debt"},
+    ]
+    fake_payload = {"dev_mock": mixed_section}
+    case("case 7  a dict member is readable, not unhashable",
+         section_names(fake_payload, "dev_mock")
+         == {"list_security_events_scoped", "list_role_holders_scoped"})
+    case("case 7  the all-string form is untouched by the schema",
+         section_names({"dev_mock": ["a_scoped", "b_scoped"]}, "dev_mock")
+         == {"a_scoped", "b_scoped"})
+    case("case 7  a bare name carries no reason and only an object can carry one",
+         [n for n, r in allowlist_section(fake_payload, "dev_mock") if not r]
+         == ["list_security_events_scoped"])
+    case("case 7  an empty reason is no reason",
+         [r for _, r in allowlist_section(
+             {"dev_mock": [{"name": "x_scoped", "reason": "   "}]}, "dev_mock")] == [""])
+    case("case 7  a nameless member is dropped, not swept in as the empty string",
+         section_names({"dev_mock": ["", "   ", {"reason": "orphan"}]}, "dev_mock") == set())
+
+    # 8: the writer keeps what a human wrote. A writer that eats a reason is worse than no
+    # writer, because the operator's edit then looks saved while the decision is gone.
+    reseeded = merge_dev_mock_entries(
+        mixed_section, ["list_security_events_scoped", "a_brand_new_scoped"])
+    case("case 8  a hand-written reason survives a reseed",
+         {"name": "list_role_holders_scoped", "reason": "browser preview; recorded debt"}
+         in reseeded)
+    case("case 8  a known bare entry stays bare, so an unmoved list is a zero-line diff",
+         merge_dev_mock_entries(["a_scoped", "b_scoped"], ["a_scoped"])
+         == ["a_scoped", "b_scoped"])
+    case("case 8  a new entry arrives with an empty reason so the shape is discoverable",
+         {"name": "a_brand_new_scoped", "reason": ""} in reseeded)
+    case("case 8  reseeding an already-seeded section changes nothing",
+         merge_dev_mock_entries(
+             reseeded, ["list_security_events_scoped", "a_brand_new_scoped"]) == reseeded)
+    case("case 8  the same name written twice keeps the entry holding the reason",
+         merge_dev_mock_entries(
+             ["dup_scoped", {"name": "dup_scoped", "reason": "why"}], [])
+         == [{"name": "dup_scoped", "reason": "why"}])
+    case("case 8  an entry's extra keys survive the writer",
+         merge_dev_mock_entries(
+             [{"name": "k_scoped", "reason": "r", "owner": "licensing"}], [])
+         == [{"name": "k_scoped", "reason": "r", "owner": "licensing"}])
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -661,9 +807,9 @@ def main() -> int:
         "--write-dev-mock-gaps",
         action="store_true",
         help="add current UI-invoked commands the dev-mock cannot answer to "
-             "\"dev_mock\" in the allowlist, preserving other sections, and exit "
-             "(additive only -- it never removes an entry, so shrinking the list is a "
-             "manual edit)",
+             "\"dev_mock\" in the allowlist, preserving other sections and any \"reason\" "
+             "an operator hand-wrote, and exit (additive only -- it never removes an entry, "
+             "so shrinking the list is a manual edit)",
     )
     args = parser.parse_args()
 
@@ -708,10 +854,7 @@ def main() -> int:
     mock_answerable = mock_registered | mock_aliasable
     mock_gaps = sorted(c for c in ui_commands if c not in mock_answerable)
     if args.write_dev_mock_gaps:
-        payload = dict(load_allowlist())
-        payload["dev_mock"] = sorted(set(payload.get("dev_mock", [])) | set(mock_gaps))
-        ALLOWLIST_PATH.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        write_dev_mock_gaps(mock_gaps)
         return 0
 
     for command in sorted(set(all_orphans) - orphan_allow):
@@ -750,7 +893,8 @@ def main() -> int:
                 f"remove it from {ALLOWLIST_PATH.name}"
             )
 
-    mock_allow = set(allowlist.get("dev_mock", []))
+    mock_entries = allowlist_section(allowlist, "dev_mock")
+    mock_allow = {name for name, _ in mock_entries}
     for command in sorted(set(mock_gaps) - mock_allow):
         refs = ", ".join(sorted(set(ui_commands[command]))[:3])
         failures.append(
@@ -758,8 +902,9 @@ def main() -> int:
             f"{DEV_MOCK_DIR_REL} registers it (the router and every extracted module "
             f"under it were read, and no unscoped twin exists for the alias rule to "
             f"reach) -- invoke() returns null and the caller silently renders its "
-            f"failure path (e.g. {refs}). An allowlist entry is a bare name with no "
-            f"reason attached; see the dev_mock section comment."
+            f"failure path (e.g. {refs}). An allowlist entry may carry why the gap was "
+            f"accepted -- rewrite it as {{\"name\": \"{command}\", \"reason\": \"...\"}} "
+            f"-- and the count of entries that do not is printed on every run."
         )
     for command in sorted(mock_allow - set(mock_gaps)):
         failures.append(
@@ -798,6 +943,17 @@ def main() -> int:
     print(
         f"info[dev-mock]: {len(mock_gaps)} of {len(ui_commands)} UI commands unanswerable "
         f"({len(mock_allow)} allowlisted)"
+    )
+    # Reason state, printed whether or not anything is wrong, because the count of entries
+    # nobody explained is the number an owner has to act on and it is invisible in a list of
+    # bare names. Informational only: it appends nothing to `failures`, so a run that was
+    # green stays green and a run that was red fails for the reason it already failed for.
+    mock_reasonless = sorted(name for name, reason in mock_entries if not reason)
+    print(
+        f"info[dev-mock-reasons]: {len(mock_reasonless)} of {len(mock_entries)} allowlisted "
+        f"dev-mock gaps carry no reason (an entry is either a bare name or an object "
+        f'{{\"name\": ..., \"reason\": ...}}; the reason is the only record of why the gap '
+        f"was accepted rather than owed)"
     )
 
     # Triage summary for the allowlisted orphans. Printed even when green, because an
