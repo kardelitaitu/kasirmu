@@ -45,7 +45,7 @@ import json
 import re
 import sys
 import tempfile
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -345,6 +345,91 @@ def write_allowlist_payload(payload: dict) -> None:
     )
 
 
+# An entry written as an object instead of a bare name. Named once so every message this
+# file emits about shapes describes it the same way.
+OBJECT_FORM = '{"name": ..., "reason": ...}'
+
+# Sections whose entries are read by anything outside this file. This is the asymmetry:
+# "dev_mock" and "scoped_orphans" are private to this gate, "desktop" and "tablet" are not.
+EXTERNALLY_READ_SECTIONS = ("desktop", "tablet")
+
+# Sections this gate is willing to read in either shape.
+OBJECT_ALLOWED_SECTIONS = ("dev_mock", "scoped_orphans")
+
+
+def allowlist_shape_problems(payload: dict, path) -> list[str]:
+    """Every way this allowlist file can be shaped wrong, as readable sentences.
+
+    Why this exists rather than a crash: a member this file cannot read used to surface as
+    "TypeError: cannot use 'dict' as a set element (unhashable type: 'dict')" out of main(),
+    after the whole tree had been parsed, with no sentence and no file name in it. A crash is
+    not a diagnosis, and the operator who hits one has no way to know that the accepted shape
+    differs by section -- which is the piece of knowledge that lived nowhere in this file.
+
+    The split IS deliberate today, and each message says so, because the reason is external
+    rather than internal to this file: scripts/verify-scoped-reads.py reads the "desktop" and
+    "tablet" sections and feeds each member straight into a dict lookup, so an object there
+    does not merely confuse this gate -- it reds a second gate that runs bare in CI and in
+    check.sh, in a file its owner is not working in. "dev_mock" and "scoped_orphans" have no
+    reader outside this script, so they can take the object form as soon as the reads here
+    normalise both shapes, which allowlist_section and section_names now do.
+    """
+    problems: list[str] = []
+    name = getattr(path, "name", str(path))
+
+    def why(section: str) -> str:
+        if section in EXTERNALLY_READ_SECTIONS:
+            return (
+                f'The "{section}" section of {name} takes one bare command name per entry, '
+                f'like "get_active_cart_scoped"; the object form {OBJECT_FORM} is accepted '
+                f'only in "dev_mock" and "scoped_orphans". That split is deliberate today, '
+                f"not an oversight: scripts/verify-scoped-reads.py parses the \"{section}\" "
+                f"list (dev-ci.yml#static-gates and scripts/check.sh both run it bare) and "
+                f"cannot read an object, so leaving it here would crash a second gate with a "
+                f"TypeError instead of failing it. Record the reason in the "
+                f'\"_{section}_comment\" prose or a tracking doc until that reader is '
+                f"taught the shape."
+            )
+        return (
+            f'The "{section}" section of {name} accepts a bare command name or an object '
+            f'{OBJECT_FORM}, but this entry carries no readable "name", so nothing can be '
+            f"matched against it. Give it a name, or drop the entry."
+        )
+
+    for section in (*EXTERNALLY_READ_SECTIONS, *OBJECT_ALLOWED_SECTIONS):
+        members = payload.get(section)
+        if members is None:
+            continue
+        if not isinstance(members, list):
+            problems.append(
+                f'The "{section}" section of {name} is a {type(members).__name__}, not a '
+                f"list of entries."
+            )
+            continue
+        for index, raw in enumerate(members, 1):
+            where = f'entry #{index} of the "{section}" section of {name}'
+            if isinstance(raw, str):
+                if not raw.strip():
+                    problems.append(
+                        f"{where} is blank. An empty name matches nothing and would enter "
+                        f"the gate's sets as the empty string."
+                    )
+                continue
+            if isinstance(raw, dict):
+                if not str(raw.get("name", "")).strip():
+                    problems.append(f"{where} is an object with no \"name\": {why(section)}")
+                elif section in EXTERNALLY_READ_SECTIONS:
+                    problems.append(
+                        f"{where} is an object, {raw.get('name')!r}, and this section is read "
+                        f"by a script that cannot parse one. {why(section)}"
+                    )
+                continue
+            problems.append(
+                f"{where} is a {type(raw).__name__}, not a command name. {why(section)}"
+            )
+    return problems
+
+
 def allowlist_section(payload: dict, key: str) -> list[tuple[str, str]]:
     """One allowlist section as (name, reason) pairs, in the order the file holds them.
 
@@ -452,9 +537,16 @@ def write_allowlist(missing: dict[str, set[str]]) -> None:
 
 
 def write_scoped_orphans(orphans: set[str]) -> None:
-    """Seed/extend the scoped_orphans section, preserving everything else."""
+    """Seed/extend the scoped_orphans section, preserving everything else.
+
+    Read through section_names, so an entry in the object form does not kill the flag -- but
+    note what the flag writes back: this section is rebuilt as sorted bare names, so a
+    "reason" written on a scoped_orphans entry does not survive --write-scoped-orphans. The
+    reader accepts the shape; the writer still rebuilds it. Fixing that is a separate
+    decision about merge versus rebuild semantics, not this change.
+    """
     payload = dict(load_allowlist())
-    existing = set(payload.get("scoped_orphans", []))
+    existing = section_names(payload, "scoped_orphans")
     payload["scoped_orphans"] = sorted(existing | orphans)
     payload.setdefault(
         "_scoped_orphans_comment",
@@ -839,6 +931,110 @@ def self_test() -> int:
     case("case 9  the self-test never touched the real allowlist path",
          globals()["ALLOWLIST_PATH"] == saved_path)
 
+    # 10: the three reads that used to hand a raw section straight to set(). Grouped as the
+    # no-op claim: routing them through section_names must change nothing on a tree where
+    # every entry is a bare name, and must stop the crash where one is not.
+    mixed_scoped = ["a_scoped", {"name": "b_scoped", "reason": "host-only, no caller"}]
+    case("case 10  scoped_orphans reads both shapes through the same helper",
+         section_names({"scoped_orphans": mixed_scoped}, "scoped_orphans")
+         == {"a_scoped", "b_scoped"})
+    raw_would_crash = False
+    try:
+        set(mixed_scoped)
+    except TypeError:
+        raw_would_crash = True
+    case("case 10  the set() this file used to call would still die on that payload",
+         raw_would_crash)
+    real_payload = load_allowlist()
+    case("case 10  every section on disk is still bare names, so the routing changes no result",
+         all(isinstance(entry, str)
+             for section in ("desktop", "tablet", "scoped_orphans", "dev_mock")
+             for entry in real_payload.get(section, [])))
+    case("case 10  and the real allowlist raises no shape problem",
+         allowlist_shape_problems(real_payload, ALLOWLIST_PATH) == [])
+    with tempfile.TemporaryDirectory() as tmp2:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe = Path(tmp2) / "allowlist.json"
+        try:
+            globals()["ALLOWLIST_PATH"] = probe
+            sys.argv = ["probe"]
+            write_allowlist_payload({"dev_mock": [], "desktop": [], "tablet": [],
+                                     "scoped_orphans": mixed_scoped})
+            outcome: object = "raised"
+            with redirect_stdout(io.StringIO()):
+                write_scoped_orphans({"c_scoped"})
+            outcome = json.loads(probe.read_text(encoding="utf-8"))["scoped_orphans"]
+        except TypeError as exc:
+            outcome = f"TypeError: {exc}"
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    case("case 10  the seed flag reads a mixed section and keeps both names",
+         outcome == ["a_scoped", "b_scoped", "c_scoped"], )
+    case("case 10  (and says so loudly if it goes back to raw set())",
+         not isinstance(outcome, str), )
+
+    # 11: the validator. This is the tolerance/refusal group -- one case per section, each
+    # asserting the TEXT names the section it complains about, because an assertion that
+    # only checks the exit code would pass on any crash at all.
+    probe_name = Path("probe-allowlist.json")
+    planted = {"name": "planted_scoped", "reason": "operator followed the dev_mock pattern"}
+    problems_desktop = allowlist_shape_problems(
+        {"desktop": ["ok_scoped", planted]}, probe_name)
+    problems_tablet = allowlist_shape_problems({"tablet": [planted]}, probe_name)
+    case("case 11  an object in desktop is refused, and the message names desktop and the file",
+         len(problems_desktop) == 1
+         and '"desktop"' in problems_desktop[0] and "probe-allowlist.json" in problems_desktop[0])
+    case("case 11  and it names the external reader that cannot parse the object",
+         "verify-scoped-reads" in problems_desktop[0]
+         and OBJECT_FORM in problems_desktop[0])
+    case("case 11  it says the split is deliberate, not an oversight",
+         "deliberate" in problems_desktop[0] and "not an oversight" in problems_desktop[0])
+    case("case 11  an object in tablet is refused too, and neither message blames the other",
+         len(problems_tablet) == 1 and '"tablet"' in problems_tablet[0]
+         and "tablet" not in problems_desktop[0] and "desktop" not in problems_tablet[0])
+    case("case 11  the same object in scoped_orphans is NOT a problem -- part one made it safe",
+         allowlist_shape_problems({"scoped_orphans": mixed_scoped}, probe_name) == [])
+    case("case 11  and dev_mock keeps the shape it was given",
+         allowlist_shape_problems({"dev_mock": mixed_scoped}, probe_name) == [])
+    case("case 11  a nameless object is still a problem in a section that takes objects",
+         len(allowlist_shape_problems({"dev_mock": [{"reason": "no name"}]}, probe_name)) == 1)
+    case("case 11  and a number is a problem wherever it appears",
+         len(allowlist_shape_problems({"scoped_orphans": [7]}, probe_name)) == 1)
+
+    # End to end: an operator's actual experience is main(), not the helper. Planted object
+    # in the desktop section of a throwaway copy, path rebound through globals() (a plain
+    # assignment here would only make a local), argv stripped of --self-test so main() does
+    # not recurse, and the TypeError path kept live so a removed guard reports itself as a
+    # TypeError rather than as a passing test.
+    with tempfile.TemporaryDirectory() as tmp3:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_argv = list(sys.argv)
+        probe3 = Path(tmp3) / "allowlist.json"
+        verdict: object = "unset"
+        printed = ""
+        try:
+            globals()["ALLOWLIST_PATH"] = probe3
+            sys.argv = ["probe"]
+            write_allowlist_payload({"_comment": "probe file, not the real allowlist",
+                                     "dev_mock": [], "desktop": ["ok_scoped", planted],
+                                     "tablet": [], "scoped_orphans": []})
+            err = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(err):
+                verdict = main()
+            printed = err.getvalue()
+        except TypeError as exc:
+            verdict = f"TypeError: {exc}"
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+            sys.argv = saved_argv
+    case("case 11  main() exits 1 on the shape problem instead of raising",
+         verdict == 1, )
+    case("case 11  and what it printed is the sentence, not a stack trace",
+         "FAIL: allowlist shape" in printed and '"desktop"' in printed
+         and "verify-scoped-reads" in printed and "Traceback" not in printed)
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -896,6 +1092,18 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
+    # Shape first, before the sweeps: a member this file cannot read has to say so in a
+    # sentence naming the file, the section and the shape, not as a TypeError out of main()
+    # 1.3 seconds into parsing the tree. Same FAIL convention as the findings below, exit 1.
+    shape_problems = allowlist_shape_problems(load_allowlist(), ALLOWLIST_PATH)
+    if shape_problems:
+        print(
+            f"\nFAIL: allowlist shape, {len(shape_problems)} problem(s):", file=sys.stderr
+        )
+        for problem in shape_problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+
     ui_commands = extract_ui_commands()
     handlers: dict[str, list[str]] = {}
     for shell, rel in SHELLS.items():
@@ -919,7 +1127,7 @@ def main() -> int:
     failures: list[str] = []
 
     # Reverse direction: registered scoped commands with no caller.
-    orphan_allow = set(allowlist.get("scoped_orphans", []))
+    orphan_allow = section_names(allowlist, "scoped_orphans")
     orphans: dict[str, list[str]] = {}
     for shell in SHELLS:
         orphans[shell] = orphan_scoped(handlers[shell], ui_commands)
@@ -959,7 +1167,9 @@ def main() -> int:
             ))
 
     for shell in SHELLS:
-        allowed = set(allowlist.get(shell, []))
+        # Belt and braces: allowlist_shape_problems refuses an object in a shell section
+        # before this line can be reached, and section_names would read it anyway.
+        allowed = section_names(allowlist, shell)
         for command in sorted(missing[shell] - allowed):
             refs = ", ".join(sorted(set(ui_commands[command]))[:3])
             failures.append(
