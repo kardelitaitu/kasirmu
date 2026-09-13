@@ -175,6 +175,14 @@ STILL DEFERRED (out of this UI dispatch):
     unnecessary for the UI tests);
   - the tag "not yet effective" hint can retire once a tags-by-sku fact
     source + match arm land (backend stamp's follow-up recipe);
-  - gate_audit.rs census pin (backend stamp left it to its owner).
+  - ~~gate_audit.rs census pin~~ RESOLVED by `c8d75bd786` (2026-09-13, the
+    pair E named raised to 3 commands / ["KDS_UPDATE","KDS_VIEW"]; the line
+    is verifiably off both census drift lists afterwards, remaining drift is
+    foreign staff/sync/qris_auto with live owners).
+ UPDATE 2026-09-13 (later): doc stays `todo-` for exactly the two items
+ above — dev-mock handlers (zone STILL foreign-dirty, 4 entries, 4h+) and
+ the tags fact-source, which is a product decision, not an executor task.
+ The UI follow-up it was written for is fully landed; the orphan `KdsSettingsPanel`
+ its mount-deviation recorded was retired by agent-6 (`32d9f68b84`).
 -->
 
