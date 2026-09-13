@@ -77,6 +77,42 @@ pub async fn require_permission_for_session(
     )
 }
 
+// ── Phase 3.3 T1: the bridge error seam ────────────────────────────
+//
+// oz_bridge command bodies return `BridgeError`; the tablet shell's Tauri
+// commands return `AppError`. This variant-for-variant conversion is the
+// only place the two meet, mirroring the desktop seam in
+// apps/desktop-client/src/commands/authz.rs. `BridgeError` is
+// `#[non_exhaustive]`, so a wildcard arm is required from this crate; any
+// variant a later bridge wave adds degrades to `AppError::Internal` rather
+// than failing to compile, and the explicit arms above the wildcard must be
+// extended when that happens. The desktop seam carries an explicit
+// `TopologyValidation` arm; the tablet `AppError` has no such variant (no
+// topology surface on this shell), so topology denials arrive through the
+// wildcard as `Internal` — the same degradation the desktop seam promises
+// for unknown variants.
+
+impl From<oz_bridge::error::BridgeError> for AppError {
+    /// Variant-for-variant conversion back to the command error type.
+    fn from(e: oz_bridge::error::BridgeError) -> Self {
+        match e {
+            oz_bridge::error::BridgeError::Core { sub_kind, message } => {
+                Self::Core { sub_kind, message }
+            }
+            oz_bridge::error::BridgeError::Invalid(message) => Self::Invalid(message),
+            oz_bridge::error::BridgeError::PermissionDenied(message) => {
+                Self::PermissionDenied(message)
+            }
+            oz_bridge::error::BridgeError::InvalidSession => Self::InvalidSession,
+            oz_bridge::error::BridgeError::Internal(message) => Self::Internal(message),
+            oz_bridge::error::BridgeError::Hardware { sub_kind, message } => {
+                Self::Hardware { sub_kind, message }
+            }
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "authz_tests.rs"]
 mod tests;
