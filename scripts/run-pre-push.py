@@ -144,13 +144,27 @@ def main():
         tasks.append(("Tier 1: i18n", "lint-i18n", [bash, "scripts/lint-i18n.sh"], REPO_ROOT))
 
     total_tasks = len(tasks)
-    print(f"pre-push (parallel): executing {total_tasks} checks concurrently across CPU cores...\n")
+    # The cap governs PROCESS SPAWNS, not threads: every task forks its own
+    # children (cargo, bash sub-gates, node), and on a machine already carrying
+    # several concurrent agent sessions an unbounded fan-out starves the
+    # Windows commit charge — MSYS children die with 0xC000012D and cargo never
+    # starts, which the reporter then prints as a 0.0s FAIL that looks like a
+    # verdict but is a spawn casualty (measured repeatedly on 2026-09-13: same
+    # gates FAIL at 0.0s in-parallel and exit 0 minutes later, serially, on an
+    # unchanged tree). 6 still overlaps the slow jobs; raise via env only on a
+    # quiet machine.
+    try:
+        cap = int(os.environ.get("OZ_PREPUSH_PARALLEL", "6"))
+    except ValueError:
+        cap = 6
+    cap = max(1, min(total_tasks, cap))
+    print(f"pre-push (parallel): executing {total_tasks} checks, {cap} at a time (OZ_PREPUSH_PARALLEL)...\n")
     sys.stdout.flush()
     start_time = time.time()
 
     failures = []
 
-    with ThreadPoolExecutor(max_workers=min(total_tasks, 32)) as pool:
+    with ThreadPoolExecutor(max_workers=cap) as pool:
         futures = {pool.submit(run_task, t): t for t in tasks}
         for future in as_completed(futures):
             tier, label, ok, duration, output = future.result()
