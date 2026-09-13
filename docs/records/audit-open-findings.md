@@ -720,6 +720,53 @@ reproduce; each correction is inline, in the bullet that carries it.
   under `GH-CLEAN-01`) — both other subjects. So the scope half is measured and the numeric half
   stays unconfirmed, and that is how it is filed above.
 
+## A gate that read nothing reports clean: the empty-corpus green, plus four siblings (`GI-7`,
+  OPEN, added 2026-09-13 13:14 +07, tip `c5a42a33a`)
+
+**Status:** ONE OPEN finding — handed over as "F TWO" with "F ONE" attached, reproduced here
+before being written, nothing outside this file touched. Owner named by file:
+`scripts/verify-scoped-reads.py`.
+
+- **F TWO, re-run 13:0x +07** (measured three times today; this is this lane's). HEAD blob of
+  `scripts/verify-scoped-reads.py` plus a HEAD copy of `scripts/ipc-parity-allowlist.json`,
+  same relative layout in a throwaway directory, cwd inside it: **exit 0**, one line —
+  `verify-scoped-reads: clean for desktop.` — the identical line and exit code from the real
+  repository, so a reader cannot tell the two runs apart from the output. `REPO` is two
+  `dirname`s off `__file__` (`:70`), so it resolves to the temp directory; `ui/src` absent, 0
+  production files walked (**569** in the real tree), 0 violations, counted through an
+  `importlib` probe because the gate prints no tally of its own.
+- **F ONE, as its sub-bullet:** `ALLOWLIST` is script-relative (`:71`) with no path argument —
+  `--self-test` and `--shell` are the only flags, and `--allowlist` appears nowhere in the file
+  — so a bad allowlist member cannot be demonstrated by an operator without reaching into the
+  module namespace, which is one reason the hazard survived being described in two other
+  scripts' docstrings.
+- **Allowlist left out: exit 1** (`FileNotFoundError` naming the path) — a crash and not a
+  false green, and the distinction matters: a loud failure is not the hazard, a quiet green is.
+- **Scope:** the hand-off swept 21 gates, each run as its own HEAD blob in a fresh temp
+  directory with the data files it names copied beside it, and found **five that return a false
+  green; the other 16 fail loudly, with the missing path in the message.** All five re-run
+  here, each exit 0 in the temp tree: `verify-flaky-quarantine` — `PASS: quarantine manifest
+  valid (0 entries, none expired)`, the manifest being its whole corpus; `verify-ftl-orphans` —
+  `nothing staged under ui/src; nothing to verify.` against `ftl orphans: OK` in the real tree,
+  arguably a different class because it is legitimately index-bound;
+  `verify-migration-column-types` — prints nothing (`if not files: return 0`, `:151-152`)
+  against `(59 files scanned, 12 float hits all exempt)` in the real tree, the count existing
+  only when non-zero; `verify-no-hardcoded-money-format` — `PASS (0 production .rs file(s), …)`
+  against 1080 here, the best behaved of the five because the number carries its unit (`:293`),
+  so the lie is legible to anyone who reads it.
+- **The closed instance** is `scripts/verify-agents-mirrors.py` at `6809719a91`, 149 insertions
+  / 5 deletions, which additionally prints a `files walked` tally whenever the walk is not
+  whole (`:896-905`), git answering the root with script-relative kept only as the recorded
+  fallback (`:116-129`). Measured: HEAD exits 0 and adds no byte on a whole walk, and the same
+  blob in a temp dir exits 1 naming `Cargo.toml` — a zero walk can no longer read as clean.
+- **General form:** a verifier has to assert that it read its own inputs — a count of files
+  scanned is half of it, a count of inputs found is the other. **Caution in the same breath:**
+  `AGENTS.md:14` sanctions script-relative resolution so tools work across the multi-root
+  layout, so a blanket switch to `git rev-parse --show-toplevel` is a behaviour change in a
+  CI-enforced path and not a pure robustness fix — one lane proposed it, another declined on
+  that evidence. The load-bearing half of the closure is the refusal on an empty walk and on an
+  absent input, not the anchor.
+
 ---
 
 ## How to close these
