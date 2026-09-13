@@ -411,6 +411,14 @@ const SCREENS: ScreenEntry[] = [
     name: 'WorkspaceHome',
     tsx: 'workspaces/WorkspaceHome.tsx',
     css: ['workspaces/WorkspaceHome.css'],
+    // The ToolCard/ToolsCategoryGrid extraction (agents-2, 09-13): the
+    // workspace-tool-* classes moved WITH the JSX into these children —
+    // the styles still live in the screen's CSS, so the reachability
+    // walk must read the children to see them.
+    additionalTsx: [
+      'workspaces/components/ToolsCategoryGrid.tsx',
+      'workspaces/components/ToolCard.tsx',
+    ],
     dynamicClassPrefixes: ['ws-color-', 'role-badge--'],
     externalClasses: [
       'workspace-home-user',

@@ -274,3 +274,148 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
   });
 });
+
+// ── QRIS Auto mode (agents-3): real QR, real poll, gateway countdown ─
+describe('QrisQrDisplay — QRIS Auto mode', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function renderAuto(
+    overrides: Partial<{
+      pollSettled: () => Promise<boolean>;
+      expiresInSeconds: number;
+      onExpired: () => void;
+      onReissue: () => void;
+      onClose: () => void;
+      onPaymentConfirmed: () => void;
+    }> = {},
+  ) {
+    // exactOptionalPropertyTypes: pass the auto props only when set —
+    // `prop: undefined` is not the same as `prop` absent here.
+    const autoProps = {
+      qrString: '000201020126604508ID.CO.QRIS.WWW',
+      ...(overrides.pollSettled !== undefined && { pollSettled: overrides.pollSettled }),
+      ...(overrides.expiresInSeconds !== undefined && { expiresInSeconds: overrides.expiresInSeconds }),
+      ...(overrides.onExpired !== undefined && { onExpired: overrides.onExpired }),
+      ...(overrides.onReissue !== undefined && { onReissue: overrides.onReissue }),
+    };
+    return render(
+      withFluent(
+        <QrisQrDisplay
+          amount={15000}
+          currency="IDR"
+          reference="ORDER-1"
+          isOpen
+          onClose={overrides.onClose ?? (() => {})}
+          onPaymentConfirmed={overrides.onPaymentConfirmed ?? (() => {})}
+          {...autoProps}
+        />,
+        salesFtl,
+      ),
+    );
+  }
+
+  it('renders a real scannable QR instead of the 441-cell placeholder', () => {
+    renderAuto({ pollSettled: async () => false, expiresInSeconds: 300 });
+    // The pseudo-grid is GONE in auto mode — a scanner cannot read it, and
+    // rendering it alongside a real code invites scanning the wrong one.
+    expect(document.querySelectorAll('.qris-qr-cell').length).toBe(0);
+    expect(document.querySelector('.qris-qr-real svg')).toBeTruthy();
+  });
+
+  it('manual mode renders no countdown row', () => {
+    const hostRef = makeHostRef();
+    render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
+    expect(document.querySelector('.qris-countdown')).toBeNull();
+  });
+
+  it('polls on the real schedule and confirms only when settled', async () => {
+    let settled = false;
+    const pollSettled = vi.fn(async () => settled);
+    const onPaymentConfirmed = vi.fn();
+    renderAuto({
+      pollSettled,
+      expiresInSeconds: 300,
+      onPaymentConfirmed,
+    });
+
+    // First probe at t=2s.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(pollSettled).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Payment confirmed!')).toBeNull();
+
+    // Payment lands; next scheduled probe (t=2+3=5s) observes it.
+    settled = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
+
+    // Same 1200ms confirmation beat the manual flow has (receipt tail
+    // needs the modal focused before the parent starts finalizing).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1199);
+    });
+    expect(onPaymentConfirmed).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(onPaymentConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts down and expires; the poll loop stops at expiry', async () => {
+    let polls = 0;
+    const pollSettled = vi.fn(async () => {
+      polls += 1;
+      return false;
+    });
+    const onExpired = vi.fn();
+    renderAuto({ pollSettled, expiresInSeconds: 5, onExpired });
+
+    expect(document.querySelector('.qris-countdown')).toBeTruthy();
+    expect(polls).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(onExpired).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('The QR code expired')).toBeInTheDocument();
+
+    const pollsAtExpiry = polls;
+    // An expired QR never settles; polling more just hammers the endpoint.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20000);
+    });
+    expect(polls).toBe(pollsAtExpiry);
+  });
+
+  it('expired view offers re-issue and cancel', async () => {
+    const onReissue = vi.fn();
+    const onClose = vi.fn();
+    renderAuto({
+      pollSettled: async () => false,
+      expiresInSeconds: 5,
+      onReissue,
+      onClose,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    fireEvent.click(screen.getByText('Generate a new QR'));
+    expect(onReissue).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText('Cancel payment'));
+    // Cancel goes through the exit animation, then the parent's onClose
+    // (which voids the pending sale) — same layered close as the × button.
+    expect(onClose).not.toHaveBeenCalled();
+    advanceFadeSync(200);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

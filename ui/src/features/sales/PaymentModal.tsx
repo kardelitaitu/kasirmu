@@ -25,6 +25,7 @@ import {
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
+import { qrisAutoChargeScoped, qrisAutoStatusScoped } from '@/api/qris-auto';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -669,11 +670,14 @@ export default function PaymentModal({
     setShowQr(true);
   }, []);
 
-  const handleQrConfirmed = useCallback(async () => {
-    setShowQr(false);
-    setProcessing(true);
-
-    try {
+  // Shared QRIS front half (manual + Auto): cart -> discount -> lines ->
+  // complete. The caller's split metadata decides the settlement story:
+  // manual passes its cashier-asserted reference + 'completed', Auto
+  // completes as 'pending' FIRST so the cloud charge can bind to the real
+  // sale id (the ledger's queued finalize_sale then addresses a sale the
+  // device actually has).
+  const buildQrisSale = useCallback(
+    async (split: { gatewayReference: string; gatewayStatus: string; gatewayResponse: string }) => {
       const { cartId } = await startSaleScoped(sessionToken!, { currency: cartCurrency });
 
       if (discountPercent > 0) {
@@ -707,7 +711,7 @@ export default function PaymentModal({
       // CUR-02: snapshot the base currency / total / rate for the QRIS
       // settlement payload too. Tip/service always sent.
       // FRONTEND-04: shared tenderSnapshot memo (see component scope).
-      const saleResult = await completeSaleScoped(sessionToken!, {
+      return completeSaleScoped(sessionToken!, {
             cartId,
             paymentMethod: 'QRIS',
             tenderedMinor: null,
@@ -726,9 +730,9 @@ export default function PaymentModal({
               {
                 method: 'QRIS',
                 amountMinor: effectiveTotalInCartCurrency,
-                gatewayReference: qrReference,
-                gatewayStatus: 'completed',
-                gatewayResponse: 'QRIS payment confirmed',
+                gatewayReference: split.gatewayReference,
+                gatewayStatus: split.gatewayStatus,
+                gatewayResponse: split.gatewayResponse,
               },
             ],
             // PROMO-3: the engine re-applies and re-validates server-side.
@@ -738,7 +742,22 @@ export default function PaymentModal({
             ...(taxEstimated ? { taxEstimated: true } : {}),
             ...tenderSnapshot,
           } as CompleteSaleScopedArgs);
+    },
+    [sessionToken, cartCurrency, discountPercent, discountLabel, lineItems,
+     lineItemsInCartCurrency, serialNumbers, selectedCustomer, promotionIds,
+     effectiveTotalInCartCurrency, tenderSnapshot, taxEstimated],
+  );
 
+  // Shared QRIS tail (manual + Auto): server read-back for the receipt,
+  // KDS ticket, ADR-20 finalize, loyalty redemption, done. Throws after
+  // surfacing so the caller's catch classifies once. `voidOnFinalizeFailure`
+  // splits the two flows' risk: manual's payment was only asserted, so a
+  // failed finalize voids the pending sale; Auto's payment is REAL at the
+  // gateway by then, so the sale must stay pending — the queued
+  // finalize_sale from the settlement webhook completes it on the next
+  // sync apply instead.
+  const settleQrisSale = useCallback(
+    async (saleResult: Awaited<ReturnType<typeof completeSaleScoped>>, voidOnFinalizeFailure: boolean) => {
       try {
         // ADR #7: read the sale back from the same store completeSaleScoped just wrote it to.
         // The value feeds the receipt preview, so an ambient read here showed a customer a
@@ -806,10 +825,12 @@ export default function PaymentModal({
           await finalizeSale(sessionToken, saleResult.saleId);
         } catch (finalizeErr) {
           addToast({ message: `Finalize failed, attempting void: ${finalizeErr instanceof Error ? finalizeErr.message : String(finalizeErr)}`, type: 'error' });
-          try {
-            await voidPendingSale(sessionToken, saleResult.saleId);
-          } catch (voidErr) {
-            addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+          if (voidOnFinalizeFailure) {
+            try {
+              await voidPendingSale(sessionToken, saleResult.saleId);
+            } catch (voidErr) {
+              addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+            }
           }
           throw finalizeErr;
         }
@@ -833,6 +854,21 @@ export default function PaymentModal({
       }
 
       setDone(true);
+    },
+    [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
+     loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency],
+  );
+
+  const handleQrConfirmed = useCallback(async () => {
+    setShowQr(false);
+    setProcessing(true);
+    try {
+      const saleResult = await buildQrisSale({
+        gatewayReference: qrReference,
+        gatewayStatus: 'completed',
+        gatewayResponse: 'QRIS payment confirmed',
+      });
+      await settleQrisSale(saleResult, true);
     } catch (err) {
       addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
       const classified = classifyError(err);
@@ -840,7 +876,150 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [lineItems, discountPercent, discountLabel, promotionIds, sessionToken, qrReference, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, classifyError, addToast, cartCurrency, lineItemsInCartCurrency, effectiveTotalInCartCurrency, tenderSnapshot, taxEstimated]);
+  }, [buildQrisSale, settleQrisSale, qrReference, classifyError, addToast]);
+
+  // ── QRIS Auto (dynamic Midtrans charge, agents-3) ────────────────
+  // The sale completes as PENDING before the charge exists, the QR is
+  // rendered from the gateway payload, and settlement is observed by the
+  // display's real poll (cloud ledger via the webhook). The tail is the
+  // same settleQrisSale the manual flow uses — finalize's idempotent
+  // `WHERE status = 'pending'` means the queued finalize_sale racing in
+  // over sync and this UI call cannot double-apply or double-award.
+  const [autoQr, setAutoQr] = useState<{
+    orderId: string;
+    qrString: string;
+    expiresIn: number;
+    saleResult: Awaited<ReturnType<typeof completeSaleScoped>>;
+  } | null>(null);
+  const autoIssueSeq = useRef(0);
+
+  const issueAutoQr = useCallback(
+    async (saleResult: Awaited<ReturnType<typeof completeSaleScoped>>) => {
+      // First issue of this checkout attempt re-uses the attempt id itself
+      // as the idempotency key (PAY-2: a retry after a lost response
+      // returns the SAME live QR, not a second charge); every deliberate
+      // re-issue after expiry bumps a suffix — a new Midtrans order on the
+      // same local sale.
+      const base = attemptIdRef.current ?? `qr-${Date.now()}`;
+      const idempotencyKey =
+        autoIssueSeq.current === 0 ? base : `${base}-${autoIssueSeq.current}`;
+      return qrisAutoChargeScoped(sessionToken!, {
+        saleId: saleResult.saleId,
+        amountMinor: Number(effectiveTotalInCartCurrency),
+        idempotencyKey,
+      });
+    },
+    [sessionToken, effectiveTotalInCartCurrency],
+  );
+
+  const handleDynamicQrPay = useCallback(async () => {
+    setProcessing(true);
+    let createdSaleId: string | null = null;
+    try {
+      const saleResult = await buildQrisSale({
+        gatewayReference: `qr-auto:${attemptIdRef.current ?? 'no-attempt'}`,
+        gatewayStatus: 'pending',
+        gatewayResponse: 'QRIS Auto — awaiting settlement webhook',
+      });
+      createdSaleId = saleResult.saleId;
+      autoIssueSeq.current = 0;
+      const charge = await issueAutoQr(saleResult);
+      if (!charge.qrString) {
+        throw new Error(requiredLocalized(l10nRef.current, 'payment-qris-auto-no-payload'));
+      }
+      setAutoQr({
+        orderId: charge.orderId,
+        qrString: charge.qrString,
+        expiresIn: charge.expiresInSecs,
+        saleResult,
+      });
+    } catch (err) {
+      // Nothing was captured at the gateway (build or charge failed) — the
+      // pending sale must not linger.
+      if (createdSaleId) {
+        try {
+          await voidPendingSale(sessionToken!, createdSaleId);
+        } catch (voidErr) {
+          addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
+        }
+      }
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'payment-qris-auto-charge-failed', {
+          reason: plainErrorMessage(err),
+        }),
+        type: 'error',
+      });
+    } finally {
+      setProcessing(false);
+    }
+  }, [sessionToken, buildQrisSale, issueAutoQr, addToast]);
+
+  const handleAutoReissue = useCallback(async () => {
+    if (!autoQr || !sessionToken) return;
+    try {
+      autoIssueSeq.current += 1;
+      const charge = await issueAutoQr(autoQr.saleResult);
+      if (!charge.qrString) {
+        throw new Error(requiredLocalized(l10nRef.current, 'payment-qris-auto-no-payload'));
+      }
+      setAutoQr({
+        orderId: charge.orderId,
+        qrString: charge.qrString,
+        expiresIn: charge.expiresInSecs,
+        saleResult: autoQr.saleResult,
+      });
+    } catch (err) {
+      // The expired QR stays on screen with its actions — the money story
+      // is unchanged, and the cashier can retry or cancel deliberately.
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'payment-qris-auto-charge-failed', {
+          reason: plainErrorMessage(err),
+        }),
+        type: 'error',
+      });
+    }
+  }, [autoQr, sessionToken, issueAutoQr, addToast]);
+
+  const handleAutoCancel = useCallback(() => {
+    if (!autoQr || !sessionToken) return;
+    const { saleResult } = autoQr;
+    setAutoQr(null);
+    voidPendingSale(sessionToken, saleResult.saleId)
+      .then(() =>
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'payment-qris-auto-cancelled'),
+          type: 'info',
+        }),
+      )
+      .catch((voidErr) =>
+        addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' }),
+      );
+  }, [autoQr, sessionToken, addToast]);
+
+  const handleAutoConfirmed = useCallback(async () => {
+    if (!autoQr) return;
+    const { saleResult } = autoQr;
+    setAutoQr(null);
+    setProcessing(true);
+    try {
+      // voidOnFinalizeFailure = false: the gateway has the customer's
+      // money; a local finalize fault keeps the sale pending for the
+      // queued finalize_sale instead of voiding a PAID sale.
+      await settleQrisSale(saleResult, false);
+    } catch (err) {
+      addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
+      const classified = classifyError(err);
+      setPaymentError(classified);
+    } finally {
+      setProcessing(false);
+    }
+  }, [autoQr, settleQrisSale, classifyError, addToast]);
+
+  const handleAutoPoll = useCallback(async () => {
+    if (!autoQr || !sessionToken) return false;
+    const s = await qrisAutoStatusScoped(sessionToken, autoQr.orderId);
+    return s.settled;
+  }, [autoQr, sessionToken]);
 
   const addSplit = useCallback(() => {
     setSplits((prev) => [
@@ -1193,6 +1372,21 @@ export default function PaymentModal({
         onClose={() => setShowQr(false)}
         onPaymentConfirmed={handleQrConfirmed}
       />
+
+      {autoQr && (
+        <QrisQrDisplay
+          amount={total.minor_units}
+          currency={total.currency}
+          reference={autoQr.orderId}
+          isOpen={true}
+          onClose={handleAutoCancel}
+          onPaymentConfirmed={handleAutoConfirmed}
+          qrString={autoQr.qrString}
+          pollSettled={handleAutoPoll}
+          expiresInSeconds={autoQr.expiresIn}
+          onReissue={handleAutoReissue}
+        />
+      )}
 
       {shortfallResult && (
         <StockShortfallDialog
@@ -1674,10 +1868,21 @@ export default function PaymentModal({
                       className="payment-qris-btn"
                       aria-label={l10n.getString('payment-qris-pay')}
                       onClick={handleQrPay}
-                      disabled={processing}
+                      disabled={processing || autoQr !== null}
                     >
                       <Localized id="payment-qris-pay">
                         <span>Pay with QR</span>
+                      </Localized>
+                    </button>
+                    <button
+                      type="button"
+                      className="payment-qris-btn payment-qris-btn--dynamic"
+                      aria-label={l10n.getString('payment-qris-dynamic-pay')}
+                      onClick={handleDynamicQrPay}
+                      disabled={processing || autoQr !== null}
+                    >
+                      <Localized id="payment-qris-dynamic-pay">
+                        <span>Pay with dynamic QR</span>
                       </Localized>
                     </button>
                   </div>

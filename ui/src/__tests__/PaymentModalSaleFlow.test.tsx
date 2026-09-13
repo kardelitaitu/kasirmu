@@ -41,6 +41,23 @@ const { invokeMock } = vi.hoisted(() => ({
         return Promise.resolve({ lineId: 'test-line', lineTotal: null });
       case 'complete_sale':
         return Promise.resolve({ saleId: 'sale-1', total: null, lineCount: 1 });
+      case 'complete_sale_scoped':
+        return Promise.resolve({ saleId: 'sale-1', total: null, lineCount: 1 });
+      // QRIS Auto (agents-3): a charge with a live payload and a settled
+      // status answer. Individual tests override the charge case to reach
+      // the refusal paths.
+      case 'qris_auto_charge_scoped':
+        return Promise.resolve({
+          orderId: 'ORDER-A1',
+          qrString: 'DEVQRIS|ORDER-A1',
+          status: 'qr_issued',
+          amountMinor: 700,
+          currency: 'USD',
+          saleId: 'sale-1',
+          expiresInSecs: 300,
+        });
+      case 'qris_auto_status_scoped':
+        return Promise.resolve({ orderId: 'ORDER-A1', status: 'settlement', settled: true });
       // The screen reads the sale back through get_sale_scoped when a session token exists, and
       // this file's WorkspaceContext mock always provides one, so the scoped command needs the same
       // case as its ambient twin. The comment sits ABOVE both labels: between them it makes the
@@ -82,8 +99,15 @@ vi.mock('@tauri-apps/api/core', () => ({
 // attempt id must absorb. The real component's internals (QR canvas,
 // polling) are not under test here.
 vi.mock('@/components/QrisQrDisplay', () => ({
-  default: (props: { isOpen: boolean; onPaymentConfirmed: () => void }) =>
-    props.isOpen ? (
+  default: (props: { isOpen: boolean; onPaymentConfirmed: () => void; qrString?: string }) =>
+    props.isOpen && props.qrString ? (
+      // Auto instance: a single confirmation trigger. The real component's
+      // poll/countdown/re-issue behavior is pinned in QrisQrDisplay.test;
+      // here we drive the parent's settle/cancel state machine.
+      <button type="button" onClick={() => props.onPaymentConfirmed()}>
+        qris-auto-confirm
+      </button>
+    ) : props.isOpen ? (
       <button
         type="button"
         onClick={() => {
@@ -726,5 +750,104 @@ describe('PaymentModal — QRIS attempt id', () => {
     expect(ids[2]).toBe(ids[3]);
     expect(ids[2]).toMatch(UUID_RE);
     expect(ids[2]).not.toBe(firstAttempt);
+  });
+});
+
+// ── QRIS Auto tender (agents-3) ──────────────────────────────────────
+//
+// The whole point of the auto flow is ORDERING: the sale completes as
+// 'pending' FIRST (so the cloud charge can bind to the real sale id and
+// the settlement webhook's queued finalize_sale addresses a sale the
+// device actually has), the charge rides the attempt id as its
+// idempotency key, and finalization only happens on the settled signal.
+describe('PaymentModal — QRIS Auto tender', () => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  const mount = () =>
+    renderInAct(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            sessionToken="mock-token"
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+
+  const callsOf = (cmd: string) =>
+    (invokeMock.mock.calls as unknown[][]).filter((c) => c[0] === cmd);
+
+  // Payload of the n-th recorded call for a command (optional-chained for
+  // strict index access; callers cast at the use site).
+  const payloadOf = (cmd: string, n = 0): unknown =>
+    (callsOf(cmd)[n] as unknown[] | undefined)?.[1];
+
+  const openDynamic = async () => {
+    await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+    const dynBtn = await screen.findByRole('button', { name: /pay with dynamic qr/i });
+    await userEvent.click(dynBtn);
+    await waitFor(() => expect(callsOf('qris_auto_charge_scoped')).toHaveLength(1));
+  };
+
+  it('completes the sale pending, then charges against the real sale id', async () => {
+    const view = await mount();
+    await openDynamic();
+
+    const complete = payloadOf('complete_sale_scoped') as {
+      args: { paymentSplits: Array<{ gatewayStatus: string }>; attemptId?: string };
+    };
+    expect(complete.args.paymentSplits[0]?.gatewayStatus).toBe('pending');
+    // The cloud ledger binds order -> sale_id -> queued finalize_sale;
+    // the sale id it was created for is the one from THIS completion.
+    const charge = payloadOf('qris_auto_charge_scoped') as {
+      args: { saleId: string; amountMinor: number; idempotencyKey: string };
+    };
+    expect(charge.args.saleId).toBe('sale-1');
+    expect(charge.args.amountMinor).toBe(700);
+    // PAY-2: the first issue re-uses the checkout attempt id as the
+    // idempotency key, so a retry after a lost response cannot mint a
+    // second live charge.
+    expect(charge.args.idempotencyKey).toMatch(UUID_RE);
+    expect(charge.args.idempotencyKey).toBe(complete.args.attemptId);
+
+    // Settlement observed -> finalize the pending sale exactly once.
+    await userEvent.click(await screen.findByRole('button', { name: /qris-auto-confirm/i }));
+    await waitFor(() => expect(callsOf('finalize_sale')).toHaveLength(1));
+    expect((payloadOf('finalize_sale') as { saleId: string }).saleId).toBe('sale-1');
+    // No second completion for the settlement — same one checkout.
+    expect(callsOf('complete_sale_scoped')).toHaveLength(1);
+    view.unmount();
+  });
+
+  it('voids the pending sale when the gateway refuses the charge', async () => {
+    const original = (invokeMock.getMockImplementation() ??
+      (() => Promise.resolve({}))) as (cmd: string) => Promise<unknown>;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === 'qris_auto_charge_scoped'
+        ? Promise.reject({ kind: 'internal', message: 'MIDTRANS_SERVER_KEY not configured' })
+        : original(cmd),
+    );
+    try {
+      const view = await mount();
+      await userEvent.click(await screen.findByRole('radio', { name: /qris/i }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: /pay with dynamic qr/i }),
+      );
+      // The completion happened; the charge did not — the pending sale
+      // must not linger (nothing was ever captured at the gateway).
+      await waitFor(() => expect(callsOf('void_pending_sale')).toHaveLength(1));
+      expect((payloadOf('void_pending_sale') as { saleId: string }).saleId).toBe('sale-1');
+      expect(callsOf('finalize_sale')).toHaveLength(0);
+      view.unmount();
+    } finally {
+      invokeMock.mockImplementation(original);
+    }
   });
 });

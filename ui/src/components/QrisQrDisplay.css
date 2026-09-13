@@ -226,3 +226,61 @@
     to { transform: rotate(360deg); }
   }
 }
+
+/* ── QRIS Auto (dynamic charge) mode ─────────────────────────────── */
+
+/* The real payload renders as a scannable SVG on a theme-invariant paper
+   surface — same reasoning as the KDS enrollment QR: POS dark themes flip
+   --color-bg to near-black and scanners reject a code whose quiet zone is
+   dark. --color-paper is white in every theme, so this stays tokenized
+   (raw hex trips themeTokenCompliance, whose baseline is 0). */
+.qris-qr-real {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-paper);
+  border-radius: var(--radius-md);
+}
+
+.qris-countdown {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg-secondary);
+}
+
+.qris-expired {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.qris-expired-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+}
+
+.qris-expired-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.qris-expired-btn {
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.qris-expired-btn--cancel {
+  background: transparent;
+  color: var(--color-fg-secondary);
+}
