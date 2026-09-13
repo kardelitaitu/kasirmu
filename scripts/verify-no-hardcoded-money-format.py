@@ -40,6 +40,7 @@ USAGE
 
     python3 scripts/verify-no-hardcoded-money-format.py
     python3 scripts/verify-no-hardcoded-money-format.py --verbose
+    python3 scripts/verify-no-hardcoded-money-format.py --self-test
 
 ROOT RESOLUTION
 ===============
@@ -59,14 +60,53 @@ EXIT CODES
   * 2  a runtime error occurred, or the walk found no candidate .rs file in a root it
        was asked to police — a clean verdict read off an empty corpus, which proves
        nothing about the tree and is therefore not a verdict.
+  * --self-test exits 0 only when all three of its cases behaved as written; 1 otherwise.
+
+SELF-TEST
+=========
+
+    --self-test builds three synthetic trees under the system temp dir and runs THIS FILE
+    against each as a child process launched inside that tree — so what the cases assert is
+    the real CLI path: argv, root resolution, the walk, the exit code an operator sees. The
+    fixtures are created with tempfile.mkdtemp() and removed again; nothing is written
+    inside any repository, and the real tree is never scanned by a self-test run.
+
+      1. all five policed directories present, at least one production .rs in each, one
+         planted float finding (`minor_units / 100.0`) -> must report that finding, exit 1.
+      2. all five present, zero .rs anywhere -> must REFUSE with exit 2 and name the
+         resolved root it probed (the whole-tree empty-corpus refusal added at 1f7c2311).
+      3. only two of the five present, both populated -> must REFUSE as PARTIAL COVERAGE
+         rather than print PASS over the part it happened to see. Pinned deliberately: exit
+         2 whenever ANY policed root yields zero candidates is this gate's declared new
+         behaviour, so the case written for it is a case that expects the refusal.
+
+    All three cases expect the gate to fail, so the tally's CLEAN half is 0 by construction.
+    A fourth case — "full tree, nothing to find, exit 0" — was considered and NOT kept. It is
+    the one verdict no case here watches, but it also reddens under none of the three
+    mutations named beside the cases below: deleting the refusal, weakening its starved arm
+    and dropping a pattern all still leave a clean synthetic tree at exit 0, and a broken
+    walk already reddens case 1. A case that cannot fail watches nothing, so it stays out of
+    the suite and in this comment (the rule reported today as having retired case 18 in
+    scripts/verify-ipc-parity.py). The CLEAN half of this gate's evidence stays the real-tree
+    run — exit 0, printing its own .rs count — which is outside the flag and above it in
+    VERIFY.
+
+    HONEST LIMIT — read this before trusting a green tally: a --self-test that nothing calls
+    is a developer tool, not enforcement. This gate's CI record lives in scripts/gates.json
+    and .github/workflows/dev-ci.yml, both outside the fence that added this flag and
+    neither edited by it, so these three cases pin the behaviour for humans and for whoever
+    later wires the runner. Until that wiring exists, CI can still regress the refusal
+    silently — exactly as it could before this flag was added.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Directories holding the production Rust this gate polices, RELATIVE TO THE REPO ROOT.
@@ -295,6 +335,153 @@ def scan_file(path: Path) -> list[dict]:
     return findings
 
 
+# -- self-test ---------------------------------------------------------------
+#
+# Fixture content is deliberately minimal: one clean production-shaped file per policed
+# directory, plus one planted finding. Names avoid every skip the walker applies (a
+# "tests" path part, "/benches/", "test_helpers.rs") because a fixture that got filtered
+# out would look like coverage while scanning nothing.
+_FIXTURE_CLEAN = (
+    "//! self-test fixture\npub fn raw(minor_units: i64) -> i64 {\n    minor_units\n}\n"
+)
+_FIXTURE_PLANTED = (
+    "//! self-test fixture\npub fn rate(minor_units: i64) -> f64 {\n"
+    "    minor_units / 100.0\n}\n"
+)
+_PLANTED_NAME = "planted_money.rs"
+
+
+def _build_tree(root: Path, dirs: dict[str, int], plant: str | None = None) -> Path:
+    """Materialise a synthetic checkout: dirs maps a policed root to its .rs count."""
+    for rel, count in dirs.items():
+        src = root / rel / "src"
+        src.mkdir(parents=True, exist_ok=True)
+        for i in range(count):
+            (src / f"mod_{i}.rs").write_text(_FIXTURE_CLEAN, encoding="utf-8")
+    if plant is not None:
+        src = root / plant / "src"
+        src.mkdir(parents=True, exist_ok=True)
+        (src / _PLANTED_NAME).write_text(_FIXTURE_PLANTED, encoding="utf-8")
+    return root
+
+
+def _run_gate(cwd: Path) -> tuple[int, str]:
+    """Run THIS file as a child launched from cwd, with stdout and stderr folded together.
+
+    A child rather than a call into main(): the exit code and the root the refusal prints
+    are properties of the CLI, and root resolution has to run for real to be exercised.
+    It also means a mutated copy of this file tests itself, so a mutation cannot hide
+    behind a harness that still holds the unmutated constants.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve())],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        errors="replace",
+        timeout=180,
+    )
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
+def self_test() -> int:
+    """Pin the three verdicts this gate can give in temp trees, and print the split.
+
+    CAUGHT = the gate was expected to fail and did.  CLEAN = expected to pass and did.
+    Each case names above itself the mutation it was written for and the assertion that
+    reddens when that mutation lands; a case with no such pair is not kept.
+    """
+    caught = clean = red = 0
+    tmp = Path(tempfile.mkdtemp(prefix="money-format-selftest-"))
+
+    def verdict(ok: bool, desc: str, expected: str, seen: str) -> None:
+        nonlocal caught, red
+        if ok:
+            caught += 1
+            print(f"  CAUGHT  {desc}")
+        else:
+            red += 1
+            print(f"  MISSED  {desc}")
+            print(f"          expected {expected}")
+            print(f"          saw      {seen}")
+
+    try:
+        # (1) Full coverage plus one planted float finding.
+        #     Mutation: drop the ("minor_units / 100", MONEY_DIV_RE) entry from PATTERNS.
+        #     Reddens rc == 1 -- the gate walks all five roots, finds nothing, prints PASS.
+        tree = _build_tree(tmp / "full-with-finding", {r: 1 for r in ROOTS}, plant="crates")
+        rc, out = _run_gate(tree)
+        folded = out.replace("\\", "/")
+        named = f"{_PLANTED_NAME}:3" in folded
+        labelled = "[minor_units / 100]" in out
+        first = out.strip().splitlines()[-1][:76] if out.strip() else "no output"
+        verdict(
+            rc == 1 and named and labelled,
+            f"planted minor_units / 100.0 reported, exit 1 (rc={rc}, file named={named}, "
+            f"pattern labelled={labelled})",
+            "exit 1 plus the planted file at line 3 and its pattern label",
+            f"exit {rc}: {first}",
+        )
+
+        # (2) All five roots present, zero .rs anywhere: the 1f7c2311 refusal.
+        #     Mutation that reddens rc == 2: delete the refusal (guard -> False), the
+        #     pre-1f7c2311 path -- the gate then prints PASS (0 production .rs file(s)).
+        #     The assertion only this case watches is the "walked nothing" sentence itself:
+        #     breaking the inner message selector (scanned == 0 -> scanned < 0) reddens here
+        #     and nowhere else, while dropping the scanned == 0 arm from the GUARD reddens
+        #     nothing, because an all-empty tree always leaves `starved` non-empty too.
+        tree = _build_tree(tmp / "present-but-empty", {r: 0 for r in ROOTS})
+        rc, out = _run_gate(tree)
+        root_named = str(tree) in out
+        first = out.strip().splitlines()[0][:76] if out.strip() else "no output"
+        verdict(
+            rc == 2 and "REFUSED" in out and "walked nothing" in out and root_named,
+            f"empty corpus refused and the resolved root named (rc={rc}, root named="
+            f"{root_named})",
+            "exit 2, the walked-nothing refusal, and the resolved root printed in it",
+            f"exit {rc}: {first}",
+        )
+
+        # (3) Partial coverage: two of the five policed roots, both populated (2 .rs total).
+        #     Mutation that reddens rc == 2 here and nowhere else: weaken the guard to
+        #     "if scanned == 0:", dropping the starved arm. The gate then prints PASS over
+        #     the 2 files it happened to see and exits 0 -- which is exactly the deliberate
+        #     new failure mode this case exists to pin, so it expects the refusal on purpose.
+        present = ["crates", "foundation"]
+        missing = [r for r in ROOTS if r not in present]
+        tree = _build_tree(tmp / "partial-coverage", {r: 1 for r in present})
+        rc, out = _run_gate(tree)
+        starved_named = f"({', '.join(missing)})" in out
+        absent_marked = out.count("(directory absent)") == len(missing)
+        first = out.strip().splitlines()[0][:76] if out.strip() else "no output"
+        verdict(
+            rc == 2 and "REFUSED" in out and "only part" in out and starved_named
+            and absent_marked,
+            f"partial coverage refused, not passed (rc={rc}, starved roots named="
+            f"{starved_named}, all {len(missing)} marked absent={absent_marked})",
+            "exit 2, the partial-tree refusal naming every starved root as directory absent",
+            f"exit {rc}: {first}",
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    rc_out = 0 if red == 0 else 1
+    print(f"  tally: {caught + clean} green = {caught} CAUGHT + {clean} CLEAN; {red} red; "
+          f"exit {rc_out}")
+    print(
+        "  CLEAN is 0 by construction: all three cases pin a verdict this gate must NOT "
+        "print. The real-tree run is the clean half of the evidence (exit 0, printing its "
+        "own .rs count), outside this flag."
+    )
+    print(
+        "  LIMIT: nothing calls this flag. scripts/gates.json and dev-ci.yml sit outside "
+        "the fence that added it, so a green tally is a developer tool, not enforcement."
+    )
+    if red:
+        print("  a case slipped through: the behaviour it pins is no longer pinned")
+    return rc_out
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -314,7 +501,18 @@ def main() -> int:
         default=None,
         help="roots to scan (default: the Rust source roots under the resolved repo root)",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="build three synthetic trees under the system temp dir (planted finding / "
+             "empty corpus / partial coverage), run this gate against each, and print the "
+             "CAUGHT+CLEAN tally; exits 0 only if all three behaved. Nothing is written "
+             "inside a repository.",
+    )
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     if args.roots:
         roots = list(args.roots)
