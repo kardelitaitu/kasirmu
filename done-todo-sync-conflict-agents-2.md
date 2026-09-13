@@ -1,5 +1,22 @@
 # Orchestrator Agent 2: Cloud Conflict Detection & Resolution Endpoints
 
+<!-- Audit stamp: 2026-09-13 · DSH · REPAIR RECONCILIATION (supersedes the
+stamp below). Landed as d5a64d604 / 230642b64 / 4413a79ae / 27f2e7678.
+Post-repair gates all green at this stamp's HEAD: conflict_resolution tests
+23/23 (the six in 98d306ba0 drive push_batch end to end, closing the
+"correct but unwired classifier" gap); clippy -p oz-cloud-server
+--all-targets -D warnings exit 0 — it was NOT green when this file was
+marked done: the gate failed on two lints in the oz-api dependency
+(fixed by 886bee158: a let-else to `?` in guard_key_reject and a collapsed
+if at the unguarded-note site) and on too_many_arguments in this crate's
+own build_conflict_row (allow-documented in 0d8d8cc9).
+Verified against code: routes live at `/api/sync/conflicts[/:id/resolve]`
+exactly as specified; `sync_conflicts` + `sync_entity_vectors` are in the
+SQLite registry (20261002, 20261003) and the regenerated PG init; openapi
+documents both endpoints; tenant scoping comes from the JWT, asserted by
+test. Deviation: detection is keyed on Agent 1's VersionVector (with the
+Lamport order as tie-break) rather than a scalar clock compare. -->
+
 <!-- Audit stamp: 2026-09-13 · verified against HEAD `e046e2f26` (0.0.37).
 Every claim below was read out of the files themselves. Supersedes the previous
 revision, which used an `/api/v1/sync/...` route prefix that does not match any
@@ -105,26 +122,26 @@ as an additive numeric field. They are not.
 ## Task Checklist
 
 ### Phase 2.0: Baseline Audit
-- [ ] Read `apps/cloud-server/src/sync_store.rs` (1,232 lines) and
+- [x] Read `apps/cloud-server/src/sync_store.rs` (1,232 lines) and
       `apps/cloud-server/src/sync_api.rs` — confirm the route prefix and
       handler shape against finding 1.
-- [ ] Read `apps/cloud-server/src/db.rs` `apply_schema` path — confirm how
+- [x] Read `apps/cloud-server/src/db.rs` `apply_schema` path — confirm how
       `PG_INIT` is applied and why there is no cloud-local migration folder.
-- [ ] Record an audit-stamp comment on each file touched, in the house style.
+- [x] Record an audit-stamp comment on each file touched, in the house style.
 
 ### Phase 2.1: Conflict Detection
-- [ ] Compare the incoming mutation's clock against the stored latest clock
+- [x] Compare the incoming mutation's clock against the stored latest clock
       for the same entity, using Agent 1's `LamportClock` ordering.
-- [ ] Classify as: **causally ordered** (apply silently) or **concurrent**
+- [x] Classify as: **causally ordered** (apply silently) or **concurrent**
       (divergent).
-- [ ] On concurrent divergence, dispatch by the severity table above:
+- [x] On concurrent divergence, dispatch by the severity table above:
       - auto-merge and continue, or
       - insert a row into `sync_conflicts` and leave the entity untouched.
-- [ ] **Never** auto-merge a money field. Redemptions, payments and refunds
+- [x] **Never** auto-merge a money field. Redemptions, payments and refunds
       always produce a `sync_conflicts` row.
 
 ### Phase 2.2: Persistence
-- [ ] Add `crates/oz-core/migrations/<date>_sync_conflicts.sql`.
+- [x] Add `crates/oz-core/migrations/<date>_sync_conflicts.sql`.
       Suggested columns: `id`, `tenant_id`, `entity_type`, `entity_id`,
       `local_terminal_id`, `local_clock`, `remote_terminal_id`,
       `remote_clock`, `local_payload`, `remote_payload`, `severity`,
@@ -135,35 +152,35 @@ as an additive numeric field. They are not.
         floats for exact-decimal data.
       - `severity` should be a `CHECK`-constrained enum, matching the policy
         table.
-- [ ] Run `python scripts/generate-pg-migration.py` and stage the regenerated
+- [x] Run `python scripts/generate-pg-migration.py` and stage the regenerated
       `20260813_init.pg.sql` in the same commit. The PG drift guard (gate 7)
       will fail otherwise.
-- [ ] Add the Rust row struct and queries; **all writes go through an explicit
+- [x] Add the Rust row struct and queries; **all writes go through an explicit
       transaction** (AGENTS.md: rusqlite/tokio-postgres transactions, no
       bare writes).
 
 ### Phase 2.3: Endpoints
-- [ ] `GET  /api/sync/conflicts` — list, filterable by `status` and
+- [x] `GET  /api/sync/conflicts` — list, filterable by `status` and
       `severity`, tenant-scoped.
-- [ ] `POST /api/sync/conflicts/:id/resolve` — body carries the chosen side
+- [x] `POST /api/sync/conflicts/:id/resolve` — body carries the chosen side
       or a custom merge; records `resolution`, `resolved_by`, `resolved_at`.
-- [ ] Register both in `apps/cloud-server/src/sync_api.rs` next to the
+- [x] Register both in `apps/cloud-server/src/sync_api.rs` next to the
       existing four routes.
-- [ ] Update `apps/cloud-server/src/openapi.rs` if it enumerates sync routes —
+- [x] Update `apps/cloud-server/src/openapi.rs` if it enumerates sync routes —
       check, do not assume.
 
 ### Phase 2.4: Verification
-- [ ] `cargo fmt --all`.
-- [ ] `cargo test -p oz-cloud-server conflict_resolution` — **must report at
+- [x] `cargo fmt --all`.
+- [x] `cargo test -p oz-cloud-server conflict_resolution` — **must report at
       least 6 tests.** (A substring filter that can pass with zero tests is
       not a gate.)
-- [ ] Required cases: causally ordered mutation applies without a conflict
+- [x] Required cases: causally ordered mutation applies without a conflict
       row; concurrent stock deltas auto-merge; concurrent gift-card
       redemptions produce a High-severity row and do **not** merge; tenant
       isolation (tenant A cannot read tenant B's conflicts); resolve endpoint
       is idempotent; endpoint returns 404 for an unknown id.
-- [ ] `cargo clippy -p oz-cloud-server -- -D warnings`.
-- [ ] **Commit Milestone:**
+- [x] `cargo clippy -p oz-cloud-server -- -D warnings`.
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "feat(sync-cloud): detect concurrent sync mutations and expose conflict resolution endpoints"
   ```

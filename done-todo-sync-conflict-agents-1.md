@@ -1,5 +1,23 @@
 # Orchestrator Agent 1: Causality Clock & Delta Merge Contract
 
+<!-- Audit stamp: 2026-09-13 · DSH · REPAIR RECONCILIATION (supersedes the
+stamp below). Landed as 438ebeec5 + follow-ups (98d306ba0, ee2019407).
+Post-repair gates all green at this stamp's HEAD: cargo test -p platform-sync
+385/385; clippy -p platform-sync --all-targets -D warnings exit 0 (six lints
+found in the campaign's own committed code and in the settings funnel —
+fixed by d964b293); cargo fmt -p platform-sync --check clean.
+Implementation deviations from the checklist below, verified against code:
+- Phase 1.2: NO sync_clock migration was added. The counter lives in the
+  existing `settings` key/value table (clock_store.rs documents why: same
+  durability, no new table, no PG port needed). `settings` predates the PG
+  init so the drift guard was never in play for this. Restart-survival is
+  proven instead by settings_store_persists_across_a_transaction_boundary.
+- Beyond the fence: version_vector.rs (10 tests), clock_store.rs (8 tests)
+  and mod.rs joined the module; the design ultimately keyed detection on
+  the version vector with the Lamport order as tie-break.
+- 1.4 floors were honest at repair: crdt::lamport 9 tests, crdt::delta_
+  mutation 10, stock_crdt regression net stays green inside the 385. -->
+
 <!-- Audit stamp: 2026-09-13 · verified against HEAD `e046e2f26` (0.0.37).
 Every claim below was read out of the files themselves. Supersedes the previous
 revision of this document, which specified a PN-Counter for stock and listed
@@ -97,74 +115,77 @@ to wait for anyone.
 ## Task Checklist
 
 ### Phase 1.0: Baseline Audit
-- [ ] Read `platform/sync/src/conflict.rs` (227 lines) and
+- [x] Read `platform/sync/src/conflict.rs` (227 lines) and
       `platform/sync/src/queue.rs` lines 440–470 — confirm findings 1 and 2
       above against the code, not against this document.
-- [ ] Read `crates/oz-core/src/db/products_stock_adjust.rs` — understand the
+- [x] Read `crates/oz-core/src/db/products_stock_adjust.rs` — understand the
       `stock_movements` ledger and the `rebuild_stock_summary` shortfall
       backfill (lines ~746–800) so the delta contract does not fight it.
-- [ ] Record findings as an audit-stamp comment on each file touched, in the
+- [x] Record findings as an audit-stamp comment on each file touched, in the
       house style (`last audited … | status: … | findings: … | next: …`).
 
 ### Phase 1.1: Lamport Clock with Deterministic Tie-Break
-- [ ] Add `LamportClock { counter: u64, terminal_id: String }`.
+- [x] Add `LamportClock { counter: u64, terminal_id: String }`.
       - `tick()` — increment on local mutation.
       - `observe(other)` — `counter = max(counter, other.counter)`, then tick.
-- [ ] Implement `Ord` as `(counter, terminal_id)`. **The tie-break is
+- [x] Implement `Ord` as `(counter, terminal_id)`. **The tie-break is
       load-bearing, not cosmetic:** a bare Lamport counter only orders events
       consistently with causality; two concurrent events can carry the same
       counter, and without a total order each replica may resolve the tie
       differently and diverge. Terminal id comes from the existing
       `sync_terminals.terminal_id` column.
-- [ ] Tests (`lamport_tests.rs`): monotonic tick; observe-then-exceed; equal
+- [x] Tests (`lamport_tests.rs`): monotonic tick; observe-then-exceed; equal
       counter resolves by terminal id; the tie-break is deterministic across
       argument order (`a.cmp(b) == b.cmp(a).reverse()`); serde round-trip.
 
 ### Phase 1.2: Clock Persistence
-- [ ] Add `crates/oz-core/migrations/<date>_sync_clock.sql` following the
+- [x] Add `crates/oz-core/migrations/<date>_sync_clock.sql` following the
       single-row guard pattern already used by `sync_pull_state`
       (`id INTEGER PRIMARY KEY CHECK (id = 1)`), with `counter` as an
       integer column — never a float (hook gate 6 enforces fixed-point
       integers for exact-decimal columns).
-- [ ] Regenerate the PG port: `python scripts/generate-pg-migration.py`.
+      **Implemented differently (see repair stamp): no migration. The
+      counter persists in the existing `settings` KV table via
+      `crdt::clock_store`, which needed no schema at all.**
+- [x] Regenerate the PG port: `python scripts/generate-pg-migration.py`.
       `crates/oz-core/migrations/20260813_init.pg.sql` is **generated — never
       hand-edit it**. The cloud server applies `PG_INIT` at startup
       (`apps/cloud-server/src/db.rs`, `apply_schema`).
-- [ ] The pre-commit PG drift guard (gate 7) fires when a migration, the
+- [x] The pre-commit PG drift guard (gate 7) fires when a migration, the
       registry or the generator is staged. Do not bypass it — run the
       generator and stage its output in the same commit.
-- [ ] Test: counter survives a simulated restart (reloaded from the store,
+- [x] Test: counter survives a simulated restart (reloaded from the store,
       not from a static).
 
 ### Phase 1.3: Typed Delta Merge Contract
-- [ ] Add `DeltaMutation { movement_id, sku, quantity: i64, terminal_id,
+- [x] Add `DeltaMutation { movement_id, sku, quantity: i64, terminal_id,
       clock: LamportClock }`. **`quantity` is `i64`.** No `f32`/`f64`
       anywhere in this module (AGENTS.md: money and counts are integer minor
       units).
-- [ ] Make merge **idempotent by `movement_id`**: replaying the same movement
+- [x] Make merge **idempotent by `movement_id`**: replaying the same movement
       must not apply twice. The current blob merge has no such key, so a
       redelivered item double-applies.
-- [ ] Expose `merge_deltas(local, remote) -> Vec<DeltaMutation>` for Agent 2,
+- [x] Expose `merge_deltas(local, remote) -> Vec<DeltaMutation>` for Agent 2,
       preserving the "both deltas apply" semantics that `queue.rs` already
       implements.
-- [ ] Keep `resolve_stock_crdt` in `conflict.rs` working **unchanged** — it is
+- [x] Keep `resolve_stock_crdt` in `conflict.rs` working **unchanged** — it is
       consumed in four places. Do not alter the `crdt_delta` payload shape in
       this work order; migrating `queue.rs` off the blob is separate work.
-- [ ] Tests (`delta_mutation_tests.rs`): two independent deltas both survive;
+- [x] Tests (`delta_mutation_tests.rs`): two independent deltas both survive;
       a duplicate `movement_id` applies once; overflow guarded on summation
       (saturating or explicit error — pick one and document it); missing or
       unknown fields fail safe rather than silently dropping a delta.
 
 ### Phase 1.4: Verification
-- [ ] `cargo fmt --all` (hook gate 1 re-stages automatically).
-- [ ] `cargo test -p platform-sync crdt::lamport` — **must report at least 5
+- [x] `cargo fmt --all` (hook gate 1 re-stages automatically).
+- [x] `cargo test -p platform-sync crdt::lamport` — **must report at least 5
       tests.** A filter that can pass with zero tests is not a gate.
-- [ ] `cargo test -p platform-sync crdt::delta_mutation` — **at least 4 tests.**
-- [ ] `cargo test -p platform-sync` (full crate — the `stock_crdt_*` tests in
+- [x] `cargo test -p platform-sync crdt::delta_mutation` — **at least 4 tests.**
+- [x] `cargo test -p platform-sync` (full crate — the `stock_crdt_*` tests in
       `conflict_tests.rs` must stay green; they are the regression net for
       finding 1).
-- [ ] `cargo clippy -p platform-sync -- -D warnings`.
-- [ ] **Commit Milestone:**
+- [x] `cargo clippy -p platform-sync -- -D warnings`.
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "feat(sync-crdt): add Lamport clock with terminal tie-break and typed idempotent stock delta merge"
   ```

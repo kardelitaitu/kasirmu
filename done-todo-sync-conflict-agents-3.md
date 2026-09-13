@@ -1,5 +1,47 @@
 # Orchestrator Agent 3: Manager Conflict Resolution UI & Audit Trail
 
+<!-- Audit stamp: 2026-09-13 · DSH · REPAIR RECONCILIATION (supersedes the
+stamp below). Landed as 028056eaa / 825f0cc2f / d60bcc7a6. This file's
+"done" rename was the least accurate of the three: the Phase 3.4 items had
+NEVER been run, and writing them at repair time exposed six real defects in
+the shipped campaign, all fixed 2026-09-13 —
+1. The resolved-history checkbox NEVER rendered: a @fluent/react Localized
+   wrapping a <label> with a plain-string translation replaces ALL of the
+   element's children, unmounting the <input>. The audit-trail toggle was
+   invisible in production. Fixed with the house label pattern (htmlFor/id
+   + aria-label + Localized span), db45f529.
+2. The "already resolved elsewhere" notice was unreachable code: load()
+   starts with setError(null), and both updates batched into one tick, so
+   the notice was wiped before it could paint. Reordered (refresh, then
+   notice), db45f529.
+3. Raw e.message leaked in three sites, failing errorPolicyCompliance
+   (ERR-10) which the campaign's untouched `npm run test` would have shown.
+   Routed through l10nErrorMessage/getString; three keys added to both
+   sync bundles (c9d1ed69).
+4. KEPT_SECTIONS omitted 'sync-conflicts': deep links to
+   #/settings/sync-conflicts were silently ignored (43beb342).
+5. The nav entry had no NAV_L10N_KEYS mapping and no settings-nav-sync-
+   conflicts key, so the 14th page broke the pinned 13-page IA suites
+   (9 tests: 6 in SettingsNavTree, 2 in SettingsPage, 1 error-policy)
+   and rendered an English-only hardcoded label. Fixed: key in
+   both settings bundles, NAV_L10N_KEYS entry, and the review screen
+   re-shaped to mount inside the shared placeholder scaffold with its h1
+   (like BusinessDefaultsScreen); both suites updated to the 14-page
+   reality (4fdce098).
+6. `<nav role="tablist">` violated the jsx-a11y rule set the AGENTS.md
+   Accessibility directive relies on (no gate had ever run it on this
+   file); now a named div tablist.
+Tests now exist: SyncConflictReviewScreen.test.tsx 8/8, mocking at the
+logged-invoke boundary so the real client's command names and arg shapes
+are pinned (0ca10266); the four touched suites are 80/80.
+Deviations kept: nav is registered in the Settings hub (next to Sync
+Status), not "Tools → Operations" — the flat settings IA is where the app
+actually put operations screens; desktop crate is `oz-pos-app`, not the
+`oz-desktop-client` the 3.1 verify box guessed; the dev-mock resolve
+handler returns false, so in dev every resolve now (post-fix #2) shows the
+"resolved elsewhere" notice — stub quality, flagged for the devmock
+campaign that owns tauri-api.ts right now. -->
+
 <!-- Audit stamp: 2026-09-13 · verified against HEAD `e046e2f26` (0.0.37).
 Every claim below was read out of the files themselves. Supersedes the previous
 revision, which called an IPC command (`resolveSyncConflictScoped`) that does
@@ -93,68 +135,72 @@ both sides code against the same contract.
 ## Task Checklist
 
 ### Phase 3.0: Baseline Audit
-- [ ] Read both `OfflineQueueScreen.tsx` files; determine which is routed and
+- [x] Read both `OfflineQueueScreen.tsx` files; determine which is routed and
       why the other exists. Mirror the live one.
-- [ ] Read `ui/src/api/` for the client-wrapper convention (e.g.
+- [x] Read `ui/src/api/` for the client-wrapper convention (e.g.
       `ui/src/api/giftCards.ts`, `ui/src/api/audit.ts`).
-- [ ] Read `ui/src/features/settings/SettingsNavTree.tsx` and
+- [x] Read `ui/src/features/settings/SettingsNavTree.tsx` and
       `ui/src/hooks/useWorkspaceNav.ts` to find where a Tools → Operations
       entry must be registered.
 
 ### Phase 3.1: IPC Command & Data Layer (prerequisite — do this first)
-- [ ] Add `resolve_sync_conflict_scoped` to
+- [x] Add `resolve_sync_conflict_scoped` to
       `apps/desktop-client/src/commands/sync.rs`, tenant-scoped, calling
       Agent 2's `POST /api/sync/conflicts/:id/resolve`.
-- [ ] Register it in `apps/desktop-client/src/lib.rs` alongside the other
+- [x] Register it in `apps/desktop-client/src/lib.rs` alongside the other
       `commands::sync::*_scoped` entries.
-- [ ] Add the matching handler to `ui/src/dev-mock/tauri-api.ts`.
-- [ ] Add `ui/src/api/syncConflicts.ts` — typed client for list and resolve,
+- [x] Add the matching handler to `ui/src/dev-mock/tauri-api.ts`.
+- [x] Add `ui/src/api/syncConflicts.ts` — typed client for list and resolve,
       with the severity enum (`high` / `medium` / `low`) matching Agent 2's
       `CHECK` constraint. **Do not invent a second severity vocabulary.**
-- [ ] Verify: `cargo check -p oz-desktop-client` (or the crate name in
+- [x] Verify: `cargo check -p oz-desktop-client` (or the crate name in
       `apps/desktop-client/Cargo.toml`).
-- [ ] **Commit Milestone:**
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "feat(sync-ui): add resolve_sync_conflict_scoped IPC command and sync conflicts API client"
   ```
 
 ### Phase 3.2: Conflict Diff Viewer
-- [ ] Build `<ConflictDiffViewer />` — side-by-side comparison of the two
+- [x] Build `<ConflictDiffViewer />` — side-by-side comparison of the two
       versions (Terminal A vs Cloud / Terminal B), showing terminal id, clock
       and payload for each side.
-- [ ] Resolution actions: `Accept Store A`, `Accept Cloud`, `Custom Merge`.
-- [ ] **Money is rendered from `*_minor` integers through the existing money
+- [x] Resolution actions: `Accept Store A`, `Accept Cloud`, `Custom Merge`.
+- [x] **Money is rendered from `*_minor` integers through the existing money
       formatter.** No float arithmetic, no ad-hoc division by 100.
-- [ ] Add Fluent keys to `sync.ftl` **and** `sync.id.ftl`. Both, in the same
+- [x] Add Fluent keys to `sync.ftl` **and** `sync.id.ftl`. Both, in the same
       commit — gate 4 fails on a missing key, gate 10 on an unreferenced one.
-- [ ] Verify: `npm run typecheck` (~21s; hook gate 9 runs it automatically
+- [x] Verify: `npm run typecheck` (~21s; hook gate 9 runs it automatically
       because this commit stages `ui/src` TypeScript).
-- [ ] **Commit Milestone:**
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "feat(sync-ui): build ConflictDiffViewer with side-by-side version comparison and resolution actions"
   ```
 
 ### Phase 3.3: Review Screen
-- [ ] Build `SyncConflictReviewScreen.tsx` with severity filter tabs
+- [x] Build `SyncConflictReviewScreen.tsx` with severity filter tabs
       (High: money & inventory, Medium: customer profile, Low: catalog
       metadata) — the vocabulary from Agent 2's policy table.
-- [ ] Show `open` conflicts by default; expose a resolved-history view for the
+- [x] Show `open` conflicts by default; expose a resolved-history view for the
       audit trail.
-- [ ] Register the nav entry (Tools → Operations).
-- [ ] **Commit Milestone:**
+- [x] Register the nav entry (Tools → Operations).
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "feat(sync-ui): build SyncConflictReviewScreen with severity filters and resolution history"
   ```
 
 ### Phase 3.4: Verification
-- [ ] `npm run typecheck` — must pass. (`OZPOS_SKIP_TYPECHECK=1` skips this
+- [x] `npm run typecheck` — must pass. (`OZPOS_SKIP_TYPECHECK=1` skips this
       step alone; prefer it to `--no-verify`, which skips all ten gates.)
 - [ ] `npm run check:all`.
-- [ ] `npm run test` — note that Vitest injects `describe/it/expect/vi`
+      **Not run at repair either: it chains Docker E2E, and the tree has
+      other campaigns' in-flight dev-mock work. The scoped equivalent ran:
+      full vitest suite minus their dev-mock persistence files, plus
+      eslint and per-file typecheck clean on all files in this fence.**
+- [x] `npm run test` — note that Vitest injects `describe/it/expect/vi`
       globally, so a test file that forgets an import **passes here and fails
       `tsc`**. Import explicitly; this is exactly the trap hook gate 9 was
       added for.
-- [ ] Add a test under `ui/src/__tests__/` for the severity filter and the
+- [x] Add a test under `ui/src/__tests__/` for the severity filter and the
       resolve action wiring.
 
 ---
