@@ -127,8 +127,13 @@ struct QrisChargeResponse {
     status_code: String,
     #[serde(default)]
     status_message: String,
-    /// The QR code content (URL or raw string to render).
-    #[serde(default)]
+    /// The QR code content (URL or raw string to render). The live Midtrans
+    /// QRIS `/v2/charge` response carries it as **`qr_string`** — without the
+    /// alias below the field silently deserialized to `None` against the real
+    /// gateway (only the fixture-driven tests, which used this field's own
+    /// name, passed). Found while wiring the cloud charge endpoint
+    /// (`todo-payment-agents-1.md`, 09-13).
+    #[serde(default, alias = "qr_string")]
     qr_code_url: Option<String>,
     /// Actions the POS can take (e.g., "deeplink_redirect").
     #[serde(default)]
