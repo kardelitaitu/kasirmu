@@ -1000,6 +1000,44 @@ Any of the three is consistent; a blocking step called informational is the only
 `AllowlistUndecodable` case closed in `verify-scoped-reads.py` by `dd4888194` is open here. Recorded
 as left-on-purpose: a committed defect is a different animal from a transient race.
 
+### Dated correction (2026-09-14, 00:16) — gate thirteen: the pattern was the whole gap, and 17 real findings were hiding behind it
+
+`73afbf0b65` (163/8), `scripts/verify-scoped-reads.py`, verified by me at 00:15: default now prints
+`27 of 27`, CI form `180 of 181` with **`FAIL: 129 unguarded`**, self-test 37 cases exit 0, mirrors 0,
+allowlist `e5663346ef` in worktree and HEAD.
+
+**The number that matters is not the coverage, it is the delta.** `FAIL: 112` → `FAIL: 129`, and the
+worker proved the direction by parsing both reports into (shell, command, file:line) triples and taking
+the symmetric difference: **+17, −0**. Zero removals is the proof — a quieted finding would show as a
+removal, and the failure mode I briefed it to watch was exactly that, the widened pattern matching a
+*call site* as a wrapper and thereby hiding it. An independent second parser confirmed 0 mispairings
+across 491 new (command, wrapper) pairs and that all 412 commands the old pattern saw are kept, a
+strict superset.
+
+**So 17 unguarded ambient IPC calls existed the whole time and no tool could see them**, in
+`LicenseSettings.tsx`, `AppShell.tsx`, `TopologyScreen.tsx`, `StaffManagementScreen.tsx`,
+`EmailReportSettings.tsx`, `useAuthConnection.ts`. Tonight was about gates that pass over nothing; this
+is the payoff case, the gate was not lying about a refusal, it was blind to real code. One correction to
+my own brief, I cited `features/license/LicenseActivationScreen.tsx`; the file is
+`features/auth/LicenseActivationScreen.tsx`. Line 106 matched, the dir did not.
+
+**Two claims retired by this commit.** The researcher guessed bucket C, eleven `license.ts` names are
+cloud-server commands with no Tauri wrapper; **its own reading refuted that**, they are registered at
+`lib.rs:1177-1192` and cloud-facing *behind* a Tauri command. And the worker's residual 5 asserted that
+`verify-ipc-parity.py`'s write-side refusals still spend exit 1 — **stale by three commits**, closed at
+`8b3f52c8db`. I have now seen two lanes report a residual that a earlier lane had already fixed, which
+is the cost of working a shared tree on self-report; the register is the dedupe point.
+
+**What the sole residual is.** `rotate_encryption_key` does not resolve, and it is not a blind spot —
+the command was ungated and deleted (`ui/src/api/security.ts:29-36`), so it is a stale allowlist entry.
+Deliberately *not* special-cased in code, a comment names it. That leaves the informational ratio line as
+the only witness, and nothing branches on it, so **the owner should drop one name from
+`scripts/ipc-parity-allowlist.json`**, which is not mine to edit.
+
+**The next idiom is the same bug.** `export default function`, a wrapper built in a loop, a re-export —
+each would silently drop the ratio again and every command it loses becomes unfindable. The ratio line is
+now the canary; it is informational by contract, so a human has to read line 2.
+
 ### Dated corrections (2026-09-14, 00:10) — gates ten, eleven and twelve, and a premise of mine corrected by the lane holding the fence
 
 **Gate 10, `a6998faef0`** (316/4), `scripts/verify-migration-column-types.py`. Verified by me 23:57: a typo
