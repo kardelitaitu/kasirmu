@@ -21,7 +21,7 @@ export interface LocationsDeps {
 export function createLocationsHandlers(deps: LocationsDeps): Record<string, MockHandler> {
   const { unwrapArgs } = deps;
 
-let mockLegalEntities: Array<typeof MOCK_LEGAL_ENTITY> = [{ ...MOCK_LEGAL_ENTITY }];
+const mockLegalEntities: Array<typeof MOCK_LEGAL_ENTITY> = [{ ...MOCK_LEGAL_ENTITY }];
 
 /** List the Legal Entity rows served by the dev mock. */
 function listMockLegalEntities(): Array<typeof MOCK_LEGAL_ENTITY> {
@@ -106,7 +106,7 @@ interface MockActiveMemo {
  *  session exactly like the real recipient row (dev preview parity). Seeded
  *  with one Organization and one Location memo so the tier-stacking display
  *  has something to order. */
-let mockMemos: MockActiveMemo[] = [
+const mockMemos: MockActiveMemo[] = [
   {
     memo: {
       id: 'memo-org-1',
