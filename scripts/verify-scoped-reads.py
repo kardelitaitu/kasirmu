@@ -44,6 +44,21 @@ names and exited 0, while a top-level list died in an uncaught AttributeError. R
 dict and the section --shell names, and refuse what is left, is now the first thing done to
 a parsed allowlist.
 
+EXIT CODES, and the gap between them is the contract: 0 is a clean verdict, 1 is a VERDICT
+that found something -- 'FAIL: N unguarded ambient IPC call(s)', or a member of the allowlist
+this gate could read as a file and could not read as a command name -- and 2 is a REFUSAL that
+graded nothing: the allowlist missing, a directory, busy past the retry ceiling, undecodable,
+not JSON, not an object, a named section absent or holding a non-list; a --shell value naming
+no shell; or a corpus whose walk returns zero gradeable production files. Refusals print one
+'error:' line on stderr, verdicts print 'FAIL:' on stdout. Before that split both left as
+'FAIL:' at exit 1, so a file nobody could read was told apart from a broken tree only by its
+wording, and anything reading the number -- dev-ci.yml#static-gates, scripts/check.sh, a grep
+for a red build -- saw one code for 'the tree is broken' and for 'nobody read a file'. This is
+the law scripts/verify-ftl-orphans.py keeps at its _refusal() and scripts/verify-ipc-parity.py
+keeps at its AllowlistUnusable, and all three read the one shared allowlist. The last refusal
+is the same rule aimed outward at the TREE instead of the file: an allowlist nobody read cannot
+make a claim about commands, and a tree nobody walked cannot make a claim about call sites.
+
 One level in from that guard sits the shell list itself, and it needed its own refusal: the
 list drives WHICH section the guard above is allowed to ask about, so `--shell ''` named none,
 left the guard nothing to demand, walked 568 files, compared zero commands and exited 0
@@ -83,8 +98,13 @@ import time
 # looking at. The closure is being taken in scripts/verify-agents-mirrors.py -- git first,
 # script-relative only when git cannot answer, and a refusal when the walk yields nothing.
 # This file has the same anchor and is not part of that change. main() now prints the
-# corpus size and the allowlist it graded on every run, so a zero walk is at least visible
-# in the log; what is still missing is the refusal that turns a visible zero into a red.
+# corpus size and the allowlist it graded on every run, so a zero walk is visible in the
+# log -- and visibility is now backed by a refusal: require_gradeable_corpus() ends the run at
+# exit 2 when the walk returns nothing to walk, measured over a missing ui/, an empty ui/src
+# and a ui/src holding only a README, all three of which used to print '0 production file(s)
+# graded' and exit 0 on it. What is STILL open in this file is the other half of the anchor:
+# REPO is still __file__-derived, so the refusal fires in the wrong checkout rather than
+# pointing at the right one, and --repo does not exist to say which tree was meant.
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWLIST = os.path.join(REPO, "scripts", "ipc-parity-allowlist.json")
@@ -161,6 +181,25 @@ class AllowlistUndecodable(AllowlistUnreadable):
     arrive, this means they arrived and are not UTF-8. Nothing widens an except clause and
     nothing here is retried -- a decode failure is a property of the bytes on disk, like a
     bad parse, and unlike a denial it cannot clear on its own.
+    """
+
+
+class EmptyCorpus(AllowlistUnreadable):
+    """The walk found nothing to walk, so there is no verdict to print -- clean or dirty.
+
+    A subclass on purpose, exactly as AllowlistWrongShape, AllowlistUndecodable and
+    NoShellsNamed are one: main() keeps ONE handler, so the gate keeps ONE voice --
+    'error: <sentence>' on stderr at exit 2, never the verdict code 1 -- and no except clause
+    widens and no second handler is invented. The name says WHICH refusal a reader is looking
+    at, and it is not a complaint about the allowlist: the file it read was well-shaped and
+    every section parsed. What is missing is the other surface a verdict is drawn from, which
+    is why it shares the parent -- all four of these mean the same sentence, this run graded
+    nothing.
+
+    Exit 2 rather than 1 for the reason the others moved too: 1 is this gate's FINDING code,
+    'FAIL: N unguarded ambient IPC call(s)', and a number read off an empty checkout is not
+    evidence about anybody's call sites. Nor is it the 0 it used to return, which is the point
+    -- measured tonight, three hollow corpora each exited 0 printing 'clean for desktop.'.
     """
 
 
@@ -539,6 +578,53 @@ def allowlist_names(payload, section, problems, source=ALLOWLIST):
     return names
 
 
+def require_gradeable_corpus(ui_dir, files):
+    """Refuse a corpus of zero gradeable production files WHERE THE CORPUS IS BUILT.
+
+    Called by audit() the moment production_files() answers -- before find_wrappers opens the
+    api layer, before a single file body is read, and long before main() could print anything.
+    This is the third member of the family this file has been closing tonight and the only one
+    about the TREE rather than the allowlist: '{}' or '{"entries": []}' graded 612 files over
+    zero command names, --shell '' graded the tree over zero shells, and each now refuses
+    where its own value resolves. This one is the same shape one level out -- a walk that
+    returns nothing is a verdict drawn from nothing.
+
+    Measured tonight before this function existed, over three copies of this script sitting
+    beside a copy of the allowlist so the shape guard cleared and only the corpus differed --
+    no ui/ at all; ui/ present with ui/src empty; ui/src holding a README and nothing else.
+    All three printed '0 production file(s) graded against ...' and then 'clean for desktop.'
+    and exited 0. Three different accidents, one green. Printing the count was visibility, not
+    a check: a run that reports its own nothing and returns 0 teaches a reader that the number
+    is decoration. A missing ui/ was never guarded either -- the isdir check a reader might
+    point at belongs to read_allowlist() and asks about the ALLOWLIST path, not the tree.
+
+    The control is as load-bearing as the refusal. A populated corpus whose verdict happens to
+    be zero violations is a claim about 612 files and MUST still grade: files non-empty means
+    this returns before raising, whatever main() then decides. Zero files and zero findings are
+    not the same zero -- only the first is nothing at all.
+    """
+    if files:
+        return
+    if not os.path.isdir(ui_dir):
+        raise EmptyCorpus(
+            'the corpus this gate grades is not there: ' + ui_dir + ' is not a directory, so '
+            'the walk found 0 production files. That is not a clean tree, it is no tree -- the '
+            'verdict is drawn FROM these files. REPO is derived from __file__ (the F-2 note at '
+            'the top of this script), so a copy of this script living outside a checkout grades '
+            'the tree beside it, not the one you are standing in. Run it from the repository '
+            'root, and if this IS the root then the checkout is incomplete and nothing can tell '
+            'you from here whether the code is clean.')
+    on_disk = sum(len(found) for _root, _dirs, found in os.walk(ui_dir))
+    raise EmptyCorpus(
+        ui_dir + ' exists and holds ' + str(on_disk) + ' file(s), but 0 of them are gradeable '
+        'production source: the walk drops __tests__, the ui/src/api layer this gate looks UP '
+        'through, and every name that is not .ts or .tsx. Nothing was read, no wrapper was '
+        'looked up and no call site could have been found, so a zero here is the absence of '
+        'evidence and not evidence of absence. If you expected files, run this from the '
+        'repository root; if the tree really is empty, this gate has nothing to say about it '
+        'and says that instead of clean.')
+
+
 def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     """Return (violations, shape_problems, production_files_scanned).
 
@@ -557,12 +643,24 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     calls .get on it, so a file that parses as JSON but is not shaped like an allowlist ends
     the run there -- before the walk, before any verdict, and in a sentence rather than in a
     traceback out of allowlist_names.
+
+    The corpus gets the same treatment from the other side: production_files() is asked, and
+    require_gradeable_corpus() ends the run if the answer is empty, before find_wrappers() and
+    before any file body is opened. Both surfaces a verdict is drawn from are verified at the
+    moment they are built, and neither may be empty by accident -- the allowlist because
+    payload.get() would invent an exemption list, the tree because an empty os.walk would
+    invent a clean bill of health. So 'scanned' below is never 0 on a run that returns.
     """
     allow = read_allowlist(allowlist)
     require_allowlist_shape(allow, shells, allowlist)
     ui_dir = os.path.join(repo, "ui", "src")
-    cmd_to_wrapper = find_wrappers(os.path.join(ui_dir, "api"))
     files = production_files(ui_dir)
+    # Refused HERE, at the corpus build, before find_wrappers() opens the api layer
+    # and before any file body is read. The order is the whole change: the walk used to happen
+    # first, the zero was computed, and it was only ever PRINTED -- by which point main() had a
+    # verdict in hand and returned 0 with it.
+    require_gradeable_corpus(ui_dir, files)
+    cmd_to_wrapper = find_wrappers(os.path.join(ui_dir, "api"))
 
     texts = {}
     for p in files:
@@ -1217,6 +1315,115 @@ def _guard_self_test():
     return failures
 
 
+def _corpus_self_test():
+    """Case 13-16: the CORPUS, which is the empty-corpus hazard one level further out.
+
+    Everything the guard cases above plant is a bad allowlist in a good checkout. This group
+    keeps the allowlist well-shaped -- case 8 already proves the checkout copy clears that
+    door -- and hollows out the tree instead, because that is the remaining way this gate can
+    report on nothing. Measured before require_gradeable_corpus() existed, over copies of this
+    script sitting beside a copy of the allowlist so only the corpus differed: no ui/, empty
+    ui/src, and ui/src holding a README each printed '0 production file(s) graded' plus
+    'clean for desktop.' and exited 0.
+
+    main() is driven for real, with audit()'s own defaults rebound through __defaults__ and
+    restored in a finally: audit(shells, repo=REPO) captures REPO at definition, so rebinding
+    the module global alone would grade the real checkout and the case would prove nothing.
+    That is the same trick the sibling gate's writer cases play on ALLOWLIST_PATH, and it is
+    the difference between testing the gate and testing a copy of it.
+
+    Case 16 is the load-bearing control: a POPULATED corpus with genuinely nothing wrong in it
+    must still grade and still print its verdict. A guard that refused every small tree would
+    be a redder hazard than the one it closes, and it is the half of the line this file keeps
+    everywhere -- stated-empty is a claim and gets graded; defaulted-empty is nothing and does
+    not.
+    """
+    print("  verify-scoped-reads self-test / how big the corpus was")
+    failures = 0
+    saved_defaults = audit.__defaults__
+
+    def drive(repo):
+        buf, ebuf = io.StringIO(), io.StringIO()
+        saved, saved_err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = buf, ebuf
+        try:
+            audit.__defaults__ = (repo, ALLOWLIST)
+            rc = main(["--allowlist", ALLOWLIST])
+        except BaseException as exc:
+            rc = "bare " + type(exc).__name__ + ": " + str(exc)
+        finally:
+            sys.stdout, sys.stderr = saved, saved_err
+            audit.__defaults__ = saved_defaults
+        return rc, buf.getvalue() + ebuf.getvalue()
+
+    def hollow(kind):
+        root = tempfile.mkdtemp(prefix="oz-scoped-corpus-")
+        ui = os.path.join(root, "ui")
+        src = os.path.join(ui, "src")
+        if kind == "no-ui":
+            pass
+        elif kind == "empty-src":
+            os.makedirs(src)
+        elif kind == "docs-only":
+            os.makedirs(src)
+            with io.open(os.path.join(src, "README.md"), "w", encoding="utf-8") as fh:
+                fh.write("nothing to walk here\n")
+        elif kind == "populated-clean":
+            os.makedirs(os.path.join(src, "features"))
+            with io.open(os.path.join(src, "features", "Thing.tsx"), "w",
+                         encoding="utf-8") as fh:
+                fh.write("export const Thing = () => null;\n")
+        return root
+
+    for kind, label, want in (
+            ("no-ui", "case 13 a checkout with no ui/ at all", "is not a directory"),
+            ("empty-src", "case 14 a ui/src that exists and holds nothing",
+             "0 of them are gradeable"),
+            ("docs-only", "case 15 a ui/src holding only non-source files",
+             "0 of them are gradeable")):
+        root = hollow(kind)
+        try:
+            rc, out = drive(root)
+        finally:
+            import shutil
+            shutil.rmtree(root, ignore_errors=True)
+        lines = [ln for ln in out.splitlines() if ln.strip()]
+        ok = (rc == 2 and len(lines) == 1 and lines[0].startswith("error: ")
+              and want in out and "clean for" not in out
+              and "production file(s) graded" not in out and "FAIL:" not in out
+              and "Traceback" not in out)
+        if ok:
+            print(f"    ok   {label} -- refused at exit 2 in one error: line, no graded "
+                  f"line and no verdict")
+        else:
+            print(f"    FAIL {label}  rc={rc!r}, says {want!r}={want in out}, "
+                  f"graded-line={'production file(s) graded' in out}, "
+                  f"verdict={'clean for' in out}")
+            for ln in lines[:2]:
+                print("           | " + ln[:150])
+            failures += 1
+
+    root = hollow("populated-clean")
+    try:
+        rc, out = drive(root)
+    finally:
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+    graded = "1 production file(s) graded" in out
+    if rc == 0 and graded and "clean for" in out and "error:" not in out:
+        print("    ok   case 16 a populated corpus with nothing wrong in it STILL grades and "
+              "returns its verdict -- zero files is refused, zero findings is not")
+    else:
+        print(f"    FAIL case 16  rc={rc!r}, graded={graded}, verdict={'clean for' in out}")
+        for ln in out.splitlines()[:3]:
+            print("           | " + ln[:150])
+        failures += 1
+    if audit.__defaults__ != saved_defaults:
+        print("    FAIL the corpus self-test left audit()'s defaults rebound")
+        failures += 1
+    return failures
+
+
 def _shell_self_test():
     """Case 11 and 12: the --shell LIST, which is the empty-corpus hazard one level in.
 
@@ -1341,6 +1548,7 @@ def self_test():
     failures += _aim_self_test()
     failures += _guard_self_test()
     failures += _shell_self_test()
+    failures += _corpus_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
