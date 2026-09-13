@@ -857,9 +857,55 @@ fn keys_literal_value(keys_src: &str, ident: &str) -> Option<String> {
     None
 }
 
+/// The call surface the computed-name ban reads: every invoke-shaped call in a file,
+/// matched regardless of the case of the leading i, so `loggedInvoke(`,
+/// `loggedInvokeGeneric(` and any future wrapper ending in the word invoke are in it.
+///
+/// Returns (sites, sites naming the command as a string literal, 1-based line numbers of
+/// the rest). `inside_allowed` suppresses the offender list only, never the counts: the
+/// toleration answers "may this file forward a name", not "what does the surface measure".
+///
+/// The needle was a case-sensitive `find("invoke(")` until 2026-09-13, which is why this
+/// pin reported 103 sites while the tree held 196: the 37 `loggedInvoke` sites at
+/// `ui/src/utils/logged-invoke.ts:14` and its callers under `ui/src/api` were invisible to
+/// it. The ban exists to catch a command name built at runtime, and the wrapper is how the
+/// UI makes most of its calls, so that case distinction was the difference between reading
+/// the surface and reading a slice of it. `scripts/verify-ipc-parity.py` handled the
+/// wrapper from the start - the comment above its regex names `loggedInvoke` with a generic
+/// parameter - and this twin next to it had not caught up.
+fn classify_invoke_surface(text: &str, inside_allowed: bool) -> (usize, usize, Vec<usize>) {
+    let mut sites = 0usize;
+    let mut literal = 0usize;
+    let mut computed = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+            continue;
+        }
+        // ASCII-only folding, so every byte offset stays valid against the original line
+        // and a non-ASCII argument cannot move the window.
+        let lower = line.to_ascii_lowercase();
+        let mut rest = lower.as_str();
+        while let Some(hit) = rest.find("invoke(") {
+            let after = hit + "invoke(".len();
+            sites += 1;
+            let first = rest[after..].trim_start().chars().next().unwrap_or('x');
+            if first == DOUBLE_QUOTE || first == SINGLE_QUOTE {
+                literal += 1;
+            } else if !inside_allowed {
+                computed.push(i + 1);
+            }
+            rest = &rest[after..];
+        }
+    }
+    (sites, literal, computed)
+}
 /// No computed command names. A static allowlist is a fiction the moment a caller can
 /// build the name at runtime, so this bans invoke(variable) outright. It reads as a text
 /// sweep because that is the only mechanism available across a crate boundary.
+///
+/// The surface swept is every call whose name ends in `invoke`, wrapper included: see
+/// `classify_invoke_surface` below. The wrapper is where the UI actually sends traffic.
 #[test]
 fn drift_pin_no_computed_command_names_in_ui() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src");
@@ -912,31 +958,21 @@ fn drift_pin_no_computed_command_names_in_ui() {
             .to_string()
             .replace(std::path::MAIN_SEPARATOR, "/");
         let inside_allowed = allowed.iter().any(|a| rel.ends_with(a));
-        for (i, line) in read(f).lines().enumerate() {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
-                continue;
-            }
-            let mut rest = line;
-            while let Some(hit) = rest.find("invoke(") {
-                total += 1;
-                let after = rest[hit + 7..].trim_start();
-                let first = after.chars().next().unwrap_or('x');
-                if first == DOUBLE_QUOTE || first == SINGLE_QUOTE {
-                    literal += 1;
-                } else if !inside_allowed {
-                    offenders.push(format!("{}:{}", rel, i + 1));
-                }
-                rest = &rest[hit + 7..];
-            }
+        let (sites, lits, computed) = classify_invoke_surface(&read(f), inside_allowed);
+        total += sites;
+        literal += lits;
+        for at in computed {
+            offenders.push(format!("{}:{}", rel, at));
         }
     }
     assert!(
         offenders.is_empty(),
-        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {literal} of {total} invoke() sites in \
-         ui/src name the command as a literal and these {} build it at runtime: \
-         {offenders:?}. A computed name defeats every allowlist in this file, because the \
-         name being checked is no longer the name being called.",
+        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {literal} of {total} invoke-shaped call \
+         sites in ui/src - every call whose name ends in invoke counts, so `invoke(`,
+         `loggedInvoke(` and `loggedInvokeGeneric(` are all in the denominator - and these
+         {} build the name at runtime: {offenders:?}. A computed name defeats every
+         allowlist in this file, because the name being checked is no longer the name
+         being called.",
         offenders.len(),
     );
 }
@@ -1150,4 +1186,52 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
         stale.is_empty(),
         "GUARD-VOCABULARY DRIFT: {stale:?} are excepted but the sweep found no such call site in {files} files — the guard was renamed or deleted, so the exemption now covers nothing. Delete the entry rather than keep a list that no longer matches the tree."
     );
+}
+
+/// The repaired eye can fail, and this is the case that proves it: a command name
+/// assembled at runtime and handed to the wrapper must land in the offender list rather
+/// than slip past because the call is spelled `loggedInvoke(`. Before the needle stopped
+/// caring about the case of the leading i, this same fixture scored zero sites at all —
+/// the pin did not see the call, so it could not have flagged it.
+#[test]
+fn pin_classifies_a_computed_name_built_behind_the_wrapper() {
+    // The wrapper is real (`ui/src/utils/logged-invoke.ts:14`); the composing line is the
+    // shape the ban exists for, fed in memory instead of added to ui/src.
+    let computed =
+        "export function load(kind: string) {\n  return loggedInvoke(`get_${kind}_scoped`);\n}\n";
+    let (sites, literal, offenders) = classify_invoke_surface(computed, false);
+    assert_eq!(sites, 1, "a wrapper call is one invoke-shaped site");
+    assert_eq!(
+        literal, 0,
+        "a name assembled from a template is not a literal"
+    );
+    assert_eq!(
+        offenders,
+        vec![2],
+        "and the composing line belongs in the list"
+    );
+
+    // Same call shape, literal name: counted and not flagged. This is what 35 of the
+    // newly visible sites under `ui/src/api` look like today.
+    let (sites, literal, offenders) =
+        classify_invoke_surface("  return loggedInvoke('list_customers', args);\n", false);
+    assert_eq!(
+        (sites, literal),
+        (1, 1),
+        "the wrapper counts toward the surface"
+    );
+    assert!(
+        offenders.is_empty(),
+        "a literal name through the wrapper is not debt"
+    );
+
+    // Toleration semantics are unchanged: a tolerated file still yields the count and
+    // suppresses only the offender.
+    let (sites, _, offenders) = classify_invoke_surface(computed, true);
+    assert_eq!(sites, 1, "toleration must not shrink the denominator");
+    assert!(offenders.is_empty());
+
+    // The bare form still scores, so this is a widening and not a replacement.
+    let (sites, literal, _) = classify_invoke_surface("  return invoke('list_roles');\n", false);
+    assert_eq!((sites, literal), (1, 1));
 }
