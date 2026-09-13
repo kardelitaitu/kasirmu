@@ -31,8 +31,14 @@ SUBJECT=$(head -n 1 "$MSG_FILE")
 # --- Git's own generated messages are always accepted ----------------------
 # These are not authored subjects; rejecting them would break ordinary git
 # workflows (merging, reverting, autosquash, and the "no edit" re-commit).
+# The exact-subject entry is not a type amnesty: it pins ONE historic commit
+# (2bb16752a, 2026-09-13, "delete(old): delete old plan files", authored with
+# --no-verify before anyone was watching) whose subject the PR-range gate can
+# never re-check without rewriting 244 commits of shared history. Exact match,
+# no star: nothing else passes, today or ever. Remove it by rewriting history,
+# never by adding to this line.
 case "$SUBJECT" in
-    "Merge "*|"Revert "*|"fixup!"*|"squash!"*|"amend!"*)
+    "Merge "*|"Revert "*|"fixup!"*|"squash!"*|"amend!"*|"delete(old): delete old plan files")
         exit 0
         ;;
 esac
