@@ -38,7 +38,10 @@ const POPOVER_SURFACES: ReadonlyArray<{ selector: string; file: string }> = [
   { selector: '.retail-cart-course-dropdown', file: 'features/retail/RetailPosScreen.css' },
   { selector: '.retail-menu', file: 'features/retail/RetailPosScreen.css' },
   { selector: '.settings-shortcuts-popover', file: 'features/settings/SettingsNavTree.css' },
-  { selector: '.kds-settings-popover', file: 'features/kds/KdsSettingsPanel.css' },
+  // `.kds-settings-popover` retired with KdsSettingsPanel (renders nowhere;
+  // todo-kds-agents-6). Its companion stylesheet was deleted with the
+  // component, so the entry would throw ENOENT exactly like the
+  // layout-popover one below.
   { selector: '.kds-enrollment-modal', file: 'features/kds/components/KdsEnrollmentModal.css' },
   // `.kds-layout-popover` was listed here until the layout switcher was
   // removed in the Phase 6 cleanup (fece7524). Its stylesheet went with it,
