@@ -521,7 +521,8 @@ def documented_commit_types(text: str) -> set[str]:
 # ── The check ───────────────────────────────────────────────────────────────
 
 def scan(root: Path, head_hook_text: str | None = None,
-         notices: list[str] | None = None) -> list[str]:
+         notices: list[str] | None = None,
+         enum_counts: dict | None = None) -> list[str]:
     """Findings about ROOT.
 
     head_hook_text and notices are seams for the self-test: the fixture directory is
@@ -669,7 +670,18 @@ def scan(root: Path, head_hook_text: str | None = None,
         # now that output was indistinguishable from a mirror whose enumeration is correct.
         # Informational by construction: appended to notices only, never to problems, so it
         # cannot move the exit code.
+        # Table recognition was built here, measured, and removed the same minute. It
+        # announced both mirrors as "presenting its steps as a table" on the strength of
+        # one cell in the unrelated npm-commands table -- "| **Lint** |" is a word-subset of
+        # TWO step headers, "Migration column-type lint" and "FTL orphan lint", so the loose
+        # matcher that lets the honest "Go gate" shortening pass also turned a one-word cell
+        # into evidence that the table is about the steps. A form check built on a knowingly
+        # loose matcher indicts files for their shape, which is the failure this whole lane
+        # is meant to remove; recognising a table needs the cardinality/ambiguity rule that
+        # is still held for a later commit, not a second, weaker copy of the name test.
         runs = step_enumerations(text, hook_step_names)
+        if enum_counts is not None:
+            enum_counts[rel] = len(runs)
         if claimed is not None and not runs and notices is not None:
             notices.append(
                 f"{rel}: presents no checkable step enumeration -- {len(runs)} "
@@ -834,7 +846,18 @@ def report(root: Path) -> int:
     # already documents why an un-actionable red is worse than no red (dev-ci's advisory
     # ci-docs-drift count is deliberately non-blocking for the same reason).
     notices: list[str] = []
-    problems = scan(root, notices=notices)
+    enum_counts: dict[str, int] = {}
+    problems = scan(root, notices=notices, enum_counts=enum_counts)
+    # Always printed, one line per mirror: the quantity, with its unit. A clean run used
+    # to say nothing here, and nothing is not the same as "one enumeration, and it was
+    # fine" -- that gap is the difference between unobserved and unobservable, and it is
+    # why the conditional notice alone did not close the hole. Informational by
+    # construction: printed from a dict scan filled, never appended to problems.
+    for rel in MIRRORS:
+        n_runs = enum_counts.get(rel, 0)
+        print(f"    step claims, {rel:<22}: {n_runs} "
+              + ("enumeration policed" if n_runs == 1 else "enumerations policed"))
+    print()
     if notices:
         print("  NOTICES (reported because the ground truth itself is diverging;")
         print("           0 of these count as problems and none of them fail the run):")
