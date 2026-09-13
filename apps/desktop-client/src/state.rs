@@ -33,7 +33,7 @@ next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
 //! | Primitive | Where | Why |
 //! |-----------|-------|-----|
 //! | `tokio::sync::Mutex` | Every async-accessible field (`db`, `kernel`, `plugins`, `scanner_cancel`, `terminal_id`) | `.lock().await` is required in Tauri command handlers; calling `.lock()` on `std::sync::Mutex` from async code blocks the tokio worker thread. |
-//! | `std::sync::RwLock` | `session_store` only | Accessed from both sync (`resolve_session`, `create_session`) and async (`session cleanup daemon`) code. `tokio::sync::RwLock::read()` would panic if called from sync context without a blocking wrapper. Keep `std::sync::RwLock` and wrap async access with `tokio::task::spawn_blocking` when necessary. |
+//! | `std::sync::RwLock` | `session_store`, `kds_queue_cache` (both behind `Arc`) | Accessed from both sync (`resolve_session`, `create_session`) and async (`session cleanup daemon`) code. `tokio::sync::RwLock::read()` would panic if called from sync context without a blocking wrapper. Keep `std::sync::RwLock` and wrap async access with `tokio::task::spawn_blocking` when necessary. `kds_queue_cache` is the same shape for a sharper reason: its reader is the LAN `KdsQueueProvider`, a plain `Fn()` running synchronously inside the per-peer accept task — no await is possible there. |
 //! | `std::sync::mpsc` | `inventory_pubsub_shutdown` only | Used from `Drop` which is sync-only. Tokio channels don't implement `Sync` and would require an async `Drop` bound. |
 //! | `Arc<AtomicBool>` | Plugin reload flag | Lock-free flag set by the `notify` callback (sync) and consumed by the tokio loop (async). Correct by design — no `.lock()` at all. |
 //!
@@ -190,6 +190,24 @@ pub struct AppState {
     /// persisted setting says off. Always acquired BEFORE `local_api`
     /// and the db lock; nothing takes it while holding either.
     pub local_api_op: Mutex<()>,
+
+    /// In-memory KDS active-queue snapshot served to reconnecting LAN KDS
+    /// peers (kds-sync).
+    ///
+    /// Refreshed by the command shims in `commands/kds.rs` after every
+    /// kitchen transition (create / status change / line-item bump), and
+    /// read **synchronously** by the [`KdsQueueProvider`] closure attached
+    /// to the LAN forwarder in `lib.rs` — that provider runs inside the
+    /// per-peer accept task and must never touch the async DB mutex, so
+    /// the queue is materialised here instead of queried on demand.
+    ///
+    /// `std::sync::RwLock` (M-1 exception, sync reader): the provider is
+    /// a plain `Fn()`; write guards are taken only for the duration of a
+    /// pointer swap, never across an await. Starts as the empty default;
+    /// first populated when this terminal executes a KDS transition.
+    ///
+    /// [`KdsQueueProvider`]: oz_lan::KdsQueueProvider
+    pub kds_queue_cache: Arc<RwLock<oz_lan::KdsQueueSnapshot>>,
 }
 
 impl AppState {
@@ -363,6 +381,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
+            kds_queue_cache: Arc::new(RwLock::new(oz_lan::KdsQueueSnapshot::default())),
         })
     }
 }
@@ -827,6 +846,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
+            kds_queue_cache: Arc::new(RwLock::new(oz_lan::KdsQueueSnapshot::default())),
         }
     }
 
