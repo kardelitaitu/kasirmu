@@ -944,6 +944,32 @@ fine and dies 30 lines later on `UnicodeEncodeError: 'charmap' codec can't encod
 carry a partial report. Fixing it needs an output-side decision outside the brief, so it is
 recorded here. Every path in this repo's real cargo-llvm-cov exports is ASCII.
 
+### New verified finding (2026-09-13, 17:04) — `--census` reports a clean orphan sheet over a hollow root
+
+`scripts/verify-ftl-orphans.py --census` run with `ROOT` resolving **outside any checkout** exits
+**0** and prints `info[census]: 0 declared en keys, 0 referenced, 0 candidates` (385 bytes);
+the same committed code in the real tree prints `4823 declared en keys, 4755 referenced, 68
+candidates` (1781 bytes), exit 0 both ways. Director-measured at 17:04, not taken from a report.
+
+This is the empty-corpus class surviving in the *other* mode of a file whose staged mode was just
+closed by `cd2b55fa3`. Five functions reach the same nothing-instead-of-failure state through
+`Path.glob`, which yields no items rather than raising: `declared_keys()`, `bundle_keys()`,
+`ui_blob()`, `intra_bundle_refs()`, plus `load_allowlist()` which returns `{}` when the file is
+absent. Under the same hollow root `--self-test` dies with a `Traceback` at exit 1 — reported by
+the closing worker as pre-existing and outside its brief, unverified here.
+
+**Why it matters more than the cell already fixed:** `--staged-only` is the blocking hook step at
+`.githooks/pre-commit:257` and is now refused; `--census` is the **advisory CI-side** report, so
+a hollow invocation looks like a genuinely clean orphan sheet to a job that runs from a partial
+checkout or a mis-rooted working directory.
+
+**Recommendation, not applied:** a zero-denominator refusal rather than a second voice, in the
+shape `verify-no-hardcoded-money-format.py:805159081` documented at 13:51, where `scanned == 0`
+in the starve check was recorded as an **unobservable disjunct**. A census that declares zero
+files is not a census of zero orphans. Owner decision needed on whether `--census` stays advisory
+or whether a hollow root should exit non zero, because changing `--census` to fail is an
+enforcement change, not a bug fix.
+
 ### Dated correction (2026-09-13, 16:57) — the staged-diff swallow is closed by `cd2b55fa3`
 
 `cd2b55fa3` (40/6, one file) makes `verify-ftl-orphans.py` **refuse** when its staged diff cannot be
