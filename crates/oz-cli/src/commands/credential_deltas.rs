@@ -670,6 +670,13 @@ pub(crate) fn scan_credential_settings(conn: &Connection) -> Result<SettingCount
                 forms: Vec::new(),
             });
         }
+        // INVARIANT: the `any`/`push` pair above guarantees a row whose `key` equals
+        // `canonical` exists before this lookup runs. `canonical` is a Copy
+        // `&'static str` and both comparisons are the same predicate on the same value,
+        // `rows` is a local `Vec`, and nothing between the push and this `find` removes,
+        // re-keys or re-sorts a row (the sort is after the loop). So the `Option` cannot
+        // be `None`; reaching the panic would mean the two predicates had drifted apart,
+        // a programming error inside these ten lines rather than a runtime state (ADR #33).
         let entry = rows
             .iter_mut()
             .find(|r| r.key == canonical)

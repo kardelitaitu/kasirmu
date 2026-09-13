@@ -252,6 +252,12 @@ impl TestBridge {
                     stamp,
                 ],
             )
+            // SAFETY: `mod testing` is `#[cfg(test)]`-gated at its declaration in
+            // `lib.rs`, so this file compiles only into the oz-bridge test binary and into
+            // no shipped process. This seed fails only if the column list above stops
+            // matching the migrated `roles` schema — a harness programming error, which is
+            // the state ADR #33 lets panic: the abort lands in the test that asked for the
+            // token, never in a running till.
             .expect("seed the pin role row (columns mirror categories_tests.rs)");
             conn.execute(
                 "INSERT OR REPLACE INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES (?1, ?2, 'hash', ?3, ?4, 1, ?5, ?5)",
@@ -263,8 +269,17 @@ impl TestBridge {
                     stamp,
                 ],
             )
+            // SAFETY: same `#[cfg(test)]`-only module as the role seed above, and the
+            // `users` column list here matches the migrated schema (the `role_id` it stamps
+            // is the row seeded immediately above it). A drift is a harness programming
+            // error that fails the requesting test; no shipped build contains this call.
             .expect("seed the pin user row");
         }
+        // SAFETY: `sessions` is a `std::sync::RwLock` owned by this `TestBridge`, so
+        // `write()` fails only on poison, and poisoning this map requires a panic while a
+        // guard of the same per-harness map is held. ADR #33's poisoned-lock clause
+        // accepts the panic in that case, and this module is `#[cfg(test)]`-only, so it
+        // is a failing test's failure signal rather than a till crashing.
         self.sessions.write().unwrap().insert(
             token.clone(),
             SessionContext::new(
