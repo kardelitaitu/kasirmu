@@ -10564,3 +10564,26 @@ shipped: a drafted SHORTCUTS list that did not match the file; the verbatim
 pass replaced it. The native-tooltip ratchet moved with its code (15 -> 8+4+3,
 sum pinned 82); its two remaining reds are restaurant-lane drift, named.
 
+
+### Same day, later — agents-4 finished itself: five more shells out, screen at 864
+
+`todo-refactor-analytics-agents-4.md` closed COMPLETE across the rounds after
+its opening: `d5e3aba339` (CommandPalette - the hook already owned every
+key, so the seam is pure presentation), `86e4dc5670` (AnalyticsCardFrame -
+the grid's state-ownership question decided AGAINST a context/reducer
+migration and FOR a children slot: chrome reports intent, card data renders
+through, the feared eighteen-prop drill never exists), `a070d2ab72`
+(AnalyticsToolbar - composed side effects stay screen-composed behind one
+callback each; the zoom cluster crosses as a slot). Screen: 1,409 -> 864
+ln from agents-1's closure, through six verbatim slices; the 106-test
+suite was never edited once. Three behaviour changes died in pre-commit
+verbatim audits (descKey-vs-titleKey, onDragLeave-vs-onDragEnd, the
+menu-expand compact-mode asymmetry) - and one of my own doc commits
+claimed an edit the read-policy had refused, corrected one commit late
+and disclosed in the correction's own message.
+
+Whole tree at final close: 9,577/9,604, three reds all named and all
+other lanes' (restaurant's tooltip drift x2; devmock's version test
+grepping a line its own split relocated). Nothing was pushed - standing
+rule.
+
