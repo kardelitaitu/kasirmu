@@ -381,9 +381,18 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   check + **2 GATED DEAD SURFACE** carrying a real `SALES_PROCESS` gate with no reachable
   caller — `get_active_cart_scoped` and `list_active_carts_scoped
   (`scripts/ipc-parity-allowlist.json:194`, `:201`). **Correction to the hand-off:** the
-  second is `SALES_PROCESS`, not `SALE_PROCESS`, and both live tablet-side
-  (`apps/tablet-client/src/commands/pos.rs:270`, `:305`; registered in tablet
-  `lib.rs:550-551`), which is why the desktop allowlist holds them.
+  second is `SALES_PROCESS`, not `SALE_PROCESS`, and both live tablet-side (registered in
+  tablet `lib.rs:550-551`). **Second correction to this entry, 2026-09-13 09:50 +07, tip
+  `ad76c16c2`:** the two clauses it just lost were both wrong. the declarations are
+  `apps/tablet-client/src/commands/pos.rs:278` (`list_active_carts_scoped`) and `:313`
+  (`get_active_cart_scoped`) — not `:270`/`:305`, stale by eight (query: `git grep -n
+  "fn list_active_carts_scoped\|fn get_active_cart_scoped" --
+  apps/tablet-client/src/commands/pos.rs`, 09:45 +07). and there is no desktop-scoped
+  `scoped_orphans` list that could hold anything: `scripts/ipc-parity-allowlist.json` carries
+  **one shared** `scoped_orphans` section at `:188-214`, while `desktop` (`:3`) and `tablet`
+  (`:32`) are separate per-shell lists (query: read the file's top-level keys, 09:45 +07). the
+  clause promised a reader a section that does not exist, and this week it sent a worker to the
+  wrong lines of that file.
 - **BR-D5** — **[PBD]** four model helpers are `pub` **only** so `model_tests.rs` can reach
   them: `crates/oz-bridge/src/topology/model.rs:27` (`ser_f64_finite`), `:35`
   (`de_f64_or_null`), `:55` (`de_direction_or_null`), `:250` (`default_direction`). They are
@@ -420,6 +429,13 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   has flipped **yet** — but the check can no longer see an extracted desktop gate, and the
   campaign is still moving bodies. The two GATED verdicts in `BR-D4` were reachable only
   because a **tablet** copy of the body still carries the gate inline.
+
+### dated addendum, 2026-09-13 09:50 +07 (tip `ad76c16c2`) — the two cart orphans, and the recurrence
+
+- dead **and** gated, zero ui callers (four greps, 09:45 +07): scoped names over `ui/` → 0; wrappers `listActiveCartsScoped|getActiveCartScoped` over `ui/src` → 0; unscoped literals over `ui/src` → the only 2 hits are handler rows at `ui/src/dev-mock/handlers/sales.ts:515-516`, not callers; tree-wide the names exist only in tablet `pos.rs:278`/`:313`, tablet `lib.rs:550-551`, the allowlist and docs. their unscoped twins at `pos.rs:268`/`:300` are declared but registered in neither shell (same grep over `apps/desktop-client` and `apps/tablet-client`).
+- the guard cannot fire: `SALES_PROCESS` is granted at `platform/core/src/rbac_presets.rs:53`, `:137`, `:166` — Manager, Staff and Admin, which is both presets carrying `TERMINALS_REGISTER` (`:117`, `:231`) — and Owner holds `&["*"]` at `:46`. note that `apps/desktop-client/src/rbac_presets.rs` does not exist (`git ls-files apps/desktop-client/src/rbac_presets.rs` → empty, 09:47 +07): rbac lives in `platform/core`, and notes and briefs keep citing the phantom path.
+- a pin over unreachable code is a monument, so the honest repair is **deletion**, parked with the tablet crate owner because the delete slice crosses into `apps/tablet-client` and into the allowlist, neither of which this lane edits.
+- the recurrence: `docs/plans/0.0.36-backlog.md:3127-3135` records this exact error once — a manual triage reported 6 gated, the gate found 8, because permissions were checked only for orphans whose unscoped twin the ui calls and the group where neither was called was skipped. tonight's sweep (`python scripts/verify-ipc-parity.py`, 09:48 +07, exit 1) prints `2 GATED DEAD SURFACE -> get_active_cart_scoped=SALES_PROCESS, list_active_carts_scoped=SALES_PROCESS` against those 8. one mechanism, one sentence: **a manual sweep restricted to orphans with a called unscoped twin systematically undercounts the gated ones.** that backlog file is right and was not touched.
 
 ---
 
