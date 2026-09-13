@@ -1,3 +1,4 @@
+use super::replay::MAX_OFFLINE_BUFFER_PER_PEER;
 use super::*;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
@@ -135,6 +136,9 @@ fn course_fired_handler_no_display_number() {
 // ── Peer handler (integration-style) ─────────────────────────
 
 /// Helper: spawn a test peer handler and return (server_handle, client_stream, addr).
+/// `initial_events` are seeded into the shared replay buffer under this
+/// peer's legacy `Addr` key — `handle_peer` drains it itself once the
+/// (absent) subscription is resolved.
 async fn spawn_test_peer(
     rx: broadcast::Receiver<String>,
     initial_events: Vec<String>,
@@ -145,25 +149,26 @@ async fn spawn_test_peer(
 ) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let buffer = Arc::new(Mutex::new(HashMap::new()));
+    let buffer = OfflineReplayBuffer::new();
+    seed_addr(&buffer, "test-peer", initial_events).await;
 
     let server_handle = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
-        handle_peer(
-            stream,
-            "test-peer".into(),
-            rx,
-            buffer,
-            initial_events,
-            None,
-            None,
-            None,
-        )
-        .await;
+        handle_peer(stream, "test-peer".into(), rx, buffer, None, None, None).await;
     });
 
     let client = TcpStream::connect(addr).await.unwrap();
     (server_handle, client, addr)
+}
+
+/// Seed `events` into `buffer` under the legacy `Addr(key)` identity,
+/// as if they had failed to write to a peer at that address.
+async fn seed_addr(buffer: &OfflineReplayBuffer, key: &str, events: Vec<String>) {
+    for event in events {
+        buffer
+            .push(&ReplayKey::Addr(key.to_string()), key, event)
+            .await;
+    }
 }
 
 #[tokio::test]
@@ -282,87 +287,85 @@ async fn peer_sends_heartbeat_pings() {
 
 #[tokio::test]
 async fn offline_buffer_stores_events_on_disconnect() {
-    let buffer: Arc<Mutex<HashMap<String, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
-    let (_tx, rx) = broadcast::channel::<String>(16);
+    let buffer = OfflineReplayBuffer::new();
 
-    // Set up a peer that disconnects immediately (stream is closed).
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let buf_clone = buffer.clone();
+    // The write-failure path of `handle_peer` pushes exactly this way:
+    // the undelivered line under the peer's replay identity, recording
+    // the address it failed to reach.
+    buffer
+        .push(
+            &ReplayKey::Addr("test-peer".into()),
+            "test-peer",
+            "{\"event\":\"test\"}".into(),
+        )
+        .await;
 
-    let server_handle = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        // Drop the stream immediately to simulate disconnect.
-        drop(stream);
-        // Wait a beat for the broadcast message to arrive and fail.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        // Send a message — it should be buffered.
-        let _rx = rx;
-        // rx.recv() is blocking within the async task, but we put it
-        // in a select or just don't call it. Instead, we manually
-        // push to the buffer to simulate the write-failure path.
-        buf_clone
-            .lock()
-            .await
-            .entry("test-peer".into())
-            .or_default()
-            .push("{\"event\":\"test\"}".into());
-    });
-
-    // Connect and let the server drop the connection.
-    let _client = TcpStream::connect(addr).await.unwrap();
-    server_handle.await.unwrap();
-
-    // Check that the event was buffered.
-    let buf = buffer.lock().await;
-    let events = buf.get("test-peer");
-    assert!(events.is_some(), "should have buffered events for peer");
-    assert_eq!(events.unwrap().len(), 1);
-    assert!(events.unwrap()[0].contains("event"));
+    let drained = buffer.drain(&ReplayKey::Addr("test-peer".into())).await;
+    assert_eq!(drained.events.len(), 1, "should have buffered one event");
+    assert!(drained.events[0].contains("event"));
+    assert_eq!(drained.source_addr.as_deref(), Some("test-peer"));
 }
 
 #[tokio::test]
 async fn offline_buffer_flush_on_reconnect() {
-    let buffer: Arc<Mutex<HashMap<String, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let buffer = OfflineReplayBuffer::new();
+    seed_addr(
+        &buffer,
+        "reconnect-peer",
+        vec!["replayed1".into(), "replayed2".into()],
+    )
+    .await;
 
-    // Pre-populate the buffer with events for "reconnect-peer".
-    {
-        let mut buf = buffer.lock().await;
-        buf.insert(
-            "reconnect-peer".into(),
-            vec!["replayed1".into(), "replayed2".into()],
-        );
-    }
+    // A reconnecting connection drains its identity queue; ordering is
+    // arrival order and the queue is gone afterwards.
+    let drained = buffer
+        .drain(&ReplayKey::Addr("reconnect-peer".into()))
+        .await;
+    assert_eq!(
+        drained.events.len(),
+        2,
+        "should have drained 2 buffered events"
+    );
+    assert_eq!(drained.events[0], "replayed1");
 
-    // Simulate a new connection: drain buffer and pass as initial_events.
-    let addr = "reconnect-peer".to_string();
-    let drained: Vec<String> = buffer.lock().await.remove(&addr).unwrap_or_default();
-    assert_eq!(drained.len(), 2, "should have drained 2 buffered events");
-    assert_eq!(drained[0], "replayed1");
-
-    // After draining, buffer should be empty for that peer.
-    let buf = buffer.lock().await;
-    assert!(!buf.contains_key("reconnect-peer"));
+    let after = buffer
+        .drain(&ReplayKey::Addr("reconnect-peer".into()))
+        .await;
+    assert!(
+        after.events.is_empty(),
+        "reconnect drains the identity queue once"
+    );
+    assert_eq!(buffer.queue_count().await, 0);
 }
 
 #[tokio::test]
 async fn offline_buffer_does_not_grow_unbounded() {
-    let buffer: Arc<Mutex<HashMap<String, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let buffer = OfflineReplayBuffer::new();
 
-    // Simulate many disconnects from the same peer — buffer should
-    // grow, but the key should exist.
-    {
-        let mut buf = buffer.lock().await;
-        for i in 0..100 {
-            buf.entry("flood-peer".into())
-                .or_default()
-                .push(format!("event_{i}"));
-        }
+    // A flood of disconnects from the same peer keeps the queue alive
+    // but pinned at the per-peer cap — growth is bounded, oldest first
+    // out.
+    for i in 0..(MAX_OFFLINE_BUFFER_PER_PEER + 500) {
+        buffer
+            .push(
+                &ReplayKey::Addr("flood-peer".into()),
+                "flood-peer",
+                format!("event_{i}"),
+            )
+            .await;
     }
 
-    let buf = buffer.lock().await;
-    let events = buf.get("flood-peer").unwrap();
-    assert_eq!(events.len(), 100);
+    assert_eq!(
+        buffer.event_count().await,
+        MAX_OFFLINE_BUFFER_PER_PEER,
+        "one peer's queue must stop at the cap"
+    );
+    let drained = buffer.drain(&ReplayKey::Addr("flood-peer".into())).await;
+    assert_eq!(drained.events.first().unwrap(), &format!("event_{}", 500));
+    assert_eq!(
+        drained.events.last().unwrap(),
+        &format!("event_{}", MAX_OFFLINE_BUFFER_PER_PEER + 499)
+    );
 }
 
 #[tokio::test]
@@ -372,11 +375,12 @@ async fn forwarder_buffered_count_reflects_buffer() {
 
     // Manually insert a buffered event.
     fwd.offline_buffer
-        .lock()
-        .await
-        .entry("offline-peer".into())
-        .or_default()
-        .push("{\"lost\":true}".into());
+        .push(
+            &ReplayKey::Addr("offline-peer".into()),
+            "offline-peer",
+            "{\"lost\":true}".into(),
+        )
+        .await;
 
     assert_eq!(fwd.buffered_count().await, 1);
     assert_eq!(fwd.buffered_peer_count().await, 1);
@@ -400,43 +404,50 @@ fn without_discovery_has_no_payload() {
     fwd.broadcast("test".into());
 }
 
-// ── DC-2: offline buffer drop-oldest cap ──────────────────────────
+// ── DC-2: offline buffer drop-oldest cap (legacy Addr key) ─────────────
 
 #[tokio::test]
 async fn offline_buffer_caps_per_peer_queue_with_drop_oldest() {
-    let buffer = Arc::new(Mutex::new(HashMap::new()));
+    let buffer = OfflineReplayBuffer::new();
     for i in 0..(MAX_OFFLINE_BUFFER_PER_PEER + 250) {
-        buffer_event_for_peer(&buffer, "peer-a", format!("e{i}")).await;
+        buffer
+            .push(&ReplayKey::Addr("peer-a".into()), "peer-a", format!("e{i}"))
+            .await;
     }
-    let map = buffer.lock().await;
-    let queue = map.get("peer-a").unwrap();
-    assert_eq!(queue.len(), MAX_OFFLINE_BUFFER_PER_PEER);
+    let queue = buffer.drain(&ReplayKey::Addr("peer-a".into())).await;
+    assert_eq!(queue.events.len(), MAX_OFFLINE_BUFFER_PER_PEER);
     // Oldest events were dropped: first retained is e250, last is the
     // most recently pushed.
-    assert_eq!(queue.first().unwrap(), &format!("e{}", 250));
+    assert_eq!(queue.events.first().unwrap(), &format!("e{}", 250));
     assert_eq!(
-        queue.last().unwrap(),
+        queue.events.last().unwrap(),
         &format!("e{}", MAX_OFFLINE_BUFFER_PER_PEER + 249)
     );
 }
 
 #[tokio::test]
 async fn offline_buffer_caps_are_per_peer_not_global() {
-    let buffer = Arc::new(Mutex::new(HashMap::new()));
+    let buffer = OfflineReplayBuffer::new();
     for i in 0..(MAX_OFFLINE_BUFFER_PER_PEER + 10) {
-        buffer_event_for_peer(&buffer, "peer-a", format!("a{i}")).await;
-        buffer_event_for_peer(&buffer, "peer-b", format!("b{i}")).await;
+        buffer
+            .push(&ReplayKey::Addr("peer-a".into()), "peer-a", format!("a{i}"))
+            .await;
+        buffer
+            .push(&ReplayKey::Addr("peer-b".into()), "peer-b", format!("b{i}"))
+            .await;
     }
-    let map = buffer.lock().await;
+    // Two queues at the per-peer cap sit below the total cap, so both
+    // hold exactly MAX_OFFLINE_BUFFER_PER_PEER and neither cannibalises
+    // the other. (The total cap itself is pinned in `replay_tests`.)
     assert_eq!(
-        map.get("peer-a").unwrap().len(),
+        buffer.len_for(&ReplayKey::Addr("peer-a".into())).await,
         MAX_OFFLINE_BUFFER_PER_PEER
     );
     assert_eq!(
-        map.get("peer-b").unwrap().len(),
+        buffer.len_for(&ReplayKey::Addr("peer-b".into())).await,
         MAX_OFFLINE_BUFFER_PER_PEER
     );
-    assert_eq!(map.len(), 2);
+    assert_eq!(buffer.queue_count().await, 2);
 }
 
 // ── noise-psk-v1 transport (DC-1 full fix) ──────────────────────────
@@ -452,7 +463,7 @@ async fn spawn_psk_peer(
     let (tx, rx) = broadcast::channel(16);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let buffer = Arc::new(Mutex::new(HashMap::new()));
+    let buffer = OfflineReplayBuffer::new();
     let expected = Some(Arc::new(psk.to_string()));
     let server_handle = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
@@ -461,7 +472,6 @@ async fn spawn_psk_peer(
             "noise-test-peer".into(),
             rx,
             buffer,
-            vec![],
             expected,
             None,
             None,
@@ -585,7 +595,8 @@ async fn legacy_hello_with_wrong_psk_is_dropped() {
 // ── kds-sync: multi-terminal station filtering & snapshots ─────────────
 
 /// Spawn `handle_peer` with the full option set (PSK, discovery
-/// payload, queue provider) and connect a plain client.
+/// payload, queue provider) and connect a plain client. `initial_events`
+/// are seeded under the peer's legacy `Addr("kds-sync-peer")` key.
 async fn spawn_peer_with(
     rx: broadcast::Receiver<String>,
     initial_events: Vec<String>,
@@ -595,7 +606,8 @@ async fn spawn_peer_with(
 ) -> (tokio::task::JoinHandle<()>, TcpStream) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let buffer = Arc::new(Mutex::new(HashMap::new()));
+    let buffer = OfflineReplayBuffer::new();
+    seed_addr(&buffer, "kds-sync-peer", initial_events).await;
     let expected = psk.map(|p| Arc::new(p.to_string()));
     let payload = discovery.map(|p| Arc::new(p.to_string()));
     let server_handle = tokio::spawn(async move {
@@ -605,7 +617,6 @@ async fn spawn_peer_with(
             "kds-sync-peer".into(),
             rx,
             buffer,
-            initial_events,
             expected,
             payload,
             kds_queue,
@@ -618,9 +629,15 @@ async fn spawn_peer_with(
 
 /// Serialise a `kds.order_placed` wire line scoped to `stations`.
 fn placed_line(stations: &[&str]) -> String {
+    placed_line_id("kds-1", stations)
+}
+
+/// [`placed_line`] with an explicit ticket id, so a test can tell a
+/// replayed line apart from a live one by its bytes.
+fn placed_line_id(id: &str, stations: &[&str]) -> String {
     serde_json::to_string(&KdsSyncEvent::OrderPlaced(KdsOrderPlaced {
-        kds_order_id: "kds-1".into(),
-        sale_id: "sale-1".into(),
+        kds_order_id: id.into(),
+        sale_id: format!("sale-{id}"),
         store_id: None,
         stations: stations.iter().map(|s| s.to_string()).collect(),
         display_number: Some(7),
@@ -996,4 +1013,464 @@ async fn noise_peer_subscribes_and_receives_snapshot_and_filter() {
         "noise subscriber must not receive other stations: {delivered}"
     );
     server_handle.await.unwrap();
+}
+
+// ── agent 5: device-keyed offline replay on a LIVE forwarder ────────────
+//
+// The production defect this pays for: a reconnecting tablet dials from a
+// NEW ephemeral source port, so an address-keyed offline buffer is never
+// found again (agent 4's live validation could only observe replay by
+// rebinding the exact local port). These tests run the real accept loop
+// (`LanEventForwarder::run()`) on dynamically reserved loopback ports and
+// force the write-failure path with an SO_LINGER(0) close (RST), exactly
+// like the desktop-client live suite. No read is unbounded: every wait
+// has an explicit timeout.
+
+/// PSK for the live device-replay suite (no discovery payload — the
+/// subscription rides entirely on the legacy hello, so phase 1 never
+/// stalls and the peer's first server line is an event).
+const RP_PSK: &str = "replay-test-psk";
+
+/// Non-`kds.*` end-of-stream marker: `should_deliver` has no opinion
+/// about it, so every peer receives it.
+const RP_SENTINEL: &str = r#"{"sentinel":"rp-end"}"#;
+
+/// The 5-second heartbeat line (skipped when collecting event lines).
+const RP_PING: &str = r#"{"type":"ping"}"#;
+
+/// Hard cap on any single socket read in this suite — comfortably above
+/// one heartbeat interval; a timeout panics instead of hanging.
+const RP_LINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Byte-for-byte pre-kds-sync hello line (no subscription fields).
+fn rp_hello_legacy() -> String {
+    serde_json::json!({ "op": "hello", "psk": RP_PSK }).to_string()
+}
+
+/// Legacy-psk-v1 hello carrying a kds-sync subscription.
+fn rp_hello_station(device: &str, stations: &[&str]) -> String {
+    serde_json::json!({
+        "op": "hello", "psk": RP_PSK, "station_ids": stations, "device_id": device,
+    })
+    .to_string()
+}
+
+/// Start a live forwarder (PSK, no discovery) on a dynamically reserved
+/// loopback port, retrying if the probe→bind window loses the port. The
+/// liveness probe connection itself is refused the handshake by the PSK
+/// phase 0 (no hello) — harmless, same as the desktop live suite.
+async fn rp_spawn() -> (LanEventForwarder, std::net::SocketAddr) {
+    for _attempt in 0..8u32 {
+        let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+        let fwd = LanEventForwarder::new(addr.to_string(), Some(RP_PSK.to_string()));
+        let hub = fwd.clone();
+        tokio::spawn(fwd.run());
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+        while tokio::time::Instant::now() < deadline {
+            if TcpStream::connect(addr).await.is_ok() {
+                return (hub, addr);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+    panic!("could not bring up a live LAN forwarder on a free loopback port");
+}
+
+/// One live PSK peer with owned halves so buffered bytes survive across
+/// line reads (a fresh reader per line would coalesce-drop events —
+/// same discipline as the desktop-client live suite).
+struct RpPeer {
+    /// The local (peer-side) `ip:port` the server keys a legacy queue by.
+    addr: std::net::SocketAddr,
+    w: tokio::net::tcp::OwnedWriteHalf,
+    r: tokio::io::BufReader<tokio::net::tcp::OwnedReadHalf>,
+}
+
+impl RpPeer {
+    /// Connect (optionally bound to an exact local port so the server
+    /// sees a chosen address) and send `hello` as the phase-0 line, then
+    /// pace briefly so the accept task has consumed it — the hello
+    /// arriving before the first send attempt is what makes the RST
+    /// below deterministic.
+    #[allow(deprecated)]
+    async fn connect(
+        server: std::net::SocketAddr,
+        hello: &str,
+        bind: Option<std::net::SocketAddr>,
+    ) -> RpPeer {
+        let mut last_err = String::from("no attempt");
+        for _attempt in 0..20u32 {
+            let Ok(sock) = tokio::net::TcpSocket::new_v4() else {
+                last_err = "TcpSocket::new_v4 failed".to_string();
+                continue;
+            };
+            // SO_LINGER(0) makes the eventual close send RST: the
+            // server-side socket becomes permanently errored, so the
+            // write-failure / offline-buffer path is observable instead
+            // of racing FIN.
+            sock.set_reuseaddr(true).ok();
+            sock.set_linger(Some(std::time::Duration::ZERO)).ok();
+            let local = bind.unwrap_or_else(|| "127.0.0.1:0".parse().unwrap());
+            if let Err(e) = sock.bind(local) {
+                last_err = format!("bind {local}: {e}");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                continue;
+            }
+            let stream = match sock.connect(server).await {
+                Ok(stream) => stream,
+                Err(e) => {
+                    last_err = format!("connect to {server}: {e}");
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    continue;
+                }
+            };
+            stream.set_linger(Some(std::time::Duration::ZERO)).ok();
+            let addr = stream.local_addr().expect("peer local_addr");
+            let (r, w) = stream.into_split();
+            let mut peer = RpPeer {
+                addr,
+                w,
+                r: tokio::io::BufReader::new(r),
+            };
+            peer.write_line(hello).await;
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            return peer;
+        }
+        panic!("peer could not reach {server} from {bind:?}: {last_err}");
+    }
+
+    /// Write one `\n`-terminated line to the server.
+    async fn write_line(&mut self, line: &str) {
+        tokio::io::AsyncWriteExt::write_all(&mut self.w, format!("{line}\n").as_bytes())
+            .await
+            .expect("peer write line");
+    }
+
+    /// Read one line under a hard timeout. `None` only on EOF.
+    async fn read_line(&mut self) -> Option<String> {
+        let mut buf = Vec::new();
+        match tokio::time::timeout(
+            RP_LINE_TIMEOUT,
+            tokio::io::AsyncBufReadExt::read_until(&mut self.r, b'\n', &mut buf),
+        )
+        .await
+        {
+            Ok(Ok(0)) => None,
+            Ok(Ok(_)) => Some(String::from_utf8_lossy(&buf).trim_end().to_string()),
+            Ok(Err(e)) => panic!("peer read failed: {e}"),
+            Err(_) => panic!("peer read timed out after {RP_LINE_TIMEOUT:?}"),
+        }
+    }
+
+    /// Collect event lines (heartbeat skipped) until the sentinel.
+    async fn read_until_sentinel(&mut self) -> Vec<String> {
+        let mut out = Vec::new();
+        loop {
+            let line = self
+                .read_line()
+                .await
+                .expect("peer stream closed before the sentinel line");
+            if line == RP_SENTINEL {
+                return out;
+            }
+            if line == RP_PING {
+                continue;
+            }
+            out.push(line);
+        }
+    }
+}
+
+/// Bounded wait for the forwarder's offline buffer to hold `want` lines.
+async fn rp_wait_buffered(fwd: &LanEventForwarder, want: usize) -> bool {
+    for _ in 0..60 {
+        if fwd.buffered_count().await == want {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    fwd.buffered_count().await == want
+}
+
+/// Connect the "reconnecting tablet": bind to a port *provably different*
+/// from `avoid` (the pre-drop address) so a new-port test can never be
+/// secretly rebinding the old one. One bounded bind/connect attempt per
+/// candidate offset — busy ports simply fail fast.
+#[allow(deprecated)]
+async fn rp_connect_new_port(
+    server: std::net::SocketAddr,
+    hello: &str,
+    avoid: std::net::SocketAddr,
+) -> RpPeer {
+    let base = avoid.port();
+    for offset in 1u16..=16 {
+        let port = base.wrapping_add(offset);
+        if port == base || port == 0 {
+            continue;
+        }
+        let bind: std::net::SocketAddr = format!("127.0.0.1:{port}")
+            .parse()
+            .expect("loopback bind addr");
+        let Ok(sock) = tokio::net::TcpSocket::new_v4() else {
+            continue;
+        };
+        sock.set_reuseaddr(true).ok();
+        sock.set_linger(Some(std::time::Duration::ZERO)).ok();
+        if sock.bind(bind).is_err() {
+            continue;
+        }
+        let Ok(stream) = sock.connect(server).await else {
+            continue;
+        };
+        stream.set_linger(Some(std::time::Duration::ZERO)).ok();
+        let addr = stream.local_addr().expect("peer local_addr");
+        assert_ne!(addr.port(), base, "reconnect must use a different port");
+        let (r, w) = stream.into_split();
+        let mut peer = RpPeer {
+            addr,
+            w,
+            r: tokio::io::BufReader::new(r),
+        };
+        peer.write_line(hello).await;
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        return peer;
+    }
+    panic!("no free loopback port near {avoid} to reconnect from");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn device_peer_reconnect_from_new_port_replays_buffered_events() {
+    // THE point of the whole change: the buffered event must reach the
+    // tablet even though its reconnect arrives on a DIFFERENT port than
+    // the one the failed write happened on.
+    let (fwd, server) = rp_spawn().await;
+
+    let mut p1 = RpPeer::connect(server, &rp_hello_station("kds-9", &["grill"]), None).await;
+    let addr1 = p1.addr;
+    // Simulated kitchen-tablet dropout: linger-0 close → RST.
+    drop(p1);
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+    // Fire events until one hits the failed write and is buffered (the
+    // first post-RST send may still be accepted by the kernel — then
+    // it is lost to the void and the second one is guaranteed to fail).
+    let mut buffered_id = String::new();
+    for i in 0..10 {
+        let id = format!("t-rp-{i}");
+        fwd.broadcast(placed_line_id(&id, &["grill"]));
+        if rp_wait_buffered(&fwd, 1).await {
+            buffered_id = id;
+            break;
+        }
+    }
+    assert!(
+        !buffered_id.is_empty(),
+        "offline buffer never filled after RST + ten published events",
+    );
+    assert_eq!(
+        fwd.offline_buffer
+            .len_for(&ReplayKey::Device("kds-9".into()))
+            .await,
+        1,
+        "the line must be keyed by the hello's device_id, not the dead port",
+    );
+    assert_eq!(
+        fwd.offline_buffer
+            .len_for(&ReplayKey::Addr(addr1.to_string()))
+            .await,
+        0,
+    );
+
+    // Reconnect the SAME device from a provably different local port.
+    let mut p2 = rp_connect_new_port(server, &rp_hello_station("kds-9", &["grill"]), addr1).await;
+    fwd.broadcast(placed_line_id("t-live", &["grill"]));
+    fwd.broadcast(RP_SENTINEL.to_string());
+
+    let lines = p2.read_until_sentinel().await;
+    assert_eq!(lines.len(), 2, "new-port reconnect stream: {lines:?}");
+    assert_eq!(
+        lines[0],
+        placed_line_id(&buffered_id, &["grill"]),
+        "the buffered event must replay FIRST, byte-identical (frozen wire format)",
+    );
+    assert_eq!(lines[1], placed_line_id("t-live", &["grill"]));
+    assert_eq!(
+        fwd.buffered_count().await,
+        0,
+        "the reconnecting hello must drain the device queue",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn station_filter_applies_to_device_keyed_replay() {
+    // A device queue holding one in-scope and one out-of-scope line:
+    // the reconnecting station peer replays ONLY its own station's
+    // event, and the drain retires the rest (no unclaimed residue).
+    let (fwd, server) = rp_spawn().await;
+    let seed_addr = "127.0.0.1:5001".to_string();
+    fwd.offline_buffer
+        .push(
+            &ReplayKey::Device("kds-f".into()),
+            &seed_addr,
+            placed_line_id("t-fry", &["fry"]),
+        )
+        .await;
+    fwd.offline_buffer
+        .push(
+            &ReplayKey::Device("kds-f".into()),
+            &seed_addr,
+            placed_line_id("t-grill", &["grill"]),
+        )
+        .await;
+    assert_eq!(fwd.buffered_count().await, 2);
+
+    let mut peer = RpPeer::connect(server, &rp_hello_station("kds-f", &["grill"]), None).await;
+    fwd.broadcast(RP_SENTINEL.to_string());
+
+    let lines = peer.read_until_sentinel().await;
+    assert_eq!(
+        lines,
+        vec![placed_line_id("t-grill", &["grill"])],
+        "device-keyed replay must honour the station filter, byte-exact",
+    );
+    assert_eq!(
+        fwd.buffered_count().await,
+        0,
+        "a drained device queue retires the filtered-out lines too",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn legacy_peer_without_device_id_stays_addr_keyed() {
+    // Old clients unaffected: a pre-kds-sync peer's buffer keys by its
+    // address, follows NO new port, and is found again only when that
+    // exact address reconnects.
+    let (fwd, server) = rp_spawn().await;
+
+    let mut l1 = RpPeer::connect(server, &rp_hello_legacy(), None).await;
+    let addr1 = l1.addr;
+    drop(l1);
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    let mut buffered_id = String::new();
+    for i in 0..10 {
+        let id = format!("t-legacy-{i}");
+        fwd.broadcast(placed_line_id(&id, &["grill"]));
+        if rp_wait_buffered(&fwd, 1).await {
+            buffered_id = id;
+            break;
+        }
+    }
+    assert!(
+        !buffered_id.is_empty(),
+        "legacy write failure never buffered"
+    );
+    assert_eq!(
+        fwd.offline_buffer
+            .len_for(&ReplayKey::Addr(addr1.to_string()))
+            .await,
+        1,
+        "a device-less peer must stay keyed by its peer address",
+    );
+
+    // A legacy peer on any OTHER address must not inherit the queue.
+    let mut stranger = rp_connect_new_port(server, &rp_hello_legacy(), addr1).await;
+    fwd.broadcast(RP_SENTINEL.to_string());
+    assert!(
+        stranger.read_until_sentinel().await.is_empty(),
+        "a different address must not replay a legacy queue parked at {addr1}",
+    );
+    assert_eq!(
+        fwd.buffered_count().await,
+        1,
+        "the parked queue survives intact"
+    );
+
+    // The SAME address reconnecting (the pre-kds-sync contract) gets it.
+    let mut same = RpPeer::connect(server, &rp_hello_legacy(), Some(addr1)).await;
+    fwd.broadcast(placed_line_id("t-after", &["grill"]));
+    fwd.broadcast(RP_SENTINEL.to_string());
+    let lines = same.read_until_sentinel().await;
+    assert_eq!(
+        lines.len(),
+        2,
+        "same-address legacy reconnect stream: {lines:?}"
+    );
+    assert_eq!(lines[0], placed_line_id(&buffered_id, &["grill"]));
+    assert_eq!(lines[1], placed_line_id("t-after", &["grill"]));
+    assert_eq!(fwd.buffered_count().await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_devices_alternating_addresses_do_not_cross_deliver() {
+    // Device A buffers at address X, device B buffers at address Y, then
+    // A reconnects FROM Y (B's old address). Address keying would hand
+    // A B's buffer; device keying must not.
+    let (fwd, server) = rp_spawn().await;
+
+    // Phase A: device-a drops at its port, one event fails to write.
+    let a1 = RpPeer::connect(server, &rp_hello_station("dev-a", &["grill"]), None).await;
+    let addr_a = a1.addr;
+    drop(a1);
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    let mut a_id = String::new();
+    for i in 0..10 {
+        let id = format!("t-a-{i}");
+        fwd.broadcast(placed_line_id(&id, &["grill"]));
+        if rp_wait_buffered(&fwd, 1).await {
+            a_id = id;
+            break;
+        }
+    }
+    assert!(!a_id.is_empty(), "device-a's event never buffered");
+
+    // Phase B: device-b drops at ITS OWN port (explicitly distinct from
+    // A's — ephemeral reuse after an RST is otherwise possible), one
+    // event fails to write.
+    let b1 = rp_connect_new_port(server, &rp_hello_station("dev-b", &["grill"]), addr_a).await;
+    let addr_b = b1.addr;
+    drop(b1);
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    for i in 0..10 {
+        let id = format!("t-b-{i}");
+        fwd.broadcast(placed_line_id(&id, &["grill"]));
+        if rp_wait_buffered(&fwd, 2).await {
+            break;
+        }
+    }
+    assert_eq!(fwd.buffered_count().await, 2, "one line per device queue");
+    assert_eq!(
+        fwd.offline_buffer
+            .len_for(&ReplayKey::Device("dev-a".into()))
+            .await,
+        1,
+    );
+    assert_eq!(
+        fwd.offline_buffer
+            .len_for(&ReplayKey::Device("dev-b".into()))
+            .await,
+        1,
+    );
+    assert_ne!(addr_a, addr_b, "the two phases must not share an address");
+
+    // Device A reconnects from B's OLD address: only A's queue replays.
+    let from_b = std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), addr_b.port());
+    let mut a2 =
+        RpPeer::connect(server, &rp_hello_station("dev-a", &["grill"]), Some(from_b)).await;
+    fwd.broadcast(RP_SENTINEL.to_string());
+    let lines = a2.read_until_sentinel().await;
+    assert_eq!(
+        lines,
+        vec![placed_line_id(&a_id, &["grill"])],
+        "device A must replay its OWN queue at B's old address, not B's",
+    );
+    assert_eq!(
+        fwd.offline_buffer
+            .len_for(&ReplayKey::Device("dev-b".into()))
+            .await,
+        1,
+        "device B's queue must be untouched by A's reconnect",
+    );
 }

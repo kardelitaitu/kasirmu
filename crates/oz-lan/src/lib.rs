@@ -1,7 +1,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (desktop-client slice A: lan_server deep read; DC-1 FIXED 25-07-26; DC-1 FULL FIX 30-08-26)
 crate: oz-lan | status: SAFE | lint: CLEAN
-findings: DC-1 FIXED (mitigation) — the PSK handshake compare is now constant-time (psk_matches hashes both inputs with HMAC-SHA256 and compares digests via verify_slice; string == short-circuited on the first differing byte). Threat-model note added to the helper doc: the PSK still travels in cleartext in the hello JSON, so this handshake remains LAN discovery-filtering, not transport security. DC-1 FULL FIX 30-08-26 — noise-psk-v1 transport implemented: Noise_XXpsk3_25519_ChaChaPoly_SHA256 via `snow`, PSK mixed into message 3 so it never crosses the wire; first-byte transport selection (0x01 noise / '{' legacy) keeps old KDS clients working; static key derived deterministically from the PSK (domain-separated SHA-256). 5 new tests: handshake+encrypted-event roundtrip, wrong-PSK drop, unknown-selector drop, legacy hello accept, legacy hello reject. DC-2 FIXED — per-peer offline buffer pushes now route through buffer_event_for_peer with a drop-oldest cap of 1,024 events/peer (2 new tests: cap + per-peer isolation; 27 lan_server tests pass). Otherwise solid: handshake inside the spawned task (accept-loop DoS-safe), bounded broadcast with lagged-peer handling, safe 127.0.0.1 default with PSK required for external bind, heartbeat/replay design documented
+findings: DC-1 FIXED (mitigation) — the PSK handshake compare is now constant-time (psk_matches hashes both inputs with HMAC-SHA256 and compares digests via verify_slice; string == short-circuited on the first differing byte). Threat-model note added to the helper doc: the PSK still travels in cleartext in the hello JSON, so this handshake remains LAN discovery-filtering, not transport security. DC-1 FULL FIX 30-08-26 — noise-psk-v1 transport implemented: Noise_XXpsk3_25519_ChaChaPoly_SHA256 via `snow`, PSK mixed into message 3 so it never crosses the wire; first-byte transport selection (0x01 noise / '{' legacy) keeps old KDS clients working; static key derived deterministically from the PSK (domain-separated SHA-256). 5 new tests: handshake+encrypted-event roundtrip, wrong-PSK drop, unknown-selector drop, legacy hello accept, legacy hello reject. DC-2 FIXED — per-peer offline buffer pushes now route through buffer_event_for_peer with a drop-oldest cap of 1,024 events/peer (2 new tests: cap + per-peer isolation; 27 lan_server tests pass). DEVICE-KEYED REPLAY 13-09-26 (agent 5) — the offline buffer moved into the `replay` module and is now keyed by the hello/discover `device_id` when the peer presents one: a reconnecting tablet dials from a NEW ephemeral port, so address keying could never find its queue in production (stamped by agent 4's live validation); device-less peers keep `peer_addr` keying. The drain moved from the accept loop into `handle_peer` phase 2 (the device_id is only known after the handshake), replay still obeys the station filter, and retention is bounded twice (1,024/queue + 8,192 total, drop-oldest, tracing::warn!). Wire format untouched. Otherwise solid: handshake inside the spawned task (accept-loop DoS-safe), bounded broadcast with lagged-peer handling, safe 127.0.0.1 default with PSK required for external bind, heartbeat/replay design documented
 next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/A
 */
 //! Headless LAN event transport for OZ-POS, extracted from
@@ -34,9 +34,13 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! - Sends a `{"type":"ping"}` heartbeat every 5 seconds to detect
 //!   silent disconnections.
 //! - When a TCP write fails, buffers the undelivered event in an
-//!   in-memory per-peer queue.
-//! - When a peer reconnects, automatically flushes buffered events
-//!   before entering the normal broadcast loop.
+//!   in-memory queue keyed by replay identity: the peer's `device_id`
+//!   when its hello/discover presented one (a reconnecting tablet dials
+//!   from a new ephemeral port, so device keying is what makes replay
+//!   reachable in production), else its TCP address (legacy peers).
+//! - When a peer reconnects, automatically flushes the queues its
+//!   identity owns — the device queue plus any queue parked at its
+//!   exact address — before entering the normal broadcast loop.
 //! - A booting KDS peer can request an active-queue snapshot with
 //!   `{"op":"discover","want_queue":true}`; the discovery response then
 //!   carries a live `active_queue` [`KdsQueueSnapshot`]
@@ -79,7 +83,7 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! let forwarder = LanEventForwarder::default();
 //! ```
 
-use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use foundation::contracts::{EventHandler, ModuleResult};
@@ -87,10 +91,13 @@ use oz_core::events::{CourseFired, SaleCompleted};
 use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::broadcast;
 
 mod kds_sync;
 mod noise;
+mod replay;
+
+use replay::{OfflineReplayBuffer, ReplayKey};
 
 pub(crate) use noise::{
     NOISE_MAGIC_BYTE, PeerTx, noise_handshake_responder, read_frame, write_frame,
@@ -113,32 +120,6 @@ const CHANNEL_CAPACITY: usize = 256;
 
 /// Interval between heartbeat pings sent to each peer (seconds).
 const HEARTBEAT_INTERVAL_SECS: u64 = 5;
-
-/// Maximum number of events buffered for one disconnected peer (DC-2
-/// fix: drop-oldest cap keeps a connect/disconnect cycle from growing
-/// its per-peer queue without bound — each queued event is a JSON line,
-/// so 1024 keeps memory per absent peer in the ~hundreds-of-KB range).
-const MAX_OFFLINE_BUFFER_PER_PEER: usize = 1024;
-
-/// Push `event` into the per-peer offline buffer with a drop-oldest cap.
-///
-/// DC-2 fix: both buffer sites (flush-failure re-buffer and live-write
-/// failure) route through here so neither can grow a peer's queue past
-/// [`MAX_OFFLINE_BUFFER_PER_PEER`]; when full, the oldest event is
-/// dropped to make room.
-async fn buffer_event_for_peer(
-    buffer: &Mutex<HashMap<String, Vec<String>>>,
-    peer_addr: &str,
-    event: String,
-) {
-    let mut map = buffer.lock().await;
-    let queue = map.entry(peer_addr.to_string()).or_default();
-    if queue.len() >= MAX_OFFLINE_BUFFER_PER_PEER {
-        queue.remove(0);
-        tracing::debug!(peer = %peer_addr, "offline buffer full, oldest event dropped");
-    }
-    queue.push(event);
-}
 
 /// Timeout for the PSK handshake (seconds).
 const PSK_HANDSHAKE_TIMEOUT_SECS: u64 = 5;
@@ -218,9 +199,10 @@ struct DiscoverMsg {
 #[derive(Clone)]
 pub struct LanEventForwarder {
     tx: broadcast::Sender<String>,
-    /// Per-peer offline buffer. Maps peer address → buffered JSON events
-    /// that could not be delivered due to disconnection.
-    offline_buffer: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    /// Undelivered events awaiting replay, keyed by replay identity:
+    /// `device_id` when the peer presented one, else the peer address
+    /// (see the `replay` module).
+    offline_buffer: OfflineReplayBuffer,
     /// TCP bind address (e.g. `"127.0.0.1:9180"` or `"0.0.0.0:9180"`).
     bind_addr: String,
     /// Optional pre-shared key for external bind mode.
@@ -253,7 +235,7 @@ impl LanEventForwarder {
         let (tx, _) = broadcast::channel(CHANNEL_CAPACITY);
         Self {
             tx,
-            offline_buffer: Arc::new(Mutex::new(HashMap::new())),
+            offline_buffer: OfflineReplayBuffer::new(),
             bind_addr,
             psk: psk.map(Arc::new),
             discovery_payload: None,
@@ -311,7 +293,10 @@ impl LanEventForwarder {
     ///
     /// Spawns a tokio task for each accepted connection that:
     /// 1. Optionally performs a PSK handshake (for external bind)
-    /// 2. Flushes any buffered events for this peer address
+    /// 2. Negotiates the peer's subscription and replays the buffered
+    ///    events its replay identity owns — the `device_id` queue (when
+    ///    the hello/discover carried one) plus any queue parked at the
+    ///    exact peer address — before streaming goes live
     /// 3. Subscribes to the broadcast channel
     /// 4. Sends heartbeat pings every 5s
     /// 5. Buffers events on write failure and exits
@@ -336,22 +321,11 @@ impl LanEventForwarder {
                     let addr = peer_addr.to_string();
                     tracing::debug!(peer = %addr, "LAN peer connected");
 
-                    // Drain buffered events for this peer before subscribing.
-                    let initial_events: Vec<String> = self
-                        .offline_buffer
-                        .lock()
-                        .await
-                        .remove(&addr)
-                        .unwrap_or_default();
-
-                    if !initial_events.is_empty() {
-                        tracing::info!(
-                            peer = %addr,
-                            count = initial_events.len(),
-                            "flushing buffered LAN events on reconnection"
-                        );
-                    }
-
+                    // Replay-buffer draining happens inside `handle_peer`
+                    // once the hello/discover line has revealed the
+                    // peer's `device_id` (the accept loop knows only the
+                    // ephemeral address, which a reconnecting tablet
+                    // never presents twice).
                     let rx = self.tx.subscribe();
                     let buffer = self.offline_buffer.clone();
                     let psk_clone = psk.clone();
@@ -362,7 +336,6 @@ impl LanEventForwarder {
                         addr,
                         rx,
                         buffer,
-                        initial_events,
                         psk_clone,
                         discovery,
                         kds_queue_clone,
@@ -395,13 +368,13 @@ impl LanEventForwarder {
 
     /// Return the number of buffered events across all disconnected peers.
     pub async fn buffered_count(&self) -> usize {
-        let buf = self.offline_buffer.lock().await;
-        buf.values().map(|v| v.len()).sum()
+        self.offline_buffer.event_count().await
     }
 
-    /// Return the number of distinct peer addresses with buffered events.
+    /// Return the number of distinct replay identities (a `device_id`, or
+    /// a legacy peer address) with buffered events.
     pub async fn buffered_peer_count(&self) -> usize {
-        self.offline_buffer.lock().await.len()
+        self.offline_buffer.queue_count().await
     }
 }
 
@@ -464,8 +437,14 @@ pub struct KdsDiscoverResponse {
 /// Expo peers and unregistered peers see everything). All writes go
 /// through [`PeerTx`], so a noise peer receives the same JSON events
 /// inside encrypted frames. When a write fails, the undelivered message
-/// is pushed to the offline buffer keyed by `peer_addr` so it can be
-/// replayed on reconnection.
+/// is pushed to the offline replay buffer under the peer's replay
+/// identity — its `device_id` when the hello/discover carried one, so
+/// the queue survives a reconnect on a new ephemeral port, else
+/// `peer_addr` (the pre-kds-sync contract). Phase 2 drains that
+/// identity's queues — the device queue plus any queue parked at the
+/// exact address — and replays them through the same station filter;
+/// if a replay write itself fails, every still-undelivered line is
+/// re-buffered under the queue it came from.
 ///
 /// All reads share one connection-level [`BufReader`] created before
 /// the first byte is read and moved into [`PeerTx`] at the end of the
@@ -476,13 +455,11 @@ pub struct KdsDiscoverResponse {
 ///
 /// The handshake runs inside the spawned task so a slow/malicious peer
 /// cannot block the accept loop (DoS protection).
-#[allow(clippy::too_many_arguments)]
 async fn handle_peer(
     stream: TcpStream,
     peer_addr: String,
     mut rx: broadcast::Receiver<String>,
-    offline_buffer: Arc<Mutex<HashMap<String, Vec<String>>>>,
-    initial_events: Vec<String>,
+    offline_buffer: OfflineReplayBuffer,
     psk: Option<Arc<String>>,
     discovery_payload: Option<Arc<String>>,
     kds_queue: Option<KdsQueueProvider>,
@@ -723,11 +700,59 @@ async fn handle_peer(
         }
     }
 
-    // Phase 2: Flush any buffered events first, applying the peer's
-    // station scope so replayed lines obey the same filter as live
-    // traffic (a line outside this peer's scope is dropped here — it
-    // was buffered for this address only).
-    for event in initial_events {
+    // Phase 2: Replay buffered events, applying the peer's station
+    // scope so replayed lines obey the same filter as live traffic (a
+    // line outside this peer's scope is dropped here). The replay
+    // identity is the peer's `device_id` when the handshake presented
+    // one — the queue then survives a reconnect on a new ephemeral
+    // port, which is the production case (a tablet's source port
+    // changes every dial, so an address-keyed buffer was never found
+    // again). The queue parked at this exact address is also always
+    // claimed first: that is the legacy contract for device-less
+    // peers, and it keeps the pre-device behavior byte-for-byte when
+    // an address genuinely recurs (the old accept-loop drain keyed
+    // solely on `peer_addr` and ran before any handshake).
+    let replay_key = ReplayKey::from_subscription(subscription.as_ref(), &peer_addr);
+    let addr_key = ReplayKey::Addr(peer_addr.clone());
+    let mut pending: VecDeque<(ReplayKey, String)> = VecDeque::new();
+    pending.extend(
+        offline_buffer
+            .drain(&addr_key)
+            .await
+            .events
+            .into_iter()
+            .map(|event| (addr_key.clone(), event)),
+    );
+    if let ReplayKey::Device(device_id) = &replay_key {
+        let device_drain = offline_buffer.drain(&replay_key).await;
+        if !device_drain.events.is_empty() {
+            if let Some(source) = device_drain.source_addr.as_deref() {
+                if source != peer_addr {
+                    tracing::info!(
+                        device = %device_id,
+                        buffered_at = %source,
+                        reconnected_at = %peer_addr,
+                        count = device_drain.events.len(),
+                        "offline replay buffer handed off to a new peer address"
+                    );
+                }
+            }
+            pending.extend(
+                device_drain
+                    .events
+                    .into_iter()
+                    .map(|event| (replay_key.clone(), event)),
+            );
+        }
+    }
+    if !pending.is_empty() {
+        tracing::info!(
+            peer = %peer_addr,
+            count = pending.len(),
+            "flushing buffered LAN events on reconnection"
+        );
+    }
+    while let Some((key, event)) = pending.pop_front() {
         if !should_deliver(subscription.as_ref(), &event) {
             continue;
         }
@@ -737,9 +762,15 @@ async fn handle_peer(
                 error = %e,
                 "failed to flush buffered events to reconnecting peer"
             );
-            // Re-buffer the remaining events for next reconnect attempt
-            // (drop-oldest capped).
-            buffer_event_for_peer(&offline_buffer, &peer_addr, event).await;
+            // Re-buffer the failed line plus every still-queued one,
+            // each under the key it was drained from (caps enforced by
+            // `push`).
+            let mut undelivered: VecDeque<(ReplayKey, String)> =
+                std::iter::once((key, event)).collect();
+            undelivered.append(&mut pending);
+            for (rk, ev) in undelivered {
+                offline_buffer.push(&rk, &peer_addr, ev).await;
+            }
             return;
         }
     }
@@ -771,8 +802,9 @@ async fn handle_peer(
                                 "LAN peer disconnected, event buffered"
                             );
                             // Buffer the event for replay on reconnection
-                            // (drop-oldest capped).
-                            buffer_event_for_peer(&offline_buffer, &peer_addr, msg).await;
+                            // under this peer's replay identity (caps
+                            // enforced by `push`).
+                            offline_buffer.push(&replay_key, &peer_addr, msg).await;
                             return;
                         }
                     }

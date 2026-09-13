@@ -19,7 +19,11 @@
 //! key of the discovery response via [`LanEventForwarder::with_kds_queue`].
 //! Consumers should apply snapshot-first ordering and ignore replayed
 //! events whose `occurred_at` predates `generated_at` (ISO-8601 strings
-//! compare lexicographically).
+//! compare lexicographically). Missed deliveries are held in the offline
+//! replay buffer (`crate::replay`), keyed by `device_id` when the
+//! subscription carries one — so the queue survives the new ephemeral
+//! source port of a reconnecting tablet — and by peer address for
+//! device-less (pre-kds-sync) peers.
 //!
 //! # Wire compatibility (old peers must not break)
 //!
@@ -256,7 +260,8 @@ impl EventHandler<KdsSyncEvent> for KdsSyncHandler {
 /// either field is `None` and receives all traffic — the legacy behaviour.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct PeerSubscription {
-    /// Stable KDS device ID for logging/diagnostics (optional).
+    /// Stable KDS device ID: the offline-replay buffer's identity for
+    /// this peer when present (see `crate::replay`); also logged.
     #[serde(default)]
     pub device_id: Option<String>,
     /// Station IDs this peer renders. **Empty = Expo/see-everything**,

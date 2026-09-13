@@ -183,8 +183,9 @@ where
 /// replaces the newline, so the JSON payload inside a frame carries no
 /// trailing `\n`. Events larger than [`NOISE_MAX_FRAME`] cannot be
 /// encrypted as a single Noise message; the resulting write error is
-/// treated like any delivery failure (the event is offline-buffered,
-/// itself capped at `MAX_OFFLINE_BUFFER_PER_PEER`).
+/// treated like any delivery failure (the event goes to the offline
+/// replay buffer, itself capped at
+/// `replay::MAX_OFFLINE_BUFFER_PER_PEER`).
 ///
 /// Both variants own the connection-level `BufReader` rather than the
 /// raw socket: the reader is created once in `handle_peer` before the
