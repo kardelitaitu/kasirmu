@@ -85,11 +85,16 @@
     `unwrapArgs` (router helper), so they are parameterised and injected. `mockStores`
     cross-dependency simplified to `MOCK_STORE` fallback — the lookup was location-domain
     state that has not yet been extracted.
-- [ ] Move analytics, revenue, and report command surface to `handlers/analytics.ts`.
-- [ ] Verify: `npm run typecheck`.
-- [ ] **Commit Milestone:**
+- [x] Move analytics, revenue, and report command surface to `handlers/analytics.ts`.
+  - Done as commit `9f0b61043`. **22** entries, `getMockOverQuotaReport` and `mockRevenue`
+    state functions moved. `isoDays` helper also moved (was only used by analytics).
+    `handlers` registry imported from `mockDispatcher` for `get_category_forecast` which
+    calls `get_category_popularity_trend` internally. `MOCK_PRODUCTS` and `MOCK_CATEGORIES`
+    imported from catalog/seed data.
+- [x] Verify: `npm run typecheck` — clean (only pre-existing `WorkspaceHome.tsx` errors).
+- [x] **Commit Milestone:**
   ```bash
-  git commit -m "refactor(devmock-services): extract payment and analytics mock handlers"
+  git commit -m "refactor(dev-mock): extract analytics handlers to analytics.ts"
   ```
 
 ### Phase 4.3: Extract CRM & Floorplan Mocks
@@ -125,10 +130,10 @@
   ```
 
 > **Arithmetic check.**
-> Original literal: 501 entries. Current literal: **216** entries.
-> Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) + KDS (–17) = 285 removed.
-> Remaining: agent 3 (–100) + agent 2 leftovers (–14) + analytics (~–22) + locations (~–19) + system (~–59) = 214.
-> The 2-entry gap (216 vs 214) is the unclassified tail. After all extractions and cleanup,
+> Original literal: 501 entries. Current literal: **194** entries.
+> Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) + KDS (–17) + analytics (–22) = 307 removed.
+> Remaining: agent 3 (–100) + agent 2 leftovers (–14) + locations (~–19) + system (~–59) = 192.
+> The 2-entry gap (194 vs 192) is the unclassified tail. After all extractions and cleanup,
 > < 200 lines is reachable.
 >
-> `tauri-api.ts` currently **3,005** lines (was 3,905).
+> `tauri-api.ts` currently **2,660** lines (was 3,905).
